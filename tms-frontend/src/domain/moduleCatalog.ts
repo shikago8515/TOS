@@ -4,6 +4,7 @@ export type TosModuleGroup =
   | 'home'
   | 'excel'
   | 'automation'
+  | 'testing'
   | 'collector'
   | 'settings'
 
@@ -16,6 +17,27 @@ export interface TosModuleDefinition {
   group: TosModuleGroup
   stage: TosModuleStage
   description: string
+  order: number
+}
+
+export interface TosNavGroupDefinition {
+  id: TosModuleGroup
+  label: string
+}
+
+export const tosNavGroups = [
+  { id: 'home', label: '首页' },
+  { id: 'excel', label: 'Excel 处理' },
+  { id: 'automation', label: '自动化试验区' },
+  { id: 'testing', label: '测试' },
+  { id: 'collector', label: 'adidas 材料' },
+  { id: 'settings', label: '应用' },
+] as const satisfies readonly TosNavGroupDefinition[]
+
+export const tosModuleStageLabels: Record<TosModuleStage, string> = {
+  production: '正式模块',
+  validation: '测试阶段',
+  placeholder: '开发中',
 }
 
 export const tosModules = [
@@ -28,6 +50,7 @@ export const tosModules = [
     group: 'home',
     stage: 'production',
     description: 'TOS 运营看板与快捷入口',
+    order: 10,
   },
   {
     id: 'jessca',
@@ -38,6 +61,7 @@ export const tosModules = [
     group: 'excel',
     stage: 'production',
     description: 'Jessca 发票价格核对与差异整理',
+    order: 20,
   },
   {
     id: 'sophia-tina',
@@ -48,6 +72,7 @@ export const tosModules = [
     group: 'excel',
     stage: 'production',
     description: 'Sophia & Tina 多源 Excel 汇总',
+    order: 30,
   },
   {
     id: 'jane',
@@ -58,6 +83,7 @@ export const tosModules = [
     group: 'excel',
     stage: 'production',
     description: 'Jane 成品表模板自动填充',
+    order: 40,
   },
   {
     id: 'eric',
@@ -68,6 +94,7 @@ export const tosModules = [
     group: 'excel',
     stage: 'validation',
     description: '测试阶段：Excel数据处理整合',
+    order: 50,
   },
   {
     id: 'browser-plugins',
@@ -78,6 +105,7 @@ export const tosModules = [
     group: 'automation',
     stage: 'validation',
     description: '测试阶段：业务网页插件验证',
+    order: 60,
   },
   {
     id: 'web-automation',
@@ -88,6 +116,7 @@ export const tosModules = [
     group: 'automation',
     stage: 'validation',
     description: '测试阶段：Playwright 流程试用',
+    order: 70,
   },
   {
     id: 'adidas-materials',
@@ -98,6 +127,7 @@ export const tosModules = [
     group: 'collector',
     stage: 'production',
     description: 'ACP Materials 数据采集',
+    order: 80,
   },
   {
     id: 'module-a',
@@ -105,9 +135,10 @@ export const tosModules = [
     routeName: 'module-a',
     title: '模块 A',
     navLabel: '模块 A',
-    group: 'automation',
+    group: 'testing',
     stage: 'placeholder',
     description: '功能开发中',
+    order: 90,
   },
   {
     id: 'module-b',
@@ -115,9 +146,10 @@ export const tosModules = [
     routeName: 'module-b',
     title: '模块 B',
     navLabel: '模块 B',
-    group: 'automation',
+    group: 'testing',
     stage: 'placeholder',
     description: '功能开发中',
+    order: 100,
   },
   {
     id: 'settings',
@@ -128,6 +160,7 @@ export const tosModules = [
     group: 'settings',
     stage: 'placeholder',
     description: '功能开发中',
+    order: 110,
   },
 ] as const satisfies readonly TosModuleDefinition[]
 
@@ -139,3 +172,19 @@ export const routeRedirects = [
     to: '/browser-plugins',
   },
 ] as const
+
+export function getModulesByGroup(group: TosModuleGroup): TosModuleDefinition[] {
+  return tosModules
+    .filter((module) => module.group === group)
+    .sort((left, right) => left.order - right.order)
+}
+
+export function getModuleById(id: TosModuleId): TosModuleDefinition {
+  const module = tosModules.find((entry) => entry.id === id)
+
+  if (!module) {
+    throw new Error(`Unknown TOS module id: ${id}`)
+  }
+
+  return module
+}

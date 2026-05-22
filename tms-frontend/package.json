@@ -1,0 +1,23 @@
+{
+  "name": "tos-frontend-rebuild",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5174 --strictPort",
+    "typecheck": "vue-tsc --noEmit",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4174 --strictPort"
+  },
+  "dependencies": {
+    "vue": "3.5.34",
+    "vue-router": "4.6.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.4",
+    "@vitejs/plugin-vue": "5.2.4",
+    "typescript": "5.9.3",
+    "vite": "6.4.2",
+    "vue-tsc": "2.2.12"
+  }
+}
