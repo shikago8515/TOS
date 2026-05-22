@@ -1,0 +1,20 @@
+{
+  "name": "playwright-infor-nexus-tool",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Local Playwright app for Excel-driven Infor Nexus automation.",
+  "main": "lib/index.js",
+  "scripts": {
+    "start": "node bin/start.js",
+    "dev": "node bin/start.js",
+    "check": "node --check lib/index.js && node --check public/app.js && node --check run-btp-automation.js",
+    "btp:dry-run": "node run-btp-automation.js --dry-run"
+  },
+  "dependencies": {
+    "express": "5.2.1",
+    "ghost-cursor-playwright-port": "^1.4.3",
+    "multer": "2.1.1",
+    "playwright": "1.60.0",
+    "xlsx": "0.18.5"
+  }
+}

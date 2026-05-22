@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "infornexus自动搜索并添加",
+  "version": "1.1",
+  "content_scripts": [
+    {
+      "matches": ["https://network.infornexus.com/*"],
+      "js": ["xlsx.min.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["storage"]
+}

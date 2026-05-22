@@ -1,0 +1,145 @@
+{
+  "app": {
+    "port": 3100
+  },
+  "browser": {
+    "channel": "msedge",
+    "headless": false,
+    "slowMo": 150,
+    "launchOptions": {
+      "args": ["--start-maximized"],
+      "timeout": 60000
+    },
+    "loginWaitMs": 180000,
+    "userDataDir": "playwright-user-data"
+  },
+  "workflows": {
+    "sap-btp-po-decisions": {
+      "name": "bTP系统excel表格上传及Accept确认自动化实现",
+      "description": "从 Excel 读取 PO Number 或 Task ID，进入 SAP BTP Task Center，逐条选择 Accept/Reject。",
+      "startUrl": "https://purchasing-plan-exec-prod-i725c6w9.launchpad.cfapps.eu10.hana.ondemand.com/site?siteId=06dbc9bb-bc49-459f-b6d0-7cd3d7d9e364#Shell-home",
+      "worksheetName": "",
+      "loginWaitMs": 180000,
+      "afterTaskCenterClickMs": 3000,
+      "detailLoadDelayMs": 2000,
+      "taskRowTimeoutMs": 25000,
+      "detailRowTimeoutMs": 25000,
+      "excel": {
+        "headerAliases": {
+          "caseNumber": ["Case Number", "Case No", "Case#", "Case #", "CaseNumber", "Case"],
+          "poNumber": ["PO Number", "PO", "PO No", "PO#", "PO #", "PO / Contract No#", "采购订单号", "PO编号"],
+          "taskId": ["Task ID", "TaskId", "任务ID", "任务编号"],
+          "decision": ["Decision", "Action", "操作", "决定", "决策"],
+          "comments": ["Comments", "Comment", "备注", "说明"]
+        }
+      },
+      "taskFilter": {
+        "taskTypeName": "Initiate Cancellation Request",
+        "required": false,
+        "clearExistingSelection": true,
+        "goButtonName": "Go",
+        "afterGoMs": 3000
+      },
+      "decisionOptions": {
+        "accept": "Accept",
+        "acceptAliases": ["Accept", "Approve", "Approved", "接受"],
+        "reject": "Reject",
+        "rejectAliases": ["Reject", "Rejected", "拒绝", "驳回"]
+      },
+      "submit": {
+        "enabled": true,
+        "required": false,
+        "buttonNames": ["Submit", "Save", "OK", "Confirm"],
+        "timeoutMs": 8000,
+        "afterSubmitMs": 1500
+      },
+      "behavior": {
+        "continueOnError": false,
+        "expandDetailRow": true,
+        "pauseBetweenItemsMs": 1500
+      },
+      "visual": {
+        "enabled": true,
+        "actionDelayMs": 900,
+        "statusDelayMs": 600
+      },
+      "selectors": {
+        "taskCenterLinkPatterns": ["Task Center.*saas_approuter", "Task Center"],
+        "applicationFrame": "iframe[title=\"Application\"]",
+        "taskDefinitionFilterArrow": "#application-taskcenter-display-component---worklist--taskDefinitionFilter-arrow",
+        "taskSearchPlaceholder": "Search by Task Title",
+        "taskRowPatterns": [
+          "Review Sub-Ticket Resolution.*{caseNumber}.*Review Sub-Ticket",
+          "{caseNumber}",
+          "Review Sub-Ticket Resolution.*{poNumber}.*Review Sub-Ticket",
+          "Review Sub-Ticket Resolution.*{taskId}.*Review Sub-Ticket",
+          "{poNumber}",
+          "{taskId}"
+        ],
+        "detailRowPatterns": ["{poNumber}", "{taskId}", "{caseNumber}"],
+        "openMenuName": "Open Menu",
+        "openInAppName": "Open in App",
+        "decisionLabel": "Decision",
+        "commentFieldLabels": ["Comments", "Comment", "备注", "说明"]
+      }
+    },
+    "shipment-scan": {
+      "name": "Shipping业务网页全流程自动化",
+      "available": false,
+      "statusLabel": "未实现",
+      "disabledReason": "页面控件选择器尚未配置，暂不开放运行。",
+      "description": "从 Excel 读取扫描值，逐条输入到 Shipment Scan 页面。",
+      "startUrl": "https://network.infornexus.com/en/trade/PackByScan#Create Shipment",
+      "worksheetName": "",
+      "excel": {
+        "headerAliases": {
+          "scanValue": ["LPN", "LPN Range", "Serial Range", "Package/Serial/LPN", "Scan Value"]
+        }
+      },
+      "selectors": {
+        "readyMarker": "text=Shipment Scan",
+        "scanInput": "TODO_SET_SCAN_INPUT_SELECTOR",
+        "submitButton": ""
+      }
+    },
+    "invoice-adjustments": {
+      "name": "Invoice Adjustments",
+      "available": false,
+      "statusLabel": "未实现",
+      "disabledReason": "发票 Adjustments 页面控件选择器尚未配置，暂不开放运行。",
+      "description": "从 Excel 读取 PO#/ZADD/ZDOC，并填写发票 Adjustments 区域。",
+      "startUrl": "https://network.infornexus.com/en/trade/CommercialInvoice",
+      "worksheetName": "",
+      "excel": {
+        "headerAliases": {
+          "invoiceNo": ["Invoice#", "Invoice #", "Invoice No", "Invoice Number"],
+          "poNumber": ["PO#", "PO #", "PO Number"],
+          "customerNo": ["customer no", "customer number"],
+          "zadd": ["ZADD"],
+          "zdoc": ["ZDOC"],
+          "remarks": ["Remarks", "Remark"]
+        }
+      },
+      "defaults": {
+        "adjustmentType": "Charge",
+        "preloadedRows": 3,
+        "commentTemplate": "{invoiceNo}-{poNumber}-{reasonCode}"
+      },
+      "selectors": {
+        "readyMarker": "text=Adjustments",
+        "addCountInput": "TODO_SET_ADD_COUNT_INPUT_SELECTOR",
+        "addButton": "text=Add",
+        "updateTotalsButton": "text=Update Totals",
+        "rowTemplate": "TODO_SET_ADJUSTMENT_ROW_SELECTOR_WITH_{rowIndex}",
+        "reasonModalRowByCode": "TODO_SET_REASON_MODAL_ROW_SELECTOR_WITH_{code}",
+        "fields": {
+          "adjustmentType": "TODO_SET_ADJUSTMENT_TYPE_SELECTOR",
+          "poNumber": "TODO_SET_PO_NUMBER_SELECTOR",
+          "reasonLookup": "TODO_SET_REASON_LOOKUP_SELECTOR",
+          "valueInput": "TODO_SET_VALUE_INPUT_SELECTOR",
+          "commentsInput": "TODO_SET_COMMENTS_INPUT_SELECTOR"
+        }
+      }
+    }
+  }
+}

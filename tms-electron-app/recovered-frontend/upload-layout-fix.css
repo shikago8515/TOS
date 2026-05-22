@@ -1,0 +1,49 @@
+/* Keep upload pickers fixed while selected files scroll below them. */
+.file-upload-box[data-v-762172a7] {
+  display: flex;
+  flex-direction: column;
+  align-content: flex-start;
+  min-height: 0;
+}
+
+.upload-dropzone[data-v-762172a7] {
+  box-sizing: border-box;
+  flex: 0 0 188px;
+  height: 188px;
+  min-height: 188px;
+}
+
+.selected-files[data-v-762172a7] {
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+.selected-files[data-v-762172a7]::-webkit-scrollbar {
+  width: 8px;
+}
+
+.selected-files[data-v-762172a7]::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+.selected-files[data-v-762172a7]::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 999px;
+}
+
+.upload-grid[data-v-6ba41784],
+.upload-grid[data-v-68278de2],
+.upload-grid[data-v-c5081ebe] {
+  align-items: start;
+}
+
+.tos-eric-upload-grid {
+  align-items: start !important;
+}
+
+.tos-eric-upload {
+  min-height: 188px !important;
+}

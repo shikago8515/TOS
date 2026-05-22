@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>元素选择器配置工具</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Selector Tool</p>
+        <h1>元素选择器配置工具</h1>
+        <p class="lead">
+          可视化识别网页元素，配置Excel字段与网页表单的映射关系。
+        </p>
+      </section>
+
+      <div class="grid">
+        <section class="panel">
+          <h2>选择器类型</h2>
+          <div class="selector-types">
+            <div class="selector-type" data-type="text">
+              <strong>text</strong>
+              <span>通过文本内容定位</span>
+            </div>
+            <div class="selector-type" data-type="id">
+              <strong>id</strong>
+              <span>通过元素ID定位</span>
+            </div>
+            <div class="selector-type" data-type="class">
+              <strong>class</strong>
+              <span>通过CSS类名定位</span>
+            </div>
+            <div class="selector-type" data-type="xpath">
+              <strong>xpath</strong>
+              <span>通过XPath定位</span>
+            </div>
+            <div class="selector-type" data-type="role">
+              <strong>role</strong>
+              <span>通过ARIA角色定位</span>
+            </div>
+            <div class="selector-type" data-type="label">
+              <strong>label</strong>
+              <span>通过标签文本定位</span>
+            </div>
+            <div class="selector-type" data-type="placeholder">
+              <strong>placeholder</strong>
+              <span>通过输入框占位符定位</span>
+            </div>
+            <div class="selector-type" data-type="attribute">
+              <strong>attribute</strong>
+              <span>通过自定义属性定位</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>表单字段配置</h2>
+          <div id="fields-container">
+            <div class="field-config">
+              <label>
+                <span>字段名称</span>
+                <input type="text" class="field-name" placeholder="如：款式号输入框" />
+              </label>
+              <label>
+                <span>Excel列名</span>
+                <input type="text" class="excel-column" placeholder="如：styleNo" />
+              </label>
+              <label>
+                <span>选择器类型</span>
+                <select class="selector-type-select">
+                  <option value="text">text</option>
+                  <option value="id">id</option>
+                  <option value="class">class</option>
+                  <option value="xpath">xpath</option>
+                  <option value="role">role</option>
+                  <option value="label">label</option>
+                  <option value="placeholder">placeholder</option>
+                  <option value="attribute">attribute</option>
+                </select>
+              </label>
+              <label>
+                <span>选择器值</span>
+                <input type="text" class="selector-value" placeholder="输入选择器值" />
+              </label>
+              <label>
+                <span>操作类型</span>
+                <select class="action-type">
+                  <option value="fill">fill - 填写文本</option>
+                  <option value="select">select - 选择下拉框</option>
+                  <option value="check">check - 勾选复选框</option>
+                  <option value="click">click - 点击按钮</option>
+                </select>
+              </label>
+              <label class="toggle">
+                <input type="checkbox" class="required" />
+                <span>必填字段</span>
+              </label>
+              <button class="remove-field">移除</button>
+            </div>
+          </div>
+          <button id="add-field">添加字段</button>
+        </section>
+      </div>
+
+      <section class="panel">
+        <h2>生成的配置</h2>
+        <pre id="config-output" class="summary"></pre>
+        <button id="copy-config">复制配置</button>
+      </section>
+
+      <section class="panel">
+        <h2>Excel 格式示例</h2>
+        <table class="excel-preview">
+          <thead>
+            <tr>
+              <th>款式号</th>
+              <th>字段1</th>
+              <th>字段2</th>
+              <th>字段3</th>
+              <th>字段4</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>STYLE001</td>
+              <td>值1</td>
+              <td>值2</td>
+              <td>选项A</td>
+              <td>true</td>
+            </tr>
+            <tr>
+              <td>STYLE002</td>
+              <td>值3</td>
+              <td>值4</td>
+              <td>选项B</td>
+              <td>false</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </main>
+
+    <script>
+      const fieldsContainer = document.getElementById('fields-container');
+      const addFieldBtn = document.getElementById('add-field');
+      const configOutput = document.getElementById('config-output');
+      const copyConfigBtn = document.getElementById('copy-config');
+
+      function generateConfig() {
+        const fields = [];
+        document.querySelectorAll('.field-config').forEach(config => {
+          const fieldName = config.querySelector('.field-name').value;
+          const excelColumn = config.querySelector('.excel-column').value;
+          const selectorType = config.querySelector('.selector-type-select').value;
+          const selectorValue = config.querySelector('.selector-value').value;
+          const action = config.querySelector('.action-type').value;
+          const required = config.querySelector('.required').checked;
+
+          if (fieldName && excelColumn && selectorValue) {
+            fields.push({
+              excelColumn,
+              fieldName,
+              selector: {
+                type: selectorType,
+                value: selectorValue
+              },
+              action,
+              required
+            });
+          }
+        });
+
+        const config = {
+          excel: {
+            headerAliases: {
+              styleNo: ['款式号', 'Style No', 'Style Number', '款号', 'Item No'],
+              field1: ['字段1', 'Field1', 'Column1'],
+              field2: ['字段2', 'Field2', 'Column2'],
+              field3: ['字段3', 'Field3', 'Column3'],
+              field4: ['字段4', 'Field4', 'Column4'],
+              field5: ['字段5', 'Field5', 'Column5']
+            },
+            keyColumn: 'styleNo'
+          },
+          formFields: fields
+        };
+
+        configOutput.textContent = JSON.stringify(config, null, 2);
+      }
+
+      function addField() {
+        const template = document.querySelector('.field-config').cloneNode(true);
+        template.querySelector('.field-name').value = '';
+        template.querySelector('.excel-column').value = '';
+        template.querySelector('.selector-value').value = '';
+        template.querySelector('.required').checked = false;
+        
+        const removeBtn = template.querySelector('.remove-field');
+        removeBtn.addEventListener('click', () => {
+          template.remove();
+          generateConfig();
+        });
+
+        const inputs = template.querySelectorAll('input, select');
+        inputs.forEach(input => {
+          input.addEventListener('input', generateConfig);
+        });
+
+        fieldsContainer.appendChild(template);
+        generateConfig();
+      }
+
+      addFieldBtn.addEventListener('click', addField);
+
+      document.querySelectorAll('.field-config input, .field-config select').forEach(input => {
+        input.addEventListener('input', generateConfig);
+      });
+
+      copyConfigBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(configOutput.textContent);
+        alert('配置已复制到剪贴板！');
+      });
+
+      generateConfig();
+    </script>
+  </body>
+</html>

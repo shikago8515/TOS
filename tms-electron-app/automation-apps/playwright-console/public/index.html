@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>网页自动化控制台</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Playwright Local Runner</p>
+          <h1>网页自动化控制台</h1>
+        </div>
+        <span id="status-pill" class="pill">待运行</span>
+      </header>
+
+      <section class="workspace">
+        <form id="run-form" class="panel form">
+          <label class="field field-wide">
+            <span>自动化流程</span>
+            <select id="workflowId" name="workflowId"></select>
+          </label>
+
+          <label class="field">
+            <span>Excel 文件</span>
+            <input id="excelFile" name="excelFile" type="file" accept=".xlsx,.xls,.xlsm,.csv" required />
+          </label>
+
+          <label class="field">
+            <span>目标网址</span>
+            <input id="targetUrl" name="targetUrl" type="url" placeholder="使用流程默认网址" />
+          </label>
+
+          <label class="toggle">
+            <input id="dryRun" name="dryRun" type="checkbox" checked />
+            <span>仅预览，不操作网页</span>
+          </label>
+
+          <button id="submitButton" type="submit">开始运行</button>
+        </form>
+
+        <section class="panel results">
+          <div class="results-head">
+            <h2>运行结果</h2>
+            <button id="clearButton" class="secondary" type="button">清空</button>
+          </div>
+          <div id="business-result" class="business-result">
+            <p class="empty-state">选择流程和 Excel 后开始。</p>
+          </div>
+          <details class="technical-details">
+            <summary>技术详情</summary>
+            <pre id="summary" class="summary">暂无技术日志。</pre>
+          </details>
+        </section>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
