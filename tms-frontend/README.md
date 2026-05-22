@@ -21,6 +21,14 @@ Target stack:
 - shared API clients
 - reusable upload, process, diagnostics, and module-card components
 
+Current rebuild status:
+
+- `/` has a first source-level equivalent page in `src/pages/home`.
+- Shared homepage UI lives in `src/shared/ui`.
+- Navigation and route titles come from `src/domain/moduleCatalog.ts`.
+- Electron packaging still copies `../tms-electron-app/recovered-frontend`; this
+  rebuild is not the runtime source yet.
+
 Migration rule:
 
 Do not replace the recovered UI with a new design. Rebuild one route at a time,
