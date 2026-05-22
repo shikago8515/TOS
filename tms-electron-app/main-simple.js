@@ -1,0 +1,962 @@
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { spawn } = require('child_process');
+const fs = require('fs');
+const http = require('http');
+const os = require('os');
+const path = require('path');
+const { registerAdidasMaterialsCollector } = require('./adidas-materials-main');
+
+let mainWindow;
+let backendProcess = null;
+const automationAppProcesses = new Map();
+const BACKEND_HOST = '127.0.0.1';
+const BACKEND_PORT = 8000;
+const BACKEND_URL = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
+const APP_DISPLAY_NAME = 'TOS'/*12345678*/;
+
+const externalModules = {
+  infornexus: {
+    name: 'Infornexus',
+    executable: 'electron-app.exe'
+  }
+};
+
+const DIAGNOSTIC_SECRET_KEY_PATTERN = /password|token|cookie|secret|authorization|credential/i;
+const DIAGNOSTIC_MAX_STRING_LENGTH = 4000;
+const DIAGNOSTIC_MAX_ARRAY_LENGTH = 100;
+const DIAGNOSTIC_MAX_FILE_SIZE = 25 * 1024 * 1024;
+
+function getLogsDir() {
+  return path.join(app.getPath('userData'), 'logs');
+}
+
+function getDiagnosticsLogPath() {
+  return path.join(getLogsDir(), 'diagnostics.jsonl');
+}
+
+function limitDiagnosticString(value) {
+  if (value.length <= DIAGNOSTIC_MAX_STRING_LENGTH) return value;
+  return `${value.slice(0, DIAGNOSTIC_MAX_STRING_LENGTH)}... [truncated]`;
+}
+
+function sanitizeDiagnosticValue(value, depth = 0) {
+  if (depth > 6) return '[max-depth]';
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'string') return limitDiagnosticString(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) {
+    return value.slice(0, DIAGNOSTIC_MAX_ARRAY_LENGTH).map((item) => sanitizeDiagnosticValue(item, depth + 1));
+  }
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).slice(0, 100).map(([key, item]) => {
+        if (DIAGNOSTIC_SECRET_KEY_PATTERN.test(key)) {
+          return [key, '[redacted]'];
+        }
+        return [key, sanitizeDiagnosticValue(item, depth + 1)];
+      })
+    );
+  }
+  return String(value);
+}
+
+function writeDiagnosticEvent(moduleName, action, payload = {}) {
+  try {
+    fs.mkdirSync(getLogsDir(), { recursive: true });
+    const record = {
+      time: new Date().toISOString(),
+      module: String(moduleName || 'app'),
+      action: String(action || 'event'),
+      payload: sanitizeDiagnosticValue(payload)
+    };
+    fs.appendFileSync(getDiagnosticsLogPath(), `${JSON.stringify(record)}${os.EOL}`, 'utf8');
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function copyFileForDiagnostics(sourcePath, targetPath) {
+  const stat = fs.statSync(sourcePath);
+  if (stat.size > DIAGNOSTIC_MAX_FILE_SIZE) return false;
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  fs.copyFileSync(sourcePath, targetPath);
+  return true;
+}
+
+function copyDirectoryForDiagnostics(sourceDir, targetDir, options = {}) {
+  if (!fs.existsSync(sourceDir)) return;
+  const skipDirNames = new Set(options.skipDirNames || []);
+  const allowedExtensions = options.allowedExtensions ? new Set(options.allowedExtensions) : null;
+
+  for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue;
+    const sourcePath = path.join(sourceDir, entry.name);
+    const targetPath = path.join(targetDir, entry.name);
+
+    if (entry.isDirectory()) {
+      if (skipDirNames.has(entry.name)) continue;
+      copyDirectoryForDiagnostics(sourcePath, targetPath, options);
+      continue;
+    }
+
+    if (!entry.isFile()) continue;
+    if (allowedExtensions && !allowedExtensions.has(path.extname(entry.name).toLowerCase())) continue;
+    copyFileForDiagnostics(sourcePath, targetPath);
+  }
+}
+
+function psSingleQuote(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function runPowerShell(script) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.once('error', reject);
+    child.once('exit', (code) => {
+      if (code === 0) {
+        resolve({ stdout, stderr });
+      } else {
+        reject(new Error(stderr || stdout || `PowerShell exited with code ${code}`));
+      }
+    });
+  });
+}
+
+function getExternalModulePath(moduleId) {
+  const moduleConfig = externalModules[moduleId];
+  if (!moduleConfig) {
+    return null;
+  }
+
+  const baseDir = app.isPackaged
+    ? path.join(process.resourcesPath, 'external-apps', moduleId)
+    : path.join(__dirname, 'external-apps', moduleId);
+
+  return {
+    ...moduleConfig,
+    baseDir,
+    executablePath: path.join(baseDir, moduleConfig.executable)
+  };
+}
+
+function getBrowserPluginRoot() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'browser-plugins')
+    : path.join(__dirname, 'browser-plugins');
+}
+
+function loadBrowserPluginRegistry() {
+  const registryPath = path.join(getBrowserPluginRoot(), 'registry.json');
+  try {
+    const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+    return Array.isArray(registry) ? registry : [];
+  } catch (error) {
+    console.error(`Browser plugin registry load failed: ${error.message}`);
+    return [];
+  }
+}
+
+function getBrowserPluginPath(plugin) {
+  const extensionDir = plugin.extensionDir || plugin.id;
+  return path.join(getBrowserPluginRoot(), extensionDir);
+}
+
+function getBrowserCandidates() {
+  const localAppData = process.env.LOCALAPPDATA;
+  const programFiles = process.env.PROGRAMFILES;
+  const programFilesX86 = process.env['PROGRAMFILES(X86)'];
+  const candidates = [
+    {
+      name: 'Google Chrome',
+      executablePaths: [
+        process.env.CHROME_PATH,
+        localAppData && path.join(localAppData, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        programFiles && path.join(programFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        programFilesX86 && path.join(programFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe')
+      ]
+    },
+    {
+      name: 'Microsoft Edge',
+      executablePaths: [
+        process.env.EDGE_PATH,
+        localAppData && path.join(localAppData, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        programFiles && path.join(programFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        programFilesX86 && path.join(programFilesX86, 'Microsoft', 'Edge', 'Application', 'msedge.exe')
+      ]
+    }
+  ];
+
+  return candidates
+    .map((candidate) => {
+      const executablePath = candidate.executablePaths.find((candidatePath) => {
+        return candidatePath && fs.existsSync(candidatePath);
+      });
+      return executablePath ? { name: candidate.name, executablePath } : null;
+    })
+    .filter(Boolean);
+}
+
+function getBrowserPlugins() {
+  const availableBrowsers = getBrowserCandidates();
+  return loadBrowserPluginRegistry().map((plugin) => {
+    const extensionPath = getBrowserPluginPath(plugin);
+    const manifestPath = path.join(extensionPath, 'manifest.json');
+    return {
+      id: plugin.id,
+      name: plugin.name,
+      provider: plugin.provider || '',
+      category: plugin.category || '浏览器插件',
+      version: plugin.version || '',
+      description: plugin.description || '',
+      targetUrl: plugin.targetUrl || '',
+      matchPatterns: Array.isArray(plugin.matchPatterns) ? plugin.matchPatterns : [],
+      extensionPath,
+      available: fs.existsSync(manifestPath),
+      browserAvailable: availableBrowsers.length > 0,
+      browsers: availableBrowsers
+    };
+  });
+}
+
+function getBrowserPluginById(pluginId) {
+  return getBrowserPlugins().find((plugin) => plugin.id === pluginId) || null;
+}
+
+function getBrowserPluginProfileDir(pluginId) {
+  return path.join(app.getPath('userData'), 'browser-plugin-profiles', pluginId);
+}
+
+async function launchBrowserPlugin(pluginId) {
+  const plugin = getBrowserPluginById(pluginId);
+  if (!plugin) {
+    return { success: false, error: `Unknown browser plugin: ${pluginId}` };
+  }
+
+  if (!plugin.available) {
+    return {
+      success: false,
+      error: `Browser plugin manifest not found: ${path.join(plugin.extensionPath, 'manifest.json')}`
+    };
+  }
+
+  const browser = plugin.browsers[0];
+  if (!browser) {
+    return { success: false, error: '未找到可用的 Google Chrome 或 Microsoft Edge' };
+  }
+
+  const profileDir = getBrowserPluginProfileDir(plugin.id);
+  fs.mkdirSync(profileDir, { recursive: true });
+
+  const args = [
+    `--user-data-dir=${profileDir}`,
+    `--load-extension=${plugin.extensionPath}`,
+    `--disable-extensions-except=${plugin.extensionPath}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    plugin.targetUrl
+  ].filter(Boolean);
+
+  try {
+    const child = spawn(browser.executablePath, args, {
+      cwd: path.dirname(browser.executablePath),
+      detached: true,
+      stdio: 'ignore'
+    });
+    child.unref();
+    return {
+      success: true,
+      pluginId: plugin.id,
+      browser: browser.name,
+      profileDir,
+      extensionPath: plugin.extensionPath,
+      targetUrl: plugin.targetUrl
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+function getAutomationAppRoot() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'automation-apps')
+    : path.join(__dirname, 'automation-apps');
+}
+
+function loadAutomationAppRegistry() {
+  const registryPath = path.join(getAutomationAppRoot(), 'registry.json');
+  try {
+    const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+    return Array.isArray(registry) ? registry : [];
+  } catch (error) {
+    console.error(`Automation app registry load failed: ${error.message}`);
+    return [];
+  }
+}
+
+function getAutomationAppPath(automationApp) {
+  const appDir = automationApp.appDir || automationApp.id;
+  return path.join(getAutomationAppRoot(), appDir);
+}
+
+function getAutomationAppUrl(automationApp) {
+  const port = Number(automationApp.defaultPort || 3100);
+  return `http://127.0.0.1:${port}`;
+}
+
+function requestJson(url, timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    const req = http.get(url, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        body += chunk;
+      });
+      res.on('end', () => {
+        if (res.statusCode !== 200) {
+          resolve(null);
+          return;
+        }
+        try {
+          resolve(JSON.parse(body));
+        } catch (_error) {
+          resolve(null);
+        }
+      });
+    });
+
+    req.on('error', () => resolve(null));
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      resolve(null);
+    });
+  });
+}
+
+async function requestAutomationAppHealth(automationApp, timeoutMs = 1500) {
+  const url = `${getAutomationAppUrl(automationApp)}/api/health`;
+  const payload = await requestJson(url, timeoutMs);
+  return Boolean(payload && payload.ok);
+}
+
+async function getAutomationApps() {
+  const registry = loadAutomationAppRegistry();
+  return Promise.all(registry.map(async (automationApp) => {
+    const baseDir = getAutomationAppPath(automationApp);
+    const entryPath = path.join(baseDir, automationApp.entry || 'bin/start.js');
+    const port = Number(automationApp.defaultPort || 3100);
+    const url = getAutomationAppUrl(automationApp);
+    const tracked = automationAppProcesses.get(automationApp.id);
+    const running = (tracked && !tracked.child.killed) || await requestAutomationAppHealth(automationApp, 500);
+
+    return {
+      id: automationApp.id,
+      name: automationApp.name,
+      provider: automationApp.provider || '',
+      category: automationApp.category || '网页自动化',
+      version: automationApp.version || '',
+      description: automationApp.description || '',
+      baseDir,
+      entryPath,
+      port,
+      url,
+      available: fs.existsSync(entryPath),
+      running: Boolean(running)
+    };
+  }));
+}
+
+function getAutomationAppById(appId) {
+  const automationApp = loadAutomationAppRegistry().find((item) => item.id === appId);
+  if (!automationApp) {
+    return null;
+  }
+  const baseDir = getAutomationAppPath(automationApp);
+  return {
+    ...automationApp,
+    baseDir,
+    entryPath: path.join(baseDir, automationApp.entry || 'bin/start.js'),
+    port: Number(automationApp.defaultPort || 3100),
+    url: getAutomationAppUrl(automationApp)
+  };
+}
+
+function getAutomationDataDir(appId) {
+  return path.join(app.getPath('userData'), 'automation-apps', appId);
+}
+
+async function waitForAutomationApp(automationApp, timeoutMs = 15000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await requestAutomationAppHealth(automationApp, 1000)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return false;
+}
+
+async function launchAutomationApp(appId) {
+  const automationApp = getAutomationAppById(appId);
+  if (!automationApp) {
+    return { success: false, error: `Unknown automation app: ${appId}` };
+  }
+
+  if (!fs.existsSync(automationApp.entryPath)) {
+    return { success: false, error: `Automation app entry not found: ${automationApp.entryPath}` };
+  }
+
+  if (await requestAutomationAppHealth(automationApp)) {
+    return { success: true, alreadyRunning: true, appId, url: automationApp.url };
+  }
+
+  const tracked = automationAppProcesses.get(appId);
+  if (tracked && !tracked.child.killed) {
+    return { success: true, alreadyRunning: true, appId, url: automationApp.url };
+  }
+
+  const logDir = path.join(app.getPath('userData'), 'logs');
+  const dataDir = getAutomationDataDir(appId);
+  fs.mkdirSync(logDir, { recursive: true });
+  fs.mkdirSync(dataDir, { recursive: true });
+
+  const logPath = path.join(logDir, `${appId}.log`);
+  const logFd = fs.openSync(logPath, 'a');
+  const env = {
+    ...process.env,
+    TMS_PLAYWRIGHT_PORT: String(automationApp.port),
+    TMS_PLAYWRIGHT_DATA_DIR: dataDir
+  };
+
+  if (process.versions.electron) {
+    env.ELECTRON_RUN_AS_NODE = '1';
+  }
+
+  try {
+    const child = spawn(process.execPath, [automationApp.entryPath], {
+      cwd: automationApp.baseDir,
+      windowsHide: true,
+      stdio: ['ignore', logFd, logFd],
+      env
+    });
+
+    automationAppProcesses.set(appId, { child, logFd });
+
+    child.once('exit', () => {
+      const latest = automationAppProcesses.get(appId);
+      if (latest && latest.child === child) {
+        automationAppProcesses.delete(appId);
+      }
+      try {
+        fs.closeSync(logFd);
+      } catch (_error) {
+        // Ignore close failures for shutdown diagnostics.
+      }
+    });
+
+    const isReady = await waitForAutomationApp(automationApp);
+    if (!isReady) {
+      child.kill();
+      return { success: false, error: `Automation app did not become ready. Log: ${logPath}` };
+    }
+
+    return { success: true, appId, url: automationApp.url, dataDir, logPath };
+  } catch (error) {
+    try {
+      fs.closeSync(logFd);
+    } catch (_closeError) {
+      // Ignore close failures after launch errors.
+    }
+    automationAppProcesses.delete(appId);
+    return { success: false, error: error instanceof Error ? error.message : String(error), logPath };
+  }
+}
+
+function stopAutomationApp(appId) {
+  const tracked = automationAppProcesses.get(appId);
+  if (!tracked || tracked.child.killed) {
+    return { success: true, alreadyStopped: true, appId };
+  }
+
+  tracked.child.kill();
+  automationAppProcesses.delete(appId);
+  try {
+    fs.closeSync(tracked.logFd);
+  } catch (_error) {
+    // Ignore close failures during explicit stop.
+  }
+  return { success: true, appId };
+}
+
+function getDiagnosticsTimestamp() {
+  return new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+}
+
+async function buildDiagnosticsManifest() {
+  const appPath = app.getAppPath();
+  const backendDir = getBackendDir();
+  const automationAppRoot = getAutomationAppRoot();
+  const browserPluginRoot = getBrowserPluginRoot();
+
+  return {
+    createdAt: new Date().toISOString(),
+    app: {
+      name: APP_DISPLAY_NAME,
+      version: app.getVersion(),
+      isPackaged: app.isPackaged,
+      appPath,
+      resourcesPath: process.resourcesPath,
+      userData: app.getPath('userData')
+    },
+    runtime: {
+      platform: process.platform,
+      arch: process.arch,
+      osRelease: os.release(),
+      electron: process.versions.electron,
+      chrome: process.versions.chrome,
+      node: process.versions.node
+    },
+    checks: {
+      frontendIndexExists: fs.existsSync(path.join(appPath, 'dist-frontend', 'index.html')),
+      backendMainExists: fs.existsSync(path.join(backendDir, 'main.py')),
+      automationRegistryExists: fs.existsSync(path.join(automationAppRoot, 'registry.json')),
+      browserPluginRegistryExists: fs.existsSync(path.join(browserPluginRoot, 'registry.json')),
+      backendHealth: await requestBackendHealth(800)
+    },
+    paths: {
+      logsDir: getLogsDir(),
+      backendDir,
+      automationAppRoot,
+      browserPluginRoot
+    },
+    automationApps: await getAutomationApps(),
+    browserPlugins: getBrowserPlugins().map((plugin) => ({
+      id: plugin.id,
+      name: plugin.name,
+      provider: plugin.provider,
+      category: plugin.category,
+      version: plugin.version,
+      available: plugin.available,
+      browserAvailable: plugin.browserAvailable,
+      targetUrl: plugin.targetUrl,
+      matchPatterns: plugin.matchPatterns,
+      browsers: plugin.browsers.map((browser) => browser.name)
+    }))
+  };
+}
+
+function writeDiagnosticsReadme(stagingDir) {
+  const readme = [
+    'TMS 集成工具诊断包',
+    '',
+    '请把整个 zip 文件发给开发人员排查。',
+    '',
+    '包含内容：',
+    '- logs: 后端、网页自动化和前端事件日志',
+    '- manifest.json: 程序版本、运行路径、模块可用状态',
+    '- automation-runs: 网页自动化截图等运行结果',
+    '- adidas-materials-collector: adidas 采集状态和本地结果文件',
+    '',
+    '默认不包含浏览器登录态、Cookie、上传原始 Excel 文件。'
+  ].join(os.EOL);
+  fs.writeFileSync(path.join(stagingDir, 'README.txt'), readme, 'utf8');
+}
+
+async function exportDiagnosticsPackage() {
+  const timestamp = getDiagnosticsTimestamp();
+  const defaultPath = path.join(app.getPath('desktop'), `TMS诊断包-${timestamp}.zip`);
+  const dialogResult = await dialog.showSaveDialog(mainWindow, {
+    title: '导出诊断包',
+    defaultPath,
+    filters: [{ name: 'Zip 压缩包', extensions: ['zip'] }]
+  });
+
+  if (dialogResult.canceled || !dialogResult.filePath) {
+    return { success: false, canceled: true };
+  }
+
+  const zipPath = dialogResult.filePath;
+  const stagingDir = path.join(app.getPath('temp'), `tms-diagnostics-${timestamp}`);
+  writeDiagnosticEvent('diagnostics', 'export-start', { zipPath });
+
+  try {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
+    fs.mkdirSync(stagingDir, { recursive: true });
+
+    const manifest = await buildDiagnosticsManifest();
+    fs.writeFileSync(path.join(stagingDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
+    writeDiagnosticsReadme(stagingDir);
+
+    copyDirectoryForDiagnostics(getLogsDir(), path.join(stagingDir, 'logs'), {
+      allowedExtensions: new Set(['.log', '.jsonl', '.txt'])
+    });
+
+    const automationDataDir = path.join(app.getPath('userData'), 'automation-apps');
+    copyDirectoryForDiagnostics(automationDataDir, path.join(stagingDir, 'automation-runs'), {
+      skipDirNames: new Set(['uploads', 'playwright-user-data']),
+      allowedExtensions: new Set(['.log', '.json', '.jsonl', '.txt', '.png', '.jpg', '.jpeg', '.webp'])
+    });
+
+    copyDirectoryForDiagnostics(
+      path.join(app.getPath('userData'), 'adidas-materials-collector'),
+      path.join(stagingDir, 'adidas-materials-collector'),
+      {
+        allowedExtensions: new Set(['.json', '.csv', '.log', '.txt'])
+      }
+    );
+
+    const automationRegistryPath = path.join(getAutomationAppRoot(), 'registry.json');
+    const browserPluginRegistryPath = path.join(getBrowserPluginRoot(), 'registry.json');
+    if (fs.existsSync(automationRegistryPath)) {
+      copyFileForDiagnostics(automationRegistryPath, path.join(stagingDir, 'registries', 'automation-apps.json'));
+    }
+    if (fs.existsSync(browserPluginRegistryPath)) {
+      copyFileForDiagnostics(browserPluginRegistryPath, path.join(stagingDir, 'registries', 'browser-plugins.json'));
+    }
+
+    const script = [
+      '$ErrorActionPreference = "Stop"',
+      `$source = ${psSingleQuote(path.join(stagingDir, '*'))}`,
+      `$dest = ${psSingleQuote(zipPath)}`,
+      'if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Force }',
+      'Compress-Archive -Path $source -DestinationPath $dest -Force'
+    ].join('; ');
+
+    await runPowerShell(script);
+    fs.rmSync(stagingDir, { recursive: true, force: true });
+    shell.showItemInFolder(zipPath);
+    writeDiagnosticEvent('diagnostics', 'export-success', { zipPath });
+    return { success: true, filePath: zipPath };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    writeDiagnosticEvent('diagnostics', 'export-failure', { zipPath, error: errorMessage });
+    return { success: false, error: errorMessage };
+  }
+}
+
+function getBackendDir() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'backend')
+    : path.resolve(__dirname, '..', 'tms-backend');
+}
+
+function getBackendDataDir() {
+  return path.join(app.getPath('userData'), 'backend-data');
+}
+
+function requestBackendHealth(timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    const req = http.get(`${BACKEND_URL}/health`, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        body += chunk;
+      });
+      res.on('end', () => {
+        resolve(res.statusCode === 200 && /ok/i.test(body));
+      });
+    });
+
+    req.on('error', () => resolve(false));
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+async function waitForBackend(timeoutMs = 15000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await requestBackendHealth(1000)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return false;
+}
+
+async function spawnBackendWith(candidate, backendDir, logStream) {
+  const args = [
+    ...candidate.args,
+    '-m',
+    'uvicorn',
+    'main:app',
+    '--host',
+    BACKEND_HOST,
+    '--port',
+    String(BACKEND_PORT)
+  ];
+
+  const child = spawn(candidate.command, args, {
+    cwd: backendDir,
+    windowsHide: true,
+    stdio: ['ignore', logStream, logStream],
+    env: {
+      ...process.env,
+      PYTHONIOENCODING: 'utf-8',
+      PYTHONUTF8: '1',
+      TMS_BACKEND_DATA_DIR: getBackendDataDir()
+    }
+  });
+
+  let spawnError = null;
+  child.once('error', (error) => {
+    spawnError = error;
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  if (spawnError) {
+    throw spawnError;
+  }
+
+  return child;
+}
+
+async function startBackendServer() {
+  if (await requestBackendHealth()) {
+    return { success: true, alreadyRunning: true, url: BACKEND_URL };
+  }
+
+  const backendDir = getBackendDir();
+  if (!fs.existsSync(path.join(backendDir, 'main.py'))) {
+    return { success: false, error: `Backend not found: ${backendDir}` };
+  }
+
+  fs.mkdirSync(getBackendDataDir(), { recursive: true });
+  const logDir = path.join(app.getPath('userData'), 'logs');
+  fs.mkdirSync(logDir, { recursive: true });
+  const logPath = path.join(logDir, 'backend.log');
+  const logStream = fs.openSync(logPath, 'a');
+
+  const candidates = [
+    { command: 'py', args: ['-3'] },
+    { command: 'python', args: [] },
+    { command: 'python3', args: [] }
+  ];
+
+  const errors = [];
+  for (const candidate of candidates) {
+    try {
+      const child = await spawnBackendWith(candidate, backendDir, logStream);
+      const isReady = await waitForBackend();
+      if (isReady) {
+        backendProcess = child;
+        return { success: true, url: BACKEND_URL, command: candidate.command };
+      }
+      child.kill();
+      errors.push(`${candidate.command}: backend did not become ready`);
+    } catch (error) {
+      errors.push(`${candidate.command}: ${error.message}`);
+    }
+  }
+
+  try {
+    fs.closeSync(logStream);
+  } catch (_error) {
+    // Ignore close failures for startup diagnostics.
+  }
+
+  return { success: false, error: errors.join('; '), logPath };
+}
+
+function registerIpcHandlers() {
+  ipcMain.handle('get-backend-url', () => BACKEND_URL);
+
+  ipcMain.handle('record-diagnostic-event', (_event, diagnosticEvent) => {
+    if (!diagnosticEvent || typeof diagnosticEvent !== 'object') {
+      return { success: false, error: 'Invalid diagnostic event' };
+    }
+    return writeDiagnosticEvent(diagnosticEvent.module, diagnosticEvent.action, diagnosticEvent.payload || {});
+  });
+
+  ipcMain.handle('export-diagnostics-package', () => exportDiagnosticsPackage());
+
+  ipcMain.handle('open-external', async (_event, url) => {
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+      return { success: false, error: 'Unsupported external URL' };
+    }
+    await shell.openExternal(url);
+    return { success: true };
+  });
+
+  ipcMain.handle('get-external-modules', () => {
+    return Object.keys(externalModules).map((moduleId) => {
+      const moduleInfo = getExternalModulePath(moduleId);
+      return {
+        id: moduleId,
+        name: moduleInfo.name,
+        executablePath: moduleInfo.executablePath,
+        available: fs.existsSync(moduleInfo.executablePath)
+      };
+    });
+  });
+
+  ipcMain.handle('get-browser-plugins', () => getBrowserPlugins());
+
+  ipcMain.handle('launch-browser-plugin', async (_event, pluginId) => {
+    if (typeof pluginId !== 'string' || !pluginId) {
+      return { success: false, error: 'Invalid browser plugin id' };
+    }
+    writeDiagnosticEvent('browser-plugin', 'launch-start', { pluginId });
+    const result = await launchBrowserPlugin(pluginId);
+    writeDiagnosticEvent('browser-plugin', result.success ? 'launch-success' : 'launch-failure', { pluginId, result });
+    return result;
+  });
+
+  ipcMain.handle('get-automation-apps', () => getAutomationApps());
+
+  ipcMain.handle('launch-automation-app', async (_event, appId) => {
+    if (typeof appId !== 'string' || !appId) {
+      return { success: false, error: 'Invalid automation app id' };
+    }
+    writeDiagnosticEvent('web-automation', 'launch-start', { appId });
+    const result = await launchAutomationApp(appId);
+    writeDiagnosticEvent('web-automation', result.success ? 'launch-success' : 'launch-failure', { appId, result });
+    return result;
+  });
+
+  ipcMain.handle('stop-automation-app', (_event, appId) => {
+    if (typeof appId !== 'string' || !appId) {
+      return { success: false, error: 'Invalid automation app id' };
+    }
+    const result = stopAutomationApp(appId);
+    writeDiagnosticEvent('web-automation', result.success ? 'stop-success' : 'stop-failure', { appId, result });
+    return result;
+  });
+
+  ipcMain.handle('launch-external-module', async (_event, moduleId) => {
+    const moduleInfo = getExternalModulePath(moduleId);
+    if (!moduleInfo) {
+      return { success: false, error: `Unknown module: ${moduleId}` };
+    }
+
+    if (!fs.existsSync(moduleInfo.executablePath)) {
+      return {
+        success: false,
+        error: `Module executable not found: ${moduleInfo.executablePath}`
+      };
+    }
+
+    try {
+      const child = spawn(moduleInfo.executablePath, [], {
+        cwd: moduleInfo.baseDir,
+        detached: true,
+        stdio: 'ignore'
+      });
+      child.unref();
+      const result = {
+        success: true,
+        moduleId,
+        path: moduleInfo.executablePath
+      };
+      writeDiagnosticEvent('external-module', 'launch-success', { moduleId, path: moduleInfo.executablePath });
+      return result;
+    } catch (error) {
+      const result = {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
+      writeDiagnosticEvent('external-module', 'launch-failure', { moduleId, result });
+      return result;
+    }
+  });
+
+  registerAdidasMaterialsCollector({
+    app,
+    BrowserWindow,
+    ipcMain,
+    dialog,
+    shell,
+    getParentWindow: () => mainWindow
+  });
+}
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1400,
+    height: 900,
+    minWidth: 1024,
+    minHeight: 768,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
+    },
+    title: APP_DISPLAY_NAME
+  });
+
+  const isDev = !app.isPackaged;
+  
+  if (isDev) {
+    mainWindow.loadURL('http://localhost:5174');
+    mainWindow.webContents.openDevTools();
+  } else {
+    const appPath = app.getAppPath();
+    const indexPath = path.join(appPath, 'dist-frontend', 'index.html');
+    mainWindow.loadFile(indexPath);
+  }
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+}
+
+registerIpcHandlers();
+app.whenReady().then(async () => {
+  const backendStatus = await startBackendServer();
+  if (!backendStatus.success) {
+    console.error(`Backend startup failed: ${backendStatus.error}`);
+    writeDiagnosticEvent('backend', 'startup-failure', backendStatus);
+  } else {
+    writeDiagnosticEvent('backend', 'startup-success', backendStatus);
+  }
+  createWindow();
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
+});
+
+app.on('before-quit', () => {
+  if (backendProcess && !backendProcess.killed) {
+    backendProcess.kill();
+    backendProcess = null;
+  }
+
+  for (const [appId, tracked] of automationAppProcesses.entries()) {
+    if (tracked.child && !tracked.child.killed) {
+      tracked.child.kill();
+    }
+    try {
+      fs.closeSync(tracked.logFd);
+    } catch (_error) {
+      // Ignore close failures during application shutdown.
+    }
+    automationAppProcesses.delete(appId);
+  }
+});

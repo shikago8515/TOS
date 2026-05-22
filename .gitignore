@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Build outputs
+dist/
+dist-frontend/
+out/
+release/
+*.exe
+*.asar
+*.zip
+
+# Runtime data
+uploads/
+runs/
+logs/
+playwright-user-data/
+backend-data/
+browser-plugin-profiles/
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Editors and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Test and cache output
+.pytest_cache/
+.coverage
+coverage/
+*.log

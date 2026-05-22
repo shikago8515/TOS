@@ -1,0 +1,146 @@
+{
+  "name": "tms-integration-tool",
+  "version": "1.0.0",
+  "description": "TOS integration tool",
+  "main": "main-simple.js",
+  "scripts": {
+    "dev": "electron .",
+    "build:frontend": "cd ../tms-frontend && npm run build && cd ../tms-electron-app && node scripts/copy-frontend.js",
+    "build": "npm run build:frontend && electron-builder",
+    "build:win": "npm run build:frontend && electron-builder --win --x64",
+    "pack": "npm run build:frontend && electron-builder --dir"
+  },
+  "keywords": [
+    "TMS",
+    "TOS",
+    "reports",
+    "automation",
+    "desktop"
+  ],
+  "author": "DG Operations",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0",
+    "exceljs": "^4.4.0",
+    "ws": "^8.20.1"
+  },
+  "build": {
+    "appId": "com.tomwell.tms",
+    "productName": "TOS",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "dist-frontend/**/*",
+      "!automation-apps/**/*",
+      "!browser-plugins/**/*",
+      "!external-apps/**/*",
+      "!dist/**/*",
+      "!dist-test/**/*",
+      "!dist-complete/**/*",
+      "!dist-auto-page/**/*",
+      "!dist-auto-resume/**/*",
+      "!dist-first-refresh/**/*",
+      "!dist-page-fix/**/*",
+      "!dist-excel-append/**/*",
+      "!dist-no-dedupe/**/*",
+      "!dist-style/**/*",
+      "!dist-dual-schema/**/*",
+      "!dist-backend-fix/**/*",
+      "!dist-trim-construction/**/*",
+      "!dist-type-names/**/*",
+      "!dist-stability/**/*",
+      "!dist-panel-compact/**/*",
+      "!temp-build-*/**/*",
+      "!out/**/*",
+      "!release/**/*",
+      "!*.exe",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/*.d.ts",
+      "!**/node_modules/.bin",
+      "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+      "!.vscode",
+      "!**/._*",
+      "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
+      "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
+      "!**/{appveyor.yml,.travis.yml,circle.yml}",
+      "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
+    ],
+    "extraResources": [
+      {
+        "from": "automation-apps",
+        "to": "automation-apps",
+        "filter": [
+          "**/*",
+          "!**/uploads/**/*",
+          "!**/runs/**/*",
+          "!**/playwright-user-data/**/*",
+          "!**/*.log",
+          "!**/*.xlsx"
+        ]
+      },
+      {
+        "from": "browser-plugins",
+        "to": "browser-plugins",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "external-apps",
+        "to": "external-apps",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../tms-backend",
+        "to": "backend",
+        "filter": [
+          "main.py",
+          "requirements.txt",
+          "api/**/*",
+          "modules/**/*",
+          "utils/**/*",
+          "!**/__pycache__/**/*",
+          "!uploads/**/*",
+          "!tests/**/*",
+          "!archive/**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "portable": {
+      "artifactName": "${productName}_v${version}_Portable.exe"
+    }
+  }
+}
