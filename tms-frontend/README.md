@@ -1,13 +1,28 @@
 # tms-frontend
 
-The original frontend source was not found in the packaged application. This directory is reserved for a clean rebuild of the frontend application.
+This directory is the long-term source rebuild workspace for the current TOS
+frontend.
 
-The rebuilt frontend should use:
+The active packaged UI is still preserved in:
+
+`../tms-electron-app/recovered-frontend`
+
+That recovered bundle is the visual and behavior baseline. Rebuild work in this
+directory must match the current UI before Electron packaging is switched over to
+use it.
+
+Target stack:
 
 - Vue 3
 - TypeScript
 - Vite
 - Vue Router
-- shared API clients and reusable upload/process/download components
+- Element Plus
+- shared API clients
+- reusable upload, process, diagnostics, and module-card components
 
-Do not copy the minified bundle from the packaged app into this directory as source. Use it only as behavior reference during reconstruction.
+Migration rule:
+
+Do not replace the recovered UI with a new design. Rebuild one route at a time,
+compare against the recovered UI, then wire the rebuilt route into packaging only
+after parity is verified.
