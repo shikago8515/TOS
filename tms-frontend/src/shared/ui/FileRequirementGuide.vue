@@ -23,9 +23,21 @@
 </template>
 
 <script setup lang="ts">
+type FileRequirementOwner = 'Jessca' | 'Sophia & Tina'
+
+interface FileRequirementGuideModel {
+  summary: string
+  files: Array<{
+    name: string
+    detail: string
+    required: boolean
+  }>
+  notes: string[]
+}
+
 const props = withDefaults(
   defineProps<{
-    owner: 'Jessca'
+    owner: FileRequirementOwner
     mode?: 'overview' | 'compact'
   }>(),
   {
@@ -35,7 +47,7 @@ const props = withDefaults(
 
 const compact = props.mode === 'compact'
 
-const guides = {
+const guides: Record<FileRequirementOwner, FileRequirementGuideModel> = {
   Jessca: {
     summary: '发票价格与参考表核对',
     files: [
@@ -55,15 +67,36 @@ const guides = {
       '输出价格差异和缺失款号整理结果。',
     ],
   },
-} satisfies Record<typeof props.owner, {
-  summary: string
-  files: Array<{
-    name: string
-    detail: string
-    required: boolean
-  }>
-  notes: string[]
-}>
+  'Sophia & Tina': {
+    summary: '多类 Excel 文件统一合并',
+    files: [
+      {
+        name: 'TMS 文件',
+        detail: '可多选，支持 .xls / .xlsx',
+        required: true,
+      },
+      {
+        name: 'Article 文件',
+        detail: '可多选，支持 .xls / .xlsx',
+        required: true,
+      },
+      {
+        name: 'Factory Price 文件',
+        detail: '可多选，支持 .xls / .xlsx',
+        required: true,
+      },
+      {
+        name: 'Pack 文件',
+        detail: '可多选，支持 .xls / .xlsx',
+        required: true,
+      },
+    ],
+    notes: [
+      '四类文件都需要至少上传 1 个。',
+      '输出合并后的 Sophia & Tina 分析报表。',
+    ],
+  },
+}
 
 const guide = guides[props.owner]
 </script>
