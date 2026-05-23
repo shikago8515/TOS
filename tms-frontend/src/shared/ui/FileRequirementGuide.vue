@@ -23,7 +23,7 @@
 </template>
 
 <script setup lang="ts">
-type FileRequirementOwner = 'Jessca' | 'Sophia & Tina'
+type FileRequirementOwner = 'Jessca' | 'Sophia & Tina' | 'Jane'
 
 interface FileRequirementGuideModel {
   summary: string
@@ -94,6 +94,25 @@ const guides: Record<FileRequirementOwner, FileRequirementGuideModel> = {
     notes: [
       '四类文件都需要至少上传 1 个。',
       '输出合并后的 Sophia & Tina 分析报表。',
+    ],
+  },
+  Jane: {
+    summary: '客户文件生成标准成品表',
+    files: [
+      {
+        name: '客户文件',
+        detail: '只上传 1 个，支持 .xls / .xlsx',
+        required: true,
+      },
+      {
+        name: 'country.xlsx',
+        detail: '只上传 1 个，仅支持 .xlsx',
+        required: true,
+      },
+    ],
+    notes: [
+      'Working Number 筛选为可选项，多个值用英文逗号分隔。',
+      '输出标准成品表和对应统计结果。',
     ],
   },
 }

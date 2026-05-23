@@ -3,6 +3,7 @@ import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-rou
 
 import { tosRouteDefinitions, tosRouteRedirects } from './routeCatalog'
 import HomePage from '../pages/home/HomePage.vue'
+import JanePage from '../pages/jane/JanePage.vue'
 import JesscaPage from '../pages/jessca/JesscaPage.vue'
 import SophiaTinaPage from '../pages/sophia-tina/SophiaTinaPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
@@ -10,6 +11,7 @@ import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
 const routeComponents: Partial<Record<string, Component>> = {
   home: HomePage,
   jessca: JesscaPage,
+  jane: JanePage,
   'sophia-tina': SophiaTinaPage,
 }
 
