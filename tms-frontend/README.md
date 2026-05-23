@@ -24,6 +24,7 @@ Target stack:
 Current rebuild status:
 
 - `/` has a first source-level equivalent page in `src/pages/home`.
+- `/jessca` has a first source-level equivalent page in `src/pages/jessca`.
 - Shared homepage UI lives in `src/shared/ui`.
 - Navigation and route titles come from `src/domain/moduleCatalog.ts`.
 - Electron packaging still copies `../tms-electron-app/recovered-frontend`; this

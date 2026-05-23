@@ -3,10 +3,12 @@ import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-rou
 
 import { tosRouteDefinitions, tosRouteRedirects } from './routeCatalog'
 import HomePage from '../pages/home/HomePage.vue'
+import JesscaPage from '../pages/jessca/JesscaPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
 
 const routeComponents: Partial<Record<string, Component>> = {
   home: HomePage,
+  jessca: JesscaPage,
 }
 
 const redirectRoutes: RouteRecordRaw[] = tosRouteRedirects.map((redirect) => ({
