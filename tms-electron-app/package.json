@@ -8,7 +8,8 @@
     "build:frontend": "node scripts/copy-frontend.js",
     "build": "npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js",
     "build:win": "npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js --win --x64",
-    "pack": "node scripts/pack-unpacked.js"
+    "pack": "node scripts/pack-unpacked.js",
+    "pack:source": "node scripts/pack-source-unpacked.js"
   },
   "keywords": [
     "TMS",
@@ -60,6 +61,7 @@
       "!dist-type-names/**/*",
       "!dist-stability/**/*",
       "!dist-panel-compact/**/*",
+      "!dist-source-frontend/**/*",
       "!temp-build-*/**/*",
       "!out/**/*",
       "!release/**/*",
