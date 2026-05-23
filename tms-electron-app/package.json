@@ -9,7 +9,7 @@
     "build": "npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js",
     "build:win": "npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js --win --x64",
     "pack": "node scripts/pack-unpacked.js",
-    "pack:source": "node scripts/pack-source-unpacked.js"
+    "pack:source": "node scripts/run-pack-source.js || node scripts/verify-source-pack.js"
   },
   "keywords": [
     "TMS",

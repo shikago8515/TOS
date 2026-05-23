@@ -2,6 +2,7 @@ import type { Component } from 'vue'
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
 
 import { tosRouteDefinitions, tosRouteRedirects } from './routeCatalog'
+import AdidasMaterialsPage from '../pages/adidas-materials/AdidasMaterialsPage.vue'
 import BrowserPluginsPage from '../pages/browser-plugins/BrowserPluginsPage.vue'
 import EricPage from '../pages/eric/EricPage.vue'
 import HomePage from '../pages/home/HomePage.vue'
@@ -19,6 +20,7 @@ const routeComponents: Partial<Record<string, Component>> = {
   'sophia-tina': SophiaTinaPage,
   'browser-plugins': BrowserPluginsPage,
   'web-automation': WebAutomationPage,
+  'adidas-materials': AdidasMaterialsPage,
 }
 
 const redirectRoutes: RouteRecordRaw[] = tosRouteRedirects.map((redirect) => ({
