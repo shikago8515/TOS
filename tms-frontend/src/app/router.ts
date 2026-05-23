@@ -2,6 +2,7 @@ import type { Component } from 'vue'
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
 
 import { tosRouteDefinitions, tosRouteRedirects } from './routeCatalog'
+import EricPage from '../pages/eric/EricPage.vue'
 import HomePage from '../pages/home/HomePage.vue'
 import JanePage from '../pages/jane/JanePage.vue'
 import JesscaPage from '../pages/jessca/JesscaPage.vue'
@@ -12,6 +13,7 @@ const routeComponents: Partial<Record<string, Component>> = {
   home: HomePage,
   jessca: JesscaPage,
   jane: JanePage,
+  eric: EricPage,
   'sophia-tina': SophiaTinaPage,
 }
 
