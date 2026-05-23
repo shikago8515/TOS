@@ -27,6 +27,7 @@ Current rebuild status:
 - `/jessca` has a first source-level equivalent page in `src/pages/jessca`.
 - `/sophia-tina` has a first source-level equivalent page in `src/pages/sophia-tina`.
 - `/jane` has a first source-level equivalent page in `src/pages/jane`.
+- `/eric` has a first source-level equivalent page in `src/pages/eric`.
 - Shared homepage UI lives in `src/shared/ui`.
 - Navigation and route titles come from `src/domain/moduleCatalog.ts`.
 - Electron packaging still copies `../tms-electron-app/recovered-frontend`; this
