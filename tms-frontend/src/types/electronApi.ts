@@ -32,8 +32,12 @@ export interface AutomationAppInfo {
   id: string
   name: string
   description: string
+  provider?: string
+  category?: string
+  version?: string
   available: boolean
   running: boolean
+  port?: number
   url: string
 }
 
