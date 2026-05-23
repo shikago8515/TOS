@@ -653,6 +653,26 @@ function getBackendDir() {
     : path.resolve(__dirname, '..', 'tms-backend');
 }
 
+function getBundledBackendExecutable() {
+  if (!app.isPackaged) {
+    return null;
+  }
+
+  const backendRuntimeDir = path.join(process.resourcesPath, 'backend-runtime');
+  const candidates = process.platform === 'win32'
+    ? ['tos-backend.exe', path.join('tos-backend', 'tos-backend.exe')]
+    : ['tos-backend', path.join('tos-backend', 'tos-backend')];
+
+  for (const candidate of candidates) {
+    const executablePath = path.join(backendRuntimeDir, candidate);
+    if (fs.existsSync(executablePath)) {
+      return executablePath;
+    }
+  }
+
+  return null;
+}
+
 function getBackendDataDir() {
   return path.join(app.getPath('userData'), 'backend-data');
 }
@@ -724,15 +744,41 @@ async function spawnBackendWith(candidate, backendDir, logStream) {
   return child;
 }
 
+async function spawnBundledBackend(executablePath, logStream) {
+  const child = spawn(executablePath, [], {
+    cwd: path.dirname(executablePath),
+    windowsHide: true,
+    stdio: ['ignore', logStream, logStream],
+    env: {
+      ...process.env,
+      PYTHONIOENCODING: 'utf-8',
+      PYTHONUTF8: '1',
+      TOS_BACKEND_HOST: BACKEND_HOST,
+      TOS_BACKEND_PORT: String(BACKEND_PORT),
+      TMS_BACKEND_DATA_DIR: getBackendDataDir()
+    }
+  });
+
+  let spawnError = null;
+  child.once('error', (error) => {
+    spawnError = error;
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  if (spawnError) {
+    throw spawnError;
+  }
+
+  return child;
+}
+
 async function startBackendServer() {
   if (await requestBackendHealth()) {
     return { success: true, alreadyRunning: true, url: BACKEND_URL };
   }
 
   const backendDir = getBackendDir();
-  if (!fs.existsSync(path.join(backendDir, 'main.py'))) {
-    return { success: false, error: `Backend not found: ${backendDir}` };
-  }
+  const bundledBackendExecutable = getBundledBackendExecutable();
 
   fs.mkdirSync(getBackendDataDir(), { recursive: true });
   const logDir = path.join(app.getPath('userData'), 'logs');
@@ -740,13 +786,41 @@ async function startBackendServer() {
   const logPath = path.join(logDir, 'backend.log');
   const logStream = fs.openSync(logPath, 'a');
 
+  const errors = [];
+
+  if (bundledBackendExecutable) {
+    try {
+      const child = await spawnBundledBackend(bundledBackendExecutable, logStream);
+      const isReady = await waitForBackend();
+      if (isReady) {
+        backendProcess = child;
+        return { success: true, url: BACKEND_URL, command: bundledBackendExecutable };
+      }
+      child.kill();
+      errors.push(`${bundledBackendExecutable}: backend did not become ready`);
+    } catch (error) {
+      errors.push(`${bundledBackendExecutable}: ${error.message}`);
+    }
+  }
+
+  if (!fs.existsSync(path.join(backendDir, 'main.py'))) {
+    try {
+      fs.closeSync(logStream);
+    } catch (_error) {
+      // Ignore close failures for startup diagnostics.
+    }
+    const missingBackend = bundledBackendExecutable
+      ? `Bundled backend failed and source backend not found: ${backendDir}`
+      : `Backend not found: ${backendDir}`;
+    return { success: false, error: [missingBackend, ...errors].join('; ') };
+  }
+
   const candidates = [
     { command: 'py', args: ['-3'] },
     { command: 'python', args: [] },
     { command: 'python3', args: [] }
   ];
 
-  const errors = [];
   for (const candidate of candidates) {
     try {
       const child = await spawnBackendWith(candidate, backendDir, logStream);

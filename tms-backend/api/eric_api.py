@@ -5,23 +5,12 @@ Eric Excel integration API router.
 
 import os
 import shutil
-import importlib.util
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-def _load_eric_module_class():
-    module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "modules", "eric_module.py"))
-    spec = importlib.util.spec_from_file_location("tos_eric_module", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Unable to load Eric module")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.EricModule
-
-
-EricModule = _load_eric_module_class()
+from modules.eric_module import EricModule
 
 
 router = APIRouter(prefix="/eric", tags=["Eric"])
