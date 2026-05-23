@@ -5,10 +5,10 @@
   "main": "main-simple.js",
   "scripts": {
     "dev": "electron .",
-    "build:frontend": "cd ../tms-frontend && npm run build && cd ../tms-electron-app && node scripts/copy-frontend.js",
-    "build": "npm run build:frontend && electron-builder",
-    "build:win": "npm run build:frontend && electron-builder --win --x64",
-    "pack": "npm run build:frontend && electron-builder --dir"
+    "build:frontend": "node scripts/copy-frontend.js",
+    "build": "npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js",
+    "build:win": "npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js --win --x64",
+    "pack": "node scripts/pack-unpacked.js"
   },
   "keywords": [
     "TMS",
@@ -39,9 +39,11 @@
     "files": [
       "**/*",
       "dist-frontend/**/*",
+      "!recovered-frontend/**/*",
       "!automation-apps/**/*",
       "!browser-plugins/**/*",
       "!external-apps/**/*",
+      "!.npm-cache/**/*",
       "!dist/**/*",
       "!dist-test/**/*",
       "!dist-complete/**/*",
@@ -62,6 +64,8 @@
       "!out/**/*",
       "!release/**/*",
       "!*.exe",
+      "!*.log",
+      "!electron-builder-debug.log",
       "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
       "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
       "!**/node_modules/*.d.ts",

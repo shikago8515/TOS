@@ -2,11 +2,11 @@ const fs = require('fs')
 const path = require('path')
 
 const electronDir = path.resolve(__dirname, '..')
-const frontendDist = path.resolve(electronDir, '..', 'tms-frontend', 'dist')
+const frontendDist = path.resolve(electronDir, 'recovered-frontend')
 const targetDir = path.join(electronDir, 'dist-frontend')
 
 if (!fs.existsSync(frontendDist)) {
-  throw new Error(`Frontend dist not found: ${frontendDist}`)
+  throw new Error(`Recovered frontend assets not found: ${frontendDist}`)
 }
 
 fs.rmSync(targetDir, { recursive: true, force: true })

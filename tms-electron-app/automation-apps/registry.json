@@ -1,0 +1,13 @@
+[
+  {
+    "id": "playwright-console",
+    "name": "网页自动化控制台",
+    "provider": "Playwright",
+    "category": "网页自动化",
+    "version": "0.2.0",
+    "appDir": "playwright-console",
+    "entry": "bin/start.js",
+    "defaultPort": 3100,
+    "description": "从 Excel 读取业务数据，驱动 Edge/Chrome 执行 SAP BTP、Infor Nexus 等网页流程。"
+  }
+]
