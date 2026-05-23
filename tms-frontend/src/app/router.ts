@@ -2,12 +2,15 @@ import type { Component } from 'vue'
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
 
 import { tosRouteDefinitions, tosRouteRedirects } from './routeCatalog'
+import AdidasMaterialsPage from '../pages/adidas-materials/AdidasMaterialsPage.vue'
+import BrowserPluginsPage from '../pages/browser-plugins/BrowserPluginsPage.vue'
 import EricPage from '../pages/eric/EricPage.vue'
 import HomePage from '../pages/home/HomePage.vue'
 import JanePage from '../pages/jane/JanePage.vue'
 import JesscaPage from '../pages/jessca/JesscaPage.vue'
 import SophiaTinaPage from '../pages/sophia-tina/SophiaTinaPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
+import WebAutomationPage from '../pages/web-automation/WebAutomationPage.vue'
 
 const routeComponents: Partial<Record<string, Component>> = {
   home: HomePage,
@@ -15,6 +18,9 @@ const routeComponents: Partial<Record<string, Component>> = {
   jane: JanePage,
   eric: EricPage,
   'sophia-tina': SophiaTinaPage,
+  'browser-plugins': BrowserPluginsPage,
+  'web-automation': WebAutomationPage,
+  'adidas-materials': AdidasMaterialsPage,
 }
 
 const redirectRoutes: RouteRecordRaw[] = tosRouteRedirects.map((redirect) => ({

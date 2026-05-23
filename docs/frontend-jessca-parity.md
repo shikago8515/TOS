@@ -1,6 +1,6 @@
 # TOS Jessca 页面等价重建记录
 
-本记录用于约束 `tms-frontend/src/pages/jessca` 的源码化实现。该页面仍不接管正式 Electron 打包入口。
+本记录用于约束 `tms-frontend/src/pages/jessca` 的源码化实现。该页面已接管正式 Electron 打包入口。
 
 ## 原页面行为基线
 

@@ -2,7 +2,13 @@ const fs = require('fs')
 const path = require('path')
 
 const electronDir = path.resolve(__dirname, '..')
-const frontendSource = process.env.TOS_FRONTEND_SOURCE || 'recovered'
+const frontendSource = process.env.TOS_FRONTEND_SOURCE || 'source'
+const supportedSources = new Set(['source', 'recovered'])
+
+if (!supportedSources.has(frontendSource)) {
+  throw new Error(`Unsupported frontend source: ${frontendSource}`)
+}
+
 const frontendDist = frontendSource === 'source'
   ? path.resolve(electronDir, '..', 'tms-frontend', 'dist')
   : path.resolve(electronDir, 'recovered-frontend')

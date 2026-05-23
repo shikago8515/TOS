@@ -35,10 +35,10 @@ Known routes from the recovered bundle:
 
 ## Phases
 
-1. Baseline lock
+1. Baseline lock - complete
 
-   Keep `recovered-frontend` packaged by default. Capture route catalog,
-   navigation labels, Electron bridge APIs, and backend endpoints.
+   The recovered bundle was kept as the default while route catalog,
+   navigation labels, Electron bridge APIs, and backend endpoints were captured.
 
 2. Source skeleton
 
@@ -56,15 +56,16 @@ Known routes from the recovered bundle:
    - backend/Electron calls
    - responsive layout
 
-4. Packaging switch
+4. Packaging switch - complete
 
-   Switch Electron packaging from `recovered-frontend` to `tms-frontend/dist`
-   only after all production routes pass parity.
+   Electron packaging now builds and copies `tms-frontend/dist` by default.
+   `recovered-frontend` remains available as a fallback reference through
+   `TOS_FRONTEND_SOURCE=recovered`.
 
 5. Cleanup
 
-   Archive the recovered bundle as reference material after source parity is
-   complete.
+   Keep the recovered bundle as reference material until a longer production
+   burn-in confirms the source frontend can fully replace it.
 
 ## Do Not Do
 

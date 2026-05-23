@@ -1,6 +1,6 @@
 # TOS Jane 页面等价重建记录
 
-本记录用于约束 `tms-frontend/src/pages/jane` 的源码化实现。该页面仍不接管正式 Electron 打包入口。
+本记录用于约束 `tms-frontend/src/pages/jane` 的源码化实现。该页面已接管正式 Electron 打包入口。
 
 ## 原页面行为基线
 
@@ -35,4 +35,4 @@
 
 - Eric 页面如仍是 Excel 处理型页面，应优先复用本轮共享组件。
 - 每个模块只保留 API 字段名映射、结果摘要转换和少量业务差异。
-- 运行中的正式 `TOS.exe` 在所有关键路由等价验证前继续使用 recovered-frontend。
+- 正式 Electron 打包入口已切到新 Vue 源码；recovered frontend 仅作为回退参考保留。
