@@ -5,10 +5,10 @@ product UI while replacing recovered bundled assets with maintainable source.
 
 ## Source Ownership
 
-- `tms-electron-app/recovered-frontend` is the current runtime baseline.
+- `tms-electron-app/recovered-frontend` is the fallback reference baseline.
 - `tms-frontend/src` is the rebuild workspace.
 - Do not redesign pages while rebuilding them.
-- Do not wire rebuilt pages into Electron packaging until parity checks pass.
+- Keep Electron packaging wired to `tms-frontend/dist` after parity checks pass.
 - Do not merge AI-generated frontend changes directly to `main`.
 
 ## Structure

@@ -1,12 +1,13 @@
 const fs = require('fs')
 const path = require('path')
 const { spawnSync } = require('child_process')
-const { buildSourceFrontend, copySourceFrontend } = require('./run-pack-default')
 
 const electronDir = path.resolve(__dirname, '..')
-const outputDirName = 'dist-source-frontend'
-const outputDir = path.join(electronDir, outputDirName)
-const markerPath = path.join(outputDir, '.pack-source-start.json')
+const repoDir = path.resolve(electronDir, '..')
+const frontendDir = path.join(repoDir, 'tms-frontend')
+const frontendNodeModules = path.join(frontendDir, 'node_modules')
+const outputDir = path.join(electronDir, 'dist')
+const markerPath = path.join(outputDir, '.pack-default-start.json')
 const unpackedDir = path.join(outputDir, 'win-unpacked')
 const appAsar = path.join(unpackedDir, 'resources', 'app.asar')
 const productExe = path.join(unpackedDir, 'TOS.exe')
@@ -28,29 +29,61 @@ function nodeEnv() {
   return env
 }
 
-function runElectronBuilder() {
-  const source = [
-    "const { build } = require('electron-builder')",
-    'const options = {',
-    '  projectDir: process.cwd(),',
-    '  dir: true,',
-    "  publish: 'never',",
-    `  config: { directories: { output: ${JSON.stringify(outputDirName)} } },`,
-    '}',
-    'build(options).then(() => {',
-    '  process.exit(0)',
-    '}).catch((error) => {',
-    '  console.error(error)',
-    '  process.exit(1)',
-    '})',
-  ].join('\n')
+function requireFile(filePath, label) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`${label} not found: ${filePath}`)
+  }
+}
 
-  return spawnSync(process.execPath, ['-e', source], {
-    cwd: electronDir,
+function runNodeEval(source, args, cwd) {
+  const result = spawnSync(process.execPath, ['-e', source, '--', ...args], {
+    cwd,
     shell: false,
     stdio: 'inherit',
     env: nodeEnv(),
   })
+
+  if (result.status !== 0) {
+    process.exit(result.status || 1)
+  }
+}
+
+function buildSourceFrontend() {
+  requireFile(path.join(frontendNodeModules, 'vue-tsc', 'index.js'), 'vue-tsc')
+  requireFile(path.join(frontendNodeModules, 'vite', 'dist', 'node', 'index.js'), 'vite')
+
+  console.log('[1/2] Type-check rebuilt frontend')
+  runNodeEval(
+    "require('vue-tsc').run()",
+    ['--noEmit', '--pretty', 'false'],
+    frontendDir,
+  )
+
+  console.log('[2/2] Build rebuilt frontend')
+  runNodeEval(
+    [
+      '(async () => {',
+      "  const { build } = await import('vite')",
+      "  await build({ logLevel: 'error' })",
+      '})().catch((error) => {',
+      '  console.error(error)',
+      '  process.exit(1)',
+      '})',
+    ].join('\n'),
+    [],
+    frontendDir,
+  )
+}
+
+function copySourceFrontend() {
+  process.env.TOS_FRONTEND_SOURCE = 'source'
+  delete require.cache[require.resolve('./copy-frontend')]
+  require('./copy-frontend')
+}
+
+function runFrontendBuild() {
+  buildSourceFrontend()
+  copySourceFrontend()
 }
 
 function hasGeneratedUnpackedApp() {
@@ -120,9 +153,32 @@ function finalizeUnpackedApp() {
   }
 }
 
+function runElectronBuilder() {
+  const source = [
+    "const { build } = require('electron-builder')",
+    'build({',
+    '  projectDir: process.cwd(),',
+    '  dir: true,',
+    "  publish: 'never',",
+    '}).then(() => {',
+    '  process.exit(0)',
+    '}).catch((error) => {',
+    '  console.error(error)',
+    '  process.exit(1)',
+    '})',
+  ].join('\n')
+
+  return spawnSync(process.execPath, ['-e', source], {
+    cwd: electronDir,
+    shell: false,
+    stdio: 'inherit',
+    env: nodeEnv(),
+  })
+}
+
 async function main() {
-  fs.rmSync(outputDir, { recursive: true, force: true })
   fs.mkdirSync(outputDir, { recursive: true })
+  fs.rmSync(unpackedDir, { recursive: true, force: true })
   fs.writeFileSync(markerPath, JSON.stringify({ startedAt: Date.now() }), 'utf8')
 
   console.log('[1/3] Build rebuilt frontend')
@@ -131,7 +187,8 @@ async function main() {
   console.log('[2/3] Copy rebuilt frontend into Electron staging')
   copySourceFrontend()
 
-  console.log('[3/3] Pack independent win-unpacked test app')
+  console.log('[3/3] Pack default win-unpacked app')
+
   const result = runElectronBuilder()
   const generated = waitForGeneratedUnpackedApp()
 
@@ -152,10 +209,21 @@ async function main() {
   }
 
   finalizeUnpackedApp()
-  console.log(`Packed source-frontend test app: ${productExe}`)
+  console.log(`Packed default app: ${productExe}`)
 }
 
-main().catch((error) => {
-  console.error(error)
-  process.exit(1)
-})
+if (require.main === module) {
+  const frontendOnly = process.argv.includes('--frontend-only')
+  const run = frontendOnly ? runFrontendBuild : main
+
+  Promise.resolve(run()).catch((error) => {
+    console.error(error)
+    process.exit(1)
+  })
+}
+
+module.exports = {
+  buildSourceFrontend,
+  copySourceFrontend,
+  runFrontendBuild,
+}

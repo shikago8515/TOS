@@ -5,10 +5,10 @@
   "main": "main-simple.js",
   "scripts": {
     "dev": "electron .",
-    "build:frontend": "node scripts/copy-frontend.js",
+    "build:frontend": "node scripts/run-pack-default.js --frontend-only",
     "build": "npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js",
     "build:win": "npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js --win --x64",
-    "pack": "node scripts/pack-unpacked.js",
+    "pack": "node scripts/run-pack-default.js || node scripts/verify-default-pack.js",
     "pack:source": "node scripts/run-pack-source.js || node scripts/verify-source-pack.js"
   },
   "keywords": [

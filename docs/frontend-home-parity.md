@@ -52,9 +52,10 @@
 - 文件准备
 - 对账核对
 
-## 后续切换门槛
+## 默认打包状态
 
-在 `tms-electron-app/scripts/copy-frontend.js` 从 `recovered-frontend` 切到 `tms-frontend/dist` 之前，必须完成：
+`tms-electron-app/scripts/copy-frontend.js` 已默认复制 `tms-frontend/dist`。
+以下项目作为后续回归检查项保留：
 
 - 首页截图与当前 `TOS.exe` 首页截图对比。
 - 所有快捷入口路径与原路由一致。

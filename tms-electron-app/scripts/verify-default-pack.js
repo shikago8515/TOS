@@ -2,8 +2,8 @@ const fs = require('fs')
 const path = require('path')
 
 const electronDir = path.resolve(__dirname, '..')
-const markerPath = path.join(electronDir, 'dist-source-frontend', '.pack-source-start.json')
-const unpackedDir = path.join(electronDir, 'dist-source-frontend', 'win-unpacked')
+const markerPath = path.join(electronDir, 'dist', '.pack-default-start.json')
+const unpackedDir = path.join(electronDir, 'dist', 'win-unpacked')
 const appAsar = path.join(unpackedDir, 'resources', 'app.asar')
 const productExe = path.join(unpackedDir, 'TOS.exe')
 const electronExe = path.join(unpackedDir, 'electron.exe')
@@ -91,21 +91,21 @@ function finalizeUnpackedApp() {
 const startedAt = readStartedAt()
 
 if (!waitForFreshApp(startedAt)) {
-  console.error(`Packed source-frontend app is incomplete or stale: ${unpackedDir}`)
+  console.error(`Packed default app is incomplete or stale: ${unpackedDir}`)
   process.exit(1)
 }
 
 if (!waitForStableUnpackedApp()) {
-  console.error(`Packed source-frontend app did not settle: ${unpackedDir}`)
+  console.error(`Packed default app did not settle: ${unpackedDir}`)
   process.exit(1)
 }
 
 finalizeUnpackedApp()
 
 if (!fs.existsSync(productExe)) {
-  console.error(`Packed source-frontend app is missing executable: ${productExe}`)
+  console.error(`Packed default app is missing executable: ${productExe}`)
   process.exit(1)
 }
 
-console.warn('pack:source verified fresh win-unpacked output after a non-zero builder exit.')
-console.log(`Packed source-frontend test app: ${productExe}`)
+console.warn('pack verified fresh win-unpacked output after a non-zero builder exit.')
+console.log(`Packed default app: ${productExe}`)

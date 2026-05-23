@@ -1,6 +1,6 @@
 # TOS Sophia & Tina 页面等价重建记录
 
-本记录用于约束 `tms-frontend/src/pages/sophia-tina` 的源码化实现。该页面仍不接管正式 Electron 打包入口。
+本记录用于约束 `tms-frontend/src/pages/sophia-tina` 的源码化实现。该页面已接管正式 Electron 打包入口。
 
 ## 原页面行为基线
 
@@ -35,4 +35,4 @@
 
 - Jane 页面继续复用本轮共享组件，不重新实现上传和处理历史。
 - 每个 Excel 模块只保留自己的 API 参数映射和结果摘要转换。
-- 正式打包入口只有在首页、Jessca、Sophia & Tina、Jane、Eric 全部完成等价验证后再切换。
+- 正式 Electron 打包入口已切到新 Vue 源码；recovered frontend 仅作为回退参考保留。

@@ -4,21 +4,21 @@
 
 在不替换现有可用 `TOS.exe` 的前提下，验证 `tms-frontend/src` 重建出来的 Vue 前端能否作为 Electron 生产包入口正常运行。
 
-## 新增脚本
+## 当前状态
 
-- 默认打包仍然使用 `tms-electron-app/recovered-frontend`
-- 新增源码前端试验打包脚本：`tms-electron-app/scripts/pack-source-unpacked.js`
-- 新增 npm 命令：`pack:source`
+- 默认打包现在构建并复制 `tms-frontend/dist`
+- `TOS_FRONTEND_SOURCE=recovered` 仍可手动回退到 `tms-electron-app/recovered-frontend`
+- `pack:source` 继续保留为独立 source-frontend 冒烟打包命令
 - 独立测试产物目录：`tms-electron-app/dist-source-frontend/win-unpacked`
 
 ## 前端来源控制
 
 `tms-electron-app/scripts/copy-frontend.js` 现在支持环境变量：
 
-- 默认或 `TOS_FRONTEND_SOURCE=recovered`：复制 `tms-electron-app/recovered-frontend`
-- `TOS_FRONTEND_SOURCE=source`：复制 `tms-frontend/dist`
+- 默认或 `TOS_FRONTEND_SOURCE=source`：复制 `tms-frontend/dist`
+- `TOS_FRONTEND_SOURCE=recovered`：复制 `tms-electron-app/recovered-frontend`
 
-这样默认生产打包行为不变，源码前端只在显式试验脚本中启用。
+这样默认生产打包使用源码前端，recovered frontend 只作为显式回退路径保留。
 
 ## 当前验证范围
 
@@ -29,5 +29,11 @@
 - `/sophia-tina`
 - `/jane`
 - `/eric`
+- `/browser-plugins`
+- `/web-automation`
+- `/adidas-materials`
+- `/module-a`
+- `/module-b`
+- `/settings`
 
-验证通过后，下一步才能考虑把默认 `pack` 从 recovered frontend 切换到 source frontend。
+默认 `pack` 已切换到 source frontend。后续只在生产回归发现阻断问题时使用 recovered fallback。

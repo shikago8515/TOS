@@ -3,13 +3,13 @@
 This directory is the long-term source rebuild workspace for the current TOS
 frontend.
 
-The active packaged UI is still preserved in:
+The recovered packaged UI is preserved for reference and fallback in:
 
 `../tms-electron-app/recovered-frontend`
 
-That recovered bundle is the visual and behavior baseline. Rebuild work in this
-directory must match the current UI before Electron packaging is switched over to
-use it.
+That recovered bundle remains the visual and behavior baseline. The default
+Electron package now builds and copies `tms-frontend/dist`; set
+`TOS_FRONTEND_SOURCE=recovered` only when an emergency fallback is needed.
 
 Target stack:
 
@@ -34,12 +34,12 @@ Current rebuild status:
 - Placeholder routes use the recovered "功能开发中" state through `src/pages/RoutePlaceholder.vue`.
 - Shared homepage UI lives in `src/shared/ui`.
 - Navigation and route titles come from `src/domain/moduleCatalog.ts`.
-- Electron packaging still copies `../tms-electron-app/recovered-frontend` by
-  default; `npm run pack:source` in `../tms-electron-app` creates a separate
+- Electron packaging copies `tms-frontend/dist` by default; `npm run
+  pack:source` in `../tms-electron-app` still creates a separate
   source-frontend smoke package.
 
 Migration rule:
 
 Do not replace the recovered UI with a new design. Rebuild one route at a time,
-compare against the recovered UI, then wire the rebuilt route into packaging only
-after parity is verified.
+compare future changes against the recovered UI, and keep the default Electron
+package on `tms-frontend/dist` unless a production fallback is required.
