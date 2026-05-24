@@ -9,7 +9,8 @@
     "build": "npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js",
     "build:win": "npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js --win --x64",
     "pack": "node scripts/run-pack-default.js || node scripts/verify-default-pack.js",
-    "pack:source": "node scripts/run-pack-source.js || node scripts/verify-source-pack.js"
+    "pack:source": "node scripts/run-pack-source.js || node scripts/verify-source-pack.js",
+    "pack:portable": "node scripts/pack-portable-release.js"
   },
   "keywords": [
     "TMS",
@@ -103,6 +104,13 @@
       {
         "from": "external-apps",
         "to": "external-apps",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "backend-runtime",
+        "to": "backend-runtime",
         "filter": [
           "**/*"
         ]

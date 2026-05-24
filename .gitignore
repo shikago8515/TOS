@@ -15,6 +15,11 @@ release/
 *.exe
 *.asar
 *.zip
+tms-electron-app/backend-runtime/**
+!tms-electron-app/backend-runtime/
+!tms-electron-app/backend-runtime/.gitkeep
+tms-backend/build/
+tms-backend/backend-data-test/
 
 # Runtime data
 uploads/
