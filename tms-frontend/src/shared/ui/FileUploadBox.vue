@@ -84,7 +84,10 @@ function removeFile(file: File): void {
 <style scoped>
 .file-upload-box {
   display: grid;
+  align-self: start;
+  align-content: start;
   gap: 8px;
+  min-width: 0;
 }
 
 .upload-label-row {
@@ -171,9 +174,12 @@ input {
 .selected-files {
   display: grid;
   gap: 6px;
+  max-height: 232px;
+  overflow: auto;
   padding: 0;
   margin: 0;
   list-style: none;
+  scrollbar-gutter: stable;
 }
 
 .selected-files li {
@@ -181,10 +187,10 @@ input {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 42px;
+  min-height: 44px;
   padding: 8px 10px;
-  background: #ffffff;
-  border: 1px solid #edf2f7;
+  background: #f8fafc;
+  border: 1px solid #e6edf4;
   border-radius: 8px;
 }
 

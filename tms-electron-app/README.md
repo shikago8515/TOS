@@ -57,8 +57,8 @@ npm run build:win
 ```
 
 打包后的文件将位于 `tms-electron-app/dist/` 目录，包含：
-- 安装程序 (`TMS报表自动化工具 Setup 1.0.0.exe`)
-- 便携版 (`TMS报表自动化工具_v1.0.0_Portable.exe`)
+- 安装程序 (`TOS Setup 0.9.6-beta.1.exe`)
+- 便携版 (`TOS_v0.9.6-beta.1_Portable.exe`)
 
 ## 📦 打包注意事项
 

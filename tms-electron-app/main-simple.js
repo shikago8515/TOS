@@ -847,6 +847,7 @@ async function startBackendServer() {
 
 function registerIpcHandlers() {
   ipcMain.handle('get-backend-url', () => BACKEND_URL);
+  ipcMain.handle('start-backend-server', () => startBackendServer());
 
   ipcMain.handle('record-diagnostic-event', (_event, diagnosticEvent) => {
     if (!diagnosticEvent || typeof diagnosticEvent !== 'object') {

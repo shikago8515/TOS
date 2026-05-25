@@ -4,7 +4,15 @@ export interface UploadRequestOptions {
   onProgress?: (percentage: number) => void
 }
 
+let backendStartPromise: Promise<string | undefined> | null = null
+
 export async function getBackendBaseUrl(): Promise<string> {
+  const startedBackendUrl = await ensureBackendReady()
+
+  if (startedBackendUrl) {
+    return startedBackendUrl.replace(/\/$/, '')
+  }
+
   const backendUrl = await window.electronAPI?.getBackendUrl()
 
   if (backendUrl) {
@@ -12,6 +20,27 @@ export async function getBackendBaseUrl(): Promise<string> {
   }
 
   return ''
+}
+
+async function ensureBackendReady(): Promise<string | undefined> {
+  if (!window.electronAPI?.startBackendServer) {
+    return undefined
+  }
+
+  backendStartPromise ??= window.electronAPI
+    .startBackendServer()
+    .then((result) => {
+      if (!result.success) {
+        throw new Error(result.error || '无法启动后端服务')
+      }
+
+      return result.url
+    })
+    .finally(() => {
+      backendStartPromise = null
+    })
+
+  return backendStartPromise
 }
 
 export async function postFormData<TResponse>({

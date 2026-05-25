@@ -2,6 +2,7 @@ export interface ElectronActionResult {
   success: boolean
   error?: string
   url?: string
+  command?: string
   alreadyOpen?: boolean
   alreadyRunning?: boolean
   browser?: string
@@ -49,6 +50,7 @@ export interface DiagnosticEvent {
 
 export interface ElectronApi {
   getBackendUrl(): Promise<string>
+  startBackendServer(): Promise<ElectronActionResult>
   openExternal(url: string): Promise<ElectronActionResult>
   recordDiagnosticEvent(event: DiagnosticEvent): Promise<ElectronActionResult>
   exportDiagnosticsPackage(): Promise<ElectronActionResult>

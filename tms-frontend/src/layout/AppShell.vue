@@ -5,7 +5,6 @@
         <span class="brand-mark">T</span>
         <span>
           <span class="brand-name">TOS</span>
-          <span class="brand-subtitle">DG运营部</span>
         </span>
       </RouterLink>
 
@@ -34,15 +33,17 @@
       </nav>
 
       <footer class="sidebar-footer">
-        <span>应用</span>
-        <strong>v0.9.6-beta.1</strong>
+        <span class="sidebar-footer-label">应用</span>
+        <span class="sidebar-version">
+          <strong>v0.9.6-beta.1</strong>
+          <small>DG运营部</small>
+        </span>
       </footer>
     </aside>
 
     <div class="app-main">
       <header class="topbar">
         <div>
-          <p class="topbar-eyebrow">DG运营部</p>
           <h1>{{ pageTitle }}</h1>
         </div>
 
@@ -145,8 +146,7 @@ async function exportDiagnostics(): Promise<void> {
   border-radius: 8px;
 }
 
-.brand-name,
-.brand-subtitle {
+.brand-name {
   display: block;
 }
 
@@ -154,12 +154,6 @@ async function exportDiagnostics(): Promise<void> {
   font-size: 18px;
   font-weight: 800;
   letter-spacing: 0;
-}
-
-.brand-subtitle {
-  margin-top: 2px;
-  color: #8fa3b6;
-  font-size: 12px;
 }
 
 .nav-groups {
@@ -207,9 +201,10 @@ async function exportDiagnostics(): Promise<void> {
 }
 
 .sidebar-footer {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 14px;
   margin-top: auto;
   padding-top: 18px;
   color: #93a6b8;
@@ -217,9 +212,28 @@ async function exportDiagnostics(): Promise<void> {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.sidebar-footer strong {
+.sidebar-footer-label {
+  padding-bottom: 2px;
+}
+
+.sidebar-version {
+  display: grid;
+  gap: 3px;
+  justify-items: end;
+  min-width: 0;
+  text-align: right;
+}
+
+.sidebar-version strong {
   color: #d7e3ef;
   font-weight: 700;
+}
+
+.sidebar-version small {
+  color: #7f94a8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 
 .app-main {
@@ -238,13 +252,6 @@ async function exportDiagnostics(): Promise<void> {
   padding: 18px 30px;
   background: rgba(255, 255, 255, 0.92);
   border-bottom: 1px solid #dbe5ee;
-}
-
-.topbar-eyebrow {
-  margin: 0 0 4px;
-  color: #728195;
-  font-size: 13px;
-  font-weight: 700;
 }
 
 .topbar h1 {

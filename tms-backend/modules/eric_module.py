@@ -26,6 +26,20 @@ SIZE_COL_START = 10
 SIZE_NAME_ALIASES = {
     "A2XL": "A/2XL",
 }
+FINAL_DATA_MIN_WIDTHS = {
+    1: 13,
+    2: 18,
+    3: 16,
+    4: 12,
+    5: 15,
+    6: 21,
+    7: 24,
+    8: 13,
+    9: 17,
+    10: 10,
+    11: 11,
+}
+FINAL_DATA_MAX_WIDTH = 36
 
 
 def ensure_dir(dir_path: str):
@@ -81,19 +95,31 @@ class EricModule:
                 target_ws.column_dimensions[col_letter].width = source_ws.column_dimensions[col_letter].width
 
     @staticmethod
+    def estimate_text_width(value) -> int:
+        if value is None:
+            return 0
+        return sum(2 if ord(char) > 255 else 1 for char in str(value))
+
+    @staticmethod
     def autofit_columns(ws, min_width=8, max_width=50):
         for column in ws.columns:
             max_length = 0
             column_letter = get_column_letter(column[0].column)
             for cell in column:
                 try:
-                    if cell.value:
-                        cell_value = str(cell.value)
-                        max_length = max(max_length, len(cell_value.encode('utf-8')) // 2)
+                    max_length = max(max_length, EricModule.estimate_text_width(cell.value))
                 except Exception:
                     pass
-            adjusted_width = min(max(max_length + 4, min_width), max_width)
+            adjusted_width = min(max(max_length + 2, min_width), max_width)
             ws.column_dimensions[column_letter].width = adjusted_width
+
+    @staticmethod
+    def apply_final_data_column_widths(ws):
+        EricModule.autofit_columns(ws, min_width=8, max_width=FINAL_DATA_MAX_WIDTH)
+        for col_index, min_width in FINAL_DATA_MIN_WIDTHS.items():
+            col_letter = get_column_letter(col_index)
+            current_width = ws.column_dimensions[col_letter].width or 0
+            ws.column_dimensions[col_letter].width = max(current_width, min_width)
 
     @staticmethod
     def add_auto_filter(ws):
@@ -142,6 +168,14 @@ class EricModule:
             return ""
         size_name = str(value).strip()
         return SIZE_NAME_ALIASES.get(size_name, size_name)
+
+    @staticmethod
+    def normalize_output_value(value):
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     def add_and_fill_columns(self, input_file: str, output_file: str) -> str:
         print("[1/3] \u6dfb\u52a0 PO Number1 / Article Number1\uff0c\u5e76\u5411\u4e0b\u586b\u5145 PO Number1")
@@ -243,7 +277,7 @@ class EricModule:
             po_key = row_values[7] or row_values[0]
             if po_key:
                 if po_key in emitted_po_keys:
-                    row_values[0] = ""
+                    row_values[0] = None
                 else:
                     emitted_po_keys.add(po_key)
             all_data.append(row_values + [self.normalize_size_name(size_name), quantity])
@@ -282,7 +316,11 @@ class EricModule:
 
         for r, row_data in enumerate(all_data, 2):
             for c, val in enumerate(row_data, 1):
-                cell = ws_out.cell(row=r, column=c, value=val)
+                output_value = self.normalize_output_value(val)
+                if output_value is None:
+                    continue
+
+                cell = ws_out.cell(row=r, column=c, value=output_value)
                 if c == 4:
                     cell.number_format = EXCEL_DATE_FORMAT
                 elif c == 8:
@@ -290,7 +328,7 @@ class EricModule:
                 elif c in (6, 10):
                     cell.number_format = "@"
 
-        self.autofit_columns(ws_out)
+        self.apply_final_data_column_widths(ws_out)
         self.add_auto_filter(ws_out)
         new_wb.save(output_file)
         print(f"  \u8f93\u51fa final: {output_file}")

@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getBackendUrl: () => ipcRenderer.invoke('get-backend-url'),
+  startBackendServer: () => ipcRenderer.invoke('start-backend-server'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   recordDiagnosticEvent: (event) => ipcRenderer.invoke('record-diagnostic-event', event),
   exportDiagnosticsPackage: () => ipcRenderer.invoke('export-diagnostics-package'),

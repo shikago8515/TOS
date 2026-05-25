@@ -24,13 +24,13 @@ from utils.file_utils import ensure_dir, create_thin_border
 
 class JesscaModule:
     """Jessca 数据核对业务逻辑"""
-    
+
     def __init__(self):
         pass
-    
+
     def read_invoice_data(self, invoice_path: str) -> List[Dict[str, Any]]:
         """读取发票数据，统一处理.xls和.xlsx格式"""
-        
+
         # 1. 根据文件格式创建对应的适配器
         if invoice_path.endswith('.xls'):
             wb = xlrd.open_workbook(invoice_path)
@@ -40,22 +40,22 @@ class JesscaModule:
             wb = openpyxl.load_workbook(invoice_path, read_only=True)
             ws = wb.active
             adapter = OpenpyxlAdapter(wb, ws)
-        
+
         try:
             # 2. 调用统一的解析逻辑
             return self._parse_invoice_data(adapter)
         finally:
             adapter.close()
-    
+
     def _parse_invoice_data(self, adapter: ExcelRowAdapter) -> List[Dict[str, Any]]:
         """核心解析逻辑，使用适配器访问数据"""
         data: List[Dict[str, Any]] = []
         pending_items: List[Dict[str, Any]] = []
-        
+
         for row_idx in range(adapter.get_row_count()):
             # 获取第一列值
             col0_val = str(adapter.get_cell_value(row_idx, 0) or "").strip()
-            
+
             # 识别PO行
             if col0_val.upper().startswith("PO") and "NO" not in col0_val.upper():
                 price_val = self._extract_price(adapter, row_idx)
@@ -64,14 +64,14 @@ class JesscaModule:
                         'article': None,
                         'price': price_val
                     })
-            
+
             # 识别ARTICLE行
             elif col0_val.upper().startswith("ARTICLE"):
                 if adapter.get_col_count(row_idx) > 1:
                     article_val = str(adapter.get_cell_value(row_idx, 1) or "").strip()
                     if pending_items:
                         pending_items[-1]['article'] = article_val
-            
+
             # 识别STYLE行
             elif col0_val.upper().startswith("STYLE"):
                 if adapter.get_col_count(row_idx) > 1:
@@ -91,9 +91,9 @@ class JesscaModule:
                                 'price': item['price']
                             })
                     pending_items = []
-        
+
         return data
-    
+
     def _extract_price(self, adapter: ExcelRowAdapter, row_idx: int) -> Optional[float]:
         """从指定行提取价格"""
         PRICE_MIN, PRICE_MAX = 0.1, 1000  # 价格范围常量
@@ -111,7 +111,7 @@ class JesscaModule:
             candidate = self._parse_price_value(adapter.get_cell_value(row_idx, col_idx))
             if candidate is not None and PRICE_MIN <= candidate <= PRICE_MAX:
                 return candidate
-        
+
         return None
 
     def _find_price_columns(self, adapter: ExcelRowAdapter, row_idx: int) -> List[int]:
@@ -138,26 +138,26 @@ class JesscaModule:
                 ordered_cols.append(col_idx)
                 seen.add(col_idx)
         return ordered_cols
-    
+
     def _parse_price_value(self, cell_val: Any) -> Optional[float]:
         """解析单元格值为价格候选值"""
         if cell_val is None:
             return None
-        
+
         if isinstance(cell_val, (int, float)):
             return float(cell_val)
-        
+
         if isinstance(cell_val, str):
             cell_val_clean = cell_val.strip()
             if not cell_val_clean:
                 return None
-            
+
             # 尝试直接转换
             try:
                 return float(cell_val_clean)
             except ValueError:
                 pass
-            
+
             # 使用正则提取数字
             match = re.search(r'(\d+\.?\d*)', cell_val_clean)
             if match:
@@ -165,40 +165,40 @@ class JesscaModule:
                     return float(match.group(1))
                 except ValueError:
                     pass
-        
+
         return None
-    
-    def update_reference_table(self, ref_df: pd.DataFrame, 
+
+    def update_reference_table(self, ref_df: pd.DataFrame,
                               all_invoice_data: Dict[Tuple[str, str], Dict[str, float]]) -> Tuple[pd.DataFrame, Dict[str, int]]:
         result_df = ref_df.copy()
-        
+
         statuses: List[str] = []
         invoice_prices: List[Optional[float]] = []
         source_invoices: List[Optional[str]] = []
-        
+
         matches = {'一致': 0, '不一致': 0, '未找到': 0}
-        
+
         for _, row in result_df.iterrows():
             article = str(row.get('article NO.', '')).strip()
             style = str(row.get('style NO.', '')).strip()
             ref_price = float(row.get('price', 0))
-            
+
             key = (article, style)
-            
+
             if key in all_invoice_data:
                 invoice_data_for_key = all_invoice_data[key]
-                
+
                 found_inconsistent = False
                 inconsistent_price = None
                 inconsistent_source = None
-                
+
                 for invoice_file, invoice_price in invoice_data_for_key.items():
                     if abs(invoice_price - ref_price) >= 0.001:
                         found_inconsistent = True
                         inconsistent_price = invoice_price
                         inconsistent_source = invoice_file
                         break
-                
+
                 if found_inconsistent:
                     statuses.append('不一致')
                     invoice_prices.append(inconsistent_price)
@@ -214,31 +214,31 @@ class JesscaModule:
                 invoice_prices.append(None)
                 source_invoices.append(None)
                 matches['未找到'] += 1
-        
+
         result_df['核对状态'] = statuses
         result_df['发票价格'] = invoice_prices
         result_df['来源发票'] = source_invoices
-        
+
         return result_df, matches
-    
-    def save_excel_with_summary(self, result_df: pd.DataFrame, 
+
+    def save_excel_with_summary(self, result_df: pd.DataFrame,
                                 all_invoice_data: Dict[Tuple[str, str], Dict[str, float]],
-                                invoice_file_names: List[str], 
-                                invoice_file_paths: List[str], 
-                                ref_df: pd.DataFrame, 
+                                invoice_file_names: List[str],
+                                invoice_file_paths: List[str],
+                                ref_df: pd.DataFrame,
                                 output_path: str) -> Dict[str, Any]:
         """保存 Excel 结果，包含汇总表"""
-        
+
         wb = openpyxl.Workbook()
-        
+
         default_sheet = wb.active
         wb.remove(default_sheet)
-        
+
         thin_border = create_thin_border()
-        
+
         # 创建核对结果表
         ws_main = wb.create_sheet("核对结果")
-        
+
         ws_main.row_dimensions[1].height = 30
         headers = list(result_df.columns)
         for col_idx, header in enumerate(headers, 1):
@@ -247,19 +247,19 @@ class JesscaModule:
             cell.fill = PatternFill(start_color='FF4472C4', end_color='FF4472C4', fill_type='solid')
             cell.alignment = Alignment(horizontal='center', vertical='center')
             cell.border = thin_border
-        
+
         for row_idx, row in enumerate(result_df.itertuples(index=False), 2):
             ws_main.row_dimensions[row_idx].height = 20
             is_odd_row = ((row_idx - 2) % 2 == 0)
             row_fill = PatternFill(start_color='FFF2F2F2', end_color='FFF2F2F2', fill_type='solid') if is_odd_row else None
-            
+
             for col_idx, value in enumerate(row, 1):
                 cell = ws_main.cell(row=row_idx, column=col_idx, value=value)
                 cell.border = thin_border
                 cell.alignment = Alignment(horizontal='left', vertical='center')
                 if row_fill:
                     cell.fill = row_fill
-        
+
         # 创建汇总表：按发票明细纵向展开，避免文件多时横向过宽
         ws_summary = wb.create_sheet("汇总表")
         summary_stats = self._write_compact_summary_sheet(
@@ -270,10 +270,27 @@ class JesscaModule:
             ref_df,
             thin_border
         )
-        
+
         # 自动调整列宽
-        self._adjust_column_widths(ws_main)
-        
+        main_column_max_widths = {}
+        main_column_min_widths = {}
+        for col_idx, header in enumerate(headers, 1):
+            header_text = str(header)
+            header_lower = header_text.lower()
+            if header_text == '来源发票':
+                main_column_max_widths[col_idx] = 42
+                main_column_min_widths[col_idx] = 18
+            elif header_text == '核对状态':
+                main_column_max_widths[col_idx] = 18
+                main_column_min_widths[col_idx] = 14
+            elif header_text == '发票价格' or 'price' in header_lower:
+                main_column_max_widths[col_idx] = 16
+                main_column_min_widths[col_idx] = 12
+            elif 'article' in header_lower or 'style' in header_lower:
+                main_column_max_widths[col_idx] = 20
+                main_column_min_widths[col_idx] = 14
+        self._adjust_column_widths(ws_main, main_column_max_widths, main_column_min_widths)
+
         summary_column_widths = {
             1: 18,
             2: 15,
@@ -287,9 +304,9 @@ class JesscaModule:
         for col_idx, width in summary_column_widths.items():
             column_letter = openpyxl.utils.get_column_letter(col_idx)
             ws_summary.column_dimensions[column_letter].width = width
-        
+
         wb.save(output_path)
-        
+
         return {
             'output_path': output_path,
             'sheet_count': len(wb.sheetnames),
@@ -448,35 +465,39 @@ class JesscaModule:
             'missing_count': missing_from_ref_count,
             'data_count': data_count
         }
-    
-    def _adjust_column_widths(self, ws: openpyxl.worksheet.worksheet.Worksheet, 
-                             max_widths: Optional[Dict[int, int]] = None) -> None:
+
+    @staticmethod
+    def _estimate_text_width(value: Any) -> int:
+        if value is None:
+            return 0
+        return sum(2 if ord(char) > 255 else 1 for char in str(value))
+
+    def _adjust_column_widths(self, ws: openpyxl.worksheet.worksheet.Worksheet,
+                             max_widths: Optional[Dict[int, int]] = None,
+                             min_widths: Optional[Dict[int, int]] = None) -> None:
         """自动调整Excel列宽"""
         if max_widths is None:
             max_widths = {}
-        
+        if min_widths is None:
+            min_widths = {}
+
         for col_idx in range(1, ws.max_column + 1):
             max_length = 0
             column_letter = openpyxl.utils.get_column_letter(col_idx)
             for row in range(1, ws.max_row + 1):
                 cell = ws.cell(row=row, column=col_idx)
                 try:
-                    if cell.value:
-                        length = len(str(cell.value))
-                        if length > max_length:
-                            max_length = length
-                except:
+                    max_length = max(max_length, self._estimate_text_width(cell.value))
+                except Exception:
                     pass
-            default_max = 25
-            if col_idx in max_widths:
-                adjusted_width = min(max_length + 2, max_widths[col_idx])
-            else:
-                adjusted_width = min(max_length + 2, default_max)
+            min_width = min_widths.get(col_idx, 9)
+            max_width = max_widths.get(col_idx, 38)
+            adjusted_width = min(max(max_length + 2, min_width), max_width)
             ws.column_dimensions[column_letter].width = adjusted_width
-    
+
     def process_invoices(self, invoice_paths: List[str], ref_path: str, output_dir: str = None) -> Dict[str, Any]:
         """主处理流程"""
-        
+
         result = {
             'success': False,
             'message': '',
@@ -486,93 +507,93 @@ class JesscaModule:
             'output_path': None,
             'logs': []
         }
-        
+
         def log(msg: str):
             result['logs'].append(msg)
-        
+
         try:
             log("=" * 80)
             log("开始批量核对")
             log("=" * 80)
-            
+
             # 读取参考表
             log("\n📖 正在读取参考表...")
             ref_df = pd.read_excel(ref_path)
             log(f"✅ 参考表读取完成，共 {len(ref_df)} 行数据")
-            
+
             all_invoice_data: Dict[Tuple[str, str], Dict[str, float]] = {}
             invoice_file_names: List[str] = []
             invoice_file_paths: List[str] = []
-            
+
             log(f"\n{'='*80}")
             log(f"开始处理 {len(invoice_paths)} 张发票...")
             log(f"{'='*80}")
-            
+
             total_items_count = 0
-            
+
             for idx, invoice_path in enumerate(invoice_paths, 1):
                 invoice_filename = os.path.basename(invoice_path)
                 invoice_file_names.append(invoice_filename)
                 invoice_file_paths.append(invoice_path)
-                
+
                 log(f"\n[{idx}/{len(invoice_paths)}] 处理发票：{invoice_filename}")
-                
+
                 try:
                     invoice_data = self.read_invoice_data(invoice_path)
-                    
+
                     if len(invoice_data) == 0:
                         log(f"⚠️ 未在发票中识别到有效商品数据，跳过")
                         continue
-                    
+
                     log(f"✅ 成功读取 {len(invoice_data)} 个商品")
                     total_items_count += len(invoice_data)
-                    
+
                     for item in invoice_data:
                         key = (item['article'], item['style'])
                         if key not in all_invoice_data:
                             all_invoice_data[key] = {}
-                        
+
                         all_invoice_data[key][invoice_filename] = item['price']
-                        
+
                         if len(invoice_data) <= 10:
                             log(f"  - {item['article']}/{item['style']}: {item['price']:.2f}")
-                    
+
                     if len(invoice_data) > 10:
                         log(f"  ... (还有 {len(invoice_data)-10} 个商品)")
-                
+
                 except Exception as e:
                     log(f"❌ 处理发票 {invoice_filename} 时出错：{str(e)}")
                     import traceback
                     log(traceback.format_exc())
-            
+
             log(f"\n{'='*80}")
             log(f"开始合并结果到参考表...")
             log(f"{'='*80}")
-            
+
             result_df, matches = self.update_reference_table(
                 ref_df,
                 all_invoice_data
             )
-            
+
             result['matches'] = matches
             result['total_items'] = total_items_count
-            
+
             log("\n💾 正在保存结果（含汇总表）...")
-            
+
             if output_dir is None:
                 output_dir = os.path.dirname(ref_path)
-            
+
             ensure_dir(output_dir)
-            
+
             default_name = (
                 os.path.splitext(os.path.basename(ref_path))[0] +
                 "_批量核对结果_" +
                 datetime.now().strftime('%Y%m%d_%H%M%S') +
                 ".xlsx"
             )
-            
+
             output_path = os.path.join(output_dir, default_name)
-            
+
             save_result = self.save_excel_with_summary(
                 result_df,
                 all_invoice_data,
@@ -581,10 +602,10 @@ class JesscaModule:
                 ref_df,
                 output_path
             )
-            
+
             result['output_path'] = output_path
             result['save_result'] = save_result
-            
+
             log(f"\n{'='*80}")
             log(f"✅ 批量核对完成！")
             log(f"{'='*80}")
@@ -595,15 +616,15 @@ class JesscaModule:
             log(f"未找到：{matches['未找到']}")
             log(f"{'='*80}")
             log(f"结果文件：{output_path}")
-            
+
             result['success'] = True
             result['message'] = '批量核对完成'
-            
+
         except Exception as e:
             log(f"\n❌ 错误：{str(e)}")
             import traceback
             log(traceback.format_exc())
             result['message'] = f'处理出错：{str(e)}'
-        
+
         return result
 
