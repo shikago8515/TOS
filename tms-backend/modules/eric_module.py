@@ -23,6 +23,9 @@ from openpyxl.utils import get_column_letter
 DATE_FORMAT = "MM/DD/YYYY"
 EXCEL_DATE_FORMAT = numbers.FORMAT_DATE_XLSX14
 SIZE_COL_START = 10
+SIZE_NAME_ALIASES = {
+    "A2XL": "A/2XL",
+}
 
 
 def ensure_dir(dir_path: str):
@@ -133,6 +136,13 @@ class EricModule:
             except (ValueError, TypeError):
                 return value
 
+    @staticmethod
+    def normalize_size_name(value):
+        if value is None:
+            return ""
+        size_name = str(value).strip()
+        return SIZE_NAME_ALIASES.get(size_name, size_name)
+
     def add_and_fill_columns(self, input_file: str, output_file: str) -> str:
         print("[1/3] \u6dfb\u52a0 PO Number1 / Article Number1\uff0c\u5e76\u5411\u4e0b\u586b\u5145 PO Number1")
         wb = load_workbook(input_file)
@@ -226,6 +236,18 @@ class EricModule:
         ]
 
         all_data = []
+        emitted_po_keys = set()
+
+        def append_final_row(fixed_values, size_name, quantity):
+            row_values = list(fixed_values)
+            po_key = row_values[7] or row_values[0]
+            if po_key:
+                if po_key in emitted_po_keys:
+                    row_values[0] = ""
+                else:
+                    emitted_po_keys.add(po_key)
+            all_data.append(row_values + [self.normalize_size_name(size_name), quantity])
+
         for ws_name in wb.sheetnames:
             ws = wb[ws_name]
             headers = [ws.cell(row=1, column=col).value for col in range(1, ws.max_column + 1)]
@@ -249,10 +271,10 @@ class EricModule:
                     except (TypeError, ValueError):
                         continue
                     if qty > 0:
-                        all_data.append(fixed + [size_name, int(qty)])
+                        append_final_row(fixed, size_name, int(qty))
                         has_qty = True
                 if not has_qty:
-                    all_data.append(fixed + ["", ""])
+                    append_final_row(fixed, "", "")
 
         ws_out = new_wb.create_sheet("Final_Data")
         for c, header in enumerate(new_headers, 1):

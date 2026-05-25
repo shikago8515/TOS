@@ -1,16 +1,31 @@
 
 # -*- coding: utf-8 -*-
 """
-TMS 工具 - 业务模块
-创建时间: 2026-05-18
+TMS 工具 - 业务模块.
+
+Keep package import side-effect free so one module's optional dependency does
+not prevent another module from being imported.
 """
 
-from .jessca_module import JesscaModule
-from .sophia_tina_module import SophiaTinaModule
-from .jane_module import JaneModule
-
 __all__ = [
+    'EricModule',
     'JesscaModule',
     'SophiaTinaModule',
-    'JaneModule'
+    'JaneModule',
 ]
+
+
+def __getattr__(name):
+    if name == 'EricModule':
+        from .eric_module import EricModule
+        return EricModule
+    if name == 'JesscaModule':
+        from .jessca_module import JesscaModule
+        return JesscaModule
+    if name == 'SophiaTinaModule':
+        from .sophia_tina_module import SophiaTinaModule
+        return SophiaTinaModule
+    if name == 'JaneModule':
+        from .jane_module import JaneModule
+        return JaneModule
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
