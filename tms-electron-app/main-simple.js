@@ -17,6 +17,7 @@ const APP_DISPLAY_NAME = 'TOS'/*12345678*/;
 const externalModules = {
   infornexus: {
     name: 'Infornexus',
+    description: 'External Electron sub-application for the Infornexus workflow',
     executable: 'electron-app.exe'
   }
 };
@@ -872,6 +873,8 @@ function registerIpcHandlers() {
       return {
         id: moduleId,
         name: moduleInfo.name,
+        description: moduleInfo.description || '',
+        path: moduleInfo.executablePath,
         executablePath: moduleInfo.executablePath,
         available: fs.existsSync(moduleInfo.executablePath)
       };

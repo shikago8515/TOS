@@ -6,9 +6,29 @@ import type {
 
 const moduleName = '浏览器插件'
 
+const browserPluginPreviewModules: BrowserPluginInfo[] = [
+  {
+    id: 'infornexus-auto-add',
+    name: 'Infornexus 自动搜索并添加',
+    provider: 'Infornexus',
+    category: 'Chrome 扩展',
+    version: '1.0',
+    available: true,
+    browserAvailable: false,
+    previewOnly: true,
+    targetUrl: 'https://network.infornexus.com/',
+    matchPatterns: ['https://network.infornexus.com/*'],
+    description: '在 Infornexus 页面读取 XLS/XLSX 第二列 10 位 ID，并自动搜索、勾选和添加。',
+  },
+]
+
+export function hasBrowserPluginBridge(): boolean {
+  return Boolean(window.electronAPI?.getBrowserPlugins)
+}
+
 export async function fetchBrowserPlugins(): Promise<BrowserPluginInfo[]> {
   if (!window.electronAPI?.getBrowserPlugins) {
-    throw new Error('当前运行环境不支持浏览器插件管理')
+    return browserPluginPreviewModules
   }
 
   return window.electronAPI.getBrowserPlugins()

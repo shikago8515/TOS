@@ -30,7 +30,7 @@ export const tosNavGroups = [
   { id: 'excel', label: 'Excel 处理' },
   { id: 'automation', label: '自动化试验区' },
   { id: 'testing', label: '测试' },
-  { id: 'collector', label: 'adidas 材料' },
+  { id: 'collector', label: '网页数据爬取' },
   { id: 'settings', label: '应用' },
 ] as const satisfies readonly TosNavGroupDefinition[]
 
@@ -119,6 +119,17 @@ export const tosModules = [
     order: 70,
   },
   {
+    id: 'infornexus',
+    path: '/infornexus',
+    routeName: 'infornexus',
+    title: 'Infornexus 外部子应用',
+    navLabel: 'Infornexus',
+    group: 'automation',
+    stage: 'validation',
+    description: '以外部整包方式启动 Infornexus Electron 子应用',
+    order: 75,
+  },
+  {
     id: 'adidas-materials',
     path: '/adidas-materials',
     routeName: 'adidas-materials',
@@ -166,12 +177,7 @@ export const tosModules = [
 
 export type TosModuleId = (typeof tosModules)[number]['id']
 
-export const routeRedirects = [
-  {
-    from: '/infornexus',
-    to: '/browser-plugins',
-  },
-] as const
+export const routeRedirects = [] as const
 
 export function getModulesByGroup(group: TosModuleGroup): TosModuleDefinition[] {
   return tosModules

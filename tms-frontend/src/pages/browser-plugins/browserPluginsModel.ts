@@ -18,6 +18,10 @@ export const browserPluginNotes = [
 ] as const
 
 export function getBrowserPluginStatusLabel(plugin: BrowserPluginInfo): string {
+  if (plugin.previewOnly) {
+    return '预览'
+  }
+
   if (!plugin.available) {
     return '插件缺失'
   }
@@ -26,6 +30,10 @@ export function getBrowserPluginStatusLabel(plugin: BrowserPluginInfo): string {
 }
 
 export function getBrowserPluginStatusTone(plugin: BrowserPluginInfo): BrowserPluginStatusTone {
+  if (plugin.previewOnly) {
+    return 'danger'
+  }
+
   return plugin.available && plugin.browserAvailable ? 'success' : 'danger'
 }
 

@@ -18,6 +18,11 @@ release/
 tms-electron-app/backend-runtime/**
 !tms-electron-app/backend-runtime/
 !tms-electron-app/backend-runtime/.gitkeep
+tms-electron-app/external-apps/**/*
+!tms-electron-app/external-apps/
+!tms-electron-app/external-apps/.gitkeep
+!tms-electron-app/external-apps/*/
+!tms-electron-app/external-apps/*/README.md
 tms-backend/build/
 tms-backend/backend-data-test/
 

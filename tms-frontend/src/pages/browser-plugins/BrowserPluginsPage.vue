@@ -61,7 +61,7 @@
             <button
               class="action-button action-button--primary"
               type="button"
-              :disabled="!plugin.available || !plugin.browserAvailable || launchingId === plugin.id"
+              :disabled="plugin.previewOnly || !plugin.available || !plugin.browserAvailable || launchingId === plugin.id"
               @click="startPlugin(plugin.id)"
             >
               {{ launchingId === plugin.id ? '启动中...' : '启动测试浏览器' }}
@@ -106,6 +106,7 @@ import {
 } from './browserPluginsModel'
 import {
   fetchBrowserPlugins,
+  hasBrowserPluginBridge,
   launchBrowserPlugin,
   openBrowserPluginTarget,
   recordBrowserPluginEvent,
@@ -128,7 +129,10 @@ async function refreshPlugins(): Promise<void> {
   try {
     plugins.value = await fetchBrowserPlugins()
 
-    if (!plugins.value.length) {
+    if (!hasBrowserPluginBridge()) {
+      messageTone.value = 'warning'
+      message.value = '浏览器预览模式：已显示插件注册信息，启动测试浏览器需要在 Electron 应用中使用'
+    } else if (!plugins.value.length) {
       messageTone.value = 'warning'
       message.value = '未读取到浏览器插件注册表'
     }

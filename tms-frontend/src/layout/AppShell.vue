@@ -76,12 +76,16 @@ const route = useRoute()
 
 const sidebarGroups = computed(() =>
   tosNavGroups
-    .map((group) => ({
-      ...group,
-      modules: getModulesByGroup(group.id).filter(shouldShowInSidebar),
-      showLabel: group.id === 'testing' || getModulesByGroup(group.id).length > 1,
-    }))
-    .filter((group) => group.modules.length > 0 || group.id === 'testing'),
+    .map((group) => {
+      const modules = getModulesByGroup(group.id).filter(shouldShowInSidebar)
+
+      return {
+        ...group,
+        modules,
+        showLabel: group.id === 'collector' || modules.length > 1,
+      }
+    })
+    .filter((group) => group.modules.length > 0),
 )
 
 const pageTitle = computed(() => {

@@ -14,6 +14,7 @@ export interface ExternalModuleInfo {
   description: string
   available: boolean
   path?: string
+  executablePath?: string
 }
 
 export interface BrowserPluginInfo {
@@ -25,6 +26,7 @@ export interface BrowserPluginInfo {
   version?: string
   available: boolean
   browserAvailable: boolean
+  previewOnly?: boolean
   targetUrl?: string
   matchPatterns: string[]
 }

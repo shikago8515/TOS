@@ -6,6 +6,7 @@ import AdidasMaterialsPage from '../pages/adidas-materials/AdidasMaterialsPage.v
 import BrowserPluginsPage from '../pages/browser-plugins/BrowserPluginsPage.vue'
 import EricPage from '../pages/eric/EricPage.vue'
 import HomePage from '../pages/home/HomePage.vue'
+import InfornexusPage from '../pages/infornexus/InfornexusPage.vue'
 import JanePage from '../pages/jane/JanePage.vue'
 import JesscaPage from '../pages/jessca/JesscaPage.vue'
 import SophiaTinaPage from '../pages/sophia-tina/SophiaTinaPage.vue'
@@ -20,6 +21,7 @@ const routeComponents: Partial<Record<string, Component>> = {
   'sophia-tina': SophiaTinaPage,
   'browser-plugins': BrowserPluginsPage,
   'web-automation': WebAutomationPage,
+  infornexus: InfornexusPage,
   'adidas-materials': AdidasMaterialsPage,
 }
 

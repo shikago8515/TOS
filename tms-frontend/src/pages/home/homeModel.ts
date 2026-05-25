@@ -36,6 +36,7 @@ export const homeShortcutModuleIds = [
   'eric',
   'browser-plugins',
   'web-automation',
+  'infornexus',
   'adidas-materials',
 ] as const satisfies readonly TosModuleId[]
 
