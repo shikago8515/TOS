@@ -1,7 +1,12 @@
 const fs = require('fs')
 const path = require('path')
 const { build } = require('electron-builder')
-const { buildSourceFrontend, copySourceFrontend } = require('./run-pack-default')
+const {
+  buildSourceFrontend,
+  copySourceFrontend,
+  syncAutomationApps,
+  verifyAutomationApps,
+} = require('./run-pack-default')
 
 process.noAsar = true
 
@@ -55,6 +60,8 @@ async function main() {
   })
 
   finalizeUnpackedApp()
+  syncAutomationApps(unpackedDir)
+  verifyAutomationApps(unpackedDir)
 
   requireFile(appAsar, 'app.asar')
   requireFile(productExe, 'TOS executable')

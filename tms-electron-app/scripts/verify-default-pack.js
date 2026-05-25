@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const { syncAutomationApps, verifyAutomationApps } = require('./run-pack-default')
 
 const electronDir = path.resolve(__dirname, '..')
 const markerPath = path.join(electronDir, 'dist', '.pack-default-start.json')
@@ -101,6 +102,8 @@ if (!waitForStableUnpackedApp()) {
 }
 
 finalizeUnpackedApp()
+syncAutomationApps(unpackedDir)
+verifyAutomationApps(unpackedDir)
 
 if (!fs.existsSync(productExe)) {
   console.error(`Packed default app is missing executable: ${productExe}`)

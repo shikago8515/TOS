@@ -6,12 +6,26 @@ const electronDir = path.resolve(__dirname, '..')
 const repoDir = path.resolve(electronDir, '..')
 const frontendDir = path.join(repoDir, 'tms-frontend')
 const frontendNodeModules = path.join(frontendDir, 'node_modules')
+const automationSourceRoot = path.join(electronDir, 'automation-apps')
 const outputDir = path.join(electronDir, 'dist')
 const markerPath = path.join(outputDir, '.pack-default-start.json')
 const unpackedDir = path.join(outputDir, 'win-unpacked')
 const appAsar = path.join(unpackedDir, 'resources', 'app.asar')
 const productExe = path.join(unpackedDir, 'TOS.exe')
 const electronExe = path.join(unpackedDir, 'electron.exe')
+
+const requiredAutomationResources = [
+  'registry.json',
+  'playwright-console/package.json',
+  'playwright-console/bin/start.js',
+  'playwright-console/config/default.config.json',
+  'playwright-console/lib/server/index.js',
+  'playwright-console/public/index.html',
+  'playwright-console/public/app.js',
+  'playwright-console/public/styles.css',
+  'playwright-console/node_modules/express/package.json',
+  'playwright-console/node_modules/playwright/package.json',
+]
 
 function nodeEnv() {
   const env = { ...process.env }
@@ -32,6 +46,65 @@ function nodeEnv() {
 function requireFile(filePath, label) {
   if (!fs.existsSync(filePath)) {
     throw new Error(`${label} not found: ${filePath}`)
+  }
+}
+
+function shouldSkipRuntimeResource(relativePath, isDirectory) {
+  const normalized = relativePath.replace(/\\/g, '/')
+  const parts = normalized.split('/')
+
+  if (parts.includes('uploads') || parts.includes('runs') || parts.includes('playwright-user-data')) {
+    return true
+  }
+
+  if (isDirectory) {
+    return false
+  }
+
+  return normalized.endsWith('.log') || normalized.endsWith('.xlsx')
+}
+
+function copyDirectoryFiltered(sourceDir, targetDir, rootDir = sourceDir) {
+  fs.mkdirSync(targetDir, { recursive: true })
+
+  for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+    const sourcePath = path.join(sourceDir, entry.name)
+    const targetPath = path.join(targetDir, entry.name)
+    const relativePath = path.relative(rootDir, sourcePath)
+
+    if (shouldSkipRuntimeResource(relativePath, entry.isDirectory())) {
+      continue
+    }
+
+    if (entry.isDirectory()) {
+      copyDirectoryFiltered(sourcePath, targetPath, rootDir)
+      continue
+    }
+
+    if (entry.isFile()) {
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true })
+      fs.copyFileSync(sourcePath, targetPath)
+    }
+  }
+}
+
+function getAutomationTargetRoot(targetUnpackedDir) {
+  return path.join(targetUnpackedDir, 'resources', 'automation-apps')
+}
+
+function syncAutomationApps(targetUnpackedDir = unpackedDir) {
+  requireFile(path.join(automationSourceRoot, 'registry.json'), 'automation app registry')
+
+  const targetRoot = getAutomationTargetRoot(targetUnpackedDir)
+  fs.rmSync(targetRoot, { recursive: true, force: true })
+  copyDirectoryFiltered(automationSourceRoot, targetRoot)
+}
+
+function verifyAutomationApps(targetUnpackedDir = unpackedDir) {
+  const targetRoot = getAutomationTargetRoot(targetUnpackedDir)
+
+  for (const relativePath of requiredAutomationResources) {
+    requireFile(path.join(targetRoot, relativePath), `automation resource ${relativePath}`)
   }
 }
 
@@ -151,6 +224,9 @@ function finalizeUnpackedApp() {
   if (!fs.existsSync(appAsar) || !fs.existsSync(productExe)) {
     throw new Error(`Packed app is incomplete: ${unpackedDir}`)
   }
+
+  syncAutomationApps(unpackedDir)
+  verifyAutomationApps(unpackedDir)
 }
 
 function runElectronBuilder() {
@@ -226,4 +302,6 @@ module.exports = {
   buildSourceFrontend,
   copySourceFrontend,
   runFrontendBuild,
+  syncAutomationApps,
+  verifyAutomationApps,
 }

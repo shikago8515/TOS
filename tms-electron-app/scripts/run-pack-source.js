@@ -1,7 +1,12 @@
 const fs = require('fs')
 const path = require('path')
 const { spawnSync } = require('child_process')
-const { buildSourceFrontend, copySourceFrontend } = require('./run-pack-default')
+const {
+  buildSourceFrontend,
+  copySourceFrontend,
+  syncAutomationApps,
+  verifyAutomationApps,
+} = require('./run-pack-default')
 
 const electronDir = path.resolve(__dirname, '..')
 const outputDirName = 'dist-source-frontend'
@@ -152,6 +157,8 @@ async function main() {
   }
 
   finalizeUnpackedApp()
+  syncAutomationApps(unpackedDir)
+  verifyAutomationApps(unpackedDir)
   console.log(`Packed source-frontend test app: ${productExe}`)
 }
 
