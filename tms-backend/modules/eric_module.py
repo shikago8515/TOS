@@ -10,14 +10,21 @@ Flow:
 
 import copy
 import os
+import re
 from contextlib import redirect_stdout
 from datetime import date, datetime, timedelta
 from io import StringIO
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font, PatternFill
 from openpyxl.styles import numbers
 from openpyxl.utils import get_column_letter
+
+try:
+    import xlrd
+except ImportError:  # pragma: no cover - backend requirements include xlrd
+    xlrd = None
 
 
 DATE_FORMAT = "MM/DD/YYYY"
@@ -40,6 +47,14 @@ FINAL_DATA_MIN_WIDTHS = {
     11: 11,
 }
 FINAL_DATA_MAX_WIDTH = 36
+CHECK_OK = "OK"
+CHECK_FINAL_ONLY = "FINAL_ONLY"
+CHECK_YTIC_ONLY = "YTIC_ONLY"
+CHECK_QTY_DIFF = "QTY_DIFF"
+
+SheetRows = List[List[Any]]
+WorkbookRows = Dict[str, SheetRows]
+QuantityKey = Tuple[str, str, str]
 
 
 def ensure_dir(dir_path: str):
@@ -334,6 +349,684 @@ class EricModule:
         print(f"  \u8f93\u51fa final: {output_file}")
         print(f"  Final_Data \u884c\u6570: {len(all_data)}")
         return output_file
+
+    @staticmethod
+    def normalize_text_key(value) -> str:
+        if value is None:
+            return ""
+        return str(value).strip().upper()
+
+    @staticmethod
+    def normalize_po_key(value) -> str:
+        if value is None or value == "":
+            return ""
+        text = str(value).strip()
+        if text.endswith(".0"):
+            text = text[:-2]
+        digits = re.sub(r"\D", "", text)
+        if not digits:
+            return ""
+        return digits.zfill(10)
+
+    @staticmethod
+    def normalize_quantity(value) -> Optional[int]:
+        if value is None or value == "":
+            return None
+        try:
+            return int(round(float(value)))
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def is_meaningful_row(row: Sequence[Any]) -> bool:
+        return any(value is not None and str(value).strip() != "" for value in row)
+
+    @staticmethod
+    def clean_header(value: Any, fallback_index: int) -> str:
+        if value is None or str(value).strip() == "":
+            return f"Column {fallback_index + 1}"
+        return str(value).strip()
+
+    @staticmethod
+    def read_sheet_table(rows: SheetRows) -> Tuple[List[str], List[List[Any]]]:
+        if not rows:
+            return [], []
+
+        header_index = 0
+        for index, row in enumerate(rows):
+            if EricModule.is_meaningful_row(row):
+                header_index = index
+                break
+
+        headers = [
+            EricModule.clean_header(value, index)
+            for index, value in enumerate(rows[header_index])
+        ]
+        data_rows = [
+            list(row)
+            for row in rows[header_index + 1:]
+            if EricModule.is_meaningful_row(row)
+        ]
+        return headers, data_rows
+
+    @staticmethod
+    def index_headers(headers: Sequence[str]) -> Dict[str, int]:
+        return {str(header).strip().upper(): index for index, header in enumerate(headers)}
+
+    @staticmethod
+    def row_value(row: Sequence[Any], index: int) -> Any:
+        if 0 <= index < len(row):
+            return row[index]
+        return None
+
+    @staticmethod
+    def format_ytic_date(value: Any) -> str:
+        if value is None or value == "":
+            return ""
+        if isinstance(value, (datetime, date)):
+            return value.strftime("%m/%d/%Y")
+        if isinstance(value, (int, float)):
+            try:
+                excel_epoch = datetime(1899, 12, 30)
+                return (excel_epoch + timedelta(days=int(value))).strftime("%m/%d/%Y")
+            except Exception:
+                return str(value)
+        return str(value)
+
+    @staticmethod
+    def normalize_ship_mode(value: Any) -> str:
+        text = EricModule.normalize_text_key(value)
+        if text in {"BY SEA", "SEA", "OCEAN"}:
+            return "Ocean"
+        if text in {"BY AIR", "AIR"}:
+            return "Air"
+        return "" if not text else str(value).strip()
+
+    def read_workbook_rows(self, file_path: str) -> WorkbookRows:
+        extension = os.path.splitext(file_path)[1].lower()
+        if extension == ".xls":
+            if xlrd is None:
+                raise ValueError("后端缺少 xlrd，无法读取 .xls 文件")
+            book = xlrd.open_workbook(file_path, on_demand=True)
+            try:
+                return {
+                    sheet_name: [
+                        [sheet.cell_value(row, col) for col in range(sheet.ncols)]
+                        for row in range(sheet.nrows)
+                    ]
+                    for sheet_name in book.sheet_names()
+                    for sheet in [book.sheet_by_name(sheet_name)]
+                }
+            finally:
+                book.release_resources()
+
+        wb = load_workbook(file_path, read_only=True, data_only=True)
+        try:
+            return {
+                ws.title: [list(row) for row in ws.iter_rows(values_only=True)]
+                for ws in wb.worksheets
+            }
+        finally:
+            wb.close()
+
+    def read_final_data(self, final_file: str) -> Dict[str, Any]:
+        wb = load_workbook(final_file, read_only=True, data_only=True)
+        try:
+            if "Final_Data" not in wb.sheetnames:
+                raise ValueError("结果文件缺少 Final_Data 工作表")
+
+            ws = wb["Final_Data"]
+            rows = list(ws.iter_rows(values_only=True))
+            if not rows:
+                raise ValueError("Final_Data 工作表为空")
+
+            headers = [str(value).strip() if value is not None else "" for value in rows[0]]
+            records = [dict(zip(headers, row)) for row in rows[1:] if self.is_meaningful_row(row)]
+        finally:
+            wb.close()
+
+        quantity_map: Dict[QuantityKey, int] = {}
+        po_set = set()
+        for record in records:
+            po_key = self.normalize_po_key(record.get("PO Number1") or record.get("PO Number"))
+            article_key = self.normalize_text_key(record.get("Article Number1") or record.get("Article Number"))
+            size_key = self.normalize_text_key(self.normalize_size_name(record.get("Size")))
+            quantity = self.normalize_quantity(record.get("Quantity"))
+
+            if po_key:
+                po_set.add(po_key)
+            if po_key and article_key and size_key and quantity is not None:
+                key = (po_key, article_key, size_key)
+                quantity_map[key] = quantity_map.get(key, 0) + quantity
+
+        return {
+            "headers": headers,
+            "records": records,
+            "quantity_map": quantity_map,
+            "po_set": po_set,
+        }
+
+    def find_ytic_blocks(self, rows: SheetRows) -> List[Tuple[int, int]]:
+        starts = [
+            index
+            for index, row in enumerate(rows[1:], 1)
+            if self.normalize_po_key(self.row_value(row, 0))
+        ]
+
+        blocks = []
+        for index, start in enumerate(starts):
+            end = starts[index + 1] if index + 1 < len(starts) else len(rows)
+            blocks.append((start, end))
+        return blocks
+
+    def find_row_containing(self, rows: SheetRows, start: int, end: int, text: str) -> Optional[int]:
+        needle = text.upper()
+        for row_index in range(start, min(end, len(rows))):
+            row_text = " | ".join(
+                self.normalize_text_key(value)
+                for value in rows[row_index]
+                if value is not None
+            )
+            if needle in row_text:
+                return row_index
+        return None
+
+    def find_section_header(
+        self,
+        rows: SheetRows,
+        start: int,
+        end: int,
+        required: Sequence[str],
+    ) -> Optional[Tuple[int, Dict[str, int]]]:
+        required_set = {item.upper() for item in required}
+        for row_index in range(start, min(end, len(rows))):
+            header_map = {
+                self.normalize_text_key(value): col_index
+                for col_index, value in enumerate(rows[row_index])
+                if self.normalize_text_key(value)
+            }
+            if required_set.issubset(header_map.keys()):
+                return row_index, header_map
+        return None
+
+    def extract_ytic_size_rows_from_source(
+        self,
+        rows: SheetRows,
+        final_quantity_map: Dict[QuantityKey, int],
+    ) -> List[Dict[str, Any]]:
+        size_rows: List[Dict[str, Any]] = []
+        for block_start, block_end in self.find_ytic_blocks(rows):
+            po_key = self.normalize_po_key(self.row_value(rows[block_start], 0))
+            sub_detail_row = self.find_row_containing(rows, block_start, block_end, "PO Sub Details")
+            if sub_detail_row is None:
+                continue
+
+            header_result = self.find_section_header(
+                rows,
+                sub_detail_row + 1,
+                block_end,
+                ("COLOR", "SIZE", "QTY"),
+            )
+            if header_result is None:
+                continue
+
+            header_row, header_map = header_result
+            color_col = header_map["COLOR"]
+            size_col = header_map["SIZE"]
+            qty_col = header_map["QTY"]
+
+            for row in rows[header_row + 1:block_end]:
+                color = self.normalize_text_key(self.row_value(row, color_col))
+                size = self.normalize_text_key(self.normalize_size_name(self.row_value(row, size_col)))
+                qty = self.normalize_quantity(self.row_value(row, qty_col))
+                if not (po_key and color and size and qty is not None):
+                    if self.is_meaningful_row(row):
+                        continue
+                    break
+
+                key = (po_key, color, size)
+                actual_qty = final_quantity_map.get(key)
+                size_rows.append({
+                    "po": po_key,
+                    "article": color,
+                    "size": size,
+                    "quantity": qty,
+                    "actual_quantity": actual_qty,
+                    "margin": None if actual_qty is None else actual_qty - qty,
+                    "status": self.status_for_quantities(actual_qty, qty),
+                })
+
+        return size_rows
+
+    def extract_ytic_size_rows_from_sheet(
+        self,
+        rows: SheetRows,
+        final_quantity_map: Dict[QuantityKey, int],
+    ) -> List[Dict[str, Any]]:
+        headers, data_rows = self.read_sheet_table(rows)
+        header_index = self.index_headers(headers)
+        required = ("PO NO", "COLOR", "SIZE", "QTY")
+        if not all(name in header_index for name in required):
+            return []
+
+        size_rows: List[Dict[str, Any]] = []
+        for row in data_rows:
+            po_key = self.normalize_po_key(self.row_value(row, header_index["PO NO"]))
+            article = self.normalize_text_key(self.row_value(row, header_index["COLOR"]))
+            size = self.normalize_text_key(self.normalize_size_name(self.row_value(row, header_index["SIZE"])))
+            qty = self.normalize_quantity(self.row_value(row, header_index["QTY"]))
+            if not (po_key and article and size and qty is not None):
+                continue
+
+            key = (po_key, article, size)
+            actual_qty = final_quantity_map.get(key)
+            size_rows.append({
+                "po": po_key,
+                "article": article,
+                "size": size,
+                "quantity": qty,
+                "actual_quantity": actual_qty,
+                "margin": None if actual_qty is None else actual_qty - qty,
+                "status": self.status_for_quantities(actual_qty, qty),
+            })
+
+        return size_rows
+
+    def extract_destination_rows_from_source(self, rows: SheetRows) -> List[List[Any]]:
+        output_rows: List[List[Any]] = []
+        for block_start, _block_end in self.find_ytic_blocks(rows):
+            row = rows[block_start + 5] if block_start + 5 < len(rows) else []
+            po_key = self.normalize_po_key(self.row_value(rows[block_start], 0))
+            destination = self.row_value(row, 12)
+            output_rows.append([
+                po_key,
+                self.row_value(row, 2),
+                self.row_value(row, 4),
+                self.row_value(row, 5),
+                self.row_value(row, 7),
+                self.row_value(row, 9),
+                self.row_value(row, 10),
+                self.format_ytic_date(self.row_value(row, 10)),
+                0,
+                self.row_value(row, 11),
+                self.normalize_ship_mode(self.row_value(row, 11)),
+                "",
+                destination,
+                self.normalize_text_key(destination),
+                1,
+                self.row_value(row, 13),
+                self.row_value(row, 14),
+                self.row_value(row, 15),
+            ])
+        return output_rows
+
+    @staticmethod
+    def to_processed_ytic_row(row: Sequence[Any]) -> List[Any]:
+        return [
+            value
+            for index, value in enumerate(row)
+            if index not in (1, 3)
+        ]
+
+    def first_meaningful_row_after(self, rows: SheetRows, start: int, end: int) -> Optional[List[Any]]:
+        for index in range(start, min(end, len(rows))):
+            if self.is_meaningful_row(rows[index]):
+                return rows[index]
+        return None
+
+    def extract_sp_rows_from_source(self, rows: SheetRows) -> List[List[Any]]:
+        output_rows: List[List[Any]] = []
+        processed_rows = [self.to_processed_ytic_row(row) for row in rows]
+
+        for block_start, block_end in self.find_ytic_blocks(rows):
+            po_key = self.normalize_po_key(self.row_value(rows[block_start], 0))
+            line_row = processed_rows[block_start + 5] if block_start + 5 < len(processed_rows) else []
+            output_rows.append([
+                po_key,
+                *[self.row_value(line_row, index) for index in range(1, 8)],
+                self.row_value(line_row, 8),
+                "",
+                *[self.row_value(line_row, index) for index in range(9, 14)],
+            ])
+
+            sales_row = self.find_row_containing(rows, block_start, block_end, "Sales Confirmation")
+            if sales_row is not None:
+                first_sales_data = self.first_meaningful_row_after(rows, sales_row + 1, block_end)
+                if first_sales_data:
+                    output_rows.append(["", "", *[self.row_value(first_sales_data, index) for index in range(4, 16)]])
+
+            purchase_row = self.find_row_containing(rows, block_start, block_end, "Purchase Confirmation")
+            if purchase_row is not None:
+                first_purchase_data = self.first_meaningful_row_after(rows, purchase_row + 1, block_end)
+                if first_purchase_data:
+                    output_rows.append(["", "", *[self.row_value(first_purchase_data, index) for index in range(4, 16)]])
+
+        return output_rows
+
+    def extract_ytic_tables(
+        self,
+        ytic_file: str,
+        final_quantity_map: Dict[QuantityKey, int],
+    ) -> Dict[str, Any]:
+        workbook_rows = self.read_workbook_rows(ytic_file)
+        lower_name_map = {name.lower(): name for name in workbook_rows}
+        source_sheet_name = lower_name_map.get("源表") or next(iter(workbook_rows))
+        source_rows = workbook_rows[source_sheet_name]
+
+        size_rows = []
+        if "提取尺寸表" in workbook_rows:
+            size_rows = self.extract_ytic_size_rows_from_sheet(
+                workbook_rows["提取尺寸表"],
+                final_quantity_map,
+            )
+        if not size_rows:
+            size_rows = self.extract_ytic_size_rows_from_source(source_rows, final_quantity_map)
+
+        if "提取目的地表" in workbook_rows:
+            destination_headers, destination_rows = self.read_sheet_table(workbook_rows["提取目的地表"])
+        else:
+            destination_headers = [
+                "CUSTOMER PO NUMBER",
+                "*STYLE NUMBER",
+                "CUSTOMER SEASON",
+                "CUSTOMER SEASON YEAR",
+                "TMS OFFICE",
+                "DISTRIBUTOR DIVISION",
+                "*CUSTOMER DELIVERY DATE",
+                "DELIVERY DATE",
+                "DATE MARGIN",
+                "*SHIP MODE",
+                "SHIP MODE",
+                "SHIP MODE NOTE",
+                "*DESTINATION",
+                "DESTINATION",
+                "DESTINATION COUNT",
+                "PO QTY",
+                "SIZE RANGE",
+                "UOM",
+            ]
+            destination_rows = self.extract_destination_rows_from_source(source_rows)
+
+        if "提取SP表" in workbook_rows:
+            sp_headers, sp_rows = self.read_sheet_table(workbook_rows["提取SP表"])
+        else:
+            sp_headers = [
+                "CUSTOMER PO NUMBER",
+                "*STYLE NUMBER",
+                "CUSTOMER SEASON",
+                "CUSTOMER SEASON YEAR",
+                "BILL TO",
+                "CONSIGNEE",
+                "SHIP TO",
+                "DATE",
+                "*CUSTOMER DELIVERY DATE",
+                "",
+                "*SHIP MODE",
+                "*DESTINATION",
+                "PO QTY",
+                "SIZE RANGE",
+                "UOM",
+            ]
+            sp_rows = self.extract_sp_rows_from_source(source_rows)
+
+        quantity_map: Dict[QuantityKey, int] = {}
+        po_set = set()
+        for row in size_rows:
+            po_key = row["po"]
+            article_key = row["article"]
+            size_key = row["size"]
+            quantity = row["quantity"]
+            po_set.add(po_key)
+            key = (po_key, article_key, size_key)
+            quantity_map[key] = quantity_map.get(key, 0) + quantity
+
+        return {
+            "size_rows": size_rows,
+            "quantity_map": quantity_map,
+            "po_set": po_set,
+            "destination_headers": destination_headers,
+            "destination_rows": destination_rows,
+            "sp_headers": sp_headers,
+            "sp_rows": sp_rows,
+            "source_sheet": source_sheet_name,
+        }
+
+    @staticmethod
+    def status_for_quantities(final_quantity: Optional[int], ytic_quantity: Optional[int]) -> str:
+        if final_quantity is None:
+            return CHECK_YTIC_ONLY
+        if ytic_quantity is None:
+            return CHECK_FINAL_ONLY
+        if final_quantity == ytic_quantity:
+            return CHECK_OK
+        return CHECK_QTY_DIFF
+
+    def build_size_check_rows(
+        self,
+        final_quantity_map: Dict[QuantityKey, int],
+        ytic_quantity_map: Dict[QuantityKey, int],
+    ) -> List[List[Any]]:
+        rows: List[List[Any]] = []
+        for key in sorted(set(final_quantity_map) | set(ytic_quantity_map)):
+            final_qty = final_quantity_map.get(key)
+            ytic_qty = ytic_quantity_map.get(key)
+            status = self.status_for_quantities(final_qty, ytic_qty)
+            difference = None
+            if final_qty is not None and ytic_qty is not None:
+                difference = final_qty - ytic_qty
+            rows.append([
+                key[0],
+                key[1],
+                key[2],
+                final_qty,
+                ytic_qty,
+                difference,
+                status,
+            ])
+        return rows
+
+    def build_po_check_rows(self, final_po_set, ytic_po_set) -> List[List[Any]]:
+        rows: List[List[Any]] = []
+        for po_key in sorted(final_po_set | ytic_po_set):
+            in_final = po_key in final_po_set
+            in_ytic = po_key in ytic_po_set
+            if in_final and in_ytic:
+                status = CHECK_OK
+            elif in_final:
+                status = CHECK_FINAL_ONLY
+            else:
+                status = CHECK_YTIC_ONLY
+            rows.append([po_key, in_final, in_ytic, status])
+        return rows
+
+    def write_table_sheet(
+        self,
+        wb: Workbook,
+        title: str,
+        headers: Sequence[str],
+        rows: Sequence[Sequence[Any]],
+    ):
+        ws = wb.create_sheet(title[:31])
+        ws.append(list(headers))
+        for row in rows:
+            ws.append(list(row))
+
+        if headers:
+            max_col_letter = get_column_letter(len(headers))
+            ws.auto_filter.ref = f"A1:{max_col_letter}{max(ws.max_row, 1)}"
+            ws.freeze_panes = "A2"
+            header_fill = PatternFill("solid", fgColor="1F4E78")
+            header_font = Font(bold=True, color="FFFFFF")
+            for cell in ws[1]:
+                cell.fill = header_fill
+                cell.font = header_font
+
+        self.autofit_columns(ws, min_width=8, max_width=42)
+
+    def write_reconciliation_workbook(
+        self,
+        output_file: str,
+        final_data: Dict[str, Any],
+        ytic_data: Dict[str, Any],
+        size_check_rows: List[List[Any]],
+        po_check_rows: List[List[Any]],
+        summary_rows: List[List[Any]],
+    ) -> str:
+        wb = Workbook()
+        ws_summary = wb.active
+        ws_summary.title = "Summary"
+        ws_summary.append(["项目", "值"])
+        for row in summary_rows:
+            ws_summary.append(row)
+
+        for cell in ws_summary[1]:
+            cell.fill = PatternFill("solid", fgColor="1F4E78")
+            cell.font = Font(bold=True, color="FFFFFF")
+        ws_summary.freeze_panes = "A2"
+        self.autofit_columns(ws_summary, min_width=12, max_width=46)
+
+        self.write_table_sheet(
+            wb,
+            "Size_Check",
+            ["PO Number", "Article Number", "Size", "Final Quantity", "YTIC Quantity", "Difference", "Status"],
+            size_check_rows,
+        )
+        self.write_table_sheet(
+            wb,
+            "PO_Check",
+            ["PO Number", "In Final_Data", "In YTIC", "Status"],
+            po_check_rows,
+        )
+
+        final_headers = final_data["headers"]
+        final_rows = [
+            [record.get(header) for header in final_headers]
+            for record in final_data["records"]
+        ]
+        self.write_table_sheet(wb, "Final_Data", final_headers, final_rows)
+
+        ytic_size_rows = [
+            [
+                row["po"],
+                row["article"],
+                row["size"],
+                row["quantity"],
+                row["actual_quantity"],
+                row["margin"],
+                row["status"],
+            ]
+            for row in ytic_data["size_rows"]
+        ]
+        self.write_table_sheet(
+            wb,
+            "YTIC_Size_Extract",
+            ["PO NO", "COLOR", "SIZE", "QTY", "Actual QTY", "QTY Margin", "Status"],
+            ytic_size_rows,
+        )
+        self.write_table_sheet(
+            wb,
+            "YTIC_Destination_Extract",
+            ytic_data["destination_headers"],
+            ytic_data["destination_rows"],
+        )
+        self.write_table_sheet(
+            wb,
+            "YTIC_SP_Extract",
+            ytic_data["sp_headers"],
+            ytic_data["sp_rows"],
+        )
+
+        wb.save(output_file)
+        return output_file
+
+    def process_reconciliation(self, pack_file: str, ytic_file: str, output_dir: str) -> Dict[str, Any]:
+        result: Dict[str, Any] = {
+            "success": False,
+            "message": "",
+            "logs": [],
+            "output_path": None,
+            "row_count": 0,
+            "difference_count": 0,
+            "po_difference_count": 0,
+            "size_check_count": 0,
+        }
+
+        ensure_dir(output_dir)
+        buffer = StringIO()
+        try:
+            with redirect_stdout(buffer):
+                final_result = self.process_file(pack_file, output_dir)
+                if not final_result["success"] or not final_result["output_path"]:
+                    raise ValueError(final_result["message"] or "Final_Data 生成失败")
+
+                final_data = self.read_final_data(final_result["output_path"])
+                ytic_data = self.extract_ytic_tables(ytic_file, final_data["quantity_map"])
+
+                size_check_rows = self.build_size_check_rows(
+                    final_data["quantity_map"],
+                    ytic_data["quantity_map"],
+                )
+                po_check_rows = self.build_po_check_rows(
+                    final_data["po_set"],
+                    ytic_data["po_set"],
+                )
+
+                difference_count = sum(1 for row in size_check_rows if row[-1] != CHECK_OK)
+                po_difference_count = sum(1 for row in po_check_rows if row[-1] != CHECK_OK)
+                final_only_count = sum(1 for row in size_check_rows if row[-1] == CHECK_FINAL_ONLY)
+                ytic_only_count = sum(1 for row in size_check_rows if row[-1] == CHECK_YTIC_ONLY)
+                qty_diff_count = sum(1 for row in size_check_rows if row[-1] == CHECK_QTY_DIFF)
+
+                summary_rows = [
+                    ["Final_Data 行数", len(final_data["records"])],
+                    ["Final_Data PO 数", len(final_data["po_set"])],
+                    ["YTIC 尺寸行数", len(ytic_data["size_rows"])],
+                    ["YTIC PO 数", len(ytic_data["po_set"])],
+                    ["Size_Check 总项", len(size_check_rows)],
+                    ["数量完全一致项", len(size_check_rows) - difference_count],
+                    ["数量差异项", qty_diff_count],
+                    ["Final_Data 独有项", final_only_count],
+                    ["YTIC 独有项", ytic_only_count],
+                    ["PO 差异项", po_difference_count],
+                    ["YTIC 来源 Sheet", ytic_data["source_sheet"]],
+                    ["核对状态", "通过" if difference_count == 0 and po_difference_count == 0 else "存在差异"],
+                ]
+
+                base_name = os.path.splitext(os.path.basename(pack_file))[0]
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_file = os.path.join(output_dir, f"{base_name}_eric_reconcile_{timestamp}.xlsx")
+                self.write_reconciliation_workbook(
+                    output_file,
+                    final_data,
+                    ytic_data,
+                    size_check_rows,
+                    po_check_rows,
+                    summary_rows,
+                )
+
+                print(f"[4/4] 生成 Eric 核对诊断包: {output_file}")
+                print(f"  Size_Check 总项: {len(size_check_rows)}")
+                print(f"  数量差异项: {difference_count}")
+                print(f"  PO 差异项: {po_difference_count}")
+
+            result.update({
+                "success": True,
+                "message": "Eric 最终核对诊断包生成完成",
+                "logs": [line for line in buffer.getvalue().splitlines() if line.strip()],
+                "output_path": output_file,
+                "row_count": len(final_data["records"]),
+                "difference_count": difference_count,
+                "po_difference_count": po_difference_count,
+                "size_check_count": len(size_check_rows),
+            })
+        except Exception as exc:
+            result.update({
+                "success": False,
+                "message": f"Eric 最终核对失败：{exc}",
+                "logs": [line for line in buffer.getvalue().splitlines() if line.strip()] + [str(exc)],
+            })
+
+        return result
 
     def process_file(self, input_file: str, output_dir: str) -> Dict[str, Any]:
         result: Dict[str, Any] = {

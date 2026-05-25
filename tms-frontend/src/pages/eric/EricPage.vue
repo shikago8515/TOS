@@ -1,72 +1,65 @@
 <template>
   <section class="eric-page">
     <div class="eric-panel">
-      <section class="eric-card">
-        <div class="eric-header">
-          <div>
-            <p class="eric-kicker">Excel 处理</p>
-            <h2 class="eric-title">Excel数据处理整合工具-Eric</h2>
-            <p class="eric-desc">
-              将 PO Number1 / Article Number1 辅助列填充、PO 区块拆分和尺码列逆透视整合到 Final_Data 工作表。
-            </p>
-          </div>
-          <span class="eric-stage">测试版 v0.1.2-alpha.1</span>
+      <section class="eric-card eric-hero">
+        <div>
+          <p class="eric-kicker">Excel 处理</p>
+          <h2 class="eric-title">Excel数据处理整合工具-Eric</h2>
+          <p class="eric-desc">
+            将 Pack Size breakdown 生成的 Final_Data 作为过渡明细，并自动解析 YTIC check 完成最终数量核对。
+          </p>
         </div>
+        <span class="eric-stage">核对流程 v0.2.0-alpha.1</span>
       </section>
 
       <div class="eric-alert">
-        测试阶段：请用 Eric 现有样例文件试跑，记录失败样例和期望输出后再转正式模块。
+        默认流程会输出诊断包：Summary、Size_Check、PO_Check、Final_Data 和 YTIC 审计明细。
       </div>
 
       <section class="eric-card">
         <div class="eric-upload-grid">
-          <div class="upload-column">
-            <label
-              class="eric-upload"
-              :class="{ 'eric-upload--dragging': dragging, 'eric-upload--selected': selectedFile }"
-              @dragover.prevent="dragging = true"
-              @dragleave="dragging = false"
-              @drop.prevent="handleDrop"
-            >
-              <input
-                type="file"
-                accept=".xlsx,.xlsm"
-                @change="handleInput"
-              />
-              <span>
-                <strong>{{ selectedFile ? '已选择文件' : '点击上传 Excel' }}</strong>
-                <small>支持 .xlsx / .xlsm</small>
-              </span>
-            </label>
+          <FileUploadBox
+            v-model:files="packFiles"
+            label="Pack Size breakdown"
+            hint="用于生成 Final_Data"
+            accept=".xlsx,.xlsm"
+            accept-label="支持 .xlsx / .xlsm"
+          />
+          <FileUploadBox
+            v-model:files="yticFiles"
+            label="YTIC check"
+            hint="用于提取尺寸、目的地和 SP 核对信息"
+            accept=".xls,.xlsx,.xlsm"
+            accept-label="支持 .xls / .xlsx / .xlsm"
+          />
+        </div>
 
-            <div v-if="selectedFile" class="eric-file">
-              <div>
-                <strong>{{ selectedFile.name }}</strong>
-                <span>{{ formatFileSize(selectedFile.size) }}</span>
-              </div>
-              <button type="button" aria-label="移除文件" @click="removeFile">×</button>
-            </div>
-          </div>
-
-          <div class="eric-steps">
-            <article v-for="step in ericWorkflowSteps" :key="step.index" class="eric-step">
-              <span>{{ step.index }}</span>
-              <strong>{{ step.title }}</strong>
-              <p>{{ step.description }}</p>
-            </article>
-          </div>
+        <div class="eric-steps">
+          <article v-for="step in ericWorkflowSteps" :key="step.index" class="eric-step">
+            <span>{{ step.index }}</span>
+            <strong>{{ step.title }}</strong>
+            <p>{{ step.description }}</p>
+          </article>
         </div>
 
         <div class="eric-actions">
           <button
             class="eric-btn eric-btn--primary"
             type="button"
-            :disabled="!selectedFile || processing"
-            @click="startProcess"
+            :disabled="!canReconcile || processing"
+            @click="startReconcile"
           >
-            {{ processing ? '处理中...' : '开始处理' }}
+            {{ processing ? '处理中...' : '开始核对' }}
           </button>
-          <button class="eric-btn" type="button" @click="resetForm">重置</button>
+          <button
+            class="eric-btn"
+            type="button"
+            :disabled="!packFile || processing"
+            @click="startFinalDataOnly"
+          >
+            仅生成 Final_Data
+          </button>
+          <button class="eric-btn" type="button" :disabled="processing" @click="resetForm">重置</button>
           <button
             v-if="outputFile"
             class="eric-btn"
@@ -117,19 +110,21 @@
 import { computed, ref } from 'vue'
 
 import { readErrorMessage } from '../../shared/api/backendClient'
-import { formatFileSize } from '../../shared/files/fileGroups'
+import FileUploadBox from '../../shared/ui/FileUploadBox.vue'
 import {
   downloadEricResult,
   processEricFile,
+  reconcileEricFiles,
 } from './ericApi'
 import {
   buildEricStats,
   ericWorkflowSteps,
+  readEricDifferenceCount,
   readEricRowCount,
 } from './ericModel'
 
-const selectedFile = ref<File | null>(null)
-const dragging = ref(false)
+const packFiles = ref<File[]>([])
+const yticFiles = ref<File[]>([])
 const processing = ref(false)
 const progress = ref(0)
 const success = ref<boolean | null>(null)
@@ -137,100 +132,151 @@ const message = ref('')
 const logs = ref<string[]>([])
 const outputFile = ref('')
 const rowCount = ref('-')
+const differenceCount = ref('-')
+
+const packFile = computed(() => packFiles.value[0] ?? null)
+const yticFile = computed(() => yticFiles.value[0] ?? null)
+const canReconcile = computed(() => Boolean(packFile.value && yticFile.value))
 
 const stats = computed(() =>
   buildEricStats({
-    hasFile: Boolean(selectedFile.value),
+    packReady: Boolean(packFile.value),
+    yticReady: Boolean(yticFile.value),
     processing: processing.value,
     success: success.value,
     rowCount: rowCount.value,
+    differenceCount: differenceCount.value,
     outputFile: outputFile.value,
   }),
 )
 
-function handleInput(event: Event): void {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0] ?? null
-
-  input.value = ''
-  setSelectedFile(file)
+function isPackFile(file: File): boolean {
+  return /\.(xlsx|xlsm)$/i.test(file.name)
 }
 
-function handleDrop(event: DragEvent): void {
-  dragging.value = false
-  setSelectedFile(event.dataTransfer?.files?.[0] ?? null)
+function isYticFile(file: File): boolean {
+  return /\.(xls|xlsx|xlsm)$/i.test(file.name)
 }
 
-function setSelectedFile(file: File | null): void {
-  if (file && !/\.(xlsx|xlsm)$/i.test(file.name)) {
-    selectedFile.value = null
-    success.value = false
-    message.value = '请选择 .xlsx / .xlsm Excel 文件'
-    outputFile.value = ''
-    rowCount.value = '-'
-    logs.value = [message.value]
-    return
-  }
-
-  selectedFile.value = file
-  success.value = null
-  message.value = ''
-  outputFile.value = ''
-  rowCount.value = '-'
-  logs.value = []
-}
-
-function removeFile(): void {
-  setSelectedFile(null)
-}
-
-async function startProcess(): Promise<void> {
-  if (!selectedFile.value || processing.value) {
-    return
-  }
-
-  processing.value = true
+function resetResultState(): void {
   progress.value = 0
   success.value = null
   message.value = ''
   logs.value = []
   outputFile.value = ''
   rowCount.value = '-'
+  differenceCount.value = '-'
+}
+
+function failValidation(nextMessage: string): boolean {
+  success.value = false
+  message.value = nextMessage
+  logs.value = [nextMessage]
+  outputFile.value = ''
+  rowCount.value = '-'
+  differenceCount.value = '-'
+  return false
+}
+
+function validatePack(): boolean {
+  if (!packFile.value) {
+    return failValidation('请上传 Pack Size breakdown 文件')
+  }
+
+  if (!isPackFile(packFile.value)) {
+    return failValidation('Pack Size breakdown 仅支持 .xlsx / .xlsm')
+  }
+
+  return true
+}
+
+function validateYtic(): boolean {
+  if (!yticFile.value) {
+    return failValidation('请上传 YTIC check 文件')
+  }
+
+  if (!isYticFile(yticFile.value)) {
+    return failValidation('YTIC check 仅支持 .xls / .xlsx / .xlsm')
+  }
+
+  return true
+}
+
+async function startReconcile(): Promise<void> {
+  if (processing.value || !validatePack() || !validateYtic() || !packFile.value || !yticFile.value) {
+    return
+  }
+
+  processing.value = true
+  resetResultState()
 
   try {
-    const response = await processEricFile(
+    const response = await reconcileEricFiles(
       {
-        excelFile: selectedFile.value,
+        packFile: packFile.value,
+        yticFile: yticFile.value,
       },
       (nextProgress) => {
         progress.value = nextProgress
       },
     )
 
-    success.value = response.success
-    message.value = response.message || (response.success ? '处理完成' : '处理失败')
-    logs.value = Array.isArray(response.logs) ? response.logs : []
-    outputFile.value = response.output_file ?? ''
-    rowCount.value = readEricRowCount(response)
+    applyResponse(response, '核对完成', '核对失败')
   } catch (error) {
     success.value = false
-    message.value = readErrorMessage(error, '处理失败')
+    message.value = readErrorMessage(error, '核对失败')
     logs.value = [message.value]
   } finally {
     processing.value = false
   }
 }
 
+async function startFinalDataOnly(): Promise<void> {
+  if (processing.value || !validatePack() || !packFile.value) {
+    return
+  }
+
+  processing.value = true
+  resetResultState()
+
+  try {
+    const response = await processEricFile(
+      {
+        excelFile: packFile.value,
+      },
+      (nextProgress) => {
+        progress.value = nextProgress
+      },
+    )
+
+    applyResponse(response, 'Final_Data 生成完成', 'Final_Data 生成失败')
+  } catch (error) {
+    success.value = false
+    message.value = readErrorMessage(error, 'Final_Data 生成失败')
+    logs.value = [message.value]
+  } finally {
+    processing.value = false
+  }
+}
+
+function applyResponse(
+  response: Awaited<ReturnType<typeof reconcileEricFiles>>,
+  successMessage: string,
+  failureMessage: string,
+): void {
+  success.value = response.success
+  message.value = response.message || (response.success ? successMessage : failureMessage)
+  logs.value = Array.isArray(response.logs) ? response.logs : []
+  outputFile.value = response.output_file ?? ''
+  rowCount.value = readEricRowCount(response)
+  differenceCount.value = readEricDifferenceCount(response)
+}
+
 function resetForm(): void {
-  selectedFile.value = null
-  dragging.value = false
+  packFiles.value = []
+  yticFiles.value = []
   processing.value = false
-  progress.value = 0
-  success.value = null
-  message.value = ''
-  logs.value = []
-  outputFile.value = ''
-  rowCount.value = '-'
+  resetResultState()
 }
 
 async function downloadResult(): Promise<void> {
@@ -260,7 +306,7 @@ async function downloadResult(): Promise<void> {
   box-shadow: 0 18px 44px rgba(15, 23, 42, 0.06);
 }
 
-.eric-header {
+.eric-hero {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -287,6 +333,7 @@ async function downloadResult(): Promise<void> {
 }
 
 .eric-desc {
+  max-width: 920px;
   margin-top: 10px;
   color: #64748b;
   font-size: 15px;
@@ -296,125 +343,39 @@ async function downloadResult(): Promise<void> {
 .eric-stage {
   flex: 0 0 auto;
   padding: 6px 12px;
-  color: #ea580c;
+  color: #0f766e;
   font-size: 13px;
   font-weight: 800;
   white-space: nowrap;
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
+  background: #ecfdf5;
+  border: 1px solid #99f6e4;
   border-radius: 999px;
 }
 
 .eric-alert {
   padding: 13px 16px;
-  color: #c2410c;
+  color: #075985;
   font-size: 14px;
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
   border-radius: 8px;
 }
 
 .eric-upload-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 480px) 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
-}
-
-.upload-column {
-  display: grid;
-  align-content: start;
-  gap: 12px;
-}
-
-.eric-upload {
-  display: grid;
-  min-height: 176px;
-  padding: 22px;
-  color: #1d4ed8;
-  text-align: center;
-  cursor: pointer;
-  background: #eff6ff;
-  border: 2px dashed #93c5fd;
-  border-radius: 8px;
-  place-items: center;
-  transition: border-color 0.16s ease, background 0.16s ease;
-}
-
-.eric-upload:hover,
-.eric-upload--dragging,
-.eric-upload--selected {
-  background: #dbeafe;
-  border-color: #2563eb;
-}
-
-.eric-upload input {
-  display: none;
-}
-
-.eric-upload strong {
-  display: block;
-  margin-bottom: 8px;
-  color: #0f172a;
-  font-size: 17px;
-}
-
-.eric-upload small {
-  display: block;
-  color: #64748b;
-  font-size: 13px;
-}
-
-.eric-file {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 13px 14px;
-  color: #334155;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-}
-
-.eric-file strong {
-  display: block;
-  max-width: 360px;
-  margin-bottom: 3px;
-  overflow: hidden;
-  color: #0f172a;
-  font-size: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.eric-file span {
-  color: #64748b;
-  font-size: 12px;
-}
-
-.eric-file button {
-  flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  color: #94a3b8;
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-  background: transparent;
-  border: 0;
-}
-
-.eric-file button:hover {
-  color: #dc2626;
 }
 
 .eric-steps {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+  margin-top: 18px;
 }
 
 .eric-step {
+  min-width: 0;
   padding: 14px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -443,6 +404,7 @@ async function downloadResult(): Promise<void> {
 
 .eric-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 14px;
   margin-top: 24px;
@@ -462,8 +424,8 @@ async function downloadResult(): Promise<void> {
 
 .eric-btn--primary {
   color: #ffffff;
-  background: #409eff;
-  border-color: #2563eb;
+  background: #2563eb;
+  border-color: #1d4ed8;
 }
 
 .eric-btn:disabled {
@@ -490,7 +452,7 @@ async function downloadResult(): Promise<void> {
 
 .eric-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -555,8 +517,15 @@ async function downloadResult(): Promise<void> {
   border-bottom: 1px solid #e2e8f0;
 }
 
-@media (max-width: 900px) {
-  .eric-header,
+@media (max-width: 1100px) {
+  .eric-steps,
+  .eric-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .eric-hero,
   .eric-upload-grid {
     display: grid;
     grid-template-columns: 1fr;
@@ -565,6 +534,11 @@ async function downloadResult(): Promise<void> {
   .eric-steps,
   .eric-summary {
     grid-template-columns: 1fr;
+  }
+
+  .eric-stage {
+    justify-self: start;
+    white-space: normal;
   }
 }
 </style>

@@ -17,32 +17,41 @@ export interface EricStepItem {
 export const ericWorkflowSteps: EricStepItem[] = [
   {
     index: '01',
-    title: '辅助列',
-    description: '插入 PO Number1 和 Article Number1，并向下填充 PO Number1 空值。',
+    title: '生成 Final_Data',
+    description: '先把 Pack Size breakdown 转成 PO / Article / Size / Quantity 明细。',
   },
   {
     index: '02',
-    title: '拆分 Sheet',
-    description: '按 PO Number 标题行分割业务数据块。',
+    title: '解析 YTIC',
+    description: '读取 YTIC check 的尺寸、目的地和 SP 信息，替代原宏的手工提取。',
   },
   {
     index: '03',
-    title: 'Final_Data',
-    description: '将尺码列转成 Size / Quantity 明细行。',
+    title: '自动核对',
+    description: '按 PO Number1 + Article Number1 + Size 对比双方数量。',
+  },
+  {
+    index: '04',
+    title: '诊断包',
+    description: '输出 Summary、Size_Check、PO_Check 和审计明细表。',
   },
 ]
 
 export function buildEricStats(input: {
-  hasFile: boolean
+  packReady: boolean
+  yticReady: boolean
   processing: boolean
   success: boolean | null
   rowCount: string
+  differenceCount: string
   outputFile: string
 }): EricStatItem[] {
+  const sourceCount = [input.packReady, input.yticReady].filter(Boolean).length
+
   return [
     {
       label: '源文件',
-      value: input.hasFile ? '1' : '0',
+      value: `${sourceCount}/2`,
     },
     {
       label: '处理状态',
@@ -59,6 +68,10 @@ export function buildEricStats(input: {
       value: input.rowCount,
     },
     {
+      label: '差异项',
+      value: input.differenceCount,
+    },
+    {
       label: '结果文件',
       value: input.outputFile ? '已生成' : '未生成',
     },
@@ -67,4 +80,8 @@ export function buildEricStats(input: {
 
 export function readEricRowCount(response: EricProcessResponse): string {
   return response.row_count == null ? '-' : String(response.row_count)
+}
+
+export function readEricDifferenceCount(response: EricProcessResponse): string {
+  return response.difference_count == null ? '-' : String(response.difference_count)
 }
