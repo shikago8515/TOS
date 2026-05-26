@@ -31,6 +31,8 @@ const requiredAutomationResources = [
   'playwright-console/node_modules/get-intrinsic/index.js',
   'playwright-console/node_modules/hasown/index.js',
   'playwright-console/node_modules/merge-descriptors/index.js',
+  'playwright-console/node_modules/send/index.js',
+  'playwright-console/node_modules/statuses/index.js',
   'playwright-console/node_modules/playwright/package.json',
 ]
 

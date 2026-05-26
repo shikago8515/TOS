@@ -50,9 +50,76 @@ export interface DiagnosticEvent {
   payload?: unknown
 }
 
+export interface AppVersionInfo {
+  version: string
+  isPackaged: boolean
+}
+
+export interface UpdateInfo {
+  version: string
+  releaseName?: string
+  releaseDate?: string
+  releaseNotes?: unknown
+}
+
+export interface UpdateChangelog {
+  version: string
+  date?: string
+  added: string[]
+  improved: string[]
+  fixed: string[]
+}
+
+export interface UpdateProgress {
+  percent: number
+  transferred?: number
+  total?: number
+  bytesPerSecond?: number
+}
+
+export type UpdateStatusCode =
+  | 'idle'
+  | 'checking'
+  | 'not-available'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'installing'
+  | 'error'
+  | 'unsupported'
+  | 'not-configured'
+
+export interface UpdateStatus {
+  status: UpdateStatusCode
+  currentVersion: string
+  isPackaged: boolean
+  feedUrl: string
+  feedUrlSource: string
+  updateAvailable: boolean
+  checking: boolean
+  downloading: boolean
+  downloaded: boolean
+  updateInfo: UpdateInfo | null
+  changelog: UpdateChangelog | null
+  progress: UpdateProgress | null
+  error: string | null
+}
+
+export interface UpdateActionResult {
+  success: boolean
+  error?: string
+  status: UpdateStatus
+}
+
 export interface ElectronApi {
   getBackendUrl(): Promise<string>
   startBackendServer(): Promise<ElectronActionResult>
+  getAppVersion(): Promise<AppVersionInfo>
+  getUpdateStatus(): Promise<UpdateStatus>
+  checkForUpdates(): Promise<UpdateActionResult>
+  downloadUpdate(): Promise<UpdateActionResult>
+  installUpdate(): Promise<UpdateActionResult>
+  onUpdateStatus(callback: (status: UpdateStatus) => void): () => void
   openExternal(url: string): Promise<ElectronActionResult>
   recordDiagnosticEvent(event: DiagnosticEvent): Promise<ElectronActionResult>
   exportDiagnosticsPackage(): Promise<ElectronActionResult>

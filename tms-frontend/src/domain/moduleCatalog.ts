@@ -169,8 +169,8 @@ export const tosModules = [
     title: '系统设置',
     navLabel: '系统设置',
     group: 'settings',
-    stage: 'placeholder',
-    description: '功能开发中',
+    stage: 'production',
+    description: '查看版本、检查更新并安装新版 TOS',
     order: 110,
   },
 ] as const satisfies readonly TosModuleDefinition[]

@@ -5,9 +5,10 @@
   "main": "main-simple.js",
   "scripts": {
     "dev": "electron .",
+    "clean:update-artifacts": "node scripts/clean-update-artifacts.js",
     "build:frontend": "node scripts/run-pack-default.js --frontend-only",
     "build": "npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js",
-    "build:win": "npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js --win --x64",
+    "build:win": "npm run build:frontend && npm run clean:update-artifacts && node ./node_modules/electron-builder/out/cli/cli.js --win --x64",
     "pack": "node scripts/run-pack-default.js || node scripts/verify-default-pack.js",
     "pack:source": "node scripts/run-pack-source.js || node scripts/verify-source-pack.js",
     "pack:portable": "node scripts/pack-portable-release.js"
@@ -29,15 +30,24 @@
   },
   "dependencies": {
     "electron-store": "^8.1.0",
+    "electron-updater": "^6.8.3",
     "exceljs": "^4.4.0",
     "ws": "^8.20.1"
   },
   "build": {
     "appId": "com.tomwell.tms",
     "productName": "TOS",
+    "afterPack": "scripts/after-pack.js",
+    "detectUpdateChannel": false,
     "directories": {
       "output": "dist"
     },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://tos-updates-1309726828.cos.ap-guangzhou.myqcloud.com/"
+      }
+    ],
     "files": [
       "**/*",
       "dist-frontend/**/*",

@@ -9,6 +9,7 @@ import HomePage from '../pages/home/HomePage.vue'
 import InfornexusPage from '../pages/infornexus/InfornexusPage.vue'
 import JanePage from '../pages/jane/JanePage.vue'
 import JesscaPage from '../pages/jessca/JesscaPage.vue'
+import SettingsPage from '../pages/settings/SettingsPage.vue'
 import SophiaTinaPage from '../pages/sophia-tina/SophiaTinaPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
 import WebAutomationPage from '../pages/web-automation/WebAutomationPage.vue'
@@ -23,6 +24,7 @@ const routeComponents: Partial<Record<string, Component>> = {
   'web-automation': WebAutomationPage,
   infornexus: InfornexusPage,
   'adidas-materials': AdidasMaterialsPage,
+  settings: SettingsPage,
 }
 
 const redirectRoutes: RouteRecordRaw[] = tosRouteRedirects.map((redirect) => ({
