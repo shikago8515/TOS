@@ -85,6 +85,8 @@ async def process_sophia_tina(
                 "message": result['message'],
                 "logs": result['logs'],
                 "working_count": result['working_count'],
+                "result_count": result.get('result_count', 0),
+                "diagnostics_count": result.get('diagnostics_count', 0),
                 "output_file": os.path.basename(result['output_path'])
             }
         else:

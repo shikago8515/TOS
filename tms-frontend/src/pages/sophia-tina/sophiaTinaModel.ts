@@ -33,6 +33,14 @@ export function buildSophiaTinaSummary(
       value: String(response.working_count ?? '-'),
     },
     {
+      label: 'Result 明细',
+      value: String(response.result_count ?? '-'),
+    },
+    {
+      label: '诊断记录',
+      value: String(response.diagnostics_count ?? '-'),
+    },
+    {
       label: '结果文件',
       value: response.output_file || response.result_file
         ? '已生成'
