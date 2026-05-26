@@ -74,8 +74,6 @@
       "!dist-stability/**/*",
       "!dist-panel-compact/**/*",
       "!dist-source-frontend/**/*",
-      "!dist-*",
-      "!dist-*/**/*",
       "!temp-build-*/**/*",
       "!out/**/*",
       "!release/**/*",
