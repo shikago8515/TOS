@@ -1338,6 +1338,73 @@ function registerIpcHandlers() {
   });
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function loadRendererFallbackPage(browserWindow, message, details = {}) {
+  const detailRows = Object.entries(details)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`)
+    .join('');
+  const html = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>TOS 启动失败</title>
+  <style>
+    body { margin: 0; font-family: "Microsoft YaHei", Arial, sans-serif; background: #f4f8fb; color: #102033; }
+    main { max-width: 760px; margin: 72px auto; padding: 32px; background: #fff; border: 1px solid #d8e2ec; border-radius: 8px; }
+    h1 { margin: 0 0 16px; font-size: 28px; }
+    p { margin: 0 0 20px; color: #506176; line-height: 1.7; }
+    dl { display: grid; grid-template-columns: 140px 1fr; gap: 10px 16px; margin: 0; font-size: 13px; }
+    dt { color: #6b7b8f; }
+    dd { margin: 0; word-break: break-all; font-family: Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>TOS 启动失败</h1>
+    <p>${escapeHtml(message)}</p>
+    <dl>${detailRows}</dl>
+  </main>
+</body>
+</html>`;
+  browserWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+}
+
+function loadPackagedRenderer(browserWindow) {
+  const appPath = app.getAppPath();
+  const indexPath = path.join(appPath, 'dist-frontend', 'index.html');
+
+  if (!fs.existsSync(indexPath)) {
+    const payload = {
+      appPath,
+      indexPath,
+      resourcesPath: process.resourcesPath
+    };
+    writeDiagnosticEvent('frontend', 'index-missing', payload);
+    // 生产包缺前端入口时直接显示错误页，避免用户只看到空白窗口。
+    loadRendererFallbackPage(browserWindow, '未找到前端入口文件，请重新安装完整安装包。', payload);
+    return;
+  }
+
+  browserWindow.loadFile(indexPath).catch((error) => {
+    const payload = {
+      appPath,
+      indexPath,
+      error: error instanceof Error ? error.message : String(error)
+    };
+    writeDiagnosticEvent('frontend', 'load-failure', payload);
+    loadRendererFallbackPage(browserWindow, '前端页面加载失败，请导出诊断包后反馈。', payload);
+  });
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -1352,15 +1419,24 @@ function createWindow() {
     title: APP_DISPLAY_NAME
   });
 
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    writeDiagnosticEvent('frontend', 'did-fail-load', {
+      errorCode,
+      errorDescription,
+      validatedURL
+    });
+  });
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    writeDiagnosticEvent('frontend', 'render-process-gone', details);
+  });
+
   const isDev = !app.isPackaged;
   
   if (isDev) {
     mainWindow.loadURL('http://localhost:5174');
     mainWindow.webContents.openDevTools();
   } else {
-    const appPath = app.getAppPath();
-    const indexPath = path.join(appPath, 'dist-frontend', 'index.html');
-    mainWindow.loadFile(indexPath);
+    loadPackagedRenderer(mainWindow);
   }
 
   mainWindow.on('closed', () => {

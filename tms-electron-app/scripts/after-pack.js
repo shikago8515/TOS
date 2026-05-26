@@ -4,6 +4,7 @@ const {
   syncBackendRuntime,
   verifyBackendRuntime,
 } = require('./run-pack-default')
+const { verifyRendererPackage } = require('./verify-renderer-package')
 
 exports.default = async function afterPack(context) {
   const appOutDir = context?.appOutDir
@@ -16,4 +17,5 @@ exports.default = async function afterPack(context) {
   verifyAutomationApps(appOutDir)
   syncBackendRuntime(appOutDir)
   verifyBackendRuntime(appOutDir)
+  verifyRendererPackage(appOutDir)
 }

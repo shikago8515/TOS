@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "electron .",
     "clean:update-artifacts": "node scripts/clean-update-artifacts.js",
+    "verify:renderer-package": "node scripts/verify-renderer-package.js",
     "write:update-changelog": "node scripts/write-update-changelog.js",
     "build:frontend": "node scripts/run-pack-default.js --frontend-only",
-    "build": "npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js && npm run write:update-changelog",
-    "build:win": "npm run build:frontend && npm run clean:update-artifacts && node ./node_modules/electron-builder/out/cli/cli.js --win --x64 && npm run write:update-changelog",
+    "build": "npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js && npm run verify:renderer-package && npm run write:update-changelog",
+    "build:win": "npm run build:frontend && npm run clean:update-artifacts && node ./node_modules/electron-builder/out/cli/cli.js --win --x64 && npm run verify:renderer-package && npm run write:update-changelog",
     "pack": "node scripts/run-pack-default.js || node scripts/verify-default-pack.js",
     "pack:source": "node scripts/run-pack-source.js || node scripts/verify-source-pack.js",
     "pack:portable": "node scripts/pack-portable-release.js"
