@@ -20,7 +20,7 @@ from api.eric_api import router as eric_router
 app = FastAPI(
     title="TMS Backend API",
     description="TMS 报表自动化工具后端 API 服务",
-    version="0.9.6-beta.1"
+    version="0.9.6-beta.2"
 )
 
 # 添加 CORS 中间件
@@ -44,7 +44,7 @@ app.include_router(eric_router, prefix="/api")
 async def root():
     return {
         "message": "TMS Backend API is running",
-        "version": "0.9.6-beta.1",
+        "version": "0.9.6-beta.2",
         "docs": "/docs"
     }
 

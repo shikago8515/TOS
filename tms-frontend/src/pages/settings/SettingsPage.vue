@@ -132,7 +132,7 @@ type NoticeTone = 'info' | 'success' | 'warning' | 'error'
 type UpdateAction = '' | 'init' | 'check' | 'download' | 'install'
 
 const versionInfo = ref<AppVersionInfo>({
-  version: '0.9.6-beta.1',
+  version: '0.9.6-beta.2',
   isPackaged: false,
 })
 const status = ref<UpdateStatus | null>(null)
@@ -176,8 +176,14 @@ const feedSourceLabels: Record<string, string> = {
 
 const currentVersion = computed(() => status.value?.currentVersion || versionInfo.value.version)
 const latestVersion = computed(() => {
-  const version = status.value?.updateInfo?.version
-  return version ? `v${version}` : '-'
+  const current = currentVersion.value
+  const remote = status.value?.updateInfo?.version
+
+  if (!current && !remote) return '-'
+  if (!remote) return current ? `v${current}` : '-'
+  if (!current) return `v${remote}`
+
+  return compareVersionStrings(remote, current) >= 0 ? `v${remote}` : `v${current}`
 })
 const statusLabel = computed(() => statusLabels[status.value?.status || 'idle'])
 const statusTone = computed(() => statusTones[status.value?.status || 'idle'])
@@ -358,6 +364,60 @@ function formatBytes(value: number): string {
   }
 
   return `${(value / 1024 / 1024).toFixed(1)} MB`
+}
+
+function compareVersionStrings(left: string, right: string): number {
+  const leftVersion = parseVersion(left)
+  const rightVersion = parseVersion(right)
+
+  for (let index = 0; index < 3; index += 1) {
+    const diff = leftVersion.main[index] - rightVersion.main[index]
+    if (diff !== 0) return diff
+  }
+
+  if (!leftVersion.pre.length && rightVersion.pre.length) return 1
+  if (leftVersion.pre.length && !rightVersion.pre.length) return -1
+
+  const maxLength = Math.max(leftVersion.pre.length, rightVersion.pre.length)
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftPart = leftVersion.pre[index]
+    const rightPart = rightVersion.pre[index]
+
+    if (leftPart === undefined) return -1
+    if (rightPart === undefined) return 1
+    if (leftPart === rightPart) continue
+
+    if (typeof leftPart === 'number' && typeof rightPart === 'number') return leftPart - rightPart
+    if (typeof leftPart === 'number') return -1
+    if (typeof rightPart === 'number') return 1
+    return String(leftPart).localeCompare(String(rightPart), undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    })
+  }
+
+  return 0
+}
+
+function parseVersion(version: string): { main: number[]; pre: Array<string | number> } {
+  const normalized = version.replace(/^v/i, '')
+  const [mainText, preText = ''] = normalized.split('-', 2)
+  const main = mainText
+    .split('.')
+    .slice(0, 3)
+    .map((part) => Number.parseInt(part, 10))
+
+  while (main.length < 3) {
+    main.push(0)
+  }
+
+  return {
+    main: main.map((part) => (Number.isFinite(part) ? part : 0)),
+    pre: preText
+      .split(/[.-]/)
+      .filter(Boolean)
+      .map((part) => (/^\d+$/.test(part) ? Number(part) : part.toLowerCase())),
+  }
 }
 </script>
 
