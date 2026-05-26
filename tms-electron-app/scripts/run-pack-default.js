@@ -25,6 +25,8 @@ const requiredAutomationResources = [
   'playwright-console/public/styles.css',
   'playwright-console/node_modules/express/package.json',
   'playwright-console/node_modules/express/lib/express.js',
+  'playwright-console/node_modules/get-intrinsic/index.js',
+  'playwright-console/node_modules/hasown/index.js',
   'playwright-console/node_modules/merge-descriptors/index.js',
   'playwright-console/node_modules/playwright/package.json',
 ]
