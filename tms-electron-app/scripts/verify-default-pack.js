@@ -1,6 +1,12 @@
 const fs = require('fs')
 const path = require('path')
-const { syncAutomationApps, verifyAutomationApps } = require('./run-pack-default')
+const {
+  syncAutomationApps,
+  syncBackendRuntime,
+  verifyAutomationApps,
+  verifyBackendRuntime,
+  verifyPackedRuntimeHealth,
+} = require('./run-pack-default')
 
 const electronDir = path.resolve(__dirname, '..')
 const markerPath = path.join(electronDir, 'dist', '.pack-default-start.json')
@@ -89,26 +95,36 @@ function finalizeUnpackedApp() {
   }
 }
 
-const startedAt = readStartedAt()
+async function main() {
+  const startedAt = readStartedAt()
 
-if (!waitForFreshApp(startedAt)) {
-  console.error(`Packed default app is incomplete or stale: ${unpackedDir}`)
-  process.exit(1)
+  if (!waitForFreshApp(startedAt)) {
+    console.error(`Packed default app is incomplete or stale: ${unpackedDir}`)
+    process.exit(1)
+  }
+
+  if (!waitForStableUnpackedApp()) {
+    console.error(`Packed default app did not settle: ${unpackedDir}`)
+    process.exit(1)
+  }
+
+  finalizeUnpackedApp()
+  syncAutomationApps(unpackedDir)
+  syncBackendRuntime(unpackedDir)
+  verifyAutomationApps(unpackedDir)
+  verifyBackendRuntime(unpackedDir)
+  await verifyPackedRuntimeHealth(unpackedDir)
+
+  if (!fs.existsSync(productExe)) {
+    console.error(`Packed default app is missing executable: ${productExe}`)
+    process.exit(1)
+  }
+
+  console.warn('pack verified fresh win-unpacked output after a non-zero builder exit.')
+  console.log(`Packed default app: ${productExe}`)
 }
 
-if (!waitForStableUnpackedApp()) {
-  console.error(`Packed default app did not settle: ${unpackedDir}`)
+main().catch((error) => {
+  console.error(error)
   process.exit(1)
-}
-
-finalizeUnpackedApp()
-syncAutomationApps(unpackedDir)
-verifyAutomationApps(unpackedDir)
-
-if (!fs.existsSync(productExe)) {
-  console.error(`Packed default app is missing executable: ${productExe}`)
-  process.exit(1)
-}
-
-console.warn('pack verified fresh win-unpacked output after a non-zero builder exit.')
-console.log(`Packed default app: ${productExe}`)
+})

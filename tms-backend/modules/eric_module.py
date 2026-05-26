@@ -29,6 +29,9 @@ except ImportError:  # pragma: no cover - backend requirements include xlrd
 
 DATE_FORMAT = "MM/DD/YYYY"
 EXCEL_DATE_FORMAT = numbers.FORMAT_DATE_XLSX14
+DATE_INPUT_FORMATS = ("%Y-%m-%d", "%Y/%m/%d", "%m/%d/%y", "%m/%d/%Y", "%d/%m/%y", "%d/%m/%Y")
+DATE_SERIAL_MIN = 20000
+DATE_SERIAL_MAX = 80000
 SIZE_COL_START = 10
 SIZE_NAME_ALIASES = {
     "A2XL": "A/2XL",
@@ -47,6 +50,8 @@ FINAL_DATA_MIN_WIDTHS = {
     11: 11,
 }
 FINAL_DATA_MAX_WIDTH = 36
+MAX_AUTOFIT_SCAN_ROWS = 1000
+MAX_AUTOFIT_SCAN_COLS = 80
 CHECK_OK = "OK"
 CHECK_FINAL_ONLY = "FINAL_ONLY"
 CHECK_YTIC_ONLY = "YTIC_ONLY"
@@ -117,11 +122,14 @@ class EricModule:
 
     @staticmethod
     def autofit_columns(ws, min_width=8, max_width=50):
-        for column in ws.columns:
+        max_row = min(ws.max_row, MAX_AUTOFIT_SCAN_ROWS)
+        max_column = min(ws.max_column, MAX_AUTOFIT_SCAN_COLS)
+        for col_idx in range(1, max_column + 1):
             max_length = 0
-            column_letter = get_column_letter(column[0].column)
-            for cell in column:
+            column_letter = get_column_letter(col_idx)
+            for row_idx in range(1, max_row + 1):
                 try:
+                    cell = ws.cell(row=row_idx, column=col_idx)
                     max_length = max(max_length, EricModule.estimate_text_width(cell.value))
                 except Exception:
                     pass
@@ -147,23 +155,67 @@ class EricModule:
     def format_date_value(value):
         if value is None or value == "":
             return ""
-        if isinstance(value, str):
-            date_formats = ["%Y-%m-%d", "%Y/%m/%d", "%m/%d/%y", "%m/%d/%Y", "%d/%m/%y", "%d/%m/%Y"]
-            for fmt in date_formats:
+        return EricModule.normalize_date_output_value(value)
+
+    @staticmethod
+    def is_output_date_header(header: Any) -> bool:
+        text = re.sub(r"\s+", " ", str(header or "").strip().upper())
+        if text == "PODD":
+            return True
+        return "DATE" in text and "MARGIN" not in text
+
+    @staticmethod
+    def normalize_date_output_value(value: Any) -> Any:
+        if value is None or value == "":
+            return value
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if DATE_SERIAL_MIN <= float(value) <= DATE_SERIAL_MAX:
                 try:
-                    return datetime.strptime(value.strip(), fmt).strftime("%m/%d/%Y")
+                    excel_epoch = datetime(1899, 12, 30)
+                    return (excel_epoch + timedelta(days=float(value))).date()
+                except Exception:
+                    return value
+            return value
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return ""
+            if re.fullmatch(r"\d+(?:\.\d+)?", text):
+                numeric_value = float(text)
+                if DATE_SERIAL_MIN <= numeric_value <= DATE_SERIAL_MAX:
+                    try:
+                        excel_epoch = datetime(1899, 12, 30)
+                        return (excel_epoch + timedelta(days=numeric_value)).date()
+                    except Exception:
+                        return value
+            for fmt in DATE_INPUT_FORMATS:
+                try:
+                    return datetime.strptime(text, fmt).date()
                 except ValueError:
                     continue
             return value
-        if isinstance(value, (datetime, date)):
-            return value.strftime("%m/%d/%Y")
-        if isinstance(value, (int, float)):
-            try:
-                excel_epoch = datetime(1899, 12, 30)
-                return (excel_epoch + timedelta(days=int(value))).strftime("%m/%d/%Y")
-            except Exception:
-                return str(value)
-        return str(value)
+        return value
+
+    @staticmethod
+    def apply_date_column_formats(ws, headers: Sequence[str]):
+        date_columns = [
+            index
+            for index, header in enumerate(headers, start=1)
+            if EricModule.is_output_date_header(header)
+        ]
+        for column in date_columns:
+            for row in range(2, ws.max_row + 1):
+                cell = ws.cell(row=row, column=column)
+                if isinstance(cell.value, (datetime, date)):
+                    cell.number_format = EXCEL_DATE_FORMAT
+
+    @staticmethod
+    def format_ytic_date(value: Any) -> Any:
+        return EricModule.normalize_date_output_value(value)
 
     @staticmethod
     def convert_text_to_number(value):
@@ -249,18 +301,15 @@ class EricModule:
                     )
 
                 new_ws = new_wb.create_sheet(title=str(sheet_counter))
-                self.copy_column_widths(ws, new_ws, ws.max_column)
-                target_row = 1
 
                 for source_row in range(header_row, data_end + 1):
                     if self.is_empty_row(ws, source_row):
                         continue
-                    for col in range(1, ws.max_column + 1):
-                        src = ws.cell(row=source_row, column=col)
-                        tgt = new_ws.cell(row=target_row, column=col)
-                        tgt.value = src.value
-                        self.copy_cell_style(src, tgt)
-                    target_row += 1
+                    # 拆分文件只作为下一步数据源，跳过样式复制能明显降低大文件耗时。
+                    new_ws.append([
+                        ws.cell(row=source_row, column=col).value
+                        for col in range(1, ws.max_column + 1)
+                    ])
 
                 first_po = ws.cell(row=header_row + 1, column=1).value if header_row + 1 <= data_end else "N/A"
                 print(f"    \u62c6\u5206 Sheet {sheet_counter}\uff0cPO: {first_po}")
@@ -284,10 +333,15 @@ class EricModule:
             "Gps Customer Number", "Country", "PO Number1", "Article Number1", "Size", "Quantity"
         ]
 
-        all_data = []
+        ws_out = new_wb.create_sheet("Final_Data")
+        for c, header in enumerate(new_headers, 1):
+            ws_out.cell(row=1, column=c, value=header)
+
+        row_count = 0
         emitted_po_keys = set()
 
         def append_final_row(fixed_values, size_name, quantity):
+            nonlocal row_count
             row_values = list(fixed_values)
             po_key = row_values[7] or row_values[0]
             if po_key:
@@ -295,7 +349,18 @@ class EricModule:
                     row_values[0] = None
                 else:
                     emitted_po_keys.add(po_key)
-            all_data.append(row_values + [self.normalize_size_name(size_name), quantity])
+            output_row = [
+                self.normalize_output_value(value)
+                for value in row_values + [self.normalize_size_name(size_name), quantity]
+            ]
+            ws_out.append(output_row)
+            row_count += 1
+
+            current_row = ws_out.max_row
+            ws_out.cell(row=current_row, column=4).number_format = EXCEL_DATE_FORMAT
+            ws_out.cell(row=current_row, column=8).number_format = numbers.FORMAT_GENERAL
+            ws_out.cell(row=current_row, column=6).number_format = "@"
+            ws_out.cell(row=current_row, column=10).number_format = "@"
 
         for ws_name in wb.sheetnames:
             ws = wb[ws_name]
@@ -325,29 +390,11 @@ class EricModule:
                 if not has_qty:
                     append_final_row(fixed, "", "")
 
-        ws_out = new_wb.create_sheet("Final_Data")
-        for c, header in enumerate(new_headers, 1):
-            ws_out.cell(row=1, column=c, value=header)
-
-        for r, row_data in enumerate(all_data, 2):
-            for c, val in enumerate(row_data, 1):
-                output_value = self.normalize_output_value(val)
-                if output_value is None:
-                    continue
-
-                cell = ws_out.cell(row=r, column=c, value=output_value)
-                if c == 4:
-                    cell.number_format = EXCEL_DATE_FORMAT
-                elif c == 8:
-                    cell.number_format = numbers.FORMAT_GENERAL
-                elif c in (6, 10):
-                    cell.number_format = "@"
-
         self.apply_final_data_column_widths(ws_out)
         self.add_auto_filter(ws_out)
         new_wb.save(output_file)
         print(f"  \u8f93\u51fa final: {output_file}")
-        print(f"  Final_Data \u884c\u6570: {len(all_data)}")
+        print(f"  Final_Data \u884c\u6570: {row_count}")
         return output_file
 
     @staticmethod
@@ -420,20 +467,6 @@ class EricModule:
         return None
 
     @staticmethod
-    def format_ytic_date(value: Any) -> str:
-        if value is None or value == "":
-            return ""
-        if isinstance(value, (datetime, date)):
-            return value.strftime("%m/%d/%Y")
-        if isinstance(value, (int, float)):
-            try:
-                excel_epoch = datetime(1899, 12, 30)
-                return (excel_epoch + timedelta(days=int(value))).strftime("%m/%d/%Y")
-            except Exception:
-                return str(value)
-        return str(value)
-
-    @staticmethod
     def normalize_ship_mode(value: Any) -> str:
         text = EricModule.normalize_text_key(value)
         if text in {"BY SEA", "SEA", "OCEAN"}:
@@ -476,12 +509,17 @@ class EricModule:
                 raise ValueError("结果文件缺少 Final_Data 工作表")
 
             ws = wb["Final_Data"]
-            rows = list(ws.iter_rows(values_only=True))
-            if not rows:
+            row_iter = ws.iter_rows(values_only=True)
+            header_row = next(row_iter, None)
+            if not header_row:
                 raise ValueError("Final_Data 工作表为空")
 
-            headers = [str(value).strip() if value is not None else "" for value in rows[0]]
-            records = [dict(zip(headers, row)) for row in rows[1:] if self.is_meaningful_row(row)]
+            headers = [str(value).strip() if value is not None else "" for value in header_row]
+            records = [
+                dict(zip(headers, row))
+                for row in row_iter
+                if self.is_meaningful_row(row)
+            ]
         finally:
             wb.close()
 
@@ -848,8 +886,22 @@ class EricModule:
     ):
         ws = wb.create_sheet(title[:31])
         ws.append(list(headers))
+        date_column_indexes = {
+            index
+            for index, header in enumerate(headers, start=1)
+            if self.is_output_date_header(header)
+        }
         for row in rows:
-            ws.append(list(row))
+            normalized_row = [
+                self.normalize_date_output_value(value) if index in date_column_indexes else value
+                for index, value in enumerate(row, start=1)
+            ]
+            ws.append(normalized_row)
+            current_row = ws.max_row
+            for column in date_column_indexes:
+                cell = ws.cell(row=current_row, column=column)
+                if isinstance(cell.value, (datetime, date)):
+                    cell.number_format = EXCEL_DATE_FORMAT
 
         if headers:
             max_col_letter = get_column_letter(len(headers))

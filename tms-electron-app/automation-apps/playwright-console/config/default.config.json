@@ -15,8 +15,8 @@
   },
   "workflows": {
     "sap-btp-po-decisions": {
-      "name": "bTP系统excel表格上传及Accept确认自动化实现",
-      "description": "从 Excel 读取 PO Number 或 Task ID，进入 SAP BTP Task Center，逐条选择 Accept/Reject。",
+      "name": "SAP BTP PO Decision 批量处理",
+      "description": "从 Excel 读取 Case Number、PO 和 Decision，进入 SAP BTP Task Center 的 Review Sub-Ticket Resolution，逐条选择 Accept/Reject。",
       "startUrl": "https://purchasing-plan-exec-prod-i725c6w9.launchpad.cfapps.eu10.hana.ondemand.com/site?siteId=06dbc9bb-bc49-459f-b6d0-7cd3d7d9e364#Shell-home",
       "worksheetName": "",
       "loginWaitMs": 180000,
@@ -34,7 +34,7 @@
         }
       },
       "taskFilter": {
-        "taskTypeName": "Initiate Cancellation Request",
+        "taskTypeNames": ["Review Sub-Ticket Resolution"],
         "required": false,
         "clearExistingSelection": true,
         "goButtonName": "Go",
@@ -66,6 +66,7 @@
       "selectors": {
         "taskCenterLinkPatterns": ["Task Center.*saas_approuter", "Task Center"],
         "applicationFrame": "iframe[title=\"Application\"]",
+        "taskDefinitionFilterControl": "#application-taskcenter-display-component---worklist--taskDefinitionFilter",
         "taskDefinitionFilterArrow": "#application-taskcenter-display-component---worklist--taskDefinitionFilter-arrow",
         "taskSearchPlaceholder": "Search by Task Title",
         "taskRowPatterns": [
@@ -77,6 +78,7 @@
           "{taskId}"
         ],
         "detailRowPatterns": ["{poNumber}", "{taskId}", "{caseNumber}"],
+        "preferOpenInAppMenu": true,
         "openMenuName": "Open Menu",
         "openInAppName": "Open in App",
         "decisionLabel": "Decision",
