@@ -1,17 +1,14 @@
 {
-  "date": "2026-05-26",
+  "date": "2026-05-27",
   "added": [
-    "Sophia & Tina 报表生成新增 16 列 Result 明细输出",
-    "Result 工作簿新增 Rules 和 Diagnostics 工作表，便于业务核对字段来源和异常原因"
+    "Eric 模块新增 PO_Text_Compare 工作表，用文本方式对比 YTIC_Destination_Extract 的 CUSTOMER PO NUMBER 和 Final_Data 的 PO Number。"
   ],
   "improved": [
-    "Sophia & Tina 改为按 TMS 明细维度汇总 Ordered Quantity，而不是只按 Working Number 汇总",
-    "Factory Price 多价格场景会高亮对应价格和金额单元格",
-    "系统设置页在更新源版本低于当前版本时显示当前版本为最新版"
+    "Eric 核对结果只保留 Size_Check、Final_Data、YTIC_Destination_Extract、YTIC_SP_Extract 和 PO_Text_Compare，减少无关工作表。",
+    "Eric 的 YTIC_SP_Extract 生成逻辑按 YTIC check 模板对齐 Sales Confirmation 和 Purchase Confirmation 行。"
   ],
   "fixed": [
-    "修复 Article 表优先级取价逻辑，按 Final > P2 > P1 > PREC 选择 TMS Price",
-    "修复 Gps Customer Number 被显示为带 .0 数字文本的问题",
-    "同步后端 API 元信息版本到当前应用版本"
+    "修复 Eric 核对结果中 YTIC_SP_Extract 补充行字段错位的问题。",
+    "修复 Eric 核对结果中 YTIC 目的地、尺码和 Final_Data 对比顺序不便核对的问题。"
   ]
 }
