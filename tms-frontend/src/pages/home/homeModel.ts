@@ -12,7 +12,7 @@ export const homeMetricTiles = [
   {
     label: 'Excel 处理',
     value: excelModules.length,
-    detail: '对账核对 / 报表合并 / 成品表生成 / Eric',
+    detail: '对账核对 / 报表合并 / 成品表生成 / BOM汇总 / Eric',
     tone: 'blue',
   },
   {
@@ -33,6 +33,7 @@ export const homeShortcutModuleIds = [
   'jessca',
   'sophia-tina',
   'jane',
+  'jane-bom-summary',
   'eric',
   'browser-plugins',
   'web-automation',

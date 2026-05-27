@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.jessca_api import router as jessca_router
 from api.sophia_tina_api import router as st_router
 from api.jane_api import router as jane_router
+from api.jane_bom_summary_api import router as jane_bom_summary_router
 from api.eric_api import router as eric_router
 
 
@@ -36,6 +37,7 @@ app.add_middleware(
 app.include_router(jessca_router, prefix="/api")
 app.include_router(st_router, prefix="/api")
 app.include_router(jane_router, prefix="/api")
+app.include_router(jane_bom_summary_router, prefix="/api")
 app.include_router(eric_router, prefix="/api")
 
 

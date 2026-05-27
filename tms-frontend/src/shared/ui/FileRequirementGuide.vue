@@ -23,7 +23,7 @@
 </template>
 
 <script setup lang="ts">
-type FileRequirementOwner = 'Jessca' | 'Sophia & Tina' | 'Jane'
+type FileRequirementOwner = 'Jessca' | 'Sophia & Tina' | 'Jane' | 'Jane-BOM汇总'
 
 interface FileRequirementGuideModel {
   summary: string
@@ -113,6 +113,25 @@ const guides: Record<FileRequirementOwner, FileRequirementGuideModel> = {
     notes: [
       'Working Number 筛选为可选项，多个值用英文逗号分隔。',
       '输出标准成品表和对应统计结果。',
+    ],
+  },
+  'Jane-BOM汇总': {
+    summary: 'BOM MAIN COMPONENT 汇总',
+    files: [
+      {
+        name: 'BOM 文件',
+        detail: '可多选，支持 .xlsx / .xlsm',
+        required: true,
+      },
+      {
+        name: 'Pack.xlsx',
+        detail: '只上传 1 个，需包含 Pack、Season、Working Number',
+        required: true,
+      },
+    ],
+    notes: [
+      '按 Working # + Season 匹配 Pack.xlsx。若 Pack 映射冲突会终止处理。',
+      '当前只汇总 BOM 里的 MAIN COMPONENT 物料，并按 Article/Color 展开。',
     ],
   },
 }

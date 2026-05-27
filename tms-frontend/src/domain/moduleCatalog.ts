@@ -86,6 +86,17 @@ export const tosModules = [
     order: 40,
   },
   {
+    id: 'jane-bom-summary',
+    path: '/jane-bom-summary',
+    routeName: 'jane-bom-summary',
+    title: 'Jane-BOM汇总',
+    navLabel: 'Jane-BOM汇总',
+    group: 'excel',
+    stage: 'production',
+    description: 'BOM 文件按 Pack 映射生成 MAIN COMPONENT 汇总',
+    order: 45,
+  },
+  {
     id: 'eric',
     path: '/eric',
     routeName: 'eric',
