@@ -10,7 +10,7 @@ BACKEND_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if BACKEND_ROOT not in sys.path:
     sys.path.insert(0, BACKEND_ROOT)
 
-from modules.eric_module import EricModule
+from modules.eric_module import EricModule, YTIC_DESTINATION_HEADERS, YTIC_SP_HEADERS
 
 
 class EricModuleYticSourceTests(unittest.TestCase):
@@ -240,14 +240,123 @@ class EricModuleYticSourceTests(unittest.TestCase):
         }
         ytic_data = {
             "size_rows": [],
-            "destination_headers": ["CUSTOMER PO NUMBER", "*STYLE NUMBER"],
+            "destination_headers": list(YTIC_DESTINATION_HEADERS),
             "destination_rows": [
-                ["0902792931", "RC2606OW000"],
-                ["0902775685", "RC2606OW000"],
-                ["0900000001", "RC2606OW000"],
+                [
+                    "0902792931",
+                    "RC2606OW000",
+                    "FW26",
+                    "2026",
+                    "TM4",
+                    "ISC",
+                    46218,
+                    46218,
+                    0,
+                    "By Sea",
+                    "Ocean",
+                    "",
+                    "United Arab Emirates",
+                    "UNITED ARAB EMIRATES",
+                    1,
+                    106,
+                    "2T,3T,4T,5T,2XS,XS,S,M,L,XL",
+                    "PIECES",
+                ],
+                [
+                    "0902775685",
+                    "RC2606OW000",
+                    "FW26",
+                    "2026",
+                    "TM4",
+                    "ISC",
+                    46218,
+                    46228,
+                    10,
+                    "By Sea",
+                    "Ocean",
+                    "",
+                    "United Arab Emirates",
+                    "UNITED ARAB EMIRATES",
+                    "0",
+                    106,
+                    "2T,3T,4T,5T,2XS,XS,S,M,L,XL",
+                    "PIECES",
+                ],
+                [
+                    "0900000001",
+                    "RC2606OW000",
+                    "FW26",
+                    "2026",
+                    "TM4",
+                    "ISC",
+                    46218,
+                    46218,
+                    0,
+                    "By Sea",
+                    "Ocean",
+                    "",
+                    "United Arab Emirates",
+                    "UNITED ARAB EMIRATES",
+                    1,
+                    106,
+                    "2T,3T,4T,5T,2XS,XS,S,M,L,XL",
+                    "PIECES",
+                ],
             ],
-            "sp_headers": ["CUSTOMER PO NUMBER", "*STYLE NUMBER"],
-            "sp_rows": [["0902792931", "RC2606OW000"]],
+            "sp_headers": list(YTIC_SP_HEADERS),
+            "sp_rows": [
+                [
+                    "0902792931",
+                    "RC2606OW000",
+                    "FW26",
+                    "2026",
+                    "",
+                    "TM4",
+                    "",
+                    "ISC",
+                    46218,
+                    "",
+                    "By Sea",
+                    "United Arab Emirates",
+                    106,
+                    "2T,3T,4T,5T,2XS,XS,S,M,L,XL",
+                    "PIECES",
+                ],
+                [
+                    "",
+                    "",
+                    "Adidas Originals",
+                    "TMS Fashion (H.K.) Ltd.",
+                    "Adidas International Trading AG",
+                    "Adidas Emerging Markets FZE",
+                    0,
+                    0,
+                    46218,
+                    10,
+                    "By Sea",
+                    "United Arab Emirates",
+                    "",
+                    "",
+                    "",
+                ],
+                [
+                    "",
+                    "",
+                    1,
+                    "Yuen Thai Industrial Company Ltd.",
+                    "TMS Fashion (H.K.) Ltd.",
+                    "Adidas Emerging Markets FZE",
+                    "Retail Logistics LLC, Dubai, UAE",
+                    0,
+                    46208,
+                    "",
+                    "By Sea",
+                    "United Arab Emirates",
+                    "",
+                    "",
+                    "",
+                ],
+            ],
         }
         size_check_rows = [
             ["0902792931", "LI2854", "XS", 32, 32, 0, "OK"],
@@ -264,7 +373,7 @@ class EricModuleYticSourceTests(unittest.TestCase):
                 [],
             )
 
-            wb = load_workbook(output_file, read_only=True, data_only=True)
+            wb = load_workbook(output_file, read_only=True, data_only=False)
             try:
                 self.assertEqual(
                     wb.sheetnames,
@@ -276,6 +385,29 @@ class EricModuleYticSourceTests(unittest.TestCase):
                         "PO_Text_Compare",
                     ],
                 )
+                size_rows = list(wb["Size_Check"].iter_rows(values_only=True))
+                self.assertEqual(
+                    size_rows,
+                    [
+                        (
+                            "PO Number",
+                            "Article Number",
+                            "Size",
+                            "Final Quantity",
+                            "YTIC Quantity",
+                            "FORMULAR",
+                        ),
+                        ("0902792931", "LI2854", "XS", 32, 32, "=D2-E2"),
+                    ],
+                )
+                self.assertNotEqual(wb["Size_Check"]["F1"].fill.fgColor.rgb, "FFFFFF00")
+                self.assertNotEqual(wb["Size_Check"]["F2"].fill.fgColor.rgb, "FFFFFF00")
+                self.assertEqual(wb["YTIC_Destination_Extract"]["I2"].value, "=H2-G2")
+                self.assertEqual(wb["YTIC_Destination_Extract"]["I3"].value, "=H3-G3")
+                self.assertIs(wb["YTIC_Destination_Extract"]["O2"].value, True)
+                self.assertIs(wb["YTIC_Destination_Extract"]["O3"].value, False)
+                self.assertEqual(wb["YTIC_SP_Extract"]["J3"].value, "=I3-I4")
+                self.assertIsNone(wb["YTIC_SP_Extract"]["J4"].value)
                 rows = list(wb["PO_Text_Compare"].iter_rows(values_only=True))
                 self.assertEqual(
                     rows,

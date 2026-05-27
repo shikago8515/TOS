@@ -676,6 +676,16 @@ class EricModule:
             return (left_date - right_date).days
         return ""
 
+    @staticmethod
+    def normalize_destination_count_flag(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        text = str(value).strip().lower()
+        # 兼容 Excel 里可能被读成文本的 0/false。
+        return text not in ("", "0", "false")
+
     def extract_ytic_size_rows_from_source(
         self,
         rows: SheetRows,
@@ -1148,11 +1158,22 @@ class EricModule:
         ws_summary.freeze_panes = "A2"
         self.autofit_columns(ws_summary, min_width=12, max_width=46)
 
+        size_check_export_rows = [
+            [
+                row[0],
+                row[1],
+                row[2],
+                row[3],
+                row[4],
+                f"=D{row_index}-E{row_index}",
+            ]
+            for row_index, row in enumerate(size_check_rows, start=2)
+        ]
         self.write_table_sheet(
             wb,
             "Size_Check",
-            ["PO Number", "Article Number", "Size", "Final Quantity", "YTIC Quantity", "Difference", "Status"],
-            size_check_rows,
+            ["PO Number", "Article Number", "Size", "Final Quantity", "YTIC Quantity", "FORMULAR"],
+            size_check_export_rows,
         )
         self.write_table_sheet(
             wb,
@@ -1186,17 +1207,34 @@ class EricModule:
             ["PO NO", "COLOR", "SIZE", "QTY", "Actual QTY", "QTY Margin", "Status"],
             ytic_size_rows,
         )
+        ytic_destination_rows = []
+        for row_index, row in enumerate(ytic_data["destination_rows"], start=2):
+            export_row = list(row)
+            if len(export_row) > 8 and export_row[8] not in (None, ""):
+                # I 列日期差值由后面的 DELIVERY DATE 减前面的 *CUSTOMER DELIVERY DATE。
+                export_row[8] = f"=H{row_index}-G{row_index}"
+            if len(export_row) > 14 and export_row[14] not in (None, ""):
+                # O 列用 Excel 布尔值表达目的地是否匹配。
+                export_row[14] = self.normalize_destination_count_flag(export_row[14])
+            ytic_destination_rows.append(export_row)
         self.write_table_sheet(
             wb,
             "YTIC_Destination_Extract",
             ytic_data["destination_headers"],
-            ytic_data["destination_rows"],
+            ytic_destination_rows,
         )
+        ytic_sp_rows = []
+        for row_index, row in enumerate(ytic_data["sp_rows"], start=2):
+            export_row = list(row)
+            if len(export_row) > 9 and export_row[9] not in (None, ""):
+                # J 列日期差值由当前行和下一行的 *CUSTOMER DELIVERY DATE 公式计算。
+                export_row[9] = f"=I{row_index}-I{row_index + 1}"
+            ytic_sp_rows.append(export_row)
         self.write_table_sheet(
             wb,
             "YTIC_SP_Extract",
             ytic_data["sp_headers"],
-            ytic_data["sp_rows"],
+            ytic_sp_rows,
         )
         for sheet_name in ("Summary", "PO_Check", "YTIC_Size_Extract"):
             if sheet_name in wb.sheetnames:
