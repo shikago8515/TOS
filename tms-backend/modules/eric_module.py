@@ -56,6 +56,43 @@ CHECK_OK = "OK"
 CHECK_FINAL_ONLY = "FINAL_ONLY"
 CHECK_YTIC_ONLY = "YTIC_ONLY"
 CHECK_QTY_DIFF = "QTY_DIFF"
+YTIC_DESTINATION_HEADERS = [
+    "CUSTOMER PO NUMBER",
+    "*STYLE NUMBER",
+    "CUSTOMER SEASON",
+    "CUSTOMER SEASON YEAR",
+    "TMS OFFICE",
+    "DISTRIBUTOR DIVISION",
+    "*CUSTOMER DELIVERY DATE",
+    "DELIVERY DATE",
+    "DATE MARGIN",
+    "*SHIP MODE",
+    "SHIP MODE",
+    "SHIP MODE NOTE",
+    "*DESTINATION",
+    "DESTINATION",
+    "DESTINATION COUNT",
+    "PO QTY",
+    "SIZE RANGE",
+    "UOM",
+]
+YTIC_SP_HEADERS = [
+    "CUSTOMER PO NUMBER",
+    "*STYLE NUMBER",
+    "CUSTOMER SEASON",
+    "CUSTOMER SEASON YEAR",
+    "BILL TO",
+    "CONSIGNEE",
+    "SHIP TO",
+    "DATE",
+    "*CUSTOMER DELIVERY DATE",
+    "",
+    "*SHIP MODE",
+    "*DESTINATION",
+    "PO QTY",
+    "SIZE RANGE",
+    "UOM",
+]
 
 SheetRows = List[List[Any]]
 WorkbookRows = Dict[str, SheetRows]
@@ -467,13 +504,23 @@ class EricModule:
         return None
 
     @staticmethod
-    def normalize_ship_mode(value: Any) -> str:
+    def normalize_ship_mode(value: Any, destination: Any = None) -> str:
         text = EricModule.normalize_text_key(value)
         if text in {"BY SEA", "SEA", "OCEAN"}:
             return "Ocean"
         if text in {"BY AIR", "AIR"}:
             return "Air"
+        if text in {"BY COURIER", "COURIER", "AIR EXPRESS"}:
+            if EricModule.normalize_text_key(destination) == "GERMANY":
+                return "Ocean"
+            return "Air Express"
         return "" if not text else str(value).strip()
+
+    @staticmethod
+    def standardize_ytic_headers(headers: Sequence[str], standard_headers: Sequence[str]) -> List[str]:
+        if len(headers) == len(standard_headers):
+            return list(standard_headers)
+        return list(headers)
 
     def read_workbook_rows(self, file_path: str) -> WorkbookRows:
         extension = os.path.splitext(file_path)[1].lower()
@@ -524,7 +571,9 @@ class EricModule:
             wb.close()
 
         quantity_map: Dict[QuantityKey, int] = {}
+        quantity_order: List[QuantityKey] = []
         po_set = set()
+        po_order: List[str] = []
         for record in records:
             po_key = self.normalize_po_key(record.get("PO Number1") or record.get("PO Number"))
             article_key = self.normalize_text_key(record.get("Article Number1") or record.get("Article Number"))
@@ -532,16 +581,22 @@ class EricModule:
             quantity = self.normalize_quantity(record.get("Quantity"))
 
             if po_key:
-                po_set.add(po_key)
+                if po_key not in po_set:
+                    po_order.append(po_key)
+                    po_set.add(po_key)
             if po_key and article_key and size_key and quantity is not None:
                 key = (po_key, article_key, size_key)
+                if key not in quantity_map:
+                    quantity_order.append(key)
                 quantity_map[key] = quantity_map.get(key, 0) + quantity
 
         return {
             "headers": headers,
             "records": records,
             "quantity_map": quantity_map,
+            "quantity_order": quantity_order,
             "po_set": po_set,
+            "po_order": po_order,
         }
 
     def find_ytic_blocks(self, rows: SheetRows) -> List[Tuple[int, int]]:
@@ -569,6 +624,13 @@ class EricModule:
                 return row_index
         return None
 
+    def find_exact_section_label(self, rows: SheetRows, start: int, end: int, text: str) -> Optional[int]:
+        needle = self.normalize_text_key(text)
+        for row_index in range(start, min(end, len(rows))):
+            if any(self.normalize_text_key(value) == needle for value in rows[row_index]):
+                return row_index
+        return None
+
     def find_section_header(
         self,
         rows: SheetRows,
@@ -586,6 +648,33 @@ class EricModule:
             if required_set.issubset(header_map.keys()):
                 return row_index, header_map
         return None
+
+    def find_first_section_data_row(
+        self,
+        rows: SheetRows,
+        section_row: int,
+        block_end: int,
+        required: Sequence[str],
+    ) -> Optional[List[Any]]:
+        header_result = self.find_section_header(rows, section_row + 1, block_end, required)
+        if header_result is None:
+            return None
+        header_row, _header_map = header_result
+        return self.first_meaningful_row_after(rows, header_row + 1, block_end)
+
+    @staticmethod
+    def calculate_date_margin(left: Any, right: Any) -> Any:
+        if left in (None, "") or right in (None, ""):
+            return ""
+        if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+            margin = float(left) - float(right)
+            return int(margin) if margin.is_integer() else margin
+
+        left_date = EricModule.normalize_date_output_value(left)
+        right_date = EricModule.normalize_date_output_value(right)
+        if isinstance(left_date, (datetime, date)) and isinstance(right_date, (datetime, date)):
+            return (left_date - right_date).days
+        return ""
 
     def extract_ytic_size_rows_from_source(
         self,
@@ -687,16 +776,24 @@ class EricModule:
                 self.format_ytic_date(self.row_value(row, 10)),
                 0,
                 self.row_value(row, 11),
-                self.normalize_ship_mode(self.row_value(row, 11)),
+                self.normalize_ship_mode(self.row_value(row, 11), destination),
                 "",
                 destination,
-                self.normalize_text_key(destination),
+                self.normalize_destination_name(destination),
                 1,
                 self.row_value(row, 13),
                 self.row_value(row, 14),
                 self.row_value(row, 15),
             ])
         return output_rows
+
+    @staticmethod
+    def normalize_destination_name(value: Any) -> str:
+        text = "" if value is None else str(value).strip()
+        # YTIC 参考表里 Peru 大小写不完全一致；源表无额外标记时保留原值。
+        if text.upper() == "PERU":
+            return text
+        return EricModule.normalize_text_key(value)
 
     @staticmethod
     def to_processed_ytic_row(row: Sequence[Any]) -> List[Any]:
@@ -727,17 +824,66 @@ class EricModule:
                 *[self.row_value(line_row, index) for index in range(9, 14)],
             ])
 
-            sales_row = self.find_row_containing(rows, block_start, block_end, "Sales Confirmation")
+            sales_data = None
+            sales_row = self.find_exact_section_label(rows, block_start, block_end, "Sales Confirmation")
             if sales_row is not None:
-                first_sales_data = self.first_meaningful_row_after(rows, sales_row + 1, block_end)
-                if first_sales_data:
-                    output_rows.append(["", "", *[self.row_value(first_sales_data, index) for index in range(4, 16)]])
+                sales_data = self.find_first_section_data_row(
+                    rows,
+                    sales_row,
+                    block_end,
+                    ("CUSTOMER", "*SELLER/SUPPLIER", "*BILL TO", "*CONSIGNEE"),
+                )
 
-            purchase_row = self.find_row_containing(rows, block_start, block_end, "Purchase Confirmation")
+            purchase_data = None
+            purchase_row = self.find_exact_section_label(rows, block_start, block_end, "Purchase Confirmation")
             if purchase_row is not None:
-                first_purchase_data = self.first_meaningful_row_after(rows, purchase_row + 1, block_end)
-                if first_purchase_data:
-                    output_rows.append(["", "", *[self.row_value(first_purchase_data, index) for index in range(4, 16)]])
+                purchase_data = self.find_first_section_data_row(
+                    rows,
+                    purchase_row,
+                    block_end,
+                    ("PC NUMBER", "FACTORY", "*BILL TO", "*CONSIGNEE", "SHIP TO"),
+                )
+
+            if sales_data:
+                output_rows.append([
+                    "",
+                    "",
+                    self.row_value(sales_data, 4),
+                    self.row_value(sales_data, 5),
+                    self.row_value(sales_data, 6),
+                    self.row_value(sales_data, 7),
+                    self.row_value(sales_data, 8),
+                    self.row_value(sales_data, 9),
+                    self.row_value(sales_data, 10),
+                    self.calculate_date_margin(
+                        self.row_value(sales_data, 10),
+                        self.row_value(purchase_data or [], 10),
+                    ),
+                    self.row_value(sales_data, 11),
+                    self.row_value(sales_data, 12),
+                    "",
+                    "",
+                    "",
+                ])
+
+            if purchase_data:
+                output_rows.append([
+                    "",
+                    "",
+                    self.row_value(purchase_data, 4),
+                    self.row_value(purchase_data, 5),
+                    self.row_value(purchase_data, 6),
+                    self.row_value(purchase_data, 7),
+                    self.row_value(purchase_data, 8),
+                    self.row_value(purchase_data, 9),
+                    self.row_value(purchase_data, 10),
+                    "",
+                    self.row_value(purchase_data, 11),
+                    self.row_value(purchase_data, 12),
+                    "",
+                    "",
+                    "",
+                ])
 
         return output_rows
 
@@ -763,65 +909,40 @@ class EricModule:
         if "提取目的地表" in workbook_rows:
             destination_headers, destination_rows = self.read_sheet_table(workbook_rows["提取目的地表"])
         else:
-            destination_headers = [
-                "CUSTOMER PO NUMBER",
-                "*STYLE NUMBER",
-                "CUSTOMER SEASON",
-                "CUSTOMER SEASON YEAR",
-                "TMS OFFICE",
-                "DISTRIBUTOR DIVISION",
-                "*CUSTOMER DELIVERY DATE",
-                "DELIVERY DATE",
-                "DATE MARGIN",
-                "*SHIP MODE",
-                "SHIP MODE",
-                "SHIP MODE NOTE",
-                "*DESTINATION",
-                "DESTINATION",
-                "DESTINATION COUNT",
-                "PO QTY",
-                "SIZE RANGE",
-                "UOM",
-            ]
+            destination_headers = list(YTIC_DESTINATION_HEADERS)
             destination_rows = self.extract_destination_rows_from_source(source_rows)
+        destination_headers = self.standardize_ytic_headers(destination_headers, YTIC_DESTINATION_HEADERS)
 
         if "提取SP表" in workbook_rows:
             sp_headers, sp_rows = self.read_sheet_table(workbook_rows["提取SP表"])
         else:
-            sp_headers = [
-                "CUSTOMER PO NUMBER",
-                "*STYLE NUMBER",
-                "CUSTOMER SEASON",
-                "CUSTOMER SEASON YEAR",
-                "BILL TO",
-                "CONSIGNEE",
-                "SHIP TO",
-                "DATE",
-                "*CUSTOMER DELIVERY DATE",
-                "",
-                "*SHIP MODE",
-                "*DESTINATION",
-                "PO QTY",
-                "SIZE RANGE",
-                "UOM",
-            ]
+            sp_headers = list(YTIC_SP_HEADERS)
             sp_rows = self.extract_sp_rows_from_source(source_rows)
+        sp_headers = self.standardize_ytic_headers(sp_headers, YTIC_SP_HEADERS)
 
         quantity_map: Dict[QuantityKey, int] = {}
+        quantity_order: List[QuantityKey] = []
         po_set = set()
+        po_order: List[str] = []
         for row in size_rows:
             po_key = row["po"]
             article_key = row["article"]
             size_key = row["size"]
             quantity = row["quantity"]
-            po_set.add(po_key)
+            if po_key not in po_set:
+                po_order.append(po_key)
+                po_set.add(po_key)
             key = (po_key, article_key, size_key)
+            if key not in quantity_map:
+                quantity_order.append(key)
             quantity_map[key] = quantity_map.get(key, 0) + quantity
 
         return {
             "size_rows": size_rows,
             "quantity_map": quantity_map,
+            "quantity_order": quantity_order,
             "po_set": po_set,
+            "po_order": po_order,
             "destination_headers": destination_headers,
             "destination_rows": destination_rows,
             "sp_headers": sp_headers,
@@ -843,9 +964,19 @@ class EricModule:
         self,
         final_quantity_map: Dict[QuantityKey, int],
         ytic_quantity_map: Dict[QuantityKey, int],
+        preferred_order: Optional[Sequence[QuantityKey]] = None,
     ) -> List[List[Any]]:
         rows: List[List[Any]] = []
-        for key in sorted(set(final_quantity_map) | set(ytic_quantity_map)):
+        all_keys = set(final_quantity_map) | set(ytic_quantity_map)
+        ordered_keys: List[QuantityKey] = []
+        seen_keys = set()
+        for key in preferred_order or []:
+            if key in all_keys and key not in seen_keys:
+                ordered_keys.append(key)
+                seen_keys.add(key)
+        ordered_keys.extend(sorted(all_keys - seen_keys))
+
+        for key in ordered_keys:
             final_qty = final_quantity_map.get(key)
             ytic_qty = ytic_quantity_map.get(key)
             status = self.status_for_quantities(final_qty, ytic_qty)
@@ -863,9 +994,18 @@ class EricModule:
             ])
         return rows
 
-    def build_po_check_rows(self, final_po_set, ytic_po_set) -> List[List[Any]]:
+    def build_po_check_rows(self, final_po_set, ytic_po_set, preferred_order: Optional[Sequence[str]] = None) -> List[List[Any]]:
         rows: List[List[Any]] = []
-        for po_key in sorted(final_po_set | ytic_po_set):
+        all_po = final_po_set | ytic_po_set
+        ordered_po: List[str] = []
+        seen_po = set()
+        for po_key in preferred_order or []:
+            if po_key in all_po and po_key not in seen_po:
+                ordered_po.append(po_key)
+                seen_po.add(po_key)
+        ordered_po.extend(sorted(all_po - seen_po))
+
+        for po_key in ordered_po:
             in_final = po_key in final_po_set
             in_ytic = po_key in ytic_po_set
             if in_final and in_ytic:
@@ -1017,10 +1157,12 @@ class EricModule:
                 size_check_rows = self.build_size_check_rows(
                     final_data["quantity_map"],
                     ytic_data["quantity_map"],
+                    ytic_data.get("quantity_order", []) + final_data.get("quantity_order", []),
                 )
                 po_check_rows = self.build_po_check_rows(
                     final_data["po_set"],
                     ytic_data["po_set"],
+                    ytic_data.get("po_order", []) + final_data.get("po_order", []),
                 )
 
                 difference_count = sum(1 for row in size_check_rows if row[-1] != CHECK_OK)
