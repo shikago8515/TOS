@@ -1,9 +1,15 @@
 {
   "date": "2026-05-27",
   "added": [
+    "侧边栏新增收起/展开能力，Excel、自动化试验区和网页数据爬取支持分组折叠。",
+    "Excel 处理下新增 Jane-表格制作分组，统一收纳成品表生成和 Jane-BOM汇总。",
+    "系统设置新增界面语言切换，支持中文和 English。",
+    "Jane 新增 BOM 汇总子模块，支持上传多个 BOM 文件和 Pack.xlsx，并按 Working # + Season 生成 MAIN COMPONENT 汇总表。",
     "Eric 模块新增 PO_Text_Compare 工作表，用文本方式对比 YTIC_Destination_Extract 的 CUSTOMER PO NUMBER 和 Final_Data 的 PO Number。"
   ],
   "improved": [
+    "版本号在系统设置中统一显示为大写 V 前缀，避免侧边栏和底栏出现冗余信息。",
+    "移除 Electron 默认菜单栏，主窗口保留应用自有导航和操作区。",
     "发布构建会自动重建后端 runtime，确保安装包和 portable 使用最新后端逻辑。",
     "Eric 核对结果只保留 Size_Check、Final_Data、YTIC_Destination_Extract、YTIC_SP_Extract 和 PO_Text_Compare，减少无关工作表。",
     "Eric 的 Size_Check、YTIC_Destination_Extract 和 YTIC_SP_Extract 差值列改为 Excel 公式，方便打开文件后复核和追踪。",

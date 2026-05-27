@@ -3,33 +3,48 @@
     <div class="settings-panel">
       <header class="panel-header">
         <div class="header-copy">
-          <p class="panel-kicker">应用</p>
-          <h2 class="panel-title">版本与更新</h2>
+          <p class="panel-kicker">{{ t('app.settings.kicker') }}</p>
+          <h2 class="panel-title">{{ t('app.settings.title') }}</h2>
           <p class="panel-description">
-            当前安装版可从配置的更新源检查新版本，下载完成后会退出并安装新版。
+            {{ t('app.settings.description') }}
           </p>
         </div>
 
-        <span class="status-badge" :class="`status-badge--${statusTone}`">
-          {{ statusLabel }}
-        </span>
+        <div class="header-actions">
+          <label class="language-control">
+            <span>{{ t('app.settings.language') }}</span>
+            <select v-model="currentLanguage">
+              <option
+                v-for="option in languageOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+
+          <span class="status-badge" :class="`status-badge--${statusTone}`">
+            {{ statusLabel }}
+          </span>
+        </div>
       </header>
 
       <dl class="version-grid">
         <div class="version-item">
-          <dt>当前版本</dt>
-          <dd>v{{ currentVersion }}</dd>
+          <dt>{{ t('app.settings.currentVersion') }}</dt>
+          <dd>{{ formatDisplayVersion(currentVersion) }}</dd>
         </div>
         <div class="version-item">
-          <dt>最新版本</dt>
+          <dt>{{ t('app.settings.latestVersion') }}</dt>
           <dd>{{ latestVersion }}</dd>
         </div>
         <div class="version-item">
-          <dt>运行模式</dt>
+          <dt>{{ t('app.settings.runMode') }}</dt>
           <dd>{{ runModeLabel }}</dd>
         </div>
         <div class="version-item">
-          <dt>更新源</dt>
+          <dt>{{ t('app.settings.feedUrl') }}</dt>
           <dd class="mono-value" :title="feedUrl">{{ feedUrlLabel }}</dd>
         </div>
       </dl>
@@ -127,6 +142,7 @@ import {
   installUpdate,
   subscribeUpdateStatus,
 } from './settingsApi'
+import { useAppLanguage } from '../../shared/i18n/appLanguage'
 
 type NoticeTone = 'info' | 'success' | 'warning' | 'error'
 type UpdateAction = '' | 'init' | 'check' | 'download' | 'install'
@@ -140,6 +156,7 @@ const activeAction = ref<UpdateAction>('')
 const message = ref('')
 const messageTone = ref<NoticeTone>('info')
 let unsubscribeUpdateStatus: (() => void) | undefined
+const { currentLanguage, languageOptions, t } = useAppLanguage()
 
 const statusLabels: Record<UpdateStatusCode, string> = {
   idle: '待检查',
@@ -180,10 +197,12 @@ const latestVersion = computed(() => {
   const remote = status.value?.updateInfo?.version
 
   if (!current && !remote) return '-'
-  if (!remote) return current ? `v${current}` : '-'
-  if (!current) return `v${remote}`
+  if (!remote) return current ? formatDisplayVersion(current) : '-'
+  if (!current) return formatDisplayVersion(remote)
 
-  return compareVersionStrings(remote, current) >= 0 ? `v${remote}` : `v${current}`
+  return compareVersionStrings(remote, current) >= 0
+    ? formatDisplayVersion(remote)
+    : formatDisplayVersion(current)
 })
 const statusLabel = computed(() => statusLabels[status.value?.status || 'idle'])
 const statusTone = computed(() => statusTones[status.value?.status || 'idle'])
@@ -366,6 +385,11 @@ function formatBytes(value: number): string {
   return `${(value / 1024 / 1024).toFixed(1)} MB`
 }
 
+function formatDisplayVersion(version: string): string {
+  const normalized = version.trim().replace(/^v/i, '')
+  return normalized ? `V${normalized}` : '-'
+}
+
 function compareVersionStrings(left: string, right: string): number {
   const leftVersion = parseVersion(left)
   const rightVersion = parseVersion(right)
@@ -449,6 +473,33 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
 
 .header-copy {
   min-width: 0;
+}
+
+.header-actions {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+  flex: 0 0 auto;
+}
+
+.language-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.language-control select {
+  height: 32px;
+  min-width: 116px;
+  padding: 0 28px 0 10px;
+  color: #0f172a;
+  font: inherit;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
 }
 
 .panel-kicker,
@@ -737,6 +788,10 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
   .action-row {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .header-actions {
+    justify-items: start;
   }
 
   .status-badge {

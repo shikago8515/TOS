@@ -7,6 +7,7 @@ import BrowserPluginsPage from '../pages/browser-plugins/BrowserPluginsPage.vue'
 import EricPage from '../pages/eric/EricPage.vue'
 import HomePage from '../pages/home/HomePage.vue'
 import InfornexusPage from '../pages/infornexus/InfornexusPage.vue'
+import JaneBomSummaryPage from '../pages/jane-bom-summary/JaneBomSummaryPage.vue'
 import JanePage from '../pages/jane/JanePage.vue'
 import JesscaPage from '../pages/jessca/JesscaPage.vue'
 import SettingsPage from '../pages/settings/SettingsPage.vue'
@@ -18,6 +19,7 @@ const routeComponents: Partial<Record<string, Component>> = {
   home: HomePage,
   jessca: JesscaPage,
   jane: JanePage,
+  'jane-bom-summary': JaneBomSummaryPage,
   eric: EricPage,
   'sophia-tina': SophiaTinaPage,
   'browser-plugins': BrowserPluginsPage,

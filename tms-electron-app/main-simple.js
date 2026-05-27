@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Menu } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const http = require('http');
@@ -1411,6 +1411,7 @@ function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 768,
+    autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -1451,6 +1452,9 @@ function createWindow() {
 
 registerIpcHandlers();
 app.whenReady().then(async () => {
+  // 正式界面不暴露 Electron 默认菜单，避免与业务导航重复。
+  Menu.setApplicationMenu(null);
+
   const backendStatus = await startBackendServer();
   if (!backendStatus.success) {
     console.error(`Backend startup failed: ${backendStatus.error}`);

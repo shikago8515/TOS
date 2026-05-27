@@ -3,6 +3,7 @@ import {
   getModulesByGroup,
   type TosModuleId,
 } from '../../domain/moduleCatalog'
+import type { TranslationKey } from '../../shared/i18n/appLanguage'
 
 const excelModules = getModulesByGroup('excel')
 const collectorModules = getModulesByGroup('collector')
@@ -10,29 +11,35 @@ const automationModules = getModulesByGroup('automation')
 
 export const homeMetricTiles = [
   {
-    label: 'Excel 处理',
+    labelKey: 'app.home.metricExcel',
     value: excelModules.length,
-    detail: '对账核对 / 报表合并 / 成品表生成 / Eric',
+    detailKey: 'app.home.metricExcelDetail',
     tone: 'blue',
   },
   {
-    label: '正式采集',
+    labelKey: 'app.home.metricCollector',
     value: collectorModules.length,
-    detail: 'adidas Materials',
+    detailKey: 'app.home.metricCollectorDetail',
     tone: 'green',
   },
   {
-    label: '测试模块',
+    labelKey: 'app.home.metricTesting',
     value: automationModules.length,
-    detail: automationModules.map((module) => module.navLabel).join(' / '),
+    detailKey: null,
     tone: 'amber',
   },
-] as const
+] as const satisfies readonly {
+  labelKey: TranslationKey
+  value: number
+  detailKey: TranslationKey | null
+  tone: 'blue' | 'green' | 'amber'
+}[]
 
 export const homeShortcutModuleIds = [
   'jessca',
   'sophia-tina',
   'jane',
+  'jane-bom-summary',
   'eric',
   'browser-plugins',
   'web-automation',
@@ -44,27 +51,32 @@ export const homeShortcutModules = homeShortcutModuleIds.map(getModuleById)
 
 export const serviceStatusItems = [
   {
-    label: 'Python 后端',
-    description: '本地业务服务',
-    status: '运行中',
+    labelKey: 'app.home.serviceBackend',
+    descriptionKey: 'app.home.serviceBackendDesc',
+    statusKey: 'app.home.serviceBackendStatus',
     tone: 'online',
   },
   {
-    label: '诊断日志',
-    description: '当前会话与模块运行记录',
-    status: '可导出',
+    labelKey: 'app.home.serviceDiagnostics',
+    descriptionKey: 'app.home.serviceDiagnosticsDesc',
+    statusKey: 'app.home.serviceDiagnosticsStatus',
     tone: 'ready',
   },
   {
-    label: '自动化试验区',
-    description: '浏览器插件 / 网页自动化',
-    status: '业务验证中',
+    labelKey: 'app.home.serviceAutomation',
+    descriptionKey: 'app.home.serviceAutomationDesc',
+    statusKey: 'app.home.serviceAutomationStatus',
     tone: 'working',
   },
   {
-    label: '文件准备',
-    description: 'Excel 模块默认入口',
-    status: '对账核对',
+    labelKey: 'app.home.serviceFiles',
+    descriptionKey: 'app.home.serviceFilesDesc',
+    statusKey: 'app.home.serviceFilesStatus',
     tone: 'ready',
   },
-] as const
+] as const satisfies readonly {
+  labelKey: TranslationKey
+  descriptionKey: TranslationKey
+  statusKey: TranslationKey
+  tone: 'online' | 'ready' | 'working'
+}[]

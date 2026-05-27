@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.jessca_api import router as jessca_router
 from api.sophia_tina_api import router as st_router
 from api.jane_api import router as jane_router
+from api.jane_bom_summary_api import router as jane_bom_summary_router
 from api.eric_api import router as eric_router
 
 
@@ -20,7 +21,7 @@ from api.eric_api import router as eric_router
 app = FastAPI(
     title="TMS Backend API",
     description="TMS 报表自动化工具后端 API 服务",
-    version="0.9.6-beta.4"
+    version="0.9.7-beta.1"
 )
 
 # 添加 CORS 中间件
@@ -36,6 +37,7 @@ app.add_middleware(
 app.include_router(jessca_router, prefix="/api")
 app.include_router(st_router, prefix="/api")
 app.include_router(jane_router, prefix="/api")
+app.include_router(jane_bom_summary_router, prefix="/api")
 app.include_router(eric_router, prefix="/api")
 
 
@@ -44,7 +46,7 @@ app.include_router(eric_router, prefix="/api")
 async def root():
     return {
         "message": "TMS Backend API is running",
-        "version": "0.9.6-beta.4",
+        "version": "0.9.7-beta.1",
         "docs": "/docs"
     }
 

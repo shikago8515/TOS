@@ -3,9 +3,9 @@
     <span class="module-stage" :class="`module-stage--${module.stage}`">
       {{ stageLabel }}
     </span>
-    <strong>{{ module.navLabel }}</strong>
-    <p>{{ module.description }}</p>
-    <span class="module-action">打开</span>
+    <strong>{{ moduleLabel }}</strong>
+    <p>{{ moduleDescription }}</p>
+    <span class="module-action">{{ t('app.module.open') }}</span>
   </RouterLink>
 </template>
 
@@ -14,15 +14,29 @@ import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 
 import {
+  tosModuleStageLabelsEn,
   tosModuleStageLabels,
   type TosModuleDefinition,
 } from '../../domain/moduleCatalog'
+import { useAppLanguage } from '../i18n/appLanguage'
 
 const props = defineProps<{
   module: TosModuleDefinition
 }>()
 
-const stageLabel = computed(() => tosModuleStageLabels[props.module.stage])
+const { isEnglish, t } = useAppLanguage()
+
+const stageLabel = computed(() =>
+  isEnglish.value
+    ? tosModuleStageLabelsEn[props.module.stage]
+    : tosModuleStageLabels[props.module.stage],
+)
+const moduleLabel = computed(() =>
+  isEnglish.value ? props.module.navLabelEn : props.module.navLabel,
+)
+const moduleDescription = computed(() =>
+  isEnglish.value ? props.module.descriptionEn : props.module.description,
+)
 </script>
 
 <style scoped>
