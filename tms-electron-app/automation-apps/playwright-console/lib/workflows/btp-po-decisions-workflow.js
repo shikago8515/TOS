@@ -88,57 +88,71 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
     const selectors = this.config.selectors || {};
     const filter = this.config.taskFilter || {};
     const required = filter.required === true;
+    const taskTypeNames = getTaskTypeNames(filter);
 
-    if (!filter.taskTypeName) {
+    if (!taskTypeNames.length) {
       logger('No task filter configured; using the current Task Center list.');
       return;
     }
 
     try {
-    const arrow = await this.waitForAnyLocator([
-      () => worklist.locator(selectors.taskDefinitionFilterArrow)
-    ], {
-      timeoutMs: 15000,
-      description: 'task type filter'
-    });
-    await this.showVisualStatus(worklist, '筛选任务类型', {
-      '任务类型': filter.taskTypeName
-    });
-    await this.clickWhenReady(arrow, 'task type filter', logger);
-
-    if (filter.clearExistingSelection !== false) {
-      const selectAll = await this.waitForAnyLocator([
-        () => worklist.getByRole('checkbox', { name: /Select All/i }),
-        () => worklist.getByText(/Select All/i)
+      const arrow = await this.waitForAnyLocator([
+        () => worklist.locator(selectors.taskDefinitionFilterArrow)
       ], {
-        timeoutMs: 8000,
-        description: 'Select All checkbox'
+        timeoutMs: 15000,
+        description: 'task type filter'
       });
-      await this.clickWhenReady(selectAll, 'Select All checkbox', logger);
-    }
+      await this.showVisualStatus(worklist, '筛选任务类型', {
+        '任务类型': taskTypeNames.join(', ')
+      });
+      await this.clickWhenReady(arrow, 'task type filter', logger);
 
-    const option = await this.waitForAnyLocator([
-      () => worklist.getByLabel(/Available Values/i).getByText(filter.taskTypeName, { exact: true }),
-      () => worklist.getByText(filter.taskTypeName, { exact: true })
-    ], {
-      timeoutMs: 10000,
-      description: `task type "${filter.taskTypeName}"`
-    });
-    await this.clickWhenReady(option, `task type "${filter.taskTypeName}"`, logger);
+      if (filter.clearExistingSelection === true) {
+        await this.clearTaskTypeSelection(worklist, selectors, logger);
+      }
 
-    const goButton = await this.waitForAnyLocator([
-      () => worklist.getByRole('button', { name: new RegExp(filter.goButtonName || 'Go', 'i') })
-    ], {
-      timeoutMs: 10000,
-      description: 'Go button'
-    });
-    await this.clickWhenReady(goButton, 'Go button', logger);
-    await delay(filter.afterGoMs || 3000);
+      for (const taskTypeName of taskTypeNames) {
+        const option = await this.waitForAnyLocator([
+          () => worklist.getByLabel(/Available Values/i).getByText(taskTypeName, { exact: true }),
+          () => worklist.getByText(taskTypeName, { exact: true })
+        ], {
+          timeoutMs: 10000,
+          description: `task type "${taskTypeName}"`
+        });
+        await this.clickWhenReady(option, `task type "${taskTypeName}"`, logger);
+      }
+
+      const goButton = await this.waitForAnyLocator([
+        () => worklist.getByRole('button', { name: new RegExp(filter.goButtonName || 'Go', 'i') })
+      ], {
+        timeoutMs: 10000,
+        description: 'Go button'
+      });
+      await this.clickWhenReady(goButton, 'Go button', logger);
+      await delay(filter.afterGoMs || 3000);
     } catch (error) {
       if (required) {
         throw error;
       }
       logger(`Task type filter was skipped: ${error.message}`);
+    }
+  }
+
+  async clearTaskTypeSelection(worklist, selectors, logger) {
+    const controlSelector = selectors.taskDefinitionFilterControl
+      || String(selectors.taskDefinitionFilterArrow || '').replace(/-arrow$/, '');
+    const scope = controlSelector ? worklist.locator(controlSelector) : worklist;
+    const clearButtons = scope.locator('[aria-label*="Remove"], [title*="Remove"], .sapMTokenIcon');
+    const count = await clearButtons.count().catch(() => 0);
+
+    for (let index = count - 1; index >= 0; index -= 1) {
+      const button = clearButtons.nth(index);
+      await button.click({ timeout: 1000 }).catch(() => {});
+    }
+
+    if (count) {
+      logger(`Cleared ${count} existing task type selection(s).`);
+      await delay(500);
     }
   }
 
@@ -296,13 +310,22 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
   }
 
   async openTaskDetail(page, worklist, row, logger, item = {}) {
-    const selectors = this.config.selectors || {};
-    const menuName = selectors.openMenuName || 'Open Menu';
-    const openInAppName = selectors.openInAppName || 'Open in App';
+    const preferOpenInAppMenu = this.config.selectors?.preferOpenInAppMenu !== false;
 
-    const popupPromise = page.waitForEvent('popup', { timeout: 10000 }).catch(() => null);
+    if (preferOpenInAppMenu) {
+      const detailPage = await this.openTaskDetailFromMenu(page, worklist, row, logger).catch((error) => {
+        logger(`Open-in-app menu was not available: ${error.message}`);
+        return null;
+      });
+
+      if (detailPage) {
+        return detailPage;
+      }
+    }
+
     const titleTarget = await this.findTaskTitleTarget(row, item).catch(() => null);
     if (titleTarget) {
+      const popupPromise = page.waitForEvent('popup', { timeout: 10000 }).catch(() => null);
       await this.clickWhenReady(titleTarget, `task title ${getTaskSearchText(item)}`, logger);
       const popup = await popupPromise;
       const detailPage = popup || page;
@@ -311,6 +334,14 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
       return detailPage;
     }
 
+    return this.openTaskDetailFromMenu(page, worklist, row, logger);
+  }
+
+  async openTaskDetailFromMenu(page, worklist, row, logger) {
+    const selectors = this.config.selectors || {};
+    const menuName = selectors.openMenuName || 'Open Menu';
+    const openInAppName = selectors.openInAppName || 'Open in App';
+    const popupPromise = page.waitForEvent('popup', { timeout: 10000 }).catch(() => null);
     const menuButton = await this.waitForAnyLocator([
       () => row.getByLabel(menuName, { exact: true }),
       () => row.getByRole('button', { name: new RegExp(menuName, 'i') })
@@ -345,7 +376,7 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
       const textPattern = new RegExp(escapeRegExp(searchText), 'i');
       candidates.push(() => row.getByRole('link', { name: textPattern }));
       candidates.push(() => row.getByRole('button', { name: textPattern }));
-      candidates.push(() => row.getByText(textPattern));
+      candidates.push(() => row.locator('a,button').filter({ hasText: textPattern }));
     }
 
     candidates.push(() => row.locator('a').first());
@@ -419,9 +450,12 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
     const optionTexts = normalizeDecisionOptions(item.decision, this.config.decisionOptions);
     const labelPattern = new RegExp(selectors.decisionLabel || 'Decision', 'i');
 
+    await this.ensureDecisionColumnVisible(surface, row, logger);
+
     const combobox = await this.waitForAnyLocator([
       () => row.getByRole('combobox', { name: labelPattern }),
       () => row.getByRole('combobox'),
+      () => row.locator('[role="combobox"], input[role="combobox"], .sapMInputBaseInner').last(),
       () => row.getByLabel(labelPattern),
       () => surface.getByLabel(labelPattern),
       () => surface.getByRole('combobox', { name: labelPattern })
@@ -465,6 +499,39 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
       logger(`Typed decision option "${fallbackText}" and pressed Enter.`);
     } catch (error) {
       throw new Error(`Could not find decision option "${fallbackText}". ${error.message}`);
+    }
+  }
+
+  async ensureDecisionColumnVisible(surface, row, logger) {
+    const alreadyVisible = await row.getByRole('combobox').first().isVisible({ timeout: 1000 }).catch(() => false);
+    if (alreadyVisible) {
+      return;
+    }
+
+    const body = surface.locator ? surface.locator('body').first() : null;
+    await body?.evaluate(() => {
+      const textOf = (element) => (element?.innerText || element?.textContent || '').trim();
+      const headers = [...document.querySelectorAll('[role="columnheader"], th, .sapUiTableColCell, .sapMColumnHeader')];
+      const decisionHeader = headers.find((element) => /^Decision$/i.test(textOf(element)));
+
+      if (decisionHeader) {
+        decisionHeader.scrollIntoView({ block: 'nearest', inline: 'center' });
+      }
+
+      const scrollables = [...document.querySelectorAll('*')]
+        .filter((element) => element.scrollWidth > element.clientWidth + 40)
+        .sort((left, right) => (right.scrollWidth - right.clientWidth) - (left.scrollWidth - left.clientWidth));
+
+      for (const element of scrollables.slice(0, 4)) {
+        element.scrollLeft = element.scrollWidth;
+      }
+    }).catch(() => {});
+
+    await delay(700);
+
+    const visibleAfterScroll = await row.getByRole('combobox').first().isVisible({ timeout: 1000 }).catch(() => false);
+    if (!visibleAfterScroll) {
+      logger('Decision column was not immediately visible after horizontal scroll; continuing with locator fallbacks.');
     }
   }
 
@@ -577,6 +644,14 @@ function groupItemsByTask(items) {
 
 function getTaskSearchText(item) {
   return item.caseNumber || item.taskId || item.poNumber;
+}
+
+function getTaskTypeNames(filter = {}) {
+  const configuredNames = Array.isArray(filter.taskTypeNames)
+    ? filter.taskTypeNames
+    : [filter.taskTypeName];
+
+  return unique(configuredNames.map((name) => String(name || '').trim()));
 }
 
 function normalizeDecisionOption(decision, options = {}) {

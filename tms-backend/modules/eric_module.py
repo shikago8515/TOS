@@ -29,6 +29,9 @@ except ImportError:  # pragma: no cover - backend requirements include xlrd
 
 DATE_FORMAT = "MM/DD/YYYY"
 EXCEL_DATE_FORMAT = numbers.FORMAT_DATE_XLSX14
+DATE_INPUT_FORMATS = ("%Y-%m-%d", "%Y/%m/%d", "%m/%d/%y", "%m/%d/%Y", "%d/%m/%y", "%d/%m/%Y")
+DATE_SERIAL_MIN = 20000
+DATE_SERIAL_MAX = 80000
 SIZE_COL_START = 10
 SIZE_NAME_ALIASES = {
     "A2XL": "A/2XL",
@@ -47,10 +50,49 @@ FINAL_DATA_MIN_WIDTHS = {
     11: 11,
 }
 FINAL_DATA_MAX_WIDTH = 36
+MAX_AUTOFIT_SCAN_ROWS = 1000
+MAX_AUTOFIT_SCAN_COLS = 80
 CHECK_OK = "OK"
 CHECK_FINAL_ONLY = "FINAL_ONLY"
 CHECK_YTIC_ONLY = "YTIC_ONLY"
 CHECK_QTY_DIFF = "QTY_DIFF"
+YTIC_DESTINATION_HEADERS = [
+    "CUSTOMER PO NUMBER",
+    "*STYLE NUMBER",
+    "CUSTOMER SEASON",
+    "CUSTOMER SEASON YEAR",
+    "TMS OFFICE",
+    "DISTRIBUTOR DIVISION",
+    "*CUSTOMER DELIVERY DATE",
+    "DELIVERY DATE",
+    "DATE MARGIN",
+    "*SHIP MODE",
+    "SHIP MODE",
+    "SHIP MODE NOTE",
+    "*DESTINATION",
+    "DESTINATION",
+    "DESTINATION COUNT",
+    "PO QTY",
+    "SIZE RANGE",
+    "UOM",
+]
+YTIC_SP_HEADERS = [
+    "CUSTOMER PO NUMBER",
+    "*STYLE NUMBER",
+    "CUSTOMER SEASON",
+    "CUSTOMER SEASON YEAR",
+    "BILL TO",
+    "CONSIGNEE",
+    "SHIP TO",
+    "DATE",
+    "*CUSTOMER DELIVERY DATE",
+    "",
+    "*SHIP MODE",
+    "*DESTINATION",
+    "PO QTY",
+    "SIZE RANGE",
+    "UOM",
+]
 
 SheetRows = List[List[Any]]
 WorkbookRows = Dict[str, SheetRows]
@@ -117,11 +159,14 @@ class EricModule:
 
     @staticmethod
     def autofit_columns(ws, min_width=8, max_width=50):
-        for column in ws.columns:
+        max_row = min(ws.max_row, MAX_AUTOFIT_SCAN_ROWS)
+        max_column = min(ws.max_column, MAX_AUTOFIT_SCAN_COLS)
+        for col_idx in range(1, max_column + 1):
             max_length = 0
-            column_letter = get_column_letter(column[0].column)
-            for cell in column:
+            column_letter = get_column_letter(col_idx)
+            for row_idx in range(1, max_row + 1):
                 try:
+                    cell = ws.cell(row=row_idx, column=col_idx)
                     max_length = max(max_length, EricModule.estimate_text_width(cell.value))
                 except Exception:
                     pass
@@ -147,23 +192,67 @@ class EricModule:
     def format_date_value(value):
         if value is None or value == "":
             return ""
-        if isinstance(value, str):
-            date_formats = ["%Y-%m-%d", "%Y/%m/%d", "%m/%d/%y", "%m/%d/%Y", "%d/%m/%y", "%d/%m/%Y"]
-            for fmt in date_formats:
+        return EricModule.normalize_date_output_value(value)
+
+    @staticmethod
+    def is_output_date_header(header: Any) -> bool:
+        text = re.sub(r"\s+", " ", str(header or "").strip().upper())
+        if text == "PODD":
+            return True
+        return "DATE" in text and "MARGIN" not in text
+
+    @staticmethod
+    def normalize_date_output_value(value: Any) -> Any:
+        if value is None or value == "":
+            return value
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if DATE_SERIAL_MIN <= float(value) <= DATE_SERIAL_MAX:
                 try:
-                    return datetime.strptime(value.strip(), fmt).strftime("%m/%d/%Y")
+                    excel_epoch = datetime(1899, 12, 30)
+                    return (excel_epoch + timedelta(days=float(value))).date()
+                except Exception:
+                    return value
+            return value
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return ""
+            if re.fullmatch(r"\d+(?:\.\d+)?", text):
+                numeric_value = float(text)
+                if DATE_SERIAL_MIN <= numeric_value <= DATE_SERIAL_MAX:
+                    try:
+                        excel_epoch = datetime(1899, 12, 30)
+                        return (excel_epoch + timedelta(days=numeric_value)).date()
+                    except Exception:
+                        return value
+            for fmt in DATE_INPUT_FORMATS:
+                try:
+                    return datetime.strptime(text, fmt).date()
                 except ValueError:
                     continue
             return value
-        if isinstance(value, (datetime, date)):
-            return value.strftime("%m/%d/%Y")
-        if isinstance(value, (int, float)):
-            try:
-                excel_epoch = datetime(1899, 12, 30)
-                return (excel_epoch + timedelta(days=int(value))).strftime("%m/%d/%Y")
-            except Exception:
-                return str(value)
-        return str(value)
+        return value
+
+    @staticmethod
+    def apply_date_column_formats(ws, headers: Sequence[str]):
+        date_columns = [
+            index
+            for index, header in enumerate(headers, start=1)
+            if EricModule.is_output_date_header(header)
+        ]
+        for column in date_columns:
+            for row in range(2, ws.max_row + 1):
+                cell = ws.cell(row=row, column=column)
+                if isinstance(cell.value, (datetime, date)):
+                    cell.number_format = EXCEL_DATE_FORMAT
+
+    @staticmethod
+    def format_ytic_date(value: Any) -> Any:
+        return EricModule.normalize_date_output_value(value)
 
     @staticmethod
     def convert_text_to_number(value):
@@ -249,18 +338,15 @@ class EricModule:
                     )
 
                 new_ws = new_wb.create_sheet(title=str(sheet_counter))
-                self.copy_column_widths(ws, new_ws, ws.max_column)
-                target_row = 1
 
                 for source_row in range(header_row, data_end + 1):
                     if self.is_empty_row(ws, source_row):
                         continue
-                    for col in range(1, ws.max_column + 1):
-                        src = ws.cell(row=source_row, column=col)
-                        tgt = new_ws.cell(row=target_row, column=col)
-                        tgt.value = src.value
-                        self.copy_cell_style(src, tgt)
-                    target_row += 1
+                    # 拆分文件只作为下一步数据源，跳过样式复制能明显降低大文件耗时。
+                    new_ws.append([
+                        ws.cell(row=source_row, column=col).value
+                        for col in range(1, ws.max_column + 1)
+                    ])
 
                 first_po = ws.cell(row=header_row + 1, column=1).value if header_row + 1 <= data_end else "N/A"
                 print(f"    \u62c6\u5206 Sheet {sheet_counter}\uff0cPO: {first_po}")
@@ -284,10 +370,15 @@ class EricModule:
             "Gps Customer Number", "Country", "PO Number1", "Article Number1", "Size", "Quantity"
         ]
 
-        all_data = []
+        ws_out = new_wb.create_sheet("Final_Data")
+        for c, header in enumerate(new_headers, 1):
+            ws_out.cell(row=1, column=c, value=header)
+
+        row_count = 0
         emitted_po_keys = set()
 
         def append_final_row(fixed_values, size_name, quantity):
+            nonlocal row_count
             row_values = list(fixed_values)
             po_key = row_values[7] or row_values[0]
             if po_key:
@@ -295,7 +386,18 @@ class EricModule:
                     row_values[0] = None
                 else:
                     emitted_po_keys.add(po_key)
-            all_data.append(row_values + [self.normalize_size_name(size_name), quantity])
+            output_row = [
+                self.normalize_output_value(value)
+                for value in row_values + [self.normalize_size_name(size_name), quantity]
+            ]
+            ws_out.append(output_row)
+            row_count += 1
+
+            current_row = ws_out.max_row
+            ws_out.cell(row=current_row, column=4).number_format = EXCEL_DATE_FORMAT
+            ws_out.cell(row=current_row, column=8).number_format = numbers.FORMAT_GENERAL
+            ws_out.cell(row=current_row, column=6).number_format = "@"
+            ws_out.cell(row=current_row, column=10).number_format = "@"
 
         for ws_name in wb.sheetnames:
             ws = wb[ws_name]
@@ -325,29 +427,11 @@ class EricModule:
                 if not has_qty:
                     append_final_row(fixed, "", "")
 
-        ws_out = new_wb.create_sheet("Final_Data")
-        for c, header in enumerate(new_headers, 1):
-            ws_out.cell(row=1, column=c, value=header)
-
-        for r, row_data in enumerate(all_data, 2):
-            for c, val in enumerate(row_data, 1):
-                output_value = self.normalize_output_value(val)
-                if output_value is None:
-                    continue
-
-                cell = ws_out.cell(row=r, column=c, value=output_value)
-                if c == 4:
-                    cell.number_format = EXCEL_DATE_FORMAT
-                elif c == 8:
-                    cell.number_format = numbers.FORMAT_GENERAL
-                elif c in (6, 10):
-                    cell.number_format = "@"
-
         self.apply_final_data_column_widths(ws_out)
         self.add_auto_filter(ws_out)
         new_wb.save(output_file)
         print(f"  \u8f93\u51fa final: {output_file}")
-        print(f"  Final_Data \u884c\u6570: {len(all_data)}")
+        print(f"  Final_Data \u884c\u6570: {row_count}")
         return output_file
 
     @staticmethod
@@ -420,27 +504,23 @@ class EricModule:
         return None
 
     @staticmethod
-    def format_ytic_date(value: Any) -> str:
-        if value is None or value == "":
-            return ""
-        if isinstance(value, (datetime, date)):
-            return value.strftime("%m/%d/%Y")
-        if isinstance(value, (int, float)):
-            try:
-                excel_epoch = datetime(1899, 12, 30)
-                return (excel_epoch + timedelta(days=int(value))).strftime("%m/%d/%Y")
-            except Exception:
-                return str(value)
-        return str(value)
-
-    @staticmethod
-    def normalize_ship_mode(value: Any) -> str:
+    def normalize_ship_mode(value: Any, destination: Any = None) -> str:
         text = EricModule.normalize_text_key(value)
         if text in {"BY SEA", "SEA", "OCEAN"}:
             return "Ocean"
         if text in {"BY AIR", "AIR"}:
             return "Air"
+        if text in {"BY COURIER", "COURIER", "AIR EXPRESS"}:
+            if EricModule.normalize_text_key(destination) == "GERMANY":
+                return "Ocean"
+            return "Air Express"
         return "" if not text else str(value).strip()
+
+    @staticmethod
+    def standardize_ytic_headers(headers: Sequence[str], standard_headers: Sequence[str]) -> List[str]:
+        if len(headers) == len(standard_headers):
+            return list(standard_headers)
+        return list(headers)
 
     def read_workbook_rows(self, file_path: str) -> WorkbookRows:
         extension = os.path.splitext(file_path)[1].lower()
@@ -476,17 +556,24 @@ class EricModule:
                 raise ValueError("结果文件缺少 Final_Data 工作表")
 
             ws = wb["Final_Data"]
-            rows = list(ws.iter_rows(values_only=True))
-            if not rows:
+            row_iter = ws.iter_rows(values_only=True)
+            header_row = next(row_iter, None)
+            if not header_row:
                 raise ValueError("Final_Data 工作表为空")
 
-            headers = [str(value).strip() if value is not None else "" for value in rows[0]]
-            records = [dict(zip(headers, row)) for row in rows[1:] if self.is_meaningful_row(row)]
+            headers = [str(value).strip() if value is not None else "" for value in header_row]
+            records = [
+                dict(zip(headers, row))
+                for row in row_iter
+                if self.is_meaningful_row(row)
+            ]
         finally:
             wb.close()
 
         quantity_map: Dict[QuantityKey, int] = {}
+        quantity_order: List[QuantityKey] = []
         po_set = set()
+        po_order: List[str] = []
         for record in records:
             po_key = self.normalize_po_key(record.get("PO Number1") or record.get("PO Number"))
             article_key = self.normalize_text_key(record.get("Article Number1") or record.get("Article Number"))
@@ -494,16 +581,22 @@ class EricModule:
             quantity = self.normalize_quantity(record.get("Quantity"))
 
             if po_key:
-                po_set.add(po_key)
+                if po_key not in po_set:
+                    po_order.append(po_key)
+                    po_set.add(po_key)
             if po_key and article_key and size_key and quantity is not None:
                 key = (po_key, article_key, size_key)
+                if key not in quantity_map:
+                    quantity_order.append(key)
                 quantity_map[key] = quantity_map.get(key, 0) + quantity
 
         return {
             "headers": headers,
             "records": records,
             "quantity_map": quantity_map,
+            "quantity_order": quantity_order,
             "po_set": po_set,
+            "po_order": po_order,
         }
 
     def find_ytic_blocks(self, rows: SheetRows) -> List[Tuple[int, int]]:
@@ -531,6 +624,13 @@ class EricModule:
                 return row_index
         return None
 
+    def find_exact_section_label(self, rows: SheetRows, start: int, end: int, text: str) -> Optional[int]:
+        needle = self.normalize_text_key(text)
+        for row_index in range(start, min(end, len(rows))):
+            if any(self.normalize_text_key(value) == needle for value in rows[row_index]):
+                return row_index
+        return None
+
     def find_section_header(
         self,
         rows: SheetRows,
@@ -548,6 +648,43 @@ class EricModule:
             if required_set.issubset(header_map.keys()):
                 return row_index, header_map
         return None
+
+    def find_first_section_data_row(
+        self,
+        rows: SheetRows,
+        section_row: int,
+        block_end: int,
+        required: Sequence[str],
+    ) -> Optional[List[Any]]:
+        header_result = self.find_section_header(rows, section_row + 1, block_end, required)
+        if header_result is None:
+            return None
+        header_row, _header_map = header_result
+        return self.first_meaningful_row_after(rows, header_row + 1, block_end)
+
+    @staticmethod
+    def calculate_date_margin(left: Any, right: Any) -> Any:
+        if left in (None, "") or right in (None, ""):
+            return ""
+        if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+            margin = float(left) - float(right)
+            return int(margin) if margin.is_integer() else margin
+
+        left_date = EricModule.normalize_date_output_value(left)
+        right_date = EricModule.normalize_date_output_value(right)
+        if isinstance(left_date, (datetime, date)) and isinstance(right_date, (datetime, date)):
+            return (left_date - right_date).days
+        return ""
+
+    @staticmethod
+    def normalize_destination_count_flag(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        text = str(value).strip().lower()
+        # 兼容 Excel 里可能被读成文本的 0/false。
+        return text not in ("", "0", "false")
 
     def extract_ytic_size_rows_from_source(
         self,
@@ -649,16 +786,24 @@ class EricModule:
                 self.format_ytic_date(self.row_value(row, 10)),
                 0,
                 self.row_value(row, 11),
-                self.normalize_ship_mode(self.row_value(row, 11)),
+                self.normalize_ship_mode(self.row_value(row, 11), destination),
                 "",
                 destination,
-                self.normalize_text_key(destination),
+                self.normalize_destination_name(destination),
                 1,
                 self.row_value(row, 13),
                 self.row_value(row, 14),
                 self.row_value(row, 15),
             ])
         return output_rows
+
+    @staticmethod
+    def normalize_destination_name(value: Any) -> str:
+        text = "" if value is None else str(value).strip()
+        # YTIC 参考表里 Peru 大小写不完全一致；源表无额外标记时保留原值。
+        if text.upper() == "PERU":
+            return text
+        return EricModule.normalize_text_key(value)
 
     @staticmethod
     def to_processed_ytic_row(row: Sequence[Any]) -> List[Any]:
@@ -689,17 +834,66 @@ class EricModule:
                 *[self.row_value(line_row, index) for index in range(9, 14)],
             ])
 
-            sales_row = self.find_row_containing(rows, block_start, block_end, "Sales Confirmation")
+            sales_data = None
+            sales_row = self.find_exact_section_label(rows, block_start, block_end, "Sales Confirmation")
             if sales_row is not None:
-                first_sales_data = self.first_meaningful_row_after(rows, sales_row + 1, block_end)
-                if first_sales_data:
-                    output_rows.append(["", "", *[self.row_value(first_sales_data, index) for index in range(4, 16)]])
+                sales_data = self.find_first_section_data_row(
+                    rows,
+                    sales_row,
+                    block_end,
+                    ("CUSTOMER", "*SELLER/SUPPLIER", "*BILL TO", "*CONSIGNEE"),
+                )
 
-            purchase_row = self.find_row_containing(rows, block_start, block_end, "Purchase Confirmation")
+            purchase_data = None
+            purchase_row = self.find_exact_section_label(rows, block_start, block_end, "Purchase Confirmation")
             if purchase_row is not None:
-                first_purchase_data = self.first_meaningful_row_after(rows, purchase_row + 1, block_end)
-                if first_purchase_data:
-                    output_rows.append(["", "", *[self.row_value(first_purchase_data, index) for index in range(4, 16)]])
+                purchase_data = self.find_first_section_data_row(
+                    rows,
+                    purchase_row,
+                    block_end,
+                    ("PC NUMBER", "FACTORY", "*BILL TO", "*CONSIGNEE", "SHIP TO"),
+                )
+
+            if sales_data:
+                output_rows.append([
+                    "",
+                    "",
+                    self.row_value(sales_data, 4),
+                    self.row_value(sales_data, 5),
+                    self.row_value(sales_data, 6),
+                    self.row_value(sales_data, 7),
+                    self.row_value(sales_data, 8),
+                    self.row_value(sales_data, 9),
+                    self.row_value(sales_data, 10),
+                    self.calculate_date_margin(
+                        self.row_value(sales_data, 10),
+                        self.row_value(purchase_data or [], 10),
+                    ),
+                    self.row_value(sales_data, 11),
+                    self.row_value(sales_data, 12),
+                    "",
+                    "",
+                    "",
+                ])
+
+            if purchase_data:
+                output_rows.append([
+                    "",
+                    "",
+                    self.row_value(purchase_data, 4),
+                    self.row_value(purchase_data, 5),
+                    self.row_value(purchase_data, 6),
+                    self.row_value(purchase_data, 7),
+                    self.row_value(purchase_data, 8),
+                    self.row_value(purchase_data, 9),
+                    self.row_value(purchase_data, 10),
+                    "",
+                    self.row_value(purchase_data, 11),
+                    self.row_value(purchase_data, 12),
+                    "",
+                    "",
+                    "",
+                ])
 
         return output_rows
 
@@ -725,65 +919,40 @@ class EricModule:
         if "提取目的地表" in workbook_rows:
             destination_headers, destination_rows = self.read_sheet_table(workbook_rows["提取目的地表"])
         else:
-            destination_headers = [
-                "CUSTOMER PO NUMBER",
-                "*STYLE NUMBER",
-                "CUSTOMER SEASON",
-                "CUSTOMER SEASON YEAR",
-                "TMS OFFICE",
-                "DISTRIBUTOR DIVISION",
-                "*CUSTOMER DELIVERY DATE",
-                "DELIVERY DATE",
-                "DATE MARGIN",
-                "*SHIP MODE",
-                "SHIP MODE",
-                "SHIP MODE NOTE",
-                "*DESTINATION",
-                "DESTINATION",
-                "DESTINATION COUNT",
-                "PO QTY",
-                "SIZE RANGE",
-                "UOM",
-            ]
+            destination_headers = list(YTIC_DESTINATION_HEADERS)
             destination_rows = self.extract_destination_rows_from_source(source_rows)
+        destination_headers = self.standardize_ytic_headers(destination_headers, YTIC_DESTINATION_HEADERS)
 
         if "提取SP表" in workbook_rows:
             sp_headers, sp_rows = self.read_sheet_table(workbook_rows["提取SP表"])
         else:
-            sp_headers = [
-                "CUSTOMER PO NUMBER",
-                "*STYLE NUMBER",
-                "CUSTOMER SEASON",
-                "CUSTOMER SEASON YEAR",
-                "BILL TO",
-                "CONSIGNEE",
-                "SHIP TO",
-                "DATE",
-                "*CUSTOMER DELIVERY DATE",
-                "",
-                "*SHIP MODE",
-                "*DESTINATION",
-                "PO QTY",
-                "SIZE RANGE",
-                "UOM",
-            ]
+            sp_headers = list(YTIC_SP_HEADERS)
             sp_rows = self.extract_sp_rows_from_source(source_rows)
+        sp_headers = self.standardize_ytic_headers(sp_headers, YTIC_SP_HEADERS)
 
         quantity_map: Dict[QuantityKey, int] = {}
+        quantity_order: List[QuantityKey] = []
         po_set = set()
+        po_order: List[str] = []
         for row in size_rows:
             po_key = row["po"]
             article_key = row["article"]
             size_key = row["size"]
             quantity = row["quantity"]
-            po_set.add(po_key)
+            if po_key not in po_set:
+                po_order.append(po_key)
+                po_set.add(po_key)
             key = (po_key, article_key, size_key)
+            if key not in quantity_map:
+                quantity_order.append(key)
             quantity_map[key] = quantity_map.get(key, 0) + quantity
 
         return {
             "size_rows": size_rows,
             "quantity_map": quantity_map,
+            "quantity_order": quantity_order,
             "po_set": po_set,
+            "po_order": po_order,
             "destination_headers": destination_headers,
             "destination_rows": destination_rows,
             "sp_headers": sp_headers,
@@ -805,9 +974,19 @@ class EricModule:
         self,
         final_quantity_map: Dict[QuantityKey, int],
         ytic_quantity_map: Dict[QuantityKey, int],
+        preferred_order: Optional[Sequence[QuantityKey]] = None,
     ) -> List[List[Any]]:
         rows: List[List[Any]] = []
-        for key in sorted(set(final_quantity_map) | set(ytic_quantity_map)):
+        all_keys = set(final_quantity_map) | set(ytic_quantity_map)
+        ordered_keys: List[QuantityKey] = []
+        seen_keys = set()
+        for key in preferred_order or []:
+            if key in all_keys and key not in seen_keys:
+                ordered_keys.append(key)
+                seen_keys.add(key)
+        ordered_keys.extend(sorted(all_keys - seen_keys))
+
+        for key in ordered_keys:
             final_qty = final_quantity_map.get(key)
             ytic_qty = ytic_quantity_map.get(key)
             status = self.status_for_quantities(final_qty, ytic_qty)
@@ -825,9 +1004,18 @@ class EricModule:
             ])
         return rows
 
-    def build_po_check_rows(self, final_po_set, ytic_po_set) -> List[List[Any]]:
+    def build_po_check_rows(self, final_po_set, ytic_po_set, preferred_order: Optional[Sequence[str]] = None) -> List[List[Any]]:
         rows: List[List[Any]] = []
-        for po_key in sorted(final_po_set | ytic_po_set):
+        all_po = final_po_set | ytic_po_set
+        ordered_po: List[str] = []
+        seen_po = set()
+        for po_key in preferred_order or []:
+            if po_key in all_po and po_key not in seen_po:
+                ordered_po.append(po_key)
+                seen_po.add(po_key)
+        ordered_po.extend(sorted(all_po - seen_po))
+
+        for po_key in ordered_po:
             in_final = po_key in final_po_set
             in_ytic = po_key in ytic_po_set
             if in_final and in_ytic:
@@ -839,6 +1027,77 @@ class EricModule:
             rows.append([po_key, in_final, in_ytic, status])
         return rows
 
+    @staticmethod
+    def normalize_compare_text(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return str(value)
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, float):
+            return str(int(value)) if value.is_integer() else str(value).strip()
+        text = str(value).strip()
+        if re.fullmatch(r"\d+\.0", text):
+            return text[:-2]
+        return text
+
+    @staticmethod
+    def ordered_unique_text(values: Sequence[Any]) -> List[str]:
+        ordered: List[str] = []
+        seen = set()
+        for value in values:
+            text = EricModule.normalize_compare_text(value)
+            if text and text not in seen:
+                ordered.append(text)
+                seen.add(text)
+        return ordered
+
+    def build_po_text_compare_rows(
+        self,
+        final_data: Dict[str, Any],
+        ytic_data: Dict[str, Any],
+    ) -> List[List[Any]]:
+        final_po_values = [
+            record.get("PO Number")
+            for record in final_data.get("records", [])
+        ]
+        destination_headers = ytic_data.get("destination_headers", [])
+        destination_header_index = self.index_headers(destination_headers)
+        destination_po_index = destination_header_index.get("CUSTOMER PO NUMBER")
+        ytic_po_values = []
+        if destination_po_index is not None:
+            ytic_po_values = [
+                self.row_value(row, destination_po_index)
+                for row in ytic_data.get("destination_rows", [])
+            ]
+
+        final_po_order = self.ordered_unique_text(final_po_values)
+        ytic_po_order = self.ordered_unique_text(ytic_po_values)
+        final_po_set = set(final_po_order)
+        ytic_po_set = set(ytic_po_order)
+
+        ordered_po: List[str] = []
+        seen_po = set()
+        # 按 YTIC 目的地表顺序优先输出，方便和来源表人工核对。
+        for po_text in [*ytic_po_order, *final_po_order]:
+            if po_text and po_text not in seen_po:
+                ordered_po.append(po_text)
+                seen_po.add(po_text)
+
+        rows: List[List[Any]] = []
+        for po_text in ordered_po:
+            in_final = po_text in final_po_set
+            in_ytic = po_text in ytic_po_set
+            if in_final and in_ytic:
+                status = CHECK_OK
+            elif in_final:
+                status = CHECK_FINAL_ONLY
+            else:
+                status = CHECK_YTIC_ONLY
+            rows.append([po_text, in_final, in_ytic, status])
+        return rows
+
     def write_table_sheet(
         self,
         wb: Workbook,
@@ -848,8 +1107,22 @@ class EricModule:
     ):
         ws = wb.create_sheet(title[:31])
         ws.append(list(headers))
+        date_column_indexes = {
+            index
+            for index, header in enumerate(headers, start=1)
+            if self.is_output_date_header(header)
+        }
         for row in rows:
-            ws.append(list(row))
+            normalized_row = [
+                self.normalize_date_output_value(value) if index in date_column_indexes else value
+                for index, value in enumerate(row, start=1)
+            ]
+            ws.append(normalized_row)
+            current_row = ws.max_row
+            for column in date_column_indexes:
+                cell = ws.cell(row=current_row, column=column)
+                if isinstance(cell.value, (datetime, date)):
+                    cell.number_format = EXCEL_DATE_FORMAT
 
         if headers:
             max_col_letter = get_column_letter(len(headers))
@@ -885,11 +1158,22 @@ class EricModule:
         ws_summary.freeze_panes = "A2"
         self.autofit_columns(ws_summary, min_width=12, max_width=46)
 
+        size_check_export_rows = [
+            [
+                row[0],
+                row[1],
+                row[2],
+                row[3],
+                row[4],
+                f"=D{row_index}-E{row_index}",
+            ]
+            for row_index, row in enumerate(size_check_rows, start=2)
+        ]
         self.write_table_sheet(
             wb,
             "Size_Check",
-            ["PO Number", "Article Number", "Size", "Final Quantity", "YTIC Quantity", "Difference", "Status"],
-            size_check_rows,
+            ["PO Number", "Article Number", "Size", "Final Quantity", "YTIC Quantity", "MARGIN"],
+            size_check_export_rows,
         )
         self.write_table_sheet(
             wb,
@@ -923,17 +1207,43 @@ class EricModule:
             ["PO NO", "COLOR", "SIZE", "QTY", "Actual QTY", "QTY Margin", "Status"],
             ytic_size_rows,
         )
+        ytic_destination_rows = []
+        for row_index, row in enumerate(ytic_data["destination_rows"], start=2):
+            export_row = list(row)
+            if len(export_row) > 8 and export_row[8] not in (None, ""):
+                # I 列日期差值由后面的 DELIVERY DATE 减前面的 *CUSTOMER DELIVERY DATE。
+                export_row[8] = f"=H{row_index}-G{row_index}"
+            if len(export_row) > 14 and export_row[14] not in (None, ""):
+                # O 列用 Excel 布尔值表达目的地是否匹配。
+                export_row[14] = self.normalize_destination_count_flag(export_row[14])
+            ytic_destination_rows.append(export_row)
         self.write_table_sheet(
             wb,
             "YTIC_Destination_Extract",
             ytic_data["destination_headers"],
-            ytic_data["destination_rows"],
+            ytic_destination_rows,
         )
+        ytic_sp_rows = []
+        for row_index, row in enumerate(ytic_data["sp_rows"], start=2):
+            export_row = list(row)
+            if len(export_row) > 9 and export_row[9] not in (None, ""):
+                # J 列日期差值由当前行和下一行的 *CUSTOMER DELIVERY DATE 公式计算。
+                export_row[9] = f"=I{row_index}-I{row_index + 1}"
+            ytic_sp_rows.append(export_row)
         self.write_table_sheet(
             wb,
             "YTIC_SP_Extract",
             ytic_data["sp_headers"],
-            ytic_data["sp_rows"],
+            ytic_sp_rows,
+        )
+        for sheet_name in ("Summary", "PO_Check", "YTIC_Size_Extract"):
+            if sheet_name in wb.sheetnames:
+                del wb[sheet_name]
+        self.write_table_sheet(
+            wb,
+            "PO_Text_Compare",
+            ["PO Text", "In Final_Data PO Number", "In YTIC Destination CUSTOMER PO NUMBER", "Status"],
+            self.build_po_text_compare_rows(final_data, ytic_data),
         )
 
         wb.save(output_file)
@@ -965,11 +1275,9 @@ class EricModule:
                 size_check_rows = self.build_size_check_rows(
                     final_data["quantity_map"],
                     ytic_data["quantity_map"],
+                    ytic_data.get("quantity_order", []) + final_data.get("quantity_order", []),
                 )
-                po_check_rows = self.build_po_check_rows(
-                    final_data["po_set"],
-                    ytic_data["po_set"],
-                )
+                po_check_rows = self.build_po_text_compare_rows(final_data, ytic_data)
 
                 difference_count = sum(1 for row in size_check_rows if row[-1] != CHECK_OK)
                 po_difference_count = sum(1 for row in po_check_rows if row[-1] != CHECK_OK)

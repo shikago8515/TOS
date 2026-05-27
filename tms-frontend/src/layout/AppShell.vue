@@ -35,7 +35,7 @@
       <footer class="sidebar-footer">
         <span class="sidebar-footer-label">应用</span>
         <span class="sidebar-version">
-          <strong>v0.9.6-beta.1</strong>
+          <strong>v{{ appVersion }}</strong>
           <small>DG运营部</small>
         </span>
       </footer>
@@ -63,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 
 import {
@@ -73,6 +73,7 @@ import {
 } from '../domain/moduleCatalog'
 
 const route = useRoute()
+const appVersion = ref('0.9.6-beta.1')
 
 const sidebarGroups = computed(() =>
   tosNavGroups
@@ -109,6 +110,17 @@ function shouldShowInSidebar(module: TosModuleDefinition): boolean {
 async function exportDiagnostics(): Promise<void> {
   await window.electronAPI?.exportDiagnosticsPackage()
 }
+
+onMounted(async () => {
+  try {
+    const versionInfo = await window.electronAPI?.getAppVersion?.()
+    if (versionInfo?.version) {
+      appVersion.value = versionInfo.version
+    }
+  } catch {
+    // 版本读取失败不影响主导航渲染。
+  }
+})
 </script>
 
 <style scoped>

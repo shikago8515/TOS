@@ -17,6 +17,8 @@ export interface SophiaTinaProcessResponse {
   result_file?: string
   output_file?: string
   working_count?: number
+  result_count?: number
+  diagnostics_count?: number
   logs?: string[]
 }
 

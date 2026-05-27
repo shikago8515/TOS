@@ -3,7 +3,7 @@
 这是一个本地运行的 Node.js + Playwright 工具，用来把 Excel 数据批量带入网页流程。当前重做后的主流程是：
 
 - `SAP BTP PO 决策处理`
-- Excel 支持列名：`PO Number`、`Task ID`、`Decision`、`Comments`
+- Excel 支持列名：`Case Number`、`PO`/`PO Number`、`Task ID`、`Decision`、`Comments`
 - `Decision` 可填 `Accept`、`Reject`，也支持中文 `接受`、`拒绝`
 - 首次正式运行会打开 Edge，可手动登录；登录状态保存在 `playwright-user-data/`
 
@@ -31,7 +31,7 @@ http://localhost:3100
 主要配置在 `config/default.config.json`：
 
 - `workflows.sap-btp-po-decisions.startUrl`：SAP BTP 入口网址
-- `taskFilter.taskTypeName`：Task Center 里要筛选的任务类型
+- `taskFilter.taskTypeNames`：Task Center 里要筛选的任务类型，默认匹配视频里的 `Review Sub-Ticket Resolution`
 - `selectors.taskCenterLinkPatterns`：Task Center 磁贴/链接名称匹配
 - `selectors.taskRowPatterns`：任务列表中定位行的规则
 - `selectors.detailRowPatterns`：详情页中定位 PO/Task 行的规则

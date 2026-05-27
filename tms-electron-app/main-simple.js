@@ -2,8 +2,10 @@ const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
 const os = require('os');
 const path = require('path');
+const { autoUpdater } = require('electron-updater');
 const { registerAdidasMaterialsCollector } = require('./adidas-materials-main');
 
 let mainWindow;
@@ -13,6 +15,9 @@ const BACKEND_HOST = '127.0.0.1';
 const BACKEND_PORT = 8000;
 const BACKEND_URL = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
 const APP_DISPLAY_NAME = 'TOS'/*12345678*/;
+const DEFAULT_UPDATE_FEED_URL = 'https://tos-updates-1309726828.cos.ap-guangzhou.myqcloud.com/';
+const UPDATE_SOURCE_CONFIG_FILE = 'update-source.json';
+const UPDATE_STATUS_CHANNEL = 'update-status';
 
 const externalModules = {
   infornexus: {
@@ -26,6 +31,367 @@ const DIAGNOSTIC_SECRET_KEY_PATTERN = /password|token|cookie|secret|authorizatio
 const DIAGNOSTIC_MAX_STRING_LENGTH = 4000;
 const DIAGNOSTIC_MAX_ARRAY_LENGTH = 100;
 const DIAGNOSTIC_MAX_FILE_SIZE = 25 * 1024 * 1024;
+
+let updaterConfigured = false;
+let updateFeedUrl = '';
+let updateState = {
+  status: 'idle',
+  currentVersion: app.getVersion(),
+  isPackaged: app.isPackaged,
+  feedUrl: DEFAULT_UPDATE_FEED_URL,
+  feedUrlSource: 'package',
+  updateAvailable: false,
+  checking: false,
+  downloading: false,
+  downloaded: false,
+  updateInfo: null,
+  changelog: null,
+  progress: null,
+  error: null
+};
+
+function normalizeUpdateFeedUrl(value) {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.endsWith('/') ? trimmed : `${trimmed}/`;
+}
+
+function readConfiguredUpdateFeed() {
+  const envUrl = normalizeUpdateFeedUrl(process.env.TOS_UPDATE_FEED_URL || process.env.TMS_UPDATE_FEED_URL);
+  if (envUrl) {
+    return { url: envUrl, source: 'env' };
+  }
+
+  try {
+    const configPath = path.join(app.getPath('userData'), UPDATE_SOURCE_CONFIG_FILE);
+    if (fs.existsSync(configPath)) {
+      const payload = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const fileUrl = normalizeUpdateFeedUrl(payload && payload.url);
+      if (fileUrl) {
+        return { url: fileUrl, source: 'user-config' };
+      }
+    }
+  } catch (error) {
+    writeDiagnosticEvent('updater', 'feed-config-read-failure', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+
+  return {
+    url: normalizeUpdateFeedUrl(DEFAULT_UPDATE_FEED_URL),
+    source: 'package'
+  };
+}
+
+function isPlaceholderUpdateFeedUrl(url) {
+  return /your-server\.example\.com/i.test(url);
+}
+
+function getPublicUpdateStatus() {
+  return {
+    ...updateState,
+    currentVersion: app.getVersion(),
+    isPackaged: app.isPackaged,
+    feedUrl: updateFeedUrl || updateState.feedUrl || normalizeUpdateFeedUrl(DEFAULT_UPDATE_FEED_URL)
+  };
+}
+
+function emitUpdateStatus(patch = {}) {
+  updateState = {
+    ...updateState,
+    ...patch,
+    currentVersion: app.getVersion(),
+    isPackaged: app.isPackaged,
+    feedUrl: updateFeedUrl || updateState.feedUrl || normalizeUpdateFeedUrl(DEFAULT_UPDATE_FEED_URL)
+  };
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(UPDATE_STATUS_CHANNEL, getPublicUpdateStatus());
+  }
+
+  return getPublicUpdateStatus();
+}
+
+function serializeUpdateInfo(info) {
+  if (!info || typeof info !== 'object') return null;
+  return {
+    version: typeof info.version === 'string' ? info.version : '',
+    releaseName: typeof info.releaseName === 'string' ? info.releaseName : '',
+    releaseDate: typeof info.releaseDate === 'string' ? info.releaseDate : '',
+    releaseNotes: info.releaseNotes || null
+  };
+}
+
+function normalizeChangelogList(value) {
+  return Array.isArray(value)
+    ? value.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim())
+    : [];
+}
+
+function normalizeChangelogPayload(payload, version) {
+  if (!payload || typeof payload !== 'object') return null;
+  return {
+    version: typeof payload.version === 'string' ? payload.version : version || '',
+    date: typeof payload.date === 'string' ? payload.date : '',
+    added: normalizeChangelogList(payload.added),
+    improved: normalizeChangelogList(payload.improved),
+    fixed: normalizeChangelogList(payload.fixed)
+  };
+}
+
+function requestRemoteJson(url, timeoutMs = 3500) {
+  return new Promise((resolve) => {
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(url);
+    } catch (_error) {
+      resolve(null);
+      return;
+    }
+
+    const transport = parsedUrl.protocol === 'https:' ? https : http;
+    const req = transport.get(parsedUrl, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        body += chunk;
+      });
+      res.on('end', () => {
+        if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+          resolve(null);
+          return;
+        }
+        try {
+          resolve(JSON.parse(body));
+        } catch (_error) {
+          resolve(null);
+        }
+      });
+    });
+
+    req.on('error', () => resolve(null));
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      resolve(null);
+    });
+  });
+}
+
+async function fetchUpdateChangelog(version) {
+  if (!updateFeedUrl || isPlaceholderUpdateFeedUrl(updateFeedUrl)) {
+    return null;
+  }
+
+  try {
+    // 更新日志和 latest.yml 放在同一个目录，便于静态服务器发布。
+    const changelogUrl = new URL('changelog.json', updateFeedUrl).toString();
+    const payload = await requestRemoteJson(changelogUrl);
+    return normalizeChangelogPayload(payload, version);
+  } catch (error) {
+    writeDiagnosticEvent('updater', 'changelog-fetch-failure', {
+      version,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return null;
+  }
+}
+
+function configureAutoUpdater() {
+  if (updaterConfigured) return;
+
+  const configuredFeed = readConfiguredUpdateFeed();
+  updateFeedUrl = configuredFeed.url;
+  updaterConfigured = true;
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.allowPrerelease = true;
+  autoUpdater.allowDowngrade = false;
+
+  if (updateFeedUrl) {
+    autoUpdater.setFeedURL({
+      provider: 'generic',
+      url: updateFeedUrl
+    });
+  }
+
+  emitUpdateStatus({
+    feedUrl: updateFeedUrl,
+    feedUrlSource: configuredFeed.source
+  });
+
+  autoUpdater.on('checking-for-update', () => {
+    emitUpdateStatus({
+      status: 'checking',
+      checking: true,
+      downloading: false,
+      downloaded: false,
+      error: null
+    });
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    const updateInfo = serializeUpdateInfo(info);
+    emitUpdateStatus({
+      status: 'available',
+      checking: false,
+      updateAvailable: true,
+      downloaded: false,
+      updateInfo,
+      changelog: null,
+      progress: null,
+      error: null
+    });
+
+    fetchUpdateChangelog(updateInfo && updateInfo.version).then((changelog) => {
+      if (!changelog) return;
+      emitUpdateStatus({ changelog });
+    });
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    emitUpdateStatus({
+      status: 'not-available',
+      checking: false,
+      updateAvailable: false,
+      downloaded: false,
+      updateInfo: serializeUpdateInfo(info),
+      changelog: null,
+      progress: null,
+      error: null
+    });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    emitUpdateStatus({
+      status: 'downloading',
+      checking: false,
+      downloading: true,
+      downloaded: false,
+      progress: {
+        percent: Number.isFinite(progress.percent) ? Math.round(progress.percent) : 0,
+        transferred: progress.transferred || 0,
+        total: progress.total || 0,
+        bytesPerSecond: progress.bytesPerSecond || 0
+      },
+      error: null
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    emitUpdateStatus({
+      status: 'downloaded',
+      checking: false,
+      downloading: false,
+      downloaded: true,
+      updateInfo: serializeUpdateInfo(info),
+      progress: {
+        ...(updateState.progress || {}),
+        percent: 100
+      },
+      error: null
+    });
+  });
+
+  autoUpdater.on('error', (error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    writeDiagnosticEvent('updater', 'error', { error: message });
+    emitUpdateStatus({
+      status: 'error',
+      checking: false,
+      downloading: false,
+      error: message
+    });
+  });
+}
+
+function buildUpdateErrorResult(message, status = 'error') {
+  const nextStatus = emitUpdateStatus({
+    status,
+    checking: false,
+    downloading: false,
+    error: message
+  });
+
+  return {
+    success: false,
+    error: message,
+    status: nextStatus
+  };
+}
+
+function ensureUpdaterCanRun() {
+  configureAutoUpdater();
+
+  if (!app.isPackaged) {
+    return buildUpdateErrorResult('自动更新只支持 NSIS 安装版，当前是开发环境。', 'unsupported');
+  }
+
+  if (!updateFeedUrl || isPlaceholderUpdateFeedUrl(updateFeedUrl)) {
+    return buildUpdateErrorResult('请先配置正式更新地址，再检查更新。', 'not-configured');
+  }
+
+  return null;
+}
+
+async function checkForUpdates() {
+  const unavailable = ensureUpdaterCanRun();
+  if (unavailable) return unavailable;
+
+  try {
+    await autoUpdater.checkForUpdates();
+    return { success: true, status: getPublicUpdateStatus() };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return buildUpdateErrorResult(message);
+  }
+}
+
+async function downloadUpdate() {
+  const unavailable = ensureUpdaterCanRun();
+  if (unavailable) return unavailable;
+
+  if (!updateState.updateAvailable) {
+    return buildUpdateErrorResult('当前没有可下载的新版本。');
+  }
+
+  try {
+    emitUpdateStatus({
+      status: 'downloading',
+      downloading: true,
+      downloaded: false,
+      error: null
+    });
+    await autoUpdater.downloadUpdate();
+    return { success: true, status: getPublicUpdateStatus() };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return buildUpdateErrorResult(message);
+  }
+}
+
+function installUpdate() {
+  const unavailable = ensureUpdaterCanRun();
+  if (unavailable) return unavailable;
+
+  if (!updateState.downloaded) {
+    return buildUpdateErrorResult('更新包尚未下载完成。');
+  }
+
+  emitUpdateStatus({
+    status: 'installing',
+    checking: false,
+    downloading: false,
+    error: null
+  });
+
+  setImmediate(() => {
+    autoUpdater.quitAndInstall(false, true);
+  });
+
+  return { success: true, status: getPublicUpdateStatus() };
+}
 
 function getLogsDir() {
   return path.join(app.getPath('userData'), 'logs');
@@ -849,6 +1215,17 @@ async function startBackendServer() {
 function registerIpcHandlers() {
   ipcMain.handle('get-backend-url', () => BACKEND_URL);
   ipcMain.handle('start-backend-server', () => startBackendServer());
+  ipcMain.handle('get-app-version', () => ({
+    version: app.getVersion(),
+    isPackaged: app.isPackaged
+  }));
+  ipcMain.handle('get-update-status', () => {
+    configureAutoUpdater();
+    return getPublicUpdateStatus();
+  });
+  ipcMain.handle('check-for-updates', () => checkForUpdates());
+  ipcMain.handle('download-update', () => downloadUpdate());
+  ipcMain.handle('install-update', () => installUpdate());
 
   ipcMain.handle('record-diagnostic-event', (_event, diagnosticEvent) => {
     if (!diagnosticEvent || typeof diagnosticEvent !== 'object') {
@@ -961,6 +1338,73 @@ function registerIpcHandlers() {
   });
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function loadRendererFallbackPage(browserWindow, message, details = {}) {
+  const detailRows = Object.entries(details)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`)
+    .join('');
+  const html = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>TOS 启动失败</title>
+  <style>
+    body { margin: 0; font-family: "Microsoft YaHei", Arial, sans-serif; background: #f4f8fb; color: #102033; }
+    main { max-width: 760px; margin: 72px auto; padding: 32px; background: #fff; border: 1px solid #d8e2ec; border-radius: 8px; }
+    h1 { margin: 0 0 16px; font-size: 28px; }
+    p { margin: 0 0 20px; color: #506176; line-height: 1.7; }
+    dl { display: grid; grid-template-columns: 140px 1fr; gap: 10px 16px; margin: 0; font-size: 13px; }
+    dt { color: #6b7b8f; }
+    dd { margin: 0; word-break: break-all; font-family: Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>TOS 启动失败</h1>
+    <p>${escapeHtml(message)}</p>
+    <dl>${detailRows}</dl>
+  </main>
+</body>
+</html>`;
+  browserWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+}
+
+function loadPackagedRenderer(browserWindow) {
+  const appPath = app.getAppPath();
+  const indexPath = path.join(appPath, 'dist-frontend', 'index.html');
+
+  if (!fs.existsSync(indexPath)) {
+    const payload = {
+      appPath,
+      indexPath,
+      resourcesPath: process.resourcesPath
+    };
+    writeDiagnosticEvent('frontend', 'index-missing', payload);
+    // 生产包缺前端入口时直接显示错误页，避免用户只看到空白窗口。
+    loadRendererFallbackPage(browserWindow, '未找到前端入口文件，请重新安装完整安装包。', payload);
+    return;
+  }
+
+  browserWindow.loadFile(indexPath).catch((error) => {
+    const payload = {
+      appPath,
+      indexPath,
+      error: error instanceof Error ? error.message : String(error)
+    };
+    writeDiagnosticEvent('frontend', 'load-failure', payload);
+    loadRendererFallbackPage(browserWindow, '前端页面加载失败，请导出诊断包后反馈。', payload);
+  });
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -975,15 +1419,24 @@ function createWindow() {
     title: APP_DISPLAY_NAME
   });
 
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    writeDiagnosticEvent('frontend', 'did-fail-load', {
+      errorCode,
+      errorDescription,
+      validatedURL
+    });
+  });
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    writeDiagnosticEvent('frontend', 'render-process-gone', details);
+  });
+
   const isDev = !app.isPackaged;
   
   if (isDev) {
     mainWindow.loadURL('http://localhost:5174');
     mainWindow.webContents.openDevTools();
   } else {
-    const appPath = app.getAppPath();
-    const indexPath = path.join(appPath, 'dist-frontend', 'index.html');
-    mainWindow.loadFile(indexPath);
+    loadPackagedRenderer(mainWindow);
   }
 
   mainWindow.on('closed', () => {
@@ -1006,6 +1459,16 @@ app.whenReady().then(async () => {
     writeDiagnosticEvent('backend', 'startup-success', backendStatus);
   }
   createWindow();
+  configureAutoUpdater();
+  if (app.isPackaged && updateFeedUrl && !isPlaceholderUpdateFeedUrl(updateFeedUrl)) {
+    setTimeout(() => {
+      checkForUpdates().catch((error) => {
+        writeDiagnosticEvent('updater', 'startup-check-failure', {
+          error: error instanceof Error ? error.message : String(error)
+        });
+      });
+    }, 4000);
+  }
 });
 
 app.on('window-all-closed', () => {

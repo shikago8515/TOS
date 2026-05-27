@@ -1150,12 +1150,15 @@ class JaneModule:
                 cell = ws.cell(row=row_idx, column=col_idx, value=formula)
                 cell.number_format = '0'
 
-            first_size_letter = openpyxl.utils.get_column_letter(size_start_col)
-            last_size_letter = openpyxl.utils.get_column_letter(po_qty_col - 1)
+            po_qty_letter = openpyxl.utils.get_column_letter(po_qty_col)
+            po_qty_formula = (
+                f"=SUM({po_qty_letter}{data_start_row}:{po_qty_letter}{data_end_row})"
+                if data_end_row >= data_start_row else 0
+            )
             ws.cell(
                 row=row_idx,
                 column=po_qty_col,
-                value=f"=SUM({first_size_letter}{row_idx}:{last_size_letter}{row_idx})"
+                value=po_qty_formula
             )
             ws.cell(row=row_idx, column=po_qty_col).font = Font(bold=True)
             ws.cell(row=row_idx, column=po_qty_col).number_format = '0'

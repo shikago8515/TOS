@@ -7,8 +7,7 @@
   "scripts": {
     "start": "node bin/start.js",
     "dev": "node bin/start.js",
-    "check": "node --check lib/index.js && node --check public/app.js && node --check run-btp-automation.js",
-    "btp:dry-run": "node run-btp-automation.js --dry-run"
+    "check": "node --check lib/index.js && node --check public/app.js && node --check lib/server/index.js && node --check lib/workflows/btp-po-decisions-workflow.js && node --check lib/excel/btp-po-decisions-parser.js"
   },
   "dependencies": {
     "express": "5.2.1",
