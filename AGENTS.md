@@ -28,15 +28,19 @@
 - 不要直接修改 recovered-frontend 当作长期源码；它只能作为行为和样式参考。真正源码应落在 tms-frontend/src。
 - 这个项目包含历史恢复和重建背景，修改前优先查看 docs 里的工程标准、恢复计划和对应 parity 文档。
 
-TOS 发布、Electron 打包和 COS 更新源规则：
-- 涉及 tms-electron-app 打包、版本号、自动更新、COS 上传时，必须特别谨慎；任何重新打包都会改变安装包 hash，必须重新生成并配套上传最新的 exe、blockmap、changelog.json 和 latest.yml。
+TOS 发布、Electron 打包、GitCode 发行版和 COS 更新源规则：
+- 涉及 tms-electron-app 打包、版本号、自动更新、GitCode 发行版、COS 上传时，必须特别谨慎；任何重新打包都会改变安装包 hash，必须重新生成并配套上传最新的 exe、blockmap、changelog.json 和 latest.yml。
+- 版本命名遵循 SemVer 预发布格式：package/backend/latest.yml 内部版本使用 x.y.z-beta.n，不带 v；Git tag 和发行版名称使用 v 前缀，例如 v0.9.7-beta.1；界面展示可使用大写 V 前缀。已发布过的版本号不要复用，修复或小功能继续递增 beta 序号或 patch 版本。
 - Electron 正式发布只能优先使用项目脚本 npm run build:win，不要手工绕过 electron-builder，也不要在 tms-electron-app 目录下创建临时 dist-* 打包目录；如需临时目录，放到系统 TEMP 或项目外部，避免被误打进包。
 - 修改 package.json 的 build.files、extraResources、afterPack、main-simple.js、preload.js、scripts 时，必须检查是否会影响 dist-frontend、backend-runtime、backend、automation-apps、browser-plugins、external-apps 进入最终包。
 - 每次 build:win 后必须确认 npm run verify:renderer-package 通过；如果没有该脚本，就必须检查 dist/win-unpacked/resources/app.asar 中包含 dist-frontend/index.html、JS 和 CSS。
 - 发布前必须实际验证两个交付物：
   1. TOS Setup x.x.x.exe 临时安装到 TEMP 目录并启动，确认首页有内容；
   2. TOS_vx.x.x_Portable.exe 实际启动，等待加载完成后截图或读取页面内容，确认不是白屏。
+- 验证 portable 时，启动器进程可能没有窗口并会解压后拉起新的 TOS.exe；不要只检查 Start-Process 返回的 PID，要查找实际带 MainWindowHandle 的 TOS 进程，并同时验证后端版本和关键 API 路由。
 - 如果安装包或 portable 任意一个没有验证通过，不允许建议上传 COS。
+- 如果用户要求同步 GitCode 发行版，必须先确认 main 已合并并推送，再创建/推送对应 v 标签；发行版资产至少包括安装包 exe、exe.blockmap、changelog.json、latest.yml 和 portable。上传后必须通过 GitCode release 列表或页面确认资产齐全。
+- GitCode release 上传接口返回 OBS 签名 URL 时，curl/HTTP PUT 必须带上接口返回的所有 headers（尤其 x-obs-* 和 Content-Type）；不要把 GitCode 发行版上传等同于 COS 自动更新源更新。
 - COS 更新源上传顺序固定为：安装包 exe、exe.blockmap、changelog.json，最后 latest.yml。latest.yml 必须最后上传，避免客户端读到半更新状态。
 - 如果重新打包过，即使版本号没变，也必须重新上传 exe、blockmap、changelog.json、latest.yml 四个文件；不能只上传 latest.yml。
 - COS 根目录建议只保留当前版本的自动更新文件。旧版本如需备份，移动到 archive/<version>/；不要长期把多个版本堆在根目录，避免误传、误删或混用。
