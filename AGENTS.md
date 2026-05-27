@@ -30,7 +30,7 @@
 
 TOS 发布、Electron 打包、GitCode 发行版和 COS 更新源规则：
 - 涉及 tms-electron-app 打包、版本号、自动更新、GitCode 发行版、COS 上传时，必须特别谨慎；任何重新打包都会改变安装包 hash，必须重新生成并配套上传最新的 exe、blockmap、changelog.json 和 latest.yml。
-- 版本命名遵循 SemVer 预发布格式：package/backend/latest.yml 内部版本使用 x.y.z-beta.n，不带 v；Git tag 和发行版名称使用 v 前缀，例如 v0.9.7-beta.1；界面展示可使用大写 V 前缀。已发布过的版本号不要复用，修复或小功能继续递增 beta 序号或 patch 版本。
+- 版本命名遵循 SemVer 预发布格式：package/backend/latest.yml 内部版本不带 v，可使用 x.y.z-beta.n 或继续细分的 x.y.z-beta.n.n；Git tag 和发行版名称使用 v 前缀，例如 v0.9.7-beta.1.1；界面展示可使用大写 V 前缀。已发布过的版本号不要复用，修复或小功能继续递增 beta 序号、细分序号或 patch 版本。
 - Electron 正式发布只能优先使用项目脚本 npm run build:win，不要手工绕过 electron-builder，也不要在 tms-electron-app 目录下创建临时 dist-* 打包目录；如需临时目录，放到系统 TEMP 或项目外部，避免被误打进包。
 - 修改 package.json 的 build.files、extraResources、afterPack、main-simple.js、preload.js、scripts 时，必须检查是否会影响 dist-frontend、backend-runtime、backend、automation-apps、browser-plugins、external-apps 进入最终包。
 - 每次 build:win 后必须确认 npm run verify:renderer-package 通过；如果没有该脚本，就必须检查 dist/win-unpacked/resources/app.asar 中包含 dist-frontend/index.html、JS 和 CSS。

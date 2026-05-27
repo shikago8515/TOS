@@ -2,8 +2,8 @@
   <section class="precheck-panel">
     <header class="precheck-header">
       <div>
-        <h3>文件预检查</h3>
-        <p>{{ summary }}</p>
+        <h3>{{ text('文件预检查') }}</h3>
+        <p>{{ text(summary) }}</p>
       </div>
     </header>
 
@@ -11,15 +11,15 @@
       <article v-for="group in prechecks" :key="group.label" class="precheck-row">
         <span class="status-dot" :class="`status-dot--${group.status}`" />
         <span class="precheck-main">
-          <strong>{{ group.label }}</strong>
-          <small>{{ group.message }}</small>
+          <strong>{{ text(group.label) }}</strong>
+          <small>{{ text(group.message) }}</small>
           <span v-if="group.files.length > 0" class="file-chip-row">
             <em v-for="file in group.files.slice(0, 4)" :key="file.name" class="file-chip">
               {{ file.name }}
             </em>
           </span>
           <ul v-if="group.issues.length > 0" class="issue-list">
-            <li v-for="issue in group.issues" :key="issue">{{ issue }}</li>
+            <li v-for="issue in group.issues" :key="issue">{{ text(issue) }}</li>
           </ul>
         </span>
       </article>
@@ -34,12 +34,14 @@ import {
   buildFilePrechecks,
   type FileGroupState,
 } from '../files/fileGroups'
+import { useAppLanguage } from '../i18n/appLanguage'
 
 const props = defineProps<{
   groups: readonly FileGroupState[]
 }>()
 
 const prechecks = computed(() => buildFilePrechecks(props.groups))
+const { text } = useAppLanguage()
 
 const summary = computed(() => {
   const hasErrors = prechecks.value.some((group) =>

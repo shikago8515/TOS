@@ -2,37 +2,38 @@
   <section class="history-panel">
     <header class="history-heading">
       <div>
-        <h3>处理记录</h3>
-        <p>最近 20 次本机处理记录。</p>
+        <h3>{{ text('处理记录') }}</h3>
+        <p>{{ text('最近 20 次本机处理记录。') }}</p>
       </div>
       <button type="button" :disabled="records.length === 0" @click="$emit('clear')">
-        清空
+        {{ text('清空') }}
       </button>
     </header>
 
     <div v-if="records.length > 0" class="history-list">
       <article v-for="record in records" :key="record.id" class="history-row">
         <div class="history-title">
-          <strong>{{ record.moduleName }}</strong>
+          <strong>{{ text(record.moduleName) }}</strong>
           <span :class="`history-status history-status--${record.status}`">
-            {{ record.status === 'success' ? '成功' : '失败' }}
+            {{ record.status === 'success' ? text('成功') : text('失败') }}
           </span>
           <time>{{ formatTime(record.createdAt) }}</time>
         </div>
-        <p>{{ record.message }}</p>
+        <p>{{ text(record.message) }}</p>
         <div class="history-files">
-          <span v-for="file in record.inputFiles.slice(0, 4)" :key="file">{{ file }}</span>
-          <span v-if="record.inputFiles.length > 4">+{{ record.inputFiles.length - 4 }} 个文件</span>
+          <span v-for="file in record.inputFiles.slice(0, 4)" :key="file">{{ text(file) }}</span>
+          <span v-if="record.inputFiles.length > 4">{{ text(`+${record.inputFiles.length - 4} 个文件`) }}</span>
         </div>
       </article>
     </div>
 
-    <p v-else class="empty-history">暂无处理记录</p>
+    <p v-else class="empty-history">{{ text('暂无处理记录') }}</p>
   </section>
 </template>
 
 <script setup lang="ts">
 import type { ProcessHistoryRecord } from '../process/processHistory'
+import { useAppLanguage } from '../i18n/appLanguage'
 
 defineEmits<{
   clear: []
@@ -42,8 +43,10 @@ defineProps<{
   records: ProcessHistoryRecord[]
 }>()
 
+const { currentLanguage, text } = useAppLanguage()
+
 function formatTime(value: string): string {
-  return new Intl.DateTimeFormat('zh-CN', {
+  return new Intl.DateTimeFormat(currentLanguage.value, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',

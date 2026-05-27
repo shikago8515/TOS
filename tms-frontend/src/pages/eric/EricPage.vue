@@ -3,17 +3,17 @@
     <div class="eric-panel">
       <section class="eric-card eric-hero">
         <div>
-          <p class="eric-kicker">Excel 处理</p>
-          <h2 class="eric-title">Excel数据处理整合工具-Eric</h2>
+          <p class="eric-kicker">{{ text('Excel 处理') }}</p>
+          <h2 class="eric-title">{{ text('Excel数据处理整合工具-Eric') }}</h2>
           <p class="eric-desc">
-            将 Pack Size breakdown 生成的 Final_Data 作为过渡明细，并自动解析 YTIC check 完成最终数量核对。
+            {{ text('将 Pack Size breakdown 生成的 Final_Data 作为过渡明细，并自动解析 YTIC check 完成最终数量核对。') }}
           </p>
         </div>
-        <span class="eric-stage">核对流程 v0.2.0-alpha.1</span>
+        <span class="eric-stage">{{ text('核对流程 v0.2.0-alpha.1') }}</span>
       </section>
 
       <div class="eric-alert">
-        默认流程会输出诊断包：Summary、Size_Check、PO_Check、Final_Data 和 YTIC 审计明细。
+        {{ text('默认流程会输出诊断包：Summary、Size_Check、PO_Check、Final_Data 和 YTIC 审计明细。') }}
       </div>
 
       <section class="eric-card">
@@ -21,24 +21,24 @@
           <FileUploadBox
             v-model:files="packFiles"
             label="Pack Size breakdown"
-            hint="用于生成 Final_Data"
+            :hint="text('用于生成 Final_Data')"
             accept=".xlsx,.xlsm"
-            accept-label="支持 .xlsx / .xlsm"
+            :accept-label="text('支持 .xlsx / .xlsm')"
           />
           <FileUploadBox
             v-model:files="yticFiles"
             label="YTIC check"
-            hint="用于提取尺寸、目的地和 SP 核对信息"
+            :hint="text('用于提取尺寸、目的地和 SP 核对信息')"
             accept=".xls,.xlsx,.xlsm"
-            accept-label="支持 .xls / .xlsx / .xlsm"
+            :accept-label="text('支持 .xls / .xlsx / .xlsm')"
           />
         </div>
 
         <div class="eric-steps">
           <article v-for="step in ericWorkflowSteps" :key="step.index" class="eric-step">
             <span>{{ step.index }}</span>
-            <strong>{{ step.title }}</strong>
-            <p>{{ step.description }}</p>
+            <strong>{{ text(step.title) }}</strong>
+            <p>{{ text(step.description) }}</p>
           </article>
         </div>
 
@@ -49,7 +49,7 @@
             :disabled="!canReconcile || processing"
             @click="startReconcile"
           >
-            {{ processing ? '处理中...' : '开始核对' }}
+            {{ processing ? text('处理中...') : text('开始核对') }}
           </button>
           <button
             class="eric-btn"
@@ -57,21 +57,23 @@
             :disabled="!packFile || processing"
             @click="startFinalDataOnly"
           >
-            仅生成 Final_Data
+            {{ text('仅生成 Final_Data') }}
           </button>
-          <button class="eric-btn" type="button" :disabled="processing" @click="resetForm">重置</button>
+          <button class="eric-btn" type="button" :disabled="processing" @click="resetForm">
+            {{ text('重置') }}
+          </button>
           <button
             v-if="outputFile"
             class="eric-btn"
             type="button"
             @click="downloadResult"
           >
-            下载结果
+            {{ text('下载结果') }}
           </button>
         </div>
 
         <div v-if="processing" class="eric-progress">
-          <span>上传进度 {{ progress }}%</span>
+          <span>{{ text('上传进度') }} {{ progress }}%</span>
           <progress :value="progress" max="100" />
         </div>
       </section>
@@ -79,8 +81,8 @@
       <section class="eric-card">
         <div class="eric-summary">
           <article v-for="stat in stats" :key="stat.label" class="eric-stat">
-            <span>{{ stat.label }}</span>
-            <strong>{{ stat.value }}</strong>
+            <span>{{ text(stat.label) }}</span>
+            <strong>{{ text(stat.value) }}</strong>
           </article>
         </div>
 
@@ -92,13 +94,13 @@
             'eric-message--error': success === false,
           }"
         >
-          {{ message }}
+          {{ text(message) }}
         </div>
 
         <div class="eric-log">
-          <div v-if="logs.length === 0">处理记录会显示在这里。</div>
+          <div v-if="logs.length === 0">{{ text('处理记录会显示在这里。') }}</div>
           <template v-else>
-            <div v-for="line in logs" :key="line">{{ line }}</div>
+            <div v-for="line in logs" :key="line">{{ text(line) }}</div>
           </template>
         </div>
       </section>
@@ -110,6 +112,7 @@
 import { computed, ref } from 'vue'
 
 import { readErrorMessage } from '../../shared/api/backendClient'
+import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import FileUploadBox from '../../shared/ui/FileUploadBox.vue'
 import {
   downloadEricResult,
@@ -133,6 +136,7 @@ const logs = ref<string[]>([])
 const outputFile = ref('')
 const rowCount = ref('-')
 const differenceCount = ref('-')
+const { text } = useAppLanguage()
 
 const packFile = computed(() => packFiles.value[0] ?? null)
 const yticFile = computed(() => yticFiles.value[0] ?? null)

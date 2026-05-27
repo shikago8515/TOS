@@ -1,15 +1,15 @@
 <template>
   <section v-if="items.length > 0" class="result-summary">
     <header>
-      <h3>结果摘要</h3>
-      <span>{{ status === 'success' ? '处理完成' : '处理失败' }}</span>
+      <h3>{{ text('结果摘要') }}</h3>
+      <span>{{ status === 'success' ? text('处理完成') : text('处理失败') }}</span>
     </header>
 
     <div class="summary-grid">
       <article v-for="item in items" :key="item.label" class="summary-item">
-        <span>{{ item.label }}</span>
-        <strong>{{ item.value }}</strong>
-        <small v-if="item.note">{{ item.note }}</small>
+        <span>{{ text(item.label) }}</span>
+        <strong>{{ text(item.value) }}</strong>
+        <small v-if="item.note">{{ text(item.note) }}</small>
       </article>
     </div>
   </section>
@@ -17,11 +17,14 @@
 
 <script setup lang="ts">
 import type { ProcessSummaryItem } from '../process/processHistory'
+import { useAppLanguage } from '../i18n/appLanguage'
 
 defineProps<{
   items: ProcessSummaryItem[]
   status: 'success' | 'error'
 }>()
+
+const { text } = useAppLanguage()
 </script>
 
 <style scoped>

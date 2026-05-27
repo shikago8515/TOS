@@ -1,9 +1,9 @@
 <template>
   <section class="sophia-tina-page">
     <div class="card-section">
-      <h2 class="section-title">报表合并</h2>
+      <h2 class="section-title">{{ text('报表合并') }}</h2>
       <p class="section-desc">
-        Sophia & Tina 多类 Excel 文件统一合并，自动生成分析报表。
+        {{ text('Sophia & Tina 多类 Excel 文件统一合并，自动生成分析报表。') }}
       </p>
 
       <FileRequirementGuide owner="Sophia & Tina" mode="compact" />
@@ -12,26 +12,26 @@
       <div class="upload-grid">
         <FileUploadBox
           v-model:files="tmsFiles"
-          label="TMS 文件（可多选）"
-          hint="上传一个或多个 TMS 文件。"
+          :label="text('TMS 文件（可多选）')"
+          :hint="text('上传一个或多个 TMS 文件。')"
           multiple
         />
         <FileUploadBox
           v-model:files="articleFiles"
-          label="Article 文件（可多选）"
-          hint="上传一个或多个 Article 文件。"
+          :label="text('Article 文件（可多选）')"
+          :hint="text('上传一个或多个 Article 文件。')"
           multiple
         />
         <FileUploadBox
           v-model:files="priceFiles"
-          label="Factory Price 文件（可多选）"
-          hint="上传一个或多个 Factory Price 文件。"
+          :label="text('Factory Price 文件（可多选）')"
+          :hint="text('上传一个或多个 Factory Price 文件。')"
           multiple
         />
         <FileUploadBox
           v-model:files="packFiles"
-          label="Pack 文件（可多选）"
-          hint="上传一个或多个 Pack 文件。"
+          :label="text('Pack 文件（可多选）')"
+          :hint="text('上传一个或多个 Pack 文件。')"
           multiple
         />
       </div>
@@ -43,15 +43,15 @@
           :disabled="!canProcess || processing"
           @click="startProcess"
         >
-          {{ processing ? '处理中...' : '开始处理' }}
+          {{ processing ? text('处理中...') : text('开始处理') }}
         </button>
         <button class="secondary-action" type="button" @click="resetForm">
-          重置
+          {{ text('重置') }}
         </button>
       </div>
 
       <div v-if="processing" class="progress-block">
-        <span class="progress-label">上传进度 {{ progress }}%</span>
+        <span class="progress-label">{{ text('上传进度') }} {{ progress }}%</span>
         <progress :value="progress" max="100" />
       </div>
 
@@ -62,9 +62,9 @@
         class="result-alert"
         :class="success ? 'result-alert--success' : 'result-alert--error'"
       >
-        <p>{{ message }}</p>
+        <p>{{ text(message) }}</p>
         <button v-if="success && resultFile" type="button" @click="downloadResult">
-          下载结果文件
+          {{ text('下载结果文件') }}
         </button>
       </section>
 
@@ -90,6 +90,7 @@ import {
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
+import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
 import FileRequirementGuide from '../../shared/ui/FileRequirementGuide.vue'
 import FileUploadBox from '../../shared/ui/FileUploadBox.vue'
@@ -118,6 +119,7 @@ const summaryItems = ref<ProcessSummaryItem[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(sophiaTinaModuleId),
 )
+const { text } = useAppLanguage()
 
 const fileGroups = computed<FileGroupState[]>(() => [
   {

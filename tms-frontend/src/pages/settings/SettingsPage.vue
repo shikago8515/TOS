@@ -4,7 +4,10 @@
       <header class="panel-header">
         <div class="header-copy">
           <p class="panel-kicker">{{ t('app.settings.kicker') }}</p>
-          <h2 class="panel-title">{{ t('app.settings.title') }}</h2>
+          <div class="title-row">
+            <h2 class="panel-title">{{ t('app.settings.title') }}</h2>
+            <span class="copyright-badge">DG.Luenthai</span>
+          </div>
           <p class="panel-description">
             {{ t('app.settings.description') }}
           </p>
@@ -50,12 +53,12 @@
       </dl>
 
       <div v-if="noticeText" class="status-alert" :class="`status-alert--${noticeTone}`">
-        {{ noticeText }}
+        {{ text(noticeText) }}
       </div>
 
       <section v-if="status?.downloading || status?.progress" class="download-panel">
         <div class="download-row">
-          <span>下载进度</span>
+          <span>{{ text('下载进度') }}</span>
           <strong>{{ progressPercent }}%</strong>
         </div>
         <div class="progress-track" aria-hidden="true">
@@ -66,28 +69,28 @@
 
       <section class="changelog-section">
         <div class="section-heading">
-          <p class="panel-kicker">更新日志</p>
-          <h3>本次版本变化</h3>
+          <p class="panel-kicker">{{ text('更新日志') }}</p>
+          <h3>{{ text('本次版本变化') }}</h3>
         </div>
 
         <div v-if="hasCategorizedChangelog" class="changelog-grid">
           <article v-for="group in changelogGroups" :key="group.key" class="changelog-card">
             <h4>{{ group.title }}</h4>
             <ul v-if="group.items.length">
-              <li v-for="item in group.items" :key="item">{{ item }}</li>
+              <li v-for="item in group.items" :key="item">{{ text(item) }}</li>
             </ul>
-            <p v-else class="empty-copy">暂无记录</p>
+            <p v-else class="empty-copy">{{ text('暂无记录') }}</p>
           </article>
         </div>
 
         <div v-else class="empty-changelog">
-          {{ emptyChangelogText }}
+          {{ text(emptyChangelogText) }}
         </div>
 
         <div v-if="releaseNoteItems.length" class="release-notes">
-          <strong>发布说明</strong>
+          <strong>{{ text('发布说明') }}</strong>
           <ul>
-            <li v-for="item in releaseNoteItems" :key="item">{{ item }}</li>
+            <li v-for="item in releaseNoteItems" :key="item">{{ text(item) }}</li>
           </ul>
         </div>
       </section>
@@ -99,7 +102,7 @@
           :disabled="isActionLocked"
           @click="handleCheck"
         >
-          {{ status?.checking || activeAction === 'check' ? '检查中...' : '检查更新' }}
+          {{ status?.checking || activeAction === 'check' ? text('检查中...') : text('检查更新') }}
         </button>
         <button
           v-if="canDownload"
@@ -108,7 +111,7 @@
           :disabled="isActionLocked"
           @click="handleDownload"
         >
-          {{ status?.downloading || activeAction === 'download' ? '下载中...' : '下载更新' }}
+          {{ status?.downloading || activeAction === 'download' ? text('下载中...') : text('下载更新') }}
         </button>
         <button
           v-if="canInstall"
@@ -117,7 +120,7 @@
           :disabled="activeAction === 'install'"
           @click="handleInstall"
         >
-          {{ activeAction === 'install' ? '正在安装...' : '立即安装并重启' }}
+          {{ activeAction === 'install' ? text('正在安装...') : text('立即安装并重启') }}
         </button>
       </footer>
     </div>
@@ -148,7 +151,7 @@ type NoticeTone = 'info' | 'success' | 'warning' | 'error'
 type UpdateAction = '' | 'init' | 'check' | 'download' | 'install'
 
 const versionInfo = ref<AppVersionInfo>({
-  version: '0.9.6-beta.2',
+  version: '0.9.7-beta.1.1',
   isPackaged: false,
 })
 const status = ref<UpdateStatus | null>(null)
@@ -156,7 +159,7 @@ const activeAction = ref<UpdateAction>('')
 const message = ref('')
 const messageTone = ref<NoticeTone>('info')
 let unsubscribeUpdateStatus: (() => void) | undefined
-const { currentLanguage, languageOptions, t } = useAppLanguage()
+const { currentLanguage, languageOptions, t, text } = useAppLanguage()
 
 const statusLabels: Record<UpdateStatusCode, string> = {
   idle: '待检查',
@@ -204,16 +207,17 @@ const latestVersion = computed(() => {
     ? formatDisplayVersion(remote)
     : formatDisplayVersion(current)
 })
-const statusLabel = computed(() => statusLabels[status.value?.status || 'idle'])
+const statusLabel = computed(() => text(statusLabels[status.value?.status || 'idle']))
 const statusTone = computed(() => statusTones[status.value?.status || 'idle'])
 const runModeLabel = computed(() => {
   const isPackaged = status.value?.isPackaged ?? versionInfo.value.isPackaged
-  return isPackaged ? '安装版' : '开发/预览'
+  return isPackaged ? text('安装版') : text('开发/预览')
 })
 const feedUrl = computed(() => status.value?.feedUrl || '')
 const feedUrlLabel = computed(() => {
   if (!feedUrl.value) return '-'
-  const source = feedSourceLabels[status.value?.feedUrlSource || ''] || status.value?.feedUrlSource
+  const rawSource = feedSourceLabels[status.value?.feedUrlSource || ''] || status.value?.feedUrlSource
+  const source = rawSource ? text(rawSource) : ''
   return source ? `${source}: ${feedUrl.value}` : feedUrl.value
 })
 const noticeText = computed(() => message.value || status.value?.error || '')
@@ -227,15 +231,15 @@ const progressPercent = computed(() => {
 })
 const downloadDetail = computed(() => {
   const progress = status.value?.progress
-  if (!progress?.total) return '正在准备下载信息'
+  if (!progress?.total) return text('正在准备下载信息')
   return `${formatBytes(progress.transferred || 0)} / ${formatBytes(progress.total)}`
 })
 const changelogGroups = computed(() => {
   const changelog = status.value?.changelog
   return [
-    { key: 'added', title: '新增', items: changelog?.added ?? [] },
-    { key: 'improved', title: '优化', items: changelog?.improved ?? [] },
-    { key: 'fixed', title: '修复', items: changelog?.fixed ?? [] },
+    { key: 'added', title: text('新增'), items: changelog?.added ?? [] },
+    { key: 'improved', title: text('优化'), items: changelog?.improved ?? [] },
+    { key: 'fixed', title: text('修复'), items: changelog?.fixed ?? [] },
   ]
 })
 const hasCategorizedChangelog = computed(() =>
@@ -509,6 +513,14 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
   margin: 0;
 }
 
+.title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+}
+
 .panel-kicker {
   margin-bottom: 8px;
   color: #64748b;
@@ -520,6 +532,21 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
   color: #0f172a;
   font-size: 28px;
   line-height: 1.25;
+}
+
+.copyright-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  color: #185782;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+  white-space: nowrap;
+  background: #eff8ff;
+  border: 1px solid #b9d8ee;
+  border-radius: 999px;
 }
 
 .panel-description {

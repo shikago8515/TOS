@@ -1,28 +1,30 @@
 <template>
   <section class="requirement-guide" :class="{ 'requirement-guide--compact': compact }">
     <div class="guide-heading">
-      <p>文件准备</p>
-      <h3>{{ guide.summary }}</h3>
+      <p>{{ text('文件准备') }}</p>
+      <h3>{{ text(guide.summary) }}</h3>
     </div>
 
     <div class="guide-grid">
       <article v-for="file in guide.files" :key="file.name" class="guide-file">
         <span class="file-status" aria-hidden="true">✓</span>
         <span class="file-copy">
-          <strong>{{ file.name }}</strong>
-          <small>{{ file.detail }}</small>
+          <strong>{{ text(file.name) }}</strong>
+          <small>{{ text(file.detail) }}</small>
         </span>
-        <em v-if="file.required">必传</em>
+        <em v-if="file.required">{{ text('必传') }}</em>
       </article>
     </div>
 
     <ul class="guide-notes">
-      <li v-for="note in guide.notes" :key="note">{{ note }}</li>
+      <li v-for="note in guide.notes" :key="note">{{ text(note) }}</li>
     </ul>
   </section>
 </template>
 
 <script setup lang="ts">
+import { useAppLanguage } from '../i18n/appLanguage'
+
 type FileRequirementOwner = 'Jessca' | 'Sophia & Tina' | 'Jane' | 'Jane-BOM汇总'
 
 interface FileRequirementGuideModel {
@@ -46,6 +48,7 @@ const props = withDefaults(
 )
 
 const compact = props.mode === 'compact'
+const { text } = useAppLanguage()
 
 const guides: Record<FileRequirementOwner, FileRequirementGuideModel> = {
   Jessca: {

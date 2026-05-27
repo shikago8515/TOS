@@ -1,9 +1,9 @@
 <template>
   <section class="jane-bom-summary-page">
     <div class="card-section">
-      <h2 class="section-title">Jane-BOM汇总</h2>
+      <h2 class="section-title">{{ text('Jane-BOM汇总') }}</h2>
       <p class="section-desc">
-        上传多个 BOM 文件和 Pack.xlsx，按 Working # + Season 匹配 Pack，并生成 MAIN COMPONENT 汇总表。
+        {{ text('上传多个 BOM 文件和 Pack.xlsx，按 Working # + Season 匹配 Pack，并生成 MAIN COMPONENT 汇总表。') }}
       </p>
 
       <FileRequirementGuide owner="Jane-BOM汇总" mode="compact" />
@@ -12,18 +12,18 @@
       <div class="upload-grid">
         <FileUploadBox
           v-model:files="bomFiles"
-          label="BOM 文件（可多选）"
-          hint="上传一个或多个 BOM 文件，支持 .xlsx / .xlsm。"
+          :label="text('BOM 文件（可多选）')"
+          :hint="text('上传一个或多个 BOM 文件，支持 .xlsx / .xlsm。')"
           accept=".xlsx,.xlsm"
-          accept-label="支持 .xlsx / .xlsm"
+          :accept-label="text('支持 .xlsx / .xlsm')"
           multiple
         />
         <FileUploadBox
           v-model:files="packFiles"
           label="Pack.xlsx"
-          hint="上传包含 Pack、Season、Working Number 的 Pack 文件。"
+          :hint="text('上传包含 Pack、Season、Working Number 的 Pack 文件。')"
           accept=".xlsx,.xlsm"
-          accept-label="支持 .xlsx / .xlsm"
+          :accept-label="text('支持 .xlsx / .xlsm')"
         />
       </div>
 
@@ -34,15 +34,15 @@
           :disabled="!canProcess || processing"
           @click="startProcess"
         >
-          {{ processing ? '处理中...' : '开始处理' }}
+          {{ processing ? text('处理中...') : text('开始处理') }}
         </button>
         <button class="secondary-action" type="button" @click="resetForm">
-          重置
+          {{ text('重置') }}
         </button>
       </div>
 
       <div v-if="processing" class="progress-block">
-        <span class="progress-label">上传进度 {{ progress }}%</span>
+        <span class="progress-label">{{ text('上传进度') }} {{ progress }}%</span>
         <progress :value="progress" max="100" />
       </div>
 
@@ -53,9 +53,9 @@
         class="result-alert"
         :class="success ? 'result-alert--success' : 'result-alert--error'"
       >
-        <p>{{ message }}</p>
+        <p>{{ text(message) }}</p>
         <button v-if="success && resultFile" type="button" @click="downloadResult">
-          下载结果文件
+          {{ text('下载结果文件') }}
         </button>
       </section>
 
@@ -81,6 +81,7 @@ import {
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
+import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
 import FileRequirementGuide from '../../shared/ui/FileRequirementGuide.vue'
 import FileUploadBox from '../../shared/ui/FileUploadBox.vue'
@@ -107,6 +108,7 @@ const summaryItems = ref<ProcessSummaryItem[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(janeBomSummaryModuleId),
 )
+const { text } = useAppLanguage()
 
 const fileGroups = computed<FileGroupState[]>(() => [
   {

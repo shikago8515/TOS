@@ -1,11 +1,11 @@
 <template>
   <section class="file-upload-box">
     <div class="upload-label-row">
-      <strong>{{ label }}</strong>
-      <span v-if="required" class="upload-badge">必传</span>
+      <strong>{{ text(label) }}</strong>
+      <span v-if="required" class="upload-badge">{{ text('必传') }}</span>
     </div>
 
-    <p v-if="hint" class="upload-hint">{{ hint }}</p>
+    <p v-if="hint" class="upload-hint">{{ text(hint) }}</p>
 
     <label
       class="upload-dropzone"
@@ -21,9 +21,9 @@
       />
       <span class="upload-icon" aria-hidden="true">{{ files.length > 0 ? '✓' : '+' }}</span>
       <span class="upload-main">
-        {{ files.length > 0 ? `${files.length} 个文件已选择` : '点击或拖入文件' }}
+        {{ files.length > 0 ? text(`${files.length} 个文件已选择`) : text('点击或拖入文件') }}
       </span>
-      <span class="upload-sub">{{ acceptLabel }}</span>
+      <span class="upload-sub">{{ text(acceptLabel) }}</span>
     </label>
 
     <ul v-if="files.length > 0" class="selected-files">
@@ -32,7 +32,7 @@
           <strong>{{ file.name }}</strong>
           <small>{{ formatFileSize(file.size) }}</small>
         </span>
-        <button type="button" aria-label="移除文件" @click="removeFile(file)">×</button>
+        <button type="button" :aria-label="text('移除文件')" @click="removeFile(file)">×</button>
       </li>
     </ul>
   </section>
@@ -40,6 +40,7 @@
 
 <script setup lang="ts">
 import { formatFileSize } from '../files/fileGroups'
+import { useAppLanguage } from '../i18n/appLanguage'
 
 const props = withDefaults(
   defineProps<{
@@ -63,6 +64,8 @@ const props = withDefaults(
 const emit = defineEmits<{
   'update:files': [files: File[]]
 }>()
+
+const { text } = useAppLanguage()
 
 function handleInput(event: Event): void {
   const input = event.target as HTMLInputElement
