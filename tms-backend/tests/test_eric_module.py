@@ -1,6 +1,9 @@
 import os
 import sys
+import tempfile
 import unittest
+
+from openpyxl import load_workbook
 
 
 BACKEND_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -224,6 +227,73 @@ class EricModuleYticSourceTests(unittest.TestCase):
         self.assertEqual(self.module.normalize_ship_mode("By Sea"), "Ocean")
         self.assertEqual(self.module.normalize_ship_mode("By Courier"), "Air Express")
         self.assertEqual(self.module.normalize_ship_mode("By Courier", "Germany"), "Ocean")
+
+    def test_reconciliation_workbook_contains_required_sheets_and_text_compare(self):
+        final_data = {
+            "headers": ["PO Number", "Working Number"],
+            "records": [
+                {"PO Number": "0902792931", "Working Number": "RC2606OW000"},
+                {"PO Number": "", "Working Number": "RC2606OW000"},
+                {"PO Number": "0902775685", "Working Number": "RC2606OW000"},
+                {"PO Number": "0902773420", "Working Number": "RC2606OW000"},
+            ],
+        }
+        ytic_data = {
+            "size_rows": [],
+            "destination_headers": ["CUSTOMER PO NUMBER", "*STYLE NUMBER"],
+            "destination_rows": [
+                ["0902792931", "RC2606OW000"],
+                ["0902775685", "RC2606OW000"],
+                ["0900000001", "RC2606OW000"],
+            ],
+            "sp_headers": ["CUSTOMER PO NUMBER", "*STYLE NUMBER"],
+            "sp_rows": [["0902792931", "RC2606OW000"]],
+        }
+        size_check_rows = [
+            ["0902792931", "LI2854", "XS", 32, 32, 0, "OK"],
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = os.path.join(temp_dir, "eric_reconcile.xlsx")
+            self.module.write_reconciliation_workbook(
+                output_file,
+                final_data,
+                ytic_data,
+                size_check_rows,
+                [],
+                [],
+            )
+
+            wb = load_workbook(output_file, read_only=True, data_only=True)
+            try:
+                self.assertEqual(
+                    wb.sheetnames,
+                    [
+                        "Size_Check",
+                        "Final_Data",
+                        "YTIC_Destination_Extract",
+                        "YTIC_SP_Extract",
+                        "PO_Text_Compare",
+                    ],
+                )
+                rows = list(wb["PO_Text_Compare"].iter_rows(values_only=True))
+                self.assertEqual(
+                    rows,
+                    [
+                        (
+                            "PO Text",
+                            "In Final_Data PO Number",
+                            "In YTIC Destination CUSTOMER PO NUMBER",
+                            "Status",
+                        ),
+                        ("0902792931", True, True, "OK"),
+                        ("0902775685", True, True, "OK"),
+                        ("0900000001", False, True, "YTIC_ONLY"),
+                        ("0902773420", True, False, "FINAL_ONLY"),
+                    ],
+                )
+            finally:
+                wb.close()
 
 
 if __name__ == "__main__":

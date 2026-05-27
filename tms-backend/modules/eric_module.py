@@ -1017,6 +1017,77 @@ class EricModule:
             rows.append([po_key, in_final, in_ytic, status])
         return rows
 
+    @staticmethod
+    def normalize_compare_text(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return str(value)
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, float):
+            return str(int(value)) if value.is_integer() else str(value).strip()
+        text = str(value).strip()
+        if re.fullmatch(r"\d+\.0", text):
+            return text[:-2]
+        return text
+
+    @staticmethod
+    def ordered_unique_text(values: Sequence[Any]) -> List[str]:
+        ordered: List[str] = []
+        seen = set()
+        for value in values:
+            text = EricModule.normalize_compare_text(value)
+            if text and text not in seen:
+                ordered.append(text)
+                seen.add(text)
+        return ordered
+
+    def build_po_text_compare_rows(
+        self,
+        final_data: Dict[str, Any],
+        ytic_data: Dict[str, Any],
+    ) -> List[List[Any]]:
+        final_po_values = [
+            record.get("PO Number")
+            for record in final_data.get("records", [])
+        ]
+        destination_headers = ytic_data.get("destination_headers", [])
+        destination_header_index = self.index_headers(destination_headers)
+        destination_po_index = destination_header_index.get("CUSTOMER PO NUMBER")
+        ytic_po_values = []
+        if destination_po_index is not None:
+            ytic_po_values = [
+                self.row_value(row, destination_po_index)
+                for row in ytic_data.get("destination_rows", [])
+            ]
+
+        final_po_order = self.ordered_unique_text(final_po_values)
+        ytic_po_order = self.ordered_unique_text(ytic_po_values)
+        final_po_set = set(final_po_order)
+        ytic_po_set = set(ytic_po_order)
+
+        ordered_po: List[str] = []
+        seen_po = set()
+        # 按 YTIC 目的地表顺序优先输出，方便和来源表人工核对。
+        for po_text in [*ytic_po_order, *final_po_order]:
+            if po_text and po_text not in seen_po:
+                ordered_po.append(po_text)
+                seen_po.add(po_text)
+
+        rows: List[List[Any]] = []
+        for po_text in ordered_po:
+            in_final = po_text in final_po_set
+            in_ytic = po_text in ytic_po_set
+            if in_final and in_ytic:
+                status = CHECK_OK
+            elif in_final:
+                status = CHECK_FINAL_ONLY
+            else:
+                status = CHECK_YTIC_ONLY
+            rows.append([po_text, in_final, in_ytic, status])
+        return rows
+
     def write_table_sheet(
         self,
         wb: Workbook,
@@ -1127,6 +1198,15 @@ class EricModule:
             ytic_data["sp_headers"],
             ytic_data["sp_rows"],
         )
+        for sheet_name in ("Summary", "PO_Check", "YTIC_Size_Extract"):
+            if sheet_name in wb.sheetnames:
+                del wb[sheet_name]
+        self.write_table_sheet(
+            wb,
+            "PO_Text_Compare",
+            ["PO Text", "In Final_Data PO Number", "In YTIC Destination CUSTOMER PO NUMBER", "Status"],
+            self.build_po_text_compare_rows(final_data, ytic_data),
+        )
 
         wb.save(output_file)
         return output_file
@@ -1159,11 +1239,7 @@ class EricModule:
                     ytic_data["quantity_map"],
                     ytic_data.get("quantity_order", []) + final_data.get("quantity_order", []),
                 )
-                po_check_rows = self.build_po_check_rows(
-                    final_data["po_set"],
-                    ytic_data["po_set"],
-                    ytic_data.get("po_order", []) + final_data.get("po_order", []),
-                )
+                po_check_rows = self.build_po_text_compare_rows(final_data, ytic_data)
 
                 difference_count = sum(1 for row in size_check_rows if row[-1] != CHECK_OK)
                 po_difference_count = sum(1 for row in po_check_rows if row[-1] != CHECK_OK)
