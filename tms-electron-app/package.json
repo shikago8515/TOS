@@ -1,17 +1,18 @@
 {
   "name": "tms-integration-tool",
-  "version": "0.9.6-beta.3",
+  "version": "0.9.6-beta.4",
   "description": "TOS integration tool",
   "main": "main-simple.js",
   "scripts": {
     "dev": "electron .",
     "clean:update-artifacts": "node scripts/clean-update-artifacts.js",
+    "build:backend-runtime": "node scripts/build-backend-runtime.js",
     "verify:renderer-package": "node scripts/verify-renderer-package.js",
     "verify:release-package": "node scripts/verify-release-package.js",
     "write:update-changelog": "node scripts/write-update-changelog.js",
     "build:frontend": "node scripts/run-pack-default.js --frontend-only",
-    "build": "npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js && npm run verify:renderer-package && npm run write:update-changelog && npm run verify:release-package",
-    "build:win": "npm run build:frontend && npm run clean:update-artifacts && node ./node_modules/electron-builder/out/cli/cli.js --win --x64 && npm run verify:renderer-package && npm run write:update-changelog && npm run verify:release-package",
+    "build": "npm run build:backend-runtime && npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js && npm run verify:renderer-package && npm run write:update-changelog && npm run verify:release-package",
+    "build:win": "npm run build:backend-runtime && npm run build:frontend && npm run clean:update-artifacts && node ./node_modules/electron-builder/out/cli/cli.js --win --x64 && npm run verify:renderer-package && npm run write:update-changelog && npm run verify:release-package",
     "pack": "node scripts/run-pack-default.js || node scripts/verify-default-pack.js",
     "pack:source": "node scripts/run-pack-source.js || node scripts/verify-source-pack.js",
     "pack:portable": "node scripts/pack-portable-release.js"

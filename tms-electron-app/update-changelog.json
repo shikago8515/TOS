@@ -4,10 +4,12 @@
     "Eric 模块新增 PO_Text_Compare 工作表，用文本方式对比 YTIC_Destination_Extract 的 CUSTOMER PO NUMBER 和 Final_Data 的 PO Number。"
   ],
   "improved": [
+    "发布构建会自动重建后端 runtime，确保安装包和 portable 使用最新后端逻辑。",
     "Eric 核对结果只保留 Size_Check、Final_Data、YTIC_Destination_Extract、YTIC_SP_Extract 和 PO_Text_Compare，减少无关工作表。",
     "Eric 的 YTIC_SP_Extract 生成逻辑按 YTIC check 模板对齐 Sales Confirmation 和 Purchase Confirmation 行。"
   ],
   "fixed": [
+    "修复发布包优先运行旧 backend-runtime，导致 Eric 模块修改未在 TOS.exe 中生效的问题。",
     "修复 Eric 核对结果中 YTIC_SP_Extract 补充行字段错位的问题。",
     "修复 Eric 核对结果中 YTIC 目的地、尺码和 Final_Data 对比顺序不便核对的问题。"
   ]
