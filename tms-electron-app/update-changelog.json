@@ -1,6 +1,7 @@
 {
   "date": "2026-05-27",
   "added": [
+    "Jane 新增 BOM 汇总子模块，支持上传多个 BOM 文件和 Pack.xlsx，并按 Working # + Season 生成 MAIN COMPONENT 汇总表。",
     "Eric 模块新增 PO_Text_Compare 工作表，用文本方式对比 YTIC_Destination_Extract 的 CUSTOMER PO NUMBER 和 Final_Data 的 PO Number。"
   ],
   "improved": [
