@@ -14,30 +14,58 @@ export interface TosModuleDefinition {
   routeName: string
   title: string
   navLabel: string
+  navLabelEn: string
   group: TosModuleGroup
+  navParentId?: string
   stage: TosModuleStage
   description: string
+  descriptionEn: string
   order: number
 }
 
 export interface TosNavGroupDefinition {
   id: TosModuleGroup
   label: string
+  labelEn: string
+}
+
+export interface TosNavParentDefinition {
+  id: string
+  label: string
+  labelEn: string
+  group: TosModuleGroup
+  order: number
 }
 
 export const tosNavGroups = [
-  { id: 'home', label: '首页' },
-  { id: 'excel', label: 'Excel 处理' },
-  { id: 'automation', label: '自动化试验区' },
-  { id: 'testing', label: '测试' },
-  { id: 'collector', label: '网页数据爬取' },
-  { id: 'settings', label: '应用' },
+  { id: 'home', label: '首页', labelEn: 'Home' },
+  { id: 'excel', label: 'Excel 处理', labelEn: 'Excel Processing' },
+  { id: 'automation', label: '自动化试验区', labelEn: 'Automation Lab' },
+  { id: 'testing', label: '测试', labelEn: 'Testing' },
+  { id: 'collector', label: '网页数据爬取', labelEn: 'Web Data Collection' },
+  { id: 'settings', label: '系统', labelEn: 'System' },
 ] as const satisfies readonly TosNavGroupDefinition[]
+
+export const tosNavParents = [
+  {
+    id: 'jane-table-making',
+    label: 'Jane-表格制作',
+    labelEn: 'Jane Table Making',
+    group: 'excel',
+    order: 40,
+  },
+] as const satisfies readonly TosNavParentDefinition[]
 
 export const tosModuleStageLabels: Record<TosModuleStage, string> = {
   production: '正式模块',
   validation: '测试阶段',
   placeholder: '开发中',
+}
+
+export const tosModuleStageLabelsEn: Record<TosModuleStage, string> = {
+  production: 'Production',
+  validation: 'Validation',
+  placeholder: 'In development',
 }
 
 export const tosModules = [
@@ -47,9 +75,11 @@ export const tosModules = [
     routeName: 'home',
     title: '首页',
     navLabel: '首页',
+    navLabelEn: 'Home',
     group: 'home',
     stage: 'production',
     description: 'TOS 运营看板与快捷入口',
+    descriptionEn: 'TOS operations dashboard and shortcuts',
     order: 10,
   },
   {
@@ -58,9 +88,11 @@ export const tosModules = [
     routeName: 'jessca',
     title: '对账核对',
     navLabel: '对账核对',
+    navLabelEn: 'Reconciliation',
     group: 'excel',
     stage: 'production',
     description: 'Jessca 发票价格核对与差异整理',
+    descriptionEn: 'Jessca invoice price checking and discrepancy cleanup',
     order: 20,
   },
   {
@@ -69,9 +101,11 @@ export const tosModules = [
     routeName: 'sophia-tina',
     title: '报表合并',
     navLabel: '报表合并',
+    navLabelEn: 'Report Merge',
     group: 'excel',
     stage: 'production',
     description: 'Sophia & Tina 多源 Excel 汇总',
+    descriptionEn: 'Sophia & Tina multi-source Excel summary',
     order: 30,
   },
   {
@@ -80,9 +114,12 @@ export const tosModules = [
     routeName: 'jane',
     title: '成品表生成',
     navLabel: '成品表生成',
+    navLabelEn: 'Finished Goods Sheet',
     group: 'excel',
+    navParentId: 'jane-table-making',
     stage: 'production',
     description: 'Jane 成品表模板自动填充',
+    descriptionEn: 'Jane finished goods template auto-fill',
     order: 40,
   },
   {
@@ -91,9 +128,12 @@ export const tosModules = [
     routeName: 'jane-bom-summary',
     title: 'Jane-BOM汇总',
     navLabel: 'Jane-BOM汇总',
+    navLabelEn: 'Jane BOM Summary',
     group: 'excel',
+    navParentId: 'jane-table-making',
     stage: 'production',
     description: 'BOM 文件按 Pack 映射生成 MAIN COMPONENT 汇总',
+    descriptionEn: 'Generate MAIN COMPONENT summaries from BOM files and Pack mappings',
     order: 45,
   },
   {
@@ -102,9 +142,11 @@ export const tosModules = [
     routeName: 'eric',
     title: 'Excel数据处理整合工具-Eric',
     navLabel: 'Eric数据处理',
+    navLabelEn: 'Eric Data Processing',
     group: 'excel',
     stage: 'validation',
     description: '测试阶段：Excel数据处理整合',
+    descriptionEn: 'Validation: integrated Excel data processing',
     order: 50,
   },
   {
@@ -113,9 +155,11 @@ export const tosModules = [
     routeName: 'browser-plugins',
     title: '浏览器插件（测试）',
     navLabel: '浏览器插件',
+    navLabelEn: 'Browser Plugins',
     group: 'automation',
     stage: 'validation',
     description: '测试阶段：业务网页插件验证',
+    descriptionEn: 'Validation: business web plugin checks',
     order: 60,
   },
   {
@@ -124,9 +168,11 @@ export const tosModules = [
     routeName: 'web-automation',
     title: '网页自动化（测试）',
     navLabel: '网页自动化',
+    navLabelEn: 'Web Automation',
     group: 'automation',
     stage: 'validation',
     description: '测试阶段：Playwright 流程试用',
+    descriptionEn: 'Validation: Playwright workflow trials',
     order: 70,
   },
   {
@@ -135,9 +181,11 @@ export const tosModules = [
     routeName: 'infornexus',
     title: 'Infornexus 外部子应用',
     navLabel: 'Infornexus',
+    navLabelEn: 'Infornexus',
     group: 'automation',
     stage: 'validation',
     description: '以外部整包方式启动 Infornexus Electron 子应用',
+    descriptionEn: 'Launch the packaged Infornexus Electron sub-application',
     order: 75,
   },
   {
@@ -146,9 +194,11 @@ export const tosModules = [
     routeName: 'adidas-materials',
     title: 'adidas 材料收集器',
     navLabel: 'adidas 材料',
+    navLabelEn: 'adidas Materials',
     group: 'collector',
     stage: 'production',
     description: 'ACP Materials 数据采集',
+    descriptionEn: 'ACP Materials data collection',
     order: 80,
   },
   {
@@ -157,9 +207,11 @@ export const tosModules = [
     routeName: 'module-a',
     title: '模块 A',
     navLabel: '模块 A',
+    navLabelEn: 'Module A',
     group: 'testing',
     stage: 'placeholder',
     description: '功能开发中',
+    descriptionEn: 'In development',
     order: 90,
   },
   {
@@ -168,9 +220,11 @@ export const tosModules = [
     routeName: 'module-b',
     title: '模块 B',
     navLabel: '模块 B',
+    navLabelEn: 'Module B',
     group: 'testing',
     stage: 'placeholder',
     description: '功能开发中',
+    descriptionEn: 'In development',
     order: 100,
   },
   {
@@ -179,9 +233,11 @@ export const tosModules = [
     routeName: 'settings',
     title: '系统设置',
     navLabel: '系统设置',
+    navLabelEn: 'Settings',
     group: 'settings',
     stage: 'production',
     description: '查看版本、检查更新并安装新版 TOS',
+    descriptionEn: 'View version, check for updates, and install a newer TOS',
     order: 110,
   },
 ] as const satisfies readonly TosModuleDefinition[]
@@ -193,6 +249,12 @@ export const routeRedirects = [] as const
 export function getModulesByGroup(group: TosModuleGroup): TosModuleDefinition[] {
   return tosModules
     .filter((module) => module.group === group)
+    .sort((left, right) => left.order - right.order)
+}
+
+export function getNavParentsByGroup(group: TosModuleGroup): TosNavParentDefinition[] {
+  return tosNavParents
+    .filter((parent) => parent.group === group)
     .sort((left, right) => left.order - right.order)
 }
 

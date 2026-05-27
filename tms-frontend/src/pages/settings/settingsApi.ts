@@ -4,7 +4,7 @@ import type {
   UpdateStatus,
 } from '../../types/electronApi'
 
-const fallbackVersion = '0.9.6-beta.2'
+const fallbackVersion = '0.9.7-beta.1'
 
 export function hasUpdateBridge(): boolean {
   return Boolean(window.electronAPI?.getUpdateStatus)

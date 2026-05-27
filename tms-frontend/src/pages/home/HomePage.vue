@@ -2,23 +2,23 @@
   <section class="home-page">
     <header class="overview-band">
       <div>
-        <p class="section-kicker">TOS - 功能概览</p>
-        <h2>TOS 运营看板</h2>
+        <p class="section-kicker">{{ t('app.home.kicker') }}</p>
+        <h2>{{ t('app.home.title') }}</h2>
       </div>
 
-      <div class="backend-status" aria-label="后端在线">
+      <div class="backend-status" :aria-label="t('app.home.backendOnline')">
         <span class="status-light" />
-        <strong>后端在线</strong>
+        <strong>{{ t('app.home.backendOnline') }}</strong>
       </div>
     </header>
 
-    <section class="metric-grid" aria-label="模块统计">
+    <section class="metric-grid" :aria-label="t('app.home.moduleStats')">
       <MetricTile
         v-for="metric in homeMetricTiles"
-        :key="metric.label"
-        :label="metric.label"
+        :key="metric.labelKey"
+        :label="t(metric.labelKey)"
         :value="metric.value"
-        :detail="metric.detail"
+        :detail="getMetricDetail(metric)"
         :tone="metric.tone"
       />
     </section>
@@ -26,8 +26,8 @@
     <section class="content-grid">
       <div class="shortcuts-area">
         <div class="section-heading">
-          <p class="section-kicker">快捷入口</p>
-          <h3>正式模块与测试模块</h3>
+          <p class="section-kicker">{{ t('app.home.shortcuts') }}</p>
+          <h3>{{ t('app.home.modules') }}</h3>
         </div>
 
         <div class="shortcut-grid">
@@ -39,19 +39,19 @@
         </div>
       </div>
 
-      <aside class="status-panel" aria-label="服务状态">
+      <aside class="status-panel" :aria-label="t('app.home.serviceStatus')">
         <div class="section-heading">
-          <p class="section-kicker">服务状态</p>
-          <h3>运行概况</h3>
+          <p class="section-kicker">{{ t('app.home.serviceStatus') }}</p>
+          <h3>{{ t('app.home.runtime') }}</h3>
         </div>
 
         <ul>
           <ServiceStatusItem
             v-for="item in serviceStatusItems"
-            :key="item.label"
-            :label="item.label"
-            :description="item.description"
-            :status="item.status"
+            :key="item.labelKey"
+            :label="t(item.labelKey)"
+            :description="t(item.descriptionKey)"
+            :status="t(item.statusKey)"
             :tone="item.tone"
           />
         </ul>
@@ -61,14 +61,34 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+
 import MetricTile from '../../shared/ui/MetricTile.vue'
 import ModuleShortcutCard from '../../shared/ui/ModuleShortcutCard.vue'
 import ServiceStatusItem from '../../shared/ui/ServiceStatusItem.vue'
+import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import {
   homeMetricTiles,
   homeShortcutModules,
   serviceStatusItems,
 } from './homeModel'
+
+const { isEnglish, t } = useAppLanguage()
+
+const automationModuleDetail = computed(() =>
+  homeShortcutModules
+    .filter((module) => module.group === 'automation')
+    .map((module) => (isEnglish.value ? module.navLabelEn : module.navLabel))
+    .join(' / '),
+)
+
+function getMetricDetail(metric: (typeof homeMetricTiles)[number]): string {
+  if (metric.detailKey) {
+    return t(metric.detailKey)
+  }
+
+  return automationModuleDetail.value
+}
 </script>
 
 <style scoped>
