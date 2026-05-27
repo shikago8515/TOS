@@ -58,3 +58,58 @@ test('reports latest.yml when the referenced installer is missing', () => {
 
   assert(issues.some((issue) => issue.includes('latest.yml path target is missing')))
 })
+
+test('reports stale top-level release artifacts for another version', () => {
+  const root = makeTempDir()
+  const appOutDir = path.join(root, 'win-unpacked')
+  touch(path.join(root, 'TOS Setup 0.9.6-beta.2.exe'))
+  touch(path.join(root, 'TOS_v0.9.6-beta.2_Portable.exe'))
+
+  const issues = collectReleasePackageIssues({
+    distDir: root,
+    appOutDir,
+    expectedVersion: '0.9.6-beta.3',
+  })
+
+  assert(issues.some((issue) => issue.includes('TOS Setup 0.9.6-beta.2.exe')))
+  assert(issues.some((issue) => issue.includes('TOS_v0.9.6-beta.2_Portable.exe')))
+})
+
+test('reports backend version mismatches in packaged source', () => {
+  const root = makeTempDir()
+  const appOutDir = path.join(root, 'win-unpacked')
+  touch(path.join(appOutDir, 'resources', 'backend', 'main.py'), [
+    'app = FastAPI(version="0.9.6-beta.2")',
+    'return {"version": "0.9.6-beta.2"}',
+  ].join('\n'))
+
+  const issues = collectReleasePackageIssues({
+    distDir: root,
+    appOutDir,
+    expectedVersion: '0.9.6-beta.3',
+    skipArtifacts: true,
+  })
+
+  assert(issues.some((issue) => issue.includes('backend version mismatch')))
+})
+
+test('reports backend runtime older than packaged backend source', () => {
+  const root = makeTempDir()
+  const appOutDir = path.join(root, 'win-unpacked')
+  const mainPath = path.join(appOutDir, 'resources', 'backend', 'main.py')
+  const runtimePath = path.join(appOutDir, 'resources', 'backend-runtime', 'tos-backend', 'tos-backend.exe')
+  touch(mainPath, 'app = FastAPI(version="0.9.6-beta.3")')
+  touch(runtimePath)
+
+  fs.utimesSync(runtimePath, new Date('2026-01-01T00:00:00Z'), new Date('2026-01-01T00:00:00Z'))
+  fs.utimesSync(mainPath, new Date('2026-01-02T00:00:00Z'), new Date('2026-01-02T00:00:00Z'))
+
+  const issues = collectReleasePackageIssues({
+    distDir: root,
+    appOutDir,
+    expectedVersion: '0.9.6-beta.3',
+    skipArtifacts: true,
+  })
+
+  assert(issues.some((issue) => issue.includes('backend runtime is older than packaged backend source')))
+})
