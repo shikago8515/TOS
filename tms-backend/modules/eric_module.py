@@ -1172,7 +1172,7 @@ class EricModule:
         self.write_table_sheet(
             wb,
             "Size_Check",
-            ["PO Number", "Article Number", "Size", "Final Quantity", "YTIC Quantity", "FORMULAR"],
+            ["PO Number", "Article Number", "Size", "Final Quantity", "YTIC Quantity", "MARGIN"],
             size_check_export_rows,
         )
         self.write_table_sheet(
