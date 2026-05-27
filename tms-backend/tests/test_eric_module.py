@@ -395,7 +395,7 @@ class EricModuleYticSourceTests(unittest.TestCase):
                             "Size",
                             "Final Quantity",
                             "YTIC Quantity",
-                            "FORMULAR",
+                            "MARGIN",
                         ),
                         ("0902792931", "LI2854", "XS", 32, 32, "=D2-E2"),
                     ],
