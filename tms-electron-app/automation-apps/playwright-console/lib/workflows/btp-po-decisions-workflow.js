@@ -1,7 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { BaseWorkflow } = require('./base-workflow');
-const { runtimeDataRoot, delay } = require('../core/utils');
+const { runtimeDataRoot, delay, resolveDelayMs } = require('../core/utils');
 
 class BtpPoDecisionsWorkflow extends BaseWorkflow {
   async execute(page, parsedWorkbook, logger) {
@@ -72,7 +72,7 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
       '下一步': '打开任务列表'
     });
     await this.clickWhenReady(link, 'Task Center', logger);
-    await delay(this.config.afterTaskCenterClickMs || 3000);
+    await delay(resolveDelayMs(this.config.afterTaskCenterClickMs, 3000));
     return this.getApplicationSurface(page, logger);
   }
 
@@ -129,7 +129,7 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
         description: 'Go button'
       });
       await this.clickWhenReady(goButton, 'Go button', logger);
-      await delay(filter.afterGoMs || 3000);
+      await delay(resolveDelayMs(filter.afterGoMs, 3000));
     } catch (error) {
       if (required) {
         throw error;
@@ -152,7 +152,7 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
 
     if (count) {
       logger(`Cleared ${count} existing task type selection(s).`);
-      await delay(500);
+      await delay(resolveDelayMs(this.config.afterClearTaskTypeSelectionMs, 0));
     }
   }
 
@@ -306,7 +306,7 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
     });
     await search.fill(searchText);
     await search.press('Enter');
-    await delay(this.config.taskSearchDelayMs || 1500);
+    await delay(resolveDelayMs(this.config.taskSearchDelayMs, 1500));
   }
 
   async openTaskDetail(page, worklist, row, logger, item = {}) {
@@ -330,7 +330,7 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
       const popup = await popupPromise;
       const detailPage = popup || page;
       await detailPage.waitForLoadState('domcontentloaded').catch(() => {});
-      await delay(this.config.detailLoadDelayMs || 2000);
+      await delay(resolveDelayMs(this.config.detailLoadDelayMs, 2000));
       return detailPage;
     }
 
@@ -364,7 +364,7 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
     const popup = await popupPromise;
     const detailPage = popup || page;
     await detailPage.waitForLoadState('domcontentloaded').catch(() => {});
-    await delay(this.config.detailLoadDelayMs || 2000);
+    await delay(resolveDelayMs(this.config.detailLoadDelayMs, 2000));
     return detailPage;
   }
 
@@ -441,7 +441,7 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
 
     if (expander) {
       await this.clickWhenReady(expander, 'detail row expander', logger);
-      await delay(500);
+      await delay(resolveDelayMs(this.config.afterExpandDetailRowMs, 0));
     }
   }
 
@@ -527,7 +527,7 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
       }
     }).catch(() => {});
 
-    await delay(700);
+    await delay(resolveDelayMs(this.config.afterHorizontalScrollMs, 0));
 
     const visibleAfterScroll = await row.getByRole('combobox').first().isVisible({ timeout: 1000 }).catch(() => false);
     if (!visibleAfterScroll) {
@@ -590,7 +590,7 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
         '按钮': 'Submit / Save / OK / Confirm'
       });
       await this.clickWhenReady(button, 'submit button', logger);
-      await delay(submit.afterSubmitMs || 1500);
+      await delay(resolveDelayMs(submit.afterSubmitMs, 1500));
     }
   }
 

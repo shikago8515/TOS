@@ -1,5 +1,5 @@
 const { createCursor, CursorType } = require('../cursor');
-const { delay } = require('../core/utils');
+const { delay, resolveDelayMs } = require('../core/utils');
 
 class BaseWorkflow {
   constructor(workflowConfig, options = {}) {
@@ -93,7 +93,7 @@ class BaseWorkflow {
       }, 1800);
     }, label).catch(() => {});
 
-    await delay(visual.actionDelayMs || 700);
+    await delay(resolveDelayMs(visual.actionDelayMs, 700));
   }
 
   async showVisualStatus(page, title, details = {}) {
@@ -143,7 +143,7 @@ class BaseWorkflow {
       `;
     }, { title, details }).catch(() => {});
 
-    await delay(visual.statusDelayMs || 500);
+    await delay(resolveDelayMs(visual.statusDelayMs, 500));
   }
 
   createCursor(page, options = {}) {

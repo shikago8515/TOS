@@ -103,8 +103,26 @@ function buildLocator(page, selectorConfig, frame = null) {
   return target.locator(selector).first();
 }
 
+function resolveDelayMs(value, fallbackMs) {
+  if (value === null || value === undefined || value === '') {
+    return fallbackMs;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallbackMs;
+  }
+
+  return parsed;
+}
+
 function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  const delayMs = resolveDelayMs(ms, 0);
+  if (delayMs === 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise(resolve => setTimeout(resolve, delayMs));
 }
 
 const appRoot = path.resolve(__dirname, '..', '..');
@@ -120,6 +138,7 @@ module.exports = {
   rowToRecord,
   parseSelector,
   buildLocator,
+  resolveDelayMs,
   delay,
   appRoot,
   runtimeDataRoot

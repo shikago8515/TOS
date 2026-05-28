@@ -5,7 +5,7 @@
   "browser": {
     "channel": "msedge",
     "headless": false,
-    "slowMo": 150,
+    "slowMo": 0,
     "launchOptions": {
       "args": ["--start-maximized"],
       "timeout": 60000
@@ -20,8 +20,9 @@
       "startUrl": "https://purchasing-plan-exec-prod-i725c6w9.launchpad.cfapps.eu10.hana.ondemand.com/site?siteId=06dbc9bb-bc49-459f-b6d0-7cd3d7d9e364#Shell-home",
       "worksheetName": "",
       "loginWaitMs": 180000,
-      "afterTaskCenterClickMs": 3000,
-      "detailLoadDelayMs": 2000,
+      "afterTaskCenterClickMs": 0,
+      "detailLoadDelayMs": 0,
+      "taskSearchDelayMs": 0,
       "taskRowTimeoutMs": 25000,
       "detailRowTimeoutMs": 25000,
       "excel": {
@@ -38,7 +39,7 @@
         "required": false,
         "clearExistingSelection": true,
         "goButtonName": "Go",
-        "afterGoMs": 3000
+        "afterGoMs": 0
       },
       "decisionOptions": {
         "accept": "Accept",
@@ -51,17 +52,17 @@
         "required": false,
         "buttonNames": ["Submit", "Save", "OK", "Confirm"],
         "timeoutMs": 8000,
-        "afterSubmitMs": 1500
+        "afterSubmitMs": 0
       },
       "behavior": {
         "continueOnError": false,
         "expandDetailRow": true,
-        "pauseBetweenItemsMs": 1500
+        "pauseBetweenItemsMs": 0
       },
       "visual": {
-        "enabled": true,
-        "actionDelayMs": 900,
-        "statusDelayMs": 600
+        "enabled": false,
+        "actionDelayMs": 0,
+        "statusDelayMs": 0
       },
       "selectors": {
         "taskCenterLinkPatterns": ["Task Center.*saas_approuter", "Task Center"],
