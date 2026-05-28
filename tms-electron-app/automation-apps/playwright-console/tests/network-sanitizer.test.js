@@ -5,6 +5,7 @@ const {
   summarizePayload,
   safeJsonParse
 } = require('../lib/network/sanitizer');
+const networkSanitizer = require('../lib/network');
 
 test('redactHeaders hides authentication and session headers case-insensitively', () => {
   const result = redactHeaders({
@@ -66,4 +67,26 @@ test('summarizePayload truncates array previews to 5 items', () => {
   }));
 
   assert.deepEqual(result.preview.values, [1, 2, 3, 4, 5]);
+});
+
+test('summarizePayload redacts and truncates top-level JSON arrays', () => {
+  const result = summarizePayload(JSON.stringify([
+    { token: 'secret-token' },
+    { value: 2 },
+    { value: 3 },
+    { value: 4 },
+    { value: 5 },
+    { value: 6 }
+  ]));
+
+  assert.equal(result.kind, 'json');
+  assert.deepEqual(result.keys, []);
+  assert.equal(result.preview.length, 5);
+  assert.equal(result.preview[0].token, '[redacted]');
+});
+
+test('network barrel exports sanitizer helpers', () => {
+  assert.equal(networkSanitizer.redactHeaders, redactHeaders);
+  assert.equal(networkSanitizer.summarizePayload, summarizePayload);
+  assert.equal(networkSanitizer.safeJsonParse, safeJsonParse);
 });

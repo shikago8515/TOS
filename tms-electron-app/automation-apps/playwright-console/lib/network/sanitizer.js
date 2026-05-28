@@ -54,7 +54,16 @@ function summarizePayload(text) {
   }
 
   const parsedPayload = safeJsonParse(payloadText);
-  if (parsedPayload && !Array.isArray(parsedPayload) && typeof parsedPayload === 'object') {
+  if (Array.isArray(parsedPayload)) {
+    return {
+      kind: 'json',
+      size,
+      keys: [],
+      preview: redactPayloadPreview(parsedPayload)
+    };
+  }
+
+  if (parsedPayload && typeof parsedPayload === 'object') {
     return {
       kind: 'json',
       size,

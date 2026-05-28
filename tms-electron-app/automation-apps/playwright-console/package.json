@@ -8,7 +8,7 @@
     "start": "node bin/start.js",
     "dev": "node bin/start.js",
     "test": "node --test tests/*.test.js",
-    "check": "node --check lib/index.js && node --check public/app.js && node --check lib/server/index.js && node --check lib/workflows/btp-po-decisions-workflow.js && node --check lib/excel/btp-po-decisions-parser.js && node --check lib/network/sanitizer.js"
+    "check": "node --check lib/index.js && node --check public/app.js && node --check lib/server/index.js && node --check lib/workflows/btp-po-decisions-workflow.js && node --check lib/excel/btp-po-decisions-parser.js && node --check lib/network/sanitizer.js && node --check lib/network/index.js"
   },
   "dependencies": {
     "express": "5.2.1",
