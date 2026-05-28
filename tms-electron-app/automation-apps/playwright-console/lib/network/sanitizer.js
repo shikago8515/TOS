@@ -47,7 +47,7 @@ function redactPayloadPreview(value, key = '') {
 
 function summarizePayload(text) {
   const payloadText = text == null ? '' : String(text);
-  const size = payloadText.length;
+  const size = Buffer.byteLength(payloadText);
 
   if (!payloadText) {
     return { kind: 'empty', size: 0, keys: [], preview: null };
