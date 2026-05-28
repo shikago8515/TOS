@@ -12,7 +12,9 @@ __all__ = [
     'JesscaModule',
     'SophiaTinaModule',
     'JaneModule',
+    'JaneBomCompareModule',
     'JaneBomSummaryModule',
+    'JaneOutboundCompareModule',
 ]
 
 
@@ -29,7 +31,13 @@ def __getattr__(name):
     if name == 'JaneModule':
         from .jane_module import JaneModule
         return JaneModule
+    if name == 'JaneBomCompareModule':
+        from .jane_bom_compare_module import JaneBomCompareModule
+        return JaneBomCompareModule
     if name == 'JaneBomSummaryModule':
         from .jane_bom_summary_module import JaneBomSummaryModule
         return JaneBomSummaryModule
+    if name == 'JaneOutboundCompareModule':
+        from .jane_outbound_compare_module import JaneOutboundCompareModule
+        return JaneOutboundCompareModule
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
