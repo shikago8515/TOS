@@ -8,6 +8,7 @@ const { createWorkflow } = require('./workflow-registry');
 
 const SUPPORTED_RUN_MODES = new Set(['debug-ui', 'capture']);
 const KNOWN_RUN_MODES = new Set(['debug-ui', 'capture', 'hybrid', 'fast-api']);
+const AVAILABLE_RUN_MODES_MESSAGE = 'Available now: debug-ui, capture. Planned but disabled: hybrid, fast-api.';
 
 function normalizeRunMode(value) {
   const mode = String(value || '').trim().toLowerCase();
@@ -18,11 +19,15 @@ function assertSupportedRunMode(mode) {
   const normalized = normalizeRunMode(mode);
 
   if (!KNOWN_RUN_MODES.has(normalized)) {
-    throw new Error(`Unknown run mode: ${normalized}`);
+    throw new Error(`Unknown run mode: ${normalized}. ${AVAILABLE_RUN_MODES_MESSAGE}`);
   }
 
   if (!SUPPORTED_RUN_MODES.has(normalized)) {
-    throw new Error('Fast API mode is not enabled yet. Run capture mode first and confirm the captured interface template.');
+    if (normalized === 'fast-api') {
+      throw new Error('Fast API mode is not enabled yet. Run mode "fast-api" requires a captured interface template.');
+    }
+
+    throw new Error(`Run mode "${normalized}" is not enabled yet. Run capture mode first and confirm the captured interface template.`);
   }
 
   return normalized;
