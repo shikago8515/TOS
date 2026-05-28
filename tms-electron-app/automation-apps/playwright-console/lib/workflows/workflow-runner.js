@@ -6,6 +6,28 @@ const { loadConfig } = require('../config');
 const { parseWorkbook } = require('../excel');
 const { createWorkflow } = require('./workflow-registry');
 
+const SUPPORTED_RUN_MODES = new Set(['debug-ui', 'capture']);
+const KNOWN_RUN_MODES = new Set(['debug-ui', 'capture', 'hybrid', 'fast-api']);
+
+function normalizeRunMode(value) {
+  const mode = String(value || '').trim().toLowerCase();
+  return mode || 'debug-ui';
+}
+
+function assertSupportedRunMode(mode) {
+  const normalized = normalizeRunMode(mode);
+
+  if (!KNOWN_RUN_MODES.has(normalized)) {
+    throw new Error(`Unknown run mode: ${normalized}`);
+  }
+
+  if (!SUPPORTED_RUN_MODES.has(normalized)) {
+    throw new Error('Fast API mode is not enabled yet. Run capture mode first and confirm the captured interface template.');
+  }
+
+  return normalized;
+}
+
 async function launchPage(browserConfig, targetUrl, logger) {
   const userDataDir = path.resolve(runtimeDataRoot, browserConfig.userDataDir);
   await fs.mkdir(userDataDir, { recursive: true });
@@ -39,7 +61,8 @@ async function captureFailure(page, workflowId, logger) {
 }
 
 async function runAutomation(options) {
-  const { workflowId, excelPath, targetUrl, dryRun, onLog, originalFileName } = options;
+  const { workflowId, excelPath, targetUrl, dryRun, onLog, originalFileName, runMode } = options;
+  assertSupportedRunMode(runMode);
   
   const config = loadConfig();
   const workflowConfig = config.workflows[workflowId];
@@ -95,5 +118,7 @@ async function runAutomation(options) {
 
 module.exports = {
   runAutomation,
-  launchPage
+  launchPage,
+  normalizeRunMode,
+  assertSupportedRunMode
 };
