@@ -2,15 +2,15 @@
 """
 Jane BOM 核对模块。
 
-上传 T1 PRODUCTION 和多张 BOM 后，按 Style ID + Recording Facility ID 对应
-BOM 的 Article + Factory，核对材料号和供应商，并在原表上用红色标出差异。
+上传 T1 PRODUCTION 和 Jane-BOM 汇总表后，按 Style ID + Recording Facility ID
+对应 BOM 汇总的 Articles + Factory，核对材料号和供应商，并在原表上用红色标出差异。
 """
 
 import copy
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import openpyxl
 from openpyxl.styles import PatternFill
@@ -20,7 +20,7 @@ from utils.file_utils import ensure_dir
 
 @dataclass(frozen=True)
 class BomMaterial:
-    """BOM 中一条可核对的 MAIN COMPONENT 面料记录。"""
+    """BOM 或 BOM 汇总中一条可核对的 MAIN COMPONENT 面料记录。"""
 
     article: str
     factory: str
@@ -49,6 +49,12 @@ class JaneBomCompareModule:
         "Material Reference #",
         "Group Code Supplier",
         "Color",
+    ]
+    REQUIRED_BOM_SUMMARY_COLUMNS = [
+        "Factory",
+        "Articles",
+        "Material Reference #",
+        "Group Code Supplier",
     ]
     DIAGNOSTIC_HEADERS = [
         ("check result", "Check Result"),
@@ -189,6 +195,65 @@ class JaneBomCompareModule:
                         source_row=row_index,
                     ),
                 )
+
+        return rows
+
+    def _read_bom_summary_materials(self, bom_summary_path: str) -> List[BomMaterial]:
+        wb = openpyxl.load_workbook(bom_summary_path, data_only=True)
+        ws = wb.active
+        header_row, header_columns = self._find_header_row(
+            ws,
+            self.REQUIRED_BOM_SUMMARY_COLUMNS,
+            max_scan_rows=10,
+        )
+
+        rows: List[BomMaterial] = []
+        seen: Set[Tuple[str, str, str, str]] = set()
+        for row_index in range(header_row + 1, ws.max_row + 1):
+            article = self._normalize_text(
+                ws.cell(row=row_index, column=header_columns["articles"]).value,
+            )
+            factory = self._parse_factory_code(
+                ws.cell(row=row_index, column=header_columns["factory"]).value,
+            )
+            material_ref = self._normalize_text(
+                ws.cell(row=row_index, column=header_columns["material reference #"]).value,
+            )
+            group_code_supplier = self._normalize_text(
+                ws.cell(row=row_index, column=header_columns["group code supplier"]).value,
+            )
+            if not article or not factory or not material_ref:
+                continue
+
+            key = (
+                self._normalize_key(article),
+                self._normalize_key(factory),
+                self._normalize_key(material_ref),
+                self._normalize_key(group_code_supplier),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append(
+                BomMaterial(
+                    article=article,
+                    factory=factory,
+                    material_ref=material_ref,
+                    group_code_supplier=group_code_supplier,
+                    working=self._normalize_text(
+                        ws.cell(row=row_index, column=header_columns.get("working #", 0)).value,
+                    )
+                    if "working #" in header_columns
+                    else "",
+                    season=self._normalize_text(
+                        ws.cell(row=row_index, column=header_columns.get("season", 0)).value,
+                    )
+                    if "season" in header_columns
+                    else "",
+                    source_file=os.path.basename(bom_summary_path),
+                    source_row=row_index,
+                ),
+            )
 
         return rows
 
@@ -379,15 +444,22 @@ class JaneBomCompareModule:
     def process_reports(
         self,
         production_path: str,
-        bom_paths: Sequence[str],
+        bom_source: Union[str, os.PathLike, Sequence[str]],
         output_dir: str,
     ) -> Dict[str, Any]:
         logs: List[str] = []
         try:
+            is_summary_input = isinstance(bom_source, (str, os.PathLike))
+            if is_summary_input:
+                source_text = os.fspath(bom_source)
+                bom_paths = [source_text] if source_text else []
+            else:
+                bom_paths = list(bom_source)
+
             if not bom_paths:
                 return {
                     "success": False,
-                    "message": "请至少上传 1 个 BOM 文件",
+                    "message": "请上传 BOM汇总 文件" if is_summary_input else "请至少上传 1 个 BOM 文件",
                     "logs": logs,
                 }
 
@@ -410,13 +482,23 @@ class JaneBomCompareModule:
             expected_by_key: Dict[Tuple[str, str], List[BomMaterial]] = {}
             bom_material_row_count = 0
             for bom_path in bom_paths:
-                bom_materials = self._read_bom_materials(bom_path)
+                bom_materials = (
+                    self._read_bom_summary_materials(bom_path)
+                    if is_summary_input
+                    else self._read_bom_materials(bom_path)
+                )
                 source_row_count = len({material.source_row for material in bom_materials})
                 bom_material_row_count += source_row_count
-                logs.append(
-                    f"{os.path.basename(bom_path)} 读取 MAIN COMPONENT："
-                    f"{source_row_count} 个有效源行，{len(bom_materials)} 条 Article 映射",
-                )
+                if is_summary_input:
+                    logs.append(
+                        f"{os.path.basename(bom_path)} 读取 BOM汇总："
+                        f"{source_row_count} 个有效行，{len(bom_materials)} 条 Article/Factory 映射",
+                    )
+                else:
+                    logs.append(
+                        f"{os.path.basename(bom_path)} 读取 MAIN COMPONENT："
+                        f"{source_row_count} 个有效源行，{len(bom_materials)} 条 Article 映射",
+                    )
                 for material in bom_materials:
                     key = (self._normalize_key(material.article), self._normalize_key(material.factory))
                     expected_by_key.setdefault(key, []).append(material)
@@ -424,7 +506,7 @@ class JaneBomCompareModule:
             if not expected_by_key:
                 return {
                     "success": False,
-                    "message": "未从 BOM 中读取到可核对的 MAIN COMPONENT 面料",
+                    "message": "未从 BOM汇总 中读取到可核对的面料" if is_summary_input else "未从 BOM 中读取到可核对的 MAIN COMPONENT 面料",
                     "logs": logs,
                 }
 

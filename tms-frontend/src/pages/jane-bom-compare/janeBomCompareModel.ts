@@ -6,7 +6,7 @@ export const janeBomCompareModuleName = 'Jane-BOM核对'
 
 export interface JaneBomCompareInputCounts {
   production: number
-  bom: number
+  bomSummary: number
 }
 
 export function buildJaneBomCompareSummary(
@@ -19,17 +19,17 @@ export function buildJaneBomCompareSummary(
       value: String(counts.production),
     },
     {
-      label: 'BOM 文件',
-      value: String(counts.bom),
+      label: 'BOM汇总 文件',
+      value: String(counts.bomSummary),
     },
     {
-      label: '已处理 BOM',
+      label: 'BOM汇总文件',
       value: String(response.bom_count ?? '-'),
     },
     {
-      label: 'BOM有效行',
+      label: 'BOM汇总有效行',
       value: String(response.bom_material_row_count ?? '-'),
-      note: '只统计 MAIN COMPONENT 下的源行',
+      note: '只统计 BOM汇总 中可核对的有效行',
     },
     {
       label: '已核对行数',

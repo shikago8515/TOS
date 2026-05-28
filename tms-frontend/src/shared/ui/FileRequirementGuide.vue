@@ -144,7 +144,7 @@ const guides: Record<FileRequirementOwner, FileRequirementGuideModel> = {
     ],
   },
   'Jane-BOM核对': {
-    summary: 'T1 PRODUCTION 与 BOM 面料核对',
+    summary: 'T1 PRODUCTION 与 BOM汇总 面料核对',
     files: [
       {
         name: 'T1 PRODUCTION 文件',
@@ -152,14 +152,14 @@ const guides: Record<FileRequirementOwner, FileRequirementGuideModel> = {
         required: true,
       },
       {
-        name: 'BOM 文件',
-        detail: '可多选，支持 .xlsx / .xlsm',
+        name: 'BOM汇总 文件',
+        detail: '只上传 1 个，支持 .xlsx / .xlsm',
         required: true,
       },
     ],
     notes: [
-      '按 Style ID + Recording Facility ID 匹配 BOM 的 Article + Factory。',
-      '材料号或供应商不一致会标红；BOM 有但生产表缺少的材料会追加红色行。',
+      '按 Style ID + Recording Facility ID 匹配 BOM汇总 的 Articles + Factory。',
+      '材料号或供应商不一致会标红；BOM汇总 有但生产表缺少的材料会写入诊断。',
     ],
   },
   'Jane-OUTBOUND核对': {

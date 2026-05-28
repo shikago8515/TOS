@@ -146,8 +146,8 @@ export const tosModules = [
     group: 'excel',
     navParentId: 'jane-table-making',
     stage: 'production',
-    description: 'T1 PRODUCTION 与 BOM MAIN COMPONENT 面料核对并标红差异',
-    descriptionEn: 'Compare T1 PRODUCTION with BOM MAIN COMPONENT materials and mark differences',
+    description: 'T1 PRODUCTION 与 BOM汇总 面料核对并标红差异',
+    descriptionEn: 'Compare T1 PRODUCTION with BOM summary materials and mark differences',
     order: 46,
   },
   {

@@ -202,6 +202,56 @@ class JaneBomCompareModuleTests(unittest.TestCase):
         wb.save(path)
         return path
 
+    def _save_bom_summary_workbook(self, folder):
+        path = os.path.join(folder, "BOM汇总.xlsx")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Sheet1"
+        ws.append([
+            "Pack",
+            "Working #",
+            "Season",
+            "Factory",
+            "Articles",
+            "Part Group #",
+            "Material Reference #",
+            "Material Name",
+            "Group Code Supplier",
+            "Supplier Name",
+            "Material Description",
+            "Color",
+        ])
+        ws.append([
+            "SS26 ASOS Pack",
+            "RC2610OW005H2H",
+            "SS26",
+            "3LP001 | XO TEX INDUSTRIAL CO., LTD. | A",
+            "LD1803",
+            "10",
+            "70020171",
+            "70020171 Satin",
+            "1SB001",
+            "TMS (CHN)",
+            "97%POLYESTER",
+            "117A NIGHT INDIGO",
+        ])
+        ws.append([
+            "SS26 ASOS Pack",
+            "RC2610OW005H2H",
+            "SS26",
+            "3LP001 | XO TEX INDUSTRIAL CO., LTD. | A",
+            "LD1803",
+            "20",
+            "62712089",
+            "62712089 Tricot",
+            "299002",
+            "HUAFENG (CHINA)",
+            "100%POLYESTER",
+            "117A NIGHT INDIGO",
+        ])
+        wb.save(path)
+        return path
+
     def test_marks_supplier_mismatch_and_reports_missing_bom_material_without_appending_rows(self):
         with tempfile.TemporaryDirectory() as folder:
             production_path = self._save_production_workbook(folder)
@@ -247,6 +297,34 @@ class JaneBomCompareModuleTests(unittest.TestCase):
             self.assertIn("62712089/299002", ws.cell(row=2, column=detail_col).value)
             self.assertEqual(ws.cell(row=2, column=bom_file_col).value, "BOM-SF342-3LP001-20261.xlsx")
             self.assertEqual(ws.cell(row=2, column=bom_row_col).value, 12)
+
+    def test_compares_t1_production_against_single_bom_summary_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            production_path = self._save_production_workbook(folder)
+            bom_summary_path = self._save_bom_summary_workbook(folder)
+
+            result = self.module.process_reports(production_path, bom_summary_path, folder)
+
+            self.assertTrue(result["success"])
+            self.assertEqual(result["bom_count"], 1)
+            self.assertEqual(result["mismatch_cell_count"], 1)
+            self.assertEqual(result["missing_row_count"], 1)
+            self.assertEqual(result["bom_material_row_count"], 2)
+
+            output_wb = openpyxl.load_workbook(result["output_path"])
+            ws = output_wb["PRODUCTION"]
+
+            seller_col = self._column_by_header(ws, "Seller Facility ID")
+            correct_supplier_col = self._column_by_header(ws, "Correct Group Code Supplier (BOM)")
+            detail_col = self._column_by_header(ws, "Check Detail")
+            bom_file_col = self._column_by_header(ws, "BOM Source File")
+            bom_row_col = self._column_by_header(ws, "BOM Source Row")
+
+            self.assertEqual(self._fill_rgb(ws.cell(row=2, column=seller_col)), "FFFFC7CE")
+            self.assertEqual(ws.cell(row=2, column=correct_supplier_col).value, "1SB001")
+            self.assertIn("BOM 还有未在 T1 PRODUCTION 出现的材料", ws.cell(row=2, column=detail_col).value)
+            self.assertEqual(ws.cell(row=2, column=bom_file_col).value, "BOM汇总.xlsx")
+            self.assertEqual(ws.cell(row=2, column=bom_row_col).value, 2)
 
 
 if __name__ == "__main__":

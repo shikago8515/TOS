@@ -6,9 +6,11 @@
     "Excel 处理下新增 Jane-表格制作分组，统一收纳成品表生成和 Jane-BOM汇总。",
     "系统设置新增界面语言切换，支持中文和 English。",
     "Jane 新增 BOM 汇总子模块，支持上传多个 BOM 文件和 Pack.xlsx，并按 Working # + Season 生成 MAIN COMPONENT 汇总表。",
-    "Eric 模块新增 PO_Text_Compare 工作表，用文本方式对比 YTIC_Destination_Extract 的 CUSTOMER PO NUMBER 和 Final_Data 的 PO Number。"
+    "Eric 模块新增 PO_Text_Compare 工作表，用文本方式对比 YTIC_Destination_Extract 的 CUSTOMER PO NUMBER 和 Final_Data 的 PO Number。",
+    "Jane-BOM核对支持上传 Jane-BOM汇总 生成的 BOM汇总.xlsx，直接与 T1 PRODUCTION 进行面料核对。"
   ],
   "improved": [
+    "网页自动化 UI 执行流程关闭 slowMo、视觉高亮延迟和固定等待，提升现有自动化动作速度。",
     "补齐英文界面下 Excel 核心页面、上传组件、文件预检查、结果摘要、处理记录和系统设置的英文显示。",
     "版本号在系统设置中统一显示为大写 V 前缀，避免侧边栏和底栏出现冗余信息。",
     "移除 Electron 默认菜单栏，主窗口保留应用自有导航和操作区。",

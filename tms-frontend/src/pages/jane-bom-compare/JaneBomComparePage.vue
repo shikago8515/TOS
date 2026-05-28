@@ -5,7 +5,7 @@
       <p class="section-desc">
         {{
           text(
-            '上传 T1 PRODUCTION.xlsx 和多个 BOM 文件，按 Style ID + Recording Facility ID 核对 MAIN COMPONENT 面料并标红差异。',
+            '上传 T1 PRODUCTION.xlsx 和 BOM汇总.xlsx，按 Style ID + Recording Facility ID 核对面料并标红差异。',
           )
         }}
       </p>
@@ -22,12 +22,11 @@
           :accept-label="text('支持 .xlsx / .xlsm')"
         />
         <FileUploadBox
-          v-model:files="bomFiles"
-          :label="text('BOM 文件（可多选）')"
-          :hint="text('上传一个或多个 BOM 文件，支持 .xlsx / .xlsm。')"
+          v-model:files="bomSummaryFiles"
+          :label="text('BOM汇总 文件')"
+          :hint="text('上传 1 个 Jane-BOM汇总 生成的 BOM汇总.xlsx。')"
           accept=".xlsx,.xlsm"
           :accept-label="text('支持 .xlsx / .xlsm')"
-          multiple
         />
       </div>
 
@@ -102,7 +101,7 @@ import {
 } from './janeBomCompareModel'
 
 const productionFiles = ref<File[]>([])
-const bomFiles = ref<File[]>([])
+const bomSummaryFiles = ref<File[]>([])
 const processing = ref(false)
 const progress = ref(0)
 const message = ref('')
@@ -123,10 +122,11 @@ const fileGroups = computed<FileGroupState[]>(() => [
     expectedCount: 1,
   },
   {
-    label: 'BOM 文件',
-    files: bomFiles.value,
+    label: 'BOM汇总 文件',
+    files: bomSummaryFiles.value,
     required: true,
-    multiple: true,
+    multiple: false,
+    expectedCount: 1,
   },
 ])
 
@@ -153,7 +153,7 @@ async function startProcess(): Promise<void> {
     const response = await processJaneBomCompareFiles(
       {
         productionFile: productionFiles.value[0],
-        bomFiles: bomFiles.value,
+        bomSummaryFile: bomSummaryFiles.value[0],
       },
       (nextProgress) => {
         progress.value = nextProgress
@@ -167,7 +167,7 @@ async function startProcess(): Promise<void> {
       : response.message
     summaryItems.value = buildJaneBomCompareSummary(response, {
       production: productionFiles.value.length,
-      bom: bomFiles.value.length,
+      bomSummary: bomSummaryFiles.value.length,
     })
     recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles)
   } catch (error) {
@@ -194,7 +194,7 @@ async function downloadResult(): Promise<void> {
 
 function resetForm(): void {
   productionFiles.value = []
-  bomFiles.value = []
+  bomSummaryFiles.value = []
   processing.value = false
   progress.value = 0
   message.value = ''

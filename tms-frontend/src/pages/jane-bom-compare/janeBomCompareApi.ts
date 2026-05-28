@@ -5,7 +5,7 @@ import {
 
 export interface JaneBomCompareProcessRequest {
   productionFile: File
-  bomFiles: File[]
+  bomSummaryFile: File
 }
 
 export interface JaneBomCompareProcessResponse {
@@ -30,9 +30,7 @@ export async function processJaneBomCompareFiles(
   const formData = new FormData()
 
   formData.append('production_file', request.productionFile)
-  request.bomFiles.forEach((file) => {
-    formData.append('bom_files', file)
-  })
+  formData.append('bom_summary_file', request.bomSummaryFile)
 
   return postFormData<JaneBomCompareProcessResponse>({
     path: '/api/jane-bom-compare/process',
