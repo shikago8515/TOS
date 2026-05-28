@@ -34,17 +34,15 @@ TOS 发布、Electron 打包、GitCode 发行版和 COS 更新源规则：
 - Electron 正式发布只能优先使用项目脚本 npm run build:win，不要手工绕过 electron-builder，也不要在 tms-electron-app 目录下创建临时 dist-* 打包目录；如需临时目录，放到系统 TEMP 或项目外部，避免被误打进包。
 - 修改 package.json 的 build.files、extraResources、afterPack、main-simple.js、preload.js、scripts 时，必须检查是否会影响 dist-frontend、backend-runtime、backend、automation-apps、browser-plugins、external-apps 进入最终包。
 - 每次 build:win 后必须确认 npm run verify:renderer-package 通过；如果没有该脚本，就必须检查 dist/win-unpacked/resources/app.asar 中包含 dist-frontend/index.html、JS 和 CSS。
-- 发布前必须实际验证两个交付物：
-  1. TOS Setup x.x.x.exe 临时安装到 TEMP 目录并启动，确认首页有内容；
-  2. TOS_vx.x.x_Portable.exe 实际启动，等待加载完成后截图或读取页面内容，确认不是白屏。
-- 验证 portable 时，启动器进程可能没有窗口并会解压后拉起新的 TOS.exe；不要只检查 Start-Process 返回的 PID，要查找实际带 MainWindowHandle 的 TOS 进程，并同时验证后端版本和关键 API 路由。
-- 如果安装包或 portable 任意一个没有验证通过，不允许建议上传 COS。
-- 如果用户要求同步 GitCode 发行版，必须先确认 main 已合并并推送，再创建/推送对应 v 标签；发行版资产至少包括安装包 exe、exe.blockmap、changelog.json、latest.yml 和 portable。上传后必须通过 GitCode release 列表或页面确认资产齐全。
+- 发布前必须实际验证安装包：TOS Setup x.x.x.exe 临时安装到 TEMP 目录并启动，确认首页有内容，并同时验证后端版本和关键 API 路由。
+- 不再生成、验证或发布 TOS_vx.x.x_Portable.exe；如果 dist 根目录出现 portable 产物，应视为发布产物污染并清理后重新校验。
+- 如果安装包没有验证通过，不允许建议上传 COS。
+- 如果用户要求同步 GitCode 发行版，必须先确认 main 已合并并推送，再创建/推送对应 v 标签；发行版资产至少包括安装包 exe、exe.blockmap、changelog.json、latest.yml、manual-downloads.json 和 downloads/<version>/ 下的免安装 zip 备用包。上传后必须通过 GitCode release 列表或页面确认资产齐全。
 - GitCode release 上传接口返回 OBS 签名 URL 时，curl/HTTP PUT 必须带上接口返回的所有 headers（尤其 x-obs-* 和 Content-Type）；不要把 GitCode 发行版上传等同于 COS 自动更新源更新。
-- COS 更新源上传顺序固定为：安装包 exe、exe.blockmap、changelog.json，最后 latest.yml。latest.yml 必须最后上传，避免客户端读到半更新状态。
-- 如果重新打包过，即使版本号没变，也必须重新上传 exe、blockmap、changelog.json、latest.yml 四个文件；不能只上传 latest.yml。
+- COS 更新源上传顺序固定为：安装包 exe、exe.blockmap、changelog.json、downloads/<version>/ 免安装 zip、manual-downloads.json，最后 latest.yml。latest.yml 必须最后上传，避免客户端读到半更新状态；上传后必须校验远程 Content-Length 和 latest.yml 中的 size 一致，也要校验 manual-downloads.json 中 zip 的 size 一致。
+- 如果重新打包过，即使版本号没变，也必须重新上传 exe、blockmap、changelog.json、manual-downloads.json、downloads/<version>/ 免安装 zip、latest.yml；不能只上传 latest.yml。
 - COS 根目录建议只保留当前版本的自动更新文件。旧版本如需备份，移动到 archive/<version>/；不要长期把多个版本堆在根目录，避免误传、误删或混用。
-- 自动更新只依赖 latest.yml 指向的安装包和 blockmap；portable 文件只用于人工下载，不参与自动更新。
+- 自动更新客户端禁用 NSIS 差分下载，实际下载 latest.yml 指向的完整安装包；manual-downloads.json 只提供人工下载兜底的免安装 zip，不能替代 latest.yml 自动安装链路；不再提供 portable。
 
 每次完成后，请简洁总结：改了什么文件、验证了什么、是否还有风险或未完成项。不要输出冗长解释，除非我要求详细说明。
 

@@ -1,6 +1,6 @@
 {
   "name": "tms-integration-tool",
-  "version": "0.9.7-beta.1.4",
+  "version": "0.9.7-beta.1.6",
   "description": "TOS integration tool",
   "main": "main-simple.js",
   "scripts": {
@@ -10,12 +10,12 @@
     "verify:renderer-package": "node scripts/verify-renderer-package.js",
     "verify:release-package": "node scripts/verify-release-package.js",
     "write:update-changelog": "node scripts/write-update-changelog.js",
+    "write:manual-downloads": "node scripts/write-manual-downloads.js",
     "build:frontend": "node scripts/run-pack-default.js --frontend-only",
-    "build": "npm run build:backend-runtime && npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js && npm run verify:renderer-package && npm run write:update-changelog && npm run verify:release-package",
-    "build:win": "npm run build:backend-runtime && npm run build:frontend && npm run clean:update-artifacts && node ./node_modules/electron-builder/out/cli/cli.js --win --x64 && npm run verify:renderer-package && npm run write:update-changelog && npm run verify:release-package",
+    "build": "npm run build:backend-runtime && npm run build:frontend && node ./node_modules/electron-builder/out/cli/cli.js && npm run verify:renderer-package && npm run write:update-changelog && npm run write:manual-downloads && npm run verify:release-package",
+    "build:win": "npm run build:backend-runtime && npm run build:frontend && npm run clean:update-artifacts && node ./node_modules/electron-builder/out/cli/cli.js --win --x64 && npm run verify:renderer-package && npm run write:update-changelog && npm run write:manual-downloads && npm run verify:release-package",
     "pack": "node scripts/run-pack-default.js || node scripts/verify-default-pack.js",
-    "pack:source": "node scripts/run-pack-source.js || node scripts/verify-source-pack.js",
-    "pack:portable": "node scripts/pack-portable-release.js"
+    "pack:source": "node scripts/run-pack-source.js || node scripts/verify-source-pack.js"
   },
   "keywords": [
     "TMS",
@@ -59,6 +59,7 @@
       "!automation-apps/**/*",
       "!browser-plugins/**/*",
       "!external-apps/**/*",
+      "!archive/**/*",
       "!.npm-cache/**/*",
       "!dist/**/*",
       "!dist-test/**/*",
@@ -152,12 +153,6 @@
           "arch": [
             "x64"
           ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
         }
       ]
     },
@@ -166,9 +161,6 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
-    },
-    "portable": {
-      "artifactName": "${productName}_v${version}_Portable.exe"
     }
   }
 }

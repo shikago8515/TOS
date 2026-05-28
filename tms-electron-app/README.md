@@ -56,9 +56,13 @@ cd tms-electron-app
 npm run build:win
 ```
 
-打包后的文件将位于 `tms-electron-app/dist/` 目录，包含：
-- 安装程序 (`TOS Setup 0.9.6-beta.1.exe`)
-- 便携版 (`TOS_v0.9.6-beta.1_Portable.exe`)
+打包后的文件将位于 `tms-electron-app/dist/` 目录，正式交付只包含安装版：
+- 安装程序 (`TOS Setup x.x.x.exe`)
+- 自动更新元数据 (`latest.yml`、`changelog.json`、`TOS Setup x.x.x.exe.blockmap`)
+- 人工下载兜底元数据 (`manual-downloads.json`)
+- 免安装备用包 (`downloads/x.x.x/TOS_vx.x.x_Windows_x64_unpacked.zip`)
+
+不再生成或发布 `TOS_vx.x.x_Portable.exe`。自动更新仍只使用安装程序；免安装 zip 仅作为安装包被系统拦截时的人工下载兜底，不参与自动安装。
 
 ## 📦 打包注意事项
 

@@ -95,6 +95,22 @@
         </div>
       </section>
 
+      <section v-if="manualDownload" class="manual-download-panel">
+        <div class="manual-download-copy">
+          <p class="panel-kicker">{{ text('备用下载') }}</p>
+          <h3>{{ text('免安装版') }}</h3>
+          <p>{{ manualDownloadDetail }}</p>
+        </div>
+        <button
+          class="action-button"
+          type="button"
+          :disabled="isActionLocked"
+          @click="handleManualDownload"
+        >
+          {{ activeAction === 'manual' ? text('打开中...') : text('下载免安装版') }}
+        </button>
+      </section>
+
       <footer class="action-row">
         <button
           class="action-button"
@@ -143,15 +159,16 @@ import {
   getUpdateStatusSnapshot,
   hasUpdateBridge,
   installUpdate,
+  openManualDownload,
   subscribeUpdateStatus,
 } from './settingsApi'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 
 type NoticeTone = 'info' | 'success' | 'warning' | 'error'
-type UpdateAction = '' | 'init' | 'check' | 'download' | 'install'
+type UpdateAction = '' | 'init' | 'check' | 'download' | 'install' | 'manual'
 
 const versionInfo = ref<AppVersionInfo>({
-  version: '0.9.7-beta.1.2',
+  version: '0.9.7-beta.1.6',
   isPackaged: false,
 })
 const status = ref<UpdateStatus | null>(null)
@@ -246,6 +263,15 @@ const hasCategorizedChangelog = computed(() =>
   changelogGroups.value.some((group) => group.items.length > 0),
 )
 const releaseNoteItems = computed(() => readReleaseNoteItems(status.value?.updateInfo?.releaseNotes))
+const manualDownload = computed(() => status.value?.manualDownload ?? null)
+const manualDownloadDetail = computed(() => {
+  const file = manualDownload.value
+  if (!file) return ''
+
+  const version = file.version ? formatDisplayVersion(file.version) : '-'
+  const size = file.size ? formatBytes(file.size) : '-'
+  return `${file.label} · ${version} · ${size}`
+})
 const emptyChangelogText = computed(() => {
   if (status.value?.status === 'available' || status.value?.status === 'downloaded') {
     return '更新源暂未提供 changelog.json'
@@ -307,6 +333,10 @@ async function handleInstall(): Promise<void> {
   await runUpdateAction('install', installUpdate)
 }
 
+async function handleManualDownload(): Promise<void> {
+  await runUpdateAction('manual', openManualDownload)
+}
+
 async function runUpdateAction(
   action: Exclude<UpdateAction, '' | 'init'>,
   actionHandler: () => Promise<UpdateActionResult>,
@@ -347,6 +377,10 @@ function readSuccessMessage(action: Exclude<UpdateAction, '' | 'init'>, nextStat
 
   if (action === 'download') {
     return nextStatus.downloaded ? '更新包已下载完成' : '更新包开始下载'
+  }
+
+  if (action === 'manual') {
+    return '已打开免安装版下载链接'
   }
 
   return '正在退出并安装更新'
@@ -657,6 +691,7 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
 }
 
 .download-panel,
+.manual-download-panel,
 .changelog-section {
   display: grid;
   gap: 14px;
@@ -665,6 +700,31 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
   background: #ffffff;
   border: 1px solid #dfe8f1;
   border-radius: 8px;
+}
+
+.manual-download-panel {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.manual-download-copy {
+  min-width: 0;
+}
+
+.manual-download-copy h3,
+.manual-download-copy p {
+  margin: 0;
+}
+
+.manual-download-copy h3 {
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.manual-download-copy p {
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 13px;
 }
 
 .download-row {
@@ -812,6 +872,7 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
 
 @media (max-width: 760px) {
   .panel-header,
+  .manual-download-panel,
   .action-row {
     display: grid;
     grid-template-columns: 1fr;

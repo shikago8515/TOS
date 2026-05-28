@@ -70,6 +70,15 @@ export interface UpdateChangelog {
   fixed: string[]
 }
 
+export interface ManualDownloadInfo {
+  type: 'windows-x64-unpacked'
+  label: string
+  version: string
+  url: string
+  sha512?: string
+  size?: number
+}
+
 export interface UpdateProgress {
   percent: number
   transferred?: number
@@ -100,6 +109,7 @@ export interface UpdateStatus {
   downloading: boolean
   downloaded: boolean
   updateInfo: UpdateInfo | null
+  manualDownload: ManualDownloadInfo | null
   changelog: UpdateChangelog | null
   progress: UpdateProgress | null
   error: string | null
@@ -108,6 +118,7 @@ export interface UpdateStatus {
 export interface UpdateActionResult {
   success: boolean
   error?: string
+  url?: string
   status: UpdateStatus
 }
 
@@ -119,6 +130,7 @@ export interface ElectronApi {
   checkForUpdates(): Promise<UpdateActionResult>
   downloadUpdate(): Promise<UpdateActionResult>
   installUpdate(): Promise<UpdateActionResult>
+  openManualDownload(): Promise<UpdateActionResult>
   onUpdateStatus(callback: (status: UpdateStatus) => void): () => void
   openExternal(url: string): Promise<ElectronActionResult>
   recordDiagnosticEvent(event: DiagnosticEvent): Promise<ElectronActionResult>

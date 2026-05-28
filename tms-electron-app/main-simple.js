@@ -18,6 +18,7 @@ const APP_DISPLAY_NAME = 'TOS'/*12345678*/;
 const DEFAULT_UPDATE_FEED_URL = 'https://tos-updates-1309726828.cos.ap-guangzhou.myqcloud.com/';
 const UPDATE_SOURCE_CONFIG_FILE = 'update-source.json';
 const UPDATE_STATUS_CHANNEL = 'update-status';
+const MANUAL_DOWNLOADS_FILE = 'manual-downloads.json';
 
 const externalModules = {
   infornexus: {
@@ -45,6 +46,7 @@ let updateState = {
   downloading: false,
   downloaded: false,
   updateInfo: null,
+  manualDownload: null,
   changelog: null,
   progress: null,
   error: null
@@ -140,6 +142,33 @@ function normalizeChangelogPayload(payload, version) {
   };
 }
 
+function normalizeManualDownloadPayload(payload, version) {
+  if (!payload || typeof payload !== 'object' || !Array.isArray(payload.files)) return null;
+
+  const payloadVersion = typeof payload.version === 'string' && payload.version ? payload.version : '';
+  const expectedVersion = typeof version === 'string' && version ? version : payloadVersion;
+  if (expectedVersion && payloadVersion && payloadVersion !== expectedVersion) return null;
+
+  const file = payload.files.find((item) => item && item.type === 'windows-x64-unpacked');
+  if (!file || typeof file.url !== 'string' || !file.url.trim()) return null;
+
+  let resolvedUrl;
+  try {
+    resolvedUrl = new URL(file.url, updateFeedUrl).toString();
+  } catch (_error) {
+    return null;
+  }
+
+  return {
+    type: 'windows-x64-unpacked',
+    label: typeof file.label === 'string' && file.label.trim() ? file.label.trim() : 'Windows x64 免安装版',
+    version: payloadVersion || expectedVersion || '',
+    url: resolvedUrl,
+    sha512: typeof file.sha512 === 'string' ? file.sha512 : '',
+    size: Number.isFinite(file.size) ? file.size : 0
+  };
+}
+
 function requestRemoteJson(url, timeoutMs = 3500) {
   return new Promise((resolve) => {
     let parsedUrl;
@@ -178,6 +207,25 @@ function requestRemoteJson(url, timeoutMs = 3500) {
   });
 }
 
+async function fetchManualDownloads(version) {
+  if (!updateFeedUrl || isPlaceholderUpdateFeedUrl(updateFeedUrl)) {
+    return null;
+  }
+
+  try {
+    // 免安装包清单和 latest.yml 同源发布，只作为人工下载兜底，不参与自动安装。
+    const manifestUrl = new URL(MANUAL_DOWNLOADS_FILE, updateFeedUrl).toString();
+    const payload = await requestRemoteJson(manifestUrl);
+    return normalizeManualDownloadPayload(payload, version);
+  } catch (error) {
+    writeDiagnosticEvent('updater', 'manual-downloads-fetch-failure', {
+      version,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return null;
+  }
+}
+
 async function fetchUpdateChangelog(version) {
   if (!updateFeedUrl || isPlaceholderUpdateFeedUrl(updateFeedUrl)) {
     return null;
@@ -206,6 +254,8 @@ function configureAutoUpdater() {
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
+  // COS/CDN 的 Range 与缓存状态不稳定时，差分下载更容易造成半更新，发布版统一下载完整安装包。
+  autoUpdater.disableDifferentialDownload = true;
   autoUpdater.allowPrerelease = true;
   autoUpdater.allowDowngrade = false;
 
@@ -227,6 +277,7 @@ function configureAutoUpdater() {
       checking: true,
       downloading: false,
       downloaded: false,
+      manualDownload: null,
       error: null
     });
   });
@@ -239,6 +290,7 @@ function configureAutoUpdater() {
       updateAvailable: true,
       downloaded: false,
       updateInfo,
+      manualDownload: null,
       changelog: null,
       progress: null,
       error: null
@@ -247,6 +299,11 @@ function configureAutoUpdater() {
     fetchUpdateChangelog(updateInfo && updateInfo.version).then((changelog) => {
       if (!changelog) return;
       emitUpdateStatus({ changelog });
+    });
+
+    fetchManualDownloads(updateInfo && updateInfo.version).then((manualDownload) => {
+      if (!manualDownload) return;
+      emitUpdateStatus({ manualDownload });
     });
   });
 
@@ -257,6 +314,7 @@ function configureAutoUpdater() {
       updateAvailable: false,
       downloaded: false,
       updateInfo: serializeUpdateInfo(info),
+      manualDownload: null,
       changelog: null,
       progress: null,
       error: null
@@ -391,6 +449,33 @@ function installUpdate() {
   });
 
   return { success: true, status: getPublicUpdateStatus() };
+}
+
+async function openManualDownload() {
+  configureAutoUpdater();
+
+  if (!updateFeedUrl || isPlaceholderUpdateFeedUrl(updateFeedUrl)) {
+    return buildUpdateErrorResult('请先配置正式更新地址，再下载免安装版。', 'not-configured');
+  }
+
+  let manualDownload = updateState.manualDownload;
+  if (!manualDownload) {
+    manualDownload = await fetchManualDownloads(updateState.updateInfo && updateState.updateInfo.version);
+    if (manualDownload) {
+      emitUpdateStatus({ manualDownload });
+    }
+  }
+
+  if (!manualDownload || !manualDownload.url) {
+    return buildUpdateErrorResult('更新源暂未提供免安装版下载。');
+  }
+
+  await shell.openExternal(manualDownload.url);
+  return {
+    success: true,
+    url: manualDownload.url,
+    status: getPublicUpdateStatus()
+  };
 }
 
 function getLogsDir() {
@@ -1226,6 +1311,7 @@ function registerIpcHandlers() {
   ipcMain.handle('check-for-updates', () => checkForUpdates());
   ipcMain.handle('download-update', () => downloadUpdate());
   ipcMain.handle('install-update', () => installUpdate());
+  ipcMain.handle('open-manual-download', () => openManualDownload());
 
   ipcMain.handle('record-diagnostic-event', (_event, diagnosticEvent) => {
     if (!diagnosticEvent || typeof diagnosticEvent !== 'object') {

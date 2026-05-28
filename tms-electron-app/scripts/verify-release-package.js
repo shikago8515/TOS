@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 
 const appDir = path.resolve(__dirname, '..')
 const packagePath = path.join(appDir, 'package.json')
@@ -57,6 +58,26 @@ function fileExists(filePath) {
   return fs.existsSync(filePath)
 }
 
+function sha512Base64(filePath) {
+  const hash = crypto.createHash('sha512')
+  const buffer = Buffer.allocUnsafe(1024 * 1024)
+  const fd = fs.openSync(filePath, 'r')
+
+  try {
+    let bytesRead = 0
+    do {
+      bytesRead = fs.readSync(fd, buffer, 0, buffer.length, null)
+      if (bytesRead > 0) {
+        hash.update(buffer.subarray(0, bytesRead))
+      }
+    } while (bytesRead > 0)
+  } finally {
+    fs.closeSync(fd)
+  }
+
+  return hash.digest('base64')
+}
+
 function collectMissingUnpackedResources(appOutDir) {
   return requiredUnpackedResources
     .filter((relativePath) => !fileExists(path.join(appOutDir, relativePath)))
@@ -87,6 +108,11 @@ function collectLatestYmlIssues(distDir, expectedVersion) {
     const setupPath = path.join(distDir, latest.path)
     if (!fileExists(setupPath)) {
       issues.push(`latest.yml path target is missing: ${latest.path}`)
+    } else if (typeof latest.sha512 === 'string') {
+      const actualSha512 = sha512Base64(setupPath)
+      if (actualSha512 !== latest.sha512) {
+        issues.push(`latest.yml sha512 mismatch for ${latest.path}: expected ${latest.sha512}, got ${actualSha512}`)
+      }
     }
 
     const blockmapPath = `${setupPath}.blockmap`
@@ -107,6 +133,12 @@ function collectLatestYmlIssues(distDir, expectedVersion) {
       if (file.url !== expectedInstallerName) {
         issues.push(`latest.yml file target mismatch: expected ${expectedInstallerName}, got ${file.url}`)
       }
+      if (typeof file.sha512 === 'string') {
+        const actualSha512 = sha512Base64(path.join(distDir, file.url))
+        if (actualSha512 !== file.sha512) {
+          issues.push(`latest.yml file sha512 mismatch for ${file.url}: expected ${file.sha512}, got ${actualSha512}`)
+        }
+      }
       if (typeof file.size === 'number') {
         const actualSize = fs.statSync(path.join(distDir, file.url)).size
         if (actualSize !== file.size) {
@@ -124,7 +156,6 @@ function collectTopLevelArtifactIssues(distDir, expectedVersion) {
   const changelogPath = path.join(distDir, 'changelog.json')
   const installerName = `TOS Setup ${expectedVersion}.exe`
   const blockmapName = `${installerName}.blockmap`
-  const portableName = `TOS_v${expectedVersion}_Portable.exe`
 
   if (!fileExists(path.join(distDir, installerName))) {
     issues.push(`missing release artifact: ${installerName}`)
@@ -132,10 +163,6 @@ function collectTopLevelArtifactIssues(distDir, expectedVersion) {
 
   if (!fileExists(path.join(distDir, blockmapName))) {
     issues.push(`missing release artifact: ${blockmapName}`)
-  }
-
-  if (!fileExists(path.join(distDir, portableName))) {
-    issues.push(`missing release artifact: ${portableName}`)
   }
 
   if (!fileExists(changelogPath)) {
@@ -154,6 +181,101 @@ function collectTopLevelArtifactIssues(distDir, expectedVersion) {
   return issues
 }
 
+function collectManualDownloadIssues(distDir, expectedVersion) {
+  const issues = []
+  const manifestPath = path.join(distDir, 'manual-downloads.json')
+  const expectedZipName = `TOS_v${expectedVersion}_Windows_x64_unpacked.zip`
+  const expectedZipUrl = `downloads/${expectedVersion}/${expectedZipName}`
+
+  if (!fileExists(manifestPath)) {
+    return ['missing release artifact: manual-downloads.json']
+  }
+
+  let manifest
+  try {
+    manifest = readJson(manifestPath)
+  } catch (error) {
+    return [`manual-downloads.json is invalid: ${error.message}`]
+  }
+
+  if (manifest.version !== expectedVersion) {
+    issues.push(`manual-downloads.json version mismatch: expected ${expectedVersion}, got ${manifest.version}`)
+  }
+
+  if (!Array.isArray(manifest.files)) {
+    issues.push('manual-downloads.json files must be an array')
+    return issues
+  }
+
+  const manualZip = manifest.files.find((file) => file && file.type === 'windows-x64-unpacked')
+  if (!manualZip) {
+    issues.push('manual-downloads.json is missing windows-x64-unpacked file')
+    return issues
+  }
+
+  if (manualZip.url !== expectedZipUrl) {
+    issues.push(`manual-downloads.json url mismatch: expected ${expectedZipUrl}, got ${manualZip.url}`)
+  }
+
+  const zipPath = path.join(distDir, manualZip.url || '')
+  if (!fileExists(zipPath)) {
+    issues.push(`manual download file target is missing: ${manualZip.url}`)
+    return issues
+  }
+
+  if (typeof manualZip.sha512 === 'string') {
+    const actualSha512 = sha512Base64(zipPath)
+    if (actualSha512 !== manualZip.sha512) {
+      issues.push(`manual-downloads.json sha512 mismatch for ${manualZip.url}: expected ${manualZip.sha512}, got ${actualSha512}`)
+    }
+  } else {
+    issues.push(`manual-downloads.json is missing sha512 for ${manualZip.url}`)
+  }
+
+  if (typeof manualZip.size === 'number') {
+    const actualSize = fs.statSync(zipPath).size
+    if (actualSize !== manualZip.size) {
+      issues.push(`manual-downloads.json size mismatch for ${manualZip.url}: expected ${manualZip.size}, got ${actualSize}`)
+    }
+  } else {
+    issues.push(`manual-downloads.json is missing size for ${manualZip.url}`)
+  }
+
+  return issues
+}
+
+function collectUnexpectedManualDownloadArtifactIssues(distDir) {
+  if (!fileExists(distDir)) {
+    return []
+  }
+
+  const unexpectedArtifactPatterns = [
+    {
+      pattern: /^TOS_v.+_Portable\.exe$/i,
+      message: 'unexpected portable release artifact',
+    },
+    {
+      pattern: /^TOS_v.+_Windows_x64_unpacked\.zip$/i,
+      message: 'unexpected unpacked zip release artifact',
+    },
+  ]
+  const issues = []
+
+  for (const entry of fs.readdirSync(distDir, { withFileTypes: true })) {
+    if (!entry.isFile()) {
+      continue
+    }
+
+    for (const artifactPattern of unexpectedArtifactPatterns) {
+      if (artifactPattern.pattern.test(entry.name)) {
+        issues.push(`${artifactPattern.message}: ${entry.name}`)
+      }
+    }
+  }
+
+  return issues
+}
+
 function collectStaleArtifactIssues(distDir, expectedVersion) {
   if (!fileExists(distDir)) {
     return []
@@ -163,7 +285,6 @@ function collectStaleArtifactIssues(distDir, expectedVersion) {
   const artifactPatterns = [
     /^TOS Setup (.+)\.exe$/i,
     /^TOS Setup (.+)\.exe\.blockmap$/i,
-    /^TOS_v(.+)_Portable\.exe$/i,
   ]
 
   for (const entry of fs.readdirSync(distDir, { withFileTypes: true })) {
@@ -257,6 +378,8 @@ function collectReleasePackageIssues(options = {}) {
   if (!options.skipArtifacts) {
     issues.push(...collectLatestYmlIssues(distDir, expectedVersion))
     issues.push(...collectTopLevelArtifactIssues(distDir, expectedVersion))
+    issues.push(...collectManualDownloadIssues(distDir, expectedVersion))
+    issues.push(...collectUnexpectedManualDownloadArtifactIssues(distDir))
     issues.push(...collectStaleArtifactIssues(distDir, expectedVersion))
   }
 

@@ -434,6 +434,11 @@ const staticTextTranslations: Record<string, string> = {
   检查更新: 'Check for Updates',
   '下载中...': 'Downloading...',
   下载更新: 'Download Update',
+  备用下载: 'Backup Download',
+  免安装版: 'No-install Version',
+  下载免安装版: 'Download No-install Version',
+  '打开中...': 'Opening...',
+  已打开免安装版下载链接: 'No-install download link opened',
   '正在安装...': 'Installing...',
   立即安装并重启: 'Install and Restart',
   当前浏览器预览环境不支持应用更新: 'The browser preview environment does not support app updates',
@@ -445,6 +450,8 @@ const staticTextTranslations: Record<string, string> = {
   更新包已下载完成: 'Update package downloaded',
   更新包开始下载: 'Update package download started',
   正在退出并安装更新: 'Exiting and installing update',
+  '请先配置正式更新地址，再下载免安装版。': 'Configure the update source before downloading the no-install version.',
+  '更新源暂未提供免安装版下载。': 'The update source has not provided a no-install download.',
   '更新源暂未提供 changelog.json': 'The update source has not provided changelog.json',
   检查到新版本后会显示新增优化和修复内容: 'Added, improved, and fixed items will appear after a new version is found',
   '检查到新版本后会显示新增、优化和修复内容': 'Added, improved, and fixed items will appear after a new version is found',
@@ -462,8 +469,8 @@ const staticTextTranslations: Record<string, string> = {
     'Version numbers are shown in Settings with an uppercase V prefix, avoiding redundant sidebar or footer information.',
   '移除 Electron 默认菜单栏，主窗口保留应用自有导航和操作区。':
     'Removed the default Electron menu bar and kept the app-owned navigation and action areas.',
-  '发布构建会自动重建后端 runtime，确保安装包和 portable 使用最新后端逻辑。':
-    'Release builds rebuild the backend runtime so installer and portable use the latest backend logic.',
+  '发布构建会自动重建后端 runtime，确保安装包使用最新后端逻辑。':
+    'Release builds rebuild the backend runtime so the installer uses the latest backend logic.',
   'Eric 核对结果只保留 Size_Check、Final_Data、YTIC_Destination_Extract、YTIC_SP_Extract 和 PO_Text_Compare，减少无关工作表。':
     'Eric output keeps only Size_Check, Final_Data, YTIC_Destination_Extract, YTIC_SP_Extract, and PO_Text_Compare.',
   'Eric 的 Size_Check、YTIC_Destination_Extract 和 YTIC_SP_Extract 差值列改为 Excel 公式，方便打开文件后复核和追踪。':

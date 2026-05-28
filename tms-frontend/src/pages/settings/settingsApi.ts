@@ -4,7 +4,7 @@ import type {
   UpdateStatus,
 } from '../../types/electronApi'
 
-const fallbackVersion = '0.9.7-beta.1.2'
+const fallbackVersion = '0.9.7-beta.1.6'
 
 export function hasUpdateBridge(): boolean {
   return Boolean(window.electronAPI?.getUpdateStatus)
@@ -53,6 +53,14 @@ export async function installUpdate(): Promise<UpdateActionResult> {
   return window.electronAPI.installUpdate()
 }
 
+export async function openManualDownload(): Promise<UpdateActionResult> {
+  if (!window.electronAPI?.openManualDownload) {
+    return buildUnsupportedResult()
+  }
+
+  return window.electronAPI.openManualDownload()
+}
+
 export function subscribeUpdateStatus(callback: (status: UpdateStatus) => void): () => void {
   return window.electronAPI?.onUpdateStatus?.(callback) ?? (() => {})
 }
@@ -78,6 +86,7 @@ function buildUnsupportedStatus(): UpdateStatus {
     downloading: false,
     downloaded: false,
     updateInfo: null,
+    manualDownload: null,
     changelog: null,
     progress: null,
     error: '当前运行环境不支持应用更新',

@@ -1,4 +1,5 @@
 const assert = require('assert')
+const crypto = require('crypto')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -8,6 +9,25 @@ const {
   collectReleasePackageIssues,
 } = require('./verify-release-package')
 
+const requiredUnpackedResourcePaths = [
+  'resources/app.asar',
+  'resources/browser-plugins/registry.json',
+  'resources/browser-plugins/infornexus-auto-add/manifest.json',
+  'resources/browser-plugins/infornexus-auto-add/content.js',
+  'resources/browser-plugins/infornexus-auto-add/xlsx.min.js',
+  'resources/automation-apps/registry.json',
+  'resources/automation-apps/playwright-console/bin/start.js',
+  'resources/automation-apps/playwright-console/config/default.config.json',
+  'resources/automation-apps/playwright-console/public/index.html',
+  'resources/automation-apps/playwright-console/node_modules/statuses/index.js',
+  'resources/backend/main.py',
+  'resources/backend/api/.gitkeep',
+  'resources/backend/modules/.gitkeep',
+  'resources/backend-runtime/tos-backend/tos-backend.exe',
+  'resources/backend-runtime/tos-backend/_internal/base_library.zip',
+  'resources/external-apps/infornexus/electron-app.exe',
+]
+
 function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'tos-release-verify-'))
 }
@@ -15,6 +35,37 @@ function makeTempDir() {
 function touch(filePath, content = '') {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
   fs.writeFileSync(filePath, content, 'utf8')
+}
+
+function sha512Base64(content) {
+  return crypto.createHash('sha512').update(content).digest('base64')
+}
+
+function touchManualDownloadArtifacts(distDir, version, content = 'manual download zip') {
+  const zipName = `TOS_v${version}_Windows_x64_unpacked.zip`
+  const zipUrl = `downloads/${version}/${zipName}`
+  touch(path.join(distDir, zipUrl), content)
+  touch(path.join(distDir, 'manual-downloads.json'), JSON.stringify({
+    version,
+    files: [
+      {
+        type: 'windows-x64-unpacked',
+        label: 'Windows x64 免安装版',
+        url: zipUrl,
+        sha512: sha512Base64(content),
+        size: Buffer.byteLength(content),
+      },
+    ],
+  }))
+}
+
+function touchRequiredUnpackedResources(appOutDir, version) {
+  for (const relativePath of requiredUnpackedResourcePaths) {
+    const content = relativePath.endsWith('main.py')
+      ? `app = FastAPI(version="${version}")\n`
+      : ''
+    touch(path.join(appOutDir, relativePath), content)
+  }
 }
 
 test('reports missing runtime resources in an unpacked app directory', () => {
@@ -59,6 +110,34 @@ test('reports latest.yml when the referenced installer is missing', () => {
   assert(issues.some((issue) => issue.includes('latest.yml path target is missing')))
 })
 
+test('reports latest.yml installer sha512 mismatches', () => {
+  const root = makeTempDir()
+  const appOutDir = path.join(root, 'win-unpacked')
+  const version = '0.9.6-beta.3'
+  const installerName = `TOS Setup ${version}.exe`
+
+  touch(path.join(root, installerName), 'installer')
+  touch(path.join(root, `${installerName}.blockmap`), 'blockmap')
+  touch(path.join(root, 'latest.yml'), [
+    `version: ${version}`,
+    `path: ${installerName}`,
+    'sha512: definitely-not-the-installer-hash',
+    'files:',
+    `  - url: ${installerName}`,
+    '    sha512: definitely-not-the-installer-hash',
+    '    size: 9',
+  ].join('\n'))
+
+  const issues = collectReleasePackageIssues({
+    distDir: root,
+    appOutDir,
+    expectedVersion: version,
+  })
+
+  assert(issues.some((issue) => issue.includes('latest.yml sha512 mismatch')))
+  assert(issues.some((issue) => issue.includes(`latest.yml file sha512 mismatch for ${installerName}`)))
+})
+
 test('reports stale top-level release artifacts for another version', () => {
   const root = makeTempDir()
   const appOutDir = path.join(root, 'win-unpacked')
@@ -73,6 +152,122 @@ test('reports stale top-level release artifacts for another version', () => {
 
   assert(issues.some((issue) => issue.includes('TOS Setup 0.9.6-beta.2.exe')))
   assert(issues.some((issue) => issue.includes('TOS_v0.9.6-beta.2_Portable.exe')))
+})
+
+test('reports any portable artifact even when it matches the current version', () => {
+  const root = makeTempDir()
+  const appOutDir = path.join(root, 'win-unpacked')
+  const version = '0.9.6-beta.3'
+  touch(path.join(root, `TOS_v${version}_Portable.exe`))
+
+  const issues = collectReleasePackageIssues({
+    distDir: root,
+    appOutDir,
+    expectedVersion: version,
+  })
+
+  assert(issues.some((issue) => issue.includes(`TOS_v${version}_Portable.exe`)))
+})
+
+test('reports any unpacked zip download artifact even when it matches the current version', () => {
+  const root = makeTempDir()
+  const appOutDir = path.join(root, 'win-unpacked')
+  const version = '0.9.6-beta.3'
+  touch(path.join(root, `TOS_v${version}_Windows_x64_unpacked.zip`))
+
+  const issues = collectReleasePackageIssues({
+    distDir: root,
+    appOutDir,
+    expectedVersion: version,
+  })
+
+  assert(issues.some((issue) => issue.includes(`TOS_v${version}_Windows_x64_unpacked.zip`)))
+})
+
+test('reports missing manual download manifest for release artifacts', () => {
+  const root = makeTempDir()
+  const appOutDir = path.join(root, 'win-unpacked')
+  const version = '0.9.6-beta.3'
+  const installerName = `TOS Setup ${version}.exe`
+
+  touchRequiredUnpackedResources(appOutDir, version)
+  touch(path.join(root, installerName), 'installer')
+  touch(path.join(root, `${installerName}.blockmap`), 'blockmap')
+  touch(path.join(root, 'latest.yml'), [
+    `version: ${version}`,
+    `path: ${installerName}`,
+    'files:',
+    `  - url: ${installerName}`,
+    '    size: 9',
+  ].join('\n'))
+  touch(path.join(root, 'changelog.json'), JSON.stringify({ version }))
+
+  const issues = collectReleasePackageIssues({
+    distDir: root,
+    appOutDir,
+    expectedVersion: version,
+  })
+
+  assert(issues.some((issue) => issue.includes('missing release artifact: manual-downloads.json')))
+})
+
+test('reports manual download zip metadata mismatches', () => {
+  const root = makeTempDir()
+  const appOutDir = path.join(root, 'win-unpacked')
+  const version = '0.9.6-beta.3'
+  const zipName = `TOS_v${version}_Windows_x64_unpacked.zip`
+  const zipUrl = `downloads/${version}/${zipName}`
+
+  touch(path.join(root, zipUrl), 'manual zip')
+  touch(path.join(root, 'manual-downloads.json'), JSON.stringify({
+    version,
+    files: [
+      {
+        type: 'windows-x64-unpacked',
+        label: 'Windows x64 免安装版',
+        url: zipUrl,
+        sha512: 'wrong-hash',
+        size: 1,
+      },
+    ],
+  }))
+
+  const issues = collectReleasePackageIssues({
+    distDir: root,
+    appOutDir,
+    expectedVersion: version,
+  })
+
+  assert(issues.some((issue) => issue.includes(`manual-downloads.json sha512 mismatch for ${zipUrl}`)))
+  assert(issues.some((issue) => issue.includes(`manual-downloads.json size mismatch for ${zipUrl}`)))
+})
+
+test('accepts installer release artifacts with a manual zip fallback', () => {
+  const root = makeTempDir()
+  const appOutDir = path.join(root, 'win-unpacked')
+  const version = '0.9.6-beta.3'
+  const installerName = `TOS Setup ${version}.exe`
+
+  touchRequiredUnpackedResources(appOutDir, version)
+  touch(path.join(root, installerName), 'installer')
+  touch(path.join(root, `${installerName}.blockmap`), 'blockmap')
+  touch(path.join(root, 'latest.yml'), [
+    `version: ${version}`,
+    `path: ${installerName}`,
+    'files:',
+    `  - url: ${installerName}`,
+    '    size: 9',
+  ].join('\n'))
+  touch(path.join(root, 'changelog.json'), JSON.stringify({ version }))
+  touchManualDownloadArtifacts(root, version)
+
+  const issues = collectReleasePackageIssues({
+    distDir: root,
+    appOutDir,
+    expectedVersion: version,
+  })
+
+  assert.deepEqual(issues, [])
 })
 
 test('reports backend version mismatches in packaged source', () => {
