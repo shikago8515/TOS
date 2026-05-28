@@ -25,7 +25,13 @@
 <script setup lang="ts">
 import { useAppLanguage } from '../i18n/appLanguage'
 
-type FileRequirementOwner = 'Jessca' | 'Sophia & Tina' | 'Jane' | 'Jane-BOM汇总'
+type FileRequirementOwner =
+  | 'Jessca'
+  | 'Sophia & Tina'
+  | 'Jane'
+  | 'Jane-BOM汇总'
+  | 'Jane-BOM核对'
+  | 'Jane-OUTBOUND核对'
 
 interface FileRequirementGuideModel {
   summary: string
@@ -100,10 +106,10 @@ const guides: Record<FileRequirementOwner, FileRequirementGuideModel> = {
     ],
   },
   Jane: {
-    summary: '客户文件生成标准成品表',
+    summary: 'Copy of TMS 生成标准成品表',
     files: [
       {
-        name: '客户文件',
+        name: 'Copy of TMS',
         detail: '只上传 1 个，支持 .xls / .xlsx',
         required: true,
       },
@@ -135,6 +141,45 @@ const guides: Record<FileRequirementOwner, FileRequirementGuideModel> = {
     notes: [
       '按 Working # + Season 匹配 Pack.xlsx。若 Pack 映射冲突会终止处理。',
       '当前只汇总 BOM 里的 MAIN COMPONENT 物料，并按 Article/Color 展开。',
+    ],
+  },
+  'Jane-BOM核对': {
+    summary: 'T1 PRODUCTION 与 BOM 面料核对',
+    files: [
+      {
+        name: 'T1 PRODUCTION 文件',
+        detail: '只上传 1 个，支持 .xlsx / .xlsm',
+        required: true,
+      },
+      {
+        name: 'BOM 文件',
+        detail: '可多选，支持 .xlsx / .xlsm',
+        required: true,
+      },
+    ],
+    notes: [
+      '按 Style ID + Recording Facility ID 匹配 BOM 的 Article + Factory。',
+      '材料号或供应商不一致会标红；BOM 有但生产表缺少的材料会追加红色行。',
+    ],
+  },
+  'Jane-OUTBOUND核对': {
+    summary: 'T1 OUTBOUND 与 TMS 出库核对',
+    files: [
+      {
+        name: 'T1 OUTBOUND 文件',
+        detail: '只上传 1 个，支持 .xlsx / .xlsm',
+        required: true,
+      },
+      {
+        name: 'Copy of TMS',
+        detail: '只上传 1 个，需包含 Result Set',
+        required: true,
+      },
+    ],
+    notes: [
+      '按 Style Number + PO Number + Line Number + Recording Facility ID 匹配 TMS。',
+      'TMS 会先按 T1 的 Working Number 范围过滤，避免全量报表无关订单进入结果。',
+      '数量、PODD 或 Working Number 不一致会标红，并输出 OUTBOUND_Check 明细表。',
     ],
   },
 }

@@ -1,37 +1,34 @@
 <template>
-  <section class="jane-page">
+  <section class="jane-outbound-compare-page">
     <div class="card-section">
-      <h2 class="section-title">{{ text('成品表生成') }}</h2>
+      <h2 class="section-title">{{ text('Jane-OUTBOUND核对') }}</h2>
       <p class="section-desc">
-        {{ text('上传 Copy of TMS 和 country.xlsx 后自动生成标准成品表。') }}
+        {{
+          text(
+            '上传 T1 OUTBOUND.xlsx 和 Copy of TMS 报表，按 Style/PO/Line/Factory 核对数量、PODD 和 Working Number。',
+          )
+        }}
       </p>
 
-      <FileRequirementGuide owner="Jane" mode="compact" />
+      <FileRequirementGuide owner="Jane-OUTBOUND核对" mode="compact" />
       <FilePrecheckPanel :groups="fileGroups" />
 
       <div class="upload-grid">
         <FileUploadBox
-          v-model:files="customerFiles"
-          :label="text('Copy of TMS')"
-          :hint="text('上传 1 个 Copy of TMS 文件。')"
+          v-model:files="outboundFiles"
+          :label="text('T1 OUTBOUND 文件')"
+          :hint="text('上传 1 个 T1 OUTBOUND.xlsx，输出会保留原表样式并标红差异。')"
+          accept=".xlsx,.xlsm"
+          :accept-label="text('支持 .xlsx / .xlsm')"
         />
         <FileUploadBox
-          v-model:files="countryFiles"
-          label="country.xlsx"
-          :hint="text('上传用于国家/区域单别统计的 country.xlsx。')"
-          accept=".xlsx"
-          :accept-label="text('支持 .xlsx')"
+          v-model:files="tmsFiles"
+          :label="text('Copy of TMS')"
+          :hint="text('上传 1 个包含 Result Set 的 Copy of TMS 报表。')"
+          accept=".xlsx,.xlsm"
+          :accept-label="text('支持 .xlsx / .xlsm')"
         />
       </div>
-
-      <label class="filter-block">
-        <span>{{ text('Working Number 筛选（可选）') }}</span>
-        <input
-          v-model="workingFilters"
-          type="text"
-          :placeholder="text('多个 Working Number 用英文逗号分隔')"
-        />
-      </label>
 
       <div class="action-row">
         <button
@@ -79,6 +76,7 @@ import {
   serializeInputFiles,
   type FileGroupState,
 } from '../../shared/files/fileGroups'
+import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import {
   appendModuleHistory,
   clearModuleHistory,
@@ -87,45 +85,45 @@ import {
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
-import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
 import FileRequirementGuide from '../../shared/ui/FileRequirementGuide.vue'
 import FileUploadBox from '../../shared/ui/FileUploadBox.vue'
 import ProcessHistoryPanel from '../../shared/ui/ProcessHistoryPanel.vue'
 import ResultSummary from '../../shared/ui/ResultSummary.vue'
 import {
-  downloadJaneResult,
-  processJaneFiles,
-} from './janeApi'
+  downloadJaneOutboundCompareResult,
+  processJaneOutboundCompareFiles,
+} from './janeOutboundCompareApi'
 import {
-  buildJaneSummary,
-  janeModuleId,
-  janeModuleName,
-} from './janeModel'
+  buildJaneOutboundCompareSummary,
+  janeOutboundCompareModuleId,
+  janeOutboundCompareModuleName,
+} from './janeOutboundCompareModel'
 
-const customerFiles = ref<File[]>([])
-const countryFiles = ref<File[]>([])
-const workingFilters = ref('')
+const outboundFiles = ref<File[]>([])
+const tmsFiles = ref<File[]>([])
 const processing = ref(false)
 const progress = ref(0)
 const message = ref('')
 const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
-const historyRecords = ref<ProcessHistoryRecord[]>(loadModuleHistory(janeModuleId))
+const historyRecords = ref<ProcessHistoryRecord[]>(
+  loadModuleHistory(janeOutboundCompareModuleId),
+)
 const { text } = useAppLanguage()
 
 const fileGroups = computed<FileGroupState[]>(() => [
   {
-    label: 'Copy of TMS',
-    files: customerFiles.value,
+    label: 'T1 OUTBOUND 文件',
+    files: outboundFiles.value,
     required: true,
     multiple: false,
     expectedCount: 1,
   },
   {
-    label: 'country.xlsx',
-    files: countryFiles.value,
+    label: 'Copy of TMS',
+    files: tmsFiles.value,
     required: true,
     multiple: false,
     expectedCount: 1,
@@ -135,7 +133,7 @@ const fileGroups = computed<FileGroupState[]>(() => [
 const canProcess = computed(() => areRequiredFilesReady(fileGroups.value))
 
 async function startProcess(): Promise<void> {
-  if (!canProcess.value || !customerFiles.value[0] || !countryFiles.value[0]) {
+  if (!canProcess.value || !outboundFiles.value[0] || !tmsFiles.value[0]) {
     message.value = '请先按预检查提示补齐文件'
     success.value = false
     return
@@ -152,11 +150,10 @@ async function startProcess(): Promise<void> {
   summaryItems.value = []
 
   try {
-    const response = await processJaneFiles(
+    const response = await processJaneOutboundCompareFiles(
       {
-        tmsFile: customerFiles.value[0],
-        countryFile: countryFiles.value[0],
-        workingFilters: workingFilters.value,
+        outboundFile: outboundFiles.value[0],
+        tmsFile: tmsFiles.value[0],
       },
       (nextProgress) => {
         progress.value = nextProgress
@@ -168,10 +165,9 @@ async function startProcess(): Promise<void> {
     message.value = response.error
       ? `${response.message} - ${response.error}`
       : response.message
-    summaryItems.value = buildJaneSummary(response, {
-      customerFileCount: customerFiles.value.length,
-      countryFileCount: countryFiles.value.length,
-      workingFilters: workingFilters.value,
+    summaryItems.value = buildJaneOutboundCompareSummary(response, {
+      outbound: outboundFiles.value.length,
+      tms: tmsFiles.value.length,
     })
     recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles)
   } catch (error) {
@@ -192,14 +188,13 @@ async function startProcess(): Promise<void> {
 
 async function downloadResult(): Promise<void> {
   if (resultFile.value) {
-    await downloadJaneResult(resultFile.value)
+    await downloadJaneOutboundCompareResult(resultFile.value)
   }
 }
 
 function resetForm(): void {
-  customerFiles.value = []
-  countryFiles.value = []
-  workingFilters.value = ''
+  outboundFiles.value = []
+  tmsFiles.value = []
   processing.value = false
   progress.value = 0
   message.value = ''
@@ -214,8 +209,8 @@ function recordHistory(
   inputFiles: string[],
 ): void {
   historyRecords.value = appendModuleHistory({
-    moduleId: janeModuleId,
-    moduleName: janeModuleName,
+    moduleId: janeOutboundCompareModuleId,
+    moduleName: janeOutboundCompareModuleName,
     status,
     durationMs: Date.now() - startedAt,
     message: message.value || (status === 'success' ? '处理完成' : '处理失败'),
@@ -226,13 +221,13 @@ function recordHistory(
 }
 
 function clearHistory(): void {
-  clearModuleHistory(janeModuleId)
+  clearModuleHistory(janeOutboundCompareModuleId)
   historyRecords.value = []
 }
 </script>
 
 <style scoped>
-.jane-page {
+.jane-outbound-compare-page {
   max-width: 1120px;
   margin: 0 auto;
 }
@@ -257,7 +252,7 @@ function clearHistory(): void {
 }
 
 .section-desc {
-  max-width: 760px;
+  max-width: 820px;
   margin-top: 8px;
   margin-bottom: 22px;
   color: #64748b;
@@ -269,32 +264,6 @@ function clearHistory(): void {
   align-items: start;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
-}
-
-.filter-block {
-  display: grid;
-  gap: 8px;
-  margin-top: 20px;
-}
-
-.filter-block span {
-  color: #303846;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.filter-block input {
-  min-height: 40px;
-  padding: 0 12px;
-  color: #172033;
-  border: 1px solid #cbd5e1;
-  border-radius: 7px;
-  outline: none;
-}
-
-.filter-block input:focus {
-  border-color: #75a9d5;
-  box-shadow: 0 0 0 3px rgba(117, 169, 213, 0.18);
 }
 
 .action-row {

@@ -151,7 +151,7 @@ type NoticeTone = 'info' | 'success' | 'warning' | 'error'
 type UpdateAction = '' | 'init' | 'check' | 'download' | 'install'
 
 const versionInfo = ref<AppVersionInfo>({
-  version: '0.9.7-beta.1.1',
+  version: '0.9.7-beta.1.2',
   isPackaged: false,
 })
 const status = ref<UpdateStatus | null>(null)

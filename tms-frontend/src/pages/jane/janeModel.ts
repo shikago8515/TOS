@@ -16,7 +16,7 @@ export function buildJaneSummary(
 ): ProcessSummaryItem[] {
   return [
     {
-      label: '客户文件',
+      label: 'Copy of TMS',
       value: String(input.customerFileCount),
     },
     {

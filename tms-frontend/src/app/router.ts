@@ -7,7 +7,9 @@ import BrowserPluginsPage from '../pages/browser-plugins/BrowserPluginsPage.vue'
 import EricPage from '../pages/eric/EricPage.vue'
 import HomePage from '../pages/home/HomePage.vue'
 import InfornexusPage from '../pages/infornexus/InfornexusPage.vue'
+import JaneBomComparePage from '../pages/jane-bom-compare/JaneBomComparePage.vue'
 import JaneBomSummaryPage from '../pages/jane-bom-summary/JaneBomSummaryPage.vue'
+import JaneOutboundComparePage from '../pages/jane-outbound-compare/JaneOutboundComparePage.vue'
 import JanePage from '../pages/jane/JanePage.vue'
 import JesscaPage from '../pages/jessca/JesscaPage.vue'
 import SettingsPage from '../pages/settings/SettingsPage.vue'
@@ -20,6 +22,8 @@ const routeComponents: Partial<Record<string, Component>> = {
   jessca: JesscaPage,
   jane: JanePage,
   'jane-bom-summary': JaneBomSummaryPage,
+  'jane-bom-compare': JaneBomComparePage,
+  'jane-outbound-compare': JaneOutboundComparePage,
   eric: EricPage,
   'sophia-tina': SophiaTinaPage,
   'browser-plugins': BrowserPluginsPage,

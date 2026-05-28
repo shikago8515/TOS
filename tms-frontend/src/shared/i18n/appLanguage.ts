@@ -181,6 +181,8 @@ const staticTextTranslations: Record<string, string> = {
   报表合并: 'Report Merge',
   成品表生成: 'Finished Goods Sheet',
   'Jane-BOM汇总': 'Jane BOM Summary',
+  'Jane-BOM核对': 'Jane BOM Compare',
+  'Jane-OUTBOUND核对': 'Jane OUTBOUND Compare',
   'Jane-表格制作': 'Jane Table Making',
   Eric数据处理: 'Eric Data Processing',
   系统设置: 'Settings',
@@ -234,7 +236,11 @@ const staticTextTranslations: Record<string, string> = {
   'Pack 文件': 'Pack Files',
   'Pack 文件（可多选）': 'Pack Files (multiple)',
   客户文件: 'Customer File',
+  'Copy of TMS': 'Copy of TMS',
   country文件: 'country.xlsx',
+  'T1 PRODUCTION 文件': 'T1 PRODUCTION File',
+  'T1 OUTBOUND 文件': 'T1 OUTBOUND File',
+  'TMS Released Order 文件': 'Copy of TMS',
   'BOM 文件': 'BOM Files',
   'BOM 文件（可多选）': 'BOM Files (multiple)',
   结果文件: 'Result File',
@@ -244,7 +250,19 @@ const staticTextTranslations: Record<string, string> = {
   诊断记录: 'Diagnostics',
   '已处理 BOM': 'Processed BOMs',
   已处理BOM: 'Processed BOMs',
+  BOM有效行: 'BOM Valid Rows',
+  只统计MAINCOMPONENT下的源行: 'Only counts source rows under MAIN COMPONENT',
+  '只统计 MAIN COMPONENT 下的源行': 'Only counts source rows under MAIN COMPONENT',
   汇总行数: 'Summary Rows',
+  已核对行数: 'Checked Rows',
+  匹配行数: 'Matched Rows',
+  TMS缺失行: 'Missing TMS Rows',
+  OUTBOUND缺失行: 'Missing OUTBOUND Rows',
+  红色单元格: 'Red Cells',
+  新增缺失行: 'Added Missing Rows',
+  无对应BOM行: 'Rows Without Matching BOM',
+  不含新增缺失行的整行标红: 'Excludes fully red added missing rows',
+  差异明细: 'Difference Details',
   源文件: 'Source Files',
   'Final_Data 行数': 'Final_Data Rows',
   差异项: 'Differences',
@@ -298,14 +316,18 @@ const staticTextTranslations: Record<string, string> = {
   '四类文件都需要至少上传 1 个。': 'Each of the four file groups requires at least one file.',
   '输出合并后的 Sophia & Tina 分析报表。': 'Exports the merged Sophia & Tina analysis report.',
   '上传客户文件和 country.xlsx 后自动生成标准成品表。':
-    'Upload the customer file and country.xlsx to generate the standard finished goods sheet.',
-  '上传 1 个客户原始文件。': 'Upload one customer source file.',
+    'Upload Copy of TMS and country.xlsx to generate the standard finished goods sheet.',
+  '上传 Copy of TMS 和 country.xlsx 后自动生成标准成品表。':
+    'Upload Copy of TMS and country.xlsx to generate the standard finished goods sheet.',
+  '上传 1 个客户原始文件。': 'Upload one Copy of TMS file.',
+  '上传 1 个 Copy of TMS 文件。': 'Upload one Copy of TMS file.',
   '上传用于国家/区域单别统计的 country.xlsx。':
     'Upload country.xlsx for country/region order statistics.',
   'Working Number 筛选（可选）': 'Working Number Filter (optional)',
   多个WorkingNumber用英文逗号分隔: 'Separate multiple Working Numbers with commas',
   '多个 Working Number 用英文逗号分隔': 'Separate multiple Working Numbers with commas',
-  客户文件生成标准成品表: 'Generate standard finished goods sheet from customer file',
+  客户文件生成标准成品表: 'Generate standard finished goods sheet from Copy of TMS',
+  'Copy of TMS 生成标准成品表': 'Generate standard finished goods sheet from Copy of TMS',
   '只上传 1 个，支持 .xls / .xlsx': 'Upload exactly 1 file, supports .xls / .xlsx',
   '只上传 1 个，仅支持 .xlsx': 'Upload exactly 1 file, supports .xlsx only',
   'Working Number 筛选为可选项，多个值用英文逗号分隔。':
@@ -323,6 +345,34 @@ const staticTextTranslations: Record<string, string> = {
     'Matches Pack.xlsx by Working # + Season. Processing stops if Pack mappings conflict.',
   '当前只汇总 BOM 里的 MAIN COMPONENT 物料，并按 Article/Color 展开。':
     'Only MAIN COMPONENT materials are summarized and expanded by Article/Color.',
+  '上传 T1 PRODUCTION.xlsx 和多个 BOM 文件，按 Style ID + Recording Facility ID 核对 MAIN COMPONENT 面料并标红差异。':
+    'Upload T1 PRODUCTION.xlsx and BOM files, compare MAIN COMPONENT materials by Style ID + Recording Facility ID, and mark differences in red.',
+  '上传 1 个 T1 PRODUCTION.xlsx，输出会保留原表样式并标红差异。':
+    'Upload one T1 PRODUCTION.xlsx. The output keeps the original sheet styling and marks differences in red.',
+  'T1 PRODUCTION 与 BOM 面料核对': 'T1 PRODUCTION and BOM Material Check',
+  '只上传 1 个，支持 .xlsx / .xlsm': 'Upload exactly 1 file, supports .xlsx / .xlsm',
+  '按 Style ID + Recording Facility ID 匹配 BOM 的 Article + Factory。':
+    'Match BOM Article + Factory by Style ID + Recording Facility ID.',
+  '材料号或供应商不一致会标红；BOM 有但生产表缺少的材料会追加红色行。':
+    'Material or supplier mismatches are marked in red; BOM materials missing from the production sheet are appended as red rows.',
+  '上传 T1 OUTBOUND.xlsx 和 TMS Released Order 报表，按 Style/PO/Line/Factory 核对数量、PODD 和 Working Number。':
+    'Upload T1 OUTBOUND.xlsx and Copy of TMS, then compare quantity, PODD, and Working Number by Style/PO/Line/Factory.',
+  '上传 T1 OUTBOUND.xlsx 和 Copy of TMS 报表，按 Style/PO/Line/Factory 核对数量、PODD 和 Working Number。':
+    'Upload T1 OUTBOUND.xlsx and Copy of TMS, then compare quantity, PODD, and Working Number by Style/PO/Line/Factory.',
+  '上传 1 个 T1 OUTBOUND.xlsx，输出会保留原表样式并标红差异。':
+    'Upload one T1 OUTBOUND.xlsx. The output keeps the original sheet styling and marks differences in red.',
+  '上传 1 个包含 Result Set 的 TMS Released Order 报表。':
+    'Upload one Copy of TMS report containing Result Set.',
+  '上传 1 个包含 Result Set 的 Copy of TMS 报表。':
+    'Upload one Copy of TMS report containing Result Set.',
+  'T1 OUTBOUND 与 TMS 出库核对': 'T1 OUTBOUND and TMS Outbound Check',
+  '只上传 1 个，需包含 Result Set': 'Upload exactly 1 file. Must contain Result Set.',
+  '按 Style Number + PO Number + Line Number + Recording Facility ID 匹配 TMS。':
+    'Match TMS by Style Number + PO Number + Line Number + Recording Facility ID.',
+  'TMS 会先按 T1 的 Working Number 范围过滤，避免全量报表无关订单进入结果。':
+    'TMS rows are first filtered by Working Numbers present in T1 to avoid unrelated full-report orders entering the result.',
+  '数量、PODD 或 Working Number 不一致会标红，并输出 OUTBOUND_Check 明细表。':
+    'Quantity, PODD, or Working Number differences are marked in red and exported to OUTBOUND_Check.',
   '先把 Pack Size breakdown 转成 PO / Article / Size / Quantity 明细。':
     'Convert Pack Size breakdown into PO / Article / Size / Quantity details.',
   '读取 YTIC check 的尺寸、目的地和 SP 信息，替代原宏的手工提取。':

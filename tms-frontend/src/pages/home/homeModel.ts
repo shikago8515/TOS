@@ -40,6 +40,8 @@ export const homeShortcutModuleIds = [
   'sophia-tina',
   'jane',
   'jane-bom-summary',
+  'jane-bom-compare',
+  'jane-outbound-compare',
   'eric',
   'browser-plugins',
   'web-automation',
