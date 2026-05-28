@@ -335,6 +335,17 @@ class SophiaTinaModule:
         key = cls._clean_key(milestone).upper().replace(" ", "")
         return cls.ARTICLE_PRIORITY.get(key, 99)
 
+    @staticmethod
+    def _select_article_candidate(candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """严格按 Milestone 顺序取值：Final > P2 > P1 > PREC。"""
+        for milestone in ("FINAL", "P2", "P1", "PREC"):
+            for item in candidates:
+                if item['milestone'].upper().replace(" ", "") == milestone:
+                    return item
+
+        return candidates[0]
+
+
     @classmethod
     def _make_factory_group_key(cls, season: Any, working_num: Any, factory: Any) -> Tuple[str, str, str]:
         return (
@@ -553,7 +564,7 @@ class SophiaTinaModule:
 
             article_lookup: Dict[Tuple[str, str], Dict[str, Any]] = {}
             for key, candidates in article_candidates.items():
-                selected = sorted(candidates, key=lambda item: item['rank'])[0]
+                selected = self._select_article_candidate(candidates)
                 article_lookup[key] = selected
                 if len(candidates) > 1 and key in used_article_keys:
                     milestones = sorted({item['milestone'] for item in candidates if item['milestone']})
