@@ -67,7 +67,11 @@ async function captureFailure(page, workflowId, logger) {
 
 async function runAutomation(options) {
   const { workflowId, excelPath, targetUrl, dryRun, onLog, originalFileName, runMode } = options;
-  assertSupportedRunMode(runMode);
+  const normalizedRunMode = assertSupportedRunMode(runMode);
+
+  if (normalizedRunMode === 'capture') {
+    throw new Error('Capture mode is not wired yet. Complete network capture integration before using run mode "capture".');
+  }
   
   const config = loadConfig();
   const workflowConfig = config.workflows[workflowId];
