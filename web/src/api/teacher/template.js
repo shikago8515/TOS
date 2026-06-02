@@ -1,0 +1,39 @@
+import { request } from '@/utils/request'
+
+export function getCaseTemplateList() {
+  return request.get('/case-templates')
+}
+
+export function getPublicCaseTemplateList() {
+  return request.get('/case-templates/public')
+}
+
+export function generateCaseTemplateByAi(data) {
+  return request.post('/case-templates/ai-generate', data, {
+    timeout: 120000
+  })
+}
+
+export function getCaseTemplateReference(id) {
+  return request.get(`/case-templates/${id}/reference`)
+}
+
+export function createCaseTemplate(data) {
+  return request.post('/case-templates', data)
+}
+
+export function updateCaseTemplate(id, data) {
+  return request.put(`/case-templates/${id}`, data)
+}
+
+export function deleteCaseTemplate(id) {
+  return request.delete(`/case-templates/${id}`)
+}
+
+export function generateCaseTemplateShareCode(id) {
+  return request.post(`/case-templates/${id}/share`)
+}
+
+export function importCaseTemplateByShareCode(shareCode) {
+  return request.post('/case-templates/import-by-code', { shareCode })
+}

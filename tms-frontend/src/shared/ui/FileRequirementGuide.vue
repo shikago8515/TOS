@@ -195,7 +195,7 @@ const guide = guides[props.owner]
   padding: 18px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 12px;
 }
 
 .requirement-guide--compact {
@@ -213,14 +213,17 @@ const guide = guides[props.owner]
 }
 
 .guide-heading p {
-  color: #2563eb;
+  color: #0d9488;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .guide-heading h3 {
-  color: #172033;
+  color: #1e293b;
   font-size: 18px;
+  font-weight: 700;
 }
 
 .guide-grid {
@@ -231,26 +234,32 @@ const guide = guides[props.owner]
 
 .guide-file {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  min-height: 58px;
-  padding: 11px 12px;
+  min-height: 60px;
+  padding: 12px 14px;
   background: #ffffff;
-  border: 1px solid #e6edf4;
-  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.guide-file:hover {
+  border-color: #99f6e4;
+  background: #f0fdfa;
 }
 
 .file-status {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  color: #1f7a5d;
+  width: 24px;
+  height: 24px;
+  color: #ffffff;
   font-size: 13px;
   font-weight: 900;
-  background: #e5f5ef;
+  background: linear-gradient(135deg, #34d399, #059669);
   border-radius: 999px;
 }
 
@@ -261,39 +270,41 @@ const guide = guides[props.owner]
 }
 
 .file-copy strong {
-  color: #172033;
+  color: #1e293b;
   font-size: 14px;
+  font-weight: 600;
 }
 
 .file-copy small {
-  color: #6b7a8b;
+  color: #64748b;
   font-size: 12px;
+  line-height: 1.5;
 }
 
 em {
-  padding: 4px 8px;
-  color: #334155;
+  padding: 4px 10px;
+  color: #0d9488;
   font-size: 12px;
   font-style: normal;
-  font-weight: 800;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  font-weight: 700;
+  background: #f0fdfa;
+  border: 1px solid #ccfbf1;
   border-radius: 999px;
 }
 
 .guide-notes {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   padding: 0;
   margin: 0;
-  color: #5c6c7f;
+  color: #64748b;
   font-size: 13px;
   list-style: none;
 }
 
 .guide-notes li::before {
   margin-right: 8px;
-  color: #ca8a04;
+  color: #d97706;
   content: '!';
   font-weight: 900;
 }

@@ -1,51 +1,72 @@
 <template>
   <section class="home-page">
-    <header class="overview-band">
-      <div>
-        <p class="section-kicker">{{ t('app.home.kicker') }}</p>
-        <h2>{{ t('app.home.title') }}</h2>
-      </div>
-
-      <div class="backend-status" :aria-label="t('app.home.backendOnline')">
-        <span class="status-light" />
-        <strong>{{ t('app.home.backendOnline') }}</strong>
-      </div>
-    </header>
-
-    <section class="metric-grid" :aria-label="t('app.home.moduleStats')">
-      <MetricTile
-        v-for="metric in homeMetricTiles"
-        :key="metric.labelKey"
-        :label="t(metric.labelKey)"
-        :value="metric.value"
-        :detail="getMetricDetail(metric)"
-        :tone="metric.tone"
-      />
-    </section>
-
-    <section class="content-grid">
-      <div class="shortcuts-area">
-        <div class="section-heading">
-          <p class="section-kicker">{{ t('app.home.shortcuts') }}</p>
-          <h3>{{ t('app.home.modules') }}</h3>
+    <!-- Hero Banner -->
+    <div class="hero">
+      <div class="hero-main">
+        <div class="hero-badge">
+          <AppIcon name="radar" />
+          <span>TOS Workstation</span>
         </div>
+        <h1 class="hero-title">{{ t('app.home.title') }}</h1>
+        <p class="hero-sub">{{ heroSubtitle }}</p>
+      </div>
+      <div class="hero-meta">
+        <div class="hero-clock">
+          <AppIcon name="calendar" />
+          <span>{{ displayDate }}</span>
+        </div>
+        <div class="hero-status" :class="{ 'hero-status--online': true }">
+          <span class="hero-status__dot" />
+          <span>{{ t('app.home.backendOnline') }}</span>
+        </div>
+      </div>
+    </div>
 
+    <!-- Metric Tiles -->
+    <div class="metrics">
+      <article
+        v-for="(m, i) in metricCards"
+        :key="m.key"
+        class="metric"
+        :style="{ animationDelay: `${i * 80 + 100}ms` }"
+      >
+        <div class="metric__icon" :class="`metric__icon--${m.tone}`">
+          <AppIcon :name="m.icon" />
+        </div>
+        <div class="metric__body">
+          <span class="metric__value">{{ m.value }}</span>
+          <span class="metric__label">{{ m.label }}</span>
+        </div>
+        <span class="metric__detail">{{ m.detail }}</span>
+      </article>
+    </div>
+
+    <!-- Content Grid -->
+    <div class="content-grid">
+      <!-- Module Shortcuts -->
+      <div class="modules-panel">
+        <div class="panel-head">
+          <AppIcon name="layers" />
+          <h3>{{ t('app.home.modules') }}</h3>
+          <span class="panel-count">{{ homeShortcutModules.length }}</span>
+        </div>
         <div class="shortcut-grid">
           <ModuleShortcutCard
-            v-for="module in homeShortcutModules"
+            v-for="(module, i) in homeShortcutModules"
             :key="module.id"
             :module="module"
+            :index="i"
           />
         </div>
       </div>
 
-      <aside class="status-panel" :aria-label="t('app.home.serviceStatus')">
-        <div class="section-heading">
-          <p class="section-kicker">{{ t('app.home.serviceStatus') }}</p>
+      <!-- Service Status -->
+      <div class="status-panel">
+        <div class="panel-head">
+          <AppIcon name="activity" />
           <h3>{{ t('app.home.runtime') }}</h3>
         </div>
-
-        <ul>
+        <ul class="status-list">
           <ServiceStatusItem
             v-for="item in serviceStatusItems"
             :key="item.labelKey"
@@ -55,15 +76,15 @@
             :tone="item.tone"
           />
         </ul>
-      </aside>
-    </section>
+      </div>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 
-import MetricTile from '../../shared/ui/MetricTile.vue'
+import AppIcon from '../../shared/ui/AppIcon.vue'
 import ModuleShortcutCard from '../../shared/ui/ModuleShortcutCard.vue'
 import ServiceStatusItem from '../../shared/ui/ServiceStatusItem.vue'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
@@ -75,148 +96,351 @@ import {
 
 const { isEnglish, t } = useAppLanguage()
 
-const automationModuleDetail = computed(() =>
-  homeShortcutModules
-    .filter((module) => module.group === 'automation')
-    .map((module) => (isEnglish.value ? module.navLabelEn : module.navLabel))
-    .join(' / '),
+const now = ref(new Date())
+let timer: ReturnType<typeof setInterval> | undefined
+
+onMounted(() => {
+  timer = setInterval(() => { now.value = new Date() }, 60_000)
+})
+onBeforeUnmount(() => { clearInterval(timer) })
+
+const displayDate = computed(() => {
+  const d = now.value
+  const weekdays = isEnglish.value
+    ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    : ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  const mm = `${d.getMonth() + 1}`.padStart(2, '0')
+  const dd = `${d.getDate()}`.padStart(2, '0')
+  const hh = `${d.getHours()}`.padStart(2, '0')
+  const mi = `${d.getMinutes()}`.padStart(2, '0')
+  return `${mm}/${dd} ${weekdays[d.getDay()]} ${hh}:${mi}`
+})
+
+const heroSubtitle = computed(() =>
+  isEnglish.value
+    ? 'Excel processing, browser automation, and web data collection in one place.'
+    : 'Excel 数据处理、浏览器自动化和网页数据采集，一站式工作台。',
 )
 
-function getMetricDetail(metric: (typeof homeMetricTiles)[number]): string {
-  if (metric.detailKey) {
-    return t(metric.detailKey)
-  }
-
-  return automationModuleDetail.value
+const iconMap: Record<string, string> = {
+  blue: 'database',
+  green: 'globe-search',
+  amber: 'workflow',
 }
+
+const metricCards = computed(() =>
+  homeMetricTiles.map((m) => ({
+    key: m.labelKey,
+    icon: iconMap[m.tone] || 'radar',
+    value: m.value,
+    label: t(m.labelKey),
+    detail: m.detailKey ? t(m.detailKey) : homeShortcutModules
+      .filter((mod) => mod.group === 'automation')
+      .map((mod) => isEnglish.value ? mod.navLabelEn : mod.navLabel)
+      .join(' / '),
+    tone: m.tone === 'blue' ? 'teal' : m.tone === 'green' ? 'green' : 'orange',
+  })),
+)
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .home-page {
-  display: grid;
-  gap: 24px;
-  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px;
+  min-height: 100%;
+  background: #f8fafc;
 }
 
-.overview-band {
+/* ===== Hero ===== */
+.hero {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 24px;
-  min-width: 0;
-  padding: 26px 28px;
-  color: #ffffff;
-  background: #1c5c86;
-  border: 1px solid #164d72;
-  border-radius: 8px;
-  box-shadow: 0 18px 42px rgba(23, 42, 63, 0.12);
+  padding: 28px 32px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  position: relative;
+  overflow: hidden;
+  animation: slideUp 0.45s ease-out both;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: -40%;
+    right: -8%;
+    width: 340px;
+    height: 340px;
+    background: radial-gradient(circle, rgba(13,148,136,0.05) 0%, transparent 70%);
+    pointer-events: none;
+  }
 }
 
-.section-kicker,
-h2,
-h3,
-.section-kicker {
-  color: #5e7288;
-  font-size: 13px;
-  font-weight: 800;
-}
+.hero-main { z-index: 1; }
 
-.overview-band .section-kicker {
-  color: #b9d7ec;
-}
-
-h2 {
-  margin-top: 6px;
-  color: #ffffff;
-  font-size: 30px;
-  line-height: 1.2;
-}
-
-.backend-status {
+.hero-badge {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  margin-bottom: 10px;
+  background: #f0fdfa;
+  color: #0d9488;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 999px;
+  border: 1px solid #ccfbf1;
+  letter-spacing: 0.3px;
+  :deep(.app-icon) { font-size: 12px; }
+}
+
+.hero-title {
+  margin: 0 0 6px;
+  font-size: 26px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.4px;
+}
+
+.hero-sub {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 500px;
+}
+
+.hero-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 8px;
-  min-height: 34px;
-  padding: 0 12px;
-  color: #11344a;
-  background: #ffffff;
-  border-radius: 999px;
+  z-index: 1;
+  flex-shrink: 0;
 }
 
-.status-light {
-  width: 9px;
-  height: 9px;
-  background: #28a271;
-  border-radius: 999px;
+.hero-clock {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  :deep(.app-icon) { font-size: 15px; color: #94a3b8; }
 }
 
-.metric-grid {
+.hero-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #d1fae5;
+
+  &__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #16a34a;
+    animation: pulse-dot 2s ease infinite;
+  }
+}
+
+/* ===== Metrics ===== */
+.metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  animation: slideUp 0.45s ease-out 0.08s both;
 }
 
+.metric {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: all 0.25s ease;
+  position: relative;
+  overflow: hidden;
+  animation: fadeScale 0.4s ease-out both;
+
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+    border-color: #99f6e4;
+  }
+
+  &__icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    color: #fff;
+    flex-shrink: 0;
+
+    &--teal { background: linear-gradient(135deg, #2dd4bf, #0d9488); }
+    &--green { background: linear-gradient(135deg, #34d399, #059669); }
+    &--orange { background: linear-gradient(135deg, #fb923c, #ea580c); }
+  }
+
+  &__body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__value {
+    font-size: 28px;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.1;
+  }
+
+  &__label {
+    font-size: 13px;
+    color: #64748b;
+    font-weight: 500;
+    margin-top: 2px;
+  }
+
+  &__detail {
+    position: absolute;
+    right: 16px;
+    bottom: 10px;
+    font-size: 11px;
+    color: #cbd5e1;
+    font-weight: 500;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* ===== Content Grid ===== */
 .content-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 22px;
-  align-items: start;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
 }
 
-.shortcuts-area {
-  min-width: 0;
+/* ===== Panels ===== */
+.modules-panel,
+.status-panel {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.section-heading {
-  display: grid;
-  gap: 4px;
-  margin-bottom: 14px;
+.modules-panel { animation: slideUp 0.45s ease-out 0.16s both; }
+.status-panel { animation: slideUp 0.45s ease-out 0.22s both; }
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #f1f5f9;
+
+  :deep(.app-icon) { font-size: 18px; color: #0d9488; }
+
+  h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: #0f172a;
+    flex: 1;
+  }
 }
 
-h3 {
-  color: #172033;
-  font-size: 20px;
+.panel-count {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0fdfa;
+  color: #0d9488;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 999px;
+  border: 1px solid #ccfbf1;
 }
 
 .shortcut-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  padding: 16px;
+  flex: 1;
+  overflow-y: auto;
+  align-content: start;
 }
 
-.status-panel {
-  min-width: 0;
-  padding: 20px;
-  background: #ffffff;
-  border: 1px solid #dbe5ee;
-  border-radius: 8px;
-  box-shadow: 0 14px 32px rgba(23, 42, 63, 0.06);
-}
-
-ul {
-  padding: 0;
-  margin: 0;
+.status-list {
   list-style: none;
+  margin: 0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  overflow-y: auto;
 }
 
-@media (max-width: 1180px) {
-  .content-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .status-panel {
-    max-width: none;
-  }
+/* ===== Animations ===== */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-@media (max-width: 760px) {
-  .overview-band {
-    flex-direction: column;
-  }
+@keyframes fadeScale {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
 
-  .metric-grid,
-  .shortcut-grid {
-    grid-template-columns: 1fr;
-  }
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(22,163,74,0.4); }
+  50% { opacity: 0.8; box-shadow: 0 0 0 4px rgba(22,163,74,0); }
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 1100px) {
+  .content-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  .metrics { grid-template-columns: 1fr; }
+  .hero { flex-direction: column; align-items: flex-start; padding: 20px; }
+  .hero-meta { flex-direction: row; align-items: center; }
+  .metric__detail { display: none; }
+  .shortcut-grid { grid-template-columns: 1fr; }
 }
 </style>

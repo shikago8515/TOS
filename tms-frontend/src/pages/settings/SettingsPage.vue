@@ -1,145 +1,168 @@
 <template>
   <section class="settings-page">
-    <div class="settings-panel">
-      <header class="panel-header">
-        <div class="header-copy">
-          <p class="panel-kicker">{{ t('app.settings.kicker') }}</p>
-          <div class="title-row">
-            <h2 class="panel-title">{{ t('app.settings.title') }}</h2>
-            <span class="copyright-badge">DG.Luenthai</span>
-          </div>
-          <p class="panel-description">
-            {{ t('app.settings.description') }}
-          </p>
+    <!-- Header Panel -->
+    <div class="header-panel">
+      <div class="header-left">
+        <div class="header-icon-wrap">
+          <AppIcon name="monitor-code" />
         </div>
-
-        <div class="header-actions">
-          <label class="language-control">
-            <span>{{ t('app.settings.language') }}</span>
-            <select v-model="currentLanguage">
-              <option
-                v-for="option in languageOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-
-          <span class="status-badge" :class="`status-badge--${statusTone}`">
-            {{ statusLabel }}
-          </span>
+        <div class="header-info">
+          <h2 class="header-title">{{ t('app.settings.title') }}</h2>
+          <p class="header-desc">{{ t('app.settings.description') }}</p>
         </div>
-      </header>
-
-      <dl class="version-grid">
-        <div class="version-item">
-          <dt>{{ t('app.settings.currentVersion') }}</dt>
-          <dd>{{ formatDisplayVersion(currentVersion) }}</dd>
-        </div>
-        <div class="version-item">
-          <dt>{{ t('app.settings.latestVersion') }}</dt>
-          <dd>{{ latestVersion }}</dd>
-        </div>
-        <div class="version-item">
-          <dt>{{ t('app.settings.runMode') }}</dt>
-          <dd>{{ runModeLabel }}</dd>
-        </div>
-        <div class="version-item">
-          <dt>{{ t('app.settings.feedUrl') }}</dt>
-          <dd class="mono-value" :title="feedUrl">{{ feedUrlLabel }}</dd>
-        </div>
-      </dl>
-
-      <div v-if="noticeText" class="status-alert" :class="`status-alert--${noticeTone}`">
-        {{ text(noticeText) }}
       </div>
+      <div class="header-right">
+        <span class="status-pill" :class="`status-pill--${statusTone}`">
+          <span class="status-dot" />
+          {{ statusLabel }}
+        </span>
+        <label class="lang-switch">
+          <AppIcon name="globe-search" />
+          <select v-model="currentLanguage">
+            <option
+              v-for="option in languageOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+        </label>
+      </div>
+    </div>
 
-      <section v-if="status?.downloading || status?.progress" class="download-panel">
-        <div class="download-row">
-          <span>{{ text('下载进度') }}</span>
-          <strong>{{ progressPercent }}%</strong>
+    <!-- Version Grid -->
+    <div class="ver-grid">
+      <div class="ver-card" v-for="item in versionItems" :key="item.key">
+        <div class="ver-card__icon" :class="`ver-card__icon--${item.tone}`">
+          <AppIcon :name="item.icon" />
         </div>
-        <div class="progress-track" aria-hidden="true">
-          <span class="progress-bar" :style="{ width: `${progressPercent}%` }" />
+        <div class="ver-card__body">
+          <span class="ver-card__label">{{ item.label }}</span>
+          <span class="ver-card__value" :class="{ 'mono': item.mono }">{{ item.value }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alert -->
+    <transition name="alert-fade">
+      <div v-if="noticeText" class="alert-bar" :class="`alert-bar--${noticeTone}`">
+        <AppIcon :name="noticeTone === 'success' ? 'check-circle' : noticeTone === 'error' ? 'alert-circle' : 'activity'" />
+        <span>{{ text(noticeText) }}</span>
+      </div>
+    </transition>
+
+    <!-- Download Progress -->
+    <transition name="alert-fade">
+      <section v-if="status?.downloading || status?.progress" class="download-section">
+        <div class="download-header">
+          <AppIcon name="download-cloud" />
+          <span class="download-label">{{ text('下载进度') }}</span>
+          <strong class="download-pct">{{ progressPercent }}%</strong>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" :style="{ width: `${progressPercent}%` }" />
         </div>
         <p class="download-detail">{{ downloadDetail }}</p>
       </section>
+    </transition>
 
-      <section class="changelog-section">
-        <div class="section-heading">
-          <p class="panel-kicker">{{ text('更新日志') }}</p>
-          <h3>{{ text('本次版本变化') }}</h3>
-        </div>
+    <!-- Changelog -->
+    <section class="changelog-section">
+      <div class="section-head">
+        <AppIcon name="refresh-cw" />
+        <h3>{{ text('更新日志') }}</h3>
+      </div>
 
-        <div v-if="hasCategorizedChangelog" class="changelog-grid">
-          <article v-for="group in changelogGroups" :key="group.key" class="changelog-card">
+      <div v-if="hasCategorizedChangelog" class="changelog-grid">
+        <article
+          v-for="group in changelogGroups"
+          :key="group.key"
+          class="changelog-card"
+          :class="`changelog-card--${group.key}`"
+        >
+          <div class="changelog-card__head">
+            <span class="changelog-card__dot" />
             <h4>{{ group.title }}</h4>
-            <ul v-if="group.items.length">
-              <li v-for="item in group.items" :key="item">{{ text(item) }}</li>
-            </ul>
-            <p v-else class="empty-copy">{{ text('暂无记录') }}</p>
-          </article>
-        </div>
-
-        <div v-else class="empty-changelog">
-          {{ text(emptyChangelogText) }}
-        </div>
-
-        <div v-if="releaseNoteItems.length" class="release-notes">
-          <strong>{{ text('发布说明') }}</strong>
-          <ul>
-            <li v-for="item in releaseNoteItems" :key="item">{{ text(item) }}</li>
+            <span class="changelog-card__count">{{ group.items.length }}</span>
+          </div>
+          <ul v-if="group.items.length">
+            <li v-for="item in group.items" :key="item">{{ text(item) }}</li>
           </ul>
-        </div>
-      </section>
+          <p v-else class="changelog-empty">{{ text('暂无记录') }}</p>
+        </article>
+      </div>
 
-      <section v-if="manualDownload" class="manual-download-panel">
-        <div class="manual-download-copy">
-          <p class="panel-kicker">{{ text('备用下载') }}</p>
-          <h3>{{ text('免安装版') }}</h3>
-          <p>{{ manualDownloadDetail }}</p>
+      <div v-else class="changelog-placeholder">
+        <AppIcon name="clock" />
+        <span>{{ text(emptyChangelogText) }}</span>
+      </div>
+
+      <div v-if="releaseNoteItems.length" class="release-notes">
+        <div class="release-notes__head">
+          <AppIcon name="file-search" />
+          <strong>{{ text('发布说明') }}</strong>
+        </div>
+        <ul>
+          <li v-for="item in releaseNoteItems" :key="item">{{ text(item) }}</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Manual Download -->
+    <transition name="alert-fade">
+      <section v-if="manualDownload" class="manual-section">
+        <div class="manual-info">
+          <AppIcon name="package" />
+          <div>
+            <strong>{{ text('免安装版') }}</strong>
+            <p>{{ manualDownloadDetail }}</p>
+          </div>
         </div>
         <button
-          class="action-button"
+          class="btn btn--outline"
           type="button"
           :disabled="isActionLocked"
           @click="handleManualDownload"
         >
-          {{ activeAction === 'manual' ? text('打开中...') : text('下载免安装版') }}
+          <AppIcon name="download" />
+          {{ activeAction === 'manual' ? text('打开中...') : text('下载') }}
         </button>
       </section>
+    </transition>
 
-      <footer class="action-row">
-        <button
-          class="action-button"
-          type="button"
-          :disabled="isActionLocked"
-          @click="handleCheck"
-        >
-          {{ status?.checking || activeAction === 'check' ? text('检查中...') : text('检查更新') }}
-        </button>
-        <button
-          v-if="canDownload"
-          class="action-button action-button--primary"
-          type="button"
-          :disabled="isActionLocked"
-          @click="handleDownload"
-        >
-          {{ status?.downloading || activeAction === 'download' ? text('下载中...') : text('下载更新') }}
-        </button>
-        <button
-          v-if="canInstall"
-          class="action-button action-button--primary"
-          type="button"
-          :disabled="activeAction === 'install'"
-          @click="handleInstall"
-        >
-          {{ activeAction === 'install' ? text('正在安装...') : text('立即安装并重启') }}
-        </button>
-      </footer>
-    </div>
+    <!-- Actions -->
+    <footer class="action-bar">
+      <button
+        class="btn btn--outline"
+        type="button"
+        :disabled="isActionLocked"
+        @click="handleCheck"
+      >
+        <AppIcon name="refresh-cw" />
+        {{ status?.checking || activeAction === 'check' ? text('检查中...') : text('检查更新') }}
+      </button>
+      <button
+        v-if="canDownload"
+        class="btn btn--primary"
+        type="button"
+        :disabled="isActionLocked"
+        @click="handleDownload"
+      >
+        <AppIcon name="download-cloud" />
+        {{ status?.downloading || activeAction === 'download' ? text('下载中...') : text('下载更新') }}
+      </button>
+      <button
+        v-if="canInstall"
+        class="btn btn--primary btn--glow"
+        type="button"
+        :disabled="activeAction === 'install'"
+        @click="handleInstall"
+      >
+        <AppIcon name="rocket" />
+        {{ activeAction === 'install' ? text('正在安装...') : text('安装并重启') }}
+      </button>
+    </footer>
   </section>
 </template>
 
@@ -152,6 +175,7 @@ import type {
   UpdateStatus,
   UpdateStatusCode,
 } from '../../types/electronApi'
+import AppIcon from '../../shared/ui/AppIcon.vue'
 import {
   checkForUpdates,
   downloadUpdate,
@@ -285,6 +309,41 @@ const canInstall = computed(() => Boolean(status.value?.downloaded))
 const isActionLocked = computed(() =>
   Boolean(activeAction.value || status.value?.checking || status.value?.downloading),
 )
+
+const versionItems = computed(() => [
+  {
+    key: 'current',
+    icon: 'check-circle',
+    label: t('app.settings.currentVersion'),
+    value: formatDisplayVersion(currentVersion.value),
+    tone: 'teal',
+    mono: false,
+  },
+  {
+    key: 'latest',
+    icon: 'sparkles',
+    label: t('app.settings.latestVersion'),
+    value: latestVersion.value,
+    tone: 'blue',
+    mono: false,
+  },
+  {
+    key: 'mode',
+    icon: 'monitor-code',
+    label: t('app.settings.runMode'),
+    value: runModeLabel.value,
+    tone: 'slate',
+    mono: false,
+  },
+  {
+    key: 'feed',
+    icon: 'link',
+    label: t('app.settings.feedUrl'),
+    value: feedUrlLabel.value,
+    tone: 'green',
+    mono: true,
+  },
+])
 
 onMounted(() => {
   unsubscribeUpdateStatus = subscribeUpdateStatus((nextStatus) => {
@@ -483,416 +542,563 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .settings-page {
-  width: 100%;
-  max-width: 1180px;
-  margin: 0 auto;
-}
-
-.settings-panel {
-  display: grid;
-  gap: 18px;
-  min-width: 0;
-}
-
-.panel-header {
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px;
+  min-height: 100%;
+  background: #f8fafc;
+}
+
+/* ===== Header ===== */
+.header-panel {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  min-width: 0;
-  padding: 24px;
+  gap: 20px;
+  padding: 24px 28px;
   background: #ffffff;
-  border: 1px solid #dfe8f1;
-  border-radius: 8px;
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.06);
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  animation: slideUp 0.45s ease-out both;
 }
 
-.header-copy {
-  min-width: 0;
-}
-
-.header-actions {
-  display: grid;
-  gap: 10px;
-  justify-items: end;
-  flex: 0 0 auto;
-}
-
-.language-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #475569;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.language-control select {
-  height: 32px;
-  min-width: 116px;
-  padding: 0 28px 0 10px;
-  color: #0f172a;
-  font: inherit;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-}
-
-.panel-kicker,
-.panel-title,
-.panel-description,
-.section-heading h3 {
-  margin: 0;
-}
-
-.title-row {
+.header-left {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
+  gap: 16px;
   min-width: 0;
 }
 
-.panel-kicker {
-  margin-bottom: 8px;
-  color: #64748b;
-  font-size: 13px;
+.header-icon-wrap {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #0d9488, #0f766e);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.2);
+}
+
+.header-info {
+  min-width: 0;
+}
+
+.header-title {
+  margin: 0 0 4px;
+  font-size: 22px;
   font-weight: 800;
-}
-
-.panel-title {
   color: #0f172a;
-  font-size: 28px;
-  line-height: 1.25;
+  letter-spacing: -0.3px;
 }
 
-.copyright-badge {
+.header-desc {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.status-pill {
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
-  padding: 0 10px;
-  color: #185782;
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 999px;
   white-space: nowrap;
-  background: #eff8ff;
-  border: 1px solid #b9d8ee;
-  border-radius: 999px;
 }
 
-.panel-description {
-  max-width: 720px;
-  margin-top: 10px;
-  color: #64748b;
-  font-size: 15px;
-  line-height: 1.65;
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
 }
 
-.status-badge {
-  flex: 0 0 auto;
-  padding: 6px 10px;
-  font-size: 12px;
-  font-weight: 800;
-  border-radius: 999px;
+.status-pill--info {
+  background: #f0fdfa;
+  color: #0f766e;
+  border: 1px solid #ccfbf1;
+  .status-dot { background: #0d9488; }
 }
 
-.status-badge--info {
-  color: #1d4ed8;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-}
-
-.status-badge--success {
-  color: #15803d;
+.status-pill--success {
   background: #f0fdf4;
+  color: #15803d;
   border: 1px solid #bbf7d0;
+  .status-dot { background: #16a34a; animation: pulse-dot 2s ease infinite; }
 }
 
-.status-badge--warning {
-  color: #a16207;
-  background: #fefce8;
+.status-pill--warning {
+  background: #fffbeb;
+  color: #b45309;
   border: 1px solid #fde68a;
+  .status-dot { background: #d97706; }
 }
 
-.status-badge--error {
-  color: #b91c1c;
+.status-pill--error {
   background: #fef2f2;
+  color: #b91c1c;
   border: 1px solid #fecaca;
+  .status-dot { background: #dc2626; animation: pulse-dot 1.5s ease infinite; }
 }
 
-.version-grid {
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+  font-size: 13px;
+  cursor: pointer;
+
+  :deep(.app-icon) { font-size: 16px; color: #94a3b8; }
+
+  select {
+    height: 34px;
+    min-width: 110px;
+    padding: 0 28px 0 10px;
+    color: #1e293b;
+    font: inherit;
+    font-weight: 600;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+
+    &:hover { border-color: #99f6e4; }
+    &:focus { outline: none; border-color: #0d9488; box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.1); }
+  }
+}
+
+/* ===== Version Grid ===== */
+.ver-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
-  margin: 0;
+  animation: slideUp 0.45s ease-out 0.08s both;
 }
 
-.version-item {
-  min-width: 0;
+.ver-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 16px;
   background: #ffffff;
-  border: 1px solid #dfe8f1;
-  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.25s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+    border-color: #99f6e4;
+  }
 }
 
-.version-item dt {
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.version-item dd {
-  min-width: 0;
-  margin: 7px 0 0;
-  overflow: hidden;
-  color: #0f172a;
-  font-size: 16px;
-  font-weight: 800;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mono-value {
-  font-family: Consolas, "Courier New", monospace;
-  font-size: 12px;
-}
-
-.status-alert {
-  padding: 13px 16px;
-  font-size: 14px;
-  border-radius: 8px;
-}
-
-.status-alert--info {
-  color: #1e40af;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-}
-
-.status-alert--success {
-  color: #15803d;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-}
-
-.status-alert--warning {
-  color: #a16207;
-  background: #fefce8;
-  border: 1px solid #fde68a;
-}
-
-.status-alert--error {
-  color: #b91c1c;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-}
-
-.download-panel,
-.manual-download-panel,
-.changelog-section {
-  display: grid;
-  gap: 14px;
-  min-width: 0;
-  padding: 20px;
-  background: #ffffff;
-  border: 1px solid #dfe8f1;
-  border-radius: 8px;
-}
-
-.manual-download-panel {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-}
-
-.manual-download-copy {
-  min-width: 0;
-}
-
-.manual-download-copy h3,
-.manual-download-copy p {
-  margin: 0;
-}
-
-.manual-download-copy h3 {
-  color: #0f172a;
-  font-size: 18px;
-}
-
-.manual-download-copy p {
-  margin-top: 6px;
-  color: #64748b;
-  font-size: 13px;
-}
-
-.download-row {
+.ver-card__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #ffffff;
+  font-size: 17px;
+
+  &--teal { background: linear-gradient(135deg, #2dd4bf, #0d9488); }
+  &--blue { background: linear-gradient(135deg, #60a5fa, #2563eb); }
+  &--green { background: linear-gradient(135deg, #34d399, #059669); }
+  &--slate { background: linear-gradient(135deg, #94a3b8, #475569); }
+}
+
+.ver-card__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ver-card__label {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ver-card__value {
   color: #0f172a;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &.mono {
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 12px;
+  }
+}
+
+/* ===== Alert ===== */
+.alert-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+
+  :deep(.app-icon) { font-size: 18px; flex-shrink: 0; }
+}
+
+.alert-bar--info { background: #f0fdfa; color: #0f766e; border: 1px solid #ccfbf1; }
+.alert-bar--success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.alert-bar--warning { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+.alert-bar--error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+
+.alert-fade-enter-active { transition: all 0.35s ease; }
+.alert-fade-leave-active { transition: all 0.25s ease; }
+.alert-fade-enter-from { opacity: 0; transform: translateY(-8px); }
+.alert-fade-leave-to { opacity: 0; transform: translateY(-8px); }
+
+/* ===== Download ===== */
+.download-section {
+  padding: 20px 24px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.download-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+
+  :deep(.app-icon) { font-size: 18px; color: #0d9488; }
+}
+
+.download-label {
+  color: #1e293b;
+  font-size: 14px;
+  font-weight: 700;
+  flex: 1;
+}
+
+.download-pct {
+  color: #0d9488;
+  font-size: 18px;
   font-weight: 800;
 }
 
 .progress-track {
-  height: 10px;
-  overflow: hidden;
+  height: 8px;
   background: #e2e8f0;
   border-radius: 999px;
+  overflow: hidden;
 }
 
-.progress-bar {
-  display: block;
+.progress-fill {
   height: 100%;
-  background: #2563eb;
+  background: linear-gradient(90deg, #0d9488, #2dd4bf);
+  border-radius: 999px;
+  transition: width 0.4s ease;
 }
 
 .download-detail {
-  margin: 0;
-  color: #64748b;
+  margin: 10px 0 0;
+  color: #94a3b8;
   font-size: 13px;
 }
 
-.section-heading {
-  display: grid;
-  gap: 4px;
+/* ===== Changelog ===== */
+.changelog-section {
+  padding: 24px 28px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  animation: slideUp 0.45s ease-out 0.16s both;
 }
 
-.section-heading h3 {
-  color: #0f172a;
-  font-size: 20px;
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+
+  :deep(.app-icon) { font-size: 20px; color: #0d9488; }
+
+  h3 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    color: #0f172a;
+  }
 }
 
 .changelog-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
 
 .changelog-card {
-  min-width: 0;
   padding: 16px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 12px;
+  transition: all 0.25s ease;
+
+  &:hover {
+    border-color: #99f6e4;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  }
 }
 
-.changelog-card h4 {
-  margin: 0 0 10px;
-  color: #0f172a;
-  font-size: 15px;
-}
-
-.changelog-card ul,
-.release-notes ul {
-  display: grid;
+.changelog-card__head {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  padding-left: 18px;
-  margin: 0;
-  color: #334155;
-  font-size: 14px;
-  line-height: 1.55;
+  margin-bottom: 12px;
 }
 
-.empty-copy,
-.empty-changelog {
+.changelog-card__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.changelog-card--added .changelog-card__dot { background: #0d9488; }
+.changelog-card--improved .changelog-card__dot { background: #2563eb; }
+.changelog-card--fixed .changelog-card__dot { background: #ea580c; }
+
+.changelog-card__head h4 {
   margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+  flex: 1;
+}
+
+.changelog-card__count {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e2e8f0;
   color: #64748b;
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
 }
 
-.empty-changelog {
-  padding: 18px;
-  text-align: center;
-  background: #f8fafc;
-  border: 1px dashed #cbd5e1;
-  border-radius: 8px;
+.changelog-card ul {
+  display: grid;
+  gap: 6px;
+  padding: 0 0 0 16px;
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.changelog-empty {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.changelog-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 14px;
+
+  :deep(.app-icon) { font-size: 18px; }
 }
 
 .release-notes {
-  display: grid;
-  gap: 10px;
+  margin-top: 16px;
   padding: 16px;
-  background: #f8fafc;
+  background: #f0fdfa;
+  border: 1px solid #ccfbf1;
+  border-radius: 12px;
+}
+
+.release-notes__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+
+  :deep(.app-icon) { font-size: 16px; color: #0d9488; }
+
+  strong {
+    color: #0f766e;
+    font-size: 14px;
+  }
+}
+
+.release-notes ul {
+  display: grid;
+  gap: 6px;
+  padding: 0 0 0 16px;
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ===== Manual Download ===== */
+.manual-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
-.release-notes strong {
-  color: #0f172a;
+.manual-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  :deep(.app-icon) { font-size: 24px; color: #0d9488; }
+
+  strong {
+    display: block;
+    color: #0f172a;
+    font-size: 15px;
+    margin-bottom: 2px;
+  }
+
+  p {
+    margin: 0;
+    color: #64748b;
+    font-size: 13px;
+  }
 }
 
-.action-row {
+/* ===== Buttons ===== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 18px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  white-space: nowrap;
+
+  :deep(.app-icon) { font-size: 16px; }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.btn--outline {
+  background: #ffffff;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+
+  &:hover:not(:disabled) {
+    background: #f0fdfa;
+    border-color: #99f6e4;
+    color: #0d9488;
+  }
+}
+
+.btn--primary {
+  background: linear-gradient(135deg, #0d9488, #0f766e);
+  color: #ffffff;
+  border: 1px solid #0f766e;
+  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.25);
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(13, 148, 136, 0.35);
+  }
+}
+
+.btn--glow {
+  animation: btn-glow 2.5s ease infinite;
+}
+
+@keyframes btn-glow {
+  0%, 100% { box-shadow: 0 2px 8px rgba(13, 148, 136, 0.25); }
+  50% { box-shadow: 0 4px 18px rgba(13, 148, 136, 0.45); }
+}
+
+/* ===== Action Bar ===== */
+.action-bar {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
+  padding: 16px 0 0;
+  border-top: 1px solid #e2e8f0;
+  animation: slideUp 0.45s ease-out 0.24s both;
 }
 
-.action-button {
-  min-height: 38px;
-  padding: 0 16px;
-  color: #334155;
-  font-weight: 800;
-  white-space: nowrap;
-  cursor: pointer;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
+/* ===== Animations ===== */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.action-button:hover {
-  background: #f8fafc;
-}
-
-.action-button--primary {
-  color: #ffffff;
-  background: #409eff;
-  border-color: #2563eb;
-}
-
-.action-button--primary:hover {
-  background: #1d4ed8;
-}
-
-.action-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-@media (max-width: 1080px) {
-  .version-grid,
-  .changelog-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+/* ===== Responsive ===== */
+@media (max-width: 1100px) {
+  .ver-grid { grid-template-columns: repeat(2, 1fr); }
+  .changelog-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
-  .panel-header,
-  .manual-download-panel,
-  .action-row {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-
-  .header-actions {
-    justify-items: start;
-  }
-
-  .status-badge {
-    justify-self: start;
-  }
-
-  .version-grid,
-  .changelog-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .action-button {
-    width: 100%;
-  }
+  .header-panel { flex-direction: column; align-items: flex-start; padding: 20px; }
+  .header-right { width: 100%; justify-content: space-between; }
+  .ver-grid { grid-template-columns: 1fr; }
+  .manual-section { flex-direction: column; align-items: flex-start; }
+  .action-bar { flex-direction: column; }
+  .btn { width: 100%; justify-content: center; }
 }
 </style>

@@ -19,7 +19,7 @@ export async function getBackendBaseUrl(): Promise<string> {
     return backendUrl.replace(/\/$/, '')
   }
 
-  return ''
+  return import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 }
 
 async function ensureBackendReady(): Promise<string | undefined> {

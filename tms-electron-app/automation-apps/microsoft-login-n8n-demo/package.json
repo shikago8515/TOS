@@ -1,0 +1,10 @@
+{
+  "name": "microsoft-login-n8n-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bundled Microsoft login + n8n + visible browser executor.",
+  "scripts": {
+    "start": "node bin/start.js"
+  }
+}

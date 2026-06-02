@@ -17,12 +17,8 @@ export function buildSophiaTinaSummary(
 ): ProcessSummaryItem[] {
   return [
     {
-      label: 'TMS 文件',
-      value: String(counts.tms),
-    },
-    {
-      label: 'Article 文件',
-      value: String(counts.article),
+      label: 'TMS / Article',
+      value: `${counts.tms} / ${counts.article}`,
     },
     {
       label: 'Price / Pack',
@@ -33,7 +29,7 @@ export function buildSophiaTinaSummary(
       value: String(response.working_count ?? '-'),
     },
     {
-      label: 'Result 明细',
+      label: '结果明细',
       value: String(response.result_count ?? '-'),
     },
     {
@@ -42,11 +38,12 @@ export function buildSophiaTinaSummary(
     },
     {
       label: '结果文件',
-      value: response.output_file || response.result_file
-        ? '已生成'
-        : response.success
-          ? '可下载'
-          : '未生成',
+      value:
+        response.output_file || response.result_file
+          ? '已生成'
+          : response.success
+            ? '可下载'
+            : '未生成',
     },
   ]
 }

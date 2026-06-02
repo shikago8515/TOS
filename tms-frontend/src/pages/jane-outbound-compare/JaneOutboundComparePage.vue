@@ -1,68 +1,118 @@
 <template>
-  <section class="jane-outbound-compare-page">
-    <div class="card-section">
-      <h2 class="section-title">{{ text('Jane-OUTBOUND核对') }}</h2>
-      <p class="section-desc">
-        {{
-          text(
-            '上传 T1 OUTBOUND.xlsx 和 Copy of TMS 报表，按 Style/PO/Line/Factory 核对数量、PODD 和 Working Number。',
-          )
-        }}
-      </p>
-
-      <FileRequirementGuide owner="Jane-OUTBOUND核对" mode="compact" />
-      <FilePrecheckPanel :groups="fileGroups" />
-
-      <div class="upload-grid">
-        <FileUploadBox
-          v-model:files="outboundFiles"
-          :label="text('T1 OUTBOUND 文件')"
-          :hint="text('上传 1 个 T1 OUTBOUND.xlsx，输出会保留原表样式并标红差异。')"
-          accept=".xlsx,.xlsm"
-          :accept-label="text('支持 .xlsx / .xlsm')"
-        />
-        <FileUploadBox
-          v-model:files="tmsFiles"
-          :label="text('Copy of TMS')"
-          :hint="text('上传 1 个包含 Result Set 的 Copy of TMS 报表。')"
-          accept=".xlsx,.xlsm"
-          :accept-label="text('支持 .xlsx / .xlsm')"
-        />
+  <section class="jane-page-container">
+    <div class="jane-header">
+      <div class="jane-header__title">
+        <h2>{{ text('OUTBOUND核对') }}</h2>
+        <p class="jane-header__subtitle">{{ text('T1 OUTBOUND × TMS 报表 → 出库差异核对') }}</p>
       </div>
+      <div class="jane-header__stats">
+        <div class="jane-stat">
+          <div class="jane-stat__icon jane-stat__icon--teal">
+            <AppIcon name="files" />
+          </div>
+          <div class="jane-stat__info">
+            <span class="jane-stat__label">{{ text('已选文件') }}</span>
+            <span class="jane-stat__value">{{ totalFiles }}</span>
+          </div>
+        </div>
+        <div class="jane-stat">
+          <div class="jane-stat__icon jane-stat__icon--slate">
+            <AppIcon name="clock" />
+          </div>
+          <div class="jane-stat__info">
+            <span class="jane-stat__label">{{ text('处理记录') }}</span>
+            <span class="jane-stat__value">{{ historyRecords.length }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
 
-      <div class="action-row">
+    <div class="jane-toolbar">
+      <span class="jane-toolbar__status">{{ toolbarStatus }}</span>
+      <div class="jane-toolbar__actions">
+        <button class="jane-toolbar__btn" type="button" :disabled="processing" @click="resetForm">
+          <AppIcon name="refresh-cw" />
+          {{ text('重置') }}
+        </button>
         <button
-          class="primary-action"
+          class="jane-toolbar__btn jane-toolbar__btn--primary"
           type="button"
           :disabled="!canProcess || processing"
           @click="startProcess"
         >
-          {{ processing ? text('处理中...') : text('开始处理') }}
-        </button>
-        <button class="secondary-action" type="button" @click="resetForm">
-          {{ text('重置') }}
+          <AppIcon :name="processing ? 'loader' : 'target'" />
+          {{ processing ? text('处理中...') : text('开始核对') }}
         </button>
       </div>
+    </div>
 
-      <div v-if="processing" class="progress-block">
-        <span class="progress-label">{{ text('上传进度') }} {{ progress }}%</span>
-        <progress :value="progress" max="100" />
+    <div class="jane-grid">
+      <div class="jane-main">
+        <section class="jane-section">
+          <div class="jane-section__head">
+            <h3>
+              <AppIcon name="radar" />
+              {{ text('文件上传') }}
+            </h3>
+            <span class="jane-section__badge">
+              <AppIcon name="check-circle" />
+              {{ text('2 组必传') }}
+            </span>
+          </div>
+
+          <div class="jane-upload-grid">
+            <FileUploadBox
+              v-model:files="outboundFiles"
+              :label="text('T1 OUTBOUND 文件')"
+              :hint="text('输出会保留原表样式并标红差异')"
+              accept=".xlsx,.xlsm"
+              :accept-label="text('支持 .xlsx / .xlsm')"
+            />
+            <FileUploadBox
+              v-model:files="tmsFiles"
+              :label="text('Copy of TMS')"
+              :hint="text('包含 Result Set 的 TMS 报表')"
+              accept=".xlsx,.xlsm"
+              :accept-label="text('支持 .xlsx / .xlsm')"
+            />
+          </div>
+
+          <div v-if="processing" class="jane-progress">
+            <div class="jane-progress__label">
+              <strong>
+                <AppIcon name="activity" />
+                {{ text('核对进度') }}
+              </strong>
+              <span>{{ progress }}%</span>
+            </div>
+            <div class="jane-progress__track">
+              <div class="jane-progress__fill" :style="{ width: `${progress}%` }" />
+            </div>
+          </div>
+
+          <ResultSummary :items="summaryItems" :status="success ? 'success' : 'error'" />
+
+          <section
+            v-if="message"
+            class="jane-alert"
+            :class="success ? 'jane-alert--success' : 'jane-alert--error'"
+          >
+            <p>
+              <AppIcon :name="success ? 'check-circle' : 'alert-circle'" />
+              {{ text(message) }}
+            </p>
+            <button v-if="success && resultFile" class="jane-alert__btn" type="button" @click="downloadResult">
+              <AppIcon name="download" />
+              {{ text('下载结果文件') }}
+            </button>
+          </section>
+        </section>
       </div>
 
-      <ResultSummary :items="summaryItems" :status="success ? 'success' : 'error'" />
-
-      <section
-        v-if="message"
-        class="result-alert"
-        :class="success ? 'result-alert--success' : 'result-alert--error'"
-      >
-        <p>{{ text(message) }}</p>
-        <button v-if="success && resultFile" type="button" @click="downloadResult">
-          {{ text('下载结果文件') }}
-        </button>
-      </section>
-
-      <ProcessHistoryPanel :records="historyRecords" @clear="clearHistory" />
+      <div class="jane-side">
+        <FilePrecheckPanel :groups="fileGroups" />
+        <ProcessHistoryPanel :records="historyRecords" @clear="clearHistory" />
+      </div>
     </div>
   </section>
 </template>
@@ -85,8 +135,8 @@ import {
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
+import AppIcon from '../../shared/ui/AppIcon.vue'
 import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
-import FileRequirementGuide from '../../shared/ui/FileRequirementGuide.vue'
 import FileUploadBox from '../../shared/ui/FileUploadBox.vue'
 import ProcessHistoryPanel from '../../shared/ui/ProcessHistoryPanel.vue'
 import ResultSummary from '../../shared/ui/ResultSummary.vue'
@@ -131,6 +181,11 @@ const fileGroups = computed<FileGroupState[]>(() => [
 ])
 
 const canProcess = computed(() => areRequiredFilesReady(fileGroups.value))
+const totalFiles = computed(() => outboundFiles.value.length + tmsFiles.value.length)
+const toolbarStatus = computed(() => {
+  const readyCount = fileGroups.value.filter((g) => g.files.length > 0).length
+  return `${text('已就绪')} ${readyCount}/2 ${text('组文件')}，${text('当前共')} ${totalFiles.value} ${text('个文件')}`
+})
 
 async function startProcess(): Promise<void> {
   if (!canProcess.value || !outboundFiles.value[0] || !tmsFiles.value[0]) {
@@ -226,134 +281,6 @@ function clearHistory(): void {
 }
 </script>
 
-<style scoped>
-.jane-outbound-compare-page {
-  max-width: 1120px;
-  margin: 0 auto;
-}
-
-.card-section {
-  padding: 28px;
-  background: #ffffff;
-  border: 1px solid #dbe5ee;
-  border-radius: 8px;
-  box-shadow: 0 16px 38px rgba(23, 42, 63, 0.08);
-}
-
-.section-title,
-.section-desc {
-  margin: 0;
-}
-
-.section-title {
-  color: #172033;
-  font-size: 24px;
-  font-weight: 800;
-}
-
-.section-desc {
-  max-width: 820px;
-  margin-top: 8px;
-  margin-bottom: 22px;
-  color: #64748b;
-  line-height: 1.65;
-}
-
-.upload-grid {
-  display: grid;
-  align-items: start;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-}
-
-.action-row {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 28px;
-}
-
-.primary-action,
-.secondary-action,
-.result-alert button {
-  min-height: 40px;
-  padding: 0 18px;
-  font-weight: 800;
-  cursor: pointer;
-  border-radius: 7px;
-}
-
-.primary-action {
-  color: #ffffff;
-  background: #2563eb;
-  border: 1px solid #1d4ed8;
-}
-
-.primary-action:disabled {
-  cursor: not-allowed;
-  background: #9eb6e7;
-  border-color: #9eb6e7;
-}
-
-.secondary-action {
-  color: #475569;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-}
-
-.progress-block {
-  display: grid;
-  gap: 8px;
-  margin-top: 24px;
-}
-
-.progress-label {
-  color: #475569;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-progress {
-  width: 100%;
-  height: 18px;
-}
-
-.result-alert {
-  display: grid;
-  gap: 12px;
-  margin-top: 18px;
-  padding: 14px 16px;
-  border-radius: 8px;
-}
-
-.result-alert p {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.result-alert--success {
-  color: #14532d;
-  background: #ecfdf5;
-  border: 1px solid #bbf7d0;
-}
-
-.result-alert--error {
-  color: #991b1b;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-}
-
-.result-alert button {
-  justify-self: start;
-  color: #ffffff;
-  background: #1d6fa7;
-  border: 1px solid #185782;
-}
-
-@media (max-width: 860px) {
-  .upload-grid {
-    grid-template-columns: 1fr;
-  }
-}
+<style lang="scss">
+@use '../../shared/styles/jane-page.scss';
 </style>

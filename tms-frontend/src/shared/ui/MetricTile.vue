@@ -1,13 +1,29 @@
 <template>
-  <article class="metric-tile" :class="`metric-tile--${tone}`">
-    <p>{{ label }}</p>
-    <strong>{{ value }}</strong>
-    <span>{{ detail }}</span>
+  <article class="stat-card" :class="colorTone">
+    <div class="card-content">
+      <div class="card-info">
+        <span class="label">{{ label }}</span>
+        <span class="value">{{ value }}</span>
+      </div>
+      <div class="card-icon-wrapper">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+        </svg>
+      </div>
+    </div>
+    <div class="card-action">
+      <span>{{ detail }}</span>
+      <svg class="action-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="9 18 15 12 9 6"></polyline>
+      </svg>
+    </div>
   </article>
 </template>
 
 <script setup lang="ts">
-withDefaults(
+import { computed } from 'vue'
+
+const props = withDefaults(
   defineProps<{
     label: string
     value: number | string
@@ -18,52 +34,104 @@ withDefaults(
     tone: 'blue',
   },
 )
+
+const colorTone = computed(() => {
+  if (props.tone === 'blue') return 'teal'
+  if (props.tone === 'green') return 'green'
+  return 'orange'
+})
 </script>
 
 <style scoped>
-.metric-tile {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-  min-height: 132px;
-  padding: 18px;
+.stat-card {
   background: #ffffff;
-  border: 1px solid #dbe5ee;
-  border-radius: 8px;
-  box-shadow: 0 14px 32px rgba(23, 42, 63, 0.06);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: auto;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  border: 1px solid #e2e8f0;
 }
 
-p,
-span {
-  margin: 0;
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 16px rgba(37, 102, 139, 0.08);
+  border-color: #99f6e4;
 }
 
-p {
-  color: #5f7184;
-  font-size: 13px;
-  font-weight: 800;
+.stat-card:hover .card-icon-wrapper {
+  transform: scale(1.05);
 }
 
-strong {
-  color: var(--metric-color);
-  font-size: 34px;
-  line-height: 1;
+.stat-card:hover .card-action {
+  color: #0f172a;
+}
+.stat-card:hover .action-icon {
+  transform: translateX(4px);
 }
 
-span {
-  color: #667789;
-  font-size: 13px;
+.card-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  z-index: 2;
+  margin-bottom: 12px;
 }
 
-.metric-tile--blue {
-  --metric-color: #1d6fa7;
+.card-info {
+  display: flex;
+  flex-direction: column;
 }
 
-.metric-tile--green {
-  --metric-color: #22866d;
+.label {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 4px;
+  font-weight: 500;
 }
 
-.metric-tile--amber {
-  --metric-color: #9b6720;
+.value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.2;
 }
+
+.card-icon-wrapper {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.3s ease;
+  color: #ffffff;
+}
+
+.card-action {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+  margin-top: auto;
+  transition: color 0.3s;
+  z-index: 2;
+}
+
+.action-icon {
+  transition: transform 0.3s ease;
+}
+
+/* 颜色变体 */
+.stat-card.teal .card-icon-wrapper { background: linear-gradient(135deg, #2dd4bf, #0d9488); }
+.stat-card.orange .card-icon-wrapper { background: linear-gradient(135deg, #fb923c, #ea580c); }
+.stat-card.green .card-icon-wrapper { background: linear-gradient(135deg, #34d399, #059669); }
 </style>

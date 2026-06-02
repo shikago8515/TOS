@@ -1,68 +1,105 @@
 <template>
-  <section class="infornexus-page">
-    <div class="infornexus-panel">
-      <header class="panel-header">
-        <div>
-          <p class="panel-kicker">外部子应用</p>
-          <h2 class="panel-title">
-            Infornexus
-            <span class="stage-badge">外部接入</span>
-          </h2>
-          <p class="panel-description">
-            通过 Electron 预留的外部模块入口启动 Infornexus 整包，保留原应用运行环境，
-            避免把不可维护的 bytecode 和压缩 bundle 合进 TOS 源码。
-          </p>
+  <section class="ifx-page">
+    <!-- Hero -->
+    <div class="hero">
+      <div class="hero-left">
+        <div class="hero-icon-wrap">
+          <AppIcon name="external-link" />
         </div>
-
-        <div class="header-actions">
-          <button class="toolbar-button" type="button" :disabled="loading" @click="refreshModule">
-            {{ loading ? '刷新中...' : '刷新状态' }}
-          </button>
-          <button
-            class="primary-button"
-            type="button"
-            :disabled="!canLaunch"
-            @click="launchModule"
-          >
-            {{ launching ? '启动中...' : '启动 Infornexus' }}
-          </button>
+        <div class="hero-text">
+          <h2>Infornexus</h2>
+          <p>{{ text('外部 Electron 子应用') }}</p>
         </div>
-      </header>
+      </div>
+      <div class="hero-right">
+        <span class="status-pill" :class="`status-pill--${statusTone}`">
+          <span class="status-dot" />
+          {{ statusLabel }}
+        </span>
+        <button class="hero-btn" type="button" :disabled="loading" @click="refreshModule">
+          <AppIcon name="refresh-cw" />
+          {{ loading ? text('刷新中...') : text('刷新状态') }}
+        </button>
+        <button class="hero-btn hero-btn--primary" type="button" :disabled="!canLaunch || launching" @click="launchModule">
+          <AppIcon name="rocket" />
+          {{ launching ? text('启动中...') : text('启动应用') }}
+        </button>
+      </div>
+    </div>
 
-      <div class="stage-alert">
-        {{ infornexusStageMessage }}
+    <!-- Alert -->
+    <transition name="msg">
+      <div v-if="message" class="alert" :class="`alert--${messageTone}`">
+        <AppIcon :name="messageTone === 'success' ? 'check-circle' : messageTone === 'error' ? 'alert-circle' : 'activity'" />
+        <span>{{ message }}</span>
+      </div>
+    </transition>
+
+    <!-- Info Grid -->
+    <div class="info-grid">
+      <div class="info-card" v-for="item in infoCards" :key="item.key">
+        <div class="info-card__icon" :class="`info-card__icon--${item.tone}`">
+          <AppIcon :name="item.icon" />
+        </div>
+        <div class="info-card__body">
+          <span class="info-card__label">{{ item.label }}</span>
+          <strong class="info-card__value">{{ item.value }}</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- Module Detail -->
+    <div class="detail-section">
+      <div class="detail-head">
+        <AppIcon name="package" />
+        <span>{{ text('模块详情') }}</span>
       </div>
 
-      <div v-if="message" class="status-alert" :class="`status-alert--${messageTone}`">
-        {{ message }}
-      </div>
-
-      <section class="status-grid" aria-label="Infornexus 状态">
-        <article class="status-summary">
-          <span class="status-dot" :class="`status-dot--${statusTone}`" />
-          <div>
-            <span class="status-label">当前状态</span>
-            <strong>{{ statusLabel }}</strong>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <div class="detail-card__head">
+            <AppIcon name="chip" />
+            <strong>{{ text('基本信息') }}</strong>
           </div>
-        </article>
-
-        <article
-          v-for="item in metaItems"
-          :key="item.label"
-          class="meta-item"
-          :class="{ 'meta-item--wide': item.wide }"
-        >
-          <span class="meta-label">{{ item.label }}</span>
-          <span class="meta-value">{{ item.value }}</span>
-        </article>
-      </section>
-
-      <section class="integration-note" aria-label="接入说明">
-        <div v-for="note in infornexusNotes" :key="note" class="note-item">
-          <span aria-hidden="true">i</span>
-          <p>{{ note }}</p>
+          <dl class="detail-list">
+            <div class="detail-item">
+              <dt>{{ text('模块 ID') }}</dt>
+              <dd>{{ moduleInfo?.id || 'infornexus' }}</dd>
+            </div>
+            <div class="detail-item">
+              <dt>{{ text('模块名称') }}</dt>
+              <dd>{{ moduleInfo?.name || 'Infornexus' }}</dd>
+            </div>
+            <div class="detail-item">
+              <dt>{{ text('接入方式') }}</dt>
+              <dd>{{ text('外部 Electron 子应用') }}</dd>
+            </div>
+          </dl>
         </div>
-      </section>
+
+        <div class="detail-card">
+          <div class="detail-card__head">
+            <AppIcon name="folder" />
+            <strong>{{ text('部署信息') }}</strong>
+          </div>
+          <dl class="detail-list">
+            <div class="detail-item">
+              <dt>{{ text('入口文件') }}</dt>
+              <dd class="mono">{{ entryPath }}</dd>
+            </div>
+            <div class="detail-item">
+              <dt>{{ text('运行状态') }}</dt>
+              <dd>
+                <span class="inline-tag" :class="`inline-tag--${statusTone}`">{{ statusLabel }}</span>
+              </dd>
+            </div>
+            <div class="detail-item">
+              <dt>{{ text('备注') }}</dt>
+              <dd>{{ text('部署时请保留完整运行时目录') }}</dd>
+            </div>
+          </dl>
+        </div>
+      </div>
     </div>
   </section>
 </template>
@@ -70,13 +107,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 
+import AppIcon from '../../shared/ui/AppIcon.vue'
 import type { ExternalModuleInfo } from '../../types/electronApi'
 import {
-  buildInfornexusMeta,
+  expectedInfornexusEntry,
   getInfornexusStatusLabel,
   getInfornexusStatusTone,
-  infornexusNotes,
-  infornexusStageMessage,
   type InfornexusNoticeTone,
 } from './infornexusModel'
 import {
@@ -84,353 +120,308 @@ import {
   launchInfornexusExternalModule,
   recordInfornexusEvent,
 } from './infornexusApi'
+import { useAppLanguage } from '../../shared/i18n/appLanguage'
 
 const moduleInfo = ref<ExternalModuleInfo | null>(null)
 const loading = ref(false)
 const launching = ref(false)
 const message = ref('')
 const messageTone = ref<InfornexusNoticeTone>('info')
+const { text } = useAppLanguage()
 
 const statusLabel = computed(() => getInfornexusStatusLabel(moduleInfo.value))
 const statusTone = computed(() => getInfornexusStatusTone(moduleInfo.value))
-const metaItems = computed(() => buildInfornexusMeta(moduleInfo.value))
-const canLaunch = computed(() => Boolean(moduleInfo.value?.available) && !launching.value)
+const entryPath = computed(
+  () => moduleInfo.value?.executablePath || moduleInfo.value?.path || expectedInfornexusEntry,
+)
+const canLaunch = computed(
+  () => Boolean(moduleInfo.value?.available) && !loading.value && !launching.value,
+)
 
-onMounted(() => {
-  void refreshModule()
-})
+const infoCards = computed(() => [
+  {
+    key: 'status',
+    icon: 'activity',
+    label: text('当前状态'),
+    value: statusLabel.value,
+    tone: moduleInfo.value?.available ? 'green' : 'orange',
+  },
+  {
+    key: 'type',
+    icon: 'external-link',
+    label: text('接入方式'),
+    value: text('Electron 子应用'),
+    tone: 'blue',
+  },
+  {
+    key: 'name',
+    icon: 'package',
+    label: text('模块名称'),
+    value: moduleInfo.value?.name || 'Infornexus',
+    tone: 'teal',
+  },
+])
+
+onMounted(() => { void refreshModule() })
 
 async function refreshModule(): Promise<void> {
   loading.value = true
   message.value = ''
-
   try {
     moduleInfo.value = await fetchInfornexusExternalModule()
-
     if (moduleInfo.value.available) {
       messageTone.value = 'success'
-      message.value = '已检测到 Infornexus 外部子应用'
+      message.value = text('已检测到 Infornexus 外部应用。')
     } else {
       messageTone.value = 'warning'
-      message.value = '未找到 Infornexus 整包，请确认 external-apps/infornexus 下存在 electron-app.exe 和运行时文件'
+      message.value = text('未找到 Infornexus 整包，请确认 external-apps/infornexus 目录完整。')
     }
-  } catch (error) {
+  } catch (e) {
     moduleInfo.value = null
     messageTone.value = 'error'
-    message.value = readErrorMessage(error, '读取 Infornexus 状态失败')
-  } finally {
-    loading.value = false
-  }
+    message.value = readErrorMessage(e, text('读取状态失败'))
+  } finally { loading.value = false }
 }
 
 async function launchModule(): Promise<void> {
+  if (launching.value) return
   launching.value = true
   message.value = ''
-
   try {
     const result = await launchInfornexusExternalModule()
-
     if (result.success) {
       messageTone.value = 'success'
-      message.value = 'Infornexus 已启动'
+      message.value = text('Infornexus 已启动。')
     } else {
       messageTone.value = 'error'
-      message.value = result.error || '启动 Infornexus 失败'
+      message.value = result.error || text('启动失败')
     }
-  } catch (error) {
-    const errorMessage = readErrorMessage(error, '启动 Infornexus 失败')
-    await recordInfornexusEvent('launch-exception', {
-      error: errorMessage,
-    })
+  } catch (e) {
+    const err = readErrorMessage(e, text('启动失败'))
+    await recordInfornexusEvent('launch-exception', { error: err })
     messageTone.value = 'error'
-    message.value = errorMessage
-  } finally {
-    launching.value = false
-  }
+    message.value = err
+  } finally { launching.value = false }
 }
 
 function readErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-
-  return fallback
+  return error instanceof Error && error.message ? error.message : fallback
 }
 </script>
 
-<style scoped>
-.infornexus-page {
-  width: 100%;
-  max-width: 1480px;
-  margin: 0 auto;
-}
-
-.infornexus-panel {
-  display: grid;
+<style scoped lang="scss">
+.ifx-page {
+  display: flex;
+  flex-direction: column;
   gap: 18px;
-}
-
-.panel-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 24px;
-  background: #ffffff;
-  border: 1px solid #dfe8f1;
-  border-radius: 8px;
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.06);
-}
-
-.panel-kicker,
-.panel-title,
-.panel-description {
-  margin: 0;
-}
-
-.panel-kicker {
-  margin-bottom: 8px;
-  color: #64748b;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.panel-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: #0f172a;
-  font-size: 28px;
-  line-height: 1.25;
-}
-
-.stage-badge {
-  flex: 0 0 auto;
-  padding: 5px 10px;
-  color: #0f766e;
-  font-size: 12px;
-  font-weight: 800;
-  background: #ecfdf5;
-  border: 1px solid #99f6e4;
-  border-radius: 999px;
-}
-
-.panel-description {
-  max-width: 780px;
-  margin-top: 10px;
-  color: #64748b;
-  font-size: 15px;
-  line-height: 1.65;
-}
-
-.header-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.toolbar-button,
-.primary-button {
-  min-height: 38px;
-  padding: 0 16px;
-  font-weight: 800;
-  white-space: nowrap;
-  cursor: pointer;
-  border-radius: 6px;
-}
-
-.toolbar-button {
-  color: #334155;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-}
-
-.toolbar-button:hover {
+  padding: 18px;
+  min-height: 100%;
   background: #f8fafc;
 }
 
-.primary-button {
-  color: #ffffff;
-  background: #2563eb;
-  border: 1px solid #1d4ed8;
+/* Hero */
+.hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 28px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  animation: slideUp 0.4s ease-out both;
 }
 
-.primary-button:hover {
-  background: #1d4ed8;
+.hero-left { display: flex; align-items: center; gap: 14px; }
+
+.hero-icon-wrap {
+  width: 48px; height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #60a5fa, #2563eb);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(37,99,235,0.2);
 }
 
-.toolbar-button:disabled,
-.primary-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
+.hero-text {
+  h2 { margin: 0; font-size: 22px; font-weight: 800; color: #0f172a; }
+  p { margin: 2px 0 0; font-size: 13px; color: #64748b; }
 }
 
-.stage-alert,
-.status-alert {
-  padding: 13px 16px;
-  font-size: 14px;
-  border-radius: 8px;
+.hero-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+.status-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px;
+  font-size: 13px; font-weight: 700;
+  border-radius: 999px; white-space: nowrap;
+
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; }
+
+  &--info { background: #f0fdfa; color: #0f766e; border: 1px solid #ccfbf1; .status-dot { background: #0d9488; } }
+  &--success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; .status-dot { background: #16a34a; animation: pulse 2s ease infinite; } }
+  &--warning { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; .status-dot { background: #d97706; } }
+  &--error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; .status-dot { background: #dc2626; animation: pulse 1.5s ease infinite; } }
 }
 
-.stage-alert {
-  color: #0f766e;
-  background: #f0fdfa;
-  border: 1px solid #99f6e4;
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+.hero-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 38px; padding: 0 16px;
+  background: #fff; color: #475569;
+  border: 1px solid #e2e8f0; border-radius: 10px;
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  transition: all 0.2s ease;
+  :deep(.app-icon) { font-size: 15px; }
+  &:hover:not(:disabled) { background: #f0fdfa; border-color: #99f6e4; color: #0d9488; }
+  &:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  &--primary {
+    background: linear-gradient(135deg, #0d9488, #0f766e);
+    color: #fff; border-color: #0f766e;
+    box-shadow: 0 2px 8px rgba(13,148,136,0.2);
+    &:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(13,148,136,0.3); }
+  }
 }
 
-.status-alert--info {
-  color: #1e40af;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+/* Alert */
+.alert {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; border-radius: 12px; font-size: 14px; font-weight: 500;
+  :deep(.app-icon) { font-size: 18px; flex-shrink: 0; }
+  &--info { background: #f0fdfa; color: #0f766e; border: 1px solid #ccfbf1; }
+  &--success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+  &--warning { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+  &--error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
 }
+.msg-enter-active { transition: all 0.3s ease; }
+.msg-leave-active { transition: all 0.2s ease; }
+.msg-enter-from, .msg-leave-to { opacity: 0; transform: translateY(-6px); }
 
-.status-alert--success {
-  color: #15803d;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-}
-
-.status-alert--warning {
-  color: #a16207;
-  background: #fefce8;
-  border: 1px solid #fde68a;
-}
-
-.status-alert--error {
-  color: #b91c1c;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-}
-
-.status-grid {
+/* Info Grid */
+.info-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  animation: slideUp 0.4s ease-out 0.08s both;
+}
+
+.info-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: all 0.25s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+    border-color: #99f6e4;
+  }
+
+  &__icon {
+    width: 42px; height: 42px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; color: #fff; flex-shrink: 0;
+
+    &--green { background: linear-gradient(135deg, #34d399, #059669); }
+    &--blue { background: linear-gradient(135deg, #60a5fa, #2563eb); }
+    &--teal { background: linear-gradient(135deg, #2dd4bf, #0d9488); }
+    &--orange { background: linear-gradient(135deg, #fb923c, #ea580c); }
+  }
+
+  &__body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  &__label { font-size: 11px; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+  &__value { font-size: 16px; color: #0f172a; font-weight: 700; line-height: 1.3; }
+}
+
+/* Detail Section */
+.detail-section {
+  animation: slideUp 0.4s ease-out 0.16s both;
+}
+
+.detail-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 14px;
+  font-size: 15px; font-weight: 700; color: #0f172a;
+  :deep(.app-icon) { font-size: 18px; color: #0d9488; }
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 14px;
 }
 
-.status-summary,
-.meta-item {
-  min-width: 0;
-  padding: 18px;
-  background: #ffffff;
-  border: 1px solid #dfe8f1;
-  border-radius: 8px;
-  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.05);
+.detail-card {
+  padding: 20px 24px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: box-shadow 0.2s ease;
+
+  &:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+
+  &__head {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 16px; padding-bottom: 12px;
+    border-bottom: 1px solid #eef2f7;
+    :deep(.app-icon) { font-size: 17px; color: #0d9488; }
+    strong { font-size: 15px; color: #0f172a; }
+  }
 }
 
-.status-summary {
+.detail-list {
+  margin: 0;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 12px;
 }
 
-.status-dot {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 auto;
-  background: #94a3b8;
-  border-radius: 999px;
-}
-
-.status-dot--success {
-  background: #16a34a;
-}
-
-.status-dot--warning {
-  background: #d97706;
-}
-
-.status-dot--error {
-  background: #dc2626;
-}
-
-.status-label,
-.meta-label {
-  display: block;
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.status-summary strong {
-  display: block;
-  margin-top: 5px;
-  color: #0f172a;
-  font-size: 18px;
-}
-
-.meta-item {
-  display: grid;
-  gap: 6px;
-}
-
-.meta-item--wide {
-  grid-column: span 2;
-}
-
-.meta-value {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: #0f172a;
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1.5;
-}
-
-.integration-note {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.note-item {
+.detail-item {
   display: flex;
-  gap: 10px;
-  min-width: 0;
-  padding: 16px;
-  background: #ffffff;
-  border: 1px solid #dfe8f1;
-  border-radius: 8px;
-}
-
-.note-item span {
-  display: inline-flex;
+  justify-content: space-between;
   align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  flex: 0 0 auto;
-  color: #0f766e;
-  font-size: 13px;
-  font-weight: 900;
-  background: #ccfbf1;
+  gap: 12px;
+
+  dt { font-size: 13px; color: #94a3b8; font-weight: 600; flex-shrink: 0; }
+  dd { margin: 0; font-size: 13px; color: #1e293b; font-weight: 600; text-align: right; word-break: break-all; }
+  dd.mono { font-family: Consolas, 'Courier New', monospace; font-size: 12px; }
+}
+
+.inline-tag {
+  display: inline-flex; align-items: center;
+  padding: 3px 10px;
   border-radius: 999px;
+  font-size: 12px; font-weight: 700;
+
+  &--info { background: #f0fdfa; color: #0f766e; }
+  &--success { background: #ecfdf5; color: #059669; }
+  &--warning { background: #fffbeb; color: #b45309; }
+  &--error { background: #fef2f2; color: #dc2626; }
 }
 
-.note-item p {
-  margin: 0;
-  color: #475569;
-  font-size: 13px;
-  line-height: 1.55;
-}
+/* Animations */
+@keyframes slideUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
 
-@media (max-width: 1180px) {
-  .status-grid,
-  .integration-note {
-    grid-template-columns: 1fr;
-  }
-
-  .meta-item--wide {
-    grid-column: auto;
-  }
-}
-
-@media (max-width: 760px) {
-  .panel-header,
-  .header-actions {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
+@media (max-width: 1000px) {
+  .hero { flex-direction: column; align-items: stretch; }
+  .hero-right { flex-wrap: wrap; justify-content: flex-start; }
+  .info-grid { grid-template-columns: 1fr; }
+  .detail-grid { grid-template-columns: 1fr; }
 }
 </style>

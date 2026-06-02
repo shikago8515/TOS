@@ -1,0 +1,854 @@
+/* ==========================================================================
+   Jane Page Layout — Premium Redesign
+   Theme: Teal (#0d9488) + Blue (#3b82f6) | Fresh, Clean, Professional
+   No purple colors used.
+   ========================================================================== */
+
+/* --- Animations --- */
+@keyframes jane-fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes jane-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes jane-pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(13, 148, 136, 0.3); }
+  70% { box-shadow: 0 0 0 8px rgba(13, 148, 136, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(13, 148, 136, 0); }
+}
+
+@keyframes jane-gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes jane-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.jane-page-container {
+  width: 100%;
+  min-height: 100%;
+  padding: 20px 24px;
+  box-sizing: border-box;
+  background:
+    radial-gradient(ellipse at 10% 8%, rgba(13, 148, 136, 0.07), transparent 42%),
+    radial-gradient(ellipse at 90% 12%, rgba(59, 130, 246, 0.06), transparent 38%),
+    radial-gradient(ellipse at 50% 80%, rgba(16, 185, 129, 0.04), transparent 40%),
+    #f4f8fb;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+/* --- Page Entry Animation --- */
+.jane-page-container > * {
+  animation: jane-fadeInUp 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.jane-page-container > *:nth-child(1) { animation-delay: 0s; }
+.jane-page-container > *:nth-child(2) { animation-delay: 0.06s; }
+.jane-page-container > *:nth-child(3) { animation-delay: 0.12s; }
+
+/* ==========================================================================
+   Header
+   ========================================================================== */
+.jane-page-container .jane-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.jane-page-container .jane-header__title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.jane-page-container .jane-header__title h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.3px;
+  position: relative;
+  padding-left: 16px;
+  line-height: 1.3;
+}
+
+.jane-page-container .jane-header__title h2::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 26px;
+  background: linear-gradient(180deg, #0d9488, #3b82f6);
+  border-radius: 4px;
+}
+
+.jane-page-container .jane-header__subtitle {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+/* --- Stat Cards --- */
+.jane-page-container .jane-header__stats {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.jane-page-container .jane-stat {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  background: #ffffff;
+  border: 1px solid #e8eef3;
+  border-radius: 14px;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.03),
+    0 4px 12px rgba(0, 0, 0, 0.02);
+  transition: all 0.28s cubic-bezier(0.22, 0.61, 0.36, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.jane-page-container .jane-stat::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  opacity: 0.04;
+  transform: translate(20px, -20px);
+  transition: all 0.28s ease;
+}
+
+.jane-page-container .jane-stat:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.04),
+    0 12px 28px rgba(37, 102, 139, 0.08);
+  border-color: #d0dde8;
+}
+
+.jane-page-container .jane-stat:hover::after {
+  opacity: 0.08;
+  transform: translate(16px, -16px) scale(1.2);
+}
+
+.jane-page-container .jane-stat__icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.jane-page-container .jane-stat__icon .app-icon {
+  width: 20px;
+  height: 20px;
+  color: #ffffff;
+}
+
+.jane-page-container .jane-stat__icon--blue {
+  background: linear-gradient(135deg, #60a5fa, #2563eb);
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25);
+}
+
+.jane-page-container .jane-stat__icon--blue ~ .jane-stat__info::after {
+  background: #3b82f6;
+}
+
+.jane-page-container .jane-stat__icon--teal {
+  background: linear-gradient(135deg, #2dd4bf, #0d9488);
+  box-shadow: 0 4px 10px rgba(13, 148, 136, 0.25);
+}
+
+.jane-page-container .jane-stat__icon--green {
+  background: linear-gradient(135deg, #34d399, #059669);
+  box-shadow: 0 4px 10px rgba(5, 150, 105, 0.25);
+}
+
+.jane-page-container .jane-stat__icon--orange {
+  background: linear-gradient(135deg, #fb923c, #ea580c);
+  box-shadow: 0 4px 10px rgba(234, 88, 12, 0.25);
+}
+
+.jane-page-container .jane-stat__icon--slate {
+  background: linear-gradient(135deg, #64748b, #334155);
+  box-shadow: 0 4px 10px rgba(51, 65, 85, 0.2);
+}
+
+.jane-page-container .jane-stat__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: relative;
+}
+
+.jane-page-container .jane-stat__label {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.jane-page-container .jane-stat__value {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   Toolbar
+   ========================================================================== */
+.jane-page-container .jane-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding: 14px 20px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.7);
+  border-radius: 14px;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.02),
+    0 4px 16px rgba(0, 0, 0, 0.02);
+}
+
+.jane-page-container .jane-toolbar__status {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jane-page-container .jane-toolbar__status::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+  animation: jane-pulse-ring 2s infinite;
+}
+
+.jane-page-container .jane-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.jane-page-container .jane-toolbar__btn {
+  height: 38px;
+  padding: 0 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  overflow: hidden;
+}
+
+.jane-page-container .jane-toolbar__btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, transparent, rgba(13, 148, 136, 0.04));
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.jane-page-container .jane-toolbar__btn:hover:not(:disabled)::before {
+  opacity: 1;
+}
+
+.jane-page-container .jane-toolbar__btn:hover:not(:disabled) {
+  background: #f0fdfa;
+  border-color: #99f6e4;
+  color: #0d9488;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.1);
+}
+
+.jane-page-container .jane-toolbar__btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.jane-page-container .jane-toolbar__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.jane-page-container .jane-toolbar__btn--primary {
+  color: #ffffff;
+  background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+  border-color: #0f766e;
+  box-shadow:
+    0 2px 8px rgba(13, 148, 136, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.jane-page-container .jane-toolbar__btn--primary::before {
+  background: linear-gradient(135deg, transparent, rgba(255, 255, 255, 0.1));
+}
+
+.jane-page-container .jane-toolbar__btn--primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow:
+    0 4px 16px rgba(13, 148, 136, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+  color: #ffffff;
+}
+
+/* ==========================================================================
+   Two-column Grid
+   ========================================================================== */
+.jane-page-container .jane-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 20px;
+  align-items: start;
+}
+
+.jane-page-container .jane-main,
+.jane-page-container .jane-side {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+/* ==========================================================================
+   Main Section Card
+   ========================================================================== */
+.jane-page-container .jane-section {
+  padding: 22px;
+  background: #ffffff;
+  border: 1px solid #e8eef3;
+  border-radius: 16px;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.03),
+    0 4px 16px rgba(0, 0, 0, 0.02);
+  transition: all 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.jane-page-container .jane-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #0d9488, #3b82f6, #10b981);
+  background-size: 200% 100%;
+  animation: jane-gradient-shift 4s ease infinite;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.jane-page-container .jane-section:hover {
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.04),
+    0 12px 32px rgba(37, 102, 139, 0.06);
+}
+
+.jane-page-container .jane-section:hover::before {
+  opacity: 1;
+}
+
+.jane-page-container .jane-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.jane-page-container .jane-section__head h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 17px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jane-page-container .jane-section__head h3 .app-icon {
+  width: 20px;
+  height: 20px;
+  color: #0d9488;
+}
+
+.jane-page-container .jane-section__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f0fdfa, #ecfdf5);
+  color: #0d9488;
+  border: 1px solid #a7f3d0;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.jane-page-container .jane-section__badge:hover {
+  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.12);
+  transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   Upload Grid
+   ========================================================================== */
+.jane-page-container .jane-upload-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.jane-page-container .jane-upload-grid--1 {
+  grid-template-columns: 1fr;
+}
+
+/* ==========================================================================
+   Filter Input
+   ========================================================================== */
+.jane-page-container .jane-filter {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.jane-page-container .jane-filter span {
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.jane-page-container .jane-filter input {
+  min-height: 44px;
+  padding: 0 16px;
+  color: #1e293b;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  outline: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.jane-page-container .jane-filter input::placeholder {
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+.jane-page-container .jane-filter input:hover {
+  border-color: #99f6e4;
+  background: #ffffff;
+}
+
+.jane-page-container .jane-filter input:focus {
+  border-color: #0d9488;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 4px rgba(13, 148, 136, 0.08),
+    0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/* ==========================================================================
+   Progress Bar
+   ========================================================================== */
+.jane-page-container .jane-progress {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 18px;
+  background: linear-gradient(135deg, #f0fdfa, #f0f9ff);
+  border: 1px solid #ccfbf1;
+  border-radius: 14px;
+  animation: jane-fadeInUp 0.35s ease both;
+}
+
+.jane-page-container .jane-progress__label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.jane-page-container .jane-progress__label strong {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jane-page-container .jane-progress__label strong .app-icon {
+  width: 16px;
+  height: 16px;
+  color: #0d9488;
+  animation: spin 1.2s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.jane-page-container .jane-progress__label span {
+  color: #0d9488;
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.jane-page-container .jane-progress__track {
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  background: #e2e8f0;
+  border-radius: 999px;
+  position: relative;
+}
+
+.jane-page-container .jane-progress__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0d9488, #14b8a6, #2dd4bf, #14b8a6, #0d9488);
+  background-size: 200% 100%;
+  animation: jane-shimmer 2s linear infinite;
+  transition: width 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
+  position: relative;
+}
+
+.jane-page-container .jane-progress__fill::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  background: #ffffff;
+  border: 3px solid #0d9488;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.15);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.jane-page-container .jane-progress__fill[style*="width"]:not([style*="width: 0"])::after {
+  opacity: 1;
+}
+
+/* ==========================================================================
+   Result Alert
+   ========================================================================== */
+.jane-page-container .jane-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 20px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  animation: jane-fadeInUp 0.35s ease both;
+  position: relative;
+  overflow: hidden;
+}
+
+.jane-page-container .jane-alert::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+}
+
+.jane-page-container .jane-alert p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.7;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.jane-page-container .jane-alert p .app-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.jane-page-container .jane-alert--success {
+  color: #047857;
+  background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+  border-color: #a7f3d0;
+}
+
+.jane-page-container .jane-alert--success::before {
+  background: linear-gradient(180deg, #10b981, #059669);
+}
+
+.jane-page-container .jane-alert--success .app-icon {
+  color: #059669;
+}
+
+.jane-page-container .jane-alert--error {
+  color: #b91c1c;
+  background: linear-gradient(135deg, #fef2f2, #fee2e2);
+  border-color: #fecaca;
+}
+
+.jane-page-container .jane-alert--error::before {
+  background: linear-gradient(180deg, #ef4444, #dc2626);
+}
+
+.jane-page-container .jane-alert--error .app-icon {
+  color: #dc2626;
+}
+
+.jane-page-container .jane-alert__btn {
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 0 20px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #0d9488, #0f766e);
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow:
+    0 2px 8px rgba(13, 148, 136, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transition: all 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.jane-page-container .jane-alert__btn .app-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.jane-page-container .jane-alert__btn:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 4px 14px rgba(13, 148, 136, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  background: linear-gradient(135deg, #14b8a6, #0d9488);
+}
+
+.jane-page-container .jane-alert__btn:active {
+  transform: translateY(0);
+}
+
+/* ==========================================================================
+   Action Row (legacy support)
+   ========================================================================== */
+.jane-page-container .jane-actions {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 24px;
+}
+
+.jane-page-container .jane-actions .primary-action,
+.jane-page-container .jane-actions .secondary-action {
+  min-height: 44px;
+  padding: 0 26px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: all 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jane-page-container .primary-action {
+  color: #ffffff;
+  background: linear-gradient(135deg, #0d9488, #0f766e);
+  border: 1px solid #0f766e;
+  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.25);
+}
+
+.jane-page-container .primary-action:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(13, 148, 136, 0.35);
+}
+
+.jane-page-container .primary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  box-shadow: none;
+  background: #94a3b8;
+  border-color: #94a3b8;
+}
+
+.jane-page-container .secondary-action {
+  color: #475569;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+.jane-page-container .secondary-action:hover {
+  background: #f0fdfa;
+  border-color: #99f6e4;
+  color: #0d9488;
+  transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+@media (max-width: 1200px) {
+  .jane-page-container .jane-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+    gap: 16px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .jane-page-container .jane-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .jane-page-container .jane-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .jane-page-container .jane-header__stats {
+    width: 100%;
+  }
+
+  .jane-page-container .jane-stat {
+    flex: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .jane-page-container {
+    padding: 14px;
+  }
+
+  .jane-page-container .jane-upload-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .jane-page-container .jane-header__stats {
+    flex-direction: column;
+  }
+
+  .jane-page-container .jane-stat {
+    flex: unset;
+  }
+
+  .jane-page-container .jane-actions {
+    flex-direction: column;
+  }
+
+  .jane-page-container .primary-action,
+  .jane-page-container .secondary-action {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .jane-page-container .jane-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .jane-page-container .jane-toolbar__actions {
+    width: 100%;
+  }
+
+  .jane-page-container .jane-toolbar__btn {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+/* ==========================================================================
+   Custom Scrollbar
+   ========================================================================== */
+.jane-page-container ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.jane-page-container ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+.jane-page-container ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.jane-page-container ::-webkit-scrollbar-track {
+  background: transparent;
+}

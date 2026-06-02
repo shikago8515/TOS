@@ -1,4 +1,4 @@
-const { appRoot, configPath, loadConfig, saveConfig, defaultConfigPath } = require('./loader');
+const { appRoot, configPath, loadConfig, saveConfig, defaultConfigPath, localConfigPath } = require('./loader');
 const { validateConfig, validateWorkflowConfig, collectMissingSelectors } = require('./validator');
 
 module.exports = {
@@ -7,6 +7,7 @@ module.exports = {
   loadConfig,
   saveConfig,
   defaultConfigPath,
+  localConfigPath,
   validateConfig,
   validateWorkflowConfig,
   collectMissingSelectors
