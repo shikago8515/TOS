@@ -23,6 +23,10 @@ function validateConfig(config) {
     }
   }
 
+  if (config.n8n?.enabled && !config.n8n.baseUrl) {
+    errors.push('n8n.baseUrl is required when n8n.enabled is true');
+  }
+
   if (!config.workflows || typeof config.workflows !== 'object') {
     errors.push('workflows config is required');
   } else {

@@ -15,6 +15,7 @@ import JesscaPage from '../pages/jessca/JesscaPage.vue'
 import SettingsPage from '../pages/settings/SettingsPage.vue'
 import SophiaTinaPage from '../pages/sophia-tina/SophiaTinaPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
+import WebAutomationScenarioPage from '../pages/web-automation/WebAutomationScenarioPage.vue'
 import WebAutomationPage from '../pages/web-automation/WebAutomationPage.vue'
 
 const routeComponents: Partial<Record<string, Component>> = {
@@ -50,7 +51,18 @@ const moduleRoutes: RouteRecordRaw[] = tosRouteDefinitions.map((route) => ({
   },
 }))
 
+const scenarioRoutes: RouteRecordRaw[] = [
+  {
+    path: '/web-automation/scenarios/:scenarioId',
+    name: 'web-automation-scenario',
+    component: WebAutomationScenarioPage,
+    meta: {
+      title: '网页自动化场景',
+    },
+  },
+]
+
 export const router = createRouter({
   history: createWebHashHistory(),
-  routes: [...redirectRoutes, ...moduleRoutes],
+  routes: [...redirectRoutes, ...scenarioRoutes, ...moduleRoutes],
 })

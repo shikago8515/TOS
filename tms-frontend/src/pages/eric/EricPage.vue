@@ -1,109 +1,125 @@
 <template>
-  <section class="eric-page">
-    <div class="eric-panel">
-      <section class="eric-card eric-hero">
-        <div>
-          <p class="eric-kicker">{{ text('Excel 处理') }}</p>
-          <h2 class="eric-title">{{ text('Excel数据处理整合工具-Eric') }}</h2>
-          <p class="eric-desc">
-            {{ text('将 Pack Size breakdown 生成的 Final_Data 作为过渡明细，并自动解析 YTIC check 完成最终数量核对。') }}
-          </p>
+  <section class="jane-page-container">
+    <div class="jane-header">
+      <div class="jane-header__title">
+        <h2>{{ text('Eric 数据处理') }}</h2>
+      </div>
+      <div class="jane-header__stats">
+        <div class="jane-stat">
+          <div class="jane-stat__icon jane-stat__icon--blue">ER</div>
+          <div class="jane-stat__info">
+            <span class="jane-stat__label">{{ text('源文件') }}</span>
+            <span class="jane-stat__value">{{ sourceCount }}/2</span>
+          </div>
         </div>
-        <span class="eric-stage">{{ text('核对流程 v0.2.0-alpha.1') }}</span>
-      </section>
+        <div class="jane-stat">
+          <div class="jane-stat__icon" :class="success === true ? 'jane-stat__icon--green' : success === false ? 'jane-stat__icon--orange' : 'jane-stat__icon--slate'">ST</div>
+          <div class="jane-stat__info">
+            <span class="jane-stat__label">{{ text('处理状态') }}</span>
+            <span class="jane-stat__value">{{ statusText }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
 
-      <div class="eric-alert">
-        {{ text('默认流程会输出诊断包：Summary、Size_Check、PO_Check、Final_Data 和 YTIC 审计明细。') }}
+    <div class="jane-toolbar">
+      <span class="jane-toolbar__status">{{ toolbarStatus }}</span>
+      <div class="jane-toolbar__actions">
+        <button class="jane-toolbar__btn" type="button" :disabled="processing" @click="resetForm">
+          {{ text('重置') }}
+        </button>
+        <button
+          class="jane-toolbar__btn"
+          type="button"
+          :disabled="!packFile || processing"
+          @click="startFinalDataOnly"
+        >
+          {{ text('仅生成 Final_Data') }}
+        </button>
+        <button
+          class="jane-toolbar__btn jane-toolbar__btn--primary"
+          type="button"
+          :disabled="!canReconcile || processing"
+          @click="startReconcile"
+        >
+          {{ processing ? text('处理中...') : text('开始核对') }}
+        </button>
+      </div>
+    </div>
+
+    <div class="jane-grid">
+      <div class="jane-main">
+        <section class="jane-section">
+          <div class="jane-section__head">
+            <h3>{{ text('文件上传') }}</h3>
+            <span class="jane-section__badge">{{ text('2 组必传') }}</span>
+          </div>
+
+          <div class="jane-upload-grid">
+            <FileUploadBox
+              v-model:files="packFiles"
+              label="Pack Size breakdown"
+              :hint="text('用于生成 Final_Data')"
+              accept=".xlsx,.xlsm"
+              :accept-label="text('支持 .xlsx / .xlsm')"
+            />
+            <FileUploadBox
+              v-model:files="yticFiles"
+              label="YTIC check"
+              :hint="text('用于提取尺寸、目的地和 SP 核对信息')"
+              accept=".xls,.xlsx,.xlsm"
+              :accept-label="text('支持 .xls / .xlsx / .xlsm')"
+            />
+          </div>
+
+          <div v-if="processing" class="jane-progress">
+            <div class="jane-progress__label">
+              <strong>{{ text('处理进度') }}</strong>
+              <span>{{ progress }}%</span>
+            </div>
+            <div class="jane-progress__track">
+              <div class="jane-progress__fill" :style="{ width: `${progress}%` }" />
+            </div>
+          </div>
+
+          <section
+            v-if="message"
+            class="jane-alert"
+            :class="success === true ? 'jane-alert--success' : success === false ? 'jane-alert--error' : ''"
+          >
+            <p>{{ text(message) }}</p>
+            <button v-if="success === true && outputFile" class="jane-alert__btn" type="button" @click="downloadResult">
+              {{ text('下载结果文件') }}
+            </button>
+          </section>
+        </section>
+
+        <section v-if="logs.length > 0" class="jane-section">
+          <div class="jane-section__head">
+            <h3>{{ text('处理日志') }}</h3>
+            <span class="jane-section__badge">{{ logs.length }} {{ text('条') }}</span>
+          </div>
+          <div class="eric-log">
+            <div v-for="(line, i) in logs" :key="i">{{ text(line) }}</div>
+          </div>
+        </section>
       </div>
 
-      <section class="eric-card">
-        <div class="eric-upload-grid">
-          <FileUploadBox
-            v-model:files="packFiles"
-            label="Pack Size breakdown"
-            :hint="text('用于生成 Final_Data')"
-            accept=".xlsx,.xlsm"
-            :accept-label="text('支持 .xlsx / .xlsm')"
-          />
-          <FileUploadBox
-            v-model:files="yticFiles"
-            label="YTIC check"
-            :hint="text('用于提取尺寸、目的地和 SP 核对信息')"
-            accept=".xls,.xlsx,.xlsm"
-            :accept-label="text('支持 .xls / .xlsx / .xlsm')"
-          />
-        </div>
+      <div class="jane-side">
+        <FilePrecheckPanel :groups="fileGroups" />
 
-        <div class="eric-steps">
-          <article v-for="step in ericWorkflowSteps" :key="step.index" class="eric-step">
-            <span>{{ step.index }}</span>
-            <strong>{{ text(step.title) }}</strong>
-            <p>{{ text(step.description) }}</p>
-          </article>
-        </div>
-
-        <div class="eric-actions">
-          <button
-            class="eric-btn eric-btn--primary"
-            type="button"
-            :disabled="!canReconcile || processing"
-            @click="startReconcile"
-          >
-            {{ processing ? text('处理中...') : text('开始核对') }}
-          </button>
-          <button
-            class="eric-btn"
-            type="button"
-            :disabled="!packFile || processing"
-            @click="startFinalDataOnly"
-          >
-            {{ text('仅生成 Final_Data') }}
-          </button>
-          <button class="eric-btn" type="button" :disabled="processing" @click="resetForm">
-            {{ text('重置') }}
-          </button>
-          <button
-            v-if="outputFile"
-            class="eric-btn"
-            type="button"
-            @click="downloadResult"
-          >
-            {{ text('下载结果') }}
-          </button>
-        </div>
-
-        <div v-if="processing" class="eric-progress">
-          <span>{{ text('上传进度') }} {{ progress }}%</span>
-          <progress :value="progress" max="100" />
-        </div>
-      </section>
-
-      <section class="eric-card">
-        <div class="eric-summary">
-          <article v-for="stat in stats" :key="stat.label" class="eric-stat">
-            <span>{{ text(stat.label) }}</span>
-            <strong>{{ text(stat.value) }}</strong>
-          </article>
-        </div>
-
-        <div
-          v-if="message"
-          class="eric-message"
-          :class="{
-            'eric-message--success': success === true,
-            'eric-message--error': success === false,
-          }"
-        >
-          {{ text(message) }}
-        </div>
-
-        <div class="eric-log">
-          <div v-if="logs.length === 0">{{ text('处理记录会显示在这里。') }}</div>
-          <template v-else>
-            <div v-for="line in logs" :key="line">{{ text(line) }}</div>
-          </template>
-        </div>
-      </section>
+        <section class="jane-section">
+          <div class="jane-section__head">
+            <h3>{{ text('结果指标') }}</h3>
+          </div>
+          <div class="eric-stats">
+            <article v-for="stat in statItems" :key="stat.label" class="eric-stat">
+              <span>{{ text(stat.label) }}</span>
+              <strong>{{ text(stat.value) }}</strong>
+            </article>
+          </div>
+        </section>
+      </div>
     </div>
   </section>
 </template>
@@ -112,7 +128,12 @@
 import { computed, ref } from 'vue'
 
 import { readErrorMessage } from '../../shared/api/backendClient'
+import {
+  areRequiredFilesReady,
+  type FileGroupState,
+} from '../../shared/files/fileGroups'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
+import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
 import FileUploadBox from '../../shared/ui/FileUploadBox.vue'
 import {
   downloadEricResult,
@@ -121,7 +142,6 @@ import {
 } from './ericApi'
 import {
   buildEricStats,
-  ericWorkflowSteps,
   readEricDifferenceCount,
   readEricRowCount,
 } from './ericModel'
@@ -141,8 +161,38 @@ const { text } = useAppLanguage()
 const packFile = computed(() => packFiles.value[0] ?? null)
 const yticFile = computed(() => yticFiles.value[0] ?? null)
 const canReconcile = computed(() => Boolean(packFile.value && yticFile.value))
+const sourceCount = computed(() => [packFile.value, yticFile.value].filter(Boolean).length)
 
-const stats = computed(() =>
+const fileGroups = computed<FileGroupState[]>(() => [
+  {
+    label: 'Pack Size breakdown',
+    files: packFiles.value,
+    required: true,
+    multiple: false,
+    expectedCount: 1,
+  },
+  {
+    label: 'YTIC check',
+    files: yticFiles.value,
+    required: true,
+    multiple: false,
+    expectedCount: 1,
+  },
+])
+
+const statusText = computed(() => {
+  if (processing.value) return '处理中'
+  if (success.value === true) return '成功'
+  if (success.value === false) return '失败'
+  return '待处理'
+})
+
+const toolbarStatus = computed(() => {
+  const readyCount = fileGroups.value.filter((g) => g.files.length > 0).length
+  return `${text('已就绪')} ${readyCount}/2 ${text('组文件')}`
+})
+
+const statItems = computed(() =>
   buildEricStats({
     packReady: Boolean(packFile.value),
     yticReady: Boolean(yticFile.value),
@@ -183,48 +233,28 @@ function failValidation(nextMessage: string): boolean {
 }
 
 function validatePack(): boolean {
-  if (!packFile.value) {
-    return failValidation('请上传 Pack Size breakdown 文件')
-  }
-
-  if (!isPackFile(packFile.value)) {
-    return failValidation('Pack Size breakdown 仅支持 .xlsx / .xlsm')
-  }
-
+  if (!packFile.value) return failValidation('请上传 Pack Size breakdown 文件')
+  if (!isPackFile(packFile.value)) return failValidation('Pack Size breakdown 仅支持 .xlsx / .xlsm')
   return true
 }
 
 function validateYtic(): boolean {
-  if (!yticFile.value) {
-    return failValidation('请上传 YTIC check 文件')
-  }
-
-  if (!isYticFile(yticFile.value)) {
-    return failValidation('YTIC check 仅支持 .xls / .xlsx / .xlsm')
-  }
-
+  if (!yticFile.value) return failValidation('请上传 YTIC check 文件')
+  if (!isYticFile(yticFile.value)) return failValidation('YTIC check 仅支持 .xls / .xlsx / .xlsm')
   return true
 }
 
 async function startReconcile(): Promise<void> {
-  if (processing.value || !validatePack() || !validateYtic() || !packFile.value || !yticFile.value) {
-    return
-  }
+  if (processing.value || !validatePack() || !validateYtic() || !packFile.value || !yticFile.value) return
 
   processing.value = true
   resetResultState()
 
   try {
     const response = await reconcileEricFiles(
-      {
-        packFile: packFile.value,
-        yticFile: yticFile.value,
-      },
-      (nextProgress) => {
-        progress.value = nextProgress
-      },
+      { packFile: packFile.value, yticFile: yticFile.value },
+      (p) => { progress.value = p },
     )
-
     applyResponse(response, '核对完成', '核对失败')
   } catch (error) {
     success.value = false
@@ -236,23 +266,16 @@ async function startReconcile(): Promise<void> {
 }
 
 async function startFinalDataOnly(): Promise<void> {
-  if (processing.value || !validatePack() || !packFile.value) {
-    return
-  }
+  if (processing.value || !validatePack() || !packFile.value) return
 
   processing.value = true
   resetResultState()
 
   try {
     const response = await processEricFile(
-      {
-        excelFile: packFile.value,
-      },
-      (nextProgress) => {
-        progress.value = nextProgress
-      },
+      { excelFile: packFile.value },
+      (p) => { progress.value = p },
     )
-
     applyResponse(response, 'Final_Data 生成完成', 'Final_Data 生成失败')
   } catch (error) {
     success.value = false
@@ -265,11 +288,11 @@ async function startFinalDataOnly(): Promise<void> {
 
 function applyResponse(
   response: Awaited<ReturnType<typeof reconcileEricFiles>>,
-  successMessage: string,
-  failureMessage: string,
+  successMsg: string,
+  failMsg: string,
 ): void {
   success.value = response.success
-  message.value = response.message || (response.success ? successMessage : failureMessage)
+  message.value = response.message || (response.success ? successMsg : failMsg)
   logs.value = Array.isArray(response.logs) ? response.logs : []
   outputFile.value = response.output_file ?? ''
   rowCount.value = readEricRowCount(response)
@@ -284,265 +307,61 @@ function resetForm(): void {
 }
 
 async function downloadResult(): Promise<void> {
-  if (outputFile.value) {
-    await downloadEricResult(outputFile.value)
-  }
+  if (outputFile.value) await downloadEricResult(outputFile.value)
 }
 </script>
 
-<style scoped>
-.eric-page {
-  width: 100%;
-  max-width: 1480px;
-  margin: 0 auto;
-}
-
-.eric-panel {
-  display: grid;
-  gap: 22px;
-}
-
-.eric-card {
-  padding: 24px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.06);
-}
-
-.eric-hero {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.eric-kicker,
-.eric-title,
-.eric-desc {
-  margin: 0;
-}
-
-.eric-kicker {
-  margin-bottom: 8px;
-  color: #64748b;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.eric-title {
-  color: #0f172a;
-  font-size: 28px;
-  line-height: 1.25;
-}
-
-.eric-desc {
-  max-width: 920px;
-  margin-top: 10px;
-  color: #64748b;
-  font-size: 15px;
-  line-height: 1.65;
-}
-
-.eric-stage {
-  flex: 0 0 auto;
-  padding: 6px 12px;
-  color: #0f766e;
-  font-size: 13px;
-  font-weight: 800;
-  white-space: nowrap;
-  background: #ecfdf5;
-  border: 1px solid #99f6e4;
-  border-radius: 999px;
-}
-
-.eric-alert {
-  padding: 13px 16px;
-  color: #075985;
-  font-size: 14px;
-  background: #f0f9ff;
-  border: 1px solid #bae6fd;
-  border-radius: 8px;
-}
-
-.eric-upload-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-}
-
-.eric-steps {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 18px;
-}
-
-.eric-step {
-  min-width: 0;
-  padding: 14px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-}
-
-.eric-step span {
-  color: #2563eb;
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.eric-step strong {
-  display: block;
-  margin: 7px 0 4px;
-  color: #0f172a;
-  font-size: 14px;
-}
-
-.eric-step p {
-  margin: 0;
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.eric-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 14px;
-  margin-top: 24px;
-}
-
-.eric-btn {
-  min-height: 40px;
-  padding: 0 18px;
-  color: #334155;
-  font-size: 14px;
-  font-weight: 800;
-  cursor: pointer;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-}
-
-.eric-btn--primary {
-  color: #ffffff;
-  background: #2563eb;
-  border-color: #1d4ed8;
-}
-
-.eric-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.eric-progress {
-  display: grid;
-  gap: 8px;
-  margin-top: 20px;
-}
-
-.eric-progress span {
-  color: #475569;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.eric-progress progress {
-  width: 100%;
-  height: 18px;
-}
-
-.eric-summary {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.eric-stat {
-  min-width: 0;
-  padding: 15px 16px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-}
-
-.eric-stat span {
-  display: block;
-  color: #64748b;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.eric-stat strong {
-  display: block;
-  margin-top: 8px;
-  overflow: hidden;
-  color: #0f172a;
-  font-size: 24px;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.eric-message {
-  margin-top: 16px;
-  padding: 13px 16px;
-  color: #1e40af;
-  font-size: 14px;
-  background: #eff6ff;
-  border-radius: 8px;
-}
-
-.eric-message--success {
-  color: #15803d;
-  background: #f0fdf4;
-}
-
-.eric-message--error {
-  color: #dc2626;
-  background: #fef2f2;
-}
+<style lang="scss">
+@use '../../shared/styles/jane-page.scss';
 
 .eric-log {
   display: grid;
-  gap: 7px;
-  max-height: 260px;
-  margin-top: 16px;
+  gap: 8px;
+  max-height: 280px;
   overflow: auto;
 }
 
 .eric-log div {
-  padding-bottom: 7px;
-  color: #475569;
-  font-size: 12px;
-  line-height: 1.45;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 8px 12px;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
 }
 
-@media (max-width: 1100px) {
-  .eric-steps,
-  .eric-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.eric-stats {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 
-@media (max-width: 760px) {
-  .eric-hero,
-  .eric-upload-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
+.eric-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
 
-  .eric-steps,
-  .eric-summary {
-    grid-template-columns: 1fr;
-  }
+.eric-stat:hover {
+  background: #f0fdfa;
+  border-color: #99f6e4;
+}
 
-  .eric-stage {
-    justify-self: start;
-    white-space: normal;
-  }
+.eric-stat span {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.eric-stat strong {
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 700;
 }
 </style>

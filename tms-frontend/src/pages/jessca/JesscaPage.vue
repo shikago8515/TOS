@@ -1,80 +1,87 @@
 <template>
-  <section class="jessca-page">
-    <div class="card-section">
-      <h2 class="section-title">{{ text('对账核对') }}</h2>
-      <p class="section-desc">
-        {{ text('Jessca 发票文件与参考表自动核对，输出价格差异和缺失款号整理结果。') }}
-      </p>
-
-      <FileRequirementGuide owner="Jessca" mode="compact" />
-      <FilePrecheckPanel :groups="fileGroups" />
-
-      <div class="upload-grid">
-        <FileUploadBox
-          v-model:files="invoiceFiles"
-          :label="text('发票文件（可多选）')"
-          :hint="text('上传一张或多张发票文件。')"
-          multiple
-        />
-        <FileUploadBox
-          v-model:files="referenceFiles"
-          :label="text('参考表文件')"
-          :hint="text('上传 1 个参考表文件。')"
-        />
+  <section class="jane-page-container">
+    <div class="jane-header">
+      <div class="jane-header__title">
+        <h2>{{ text('对账核对') }}</h2>
       </div>
+      <div class="jane-header__stats">
+        <div class="jane-stat">
+          <div class="jane-stat__icon jane-stat__icon--blue">
+            <AppIcon name="files" />
+          </div>
+          <div class="jane-stat__info">
+            <span class="jane-stat__label">{{ text('已选文件') }}</span>
+            <span class="jane-stat__value">{{ totalSelectedCount }}</span>
+          </div>
+        </div>
+        <div class="jane-stat">
+          <div class="jane-stat__icon jane-stat__icon--slate">
+            <AppIcon name="clock" />
+          </div>
+          <div class="jane-stat__info">
+            <span class="jane-stat__label">{{ text('处理记录') }}</span>
+            <span class="jane-stat__value">{{ historyRecords.length }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
 
-      <div class="action-row">
+    <div class="jane-toolbar">
+      <span class="jane-toolbar__status">{{ toolbarStatus }}</span>
+      <div class="jane-toolbar__actions">
+        <button class="jane-toolbar__btn" type="button" :disabled="processing" @click="resetForm">
+          {{ text('重置') }}
+        </button>
         <button
-          class="primary-action"
+          v-if="success && resultFile"
+          class="jane-toolbar__btn"
+          type="button"
+          @click="downloadResult"
+        >
+          {{ text('下载结果') }}
+        </button>
+        <button
+          class="jane-toolbar__btn jane-toolbar__btn--primary"
           type="button"
           :disabled="!canProcess || processing"
           @click="startProcess"
         >
-          {{ processing ? text('处理中...') : text('开始处理') }}
-        </button>
-        <button class="secondary-action" type="button" @click="resetForm">
-          {{ text('重置') }}
+          {{ processing ? text('核对中...') : text('开始核对') }}
         </button>
       </div>
-
-      <div v-if="processing" class="progress-block">
-        <span class="progress-label">{{ text('上传进度') }} {{ progress }}%</span>
-        <progress :value="progress" max="100" />
-      </div>
-
-      <ResultSummary :items="summaryItems" :status="success ? 'success' : 'error'" />
-
-      <section
-        v-if="message"
-        class="result-alert"
-        :class="success ? 'result-alert--success' : 'result-alert--error'"
-      >
-        <p>{{ text(message) }}</p>
-        <button v-if="success && resultFile" type="button" @click="downloadResult">
-          {{ text('下载结果文件') }}
-        </button>
-      </section>
-
-      <ProcessHistoryPanel :records="historyRecords" @clear="clearHistory" />
     </div>
+
+    <div v-if="message" class="jane-alert" :class="`jane-alert--${messageTone}`">
+      <AppIcon :name="messageTone === 'success' ? 'check-circle' : messageTone === 'error' ? 'alert-circle' : 'activity'" />
+      <span>{{ message }}</span>
+    </div>
+
+    <JesscaManagerPanel
+      :invoice-files="invoiceFiles"
+      :reference-files="referenceFiles"
+      :file-groups="fileGroups"
+      :processing="processing"
+      :progress="progress"
+      :success="success"
+      :summary-items="summaryItems"
+      :history-records="historyRecords"
+      @update:invoice-files="invoiceFiles = $event"
+      @update:reference-files="referenceFiles = $event"
+      @clear-history="clearHistory"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
-import FileRequirementGuide from '../../shared/ui/FileRequirementGuide.vue'
-import FileUploadBox from '../../shared/ui/FileUploadBox.vue'
-import ProcessHistoryPanel from '../../shared/ui/ProcessHistoryPanel.vue'
-import ResultSummary from '../../shared/ui/ResultSummary.vue'
 import { readErrorMessage } from '../../shared/api/backendClient'
-import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import {
   areRequiredFilesReady,
   serializeInputFiles,
   type FileGroupState,
 } from '../../shared/files/fileGroups'
+import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import {
   appendModuleHistory,
   clearModuleHistory,
@@ -83,15 +90,12 @@ import {
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
-import {
-  downloadJesscaResult,
-  processJesscaFiles,
-} from './jesscaApi'
-import {
-  buildJesscaSummary,
-  jesscaModuleId,
-  jesscaModuleName,
-} from './jesscaModel'
+import AppIcon from '../../shared/ui/AppIcon.vue'
+import JesscaManagerPanel from './components/JesscaManagerPanel.vue'
+import { downloadJesscaResult, processJesscaFiles } from './jesscaApi'
+import { buildJesscaSummary, jesscaModuleId, jesscaModuleName } from './jesscaModel'
+
+type NoticeTone = 'info' | 'success' | 'warning' | 'error'
 
 const invoiceFiles = ref<File[]>([])
 const referenceFiles = ref<File[]>([])
@@ -102,6 +106,7 @@ const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(loadModuleHistory(jesscaModuleId))
+const messageTone = ref<NoticeTone>('info')
 const { text } = useAppLanguage()
 
 const fileGroups = computed<FileGroupState[]>(() => [
@@ -121,10 +126,20 @@ const fileGroups = computed<FileGroupState[]>(() => [
 ])
 
 const canProcess = computed(() => areRequiredFilesReady(fileGroups.value))
+const readyGroupCount = computed(
+  () => fileGroups.value.filter((group) => group.files.length > 0).length,
+)
+const totalSelectedCount = computed(
+  () => invoiceFiles.value.length + referenceFiles.value.length,
+)
+const toolbarStatus = computed(
+  () => `${text('已就绪')} ${readyGroupCount.value}/2 ${text('组文件')}，${text('当前共')} ${totalSelectedCount.value} ${text('个文件')}`,
+)
 
 async function startProcess(): Promise<void> {
   if (!canProcess.value || !referenceFiles.value[0]) {
-    message.value = '请先按预检查提示补齐文件'
+    messageTone.value = 'warning'
+    message.value = '请先补齐必传文件，再开始核对。'
     success.value = false
     return
   }
@@ -152,13 +167,13 @@ async function startProcess(): Promise<void> {
 
     success.value = response.success
     resultFile.value = response.result_file ?? response.output_file ?? ''
-    message.value = response.error
-      ? `${response.message} - ${response.error}`
-      : response.message
+    messageTone.value = response.success ? 'success' : 'error'
+    message.value = response.error ? `${response.message} - ${response.error}` : response.message
     summaryItems.value = buildJesscaSummary(response, invoiceFiles.value.length)
     recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles)
   } catch (error) {
     success.value = false
+    messageTone.value = 'error'
     message.value = readErrorMessage(error, '处理失败，请重试')
     summaryItems.value = [
       {
@@ -188,6 +203,7 @@ function resetForm(): void {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  messageTone.value = 'info'
 }
 
 function recordHistory(
@@ -213,134 +229,6 @@ function clearHistory(): void {
 }
 </script>
 
-<style scoped>
-.jessca-page {
-  max-width: 1120px;
-  margin: 0 auto;
-}
-
-.card-section {
-  padding: 28px;
-  background: #ffffff;
-  border: 1px solid #dbe5ee;
-  border-radius: 8px;
-  box-shadow: 0 16px 38px rgba(23, 42, 63, 0.08);
-}
-
-.section-title,
-.section-desc {
-  margin: 0;
-}
-
-.section-title {
-  color: #172033;
-  font-size: 24px;
-  font-weight: 800;
-}
-
-.section-desc {
-  max-width: 760px;
-  margin-top: 8px;
-  margin-bottom: 22px;
-  color: #64748b;
-  line-height: 1.65;
-}
-
-.upload-grid {
-  display: grid;
-  align-items: start;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-}
-
-.action-row {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 28px;
-}
-
-.primary-action,
-.secondary-action,
-.result-alert button {
-  min-height: 40px;
-  padding: 0 18px;
-  font-weight: 800;
-  cursor: pointer;
-  border-radius: 7px;
-}
-
-.primary-action {
-  color: #ffffff;
-  background: #2563eb;
-  border: 1px solid #1d4ed8;
-}
-
-.primary-action:disabled {
-  cursor: not-allowed;
-  background: #9eb6e7;
-  border-color: #9eb6e7;
-}
-
-.secondary-action {
-  color: #475569;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-}
-
-.progress-block {
-  display: grid;
-  gap: 8px;
-  margin-top: 24px;
-}
-
-.progress-label {
-  color: #475569;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-progress {
-  width: 100%;
-  height: 18px;
-}
-
-.result-alert {
-  display: grid;
-  gap: 12px;
-  margin-top: 18px;
-  padding: 14px 16px;
-  border-radius: 8px;
-}
-
-.result-alert p {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.result-alert--success {
-  color: #14532d;
-  background: #ecfdf5;
-  border: 1px solid #bbf7d0;
-}
-
-.result-alert--error {
-  color: #991b1b;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-}
-
-.result-alert button {
-  justify-self: start;
-  color: #ffffff;
-  background: #1d6fa7;
-  border: 1px solid #185782;
-}
-
-@media (max-width: 860px) {
-  .upload-grid {
-    grid-template-columns: 1fr;
-  }
-}
+<style lang="scss">
+@use '../../shared/styles/jane-page.scss';
 </style>

@@ -1,5 +1,16 @@
 [
   {
+    "id": "microsoft-login-n8n-demo",
+    "name": "Microsoft Login + n8n Demo",
+    "provider": "Playwright",
+    "category": "网页自动化",
+    "version": "0.1.0",
+    "appDir": "microsoft-login-n8n-demo",
+    "entry": "bin/start.js",
+    "defaultPort": 3002,
+    "description": "原始 demo 执行器：上传 Excel 到 n8n 后，由本机可见浏览器执行 Microsoft Login / SAP BTP 自动化。"
+  },
+  {
     "id": "playwright-console",
     "name": "网页自动化控制台",
     "provider": "Playwright",
@@ -8,6 +19,6 @@
     "appDir": "playwright-console",
     "entry": "bin/start.js",
     "defaultPort": 3100,
-    "description": "从 Excel 读取业务数据，驱动 Edge/Chrome 执行 SAP BTP、Infor Nexus 等网页流程。"
+    "description": "支持本地可见浏览器执行、Excel 上传到 n8n、失败清单导出和运行结果回传。"
   }
 ]

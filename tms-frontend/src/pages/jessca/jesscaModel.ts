@@ -22,16 +22,17 @@ export function buildJesscaSummary(
       value: String(response.total_items ?? '-'),
     },
     {
-      label: '匹配统计',
+      label: '匹配数量',
       value: matchedCount === undefined ? '-' : String(matchedCount),
     },
     {
       label: '结果文件',
-      value: response.output_file || response.result_file
-        ? '已生成'
-        : response.success
-          ? '可下载'
-          : '未生成',
+      value:
+        response.output_file || response.result_file
+          ? '已生成'
+          : response.success
+            ? '可下载'
+            : '未生成',
     },
   ]
 }

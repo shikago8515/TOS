@@ -6,6 +6,21 @@ import type {
 
 const moduleName = '网页自动化'
 
+export interface LocalExecutorHealth {
+  ok: boolean
+  busy?: boolean
+  activeRun?: unknown
+  lastRun?: unknown
+  dataDir?: string
+  runtimeConfigPath?: string
+  runtimeSecretPath?: string
+  config?: Record<string, unknown>
+}
+
+export function hasElectronAutomationSupport(): boolean {
+  return Boolean(window.electronAPI?.getAutomationApps)
+}
+
 export async function fetchAutomationApps(): Promise<AutomationAppInfo[]> {
   if (!window.electronAPI?.getAutomationApps) {
     throw new Error('当前运行环境不支持网页自动化模块')
@@ -65,5 +80,56 @@ export async function recordWebAutomationEvent(
     })
   } catch {
     // Diagnostics must never block the user action.
+  }
+}
+
+export async function probeLocalExecutorHealth(baseUrl: string): Promise<LocalExecutorHealth> {
+  const normalizedUrl = String(baseUrl || '').replace(/\/+$/, '')
+  const candidates = [`${normalizedUrl}/api/health`, `${normalizedUrl}/health`]
+  let lastError: unknown = null
+
+  for (const url of candidates) {
+    try {
+      const response = await fetchWithTimeout(url, {
+        method: 'GET',
+      }, 2500)
+
+      if (!response.ok) {
+        lastError = new Error(`Health check returned HTTP ${response.status}.`)
+        continue
+      }
+
+      const payload = await response.json().catch(() => ({}))
+      return {
+        ok: true,
+        ...(payload && typeof payload === 'object'
+          ? payload as Record<string, unknown>
+          : {}),
+      } as LocalExecutorHealth
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('本地执行器未响应。')
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    })
+  } finally {
+    window.clearTimeout(timer)
   }
 }

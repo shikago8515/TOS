@@ -1,0 +1,609 @@
+﻿import { ElMessage } from 'element-plus'
+import {
+  getBatchTaskStatus,
+  getNonCodeBatchTaskStatus,
+  getNonCodeTaskStatus,
+  getBatchWorkflowProgress,
+  getWorkflowCase,
+  getTaskStatus,
+  getWorkflowProgress
+} from '@/api/teacher/case'
+import { getAuthToken } from '@/utils/authStorage'
+
+const CREATE_CASE_PROGRESS_KEY = 'teacher_create_case_progress'
+
+export function useCreateCasePolling(options) {
+  const {
+    loading,
+    useWorkflowMode,
+    generationMode,
+    currentBatchTaskId,
+    batchGenerationProgress,
+    showReviewPanel,
+    pendingCases,
+    activeWorkflowTaskId,
+    showWorkflowProgress,
+    workflowStatus,
+    workflowCurrentStage,
+    workflowSteps,
+    workflowLogs,
+    workflowError,
+    generatedCase,
+    isAnalysisMode,
+    loadPendingCases,
+    refreshPendingCases,
+    onWorkflowReviewPause,
+    onSingleTaskProgress,
+    onBatchTaskProgress,
+    onWorkflowProgress
+  } = options
+
+  let batchPollTimer = null
+  let workflowPollTimer = null
+  let singlePollTimer = null
+  let batchProgressEventSource = null
+
+  const isWorkflowBatchTaskId = (batchTaskId) => {
+    return typeof batchTaskId === 'string' && batchTaskId.startsWith('BATCH_WORKFLOW_')
+  }
+
+  const clearBatchPollTimer = () => {
+    if (batchPollTimer) {
+      clearInterval(batchPollTimer)
+      batchPollTimer = null
+    }
+  }
+
+  const clearWorkflowPollTimer = () => {
+    if (workflowPollTimer) {
+      clearInterval(workflowPollTimer)
+      workflowPollTimer = null
+    }
+  }
+
+  const clearSinglePollTimer = () => {
+    if (singlePollTimer) {
+      clearInterval(singlePollTimer)
+      singlePollTimer = null
+    }
+  }
+
+  const clearAllPollTimers = () => {
+    clearBatchPollTimer()
+    clearWorkflowPollTimer()
+    clearSinglePollTimer()
+    closeBatchProgressStream()
+  }
+
+  const normalizeSingleCaseResult = (raw) => {
+    if (!raw || typeof raw !== 'object') {
+      return null
+    }
+
+    return {
+      ...raw,
+      caseId: raw.caseId ?? raw.id ?? null
+    }
+  }
+
+  const normalizeBatchProgress = (raw) => {
+    const data = raw || {}
+    const totalStudents = data.totalStudents ?? data.totalCount ?? 0
+    const generatedCount = data.generatedCount ?? data.completedCount ?? 0
+    const failedCount = data.failedCount ?? 0
+    const reviewingCount = data.reviewingCount ?? 0
+    const progressPercent = data.progressPercent ?? data.progress ?? 0
+    const runningCount = data.runningCount ?? Math.max(0, totalStudents - generatedCount - failedCount - reviewingCount)
+    const existingStartedAt = Number(batchGenerationProgress.value?.startedAt || 0) || 0
+    const existingFinishedAt = Number(batchGenerationProgress.value?.finishedAt || 0) || 0
+    const existingDurationMs = Number(batchGenerationProgress.value?.durationMs || 0) || 0
+    const startedAt = Number(data.startedAt ?? data.createdAt ?? existingStartedAt ?? 0) || existingStartedAt || 0
+    const finishedAt = Number(data.finishedAt ?? existingFinishedAt ?? 0) || existingFinishedAt || 0
+    const durationMs = Number(data.durationMs ?? 0) || (finishedAt && startedAt ? Math.max(finishedAt - startedAt, 0) : 0)
+    const elapsedMs = Number(data.elapsedMs ?? 0) || durationMs || existingDurationMs || (startedAt ? Math.max(Date.now() - startedAt, 0) : 0)
+
+    const studentTaskIds = data.studentTaskIds || {}
+    const studentErrors = data.studentErrors || {}
+    const studentCaseIds = data.studentCaseIds || {}
+    // 鍚庣鐩存帴涓嬪彂鐨勫鐢熻繘搴﹁锛堝伐浣滄祦妯″紡锛?
+    const incomingRows = Array.isArray(data.studentProgress) ? data.studentProgress : []
+
+    // 鍏堝彇鍚庣涓嬪彂鐨勮
+    let studentProgress = incomingRows
+
+    if (studentProgress.length === 0) {
+      // 灏濊瘯浠?studentTaskIds / studentCaseIds / studentErrors 閲嶅缓琛?
+      const idSet = new Set([
+        ...Object.keys(studentTaskIds),
+        ...Object.keys(studentErrors),
+        ...Object.keys(studentCaseIds)
+      ])
+
+      if (idSet.size > 0) {
+        studentProgress = Array.from(idSet).map((idText) => {
+          const studentId = Number(idText)
+          const errorMessage = studentErrors?.[idText] || studentErrors?.[studentId]
+          const caseId = studentCaseIds?.[idText] || studentCaseIds?.[studentId]
+          const taskId = studentTaskIds?.[idText] || studentTaskIds?.[studentId]
+
+          const isFailed = !!errorMessage
+          const isSuccess = !!caseId
+          const status = isFailed ? 'FAILED' : (isSuccess ? 'SUCCESS' : 'RUNNING')
+
+          return {
+            studentId,
+            studentName: `瀛︾敓#${studentId}`,
+            studentNo: taskId ? `浠诲姟:${taskId}` : `#${studentId}`,
+            status,
+            currentState: isFailed ? 'FAILED' : (isSuccess ? 'COMPLETED' : 'GENERATION'),
+            progressPercentage: isFailed || isSuccess ? 100 : Math.max(5, progressPercent || 0),
+            errorMessage: errorMessage || '',
+            caseId: caseId || null
+          }
+        })
+      } else {
+        // 鍚庣灏氭湭涓嬪彂瀛︾敓绾ф暟鎹紝淇濈暀宸茬紦瀛樼殑棰勫～鍏呰锛堥伩鍏嶉棯鍥?鏆傛棤浠诲姟鏁版嵁"锛?
+        const cachedRows = batchGenerationProgress.value?.studentProgress
+        if (Array.isArray(cachedRows) && cachedRows.length > 0) {
+          studentProgress = cachedRows
+        }
+      }
+    } else {
+      // 鍚庣宸蹭笅鍙戣锛屽皢棰勫～鍏呰涓凡鏈夌殑 studentName/studentNo 鍚堝苟杩涙潵锛堜繚鐣欐樉绀哄悕锛?
+      const cachedRows = batchGenerationProgress.value?.studentProgress
+      if (Array.isArray(cachedRows) && cachedRows.length > 0) {
+        const cachedMap = new Map(cachedRows.map(r => [r.studentId, r]))
+        studentProgress = studentProgress.map(row => {
+          const cached = cachedMap.get(row.studentId)
+          if (cached && !row.studentName?.startsWith('瀛︾敓#')) return row
+          return {
+            ...row,
+            studentName: cached?.studentName || row.studentName,
+            studentNo: cached?.studentNo || row.studentNo
+          }
+        })
+      }
+    }
+
+    return {
+      ...data,
+      totalStudents,
+      generatedCount,
+      failedCount,
+      reviewingCount,
+      runningCount,
+      progressPercent,
+      startedAt,
+      finishedAt,
+      durationMs,
+      elapsedMs,
+      studentProgress
+    }
+  }
+
+  const closeBatchProgressStream = () => {
+    if (batchProgressEventSource) {
+      batchProgressEventSource.close()
+      batchProgressEventSource = null
+    }
+  }
+
+  const startBatchProgressStream = (batchTaskId) => {
+    if (!batchTaskId || useWorkflowMode.value || isWorkflowBatchTaskId(batchTaskId)) {
+      return
+    }
+    closeBatchProgressStream()
+
+    const token = getAuthToken('TEACHER')
+    if (!token) {
+      return
+    }
+
+    // 涓ユ牸鎸夋ā寮忓垎娴侊細鍒嗘瀽妯″紡鍙蛋 non-code 鐙珛 SSE
+    const sseUrl = isAnalysisMode?.value
+      ? `/api/training/non-code/cases/batch/task/${batchTaskId}/progress?token=${encodeURIComponent(token)}`
+      : `/api/training/cases/batch/task/${batchTaskId}/progress?token=${encodeURIComponent(token)}`
+    batchProgressEventSource = new EventSource(sseUrl)
+
+    const handleSnapshot = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        batchGenerationProgress.value = normalizeBatchProgress(data)
+      } catch (e) {
+        // ignore malformed sse payload
+      }
+    }
+
+    batchProgressEventSource.addEventListener('snapshot', handleSnapshot)
+    batchProgressEventSource.addEventListener('complete', () => {
+      closeBatchProgressStream()
+    })
+    batchProgressEventSource.addEventListener('error', () => {
+      closeBatchProgressStream()
+    })
+  }
+
+  const saveProgressState = (state) => {
+    try {
+      const payload = {
+        ...state,
+        savedAt: Date.now()
+      }
+      localStorage.setItem(CREATE_CASE_PROGRESS_KEY, JSON.stringify(payload))
+    } catch (e) {
+      console.warn('保存生成进度失败', e)
+    }
+  }
+
+  const clearProgressState = () => {
+    try {
+      localStorage.removeItem(CREATE_CASE_PROGRESS_KEY)
+    } catch (e) {
+      console.warn('清理生成进度失败', e)
+    }
+  }
+
+  const getProgressState = () => {
+    try {
+      const raw = localStorage.getItem(CREATE_CASE_PROGRESS_KEY)
+      if (!raw) return null
+      const parsed = JSON.parse(raw)
+      if (!parsed || !parsed.savedAt) return null
+      return parsed
+    } catch (e) {
+      console.warn('读取生成进度失败', e)
+      return null
+    }
+  }
+
+  const pollBatchProgress = async (batchTaskId) => {
+    clearBatchPollTimer()
+    const effectiveBatchTaskId = batchTaskId || currentBatchTaskId.value
+    if (!effectiveBatchTaskId || effectiveBatchTaskId === 'undefined' || effectiveBatchTaskId === 'null') {
+      console.error('pollBatchProgress: invalid batchTaskId', effectiveBatchTaskId)
+      ElMessage.error('批量任务ID无效，无法查询进度')
+      loading.value = false
+      return
+    }
+
+    currentBatchTaskId.value = effectiveBatchTaskId
+    startBatchProgressStream(effectiveBatchTaskId)
+    let pollCount = 0
+    const maxPollCount = 600
+    let notFoundStreak = 0
+
+    batchPollTimer = window.setInterval(async () => {
+      pollCount++
+
+      if (pollCount > maxPollCount) {
+        clearBatchPollTimer()
+        loading.value = false
+        ElMessage.warning('轮询超时，请手动刷新页面查看结果')
+        return
+      }
+
+      try {
+        if (!effectiveBatchTaskId || effectiveBatchTaskId === 'undefined') {
+          clearBatchPollTimer()
+          loading.value = false
+          ElMessage.error('批量任务ID丢失，已停止轮询')
+          return
+        }
+
+        // 涓ユ牸鎸夋ā寮忓垎娴侊細
+        // 1) 宸ヤ綔娴佹ā寮?-> workflow鎺ュ彛
+        // 2) 闈炲伐浣滄祦+鍒嗘瀽妯″紡 -> non-code鎺ュ彛
+        // 3) 闈炲伐浣滄祦+浠ｇ爜妯″紡 -> 鏃ф帴鍙?
+        const isWorkflowBatch = useWorkflowMode.value || isWorkflowBatchTaskId(effectiveBatchTaskId)
+        const res = isWorkflowBatch
+          ? await getBatchWorkflowProgress(effectiveBatchTaskId)
+          : (isAnalysisMode?.value
+              ? await getNonCodeBatchTaskStatus(effectiveBatchTaskId)
+              : await getBatchTaskStatus(effectiveBatchTaskId))
+
+        notFoundStreak = 0
+
+        batchGenerationProgress.value = normalizeBatchProgress(res.data)
+        const normalized = batchGenerationProgress.value || {}
+        const runningNow = Number(normalized.runningCount || 0)
+        const statusNow = String(normalized.status || '').toUpperCase()
+        const progressNow = Number(normalized.progressPercent || 0)
+        const hasAnyRunning = runningNow > 0 || statusNow === 'RUNNING' || progressNow < 100
+        if (hasAnyRunning && showReviewPanel.value) {
+          showReviewPanel.value = false
+        }
+
+        onBatchTaskProgress?.({
+          status: String(res?.data?.status || batchGenerationProgress.value?.status || '').toUpperCase(),
+          progressPercent: Number(batchGenerationProgress.value?.progressPercent || 0),
+          totalCount: Number(batchGenerationProgress.value?.totalCount || batchGenerationProgress.value?.totalStudents || 0),
+          completedCount: Number(batchGenerationProgress.value?.completedCount || batchGenerationProgress.value?.generatedCount || 0),
+          failedCount: Number(batchGenerationProgress.value?.failedCount || 0)
+        })
+
+        const status = batchGenerationProgress.value.status
+        const totalCount = batchGenerationProgress.value.totalCount || batchGenerationProgress.value.totalStudents || 0
+        const completedCount = batchGenerationProgress.value.completedCount || batchGenerationProgress.value.generatedCount || 0
+        const failedCount = batchGenerationProgress.value.failedCount || 0
+        const reviewingCount = batchGenerationProgress.value.reviewingCount || 0
+        const finishedCount = completedCount + failedCount
+
+        if (reviewingCount > 0 && isWorkflowBatch) {
+          ElMessage.info({
+            message: `当前有 ${reviewingCount} 个学生的案例工作流暂停，等待教师审核`,
+            duration: 3000,
+            showClose: true
+          })
+        }
+
+        const isFullyCompleted = finishedCount === totalCount && totalCount > 0
+
+        if (isFullyCompleted && (status === 'SUCCESS' || status === 'PARTIAL_SUCCESS' || status === 'completed')) {
+          clearBatchPollTimer()
+          closeBatchProgressStream()
+          loading.value = false
+
+          if (status === 'PARTIAL_SUCCESS' || failedCount > 0) {
+            ElMessage.warning(`批量生成完成，成功 ${completedCount} 个，失败 ${failedCount} 个`)
+          } else {
+            ElMessage.success('所有案例生成完成')
+          }
+
+          await loadPendingCases(effectiveBatchTaskId)
+          showReviewPanel.value = true
+          clearProgressState()
+        } else if (status === 'FAILED' && finishedCount === totalCount) {
+          clearBatchPollTimer()
+          closeBatchProgressStream()
+          loading.value = false
+          if (completedCount > 0) {
+            ElMessage.warning(`批量生成完成，成功 ${completedCount} 个，失败 ${failedCount} 个`)
+            await loadPendingCases(effectiveBatchTaskId)
+            showReviewPanel.value = true
+            clearProgressState()
+          } else {
+            ElMessage.error('批量生成全部失败')
+            clearProgressState()
+          }
+        }
+      } catch (e) {
+        if (e.message && (e.message.includes('不存在') || e.message.includes('undefined') || e.message.includes('无效'))) {
+          notFoundStreak += 1
+          if (notFoundStreak < 3) {
+            return
+          }
+          clearBatchPollTimer()
+          closeBatchProgressStream()
+          loading.value = false
+          ElMessage.error('批量任务查询失败: ' + e.message)
+          clearProgressState()
+        }
+      }
+    }, 3000)
+  }
+
+  const pollWorkflowProgressLoop = async (taskId) => {
+    clearWorkflowPollTimer()
+
+    workflowPollTimer = window.setInterval(async () => {
+      try {
+        if (!activeWorkflowTaskId.value) {
+          clearWorkflowPollTimer()
+          return
+        }
+
+        const res = await getWorkflowProgress(taskId, { includeLogs: false })
+        const data = res.data
+
+        const rawStatus = (data.status || '').toUpperCase()
+        if (rawStatus === 'RUNNING') {
+          workflowStatus.value = 'processing'
+        } else if (rawStatus === 'COMPLETED' || rawStatus === 'SUCCESS') {
+          workflowStatus.value = 'completed'
+        } else if (rawStatus === 'FAILED') {
+          workflowStatus.value = 'error'
+        } else {
+          workflowStatus.value = (data.status || 'processing').toLowerCase()
+        }
+
+        workflowCurrentStage.value = data.currentState || data.currentStage || workflowCurrentStage.value || 'INPUT_PARSE'
+        workflowSteps.value = data.steps || []
+        workflowLogs.value = data.logs || []
+        onWorkflowProgress?.({
+          status: rawStatus,
+          currentState: String(data.currentState || data.currentStage || '')
+        })
+
+        if (data.needsReview === true && data.status === 'RUNNING') {
+          clearWorkflowPollTimer()
+          loading.value = false
+          workflowStatus.value = 'reviewing'
+          ElMessage.info({
+            message: `工作流暂停：${data.reviewMessage || '等待教师审核'}`,
+            duration: 5000
+          })
+          onWorkflowReviewPause?.(data)
+          return
+        }
+
+        if (data.status === 'COMPLETED' || data.status === 'SUCCESS') {
+          clearWorkflowPollTimer()
+          loading.value = false
+          let completedCase = normalizeSingleCaseResult(data.result)
+          if (!completedCase && data.workflowInstanceId) {
+            try {
+              const caseRes = await getWorkflowCase(data.workflowInstanceId)
+              completedCase = normalizeSingleCaseResult(caseRes?.data)
+            } catch (caseError) {
+              console.warn('获取工作流案例详情失败', caseError)
+            }
+          }
+          generatedCase.value = completedCase
+          workflowStatus.value = 'completed'
+          showWorkflowProgress.value = false
+
+          let reviewListLoaded = false
+          if (typeof refreshPendingCases === 'function') {
+            try {
+              await refreshPendingCases()
+              reviewListLoaded = true
+            } catch (pendingError) {
+              console.warn('刷新待审核案例列表失败', pendingError)
+            }
+          }
+
+          const workflowInstanceIdText = String(data.workflowInstanceId || taskId || '')
+          const caseIdText = String(generatedCase.value?.caseId || generatedCase.value?.id || data.businessId || '')
+          const matchedPendingCase = Array.isArray(pendingCases.value)
+            ? pendingCases.value.find((item) => {
+                const itemCaseId = String(item?.id || item?.caseId || '')
+                const itemWorkflowId = String(item?.workflowInstanceId || '')
+                return (caseIdText && itemCaseId === caseIdText)
+                  || (workflowInstanceIdText && itemWorkflowId === workflowInstanceIdText)
+              })
+            : null
+
+          if (reviewListLoaded && matchedPendingCase) {
+            showReviewPanel.value = true
+            generatedCase.value = null
+          } else {
+            showReviewPanel.value = false
+          }
+          ElMessage.success('Agent 生成案例成功')
+          clearProgressState()
+        } else if (data.status === 'FAILED') {
+          clearWorkflowPollTimer()
+          loading.value = false
+          workflowStatus.value = 'error'
+          workflowError.value = data.error || '生成失败'
+          ElMessage.error('案例生成失败')
+          clearProgressState()
+        }
+      } catch (e) {
+        console.error(e)
+      }
+    }, 1000)
+  }
+
+  const pollTaskProgress = async (taskId) => {
+    clearSinglePollTimer()
+
+    singlePollTimer = window.setInterval(async () => {
+      try {
+        // 涓ユ牸鎸夋ā寮忓垎娴侊細鍒嗘瀽妯″紡鍙蛋 non-code 鐙珛鎺ュ彛
+        const res = isAnalysisMode?.value
+          ? await getNonCodeTaskStatus(taskId)
+          : await getTaskStatus(taskId)
+        const task = res.data
+        onSingleTaskProgress?.(task)
+
+        if (task.status === 'SUCCESS') {
+          clearSinglePollTimer()
+          loading.value = false
+          generatedCase.value = task.result
+          ElMessage.success('案例生成成功')
+          clearProgressState()
+        } else if (task.status === 'FAILED') {
+          clearSinglePollTimer()
+          loading.value = false
+          ElMessage.error('案例生成失败：' + (task.errorMessage || '未知错误'))
+          clearProgressState()
+        }
+      } catch (e) {
+        clearSinglePollTimer()
+        loading.value = false
+        ElMessage.error('查询任务状态失败')
+      }
+    }, 2000)
+  }
+
+  const restoreGenerationProgress = async () => {
+    const state = getProgressState()
+    if (!state) return
+
+    if (Date.now() - state.savedAt > 24 * 60 * 60 * 1000) {
+      clearProgressState()
+      return
+    }
+
+    generationMode.value = state.generationMode
+    useWorkflowMode.value = state.useWorkflowMode
+
+    if (state.batchTaskId) {
+      currentBatchTaskId.value = state.batchTaskId
+      loading.value = true
+      batchGenerationProgress.value = null
+      showWorkflowProgress.value = false
+      activeWorkflowTaskId.value = null
+
+      try {
+        const isWorkflowBatch = state.useWorkflowMode || isWorkflowBatchTaskId(state.batchTaskId)
+        const res = isWorkflowBatch
+          ? await getBatchWorkflowProgress(state.batchTaskId)
+          : (isAnalysisMode?.value
+              ? await getNonCodeBatchTaskStatus(state.batchTaskId)
+              : await getBatchTaskStatus(state.batchTaskId))
+
+        const data = res.data || {}
+        batchGenerationProgress.value = normalizeBatchProgress(data)
+
+        const status = data.status
+        const totalCount = data.totalCount || data.totalStudents || 0
+        const completedCount = data.completedCount || data.generatedCount || 0
+        const failedCount = data.failedCount || 0
+        const finishedCount = completedCount + failedCount
+        const isFullyCompleted = finishedCount === totalCount && totalCount > 0
+
+        if (status === 'FAILED' && totalCount > 0 && failedCount >= totalCount) {
+          loading.value = false
+          clearProgressState()
+          return
+        }
+
+        if (isFullyCompleted && (status === 'SUCCESS' || status === 'PARTIAL_SUCCESS' || status === 'completed' || status === 'FAILED')) {
+          loading.value = false
+          await loadPendingCases(state.batchTaskId)
+          if (pendingCases.value.length > 0) {
+            showReviewPanel.value = true
+          }
+          clearProgressState()
+        } else {
+          pollBatchProgress(state.batchTaskId)
+        }
+      } catch (e) {
+        console.warn('恢复批量任务进度失败', e)
+        loading.value = false
+      }
+
+      return
+    }
+
+    if (state.generationMode === 'single' && state.useWorkflowMode && state.workflowInstanceId) {
+      activeWorkflowTaskId.value = state.workflowInstanceId
+      loading.value = true
+      showWorkflowProgress.value = true
+      workflowStatus.value = 'processing'
+      pollWorkflowProgressLoop(state.workflowInstanceId)
+      return
+    }
+
+    if (state.generationMode === 'single' && !state.useWorkflowMode && state.singleTaskId) {
+      loading.value = true
+      pollTaskProgress(state.singleTaskId)
+    }
+  }
+
+  return {
+    saveProgressState,
+    clearProgressState,
+    restoreGenerationProgress,
+    pollBatchProgress,
+    pollWorkflowProgressLoop,
+    pollTaskProgress,
+    clearAllPollTimers,
+    clearBatchPollTimer,
+    clearWorkflowPollTimer,
+    clearSinglePollTimer
+  }
+}
+

@@ -39,6 +39,15 @@ browser-plugin-profiles/
 .env
 .env.*
 !.env.example
+*.local.json
+.claude/
+
+# Local automation output
+*.stdout.json
+*.stderr.json
+run-artifacts/
+tms-electron-app/automation-apps/microsoft-login-n8n-demo/executor.config.json
+tms-electron-app/automation-apps/microsoft-login-n8n-demo/temp-*.py
 
 # Editors and OS files
 .vscode/

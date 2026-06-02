@@ -18,7 +18,8 @@ const browserPluginPreviewModules: BrowserPluginInfo[] = [
     previewOnly: true,
     targetUrl: 'https://network.infornexus.com/',
     matchPatterns: ['https://network.infornexus.com/*'],
-    description: '在 Infornexus 页面读取 XLS/XLSX 第二列 10 位 ID，并自动搜索、勾选和添加。',
+    description:
+      '在 Infornexus 页面读取 XLS/XLSX 的指定 ID，并自动执行搜索、勾选和添加操作。',
   },
 ]
 

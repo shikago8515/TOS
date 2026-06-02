@@ -1,71 +1,128 @@
 <template>
-  <section class="jane-page">
-    <div class="card-section">
-      <h2 class="section-title">{{ text('成品表生成') }}</h2>
-      <p class="section-desc">
-        {{ text('上传 Copy of TMS 和 country.xlsx 后自动生成标准成品表。') }}
-      </p>
-
-      <FileRequirementGuide owner="Jane" mode="compact" />
-      <FilePrecheckPanel :groups="fileGroups" />
-
-      <div class="upload-grid">
-        <FileUploadBox
-          v-model:files="customerFiles"
-          :label="text('Copy of TMS')"
-          :hint="text('上传 1 个 Copy of TMS 文件。')"
-        />
-        <FileUploadBox
-          v-model:files="countryFiles"
-          label="country.xlsx"
-          :hint="text('上传用于国家/区域单别统计的 country.xlsx。')"
-          accept=".xlsx"
-          :accept-label="text('支持 .xlsx')"
-        />
+  <section class="jane-page-container">
+    <div class="jane-header">
+      <div class="jane-header__title">
+        <h2>{{ text('成品表生成') }}</h2>
+        <p class="jane-header__subtitle">{{ text('Copy of TMS + 国家区域统计 → 标准成品表') }}</p>
       </div>
+      <div class="jane-header__stats">
+        <div class="jane-stat">
+          <div class="jane-stat__icon jane-stat__icon--teal">
+            <AppIcon name="files" />
+          </div>
+          <div class="jane-stat__info">
+            <span class="jane-stat__label">{{ text('已选文件') }}</span>
+            <span class="jane-stat__value">{{ totalFiles }}</span>
+          </div>
+        </div>
+        <div class="jane-stat">
+          <div class="jane-stat__icon jane-stat__icon--slate">
+            <AppIcon name="clock" />
+          </div>
+          <div class="jane-stat__info">
+            <span class="jane-stat__label">{{ text('处理记录') }}</span>
+            <span class="jane-stat__value">{{ historyRecords.length }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
 
-      <label class="filter-block">
-        <span>{{ text('Working Number 筛选（可选）') }}</span>
-        <input
-          v-model="workingFilters"
-          type="text"
-          :placeholder="text('多个 Working Number 用英文逗号分隔')"
-        />
-      </label>
-
-      <div class="action-row">
+    <div class="jane-toolbar">
+      <span class="jane-toolbar__status">{{ toolbarStatus }}</span>
+      <div class="jane-toolbar__actions">
+        <button class="jane-toolbar__btn" type="button" :disabled="processing" @click="resetForm">
+          <AppIcon name="refresh-cw" />
+          {{ text('重置') }}
+        </button>
         <button
-          class="primary-action"
+          class="jane-toolbar__btn jane-toolbar__btn--primary"
           type="button"
           :disabled="!canProcess || processing"
           @click="startProcess"
         >
+          <AppIcon :name="processing ? 'loader' : 'play-circle'" />
           {{ processing ? text('处理中...') : text('开始处理') }}
         </button>
-        <button class="secondary-action" type="button" @click="resetForm">
-          {{ text('重置') }}
-        </button>
+      </div>
+    </div>
+
+    <div class="jane-grid">
+      <div class="jane-main">
+        <section class="jane-section">
+          <div class="jane-section__head">
+            <h3>
+              <AppIcon name="download-cloud" />
+              {{ text('文件上传') }}
+            </h3>
+            <span class="jane-section__badge">
+              <AppIcon name="check-circle" />
+              {{ text('2 组必传') }}
+            </span>
+          </div>
+
+          <div class="jane-upload-grid">
+            <FileUploadBox
+              v-model:files="customerFiles"
+              :label="text('Copy of TMS')"
+              :hint="text('上传 1 个 Copy of TMS 文件')"
+            />
+            <FileUploadBox
+              v-model:files="countryFiles"
+              label="country.xlsx"
+              :hint="text('上传国家/区域统计文件')"
+              accept=".xlsx"
+              :accept-label="text('支持 .xlsx')"
+            />
+          </div>
+
+          <label class="jane-filter">
+            <span>
+              <AppIcon name="file-search" />
+              {{ text('Working Number 筛选（可选）') }}
+            </span>
+            <input
+              v-model="workingFilters"
+              type="text"
+              :placeholder="text('多个值用英文逗号分隔')"
+            />
+          </label>
+
+          <div v-if="processing" class="jane-progress">
+            <div class="jane-progress__label">
+              <strong>
+                <AppIcon name="activity" />
+                {{ text('处理进度') }}
+              </strong>
+              <span>{{ progress }}%</span>
+            </div>
+            <div class="jane-progress__track">
+              <div class="jane-progress__fill" :style="{ width: `${progress}%` }" />
+            </div>
+          </div>
+
+          <ResultSummary :items="summaryItems" :status="success ? 'success' : 'error'" />
+
+          <section
+            v-if="message"
+            class="jane-alert"
+            :class="success ? 'jane-alert--success' : 'jane-alert--error'"
+          >
+            <p>
+              <AppIcon :name="success ? 'check-circle' : 'alert-circle'" />
+              {{ text(message) }}
+            </p>
+            <button v-if="success && resultFile" class="jane-alert__btn" type="button" @click="downloadResult">
+              <AppIcon name="download" />
+              {{ text('下载结果文件') }}
+            </button>
+          </section>
+        </section>
       </div>
 
-      <div v-if="processing" class="progress-block">
-        <span class="progress-label">{{ text('上传进度') }} {{ progress }}%</span>
-        <progress :value="progress" max="100" />
+      <div class="jane-side">
+        <FilePrecheckPanel :groups="fileGroups" />
+        <ProcessHistoryPanel :records="historyRecords" @clear="clearHistory" />
       </div>
-
-      <ResultSummary :items="summaryItems" :status="success ? 'success' : 'error'" />
-
-      <section
-        v-if="message"
-        class="result-alert"
-        :class="success ? 'result-alert--success' : 'result-alert--error'"
-      >
-        <p>{{ text(message) }}</p>
-        <button v-if="success && resultFile" type="button" @click="downloadResult">
-          {{ text('下载结果文件') }}
-        </button>
-      </section>
-
-      <ProcessHistoryPanel :records="historyRecords" @clear="clearHistory" />
     </div>
   </section>
 </template>
@@ -88,8 +145,8 @@ import {
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
+import AppIcon from '../../shared/ui/AppIcon.vue'
 import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
-import FileRequirementGuide from '../../shared/ui/FileRequirementGuide.vue'
 import FileUploadBox from '../../shared/ui/FileUploadBox.vue'
 import ProcessHistoryPanel from '../../shared/ui/ProcessHistoryPanel.vue'
 import ResultSummary from '../../shared/ui/ResultSummary.vue'
@@ -133,6 +190,11 @@ const fileGroups = computed<FileGroupState[]>(() => [
 ])
 
 const canProcess = computed(() => areRequiredFilesReady(fileGroups.value))
+const totalFiles = computed(() => customerFiles.value.length + countryFiles.value.length)
+const toolbarStatus = computed(() => {
+  const readyCount = fileGroups.value.filter((g) => g.files.length > 0).length
+  return `${text('已就绪')} ${readyCount}/2 ${text('组文件')}，${text('当前共')} ${totalFiles.value} ${text('个文件')}`
+})
 
 async function startProcess(): Promise<void> {
   if (!canProcess.value || !customerFiles.value[0] || !countryFiles.value[0]) {
@@ -231,160 +293,6 @@ function clearHistory(): void {
 }
 </script>
 
-<style scoped>
-.jane-page {
-  max-width: 1120px;
-  margin: 0 auto;
-}
-
-.card-section {
-  padding: 28px;
-  background: #ffffff;
-  border: 1px solid #dbe5ee;
-  border-radius: 8px;
-  box-shadow: 0 16px 38px rgba(23, 42, 63, 0.08);
-}
-
-.section-title,
-.section-desc {
-  margin: 0;
-}
-
-.section-title {
-  color: #172033;
-  font-size: 24px;
-  font-weight: 800;
-}
-
-.section-desc {
-  max-width: 760px;
-  margin-top: 8px;
-  margin-bottom: 22px;
-  color: #64748b;
-  line-height: 1.65;
-}
-
-.upload-grid {
-  display: grid;
-  align-items: start;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-}
-
-.filter-block {
-  display: grid;
-  gap: 8px;
-  margin-top: 20px;
-}
-
-.filter-block span {
-  color: #303846;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.filter-block input {
-  min-height: 40px;
-  padding: 0 12px;
-  color: #172033;
-  border: 1px solid #cbd5e1;
-  border-radius: 7px;
-  outline: none;
-}
-
-.filter-block input:focus {
-  border-color: #75a9d5;
-  box-shadow: 0 0 0 3px rgba(117, 169, 213, 0.18);
-}
-
-.action-row {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 28px;
-}
-
-.primary-action,
-.secondary-action,
-.result-alert button {
-  min-height: 40px;
-  padding: 0 18px;
-  font-weight: 800;
-  cursor: pointer;
-  border-radius: 7px;
-}
-
-.primary-action {
-  color: #ffffff;
-  background: #2563eb;
-  border: 1px solid #1d4ed8;
-}
-
-.primary-action:disabled {
-  cursor: not-allowed;
-  background: #9eb6e7;
-  border-color: #9eb6e7;
-}
-
-.secondary-action {
-  color: #475569;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-}
-
-.progress-block {
-  display: grid;
-  gap: 8px;
-  margin-top: 24px;
-}
-
-.progress-label {
-  color: #475569;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-progress {
-  width: 100%;
-  height: 18px;
-}
-
-.result-alert {
-  display: grid;
-  gap: 12px;
-  margin-top: 18px;
-  padding: 14px 16px;
-  border-radius: 8px;
-}
-
-.result-alert p {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.result-alert--success {
-  color: #14532d;
-  background: #ecfdf5;
-  border: 1px solid #bbf7d0;
-}
-
-.result-alert--error {
-  color: #991b1b;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-}
-
-.result-alert button {
-  justify-self: start;
-  color: #ffffff;
-  background: #1d6fa7;
-  border: 1px solid #185782;
-}
-
-@media (max-width: 860px) {
-  .upload-grid {
-    grid-template-columns: 1fr;
-  }
-}
+<style lang="scss">
+@use '../../shared/styles/jane-page.scss';
 </style>

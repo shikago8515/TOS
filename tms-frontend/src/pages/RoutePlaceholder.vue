@@ -31,7 +31,7 @@ import { RouterLink } from 'vue-router'
   text-align: center;
   background: #ffffff;
   border: 1px solid #d9e3ec;
-  border-radius: 8px;
+  border-radius: 12px;
   box-shadow: 0 16px 38px rgba(23, 42, 63, 0.06);
 }
 
@@ -75,7 +75,7 @@ p {
   font-weight: 800;
   background: #409eff;
   border: 1px solid #337ecc;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .return-link:hover {

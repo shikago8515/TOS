@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Microsoft Login Excel Upload</title>
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #5c6780;
+      --line: #d8e0ee;
+      --accent: #0f6cbd;
+      --accent-strong: #0b4f8a;
+      --ok: #12724d;
+      --error: #b42318;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: linear-gradient(180deg, #eef4ff 0%, var(--bg) 100%);
+      color: var(--ink);
+      min-height: 100vh;
+      padding: 32px 20px 48px;
+    }
+
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .hero, .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      box-shadow: 0 18px 48px rgba(17, 43, 91, 0.08);
+    }
+
+    .hero {
+      padding: 28px;
+      margin-bottom: 20px;
+    }
+
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .card {
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    input[type="text"], input[type="file"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 15px;
+    }
+
+    .row {
+      display: grid;
+      gap: 16px;
+    }
+
+    .dropzone {
+      border: 2px dashed #9bb7de;
+      border-radius: 16px;
+      padding: 28px;
+      text-align: center;
+      color: var(--muted);
+      background: #f9fbff;
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-strong);
+    }
+
+    .btn-secondary {
+      background: #e8f1fb;
+      color: var(--accent-strong);
+    }
+
+    .status {
+      white-space: pre-wrap;
+      line-height: 1.6;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .status.ok { color: var(--ok); }
+    .status.error { color: var(--error); }
+
+    pre {
+      margin: 0;
+      padding: 16px;
+      background: #0f172a;
+      color: #dbe6ff;
+      border-radius: 14px;
+      overflow: auto;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <h1>Microsoft Login + n8n Excel Upload</h1>
+      <p>
+        Upload an Excel file, send it to n8n, and let the Windows-visible
+        Playwright executor open Microsoft login automatically.
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="row">
+        <div>
+          <label for="webhook-url">Webhook URL</label>
+          <input id="webhook-url" type="text" value="http://127.0.0.1:5678/webhook/microsoft-login-excel-demo">
+        </div>
+
+        <div class="dropzone">
+          <strong>Select an Excel file</strong>
+          <p>Supported: .xlsx, .xls</p>
+          <input id="file-input" type="file" accept=".xlsx,.xls">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="run-upload" class="btn-primary" type="button">Upload to n8n</button>
+        <button id="use-localhost" class="btn-secondary" type="button">Use local n8n webhook</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Run status</h2>
+      <div id="status" class="status">Waiting for file upload.</div>
+    </section>
+
+    <section class="card">
+      <h2>Raw response</h2>
+      <pre id="result-json">{}</pre>
+    </section>
+  </main>
+
+  <script>
+    const DEFAULT_URL = "http://127.0.0.1:5678/webhook/microsoft-login-excel-demo";
+    const statusBox = document.getElementById("status");
+    const resultBox = document.getElementById("result-json");
+    const fileInput = document.getElementById("file-input");
+    const webhookInput = document.getElementById("webhook-url");
+
+    document.getElementById("use-localhost").addEventListener("click", () => {
+      webhookInput.value = DEFAULT_URL;
+      window.localStorage.setItem("msLoginWebhookUrl", DEFAULT_URL);
+    });
+
+    document.getElementById("run-upload").addEventListener("click", async () => {
+      const file = fileInput.files[0];
+      const webhookUrl = webhookInput.value.trim();
+
+      if (!file) {
+        setStatus("Please choose an Excel file first.", true);
+        return;
+      }
+
+      if (!webhookUrl) {
+        setStatus("Webhook URL is required.", true);
+        return;
+      }
+
+      window.localStorage.setItem("msLoginWebhookUrl", webhookUrl);
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      setStatus("Uploading file to n8n and starting Microsoft login...", false);
+      resultBox.textContent = "{}";
+
+      try {
+        const response = await fetch(webhookUrl, {
+          method: "POST",
+          body: formData,
+        });
+
+        const text = await response.text();
+        resultBox.textContent = text;
+
+        if (!response.ok) {
+          setStatus(`Request failed with HTTP ${response.status}.`, true);
+          return;
+        }
+
+        const json = JSON.parse(text);
+        if (json.loginSuccess) {
+          setStatus(`Login succeeded. Uploaded rows: ${json.uploadedRowCount}.`, false, true);
+        } else {
+          setStatus(json.message || "Login did not complete successfully.", true);
+        }
+      } catch (error) {
+        setStatus(`Upload failed: ${error.message}`, true);
+      }
+    });
+
+    function setStatus(message, isError, isOk = false) {
+      statusBox.textContent = message;
+      statusBox.className = `status${isError ? " error" : isOk ? " ok" : ""}`;
+    }
+
+    const savedUrl = window.localStorage.getItem("msLoginWebhookUrl");
+    if (savedUrl) {
+      webhookInput.value = savedUrl;
+    }
+  </script>
+</body>
+</html>

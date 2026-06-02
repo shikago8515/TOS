@@ -10,49 +10,123 @@
     <main class="shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Playwright Local Runner</p>
+          <p class="eyebrow">Automation Lab</p>
           <h1>网页自动化控制台</h1>
+          <p class="topbar-copy">把 `microsoft-login-n8n-demo` 的上传、回包查看和本地可见浏览器执行能力，统一收进这里。</p>
         </div>
         <span id="status-pill" class="pill">待运行</span>
       </header>
 
       <section class="workspace">
-        <form id="run-form" class="panel form">
-          <label class="field field-wide">
-            <span>自动化流程</span>
-            <select id="workflowId" name="workflowId"></select>
-          </label>
+        <aside class="stack">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>本地直跑</h2>
+                <p>直接在当前电脑拉起可见浏览器执行内置工作流。</p>
+              </div>
+            </div>
 
-          <label class="field">
-            <span>Excel 文件</span>
-            <input id="excelFile" name="excelFile" type="file" accept=".xlsx,.xls,.xlsm,.csv" required />
-          </label>
+            <form id="local-run-form" class="form-grid">
+              <label class="field">
+                <span>自动化流程</span>
+                <select id="workflowId" name="workflowId"></select>
+              </label>
 
-          <label class="field">
-            <span>目标网址</span>
-            <input id="targetUrl" name="targetUrl" type="url" placeholder="使用流程默认网址" />
-          </label>
+              <label class="field">
+                <span>Excel 文件</span>
+                <input id="excelFile" name="excelFile" type="file" accept=".xlsx,.xls,.xlsm,.csv" required />
+              </label>
 
-          <label class="toggle">
-            <input id="dryRun" name="dryRun" type="checkbox" checked />
-            <span>仅预览，不操作网页</span>
-          </label>
+              <label class="field">
+                <span>目标网址</span>
+                <input id="targetUrl" name="targetUrl" type="url" placeholder="为空时使用流程默认地址" />
+              </label>
 
-          <button id="submitButton" type="submit">开始运行</button>
-        </form>
+              <label class="toggle">
+                <input id="dryRun" name="dryRun" type="checkbox" checked />
+                <span>仅预览解析结果，不操作网页</span>
+              </label>
 
-        <section class="panel results">
-          <div class="results-head">
-            <h2>运行结果</h2>
-            <button id="clearButton" class="secondary" type="button">清空</button>
-          </div>
-          <div id="business-result" class="business-result">
-            <p class="empty-state">选择流程和 Excel 后开始。</p>
-          </div>
-          <details class="technical-details">
-            <summary>技术详情</summary>
+              <div class="actions-row">
+                <button id="localRunButton" type="submit">开始本地执行</button>
+                <button id="clearButton" class="secondary" type="button">清空结果</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>上传到 n8n</h2>
+                <p>把 demo 里的 Excel 上传入口直接并进控制台，并保留原始回包查看。</p>
+              </div>
+            </div>
+
+            <form id="n8n-upload-form" class="form-grid">
+              <label class="field">
+                <span>Webhook URL</span>
+                <input id="webhookUrl" name="webhookUrl" type="url" placeholder="http://server:5678/webhook/..." />
+              </label>
+
+              <label class="field">
+                <span>Excel 文件</span>
+                <input id="webhookExcelFile" name="file" type="file" accept=".xlsx,.xls,.xlsm,.csv" required />
+              </label>
+
+              <div class="actions-row">
+                <button id="webhookRunButton" type="submit">上传到 n8n</button>
+                <button id="refreshRuntimeButton" class="secondary" type="button">刷新联通状态</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>运行环境</h2>
+                <p>查看默认远端地址、本地覆盖配置和最近一次运行状态。</p>
+              </div>
+            </div>
+            <div id="runtime-summary" class="runtime-summary">
+              <p class="empty-state">正在读取运行环境信息...</p>
+            </div>
+          </section>
+        </aside>
+
+        <section class="stack">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>本地运行结果</h2>
+                <p>失败清单会自动导出为 JSON / CSV / XLSX。</p>
+              </div>
+            </div>
+            <div id="business-result" class="business-result">
+              <p class="empty-state">选择流程并上传 Excel 后开始执行。</p>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>n8n 原始回包</h2>
+                <p>保留 demo 里的原始 JSON 查看能力，方便联调 webhook。</p>
+              </div>
+            </div>
+            <div id="webhook-status" class="status-block">等待上传到 n8n。</div>
+            <pre id="webhook-raw-response" class="summary">{}</pre>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>技术日志</h2>
+                <p>展示解析信息、浏览器执行日志和截图路径。</p>
+              </div>
+            </div>
             <pre id="summary" class="summary">暂无技术日志。</pre>
-          </details>
+          </section>
         </section>
       </section>
     </main>

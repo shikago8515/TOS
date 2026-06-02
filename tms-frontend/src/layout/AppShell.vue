@@ -1,133 +1,115 @@
 <template>
-  <div class="app-shell" :class="{ 'app-shell--sidebar-hidden': isSidebarHidden }">
-    <aside class="app-sidebar" aria-label="TOS 主导航" :aria-hidden="isSidebarHidden">
-      <div class="sidebar-header">
-        <RouterLink class="brand" to="/">
-          <span class="brand-mark">T</span>
-          <span class="brand-name">TOS</span>
-        </RouterLink>
-
-        <button
-          class="sidebar-hide-button"
-          type="button"
-          :aria-label="sidebarToggleLabel"
-          :title="sidebarToggleLabel"
-          @click="hideSidebar"
-        >
-          <span aria-hidden="true">‹</span>
-        </button>
+  <div class="app-layout" :class="{ 'sidebar-hidden': isSidebarHidden }">
+    <aside class="side-nav" :class="{ 'is-open': !isSidebarHidden }">
+      <div class="brand">
+        <div class="brand-mark">
+          <AppIcon name="command" class="brand-logo" />
+        </div>
+        <div class="brand-text">
+          <h1>TOS</h1>
+          <p>Workstation</p>
+        </div>
       </div>
 
-      <nav class="nav-groups">
-        <section
-          v-for="group in sidebarGroups"
-          :key="group.id"
-          class="nav-group"
-          :class="{ 'nav-group--single': group.items.length === 1 }"
-        >
-          <button
-            v-if="group.isCollapsible"
-            class="nav-group-button"
-            type="button"
-            :aria-expanded="isNavGroupExpanded(group.id)"
-            @click="toggleNavGroup(group.id)"
-          >
-            <span>{{ group.displayLabel }}</span>
-            <span class="nav-chevron" aria-hidden="true">
-              {{ isNavGroupExpanded(group.id) ? '⌄' : '›' }}
-            </span>
-          </button>
+      <div class="nav-scroll">
+        <nav class="menu">
+          <template v-for="group in sidebarGroups" :key="group.id">
+            <div v-if="group.showLabel" class="menu-group-title">
+              {{ group.displayLabel }}
+            </div>
 
-          <p v-else-if="group.showLabel" class="nav-group-title">
-            {{ group.displayLabel }}
-          </p>
-
-          <div v-if="!group.isCollapsible || isNavGroupExpanded(group.id)" class="nav-group-items">
             <template v-for="item in group.items" :key="item.id">
               <div
                 v-if="item.kind === 'parent'"
-                class="nav-parent"
-                :class="{ 'nav-parent--active': item.active }"
+                class="menu-parent"
+                :class="{ 'is-active': item.active }"
               >
-                <button
-                  class="nav-parent-button"
-                  :class="{ 'nav-parent-button--active': item.active }"
-                  type="button"
-                  :aria-expanded="isNavParentExpanded(item.id)"
+                <div
+                  class="menu-item"
+                  :class="{ 'is-active': item.active }"
                   @click="toggleNavParent(item.id)"
                 >
-                  <span class="nav-dot" aria-hidden="true" />
-                  <span class="nav-label">{{ item.label }}</span>
-                  <span class="nav-chevron" aria-hidden="true">
-                    {{ isNavParentExpanded(item.id) ? '⌄' : '›' }}
-                  </span>
-                </button>
-
-                <div v-if="isNavParentExpanded(item.id)" class="nav-children">
-                  <RouterLink
-                    v-for="module in item.modules"
-                    :key="module.id"
-                    class="nav-link nav-link--child"
-                    :to="module.path"
-                    :class="{ 'nav-link--active': isModuleActive(module) }"
-                  >
-                    <span class="nav-dot nav-dot--child" aria-hidden="true" />
-                    <span class="nav-label">{{ getModuleNavLabel(module) }}</span>
-                  </RouterLink>
+                  <AppIcon :name="getGroupIcon(group.id)" class="menu-icon" />
+                  <span class="menu-label">{{ item.label }}</span>
+                  <AppIcon :name="isNavParentExpanded(item.id) ? 'chevron-down' : 'chevron-right'" class="menu-arrow" />
                 </div>
+
+                <transition name="expand-fade">
+                  <div v-show="isNavParentExpanded(item.id)" class="menu-children">
+                    <RouterLink
+                      v-for="module in item.modules"
+                      :key="module.id"
+                      class="menu-item child-item"
+                      :to="module.path"
+                      :class="{ 'is-active': isModuleActive(module) }"
+                    >
+                      <span class="menu-label">{{ getModuleNavLabel(module) }}</span>
+                    </RouterLink>
+                  </div>
+                </transition>
               </div>
 
               <RouterLink
                 v-else
-                class="nav-link"
+                class="menu-item"
                 :to="item.module.path"
-                :class="{ 'nav-link--active': isModuleActive(item.module) }"
+                :class="{ 'is-active': isModuleActive(item.module) }"
               >
-                <span class="nav-dot" aria-hidden="true" />
-                <span class="nav-label">{{ getModuleNavLabel(item.module) }}</span>
+                <AppIcon :name="getGroupIcon(group.id)" class="menu-icon" />
+                <span class="menu-label">{{ getModuleNavLabel(item.module) }}</span>
               </RouterLink>
             </template>
-          </div>
-        </section>
-      </nav>
-
+          </template>
+        </nav>
+      </div>
     </aside>
 
-    <div class="app-main">
+    <div
+      class="sidebar-mask"
+      v-if="isMobile && !isSidebarHidden"
+      @click="isSidebarHidden = true"
+    ></div>
+
+    <section class="main-panel">
       <header class="topbar">
-        <div class="topbar-title">
-          <button
-            class="sidebar-toggle-button"
-            type="button"
-            :aria-label="sidebarToggleLabel"
-            :title="sidebarToggleLabel"
-            @click="toggleSidebar"
-          >
-            <span aria-hidden="true">☰</span>
+        <div class="topbar-left">
+          <button class="menu-btn" type="button" @click="toggleSidebar" :title="sidebarToggleLabel">
+            <AppIcon name="menu" />
           </button>
 
-          <div>
-            <h1>{{ pageTitle }}</h1>
+          <div class="breadcrumb">
+            <span class="breadcrumb-item">首页</span>
+            <span class="breadcrumb-separator">></span>
+            <span class="breadcrumb-item current">{{ pageTitle }}</span>
           </div>
         </div>
 
-        <div class="topbar-actions">
-          <span class="current-date">{{ displayDate }}</span>
-          <button class="diagnostics-button" type="button" @click="exportDiagnostics">
-            {{ t('app.diagnostics.export') }}
+        <div class="topbar-right">
+          <div class="mode-tag">
+            <AppIcon name="calendar" />
+            <span class="tag-text">{{ displayDate }}</span>
+          </div>
+
+          <button class="action-btn" type="button" @click="exportDiagnostics">
+            <AppIcon name="activity" />
+            <span>{{ t('app.diagnostics.export') }}</span>
           </button>
         </div>
       </header>
 
-      <main class="content-frame">
-        <RouterView />
+      <main class="content-shell">
+        <RouterView v-slot="{ Component, route }">
+          <transition name="page-slide" mode="out-in">
+            <component :is="Component" :key="route.fullPath" />
+          </transition>
+        </RouterView>
       </main>
-    </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 
 import {
@@ -140,6 +122,7 @@ import {
   type TosNavParentDefinition,
 } from '../domain/moduleCatalog'
 import { useAppLanguage } from '../shared/i18n/appLanguage'
+import AppIcon from '../shared/ui/AppIcon.vue'
 
 interface SidebarModuleItem {
   id: string
@@ -168,6 +151,7 @@ type SidebarItem = SidebarModuleItem | SidebarParentItem
 
 const route = useRoute()
 const isSidebarHidden = ref(false)
+const isMobile = ref(false)
 const expandedNavGroups = ref<Set<TosModuleGroup>>(new Set(['excel', 'automation', 'collector']))
 const expandedNavParents = ref<Set<string>>(new Set(['jane-table-making']))
 const { isEnglish, t } = useAppLanguage()
@@ -262,24 +246,8 @@ function isModuleActive(module: TosModuleDefinition): boolean {
   return route.name === module.routeName
 }
 
-function isNavGroupExpanded(groupId: TosModuleGroup): boolean {
-  return expandedNavGroups.value.has(groupId)
-}
-
 function isNavParentExpanded(parentId: string): boolean {
   return expandedNavParents.value.has(parentId)
-}
-
-function toggleNavGroup(groupId: TosModuleGroup): void {
-  const nextExpanded = new Set(expandedNavGroups.value)
-
-  if (nextExpanded.has(groupId)) {
-    nextExpanded.delete(groupId)
-  } else {
-    nextExpanded.add(groupId)
-  }
-
-  expandedNavGroups.value = nextExpanded
 }
 
 function toggleNavParent(parentId: string): void {
@@ -298,10 +266,6 @@ function toggleSidebar(): void {
   isSidebarHidden.value = !isSidebarHidden.value
 }
 
-function hideSidebar(): void {
-  isSidebarHidden.value = true
-}
-
 function getGroupLabel(group: TosNavGroupDefinition): string {
   return isEnglish.value ? group.labelEn : group.label
 }
@@ -314,9 +278,37 @@ function getModuleNavLabel(module: TosModuleDefinition): string {
   return isEnglish.value ? module.navLabelEn : module.navLabel
 }
 
+function getGroupIcon(groupId: TosModuleGroup): string {
+  const map: Record<TosModuleGroup, string> = {
+    home: 'radar',
+    excel: 'database',
+    automation: 'workflow',
+    testing: 'shield-check',
+    collector: 'globe-search',
+    settings: 'monitor-code'
+  }
+  return map[groupId] || 'layers'
+}
+
 async function exportDiagnostics(): Promise<void> {
   await window.electronAPI?.exportDiagnosticsPackage()
 }
+
+const handleResize = () => {
+  isMobile.value = window.innerWidth <= 992
+  if (isMobile.value) {
+    isSidebarHidden.value = true
+  }
+}
+
+onMounted(() => {
+  handleResize()
+  window.addEventListener('resize', handleResize)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
+})
 
 watch(
   () => route.name,
@@ -335,314 +327,347 @@ watch(
 
     expandedNavParents.value = new Set([...expandedNavParents.value, ...activeParents])
     expandedNavGroups.value = new Set([...expandedNavGroups.value, ...activeGroups])
+
+    if (isMobile.value) {
+      isSidebarHidden.value = true
+    }
   },
   { immediate: true },
 )
-
 </script>
 
 <style scoped>
-.app-shell {
-  display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
+.app-layout {
+  --sidebar-width: 268px;
+  --topbar-height: 68px;
   height: 100vh;
+  width: 100%;
   overflow: hidden;
-  background: #edf3f8;
-  transition: grid-template-columns 180ms ease;
+  position: relative;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(82, 196, 196, 0.12), transparent 38%),
+    radial-gradient(circle at 88% 12%, rgba(64, 158, 255, 0.1), transparent 35%),
+    #f3f8fb;
 }
 
-.app-shell--sidebar-hidden {
-  grid-template-columns: 0 minmax(0, 1fr);
-}
-
-.app-sidebar {
+.side-nav {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--sidebar-width);
+  background: #ffffff;
+  color: #303133;
   display: flex;
   flex-direction: column;
-  min-width: 0;
-  overflow: hidden;
-  padding: 22px 18px;
-  color: #dbe7f3;
-  background: #17283a;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  transition:
-    padding 180ms ease,
-    border-color 180ms ease,
-    opacity 180ms ease;
-}
-
-.app-shell--sidebar-hidden .app-sidebar {
-  padding-right: 0;
-  padding-left: 0;
-  pointer-events: none;
-  opacity: 0;
-  border-right-color: transparent;
-}
-
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 212px;
-  margin-bottom: 28px;
+  transform: translateX(0);
+  transition: transform 0.34s ease;
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.04);
+  border-right: 1px solid #f0f2f5;
+  z-index: 20;
+  height: 100%;
 }
 
 .brand {
+  height: 78px;
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 0;
-  min-height: 48px;
+  padding: 0 18px;
+  border-bottom: 1px solid #f0f2f5;
+  flex-shrink: 0;
 }
 
 .brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 36px;
   height: 36px;
-  color: #153352;
-  font-weight: 800;
-  background: #f5fbff;
   border-radius: 8px;
-}
-
-.brand-name {
-  display: block;
-  color: #f4f9ff;
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: 0;
-}
-
-.sidebar-hide-button,
-.sidebar-toggle-button {
-  display: inline-flex;
+  background: linear-gradient(135deg, #0d9488, #0f766e);
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 auto;
-  padding: 0;
-  font-size: 20px;
-  line-height: 1;
-  border-radius: 7px;
-  cursor: pointer;
+  color: #fff;
+  font-size: 18px;
 }
 
-.sidebar-hide-button {
-  color: #c9d6e3;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+.brand-text {
+  display: flex;
+  flex-direction: column;
 }
 
-.sidebar-hide-button:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.14);
+.brand-text h1 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: 0.3px;
+  color: #303133;
+  font-weight: 600;
 }
 
-.nav-groups {
-  display: grid;
-  gap: 18px;
-  min-width: 212px;
+.brand-text p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #909399;
 }
 
-.nav-group {
-  display: grid;
-  gap: 6px;
+.nav-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
-.nav-group-title,
-.nav-group-button {
-  min-height: 30px;
-  color: #7f94a8;
+.menu {
+  padding: 8px 10px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-group-title {
+  color: #909399;
   font-size: 12px;
-  font-weight: 800;
+  padding: 12px 14px 6px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
 }
 
-.nav-group-title {
-  margin: 0 0 2px;
-}
-
-.nav-group-button {
+.menu-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  padding: 3px 0;
-  text-align: left;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-}
-
-.nav-group-button:hover {
-  color: #c9d6e3;
-}
-
-.nav-group-items {
-  display: grid;
-  gap: 6px;
-}
-
-.nav-link,
-.nav-parent-button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-width: 0;
-  min-height: 38px;
-  padding: 8px 10px;
-  color: #c9d6e3;
-  font-size: 14px;
-  text-align: left;
-  background: transparent;
-  border: 0;
+  margin: 4px 0;
+  padding: 0 14px;
   border-radius: 8px;
+  height: 42px;
+  color: #606266;
+  transition: all 0.25s ease;
+  font-size: 13px;
+  text-decoration: none;
   cursor: pointer;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
 }
 
-.nav-link:hover,
-.nav-link--active,
-.nav-parent-button:hover,
-.nav-parent-button--active {
-  color: #ffffff;
-  background: rgba(76, 132, 194, 0.28);
+.menu-icon {
+  font-size: 17px;
+  color: #909399;
+  transition: color 0.2s;
+  margin-right: 10px;
+  flex-shrink: 0;
 }
 
-.nav-label {
-  min-width: 0;
+.menu-label {
+  flex: 1;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.nav-chevron {
-  margin-left: auto;
-  color: #93a6b8;
-  font-size: 15px;
+.menu-arrow {
+  font-size: 14px;
+  color: #909399;
+  transition: transform 0.3s ease;
 }
 
-.nav-children {
-  display: grid;
-  gap: 4px;
-  margin-top: 4px;
-  padding-left: 16px;
+.menu-item:hover {
+  background: #f5f7fa;
+  color: #303133;
 }
 
-.nav-link--child {
-  min-height: 34px;
-  padding-left: 12px;
+.menu-item.is-active {
+  color: #0d9488;
+  background: #f0fdfa;
+  font-weight: 500;
+}
+
+.menu-item.is-active .menu-icon {
+  color: #0d9488;
+}
+
+.menu-children {
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.child-item {
+  height: 38px;
   font-size: 13px;
 }
 
-.nav-dot {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
-  background: currentColor;
-  border-radius: 999px;
-  opacity: 0.72;
+.sidebar-hidden .side-nav {
+  transform: translateX(-105%);
 }
 
-.nav-dot--child {
-  width: 6px;
-  height: 6px;
+.sidebar-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 38, 58, 0.36);
+  backdrop-filter: blur(1px);
+  z-index: 15;
+  animation: mask-in 0.22s ease;
 }
 
-.app-main {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-width: 0;
-  overflow: hidden;
+@keyframes mask-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.main-panel {
+  margin-left: var(--sidebar-width);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  transition: margin-left 0.34s ease;
+}
+
+.sidebar-hidden .main-panel {
+  margin-left: 0;
 }
 
 .topbar {
+  height: var(--topbar-height);
+  margin: 14px 16px 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(183, 217, 230, 0.6);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  min-height: 86px;
-  padding: 18px 30px;
-  background: rgba(255, 255, 255, 0.92);
-  border-bottom: 1px solid #dbe5ee;
+  padding: 0 14px 0 10px;
+  flex-shrink: 0;
+  box-shadow: 0 8px 24px rgba(40, 92, 124, 0.08);
+  position: relative;
+  z-index: 10;
 }
 
-.topbar-title {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-}
-
-.sidebar-toggle-button {
-  color: #185782;
-  background: #eff8ff;
-  border: 1px solid #b9d8ee;
-}
-
-.sidebar-toggle-button:hover {
-  background: #e1f2ff;
-}
-
-.topbar h1 {
-  margin: 0;
-  color: #172033;
-  font-size: 24px;
-  font-weight: 760;
-}
-
-.topbar-actions {
+.topbar-left {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
-.current-date {
-  color: #546579;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.diagnostics-button {
-  min-height: 34px;
-  padding: 0 14px;
-  color: #185782;
-  font-weight: 700;
-  background: #eff8ff;
-  border: 1px solid #b9d8ee;
-  border-radius: 7px;
+.menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(74, 164, 230, 0.16);
+  color: #1e88d0;
+  transition: all 0.24s ease;
   cursor: pointer;
+  font-size: 16px;
 }
 
-.diagnostics-button:hover {
-  background: #e1f2ff;
+.menu-btn:hover {
+  transform: translateY(-1px);
+  background: rgba(74, 164, 230, 0.24);
 }
 
-.content-frame {
-  min-width: 0;
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: #606266;
+}
+
+.breadcrumb-separator {
+  margin: 0 8px;
+  color: #c0c4cc;
+  font-size: 12px;
+}
+
+.breadcrumb-item.current {
+  color: #24658d;
+  font-weight: 600;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mode-tag {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  padding: 0 12px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid #a8d9ef;
+  background: #edf8ff;
+  color: #2a6f95;
+  font-size: 13px;
+}
+
+.mode-tag .tag-text {
+  margin-left: 6px;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(183, 217, 230, 0.6);
+  background: #f8fcff;
+  color: #204c68;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.26s ease;
+}
+
+.action-btn:hover {
+  border-color: #7fc2ea;
+  box-shadow: 0 4px 12px rgba(35, 132, 189, 0.12);
+  color: #1e88d0;
+}
+
+.content-shell {
+  flex: 1;
   min-height: 0;
-  overflow: auto;
-  padding: 28px 30px 34px;
+  margin: 12px 16px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(183, 217, 230, 0.58);
+  box-shadow: 0 12px 28px rgba(37, 102, 139, 0.08);
+  overflow-y: auto;
+  padding: 20px;
 }
 
-@media (max-width: 900px) {
-  .app-shell,
-  .app-shell--sidebar-hidden {
-    grid-template-columns: 1fr;
-  }
+/* Animations */
+.expand-fade-enter-active,
+.expand-fade-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.expand-fade-enter-from,
+.expand-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
 
-  .app-sidebar {
-    display: none;
-  }
+.page-slide-enter-active,
+.page-slide-leave-active {
+  transition: all 0.3s ease;
+}
+.page-slide-enter-from {
+  opacity: 0;
+  transform: translateX(15px);
+}
+.page-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-15px);
+}
 
-  .topbar {
-    align-items: flex-start;
-    flex-direction: column;
+@media (max-width: 992px) {
+  .main-panel {
+    margin-left: 0;
   }
 }
 </style>

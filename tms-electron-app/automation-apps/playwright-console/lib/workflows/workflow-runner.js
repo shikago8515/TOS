@@ -1,10 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { chromium } = require('playwright');
 const { runtimeDataRoot, createLogger } = require('../core');
 const { loadConfig } = require('../config');
-const { parseWorkbook } = require('../excel');
-const { createWorkflow } = require('./workflow-registry');
 
 const SUPPORTED_RUN_MODES = new Set(['debug-ui', 'capture']);
 const KNOWN_RUN_MODES = new Set(['debug-ui', 'capture', 'hybrid', 'fast-api']);
@@ -34,6 +31,7 @@ function assertSupportedRunMode(mode) {
 }
 
 async function launchPage(browserConfig, targetUrl, logger) {
+  const { chromium } = require('playwright');
   const userDataDir = path.resolve(runtimeDataRoot, browserConfig.userDataDir);
   await fs.mkdir(userDataDir, { recursive: true });
 
@@ -72,6 +70,9 @@ async function runAutomation(options) {
   if (normalizedRunMode === 'capture') {
     throw new Error('Capture mode is not wired yet. Complete network capture integration before using run mode "capture".');
   }
+
+  const { parseWorkbook } = require('../excel');
+  const { createWorkflow } = require('./workflow-registry');
   
   const config = loadConfig();
   const workflowConfig = config.workflows[workflowId];

@@ -1,685 +1,578 @@
 <template>
-  <section class="web-automation-page">
-    <div class="automation-panel">
-      <header class="panel-header">
-        <div>
-          <p class="panel-kicker">自动化试验区</p>
-          <h2 class="panel-title">
-            网页自动化
-            <span class="stage-badge">测试阶段</span>
-          </h2>
-          <p class="panel-description">
-            这个模块用于验证 Playwright 流程控制台，当前还需要业务部按真实场景试用后反馈可落地流程。
-          </p>
+  <section class="wa-page">
+    <!-- Compact Hero -->
+    <div class="wa-hero">
+      <div class="wa-hero__left">
+        <div class="wa-hero__icon">
+          <AppIcon name="bot" />
+        </div>
+        <div class="wa-hero__text">
+          <h2>{{ text('网页自动化') }}</h2>
+          <p>{{ text('选择自动化入口，上传 Excel 并启动本地浏览器执行') }}</p>
+        </div>
+      </div>
+      <div class="wa-hero__right">
+        <div class="wa-search">
+          <AppIcon name="file-search" />
+          <input
+            v-model.trim="searchQuery"
+            type="text"
+            :placeholder="text('搜索入口名称或标签')"
+          />
+        </div>
+        <span class="wa-hero__count">{{ filteredEntries.length }} / {{ entries.length }}</span>
+      </div>
+    </div>
+
+    <!-- Compact Stats -->
+    <div class="wa-stats">
+      <div class="wa-stat-chip">
+        <span class="wa-stat-chip__dot wa-stat-chip__dot--green" />
+        <span class="wa-stat-chip__label">{{ text('可用') }}</span>
+        <strong>{{ onlineCount }}</strong>
+      </div>
+      <div class="wa-stat-chip">
+        <span class="wa-stat-chip__dot wa-stat-chip__dot--amber" />
+        <span class="wa-stat-chip__label">{{ text('即将上线') }}</span>
+        <strong>{{ soonCount }}</strong>
+      </div>
+      <div class="wa-stat-chip">
+        <span class="wa-stat-chip__dot wa-stat-chip__dot--slate" />
+        <span class="wa-stat-chip__label">{{ text('暂不可用') }}</span>
+        <strong>{{ offlineCount }}</strong>
+      </div>
+    </div>
+
+    <!-- Entry Card Grid -->
+    <div v-if="filteredEntries.length" class="wa-grid">
+      <article
+        v-for="(entry, i) in filteredEntries"
+        :key="entry.id"
+        class="wa-card"
+        :class="{ 'wa-card--soon': entry.status === 'soon', 'wa-card--offline': entry.status === 'offline' }"
+        :style="{ animationDelay: `${i * 50}ms` }"
+      >
+        <div class="wa-card__head">
+          <div class="wa-card__icon">
+            <AppIcon :name="entry.status === 'online' ? 'window' : entry.status === 'soon' ? 'clock' : 'package'" />
+          </div>
+          <div class="wa-card__info">
+            <strong>{{ entry.title }}</strong>
+            <span>{{ entry.subtitle }}</span>
+          </div>
+          <span class="wa-card__status" :class="`wa-tag--${getEntryStatusTone(entry.status)}`">
+            {{ getEntryStatusLabel(entry.status) }}
+          </span>
         </div>
 
-        <div class="header-actions">
-          <button class="toolbar-button" type="button" :disabled="loading" @click="refreshApps">
-            {{ loading ? '刷新中...' : '刷新' }}
+        <p class="wa-card__desc">{{ entry.description }}</p>
+
+        <div class="wa-card__tags">
+          <span v-for="tag in entry.tags" :key="tag" class="wa-chip">{{ tag }}</span>
+        </div>
+
+        <div class="wa-card__actions">
+          <button
+            v-if="entry.status === 'online'"
+            class="wa-btn wa-btn--primary"
+            type="button"
+            @click="openEntry(entry.routePath)"
+          >
+            <AppIcon name="play-circle" />
+            {{ text('进入场景') }}
           </button>
           <button
-            class="toolbar-button toolbar-button--primary"
+            v-else-if="entry.status === 'soon'"
+            class="wa-btn"
             type="button"
-            :disabled="!activeApp || !activeApp.available || launching"
-            @click="startActiveApp"
+            disabled
           >
-            {{ launching ? '启动中...' : '启动测试控制台' }}
+            <AppIcon name="clock" />
+            {{ text('即将上线') }}
           </button>
-        </div>
-      </header>
-
-      <div class="stage-alert">
-        {{ webAutomationStageMessage }}
-      </div>
-
-      <div v-if="message" class="status-alert" :class="`status-alert--${messageTone}`">
-        {{ message }}
-      </div>
-
-      <div v-if="apps.length" class="automation-grid">
-        <aside class="app-list" aria-label="网页自动化应用">
           <button
-            v-for="app in apps"
-            :key="app.id"
-            class="app-option"
-            :class="{ 'app-option--active': app.id === selectedAppId }"
+            v-else
+            class="wa-btn"
             type="button"
-            @click="selectApp(app.id)"
+            disabled
           >
-            <span class="option-icon" aria-hidden="true">A</span>
-            <span class="option-copy">
-              <strong>{{ app.name }}</strong>
-              <small>{{ app.description }}</small>
-            </span>
-            <span class="status-tag" :class="`status-tag--${getAutomationAppStatusTone(app)}`">
-              {{ getAutomationAppStatusLabel(app) }}
-            </span>
+            <AppIcon name="package" />
+            {{ text('暂不可用') }}
           </button>
-        </aside>
-
-        <section class="workspace">
-          <div v-if="activeApp" class="workspace-toolbar">
-            <div class="workspace-title">
-              <strong>{{ activeApp.name }}</strong>
-              <span>{{ activeApp.url }}</span>
-            </div>
-            <div class="workspace-actions">
-              <button
-                class="action-button"
-                type="button"
-                :disabled="!activeApp.running"
-                @click="openActiveAppExternal"
-              >
-                外部打开
-              </button>
-              <button
-                class="action-button"
-                type="button"
-                :disabled="!activeApp.running"
-                @click="stopActiveApp"
-              >
-                停止服务
-              </button>
-            </div>
-          </div>
-
-          <dl v-if="activeApp" class="app-meta">
-            <div v-for="item in buildAutomationAppMeta(activeApp)" :key="item.label" class="meta-item">
-              <dt>{{ item.label }}</dt>
-              <dd>{{ item.value }}</dd>
-            </div>
-          </dl>
-
-          <div v-if="activeApp?.running && consoleUrl" class="console-frame-wrap">
-            <iframe class="console-frame" :src="consoleUrl" title="网页自动化控制台" />
-          </div>
-
-          <div v-else class="empty-console">
-            <strong>控制台未启动</strong>
-            <span>启动后会在这里嵌入网页自动化控制台。</span>
-          </div>
-        </section>
-      </div>
-
-      <div v-else-if="!loading" class="empty-state">
-        未发现已注册的网页自动化应用
-      </div>
-
-      <section class="integration-note" aria-label="试用说明">
-        <div v-for="note in webAutomationNotes" :key="note" class="note-item">
-          <span aria-hidden="true">i</span>
-          <p>{{ note }}</p>
+          <button
+            v-if="entry.status === 'online'"
+            class="wa-btn"
+            type="button"
+            @click="openEntry(entry.routePath)"
+          >
+            <AppIcon name="arrow-right" />
+            {{ text('详情') }}
+          </button>
         </div>
-      </section>
+      </article>
+    </div>
+
+    <!-- Empty -->
+    <div v-else class="wa-empty">
+      <div class="wa-empty__icon">
+        <AppIcon name="bot" />
+      </div>
+      <strong>{{ text('没有匹配的自动化入口') }}</strong>
+      <span>{{ text('请调整搜索条件，或联系管理员添加新的自动化场景。') }}</span>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
-import type { AutomationAppInfo } from '../../types/electronApi'
+import AppIcon from '../../shared/ui/AppIcon.vue'
 import {
-  buildAutomationAppMeta,
-  getAutomationAppStatusLabel,
-  getAutomationAppStatusTone,
-  selectInitialAutomationApp,
-  webAutomationNotes,
-  webAutomationStageMessage,
-  type WebAutomationNoticeTone,
+  webAutomationEntries,
+  getEntryStatusLabel,
+  getEntryStatusTone,
 } from './webAutomationModel'
-import {
-  fetchAutomationApps,
-  launchAutomationConsole,
-  openAutomationConsoleExternal,
-  recordWebAutomationEvent,
-  stopAutomationConsole,
-} from './webAutomationApi'
+import { useAppLanguage } from '../../shared/i18n/appLanguage'
 
-const apps = ref<AutomationAppInfo[]>([])
-const selectedAppId = ref('')
-const consoleUrl = ref('')
-const loading = ref(false)
-const launching = ref(false)
-const message = ref('')
-const messageTone = ref<WebAutomationNoticeTone>('info')
+const router = useRouter()
+const { text } = useAppLanguage()
 
-const activeApp = computed(() =>
-  apps.value.find((app) => app.id === selectedAppId.value) ?? null,
-)
+const entries = webAutomationEntries
+const searchQuery = ref('')
 
-onMounted(() => {
-  void refreshApps()
+const filteredEntries = computed(() => {
+  const kw = searchQuery.value.toLowerCase().trim()
+  if (!kw) return [...entries]
+  return entries.filter(
+    (e) =>
+      e.title.toLowerCase().includes(kw) ||
+      e.subtitle.toLowerCase().includes(kw) ||
+      e.description.toLowerCase().includes(kw) ||
+      e.tags.some((t) => t.toLowerCase().includes(kw)),
+  )
 })
 
-async function refreshApps(): Promise<void> {
-  loading.value = true
-  message.value = ''
+const onlineCount = computed(() => entries.filter((e) => e.status === 'online').length)
+const soonCount = computed(() => entries.filter((e) => e.status === 'soon').length)
+const offlineCount = computed(() => entries.filter((e) => e.status === 'offline').length)
 
-  try {
-    apps.value = await fetchAutomationApps()
-
-    if (!selectedAppId.value || !apps.value.some((app) => app.id === selectedAppId.value)) {
-      selectedAppId.value = selectInitialAutomationApp(apps.value)
-    }
-
-    const current = activeApp.value
-    consoleUrl.value = current?.running ? current.url : ''
-
-    if (!apps.value.length) {
-      messageTone.value = 'warning'
-      message.value = '未读取到网页自动化应用注册表'
-    }
-  } catch (error) {
-    messageTone.value = 'error'
-    message.value = readErrorMessage(error, '读取网页自动化应用失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-function selectApp(appId: string): void {
-  selectedAppId.value = appId
-  const app = activeApp.value
-  consoleUrl.value = app?.running ? app.url : ''
-}
-
-async function startActiveApp(): Promise<void> {
-  const app = activeApp.value
-
-  if (!app || launching.value) {
-    return
-  }
-
-  launching.value = true
-  message.value = ''
-
-  try {
-    const result = await launchAutomationConsole(app.id)
-
-    if (result.success) {
-      messageTone.value = 'success'
-      message.value = result.alreadyRunning ? '网页自动化控制台已在运行' : '网页自动化控制台已启动'
-      consoleUrl.value = result.url || app.url
-      await refreshApps()
-      consoleUrl.value = result.url || app.url
-    } else {
-      messageTone.value = 'error'
-      message.value = result.error || '启动网页自动化控制台失败'
-    }
-  } catch (error) {
-    await recordWebAutomationEvent('launch-exception', {
-      appId: app.id,
-      error: readErrorMessage(error, '启动网页自动化控制台失败'),
-    })
-    messageTone.value = 'error'
-    message.value = readErrorMessage(error, '启动网页自动化控制台失败')
-  } finally {
-    launching.value = false
-  }
-}
-
-async function stopActiveApp(): Promise<void> {
-  const app = activeApp.value
-
-  if (!app?.running) {
-    return
-  }
-
-  try {
-    const result = await stopAutomationConsole(app.id)
-
-    if (result.success) {
-      messageTone.value = 'info'
-      message.value = '网页自动化服务已停止'
-      consoleUrl.value = ''
-      await refreshApps()
-    } else {
-      messageTone.value = 'error'
-      message.value = result.error || '停止网页自动化服务失败'
-    }
-  } catch (error) {
-    messageTone.value = 'error'
-    message.value = readErrorMessage(error, '停止网页自动化服务失败')
-  }
-}
-
-async function openActiveAppExternal(): Promise<void> {
-  const app = activeApp.value
-
-  if (!app?.running) {
-    return
-  }
-
-  try {
-    const result = await openAutomationConsoleExternal(app.url)
-
-    if (!result.success) {
-      messageTone.value = 'error'
-      message.value = result.error || '打开网页自动化控制台失败'
-    }
-  } catch (error) {
-    messageTone.value = 'error'
-    message.value = readErrorMessage(error, '打开网页自动化控制台失败')
-  }
-}
-
-function readErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-
-  return fallback
+function openEntry(path: string): void {
+  void router.push(path)
 }
 </script>
 
-<style scoped>
-.web-automation-page {
-  width: 100%;
-  max-width: 1480px;
-  margin: 0 auto;
-}
-
-.automation-panel {
-  display: grid;
-  gap: 18px;
-}
-
-.panel-header {
+<style scoped lang="scss">
+/* ===== Page ===== */
+.wa-page {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 24px;
-  background: #ffffff;
-  border: 1px solid #dfe8f1;
-  border-radius: 8px;
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.06);
-}
-
-.panel-kicker,
-.panel-title,
-.panel-description {
-  margin: 0;
-}
-
-.panel-kicker {
-  margin-bottom: 8px;
-  color: #64748b;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.panel-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: #0f172a;
-  font-size: 28px;
-  line-height: 1.25;
-}
-
-.stage-badge {
-  flex: 0 0 auto;
-  padding: 5px 10px;
-  color: #c2410c;
-  font-size: 12px;
-  font-weight: 800;
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
-  border-radius: 999px;
-}
-
-.panel-description {
-  max-width: 760px;
-  margin-top: 10px;
-  color: #64748b;
-  font-size: 15px;
-  line-height: 1.65;
-}
-
-.header-actions,
-.workspace-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.toolbar-button,
-.action-button {
-  min-height: 38px;
-  padding: 0 16px;
-  color: #334155;
-  font-weight: 800;
-  white-space: nowrap;
-  cursor: pointer;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-}
-
-.toolbar-button:hover,
-.action-button:hover {
-  background: #f8fafc;
-}
-
-.toolbar-button--primary {
-  color: #ffffff;
-  background: #409eff;
-  border-color: #2563eb;
-}
-
-.toolbar-button--primary:hover {
-  background: #1d4ed8;
-}
-
-.toolbar-button:disabled,
-.action-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.stage-alert,
-.status-alert {
-  padding: 13px 16px;
-  font-size: 14px;
-  border-radius: 8px;
-}
-
-.stage-alert {
-  color: #c2410c;
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
-}
-
-.status-alert--info {
-  color: #1e40af;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-}
-
-.status-alert--success {
-  color: #15803d;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-}
-
-.status-alert--warning {
-  color: #a16207;
-  background: #fefce8;
-  border: 1px solid #fde68a;
-}
-
-.status-alert--error {
-  color: #b91c1c;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-}
-
-.automation-grid {
-  display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
-  gap: 18px;
-  align-items: start;
-}
-
-.app-list {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-}
-
-.app-option {
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  min-width: 0;
-  width: 100%;
-  padding: 14px;
-  text-align: left;
-  cursor: pointer;
-  background: #ffffff;
-  border: 1px solid #dfe8f1;
-  border-radius: 8px;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.04);
-}
-
-.app-option:hover,
-.app-option--active {
-  border-color: #93c5fd;
-  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.1);
-}
-
-.option-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  color: #1d4ed8;
-  font-weight: 900;
-  background: #eff6ff;
-  border-radius: 8px;
-}
-
-.option-copy {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.option-copy strong,
-.option-copy small {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.option-copy strong {
-  color: #0f172a;
-  font-size: 15px;
-}
-
-.option-copy small {
-  color: #64748b;
-  font-size: 12px;
-}
-
-.status-tag {
-  flex: 0 0 auto;
-  padding: 4px 9px;
-  font-size: 12px;
-  font-weight: 800;
-  border-radius: 999px;
-}
-
-.status-tag--success {
-  color: #15803d;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-}
-
-.status-tag--info {
-  color: #1d4ed8;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-}
-
-.status-tag--danger {
-  color: #b91c1c;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-}
-
-.workspace {
-  display: grid;
+  flex-direction: column;
   gap: 14px;
-  min-width: 0;
   padding: 18px;
-  background: #ffffff;
-  border: 1px solid #dfe8f1;
-  border-radius: 8px;
-  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.05);
+  min-height: 100%;
+  background:
+    radial-gradient(ellipse 60% 40% at 50% 0%, rgba(20, 184, 166, 0.04), transparent 50%),
+    #f8fafc;
 }
 
-.workspace-toolbar {
+/* ===== Hero ===== */
+.wa-hero {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
-}
-
-.workspace-title {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.workspace-title strong {
-  color: #0f172a;
-  font-size: 18px;
-}
-
-.workspace-title span {
-  overflow: hidden;
-  color: #64748b;
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-meta {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin: 0;
-}
-
-.meta-item {
-  min-width: 0;
-  padding: 11px 12px;
-  background: #f8fafc;
+  padding: 18px 22px;
+  background: #fff;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  animation: wa-slideUp 0.4s ease-out both;
 }
 
-.meta-item dt {
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.meta-item dd {
-  margin: 5px 0 0;
-  overflow: hidden;
-  color: #0f172a;
-  font-size: 13px;
-  font-weight: 800;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.console-frame-wrap {
-  height: min(62vh, 720px);
-  min-height: 420px;
-  overflow: hidden;
-  border: 1px solid #d7e0ea;
-  border-radius: 8px;
-}
-
-.console-frame {
-  width: 100%;
-  height: 100%;
-  background: #ffffff;
-  border: 0;
-}
-
-.empty-console,
-.empty-state {
-  display: grid;
-  place-items: center;
-  gap: 8px;
-  min-height: 320px;
-  padding: 28px;
-  color: #64748b;
-  text-align: center;
-  background: #f8fafc;
-  border: 1px dashed #cbd5e1;
-  border-radius: 8px;
-}
-
-.empty-console strong {
-  color: #0f172a;
-  font-size: 18px;
-}
-
-.integration-note {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.wa-hero__left {
+  display: flex;
+  align-items: center;
   gap: 14px;
 }
 
-.note-item {
+.wa-hero__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #2dd4bf, #0d9488);
+  color: #fff;
   display: flex;
-  gap: 10px;
-  min-width: 0;
-  padding: 16px;
-  background: #ffffff;
-  border: 1px solid #dfe8f1;
-  border-radius: 8px;
-}
-
-.note-item span {
-  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  flex: 0 0 auto;
-  color: #1d4ed8;
-  font-size: 13px;
-  font-weight: 900;
-  background: #eff6ff;
-  border-radius: 999px;
+  font-size: 22px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.2);
 }
 
-.note-item p {
-  margin: 0;
+.wa-hero__text {
+  h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 800;
+    color: #0f172a;
+  }
+  p {
+    margin: 2px 0 0;
+    font-size: 13px;
+    color: #64748b;
+  }
+}
+
+.wa-hero__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wa-hero__count {
+  font-size: 13px;
+  font-weight: 700;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.wa-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+  min-width: 220px;
+
+  :deep(.app-icon) {
+    font-size: 16px;
+    color: #94a3b8;
+    flex-shrink: 0;
+  }
+
+  input {
+    border: none;
+    background: transparent;
+    outline: none;
+    color: #1e293b;
+    font-size: 13px;
+    width: 100%;
+    &::placeholder {
+      color: #94a3b8;
+    }
+  }
+
+  &:focus-within {
+    border-color: #0d9488;
+    box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.08);
+    background: #fff;
+  }
+}
+
+/* ===== Stats Chips ===== */
+.wa-stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  animation: wa-slideUp 0.4s ease-out 0.06s both;
+}
+
+.wa-stat-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+
+  :deep(.app-icon) {
+    font-size: 14px;
+    color: #94a3b8;
+  }
+
+  &__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    &--green {
+      background: #059669;
+    }
+    &--amber {
+      background: #d97706;
+    }
+    &--slate {
+      background: #94a3b8;
+    }
+  }
+
+  &__label {
+    font-size: 13px;
+    color: #64748b;
+    font-weight: 500;
+  }
+  strong {
+    font-size: 15px;
+    color: #0f172a;
+    font-weight: 700;
+  }
+}
+
+/* ===== Card Grid ===== */
+.wa-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 14px;
+}
+
+.wa-card {
+  padding: 18px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.25s ease;
+  animation: wa-fadeScale 0.4s ease-out both;
+
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+    border-color: #99f6e4;
+  }
+
+  &--soon {
+    opacity: 0.85;
+  }
+
+  &--offline {
+    opacity: 0.6;
+  }
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  &__icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #2dd4bf, #0d9488);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+
+    .wa-card--soon & {
+      background: linear-gradient(135deg, #fbbf24, #d97706);
+    }
+    .wa-card--offline & {
+      background: linear-gradient(135deg, #94a3b8, #64748b);
+    }
+  }
+
+  &__info {
+    flex: 1;
+    min-width: 0;
+    strong {
+      display: block;
+      font-size: 15px;
+      color: #0f172a;
+      font-weight: 700;
+    }
+    span {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+  }
+
+  &__status {
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  &__desc {
+    margin: 0;
+    font-size: 13px;
+    color: #64748b;
+    line-height: 1.6;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  &__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  &__actions {
+    display: flex;
+    gap: 8px;
+    margin-top: auto;
+    padding-top: 4px;
+  }
+}
+
+/* ===== Chips ===== */
+.wa-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+}
+
+/* ===== Tags ===== */
+.wa-tag--success {
+  background: #ecfdf5;
+  color: #059669;
+}
+.wa-tag--warning {
+  background: #fff7ed;
+  color: #d97706;
+}
+.wa-tag--danger {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+/* ===== Buttons ===== */
+.wa-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
   color: #475569;
-  font-size: 13px;
-  line-height: 1.55;
-}
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
 
-@media (max-width: 1180px) {
-  .automation-grid,
-  .integration-note {
-    grid-template-columns: 1fr;
+  :deep(.app-icon) {
+    font-size: 14px;
+  }
+
+  &:hover:not(:disabled) {
+    background: #f0fdfa;
+    border-color: #99f6e4;
+    color: #0d9488;
+  }
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  &--primary {
+    background: linear-gradient(135deg, #0d9488, #0f766e);
+    color: #fff;
+    border-color: #0f766e;
+    box-shadow: 0 1px 4px rgba(13, 148, 136, 0.2);
+    &:hover:not(:disabled) {
+      background: linear-gradient(135deg, #0f766e, #0d9488);
+      color: #fff;
+    }
   }
 }
 
-@media (max-width: 760px) {
-  .panel-header,
-  .workspace-toolbar,
-  .header-actions,
-  .workspace-actions {
-    display: grid;
-    grid-template-columns: 1fr;
+/* ===== Empty ===== */
+.wa-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 48px 20px;
+  text-align: center;
+  animation: wa-fadeScale 0.4s ease-out both;
+
+  &__icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #2dd4bf, #0d9488);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
   }
 
-  .app-option {
-    grid-template-columns: 38px minmax(0, 1fr);
+  strong {
+    color: #0f172a;
+    font-size: 15px;
   }
-
-  .status-tag {
-    grid-column: 2;
-    justify-self: start;
+  span {
+    color: #64748b;
+    font-size: 13px;
+    max-width: 400px;
+    line-height: 1.6;
   }
+}
 
-  .app-meta {
+/* ===== Keyframes ===== */
+@keyframes wa-slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes wa-fadeScale {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 900px) {
+  .wa-hero {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .wa-hero__right {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .wa-search {
+    min-width: auto;
+    width: 100%;
+  }
+  .wa-hero__count {
+    text-align: right;
+  }
+  .wa-grid {
     grid-template-columns: 1fr;
   }
 }

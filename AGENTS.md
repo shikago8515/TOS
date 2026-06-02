@@ -1,4 +1,4 @@
-# AGENTS.md instructions for C:\Users\Jax_shi\Desktop\tos-source
+# AGENTS.md instructions for D:\project\TOS-main
 
 请默认用中文和我沟通；代码、命令、库名、文件路径、API 名称和错误信息保留英文。
 
@@ -27,6 +27,14 @@
 - Electron 相关改动查看 tms-electron-app/package.json、main-simple.js、preload.js 和 scripts；涉及打包或前端集成时优先使用项目已有 npm scripts。
 - 不要直接修改 recovered-frontend 当作长期源码；它只能作为行为和样式参考。真正源码应落在 tms-frontend/src。
 - 这个项目包含历史恢复和重建背景，修改前优先查看 docs 里的工程标准、恢复计划和对应 parity 文档。
+
+TOS AI token 用量治理规则：
+- 单人一周 4.3 亿 tokens 视为异常红线；出现类似量级时，先做用量审计，再继续扩大上下文或并行 agent。
+- 大任务开始前先形成结构化摘要：业务目标、输入材料、相关文件清单、验收标准和明确不做的范围。开发 agent 只接收必要字段、相关源码片段和验收标准，不接收完整历史。
+- 不默认读取完整仓库、完整历史对话、整份 Excel、整批 PDF 或完整日志。先定位关键目录、文件、字段、错误片段，再读取必要范围。
+- 搜索和读取默认排除 node_modules、dist、build、*.min.js、package-lock.json、recovered-frontend、archive、打包产物和缓存目录，除非任务明确需要这些内容。
+- 如果发现重复读文件、命令失败循环重试、并行 agent 复制完整上下文、input tokens 占比异常，先暂停扩展上下文并做审计。审计维度和处置规则见 docs/ai-token-governance.md。
+- 输出默认保持短结论：改了什么、验证了什么、风险是什么。除非明确要求，不输出长篇方案解释、完整日志或大段代码复述。
 
 TOS 发布、Electron 打包、GitCode 发行版和 COS 更新源规则：
 - 涉及 tms-electron-app 打包、版本号、自动更新、GitCode 发行版、COS 上传时，必须特别谨慎；任何重新打包都会改变安装包 hash，必须重新生成并配套上传最新的 exe、blockmap、changelog.json 和 latest.yml。

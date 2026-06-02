@@ -16,7 +16,7 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
     });
 
     const worklist = await this.openTaskCenter(page, logger);
-    await this.applyTaskFilter(worklist, logger);
+    const selectedTaskTypes = await this.applyTaskFilter(worklist, logger);
 
     for (const [index, group] of taskGroups.entries()) {
       const label = describeTaskGroup(group);
@@ -44,7 +44,17 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
       }
     }
 
-    return { results };
+    return {
+      results,
+      taskCenter: {
+        taskCenterOpened: true,
+        selectedTaskTypes,
+        searchedCaseCount: parsedWorkbook.items.length,
+        searchedCaseGroupCount: taskGroups.length,
+        completedRowCount: results.filter((item) => item.status === 'ok').length,
+        failedRowCount: results.filter((item) => item.status === 'failed').length
+      }
+    };
   }
 
   async openTaskCenter(page, logger) {
@@ -92,8 +102,10 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
 
     if (!taskTypeNames.length) {
       logger('No task filter configured; using the current Task Center list.');
-      return;
+      return [];
     }
+
+    const selectedNames = [];
 
     try {
       const arrow = await this.waitForAnyLocator([
@@ -118,8 +130,25 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
         ], {
           timeoutMs: 10000,
           description: `task type "${taskTypeName}"`
-        });
+        }).catch(() => null);
+
+        if (!option) {
+          logger(`Configured task type "${taskTypeName}" was not found in the dropdown.`);
+          continue;
+        }
+
         await this.clickWhenReady(option, `task type "${taskTypeName}"`, logger);
+        selectedNames.push(taskTypeName);
+      }
+
+      const fallbackCount = Number(filter.fallbackLastOptionsCount || 0);
+      if (!selectedNames.length && fallbackCount > 0) {
+        const fallbackNames = await this.selectFallbackTaskTypes(worklist, fallbackCount, logger);
+        selectedNames.push(...fallbackNames);
+      }
+
+      if (!selectedNames.length) {
+        throw new Error('No task type could be selected.');
       }
 
       const goButton = await this.waitForAnyLocator([
@@ -130,12 +159,56 @@ class BtpPoDecisionsWorkflow extends BaseWorkflow {
       });
       await this.clickWhenReady(goButton, 'Go button', logger);
       await delay(resolveDelayMs(filter.afterGoMs, 3000));
+      return unique(selectedNames);
     } catch (error) {
       if (required) {
         throw error;
       }
       logger(`Task type filter was skipped: ${error.message}`);
+      return unique(selectedNames);
     }
+  }
+
+  async selectFallbackTaskTypes(worklist, fallbackCount, logger) {
+    const optionNames = await this.readAvailableTaskTypeNames(worklist);
+    const fallbackNames = optionNames.slice(-fallbackCount);
+
+    if (!fallbackNames.length) {
+      logger('Task type fallback was requested, but no available values were readable.');
+      return [];
+    }
+
+    logger(`Falling back to the last ${fallbackNames.length} task type option(s): ${fallbackNames.join(', ')}`);
+
+    for (const taskTypeName of fallbackNames) {
+      const option = await this.waitForAnyLocator([
+        () => worklist.getByLabel(/Available Values/i).getByText(taskTypeName, { exact: true }),
+        () => worklist.getByText(taskTypeName, { exact: true })
+      ], {
+        timeoutMs: 10000,
+        description: `fallback task type "${taskTypeName}"`
+      });
+      await this.clickWhenReady(option, `fallback task type "${taskTypeName}"`, logger);
+    }
+
+    return fallbackNames;
+  }
+
+  async readAvailableTaskTypeNames(worklist) {
+    const listItems = worklist.locator('ul[role="listbox"] li[role="option"]');
+    const count = await listItems.count().catch(() => 0);
+    const optionNames = [];
+
+    for (let index = 0; index < count; index += 1) {
+      const text = await listItems.nth(index).innerText().catch(() => '');
+      const normalized = String(text || '').trim();
+      if (!normalized || /^Select All\b/i.test(normalized)) {
+        continue;
+      }
+      optionNames.push(normalized);
+    }
+
+    return unique(optionNames);
   }
 
   async clearTaskTypeSelection(worklist, selectors, logger) {

@@ -1,79 +1,123 @@
 <template>
-  <li class="status-item">
-    <span>
-      <strong>{{ label }}</strong>
-      <small>{{ description }}</small>
-    </span>
-    <em :class="`status-pill status-pill--${tone}`">{{ status }}</em>
+  <li class="svc">
+    <div class="svc__dot" :class="`svc__dot--${tone}`">
+      <AppIcon :name="statusIcon" />
+    </div>
+    <div class="svc__body">
+      <strong class="svc__label">{{ label }}</strong>
+      <span class="svc__desc">{{ description }}</span>
+    </div>
+    <em class="svc__badge" :class="`svc__badge--${tone}`">{{ status }}</em>
   </li>
 </template>
 
 <script setup lang="ts">
-withDefaults(
+import { computed } from 'vue'
+
+import AppIcon from './AppIcon.vue'
+
+const props = withDefaults(
   defineProps<{
     label: string
     description: string
     status: string
     tone?: 'online' | 'ready' | 'working'
   }>(),
-  {
-    tone: 'ready',
-  },
+  { tone: 'ready' },
 )
+
+const iconMap: Record<string, string> = {
+  online: 'check-circle',
+  ready: 'shield-check',
+  working: 'activity',
+}
+
+const statusIcon = computed(() => iconMap[props.tone] || 'activity')
 </script>
 
 <style scoped>
-.status-item {
+.svc {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  min-height: 58px;
-  padding: 12px 0;
-  border-bottom: 1px solid #e4ecf2;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  transition: all 0.22s ease;
 }
 
-.status-item:last-child {
-  border-bottom: 0;
+.svc:hover {
+  background: #ffffff;
+  border-color: #99f6e4;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.04);
+  transform: translateY(-1px);
 }
 
-span {
-  display: grid;
-  gap: 3px;
+.svc__dot {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.svc__dot--online { background: linear-gradient(135deg, #34d399, #059669); }
+.svc__dot--ready { background: linear-gradient(135deg, #2dd4bf, #0d9488); }
+.svc__dot--working { background: linear-gradient(135deg, #fb923c, #ea580c); }
+
+.svc__body {
+  flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-strong {
-  color: #172033;
-  font-size: 14px;
+.svc__label {
+  color: #1e293b;
+  font-size: 13px;
+  font-weight: 600;
 }
 
-small {
-  color: #6f7f91;
-  font-size: 12px;
+.svc__desc {
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.status-pill {
-  flex: 0 0 auto;
-  padding: 4px 9px;
-  font-size: 12px;
+.svc__badge {
+  padding: 3px 10px;
+  font-size: 11px;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 600;
   border-radius: 999px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
-.status-pill--online {
-  color: #1d715c;
-  background: #e5f5ef;
+.svc__badge--online {
+  color: #059669;
+  background: #ecfdf5;
+  border: 1px solid #bbf7d0;
 }
 
-.status-pill--ready {
-  color: #205e91;
-  background: #e6f2fb;
+.svc__badge--ready {
+  color: #0d9488;
+  background: #f0fdfa;
+  border: 1px solid #ccfbf1;
 }
 
-.status-pill--working {
-  color: #8a6320;
-  background: #fff2d4;
+.svc__badge--working {
+  color: #ea580c;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
 }
 </style>

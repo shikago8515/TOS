@@ -19,6 +19,11 @@ const electronExe = path.join(unpackedDir, 'electron.exe')
 
 const requiredAutomationResources = [
   'registry.json',
+  'microsoft-login-n8n-demo/package.json',
+  'microsoft-login-n8n-demo/bin/start.js',
+  'microsoft-login-n8n-demo/server.mjs',
+  'microsoft-login-n8n-demo/demo-upload.html',
+  'microsoft-login-n8n-demo/executor.config.json',
   'playwright-console/package.json',
   'playwright-console/bin/start.js',
   'playwright-console/config/default.config.json',
@@ -39,7 +44,6 @@ const requiredAutomationResources = [
 const requiredBackendRuntimeResources = [
   'tos-backend/tos-backend.exe',
   'tos-backend/_internal/base_library.zip',
-  'tos-backend/_internal/python313.dll',
   'tos-backend/_internal/_socket.pyd',
   'tos-backend/_internal/_ssl.pyd',
   'tos-backend/_internal/_asyncio.pyd',
@@ -287,6 +291,13 @@ function verifyBackendRuntime(targetUnpackedDir = unpackedDir) {
     requireFile(path.join(targetRoot, relativePath), `backend runtime resource ${relativePath}`)
   }
 
+  const internalDir = path.join(targetRoot, 'tos-backend', '_internal')
+  const internalEntries = fs.existsSync(internalDir) ? fs.readdirSync(internalDir) : []
+  const hasPythonRuntimeDll = internalEntries.some((entry) => /^python\d+\.dll$/i.test(entry))
+  if (!hasPythonRuntimeDll) {
+    throw new Error(`backend runtime Python DLL not found in: ${internalDir}`)
+  }
+
   assertFilteredDirectoryComplete(backendRuntimeSourceRoot, targetRoot, 'backend runtime')
 }
 
@@ -387,7 +398,7 @@ function formatHealthProcessFailure(label, state, lastError) {
   return parts.join('\n')
 }
 
-async function waitForHealth(url, state, label, timeoutMs = 60000) {
+async function waitForHealth(url, state, label, timeoutMs = 60000, requestTimeoutMs = 1000) {
   const deadline = Date.now() + timeoutMs
   let lastError = null
 
@@ -397,7 +408,7 @@ async function waitForHealth(url, state, label, timeoutMs = 60000) {
     }
 
     try {
-      return await httpGet(url)
+      return await httpGet(url, requestTimeoutMs)
     } catch (error) {
       lastError = error
       await sleep(500)
@@ -457,7 +468,42 @@ async function verifyAutomationConsoleHealth(targetUnpackedDir = unpackedDir) {
   })
 
   try {
-    await waitForHealth(`http://127.0.0.1:${port}/api/health`, state, 'playwright console health')
+    await waitForHealth(
+      `http://127.0.0.1:${port}/api/workflows`,
+      state,
+      'playwright console health',
+      60000,
+      3000,
+    )
+  } finally {
+    stopHealthProcess(state)
+    removeDirectoryWithRetry(dataDir)
+  }
+}
+
+async function verifyMicrosoftLoginDemoHealth(targetUnpackedDir = unpackedDir) {
+  const appExe = path.join(targetUnpackedDir, 'TOS.exe')
+  const demoRoot = path.join(getAutomationTargetRoot(targetUnpackedDir), 'microsoft-login-n8n-demo')
+  const startScript = path.join(demoRoot, 'bin', 'start.js')
+  const dataDir = path.join(demoRoot, `.verify-data-${process.pid}-${Date.now()}`)
+
+  requireFile(appExe, 'packed TOS executable')
+  requireFile(startScript, 'microsoft login demo start script')
+
+  const port = await findFreePort()
+  const state = spawnHealthProcess(appExe, [startScript], {
+    cwd: demoRoot,
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
+      TMS_PLAYWRIGHT_HOST: '127.0.0.1',
+      TMS_PLAYWRIGHT_PORT: String(port),
+      TMS_PLAYWRIGHT_DATA_DIR: dataDir,
+    },
+  })
+
+  try {
+    await waitForHealth(`http://127.0.0.1:${port}/api/health`, state, 'microsoft login demo health')
   } finally {
     stopHealthProcess(state)
     removeDirectoryWithRetry(dataDir)
@@ -469,6 +515,8 @@ async function verifyPackedRuntimeHealth(targetUnpackedDir = unpackedDir) {
   console.log('Verified packed backend runtime health.')
   await verifyAutomationConsoleHealth(targetUnpackedDir)
   console.log('Verified packed automation console health.')
+  await verifyMicrosoftLoginDemoHealth(targetUnpackedDir)
+  console.log('Verified packed Microsoft login demo health.')
 }
 
 function runNodeEval(source, args, cwd) {
