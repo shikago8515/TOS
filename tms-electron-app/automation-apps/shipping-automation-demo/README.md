@@ -29,4 +29,4 @@ The executor logs into Infor Nexus, opens `Applications -> Print-Scan-Ship`, and
 }
 ```
 
-The workbook must include a `PO No` column. The executor selects `Remove/Change Equipment ID` in the Shipment Scan dialog, then enters the parsed PO values into the `poNum` field.
+The workbook must include a `PO No` column. The executor selects `Remove/Change Equipment ID` in the Shipment Scan dialog, enters each parsed PO value into the `poNum` field, and clicks `OK` after every PO.

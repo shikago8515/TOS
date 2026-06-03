@@ -446,6 +446,45 @@ async function fillShipmentPoNumber(page, poNo) {
   await poInput.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
   await poInput.fill(normalizedPoNo);
   log("Entered PO No.", { poNo: normalizedPoNo });
+  await clickShipmentScanOk(page);
+  await page.waitForTimeout(config.postLoginWaitMs);
+  log("Confirmed PO No.", { poNo: normalizedPoNo });
+}
+
+async function clickShipmentScanOk(page) {
+  const candidates = [
+    page.locator("button.x-btn-text").filter({ hasText: /^OK$/ }),
+    page.locator("td.x-btn-center button").filter({ hasText: /^OK$/ }),
+    page.getByRole("button", { name: /^OK$/ }),
+  ];
+  const startedAt = Date.now();
+  const timeoutMs = Math.min(config.navigationTimeoutMs, 15000);
+  let lastError = null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    for (const locator of candidates) {
+      const count = await locator.count().catch(() => 0);
+      for (let index = 0; index < Math.min(count, 8); index += 1) {
+        const button = locator.nth(index);
+        const visible = await button.isVisible().catch(() => false);
+        if (!visible) {
+          continue;
+        }
+
+        try {
+          await button.click();
+          log("Clicked Shipment Scan OK.");
+          return;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+    }
+
+    await page.waitForTimeout(250);
+  }
+
+  throw lastError || new Error("Shipment Scan OK button was not found.");
 }
 
 async function clickLocator(locator, label) {
