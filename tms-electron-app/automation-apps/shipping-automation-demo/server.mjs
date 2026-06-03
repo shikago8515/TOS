@@ -21,6 +21,7 @@ const sharedExecutorRoot = path.resolve(appRoot, "..", "playwright-console");
 const sharedPackageJson = path.join(sharedExecutorRoot, "package.json");
 const requireShared = createRequire(sharedPackageJson);
 const { chromium, firefox, webkit } = requireShared("playwright");
+const xlsx = requireShared("xlsx");
 
 const browserEngines = { chromium, firefox, webkit };
 
@@ -73,6 +74,51 @@ const server = http.createServer(async (req, res) => {
           ok: result.ok,
           finalUrl: result.finalUrl,
           shipmentScanOpened: result.shipmentScanOpened,
+        };
+        sendJson(res, result.ok ? 200 : 500, result);
+      } finally {
+        activeRun = null;
+      }
+      return;
+    }
+
+    if (req.method === "POST" && (req.url === "/run-shipping-file" || req.url === "/api/run-shipping-file")) {
+      const body = await readJsonBody(req);
+      authorize(req, body);
+
+      if (activeRun) {
+        sendJson(res, 409, {
+          ok: false,
+          message: "Executor is busy with another run.",
+          activeRun,
+        });
+        return;
+      }
+
+      const credentials = resolveCredentials(body);
+      const poRows = extractPoRowsFromWorkbookPayload(body);
+      const inputFileName = normalizeUploadFileName(body);
+      activeRun = {
+        startedAt: new Date().toISOString(),
+        action: "run-shipping-file",
+        browser: config.browser,
+        inputFileName,
+        inputMode: "local-file",
+        totalPoCount: poRows.length,
+      };
+
+      try {
+        const result = await runShippingFile(credentials, poRows, inputFileName);
+        result.artifacts = await persistRunArtifacts(result, poRows);
+        lastRun = {
+          startedAt: activeRun.startedAt,
+          finishedAt: result.generatedAt,
+          ok: result.ok,
+          finalUrl: result.finalUrl,
+          inputFileName,
+          totalPoCount: result.totalPoCount,
+          completedPoCount: result.completedPoCount,
+          failedPoCount: result.failedPoCount,
         };
         sendJson(res, result.ok ? 200 : 500, result);
       } finally {
@@ -178,6 +224,22 @@ function resolveCredentials(body) {
 }
 
 async function openShipmentScan(credentials) {
+  return runShippingWorkflow(credentials, {
+    poRows: [],
+    inputFileName: "",
+    fillPoNumbers: false,
+  });
+}
+
+async function runShippingFile(credentials, poRows, inputFileName) {
+  return runShippingWorkflow(credentials, {
+    poRows,
+    inputFileName,
+    fillPoNumbers: true,
+  });
+}
+
+async function runShippingWorkflow(credentials, runContext) {
   const engine = browserEngines[config.browser] || chromium;
   const launchOptions = {
     headless: config.headless,
@@ -190,6 +252,9 @@ async function openShipmentScan(credentials) {
   let page = null;
   let latestScreenshotPath = "";
   const startedAt = new Date().toISOString();
+  const poRows = Array.isArray(runContext?.poRows) ? runContext.poRows : [];
+  const shouldFillPoNumbers = Boolean(runContext?.fillPoNumbers);
+  const poResults = [];
 
   try {
     browser = await engine.launch(launchOptions);
@@ -219,14 +284,45 @@ async function openShipmentScan(credentials) {
     );
     await waitForShipmentScanDialog(page);
 
+    if (shouldFillPoNumbers) {
+      await selectRemoveChangeEquipmentId(page);
+      for (const poRow of poRows) {
+        try {
+          await fillShipmentPoNumber(page, poRow.poNo);
+          poResults.push({
+            ...poRow,
+            ok: true,
+          });
+        } catch (error) {
+          poResults.push({
+            ...poRow,
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    }
+
     latestScreenshotPath = path.join(artifactsDir, `shipment-scan-success-${Date.now()}.png`);
     await page.screenshot({ path: latestScreenshotPath, fullPage: true });
 
+    const failedPoCount = poResults.filter((item) => !item.ok).length;
+    const completedPoCount = poResults.filter((item) => item.ok).length;
+
     const result = {
-      ok: true,
+      ok: failedPoCount === 0,
       loginSuccess: true,
       shipmentScanOpened: true,
-      message: "Infor Nexus Shipment Scan opened successfully.",
+      inputMode: shouldFillPoNumbers ? "local-file" : "open-only",
+      inputFileName: runContext?.inputFileName || "",
+      totalPoCount: poRows.length,
+      completedPoCount,
+      failedPoCount,
+      poResults,
+      selectedAction: shouldFillPoNumbers ? "Remove/Change Equipment ID" : "",
+      message: shouldFillPoNumbers
+        ? `Shipment Scan opened and ${completedPoCount}/${poRows.length} PO No values were entered.`
+        : "Infor Nexus Shipment Scan opened successfully.",
       generatedAt: new Date().toISOString(),
       finalUrl: page.url(),
       title: await page.title(),
@@ -251,6 +347,15 @@ async function openShipmentScan(credentials) {
       ok: false,
       loginSuccess: false,
       shipmentScanOpened: false,
+      inputMode: shouldFillPoNumbers ? "local-file" : "open-only",
+      inputFileName: runContext?.inputFileName || "",
+      totalPoCount: poRows.length,
+      completedPoCount: poResults.filter((item) => item.ok).length,
+      failedPoCount: Math.max(
+        poRows.length - poResults.filter((item) => item.ok).length,
+        poResults.filter((item) => !item.ok).length,
+      ),
+      poResults,
       message: failureMessage || "Shipment Scan automation failed.",
       generatedAt: new Date().toISOString(),
       finalUrl: page?.url?.() || "",
@@ -312,10 +417,163 @@ async function waitForShipmentScanDialog(page) {
   });
 }
 
+async function selectRemoveChangeEquipmentId(page) {
+  const label = page.locator("label.x-form-cb-label", {
+    hasText: "Remove/Change Equipment ID",
+  }).first();
+  const radio = page
+    .locator("xpath=//label[contains(normalize-space(.), 'Remove/Change Equipment ID')]/preceding-sibling::input[@type='radio'][1]")
+    .first();
+
+  if (await label.isVisible().catch(() => false)) {
+    await label.click();
+    log("Selected Remove/Change Equipment ID.");
+    return;
+  }
+
+  await radio.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await radio.check({ force: true });
+  log("Selected Remove/Change Equipment ID.");
+}
+
+async function fillShipmentPoNumber(page, poNo) {
+  const normalizedPoNo = String(poNo || "").trim();
+  if (!normalizedPoNo) {
+    throw new Error("PO No is empty.");
+  }
+
+  const poInput = page.locator('input[name="poNum"]').first();
+  await poInput.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await poInput.fill(normalizedPoNo);
+  log("Entered PO No.", { poNo: normalizedPoNo });
+}
+
 async function clickLocator(locator, label) {
   await locator.first().waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
   await locator.first().click();
   log(`Clicked ${label}.`);
+}
+
+async function persistRunArtifacts(result, poRows) {
+  await mkdir(artifactsDir, { recursive: true });
+
+  const latestResultPath = path.join(artifactsDir, "last-result.json");
+  const latestFailedJsonPath = path.join(artifactsDir, "last-failed-po-rows.json");
+  const failedRows = extractFailedPoRows(result, poRows);
+
+  await writeFile(latestResultPath, JSON.stringify(result, null, 2), "utf8");
+  await writeFile(latestFailedJsonPath, JSON.stringify(failedRows, null, 2), "utf8");
+
+  return {
+    latestResultPath,
+    latestFailedJsonPath,
+    failedRowCount: failedRows.length,
+  };
+}
+
+function extractFailedPoRows(result, poRows) {
+  const resultRows = Array.isArray(result?.poResults) ? result.poResults : [];
+  const resultByRowIndex = new Map(resultRows.map((item) => [item.rowIndex, item]));
+
+  return poRows
+    .filter((row) => {
+      const resultRow = resultByRowIndex.get(row.rowIndex);
+      return !resultRow || !resultRow.ok;
+    })
+    .map((row) => {
+      const resultRow = resultByRowIndex.get(row.rowIndex);
+      return {
+        rowIndex: row.rowIndex,
+        poNo: row.poNo,
+        reason: resultRow?.error || result?.message || "PO No was not entered.",
+        originalRow: row.originalRow,
+      };
+    });
+}
+
+function extractPoRowsFromWorkbookPayload(body) {
+  const fileBase64 = String(body?.fileBase64 || body?.fileContentBase64 || "").trim();
+  if (!fileBase64) {
+    const error = new Error("fileBase64 must be a non-empty base64 string.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const normalizedBase64 = fileBase64.replace(/^data:.*;base64,/, "");
+  const workbookBuffer = Buffer.from(normalizedBase64, "base64");
+  if (!workbookBuffer.length) {
+    const error = new Error("Decoded workbook content is empty.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  let workbook;
+  try {
+    workbook = xlsx.read(workbookBuffer, { type: "buffer" });
+  } catch (error) {
+    const parseError = new Error(`Failed to parse uploaded workbook: ${error.message || error}`);
+    parseError.statusCode = 400;
+    throw parseError;
+  }
+
+  const sheetName = resolveWorksheetName(workbook, body?.sheetName);
+  if (!sheetName) {
+    const error = new Error("Uploaded workbook does not contain any worksheet.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const worksheet = workbook.Sheets[sheetName];
+  const rows = xlsx.utils.sheet_to_json(worksheet, {
+    defval: "",
+    raw: false,
+  });
+
+  const poRows = rows
+    .map((row, index) => ({
+      rowIndex: index + 2,
+      poNo: extractPoNoValue(row),
+      originalRow: row,
+    }))
+    .filter((row) => row.poNo);
+
+  if (poRows.length === 0) {
+    const error = new Error("Uploaded workbook must contain at least one non-empty PO No value.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return poRows;
+}
+
+function resolveWorksheetName(workbook, preferredSheetName) {
+  if (preferredSheetName && workbook?.SheetNames?.includes(preferredSheetName)) {
+    return preferredSheetName;
+  }
+
+  return Array.isArray(workbook?.SheetNames) ? workbook.SheetNames[0] || "" : "";
+}
+
+function extractPoNoValue(row) {
+  if (!row || typeof row !== "object") {
+    return "";
+  }
+
+  const directValue = row["PO No"] ?? row["PO NO"] ?? row["PO no"] ?? row["PO No."] ?? row["PO Number"] ?? row["PO"];
+  if (directValue !== undefined && directValue !== null && String(directValue).trim()) {
+    return String(directValue).trim();
+  }
+
+  const poKey = Object.keys(row).find((key) => normalizeHeaderName(key) === "pono");
+  return poKey ? String(row[poKey] ?? "").trim() : "";
+}
+
+function normalizeHeaderName(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function normalizeUploadFileName(body) {
+  return String(body?.fileName || body?.filename || "").trim();
 }
 
 async function waitForAny(page, attempts) {
