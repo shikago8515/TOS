@@ -1,0 +1,17 @@
+{
+  "host": "0.0.0.0",
+  "port": 3002,
+  "token": "local-ms-login-5f1d3d6d4bda4b2db7d54c8ce8c71e91",
+  "loginUrl": "https://purchasing-plan-exec-prod-i725c6w9.launchpad.cfapps.eu10.hana.ondemand.com/site?siteId=06dbc9bb-bc49-459f-b6d0-7cd3d7d9e364#Shell-home",
+  "browser": "chromium",
+  "headless": false,
+  "slowMo": 120,
+  "navigationTimeoutMs": 45000,
+  "postLoginWaitMs": 1200,
+  "staySignedInAction": "no",
+  "keepBrowserOpenOnErrorMs": 120000,
+  "launchOptions": {
+    "channel": "msedge",
+    "args": []
+  }
+}

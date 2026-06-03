@@ -20,5 +20,16 @@
     "entry": "bin/start.js",
     "defaultPort": 3100,
     "description": "支持本地可见浏览器执行、Excel 上传到 n8n、失败清单导出和运行结果回传。"
+  },
+  {
+    "id": "shipping-automation-demo",
+    "name": "Shipping Automation Demo",
+    "provider": "Playwright",
+    "category": "网页自动化",
+    "version": "0.1.0",
+    "appDir": "shipping-automation-demo",
+    "entry": "bin/start.js",
+    "defaultPort": 3003,
+    "description": "登录 Infor Nexus 并自动进入 Print-Scan-Ship 的 Shipment Scan 弹窗。"
   }
 ]

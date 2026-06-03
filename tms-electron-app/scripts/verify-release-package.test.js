@@ -15,12 +15,18 @@ const requiredUnpackedResourcePaths = [
   'resources/browser-plugins/infornexus-auto-add/manifest.json',
   'resources/browser-plugins/infornexus-auto-add/content.js',
   'resources/browser-plugins/infornexus-auto-add/xlsx.min.js',
+  'resources/automation-launcher/core.js',
+  'resources/automation-launcher/server.js',
   'resources/automation-apps/registry.json',
   'resources/automation-apps/microsoft-login-n8n-demo/package.json',
   'resources/automation-apps/microsoft-login-n8n-demo/bin/start.js',
   'resources/automation-apps/microsoft-login-n8n-demo/server.mjs',
   'resources/automation-apps/microsoft-login-n8n-demo/demo-upload.html',
   'resources/automation-apps/microsoft-login-n8n-demo/executor.config.json',
+  'resources/automation-apps/shipping-automation-demo/package.json',
+  'resources/automation-apps/shipping-automation-demo/bin/start.js',
+  'resources/automation-apps/shipping-automation-demo/server.mjs',
+  'resources/automation-apps/shipping-automation-demo/executor.config.json',
   'resources/automation-apps/playwright-console/bin/start.js',
   'resources/automation-apps/playwright-console/config/default.config.json',
   'resources/automation-apps/playwright-console/public/index.html',
@@ -101,6 +107,10 @@ test('reports latest.yml when the referenced installer is missing', () => {
   touch(path.join(appOutDir, 'resources', 'automation-apps', 'microsoft-login-n8n-demo', 'server.mjs'))
   touch(path.join(appOutDir, 'resources', 'automation-apps', 'microsoft-login-n8n-demo', 'demo-upload.html'))
   touch(path.join(appOutDir, 'resources', 'automation-apps', 'microsoft-login-n8n-demo', 'executor.config.json'))
+  touch(path.join(appOutDir, 'resources', 'automation-apps', 'shipping-automation-demo', 'package.json'))
+  touch(path.join(appOutDir, 'resources', 'automation-apps', 'shipping-automation-demo', 'bin', 'start.js'))
+  touch(path.join(appOutDir, 'resources', 'automation-apps', 'shipping-automation-demo', 'server.mjs'))
+  touch(path.join(appOutDir, 'resources', 'automation-apps', 'shipping-automation-demo', 'executor.config.json'))
   touch(path.join(appOutDir, 'resources', 'automation-apps', 'playwright-console', 'bin', 'start.js'))
   touch(path.join(appOutDir, 'resources', 'automation-apps', 'playwright-console', 'node_modules', 'statuses', 'index.js'))
   touch(path.join(appOutDir, 'resources', 'backend', 'main.py'))

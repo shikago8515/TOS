@@ -4,7 +4,9 @@ import type {
   ElectronActionResult,
 } from '../../types/electronApi'
 
-const moduleName = '网页自动化'
+const moduleName = 'web-automation'
+const launcherBaseUrl = 'http://127.0.0.1:3210'
+const launcherProtocolUrl = 'tos://automation/launcher/start'
 
 export interface LocalExecutorHealth {
   ok: boolean
@@ -21,51 +23,56 @@ export function hasElectronAutomationSupport(): boolean {
   return Boolean(window.electronAPI?.getAutomationApps)
 }
 
+export function primeLocalAutomationLauncherBoot(): void {
+  if (window.electronAPI?.launchAutomationApp) {
+    return
+  }
+  triggerAutomationProtocol(launcherProtocolUrl)
+}
+
 export async function fetchAutomationApps(): Promise<AutomationAppInfo[]> {
-  if (!window.electronAPI?.getAutomationApps) {
-    throw new Error('当前运行环境不支持网页自动化模块')
+  if (window.electronAPI?.getAutomationApps) {
+    return window.electronAPI.getAutomationApps()
   }
 
-  return window.electronAPI.getAutomationApps()
+  const payload = await requestLauncherJson<{ apps?: AutomationAppInfo[] }>('GET', '/api/apps')
+  return Array.isArray(payload.apps) ? payload.apps : []
 }
 
 export async function launchAutomationConsole(appId: string): Promise<ElectronActionResult> {
-  if (!window.electronAPI?.launchAutomationApp) {
-    throw new Error('当前运行环境不支持启动网页自动化控制台')
+  await recordWebAutomationEvent('launch-start', { appId })
+
+  let result: ElectronActionResult
+  if (window.electronAPI?.launchAutomationApp) {
+    result = await window.electronAPI.launchAutomationApp(appId)
+  } else {
+    await ensureLocalAutomationLauncher()
+    result = await requestLauncherJson<ElectronActionResult>('POST', `/api/apps/${encodeURIComponent(appId)}/start`)
   }
 
-  await recordWebAutomationEvent('launch-start', { appId })
-  const result = await window.electronAPI.launchAutomationApp(appId)
   await recordWebAutomationEvent(result.success ? 'launch-success' : 'launch-failure', {
     appId,
     result,
   })
-
   return result
 }
 
 export async function stopAutomationConsole(appId: string): Promise<ElectronActionResult> {
-  if (!window.electronAPI?.stopAutomationApp) {
-    throw new Error('当前运行环境不支持停止网页自动化控制台')
+  await recordWebAutomationEvent('stop-start', { appId })
+
+  let result: ElectronActionResult
+  if (window.electronAPI?.stopAutomationApp) {
+    result = await window.electronAPI.stopAutomationApp(appId)
+  } else {
+    await ensureLocalAutomationLauncher()
+    result = await requestLauncherJson<ElectronActionResult>('POST', `/api/apps/${encodeURIComponent(appId)}/stop`)
   }
 
-  await recordWebAutomationEvent('stop-start', { appId })
-  const result = await window.electronAPI.stopAutomationApp(appId)
   await recordWebAutomationEvent(result.success ? 'stop-success' : 'stop-failure', {
     appId,
     result,
   })
-
   return result
-}
-
-export async function openAutomationConsoleExternal(url: string): Promise<ElectronActionResult> {
-  if (!window.electronAPI?.openExternal) {
-    throw new Error('当前运行环境不支持打开外部网页')
-  }
-
-  await recordWebAutomationEvent('open-external', { url })
-  return window.electronAPI.openExternal(url)
 }
 
 export async function recordWebAutomationEvent(
@@ -79,7 +86,7 @@ export async function recordWebAutomationEvent(
       payload,
     })
   } catch {
-    // Diagnostics must never block the user action.
+    // Diagnostics must never block user actions.
   }
 }
 
@@ -90,10 +97,7 @@ export async function probeLocalExecutorHealth(baseUrl: string): Promise<LocalEx
 
   for (const url of candidates) {
     try {
-      const response = await fetchWithTimeout(url, {
-        method: 'GET',
-      }, 2500)
-
+      const response = await fetchWithTimeout(url, { method: 'GET' }, 2500)
       if (!response.ok) {
         lastError = new Error(`Health check returned HTTP ${response.status}.`)
         continue
@@ -113,7 +117,93 @@ export async function probeLocalExecutorHealth(baseUrl: string): Promise<LocalEx
 
   throw lastError instanceof Error
     ? lastError
-    : new Error('本地执行器未响应。')
+    : new Error('Local executor did not respond.')
+}
+
+export async function probeLocalAutomationLauncherHealth(): Promise<boolean> {
+  return isLauncherReachable()
+}
+
+async function ensureLocalAutomationLauncher(): Promise<void> {
+  if (await isLauncherReachable()) {
+    return
+  }
+
+  const ready = await waitFor(async () => isLauncherReachable(), 12000, 500)
+  if (!ready) {
+    throw new Error('Local launcher is not ready. Open TOS EXE once so the tos:// protocol can be registered.')
+  }
+}
+
+async function isLauncherReachable(): Promise<boolean> {
+  try {
+    const response = await fetchWithTimeout(`${launcherBaseUrl}/health`, { method: 'GET' }, 1200)
+    if (!response.ok) {
+      return false
+    }
+    const payload = await response.json().catch(() => ({}))
+    return Boolean(payload && payload.ok)
+  } catch {
+    return false
+  }
+}
+
+function triggerAutomationProtocol(url: string): void {
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.style.display = 'none'
+  document.body.appendChild(anchor)
+  anchor.click()
+  document.body.removeChild(anchor)
+}
+
+async function waitFor(
+  predicate: () => Promise<boolean>,
+  timeoutMs: number,
+  intervalMs: number,
+): Promise<boolean> {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await predicate()) {
+      return true
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, intervalMs))
+  }
+  return false
+}
+
+async function requestLauncherJson<T = Record<string, unknown>>(
+  method: string,
+  pathname: string,
+): Promise<T> {
+  const response = await fetchWithTimeout(`${launcherBaseUrl}${pathname}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  }, 15000)
+
+  const rawText = await response.text()
+  const payload = safeParseJson(rawText)
+
+  if (!response.ok) {
+    const message = payload && typeof payload.message === 'string'
+      ? payload.message
+      : payload && typeof payload.error === 'string'
+        ? payload.error
+        : `Launcher request failed with HTTP ${response.status}.`
+    throw new Error(message)
+  }
+
+  return (payload || {}) as T
+}
+
+function safeParseJson(rawText: string): Record<string, unknown> | null {
+  try {
+    return rawText ? JSON.parse(rawText) : {}
+  } catch {
+    return null
+  }
 }
 
 async function fetchWithTimeout(

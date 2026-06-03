@@ -10,11 +10,18 @@ const { registerAdidasMaterialsCollector } = require('./adidas-materials-main');
 
 let mainWindow;
 let backendProcess = null;
-const automationAppProcesses = new Map();
+let automationLauncherProcess = null;
+let automationLauncherStartPromise = null;
+let protocolCommandQueue = [];
+let protocolQueueBusy = false;
 const BACKEND_HOST = '127.0.0.1';
 const BACKEND_PORT = 8000;
 const BACKEND_URL = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
 const APP_DISPLAY_NAME = 'TOS'/*12345678*/;
+const AUTOMATION_LAUNCHER_HOST = '127.0.0.1';
+const AUTOMATION_LAUNCHER_PORT = 3210;
+const AUTOMATION_LAUNCHER_URL = `http://${AUTOMATION_LAUNCHER_HOST}:${AUTOMATION_LAUNCHER_PORT}`;
+const AUTOMATION_PROTOCOL = 'tos';
 const DEFAULT_UPDATE_FEED_URL = 'https://tos-updates-1309726828.cos.ap-guangzhou.myqcloud.com/';
 const UPDATE_SOURCE_CONFIG_FILE = 'update-source.json';
 const UPDATE_STATUS_CHANNEL = 'update-status';
@@ -953,6 +960,250 @@ function stopAutomationApp(appId) {
   return { success: true, appId };
 }
 
+function getAutomationLauncherRoot() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'automation-launcher')
+    : path.join(__dirname, 'automation-launcher');
+}
+
+function getAutomationLauncherScriptPath() {
+  return path.join(getAutomationLauncherRoot(), 'server.js');
+}
+
+function getAutomationLauncherLogPath() {
+  return path.join(app.getPath('userData'), 'logs', 'automation-launcher.log');
+}
+
+function requestLauncherJson(method, pathname, payload, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const requestBody = payload === undefined ? null : JSON.stringify(payload);
+    const req = http.request({
+      host: AUTOMATION_LAUNCHER_HOST,
+      port: AUTOMATION_LAUNCHER_PORT,
+      path: pathname,
+      method,
+      headers: requestBody
+        ? {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(requestBody),
+        }
+        : undefined,
+    }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        body += chunk;
+      });
+      res.on('end', () => {
+        const parsed = safeJsonParse(body);
+        if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+          const errorMessage = parsed && parsed.error
+            ? parsed.error
+            : parsed && parsed.message
+              ? parsed.message
+              : `Launcher request failed with HTTP ${res.statusCode}.`;
+          reject(new Error(errorMessage));
+          return;
+        }
+        resolve(parsed || {});
+      });
+    });
+
+    req.on('error', (error) => reject(error));
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error('Launcher request timed out.'));
+    });
+
+    if (requestBody) {
+      req.write(requestBody);
+    }
+    req.end();
+  });
+}
+
+function safeJsonParse(rawText) {
+  try {
+    return rawText ? JSON.parse(rawText) : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function requestAutomationLauncherHealth(timeoutMs = 1000) {
+  const payload = await requestJson(`${AUTOMATION_LAUNCHER_URL}/health`, timeoutMs);
+  return Boolean(payload && payload.ok);
+}
+
+async function waitForAutomationLauncher(timeoutMs = 15000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await requestAutomationLauncherHealth(1000)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return false;
+}
+
+async function ensureAutomationLauncher() {
+  if (await requestAutomationLauncherHealth()) {
+    return {
+      success: true,
+      alreadyRunning: true,
+      url: AUTOMATION_LAUNCHER_URL,
+    };
+  }
+
+  if (automationLauncherStartPromise) {
+    return automationLauncherStartPromise;
+  }
+
+  automationLauncherStartPromise = (async () => {
+    const launcherScriptPath = getAutomationLauncherScriptPath();
+    if (!fs.existsSync(launcherScriptPath)) {
+      throw new Error(`Automation launcher entry not found: ${launcherScriptPath}`);
+    }
+
+    const logDir = path.join(app.getPath('userData'), 'logs');
+    fs.mkdirSync(logDir, { recursive: true });
+    const logPath = getAutomationLauncherLogPath();
+    const logFd = fs.openSync(logPath, 'a');
+    const env = {
+      ...process.env,
+      TMS_AUTOMATION_LAUNCHER_HOST: AUTOMATION_LAUNCHER_HOST,
+      TMS_AUTOMATION_LAUNCHER_PORT: String(AUTOMATION_LAUNCHER_PORT),
+      TMS_AUTOMATION_APP_ROOT: getAutomationAppRoot(),
+      TMS_AUTOMATION_LAUNCHER_DATA_DIR: app.getPath('userData'),
+      TMS_AUTOMATION_APP_NAME: APP_DISPLAY_NAME,
+      ELECTRON_RUN_AS_NODE: '1',
+    };
+
+    try {
+      const child = spawn(process.execPath, [launcherScriptPath], {
+        cwd: getAutomationLauncherRoot(),
+        detached: true,
+        windowsHide: true,
+        stdio: ['ignore', logFd, logFd],
+        env,
+      });
+      automationLauncherProcess = child;
+      child.unref();
+      fs.closeSync(logFd);
+    } catch (error) {
+      try {
+        fs.closeSync(logFd);
+      } catch (_closeError) {
+        // Ignore close failures after launcher startup errors.
+      }
+      throw error;
+    }
+
+    const ready = await waitForAutomationLauncher();
+    if (!ready) {
+      throw new Error(`Automation launcher did not become ready. Log: ${logPath}`);
+    }
+
+    return {
+      success: true,
+      url: AUTOMATION_LAUNCHER_URL,
+      logPath,
+    };
+  })();
+
+  try {
+    return await automationLauncherStartPromise;
+  } finally {
+    automationLauncherStartPromise = null;
+  }
+}
+
+async function getAutomationApps() {
+  await ensureAutomationLauncher();
+  const payload = await requestLauncherJson('GET', '/api/apps');
+  return Array.isArray(payload.apps) ? payload.apps : [];
+}
+
+async function launchAutomationApp(appId) {
+  await ensureAutomationLauncher();
+  return requestLauncherJson('POST', `/api/apps/${encodeURIComponent(appId)}/start`);
+}
+
+async function stopAutomationApp(appId) {
+  await ensureAutomationLauncher();
+  return requestLauncherJson('POST', `/api/apps/${encodeURIComponent(appId)}/stop`);
+}
+
+function extractProtocolUrl(args) {
+  return Array.isArray(args)
+    ? args.find((value) => typeof value === 'string' && value.startsWith(`${AUTOMATION_PROTOCOL}://`))
+    : '';
+}
+
+function registerAutomationProtocol() {
+  try {
+    if (app.isPackaged) {
+      app.setAsDefaultProtocolClient(AUTOMATION_PROTOCOL);
+      return;
+    }
+
+    if (process.defaultApp) {
+      app.setAsDefaultProtocolClient(AUTOMATION_PROTOCOL, process.execPath, [path.resolve(process.argv[1] || '')]);
+      return;
+    }
+
+    app.setAsDefaultProtocolClient(AUTOMATION_PROTOCOL);
+  } catch (error) {
+    writeDiagnosticEvent('web-automation', 'protocol-register-failure', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function queueProtocolCommand(url) {
+  if (!url) return;
+  protocolCommandQueue.push(url);
+  void flushProtocolCommands();
+}
+
+async function flushProtocolCommands() {
+  if (protocolQueueBusy || !app.isReady()) return;
+  protocolQueueBusy = true;
+
+  try {
+    while (protocolCommandQueue.length > 0) {
+      const url = protocolCommandQueue.shift();
+      if (!url) {
+        continue;
+      }
+      try {
+        await handleProtocolCommand(url);
+      } catch (error) {
+        writeDiagnosticEvent('web-automation', 'protocol-command-failure', {
+          url,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  } finally {
+    protocolQueueBusy = false;
+  }
+}
+
+async function handleProtocolCommand(rawUrl) {
+  const parsed = new URL(rawUrl);
+  if (parsed.protocol !== `${AUTOMATION_PROTOCOL}:`) {
+    return;
+  }
+
+  if (parsed.hostname === 'automation' && parsed.pathname === '/launcher/start') {
+    await ensureAutomationLauncher();
+    return;
+  }
+
+  const startMatch = parsed.pathname.match(/^\/apps\/([^/]+)\/start\/?$/);
+  if (parsed.hostname === 'automation' && startMatch) {
+    await launchAutomationApp(decodeURIComponent(startMatch[1]));
+  }
+}
+
 function getDiagnosticsTimestamp() {
   return new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
 }
@@ -1368,11 +1619,11 @@ function registerIpcHandlers() {
     return result;
   });
 
-  ipcMain.handle('stop-automation-app', (_event, appId) => {
+  ipcMain.handle('stop-automation-app', async (_event, appId) => {
     if (typeof appId !== 'string' || !appId) {
       return { success: false, error: 'Invalid automation app id' };
     }
-    const result = stopAutomationApp(appId);
+    const result = await stopAutomationApp(appId);
     writeDiagnosticEvent('web-automation', result.success ? 'stop-success' : 'stop-failure', { appId, result });
     return result;
   });
@@ -1536,8 +1787,35 @@ function createWindow() {
   });
 }
 
+const initialProtocolUrl = extractProtocolUrl(process.argv);
+const singleInstanceLock = app.requestSingleInstanceLock();
+
+if (!singleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, commandLine) => {
+    const incomingUrl = extractProtocolUrl(commandLine);
+    if (incomingUrl) {
+      queueProtocolCommand(incomingUrl);
+    }
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.focus();
+    }
+  });
+
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    queueProtocolCommand(url);
+  });
+}
+
 registerIpcHandlers();
 app.whenReady().then(async () => {
+  registerAutomationProtocol();
   // 正式界面不暴露 Electron 默认菜单，避免与业务导航重复。
   Menu.setApplicationMenu(null);
 
@@ -1548,7 +1826,21 @@ app.whenReady().then(async () => {
   } else {
     writeDiagnosticEvent('backend', 'startup-success', backendStatus);
   }
+  try {
+    await ensureAutomationLauncher();
+    writeDiagnosticEvent('web-automation', 'launcher-startup-success', {
+      url: AUTOMATION_LAUNCHER_URL,
+    });
+  } catch (error) {
+    writeDiagnosticEvent('web-automation', 'launcher-startup-failure', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   createWindow();
+  if (initialProtocolUrl) {
+    queueProtocolCommand(initialProtocolUrl);
+  }
+  void flushProtocolCommands();
   configureAutoUpdater();
   if (app.isPackaged && updateFeedUrl && !isPlaceholderUpdateFeedUrl(updateFeedUrl)) {
     setTimeout(() => {
@@ -1577,17 +1869,5 @@ app.on('before-quit', () => {
   if (backendProcess && !backendProcess.killed) {
     backendProcess.kill();
     backendProcess = null;
-  }
-
-  for (const [appId, tracked] of automationAppProcesses.entries()) {
-    if (tracked.child && !tracked.child.killed) {
-      tracked.child.kill();
-    }
-    try {
-      fs.closeSync(tracked.logFd);
-    } catch (_error) {
-      // Ignore close failures during application shutdown.
-    }
-    automationAppProcesses.delete(appId);
   }
 });

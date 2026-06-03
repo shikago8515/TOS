@@ -1,0 +1,1991 @@
+<template>
+  <div ref="layoutRef" class="create-case-layout" :class="{ 'is-resizing': resizing }">
+    <!-- Left Panel: Configuration -->
+    <section class="config-pane" :style="configPaneStyle">
+      <ConfigPanel
+        :form="form"
+        :batch-form="batchForm"
+        v-model:generation-mode="generationMode"
+        v-model:use-workflow-mode="useWorkflowMode"
+        :loading="loading"
+        :loading-classes="loadingClasses"
+        :loading-students="loadingStudents"
+        :loading-courses="loadingCourses"
+        :class-list="classList"
+        :student-list="studentList"
+        :course-list="courseList"
+        v-model:selected-students="selectedStudents"
+        :select-all="selectAll"
+        :is-indeterminate="isIndeterminate"
+        :popular-keywords="popularKeywords"
+        :difficulty-options="difficultyOptions"
+        :intent-detecting="intentDetecting"
+        :intent-detected="intentDetected"
+        :intent-effective="intentEffective"
+        :intent-confidence="intentConfidence"
+        :intent-override="intentOverride"
+        @class-change="handleClassChange"
+        @select-all="handleSelectAll"
+        @toggle-intent-override="handleToggleIntentOverride"
+        @clear-intent-override="handleClearIntentOverride"
+        @reset="handleReset"
+        @generate="handleGenerate"
+      />
+    </section>
+
+    <div
+      class="resize-handle"
+      :class="{ active: resizing }"
+      @mousedown="startResize"
+      title="拖拽调整左右区域宽度"
+    ></div>
+
+    <!-- Right Panel: Preview Workspace -->
+    <main class="preview-workspace">
+      <header class="workspace-header">
+        <div class="breadcrumbs">
+          <el-icon><Monitor /></el-icon>
+          <span class="divider">/</span>
+          <span class="current">案例预览</span>
+        </div>
+        <div class="actions" v-if="canAbortGeneration">
+          <el-button
+            type="danger"
+            plain
+            size="small"
+            :loading="abortingGeneration"
+            @click="handleAbortGeneration"
+          >中断生成</el-button>
+        </div>
+        <div class="actions" v-if="generatedCase && !showReviewPanel">
+          <el-button type="primary" icon="Edit" circle @click="handleEditCase" title="编辑案例" />
+          <el-button type="success" icon="Check" circle @click="handlePublish" title="发布案例" />
+          <el-button type="warning" icon="Refresh" circle @click="handleRegenerateSingleCase" title="重新生成" />
+        </div>
+      </header>
+
+      <div class="workspace-body custom-scrollbar">
+        <!-- Workflow Progress State (Single Mode Only) -->
+        <BatchProgressPanel
+          v-if="showSingleWorkflowPanel"
+          :batch-task-id="String(activeWorkflowTaskId || '')"
+          :progress="singleWorkflowBatchProgress"
+          :deliverable-mode="form.deliverableMode"
+          @view-logs="handleViewWorkflowLogs"
+          @view-agent-output="handleViewAgentOutput"
+          @approve-checkpoint="handleApproveCheckpoint"
+        />
+
+        <!-- Batch Progress Panel (All Batch Modes) -->
+        <BatchProgressPanel
+          v-else-if="showBatchProgressPanel"
+          :batch-task-id="currentBatchTaskId"
+          :progress="batchGenerationProgress || {}"
+          :deliverable-mode="form.deliverableMode"
+          @view-logs="handleViewWorkflowLogs"
+          @preview-case="handlePreviewCaseById"
+          @view-agent-output="handleViewAgentOutput"
+          @approve-checkpoint="handleApproveCheckpoint"
+        />
+        
+        <!-- Normal Loading State (single mode or batch startup) -->
+        <div v-else-if="loading" class="state-container loading">
+          <div class="loader-animation">
+            <div class="scanner"></div>
+          </div>
+          <h3 v-if="generationMode === 'single'">AI 正在构建实训场景</h3>
+          <h3 v-else>批量生成进行中</h3>
+          <p v-if="generationMode === 'single'">正在分析关键词、生成任务清单与模拟数据...</p>
+          <p v-else>正在为 {{ batchGeneratingStudentCount }} 名学生生成个性化案例...</p>
+          <div v-if="isAnalysisMode" class="analysis-progress-card">
+            <div class="progress-title">分析任务生成进度</div>
+            <el-progress
+              :percentage="analysisProgressPercent"
+              :stroke-width="12"
+            />
+            <div class="progress-desc">{{ analysisProgressText }}</div>
+          </div>
+        </div>
+
+        <!-- Batch Review Panel -->
+        <ReviewPanel
+          v-else-if="showReviewPanel"
+          :pending-cases="pendingCases"
+          :loading-pending-cases="loadingPendingCases"
+          :selected-case-ids="selectedCaseIds"
+          :regenerating-case-id="regeneratingCaseId"
+          @select-all="handleSelectAllCases"
+          @select-case="handleSelectCase"
+          @batch-approve="handleBatchApprove"
+          @approve-all="handleApproveAll"
+          @preview="handlePreviewCase"
+          @approve="handleApproveCase"
+          @regenerate="handleRegenerateCase"
+        />
+
+        <!-- Empty State -->
+        <div v-else-if="!generatedCase" class="state-container empty">
+          <div class="empty-illustration">
+            <div class="icon-placeholder">
+              <el-icon><Collection /></el-icon>
+            </div>
+          </div>
+          <h3>开始您的创作</h3>
+          <p>在左侧配置面板输入需求，AI 将为您生成专业的实训案例。</p>
+        </div>
+
+        <!-- Document Preview (A4 Paper Style) -->
+        <CaseDocument
+          v-else
+          :generated-case="generatedCase"
+          :difficulty-level="form.difficultyLevel"
+          :estimated-hours="form.estimatedHours"
+          :difficulty-options="difficultyOptions"
+        />
+      </div>
+    </main>
+    
+    <CasePreviewDialog
+      v-model="showPreviewDialog"
+      :preview-case="previewCase"
+      :difficulty-options="difficultyOptions"
+      @approve="handleApproveCaseFromDialog"
+    />
+    
+    <!-- Workflow Logs Dialog -->
+    <WorkflowLogsDialog
+      v-model="showWorkflowLogsDialog"
+      :workflow-instance-id="selectedWorkflowInstanceId"
+      :deliverable-mode="form.deliverableMode"
+    />
+    
+    <AgentOutputDialog
+      v-model="showAgentOutputDialog"
+      :agent-output-data="agentOutputData"
+      :parsed-content="parsedContent"
+      :is-single-workflow-reviewing="isSingleWorkflowReviewing"
+      @approve="handleApproveSingleCheckpoint"
+    />
+
+    <el-tour v-model="showGuideDialog" @close="closeGuideDialog" :mask="true" :z-index="9999">
+      <el-tour-step title="欢迎使用智能案例构建中心">
+        <div class="tour-step-content">
+          <p>这里是基于多 Agent 协同工作流的案例生成引擎，为您提供全场景、个性化的教学案例生成体验。</p>
+          <div class="tour-checkbox-wrapper">
+            <el-checkbox v-model="guideDontShowToday">今日不再自动弹出</el-checkbox>
+          </div>
+        </div>
+      </el-tour-step>
+      <el-tour-step target=".core-blueprint-card" title="核心蓝图构建" placement="right">
+        <div class="tour-step-content">
+          <p>在这里定义实训的<strong>主题、难度</strong>与<strong>技术栈</strong>要求。</p>
+          <p>右上角可灵活切换<strong>纯编码</strong>模式与<strong>完整实训</strong>（工程流）模式。</p>
+        </div>
+      </el-tour-step>
+      <el-tour-step target=".teaching-dispatch-card" title="教学与千人千案分发" placement="right">
+        <div class="tour-step-content">
+          <p>您可以选择生成<strong>单一案例</strong>，或一键为全班生成自带差异化业务数据的<strong>千人千案</strong>。</p>
+        </div>
+      </el-tour-step>
+      <el-tour-step target=".ai-enhance-card" title="智能增强与工作流" placement="right">
+        <div class="tour-step-content">
+          <p>展开后可补充<strong>教学意图提示词</strong>、绑定教材进行 <strong>RAG 知识对齐</strong>。</p>
+          <p>同时支持开启关键节点的 <strong>多Agent审查机制</strong> 与干预拦截。</p>
+        </div>
+      </el-tour-step>
+      <el-tour-step target=".btn-submit" title="一键生成" placement="top">
+        <div class="tour-step-content">
+          <p>配置完成后，点击这里即可启动多 Agent 联合生成引擎！</p>
+        </div>
+      </el-tour-step>
+    </el-tour>
+
+    <el-dialog
+      v-model="showGenerationNoticeDialog"
+      title="生成提示"
+      width="460px"
+      :close-on-click-modal="false"
+    >
+      <p class="generation-notice-text">{{ generationNoticeText }}</p>
+      <p class="generation-notice-text sub">预计队列并发上限（当前50），超出后将排队执行。</p>
+      <template #footer>
+        <el-button @click="handleCancelGenerationNotice">取消</el-button>
+        <el-button type="primary" @click="handleConfirmGenerationNotice">我知道了，开始生成</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { reactive, ref, onMounted, onUnmounted, watch, computed } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Monitor, Collection } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
+import { generateCase, publishCase, generateCasesForClass, generateNonCodeCase, generateNonCodeCasesForClass, generateCaseWithWorkflow, generateCasesWithWorkflowBatch, generatePublicCasesWithWorkflowBatch, getCaseDetail, cancelWorkflow, detectNonCodeIntent, getWorkflowByCaseDifficulty } from '@/api/teacher/case'
+import { getCreateCaseGuidePreference, updateCreateCaseGuidePreference } from '@/api/user'
+import { getMyCourses } from '@/api/teacher/course'
+import { getMyClasses, getClassStudents } from '@/api/teacher/class'
+import { useCreateCasePolling } from './composables/useCreateCasePolling.js'
+import { useCreateCaseReview } from './composables/useCreateCaseReview.js'
+import { mapDeliverableModeToWorkflowMode, mapNumericDifficultyToWorkflowLevel } from '../Workflow/workflowModes'
+
+import ConfigPanel from './ConfigPanel.vue'
+import ReviewPanel from './ReviewPanel.vue'
+import CaseDocument from './CaseDocument.vue'
+import BatchProgressPanel from './BatchProgressPanel.vue'
+import WorkflowLogsDialog from './WorkflowLogsDialog.vue'
+import CasePreviewDialog from './CasePreviewDialog.vue'
+import AgentOutputDialog from './AgentOutputDialog.vue'
+
+const router = useRouter()
+const layoutRef = ref<HTMLElement | null>(null)
+
+const loading = ref(false)
+const generatedCase = ref<any>(null)
+const showGuideDialog = ref(false)
+const guideDontShowToday = ref(false)
+const showGenerationNoticeDialog = ref(false)
+const pendingGenerateAction = ref<null | (() => Promise<void> | void)>(null)
+const courseList = ref<any[]>([])
+const loadingCourses = ref(false)
+const abortingGeneration = ref(false)
+const analysisSingleProgress = ref(0)
+let analysisSingleProgressTimer: number | null = null
+const analysisSingleTaskStatus = ref('PENDING')
+const analysisSingleTaskBackendPercent = ref(0)
+const analysisBatchTaskStatus = ref('PENDING')
+const analysisWorkflowStatus = ref('')
+const analysisWorkflowState = ref('')
+const intentDetecting = ref(false)
+const intentDetected = ref<'IMPLEMENTATION_LAB' | 'DATA_ANALYSIS'>('DATA_ANALYSIS')
+const intentEffective = ref<'IMPLEMENTATION_LAB' | 'DATA_ANALYSIS'>('DATA_ANALYSIS')
+const intentConfidence = ref(0)
+const intentOverride = ref('')
+let detectIntentTimer: number | null = null
+
+const PANEL_MIN_WIDTH = 360
+const PANEL_DEFAULT_WIDTH = 430
+const PANEL_MAX_RATIO = 0.56
+const resizing = ref(false)
+const configPaneWidth = ref(PANEL_DEFAULT_WIDTH)
+
+const resolveMaxPaneWidth = () => {
+  const containerWidth = layoutRef.value?.clientWidth || window.innerWidth
+  return Math.max(460, Math.floor(containerWidth * PANEL_MAX_RATIO))
+}
+
+const clampPaneWidth = (value: number) => {
+  const maxWidth = resolveMaxPaneWidth()
+  return Math.max(PANEL_MIN_WIDTH, Math.min(Math.round(value), maxWidth))
+}
+
+const configPaneStyle = computed(() => ({
+  width: `${configPaneWidth.value}px`
+}))
+
+const handleResizeMove = (event: MouseEvent) => {
+  if (!resizing.value || !layoutRef.value) return
+  const rect = layoutRef.value.getBoundingClientRect()
+  const nextWidth = event.clientX - rect.left
+  configPaneWidth.value = clampPaneWidth(nextWidth)
+}
+
+const stopResize = () => {
+  if (!resizing.value) return
+  resizing.value = false
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+  window.removeEventListener('mousemove', handleResizeMove)
+  window.removeEventListener('mouseup', stopResize)
+}
+
+const startResize = () => {
+  resizing.value = true
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  window.addEventListener('mousemove', handleResizeMove)
+  window.addEventListener('mouseup', stopResize)
+}
+
+// Workflow state
+const useWorkflowMode = ref(false)
+const showWorkflowProgress = ref(false)
+const activeWorkflowTaskId = ref<string | null>(null)
+const workflowStatus = ref<'pending' | 'processing' | 'completed' | 'failed' | 'reviewing' | 'error'>('pending')
+const workflowCurrentStage = ref('INIT')
+const workflowSteps = ref<any[]>([])
+const workflowLogs = ref<any[]>([])
+const workflowError = ref('')
+// 批量生成相关状态
+const generationMode = ref<'single' | 'batch'>('single')
+const classList = ref<any[]>([])
+const studentList = ref<any[]>([])
+const selectedStudents = ref<number[]>([])
+const selectAll = ref(false)
+const isIndeterminate = ref(false)
+const loadingClasses = ref(false)
+const loadingStudents = ref(false)
+const batchGenerationProgress = ref<any>(null)
+const batchForm = reactive({
+  classId: null
+})
+
+// 审核相关状态
+const showReviewPanel = ref(false)
+const pendingCases = ref<any[]>([])
+const loadingPendingCases = ref(false)
+const currentBatchTaskId = ref<string>('')
+const selectedCaseIds = ref<number[]>([])
+const regeneratingCaseId = ref<number | null>(null)
+const previewCase = ref<any>(null)
+const showPreviewDialog = ref(false)
+const showWorkflowLogsDialog = ref(false)
+const selectedWorkflowInstanceId = ref<number | null>(null)
+
+const batchGeneratingStudentCount = computed(() => {
+  return batchGenerationProgress.value?.totalCount
+    || batchGenerationProgress.value?.totalStudents
+    || selectedStudents.value.length
+    || 0
+})
+
+const isAnalysisMode = computed(() => form.deliverableMode === 'NON_CODE')
+const workflowModeActive = computed(() => isAnalysisMode.value || useWorkflowMode.value)
+
+const generationParallelCount = computed(() => {
+  if (generationMode.value === 'batch') {
+    return Number(selectedStudents.value.length || 0)
+  }
+
+  if (workflowModeActive.value && generationMode.value === 'single') {
+    return Number(form.numVersions || 1)
+  }
+
+  return 1
+})
+
+const generationNoticeText = computed(() => {
+  const parallelCount = Number(generationParallelCount.value || 1)
+  if (parallelCount >= 10) {
+    return `正在并行生成 ${parallelCount} 个案例，耗时较长：请耐心等待。`
+  }
+  return `正在并行生成 ${parallelCount} 个案例，总耗时约为3-5分钟。`
+})
+
+const canAbortGeneration = computed(() => {
+  return loading.value && !generatedCase.value && !showReviewPanel.value
+})
+
+const openGenerationNotice = (action: () => Promise<void> | void) => {
+  pendingGenerateAction.value = action
+  showGenerationNoticeDialog.value = true
+}
+
+const handleConfirmGenerationNotice = async () => {
+  const action = pendingGenerateAction.value
+  showGenerationNoticeDialog.value = false
+  pendingGenerateAction.value = null
+  if (!action) return
+  await action()
+}
+
+const handleCancelGenerationNotice = () => {
+  showGenerationNoticeDialog.value = false
+  pendingGenerateAction.value = null
+}
+
+const loadGuidePreference = async () => {
+  try {
+    const response = await getCreateCaseGuidePreference()
+    const hideToday = !!response?.data?.hideToday
+    setTimeout(() => {
+      showGuideDialog.value = !hideToday
+    }, 300)
+    guideDontShowToday.value = false
+  } catch (error) {
+    setTimeout(() => {
+      showGuideDialog.value = true
+    }, 300)
+  }
+}
+
+const closeGuideDialog = async () => {
+  try {
+    await updateCreateCaseGuidePreference({
+      hideToday: !!guideDontShowToday.value
+    })
+  } catch (error) {
+    console.warn('保存创建案例引导偏好失败', error)
+  } finally {
+    showGuideDialog.value = false
+  }
+}
+
+const showSingleWorkflowPanel = computed(() => {
+  return workflowModeActive.value
+    && generationMode.value === 'single'
+    && (showWorkflowProgress.value || !!activeWorkflowTaskId.value)
+    && (loading.value || workflowStatus.value === 'reviewing' || workflowStatus.value === 'processing' || workflowStatus.value === 'error')
+})
+
+const stageProgressMap: Record<string, number> = {
+  INIT: 0,
+  INPUT_PARSE: 12,
+  GENERATION: 28,
+  STRUCTURING: 45,
+  VALIDATION: 62,
+  DATA_GENERATION: 78,
+  REVIEW: 90,
+  PUBLISH: 96,
+  COMPLETED: 100
+}
+
+const analysisSingleStatusDescMap: Record<string, string> = {
+  PENDING: '排队中：正在接收分析任务请求',
+  PROCESSING: '解析需求：正在构建分析任务',
+  COMPLETED: '生成结果：分析任务案例已完成',
+  SUCCESS: '生成结果：分析任务案例已完成',
+  FAILED: '生成失败：请调整关键词后重试'
+}
+
+const analysisBatchStatusDescMap: Record<string, string> = {
+  PENDING: '排队中：正在准备班级批量任务',
+  PROCESSING: '构建任务：正在为学生生成分析案例',
+  COMPLETED: '生成结果：批量分析案例已完成',
+  SUCCESS: '生成结果：批量分析案例已完成',
+  PARTIAL_SUCCESS: '生成结果：批量任务部分完成',
+  FAILED: '生成失败：批量任务执行失败'
+}
+
+const analysisWorkflowStateDescMap: Record<string, string> = {
+  INIT: '初始化：正在创建工作流实例',
+  INPUT_PARSE: '解析需求：正在理解关键词与目标',
+  GENERATION: '构建任务：正在生成分析任务主体',
+  STRUCTURING: '结构整理：正在组织案例内容',
+  VALIDATION: '质量校验：正在检查结果完整性',
+  DATA_GENERATION: '生成结果：正在补全数据与输出',
+  REVIEW: '人工审核：等待教师确认',
+  PUBLISH: '发布准备：正在收尾处理',
+  COMPLETED: '生成结果：工作流已完成'
+}
+
+const stopAnalysisSingleProgress = (reset = false) => {
+  if (analysisSingleProgressTimer) {
+    window.clearInterval(analysisSingleProgressTimer)
+    analysisSingleProgressTimer = null
+  }
+  if (reset) {
+    analysisSingleProgress.value = 0
+  }
+}
+
+const startAnalysisSingleProgress = () => {
+  stopAnalysisSingleProgress(true)
+  analysisSingleProgress.value = 10
+  analysisSingleProgressTimer = window.setInterval(() => {
+    if (analysisSingleProgress.value >= 92) {
+      stopAnalysisSingleProgress(false)
+      return
+    }
+    analysisSingleProgress.value = Math.min(92, analysisSingleProgress.value + 4)
+  }, 1200)
+}
+
+const singleWorkflowReviewSnapshot = ref<any>(null)
+
+const singleWorkflowBatchProgress = computed(() => {
+  const status = workflowStatus.value
+  const isReviewing = status === 'reviewing'
+  const isError = status === 'error'
+  const isCompleted = status === 'completed'
+  const workflowInstanceId = activeWorkflowTaskId.value ? Number(activeWorkflowTaskId.value) : 0
+  const progressPercent = isCompleted
+    ? 100
+    : (stageProgressMap[workflowCurrentStage.value] ?? (status === 'processing' ? 20 : 0))
+
+  const snapshot = singleWorkflowReviewSnapshot.value || {}
+  return {
+    totalStudents: 1,
+    generatedCount: isCompleted ? 1 : 0,
+    runningCount: isCompleted || isError ? 0 : 1,
+    reviewingCount: isReviewing ? 1 : 0,
+    progressPercent,
+    studentProgress: [
+      {
+        studentId: 1,
+        studentName: '单案例工作流',
+        studentNo: workflowInstanceId ? `#${workflowInstanceId}` : '#-',
+        avatar: '',
+        status: isCompleted ? 'SUCCESS' : (isError ? 'FAILED' : 'RUNNING'),
+        currentState: workflowCurrentStage.value,
+        progressPercentage: progressPercent,
+        needsReview: isReviewing,
+        reviewingAgent: snapshot.reviewingAgent || snapshot.agentName || '未知Agent',
+        reviewMessage: snapshot.reviewMessage || '',
+        currentAgentOutput: snapshot.currentAgentOutput || snapshot.content || '',
+        workflowInstanceId,
+        errorMessage: isError ? workflowError.value : ''
+      }
+    ]
+  }
+})
+
+const showBatchProgressPanel = computed(() => {
+  return loading.value && !!batchGenerationProgress.value && (
+    generationMode.value === 'batch' ||
+    (workflowModeActive.value && generationMode.value === 'single' && Number(form.numVersions || 1) > 1)
+  )
+})
+
+const analysisProgressPercent = computed(() => {
+  if (!isAnalysisMode.value || !loading.value) {
+    return 0
+  }
+
+  if (generationMode.value === 'batch') {
+    const batchPercent = Number(batchGenerationProgress.value?.progressPercent || 0)
+    return Math.max(5, Math.min(99, batchPercent || 5))
+  }
+
+  if (workflowModeActive.value) {
+    const workflowStage = analysisWorkflowState.value || workflowCurrentStage.value
+    const workflowPercent = Number(stageProgressMap[workflowStage] ?? 15)
+    return Math.max(8, Math.min(99, workflowPercent))
+  }
+
+  const backendPercent = Number(analysisSingleTaskBackendPercent.value || 0)
+  if (backendPercent > 0) {
+    return Math.max(8, Math.min(99, backendPercent))
+  }
+  return Math.max(8, Math.min(99, analysisSingleProgress.value))
+})
+
+const analysisProgressText = computed(() => {
+  const buildStageText = (code: string, desc: string) => {
+    return `状态：${code || 'UNKNOWN'} · ${desc}`
+  }
+
+  if (generationMode.value === 'batch') {
+    const code = String(analysisBatchTaskStatus.value || batchGenerationProgress.value?.status || 'PENDING').toUpperCase()
+    const baseDesc = analysisBatchStatusDescMap[code] || '处理中：正在执行批量分析任务'
+    const completed = Number(batchGenerationProgress.value?.completedCount || batchGenerationProgress.value?.generatedCount || 0)
+    const total = Number(batchGenerationProgress.value?.totalCount || batchGenerationProgress.value?.totalStudents || 0)
+    const suffix = total > 0 ? `（${completed}/${total}）` : ''
+    return buildStageText(code, `${baseDesc}${suffix}`)
+  }
+
+  if (workflowModeActive.value) {
+    const code = String(analysisWorkflowStatus.value || workflowStatus.value || 'PROCESSING').toUpperCase()
+    const stateCode = String(analysisWorkflowState.value || workflowCurrentStage.value || 'INPUT_PARSE').toUpperCase()
+    const stateDesc = analysisWorkflowStateDescMap[stateCode] || '处理中：工作流执行中'
+    return buildStageText(`${code}/${stateCode}`, stateDesc)
+  }
+
+  const code = String(analysisSingleTaskStatus.value || 'PENDING').toUpperCase()
+  const desc = analysisSingleStatusDescMap[code] || '处理中：正在生成分析任务案例'
+  return buildStageText(code, desc)
+})
+
+const popularKeywords = [
+  'Spring Boot', 'Vue3', '电商系统', '数据分析', '微服务', 'Redis', 'MySQL优化'
+]
+
+const difficultyOptions = [
+  { value: 1, label: '初级', icon: 'Star' },
+  { value: 2, label: '中级', icon: 'Connection' },
+  { value: 3, label: '高级', icon: 'Trophy' }
+]
+
+const form = reactive({
+  keywords: '',
+  trainingTopic: '',
+  techStackRequirements: [],
+  datasetScale: 10,
+  storyStyle: '',
+  difficultyLevel: 2,
+  estimatedHours: 3,
+  deliverableMode: 'NON_CODE',
+  courseId: null,
+  numVersions: 1,
+  // 教材RAG相关字段
+  textbookId: null,
+  chapterIds: [],
+  isFullTextbook: false,
+  knowledgePoints: [],
+  learningObjectives: [],
+  // Agent工作流相关配置
+  enableWorkflow: false, // 是否启用工作流模式
+  enableCheckpoints: true // 是否启用检查点审核（仅当enableWorkflow=true时生效）
+})
+
+const buildKeywordFallbackText = () => {
+  return [
+    String(form.trainingTopic || '').trim(),
+    Array.isArray(form.techStackRequirements) ? form.techStackRequirements.join('、') : '',
+    String(form.storyStyle || '').trim(),
+    form.deliverableMode === 'NON_CODE' ? '完整实训案例' : '纯编码实战'
+  ].filter(Boolean).join('，')
+}
+
+const resolveGenerationIntentText = () => {
+  const topicContext = buildKeywordFallbackText()
+  const keywordContext = String(form.keywords || '').trim()
+  if (!topicContext) return keywordContext
+  if (!keywordContext) return topicContext
+  return `${topicContext}；补充约束：${keywordContext}`
+}
+
+const detectKeywordTopicConflict = () => {
+  const topicText = `${String(form.trainingTopic || '').trim()} ${String(form.storyStyle || '').trim()}`.toLowerCase()
+  const keywordsText = String(form.keywords || '').trim().toLowerCase()
+  if (!topicText || !keywordsText) {
+    return ''
+  }
+
+  const domainGroups = [
+    { name: '食堂餐饮', tokens: ['食堂', '餐饮', '点餐', '菜品', '档口', 'canteen', 'dish'] },
+    { name: '宠物健康', tokens: ['宠物', '疫苗', '宠物医院', 'pet', 'vaccine'] },
+    { name: '图书交易', tokens: ['图书', '书店', '二手书', 'bookstore', 'book'] },
+    { name: '医疗门诊', tokens: ['医院', '门诊', '患者', '挂号', 'medical', 'clinic'] },
+    { name: '电商零售', tokens: ['电商', '商城', '购物车', '订单', 'ecommerce', 'retail'] },
+    { name: '校园教务', tokens: ['校园', '教务', '选课', '成绩', 'student', 'course'] }
+  ]
+
+  const matchedTopicGroups = domainGroups
+    .filter(group => group.tokens.some(token => topicText.includes(token)))
+    .map(group => group.name)
+  const matchedKeywordGroups = domainGroups
+    .filter(group => group.tokens.some(token => keywordsText.includes(token)))
+    .map(group => group.name)
+
+  if (!matchedTopicGroups.length || !matchedKeywordGroups.length) {
+    return ''
+  }
+
+  const hasOverlap = matchedKeywordGroups.some(group => matchedTopicGroups.includes(group))
+  if (hasOverlap) {
+    return ''
+  }
+
+  return `检测到主题与补充约束可能冲突：主题偏向「${matchedTopicGroups[0]}」，补充内容偏向「${matchedKeywordGroups[0]}」。请统一后再提交。`
+}
+
+const lastSingleGenerateSnapshot = ref<any>(null)
+
+const clonePayload = (payload: any) => JSON.parse(JSON.stringify(payload || {}))
+
+const saveLastSingleGenerateSnapshot = (snapshot: any) => {
+  lastSingleGenerateSnapshot.value = {
+    ...snapshot,
+    payload: clonePayload(snapshot?.payload)
+  }
+}
+
+const buildGenerationPayload = (extra: Record<string, any> = {}) => {
+  return {
+    keywords: resolveGenerationIntentText(),
+      trainingTopic: String(form.trainingTopic || '').trim() || null,
+      storyStyle: String(form.storyStyle || '').trim() || null,
+      datasetScale: Number(form.datasetScale || 0) > 0 ? Number(form.datasetScale) : null,
+      techStackRequirements: Array.isArray(form.techStackRequirements) ? form.techStackRequirements : [],
+    difficultyLevel: form.difficultyLevel,
+    estimatedHours: form.estimatedHours,
+    deliverableMode: form.deliverableMode,
+      courseId: form.courseId,
+      textbookId: form.textbookId,
+      chapterIds: form.chapterIds,
+      isFullTextbook: form.isFullTextbook,
+      knowledgePoints: form.knowledgePoints,
+      learningObjectives: form.learningObjectives,
+      enableWorkflow: workflowModeActive.value,
+      enableCheckpoints: form.enableCheckpoints,
+        ...extra
+      }
+  }
+
+const resolveWorkflowTemplateId = async () => {
+  try {
+    const caseType = mapDeliverableModeToWorkflowMode(form.deliverableMode)
+    const difficultyLevel = mapNumericDifficultyToWorkflowLevel(form.difficultyLevel)
+    const res = await getWorkflowByCaseDifficulty(caseType, difficultyLevel)
+    const data = res?.data || res
+    const template = data?.template
+
+    if (data?.exists && template?.id) {
+      return template.id
+    }
+  } catch (error) {
+    console.warn('读取工作流配置失败，回退默认工作流模板', error)
+  }
+
+  return null
+}
+
+const buildWorkflowGenerationPayload = async (extra: Record<string, any> = {}) => {
+  const payload = buildGenerationPayload(extra)
+  const workflowTemplateId = await resolveWorkflowTemplateId()
+
+  if (workflowTemplateId) {
+    payload.workflowTemplateId = workflowTemplateId
+  }
+
+  return payload
+}
+
+const runDetectIntent = async (immediate = false) => {
+  if (!isAnalysisMode.value) return
+  const keywords = resolveGenerationIntentText()
+  if (!keywords) {
+    intentDetected.value = 'DATA_ANALYSIS'
+    intentEffective.value = intentOverride.value === 'IMPLEMENTATION_LAB' ? 'IMPLEMENTATION_LAB' : 'DATA_ANALYSIS'
+    intentConfidence.value = 0
+    return
+  }
+
+  const execute = async () => {
+    try {
+      intentDetecting.value = true
+      const res = await detectNonCodeIntent({
+        keywords,
+        intentOverride: intentOverride.value || undefined
+      })
+      const data = res?.data || {}
+      intentDetected.value = data.detectedIntent === 'IMPLEMENTATION_LAB' ? 'IMPLEMENTATION_LAB' : 'DATA_ANALYSIS'
+      intentEffective.value = data.effectiveIntent === 'IMPLEMENTATION_LAB' ? 'IMPLEMENTATION_LAB' : 'DATA_ANALYSIS'
+      intentConfidence.value = Number(data.confidence || 0)
+    } catch (e) {
+      intentDetected.value = 'DATA_ANALYSIS'
+      intentEffective.value = intentOverride.value === 'IMPLEMENTATION_LAB' ? 'IMPLEMENTATION_LAB' : 'DATA_ANALYSIS'
+      intentConfidence.value = 0
+    } finally {
+      intentDetecting.value = false
+    }
+  }
+
+  if (immediate) {
+    if (detectIntentTimer) {
+      window.clearTimeout(detectIntentTimer)
+      detectIntentTimer = null
+    }
+    await execute()
+    return
+  }
+
+  if (detectIntentTimer) {
+    window.clearTimeout(detectIntentTimer)
+  }
+  detectIntentTimer = window.setTimeout(() => {
+    execute()
+  }, 450)
+}
+
+const handleToggleIntentOverride = async () => {
+  intentOverride.value = intentEffective.value === 'IMPLEMENTATION_LAB' ? 'DATA_ANALYSIS' : 'IMPLEMENTATION_LAB'
+  await runDetectIntent(true)
+}
+
+const handleClearIntentOverride = async () => {
+  intentOverride.value = ''
+  await runDetectIntent(true)
+}
+
+const loadCourses = async () => {
+  loadingCourses.value = true
+  try {
+    const res = await getMyCourses()
+    courseList.value = res.data || []
+    if (courseList.value.length > 0) {
+      form.courseId = courseList.value[0].id
+    }
+  } catch (e) {
+    ElMessage.error('加载课程列表失败')
+  } finally {
+    loadingCourses.value = false
+  }
+}
+
+const loadClasses = async () => {
+  loadingClasses.value = true
+  try {
+    const res = await getMyClasses()
+    classList.value = res.data || []
+  } catch (e) {
+    ElMessage.error('加载班级列表失败')
+  } finally {
+    loadingClasses.value = false
+  }
+}
+
+const handleClassChange = async (classId: number) => {
+  if (!classId) return
+  
+  loadingStudents.value = true
+  selectedStudents.value = []
+  selectAll.value = false
+  try {
+    const res = await getClassStudents(classId)
+    studentList.value = res.data || []
+  } catch (e) {
+    ElMessage.error('加载学生列表失败')
+  } finally {
+    loadingStudents.value = false
+  }
+}
+
+const handleSelectAll = (val: boolean) => {
+  selectedStudents.value = val ? studentList.value.map(s => s.id) : []
+  isIndeterminate.value = false
+}
+
+const handleGenerateBatch = async () => {
+  if (!batchForm.classId) {
+    ElMessage.warning('请选择班级')
+    return
+  }
+  if (selectedStudents.value.length === 0) {
+    ElMessage.warning('请至少选择一个学生')
+    return
+  }
+  if (!resolveGenerationIntentText()) {
+    ElMessage.warning('请至少填写实训主题、技术栈、背景风格或补充需求描述中的一项')
+    return
+  }
+  
+  loading.value = true
+  analysisBatchTaskStatus.value = 'PENDING'
+  showReviewPanel.value = false
+  generatedCase.value = null
+  // 无论代码/分析模式均预填充学生进度，避免进度面板显示"暂无任务数据"
+  batchGenerationProgress.value = {
+    totalStudents: selectedStudents.value.length,
+    generatedCount: 0,
+    failedCount: 0,
+    reviewingCount: 0,
+    runningCount: selectedStudents.value.length,
+    progressPercent: 1,
+    studentProgress: selectedStudents.value.map((id: number) => {
+      const s = studentList.value.find((st: any) => st.id === id)
+      return {
+        studentId: id,
+        studentName: s?.name || s?.realName || s?.username || `学生#${id}`,
+        studentNo: s?.studentNo || s?.username || `#${id}`,
+        status: 'RUNNING',
+        currentState: 'GENERATION',
+        progressPercentage: 1,
+        errorMessage: '',
+        caseId: null
+      }
+    })
+  }
+  
+  try {
+    const payload: any = buildGenerationPayload({
+      classId: batchForm.classId,
+      studentIds: selectedStudents.value,
+      type: 2 // 批量生成为个性化案例（千人千案）
+    })
+    if (isAnalysisMode.value && intentOverride.value) {
+      payload.intentOverride = intentOverride.value
+    }
+    const response = isAnalysisMode.value
+      ? await generateNonCodeCasesForClass(payload)
+      : await generateCasesForClass(payload)
+    
+    ElMessage.success(`已启动批量生成，为 ${selectedStudents.value.length} 名学生生成个性化案例`)
+    
+    // 轮询查询生成进度
+    const batchTaskId = response.data.batchTaskId
+    saveProgressState({
+      generationMode: 'batch',
+      useWorkflowMode: false,
+      batchTaskId
+    })
+    pollBatchProgress(batchTaskId)
+  } catch (error: any) {
+    ElMessage.error(error.message || '批量生成失败')
+    loading.value = false
+  }
+}
+
+// 查看工作流日志
+const handleViewWorkflowLogs = (workflowInstanceId: number) => {
+  selectedWorkflowInstanceId.value = workflowInstanceId
+  showWorkflowLogsDialog.value = true
+}
+
+// 查看Agent生成的内容
+const showAgentOutputDialog = ref(false)
+const agentOutputData = ref<any>(null)
+const parsedContent = ref<any>(null)
+const isSingleWorkflowReviewing = computed(() => {
+  return workflowModeActive.value
+    && generationMode.value === 'single'
+    && workflowStatus.value === 'reviewing'
+    && !!activeWorkflowTaskId.value
+})
+
+const extractJsonFromText = (text: string) => {
+  if (!text) return text
+
+  const trimmed = text.trim()
+  const codeFenceJsonMatch = trimmed.match(/```json\s*([\s\S]*?)\s*```/i)
+  if (codeFenceJsonMatch?.[1]) {
+    return codeFenceJsonMatch[1].trim()
+  }
+
+  const codeFenceMatch = trimmed.match(/```\s*([\s\S]*?)\s*```/)
+  if (codeFenceMatch?.[1]) {
+    return codeFenceMatch[1].trim()
+  }
+
+  const firstBrace = trimmed.indexOf('{')
+  const lastBrace = trimmed.lastIndexOf('}')
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return trimmed.slice(firstBrace, lastBrace + 1)
+  }
+
+  return trimmed
+}
+
+const normalizeParsedOutput = (parsed: any) => {
+  if (!parsed || typeof parsed !== 'object') return parsed
+
+  if (parsed.mockData && typeof parsed.mockData === 'string') {
+    try { parsed.mockData = JSON.parse(parsed.mockData) } catch (e) {}
+  }
+  if (parsed.taskList && typeof parsed.taskList === 'string') {
+    try { parsed.taskList = JSON.parse(parsed.taskList) } catch (e) {}
+  }
+
+  return parsed
+}
+
+const tryParseAgentOutput = (content: any) => {
+  try {
+    if (content && typeof content === 'object') {
+      parsedContent.value = normalizeParsedOutput(content)
+      return
+    }
+
+    if (typeof content === 'string') {
+      let normalized = content.trim()
+      if (!normalized || normalized === '暂无输出内容') {
+        parsedContent.value = null
+        return
+      }
+
+      if (normalized.startsWith('"') && normalized.endsWith('"')) {
+        normalized = JSON.parse(normalized)
+      }
+
+      const parsed = JSON.parse(extractJsonFromText(normalized))
+      parsedContent.value = normalizeParsedOutput(parsed)
+      return
+    }
+  } catch (e) {
+    console.warn('解析Agent输出内容失败，将显示原始文本', e)
+  }
+  parsedContent.value = null
+}
+
+const {
+  loadPendingCases,
+  refreshPendingCases,
+  handleApproveCase,
+  handleApproveBatch,
+  handleApproveAll,
+  handleRegenerateCase
+} = useCreateCaseReview({
+  currentBatchTaskId,
+  batchGenerationProgress,
+  pendingCases,
+  selectedCaseIds,
+  studentList,
+  showReviewPanel,
+  loadingPendingCases,
+  regeneratingCaseId
+})
+
+const handleBatchApprove = handleApproveBatch
+
+const {
+  saveProgressState,
+  clearProgressState,
+  restoreGenerationProgress,
+  pollBatchProgress,
+  pollWorkflowProgressLoop,
+  pollTaskProgress,
+  clearAllPollTimers
+} = useCreateCasePolling({
+  loading,
+  useWorkflowMode,
+  generationMode,
+  currentBatchTaskId,
+  batchGenerationProgress,
+  showReviewPanel,
+  pendingCases,
+  activeWorkflowTaskId,
+  showWorkflowProgress,
+  workflowStatus,
+  workflowCurrentStage,
+  workflowSteps,
+  workflowLogs,
+  workflowError,
+  generatedCase,
+  // 传入当前任务模式，供轮询/进度接口按模式严格分流
+  isAnalysisMode,
+  loadPendingCases,
+  onSingleTaskProgress: (task: any) => {
+    analysisSingleTaskStatus.value = String(task?.status || '').toUpperCase() || 'PENDING'
+    analysisSingleTaskBackendPercent.value = Number(task?.progressPercent || 0)
+  },
+  onBatchTaskProgress: (payload: any) => {
+    analysisBatchTaskStatus.value = String(payload?.status || '').toUpperCase() || 'PENDING'
+  },
+  onWorkflowProgress: (payload: any) => {
+    analysisWorkflowStatus.value = String(payload?.status || '').toUpperCase() || 'PROCESSING'
+    analysisWorkflowState.value = String(payload?.currentState || '').toUpperCase() || 'INPUT_PARSE'
+  },
+  onWorkflowReviewPause: (data: any) => {
+    singleWorkflowReviewSnapshot.value = {
+      reviewingAgent: data.reviewingAgent,
+      reviewMessage: data.reviewMessage,
+      currentAgentOutput: data.currentAgentOutput,
+      agentName: data.reviewingAgent,
+      content: data.currentAgentOutput
+    }
+    agentOutputData.value = {
+      agentName: data.reviewingAgent || '未知Agent',
+      content: data.currentAgentOutput || '暂无输出内容',
+      reviewMessage: data.reviewMessage || ''
+    }
+    tryParseAgentOutput(agentOutputData.value.content)
+    showAgentOutputDialog.value = true
+  }
+})
+
+const handleViewAgentOutput = async (workflowInstanceId: number, agentName: string) => {
+  try {
+    if (generationMode.value === 'single' && workflowModeActive.value) {
+      const snapshot = singleWorkflowReviewSnapshot.value
+      if (snapshot?.currentAgentOutput || snapshot?.content) {
+        agentOutputData.value = {
+          agentName: agentName || snapshot.reviewingAgent || snapshot.agentName || '未知Agent',
+          content: snapshot.currentAgentOutput || snapshot.content || '暂无输出内容',
+          reviewMessage: snapshot.reviewMessage || ''
+        }
+        tryParseAgentOutput(agentOutputData.value.content)
+        showAgentOutputDialog.value = true
+      } else {
+        ElMessage.warning('当前暂无可审查的Agent输出')
+      }
+      return
+    }
+
+    // 从批量进度数据中查找对应的学生工作流
+    const studentProgress = batchGenerationProgress.value?.studentProgress?.find(
+      (s: any) => s.workflowInstanceId === workflowInstanceId
+    )
+    
+    if (studentProgress) {
+      agentOutputData.value = {
+        agentName: agentName || studentProgress.reviewingAgent || '未知Agent',
+        content: studentProgress.currentAgentOutput || '暂无输出内容',
+        reviewMessage: studentProgress.reviewMessage || ''
+      }
+      
+      // 尝试解析 JSON 内容
+      tryParseAgentOutput(agentOutputData.value.content)
+      
+      showAgentOutputDialog.value = true
+    } else {
+      ElMessage.warning('未找到工作流数据')
+    }
+  } catch (error: any) {
+    ElMessage.error('获取Agent输出失败：' + error.message)
+  }
+}
+
+// 单个工作流审核通过，继续执行
+const handleApproveSingleCheckpoint = async () => {
+  if (!activeWorkflowTaskId.value) return
+  try {
+    await ElMessageBox.confirm(
+      '通过审核后工作流将继续执行，确定继续吗？',
+      '确认审核',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    const { approveWorkflowCheckpoint } = await import('@/api/teacher/case')
+    await approveWorkflowCheckpoint(activeWorkflowTaskId.value, {})
+    ElMessage.success('已通过审核，工作流继续执行')
+    showAgentOutputDialog.value = false
+    singleWorkflowReviewSnapshot.value = null
+    loading.value = true
+    workflowStatus.value = 'processing'
+    pollWorkflowProgressLoop(activeWorkflowTaskId.value)
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error('审核失败：' + (error.message || '未知错误'))
+    }
+  }
+}
+
+// 批准检查点，继续工作流
+const handleApproveCheckpoint = async (workflowInstanceId: number, _studentId: number) => {
+  if (generationMode.value === 'single' && workflowModeActive.value) {
+    await handleApproveSingleCheckpoint()
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      '批准后工作流将继续执行，确定要批准吗？',
+      '确认批准',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    
+    const { approveWorkflowCheckpoint } = await import('@/api/teacher/case')
+    await approveWorkflowCheckpoint(workflowInstanceId, {})
+    
+    ElMessage.success('已批准，工作流继续执行')
+    
+    // 刷新批量进度状态
+    if (currentBatchTaskId.value) {
+      await pollBatchProgress(currentBatchTaskId.value)
+    }
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error('批准失败：' + error.message)
+    }
+  }
+}
+
+// 根据案例ID预览案例
+const handlePreviewCaseById = async (caseId: number) => {
+  try {
+    const normalizedCaseId = Number(caseId)
+    const caseItem = pendingCases.value.find(c => Number(c.id) === normalizedCaseId)
+    if (caseItem) {
+      handlePreviewCase(caseItem)
+    } else {
+      // 批量生成进行中时，案例可能已生成但尚未进入待审核列表，兜底查详情
+      const res = await getCaseDetail(normalizedCaseId)
+      if (res?.data) {
+        handlePreviewCase(res.data)
+      } else {
+        ElMessage.warning('案例不存在或尚未生成完成')
+      }
+    }
+  } catch (error: any) {
+    ElMessage.error(error?.message || '预览失败')
+  }
+}
+
+// 预览案例
+const handlePreviewCase = (caseItem: any) => {
+  previewCase.value = caseItem
+  showPreviewDialog.value = true
+}
+
+const handleApproveCaseFromDialog = async (payload: { caseId: number, publish: boolean }) => {
+  const approved = await handleApproveCase(payload.caseId, payload.publish)
+  if (approved) {
+    showPreviewDialog.value = false
+  }
+}
+
+// 选择案例
+const handleSelectCase = (caseId: number, selected: boolean) => {
+  if (selected) {
+    if (!selectedCaseIds.value.includes(caseId)) {
+      selectedCaseIds.value.push(caseId)
+    }
+  } else {
+    selectedCaseIds.value = selectedCaseIds.value.filter(id => id !== caseId)
+  }
+}
+
+// 全选/取消全选
+const handleSelectAllCases = (selected: boolean) => {
+  selectedCaseIds.value = selected ? pendingCases.value.map(c => c.id) : []
+}
+
+// Workflow Handlers
+const handleWorkflowGenerate = async () => {
+  if (!resolveGenerationIntentText()) {
+    ElMessage.warning('请至少填写实训主题、技术栈、背景风格或补充需求描述中的一项')
+    return
+  }
+  
+  loading.value = true
+  showWorkflowProgress.value = false
+  activeWorkflowTaskId.value = null
+  workflowStatus.value = 'processing'
+  workflowCurrentStage.value = 'INIT'
+  workflowSteps.value = []
+  workflowLogs.value = []
+  workflowError.value = ''
+  singleWorkflowReviewSnapshot.value = null
+  generatedCase.value = null
+  
+  try {
+    if (Number(form.numVersions || 1) > 1) {
+      // 单案例模式下批量生成公共案例：只展示批量进度面板
+      showWorkflowProgress.value = false
+      activeWorkflowTaskId.value = null
+      const payload = await buildWorkflowGenerationPayload({
+        type: 1,
+        enableWorkflow: true,
+        enableCheckpoints: form.enableCheckpoints
+      })
+      const response = await generatePublicCasesWithWorkflowBatch(payload)
+      const batchTaskId = response.data
+      currentBatchTaskId.value = batchTaskId
+      batchGenerationProgress.value = {
+        batchTaskId,
+        totalStudents: Number(form.numVersions || 1),
+        generatedCount: 0,
+        runningCount: Number(form.numVersions || 1),
+        reviewingCount: 0,
+        progressPercent: 0,
+        studentProgress: []
+      }
+      saveProgressState({
+        generationMode: 'single',
+        useWorkflowMode: true,
+        batchTaskId
+      })
+      pollBatchProgress(batchTaskId)
+      return
+    }
+
+    // 单工作流才显示单案例进度面板
+    showWorkflowProgress.value = true
+
+    const payload = await buildWorkflowGenerationPayload({
+      type: 1, // 单一生成默认公共案例
+      enableWorkflow: true, // 启用工作流
+      enableCheckpoints: form.enableCheckpoints // 传递检查点配置
+    })
+    saveLastSingleGenerateSnapshot({
+      type: 'workflow-single',
+      payload
+    })
+    const response = await generateCaseWithWorkflow(payload)
+    const workflowInstanceId = String(response.data) // 后端直接返回workflowInstanceId
+    activeWorkflowTaskId.value = workflowInstanceId
+    saveProgressState({
+      generationMode: 'single',
+      useWorkflowMode: true,
+      workflowInstanceId
+    })
+    pollWorkflowProgressLoop(workflowInstanceId)
+  } catch (error: any) {
+    ElMessage.error(error.message || '启动工作流失败')
+    loading.value = false
+    workflowStatus.value = 'error'
+    workflowError.value = error.message
+  }
+}
+
+const handleWorkflowBatchGenerate = async () => {
+  // 批量生成的 Workflow 逻辑 (暂未完全实现，复用单体逻辑或调用批量接口)
+  // 这里假设后端有了 batch-generate 接口
+   loading.value = true
+  analysisBatchTaskStatus.value = 'PENDING'
+  analysisWorkflowStatus.value = 'RUNNING'
+  analysisWorkflowState.value = 'INIT'
+   showReviewPanel.value = false
+   showWorkflowProgress.value = false // 批量模式不显示单个工作流进度
+   workflowStatus.value = 'processing'
+   batchGenerationProgress.value = {
+     totalStudents: selectedStudents.value.length,
+     generatedCount: 0,
+     failedCount: 0,
+     reviewingCount: 0,
+     runningCount: selectedStudents.value.length,
+     progressPercent: 1,
+     studentProgress: selectedStudents.value.map(id => {
+       const s = studentList.value.find((st: any) => st.id === id)
+       return {
+         studentId: id,
+         studentName: s?.name || s?.realName || s?.username || `学生#${id}`,
+         studentNo: s?.studentNo || s?.username || `#${id}`,
+         status: 'RUNNING',
+         currentState: 'GENERATION',
+         progressPercentage: 1,
+         errorMessage: '',
+         caseId: null
+       }
+     })
+   }
+   
+   try {
+      const payload = await buildWorkflowGenerationPayload({
+        classId: batchForm.classId,
+        studentIds: selectedStudents.value,
+        type: 2, // 个性化案例
+        enableWorkflow: true, // 启用工作流
+        enableCheckpoints: form.enableCheckpoints // 传递检查点配置
+      })
+      const response = await generateCasesWithWorkflowBatch(payload)
+     
+      const batchTaskId = response.data // 后端直接返回batchTaskId字符串
+      ElMessage.success(`已启动Agent驱动的批量生成，任务ID: ${batchTaskId}`)
+      currentBatchTaskId.value = batchTaskId
+      saveProgressState({
+        generationMode: 'batch',
+        useWorkflowMode: true,
+        batchTaskId
+      })
+      
+      // 启动批量进度轮询
+      pollBatchProgress(batchTaskId)
+   } catch (error: any) {
+      ElMessage.error(error.message || '批量生成失败')
+      loading.value = false
+      workflowStatus.value = 'error'
+      showWorkflowProgress.value = false
+   }
+}
+
+const executeGenerate = async () => {
+  const conflictMessage = detectKeywordTopicConflict()
+  if (conflictMessage) {
+    ElMessage.warning(conflictMessage)
+    return
+  }
+
+  if (workflowModeActive.value) {
+    if (generationMode.value === 'batch') {
+      if (!batchForm.classId || selectedStudents.value.length === 0 || !resolveGenerationIntentText()) {
+         if (!batchForm.classId) ElMessage.warning('请选择班级')
+         else if (selectedStudents.value.length === 0) ElMessage.warning('请至少选择一个学生')
+         else ElMessage.warning('请至少填写实训主题、技术栈、背景风格或补充需求描述中的一项')
+         return
+       }
+      await handleWorkflowBatchGenerate()
+    } else {
+      await handleWorkflowGenerate()
+    }
+    return
+  }
+
+  if (generationMode.value === 'batch') {
+    await handleGenerateBatch()
+    return
+  }
+  
+  if (!resolveGenerationIntentText()) {
+    ElMessage.warning('请至少填写实训主题、技术栈、背景风格或补充需求描述中的一项')
+    return
+  }
+  
+  loading.value = true
+  showReviewPanel.value = false
+  generatedCase.value = null
+  if (isAnalysisMode.value) {
+    analysisSingleTaskStatus.value = 'PENDING'
+    analysisSingleTaskBackendPercent.value = 0
+    startAnalysisSingleProgress()
+  }
+  
+  try {
+    const payload: any = buildGenerationPayload({
+      type: 1 // 单一生成默认为公共案例
+    })
+    if (isAnalysisMode.value && intentOverride.value) {
+      payload.intentOverride = intentOverride.value
+    }
+    saveLastSingleGenerateSnapshot({
+      type: isAnalysisMode.value ? 'analysis-single' : 'code-single',
+      payload
+    })
+    const response = isAnalysisMode.value
+      ? await generateNonCodeCase(payload)
+      : await generateCase(payload)
+    // 后端返回任务 ID，需要轮询查询结果
+    const taskId = response.data.taskId
+    ElMessage.success('案例生成已启动，正在处理中...')
+    saveProgressState({
+      generationMode: 'single',
+      useWorkflowMode: false,
+      singleTaskId: taskId
+    })
+    
+    // 轮询查询任务状态
+    pollTaskProgress(taskId)
+  } catch (error: any) {
+    ElMessage.error(error.message || '案例生成失败')
+    loading.value = false
+    stopAnalysisSingleProgress(true)
+  }
+}
+
+const handleGenerate = () => {
+  openGenerationNotice(executeGenerate)
+}
+
+const resetGenerationRuntimeState = () => {
+  loading.value = false
+  showWorkflowProgress.value = false
+  workflowStatus.value = 'pending'
+  workflowCurrentStage.value = 'INIT'
+  workflowSteps.value = []
+  workflowLogs.value = []
+  workflowError.value = ''
+  activeWorkflowTaskId.value = null
+  currentBatchTaskId.value = ''
+  batchGenerationProgress.value = null
+  singleWorkflowReviewSnapshot.value = null
+  analysisSingleTaskStatus.value = 'PENDING'
+  analysisSingleTaskBackendPercent.value = 0
+  analysisBatchTaskStatus.value = 'PENDING'
+  analysisWorkflowStatus.value = ''
+  analysisWorkflowState.value = ''
+  stopAnalysisSingleProgress(true)
+}
+
+const handleAbortGeneration = async () => {
+  if (!canAbortGeneration.value || abortingGeneration.value) return
+
+  try {
+    await ElMessageBox.confirm(
+      '中断后当前生成流程将停止，确定继续吗？',
+      '确认中断',
+      {
+        confirmButtonText: '中断生成',
+        cancelButtonText: '继续生成',
+        type: 'warning'
+      }
+    )
+
+    abortingGeneration.value = true
+
+    if (workflowModeActive.value && activeWorkflowTaskId.value) {
+      await cancelWorkflow(Number(activeWorkflowTaskId.value))
+      ElMessage.success('已中断工作流生成')
+    } else {
+      ElMessage.success('已停止当前生成会话')
+    }
+
+    clearAllPollTimers()
+    clearProgressState()
+    resetGenerationRuntimeState()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error(error?.message || '中断失败，请稍后重试')
+    }
+  } finally {
+    abortingGeneration.value = false
+  }
+}
+
+
+const handleReset = () => {
+  clearAllPollTimers()
+  clearProgressState()
+  stopAnalysisSingleProgress(true)
+  analysisSingleTaskStatus.value = 'PENDING'
+  analysisSingleTaskBackendPercent.value = 0
+  analysisBatchTaskStatus.value = 'PENDING'
+  analysisWorkflowStatus.value = ''
+  analysisWorkflowState.value = ''
+  intentDetecting.value = false
+  intentDetected.value = 'DATA_ANALYSIS'
+  intentEffective.value = 'DATA_ANALYSIS'
+  intentConfidence.value = 0
+  intentOverride.value = ''
+  if (detectIntentTimer) {
+    window.clearTimeout(detectIntentTimer)
+    detectIntentTimer = null
+  }
+
+  form.keywords = ''
+  form.trainingTopic = ''
+  form.techStackRequirements = []
+  form.datasetScale = 10
+  form.storyStyle = ''
+  form.difficultyLevel = 2
+  form.estimatedHours = 3
+  form.deliverableMode = 'NON_CODE'
+  form.numVersions = 1
+  form.courseId = courseList.value.length > 0 ? courseList.value[0].id : null
+  generatedCase.value = null
+  showReviewPanel.value = false
+  
+  // Workflow Reset
+  showWorkflowProgress.value = false
+  activeWorkflowTaskId.value = null
+  workflowStatus.value = 'pending'
+  workflowSteps.value = []
+  workflowLogs.value = []
+  singleWorkflowReviewSnapshot.value = null
+}
+
+const executeRegenerateSingleCase = () => {
+  generatedCase.value = null
+  const snapshot = lastSingleGenerateSnapshot.value
+  if (!snapshot || !snapshot.payload) {
+    executeGenerate()
+    return
+  }
+
+  const shouldUseWorkflowSnapshot = snapshot.type === 'workflow-single'
+    || snapshot?.payload?.deliverableMode === 'NON_CODE'
+
+  if (shouldUseWorkflowSnapshot) {
+    loading.value = true
+    showWorkflowProgress.value = true
+    activeWorkflowTaskId.value = null
+    workflowStatus.value = 'processing'
+    workflowCurrentStage.value = 'INIT'
+    workflowSteps.value = []
+    workflowLogs.value = []
+    workflowError.value = ''
+    singleWorkflowReviewSnapshot.value = null
+
+    generateCaseWithWorkflow(clonePayload(snapshot.payload))
+      .then((response: any) => {
+        const workflowInstanceId = String(response.data)
+        activeWorkflowTaskId.value = workflowInstanceId
+        saveProgressState({
+          generationMode: 'single',
+          useWorkflowMode: true,
+          workflowInstanceId
+        })
+        pollWorkflowProgressLoop(workflowInstanceId)
+        ElMessage.success('已按上次参数重新发起工作流生成')
+      })
+      .catch((error: any) => {
+        ElMessage.error(error.message || '重新生成失败')
+        loading.value = false
+        workflowStatus.value = 'error'
+        workflowError.value = error.message
+      })
+    return
+  }
+
+  loading.value = true
+  showReviewPanel.value = false
+  generatedCase.value = null
+
+  const isAnalysisSnapshot = snapshot.type === 'analysis-single'
+  if (isAnalysisSnapshot) {
+    analysisSingleTaskStatus.value = 'PENDING'
+    analysisSingleTaskBackendPercent.value = 0
+    startAnalysisSingleProgress()
+  }
+
+  const request = isAnalysisSnapshot
+    ? generateNonCodeCase(clonePayload(snapshot.payload))
+    : generateCase(clonePayload(snapshot.payload))
+
+  request
+    .then((response: any) => {
+      const taskId = response.data.taskId
+      ElMessage.success('已按上次参数重新生成案例')
+      saveProgressState({
+        generationMode: 'single',
+        useWorkflowMode: false,
+        singleTaskId: taskId
+      })
+      pollTaskProgress(taskId)
+    })
+    .catch((error: any) => {
+      ElMessage.error(error.message || '重新生成失败')
+      loading.value = false
+      stopAnalysisSingleProgress(true)
+    })
+}
+
+const handleRegenerateSingleCase = () => {
+  openGenerationNotice(executeRegenerateSingleCase)
+}
+
+const handleEditCase = () => {
+  if (!generatedCase.value) return
+  router.push(`/teacher/cases/${generatedCase.value.caseId}/edit`)
+}
+
+const handlePublish = async () => {
+  if (!generatedCase.value) return
+  
+  try {
+    await publishCase(generatedCase.value.caseId)
+    ElMessage.success('案例发布成功')
+    handleReset()
+  } catch (error: any) {
+    ElMessage.error(error.message || '案例发布失败')
+  }
+}
+
+// 检查是否有待审核的案例
+const checkPendingCases = async () => {
+  const hasOngoingBatch = !!currentBatchTaskId.value && (
+    Number(batchGenerationProgress.value?.runningCount || 0) > 0
+    || String(batchGenerationProgress.value?.status || '').toUpperCase() === 'RUNNING'
+    || Number(batchGenerationProgress.value?.progressPercent || 0) < 100
+  )
+
+  if (loading.value || hasOngoingBatch) {
+    return
+  }
+
+  await refreshPendingCases()
+  if (pendingCases.value.length > 0) {
+    showReviewPanel.value = true
+    ElMessage.info(`您有 ${pendingCases.value.length} 个待审核案例，请先完成审核`)
+  }
+}
+
+onMounted(() => {
+  configPaneWidth.value = clampPaneWidth(PANEL_DEFAULT_WIDTH)
+  loadGuidePreference()
+  loadCourses()
+  loadClasses()
+  restoreGenerationProgress().finally(() => {
+    checkPendingCases()
+  })
+  runDetectIntent(true)
+})
+
+onUnmounted(() => {
+  stopResize()
+  clearAllPollTimers()
+  stopAnalysisSingleProgress(true)
+  if (detectIntentTimer) {
+    window.clearTimeout(detectIntentTimer)
+    detectIntentTimer = null
+  }
+})
+
+// 同步useWorkflowMode到form.enableWorkflow
+watch(useWorkflowMode, (val) => {
+  form.enableWorkflow = val
+  // 如果关闭工作流模式，同时重置检查点开关为默认值
+  if (!val) {
+    form.enableCheckpoints = true
+  }
+})
+
+watch(() => form.deliverableMode, (mode) => {
+  if (mode === 'NON_CODE') {
+    useWorkflowMode.value = true
+    form.enableWorkflow = true
+  }
+  if (mode !== 'NON_CODE') {
+    intentDetecting.value = false
+    intentDetected.value = 'DATA_ANALYSIS'
+    intentEffective.value = 'DATA_ANALYSIS'
+    intentConfidence.value = 0
+    intentOverride.value = ''
+    if (detectIntentTimer) {
+      window.clearTimeout(detectIntentTimer)
+      detectIntentTimer = null
+    }
+  } else {
+    runDetectIntent(true)
+  }
+}, { immediate: true })
+
+watch(() => form.keywords, () => {
+  if (isAnalysisMode.value) {
+    runDetectIntent(false)
+  }
+})
+
+// 监听学生选择变化，更新全选状态
+watch(selectedStudents, (val) => {
+  if (val.length === 0) {
+    selectAll.value = false
+    isIndeterminate.value = false
+  } else if (val.length === studentList.value.length) {
+    selectAll.value = true
+    isIndeterminate.value = false
+  } else {
+    selectAll.value = false
+    isIndeterminate.value = true
+  }
+})
+
+watch(
+  () => ({
+    batchTaskId: currentBatchTaskId.value,
+    runningCount: Number(batchGenerationProgress.value?.runningCount || 0),
+    status: String(batchGenerationProgress.value?.status || '').toUpperCase(),
+    progressPercent: Number(batchGenerationProgress.value?.progressPercent || 0)
+  }),
+  ({ batchTaskId, runningCount, status, progressPercent }) => {
+    const hasAnyRunning = !!batchTaskId && (
+      runningCount > 0
+      || status === 'RUNNING'
+      || progressPercent < 100
+    )
+
+    if (hasAnyRunning && showReviewPanel.value) {
+      showReviewPanel.value = false
+    }
+  },
+  { deep: true, immediate: true }
+)
+
+watch(loading, (val) => {
+  if (!val) {
+    stopAnalysisSingleProgress(true)
+  }
+})
+</script>
+
+<style scoped lang="scss">
+.create-case-layout {
+  display: flex;
+  height: 100%;
+  background-color: #f8fafc;
+  overflow: hidden;
+  box-sizing: border-box;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  position: relative;
+
+  &.is-resizing {
+    cursor: col-resize;
+  }
+}
+
+.config-pane {
+  flex: 0 0 auto;
+  min-width: 360px;
+  max-width: 56%;
+  height: 100%;
+  overflow: hidden;
+  background: #fff;
+}
+
+.resize-handle {
+  flex: 0 0 8px;
+  width: 8px;
+  cursor: col-resize;
+  position: relative;
+  background: linear-gradient(to right, #f8fafc 0%, #f1f5f9 100%);
+  border-left: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 28px;
+    border-radius: 2px;
+    background: #cbd5e1;
+    transition: background-color 0.2s;
+  }
+
+  &:hover::before,
+  &.active::before {
+    background: #60a5fa;
+  }
+}
+
+.preview-workspace {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: #f1f5f9;
+  background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+  background-size: 20px 20px;
+  overflow: hidden;
+
+  .workspace-header {
+    height: 44px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid #e2e8f0;
+
+    .breadcrumbs {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #64748b;
+      font-size: 12px;
+
+      .current {
+        color: #1e293b;
+        font-weight: 500;
+      }
+      
+      .divider {
+        color: #cbd5e1;
+      }
+    }
+  }
+
+  .workspace-body {
+    flex: 1;
+    padding: 10px;
+    overflow-y: auto;
+    display: flex;
+    justify-content: center;
+    
+    &::-webkit-scrollbar {
+      width: 6px;
+    }
+    &::-webkit-scrollbar-thumb {
+      background-color: #cbd5e1;
+      border-radius: 3px;
+    }
+  }
+}
+
+.state-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  height: 100%;
+  max-width: 380px;
+
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #334155;
+    margin: 12px 0 6px;
+  }
+
+  p {
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  &.loading {
+    .loader-animation {
+      width: 48px;
+      height: 48px;
+      border-radius: 10px;
+      background: #eff6ff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+      
+      .scanner {
+        width: 24px;
+        height: 24px;
+        border: 2px solid #3b82f6;
+        border-radius: 50%;
+        border-top-color: transparent;
+        animation: spin 0.8s linear infinite;
+      }
+    }
+    
+    .batch-progress {
+      width: 100%;
+      max-width: 400px;
+      margin-top: 24px;
+      
+      .progress-text {
+        margin-top: 12px;
+        font-size: 14px;
+        color: #64748b;
+      }
+    }
+
+    .analysis-progress-card {
+      width: 100%;
+      max-width: 400px;
+      margin-top: 14px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #dbeafe;
+      background: #f8fbff;
+
+      .progress-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: #1d4ed8;
+        margin-bottom: 6px;
+      }
+
+      .progress-desc {
+        margin-top: 6px;
+        font-size: 12px;
+        color: #64748b;
+      }
+    }
+  }
+
+  &.empty {
+    .empty-illustration {
+      margin-bottom: 14px;
+      .icon-placeholder {
+        font-size: 40px;
+        color: #cbd5e1;
+      }
+    }
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.tour-step-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #475569;
+
+  p {
+    margin: 0 0 8px;
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  strong {
+    color: #1e293b;
+    font-weight: 600;
+  }
+}
+
+.tour-checkbox-wrapper {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+/* 修复因全局 zoom: 0.8 导致的 el-tour 错位问题 */
+:global(.el-tour) {
+  zoom: 1.25; /* 抵消 html 的 zoom: 0.8 (1 / 0.8 = 1.25) */
+}
+
+.generation-notice-text {
+  margin: 0;
+  font-size: 14px;
+  color: #334155;
+  line-height: 1.7;
+
+  &.sub {
+    margin-top: 8px;
+    font-size: 13px;
+    color: #64748b;
+  }
+}
+</style>

@@ -76,7 +76,7 @@
           <button class="menu-btn" type="button" @click="toggleSidebar" :title="sidebarToggleLabel">
             <AppIcon name="menu" />
           </button>
-
+          
           <div class="breadcrumb">
             <span class="breadcrumb-item">首页</span>
             <span class="breadcrumb-separator">></span>
@@ -153,7 +153,7 @@ const route = useRoute()
 const isSidebarHidden = ref(false)
 const isMobile = ref(false)
 const expandedNavGroups = ref<Set<TosModuleGroup>>(new Set(['excel', 'automation', 'collector']))
-const expandedNavParents = ref<Set<string>>(new Set(['jane-table-making']))
+const expandedNavParents = ref<Set<string>>(new Set(['jane-table-making', 'web-automation-group']))
 const { isEnglish, t } = useAppLanguage()
 
 const sidebarGroups = computed<SidebarGroup[]>(() =>
@@ -327,7 +327,7 @@ watch(
 
     expandedNavParents.value = new Set([...expandedNavParents.value, ...activeParents])
     expandedNavGroups.value = new Set([...expandedNavGroups.value, ...activeGroups])
-
+    
     if (isMobile.value) {
       isSidebarHidden.value = true
     }

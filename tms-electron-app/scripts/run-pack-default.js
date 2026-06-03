@@ -9,6 +9,7 @@ const repoDir = path.resolve(electronDir, '..')
 const frontendDir = path.join(repoDir, 'tms-frontend')
 const frontendNodeModules = path.join(frontendDir, 'node_modules')
 const automationSourceRoot = path.join(electronDir, 'automation-apps')
+const automationLauncherSourceRoot = path.join(electronDir, 'automation-launcher')
 const backendRuntimeSourceRoot = path.join(electronDir, 'backend-runtime')
 const outputDir = path.join(electronDir, 'dist')
 const markerPath = path.join(outputDir, '.pack-default-start.json')
@@ -24,6 +25,10 @@ const requiredAutomationResources = [
   'microsoft-login-n8n-demo/server.mjs',
   'microsoft-login-n8n-demo/demo-upload.html',
   'microsoft-login-n8n-demo/executor.config.json',
+  'shipping-automation-demo/package.json',
+  'shipping-automation-demo/bin/start.js',
+  'shipping-automation-demo/server.mjs',
+  'shipping-automation-demo/executor.config.json',
   'playwright-console/package.json',
   'playwright-console/bin/start.js',
   'playwright-console/config/default.config.json',
@@ -39,6 +44,11 @@ const requiredAutomationResources = [
   'playwright-console/node_modules/send/index.js',
   'playwright-console/node_modules/statuses/index.js',
   'playwright-console/node_modules/playwright/package.json',
+]
+
+const requiredAutomationLauncherResources = [
+  'core.js',
+  'server.js',
 ]
 
 const requiredBackendRuntimeResources = [
@@ -94,7 +104,12 @@ function shouldSkipRuntimeResource(relativePath, isDirectory) {
   const normalized = relativePath.replace(/\\/g, '/')
   const parts = normalized.split('/')
 
-  if (parts.includes('uploads') || parts.includes('runs') || parts.includes('playwright-user-data')) {
+  if (
+    parts.includes('uploads') ||
+    parts.includes('runs') ||
+    parts.includes('run-artifacts') ||
+    parts.includes('playwright-user-data')
+  ) {
     return true
   }
 
@@ -102,7 +117,16 @@ function shouldSkipRuntimeResource(relativePath, isDirectory) {
     return false
   }
 
-  return normalized.endsWith('.log') || normalized.endsWith('.xlsx')
+  return (
+    normalized.endsWith('.log') ||
+    normalized.endsWith('.xlsx') ||
+    normalized.endsWith('.stdout.json') ||
+    normalized.endsWith('.stderr.json') ||
+    normalized.endsWith('.local.json') ||
+    normalized.endsWith('.secret.local.json') ||
+    /(^|\/)executor\.secret[^/]*\.json$/.test(normalized) ||
+    /(^|\/)temp-[^/]*\.py$/.test(normalized)
+  )
 }
 
 function copyDirectoryFilteredWithRobocopy(sourceDir, targetDir) {
@@ -126,9 +150,16 @@ function copyDirectoryFilteredWithRobocopy(sourceDir, targetDir) {
     '/XD',
     'uploads',
     'runs',
+    'run-artifacts',
     'playwright-user-data',
     '/XF',
     '*.log',
+    '*.stdout.json',
+    '*.stderr.json',
+    '*.local.json',
+    '*.secret.local.json',
+    'executor.secret*.json',
+    'temp-*.py',
     '*.xlsx',
   ], {
     shell: false,
@@ -253,6 +284,10 @@ function getAutomationTargetRoot(targetUnpackedDir) {
   return path.join(targetUnpackedDir, 'resources', 'automation-apps')
 }
 
+function getAutomationLauncherTargetRoot(targetUnpackedDir) {
+  return path.join(targetUnpackedDir, 'resources', 'automation-launcher')
+}
+
 function syncAutomationApps(targetUnpackedDir = unpackedDir) {
   requireFile(path.join(automationSourceRoot, 'registry.json'), 'automation app registry')
 
@@ -268,6 +303,23 @@ function verifyAutomationApps(targetUnpackedDir = unpackedDir) {
   }
 
   assertFilteredDirectoryComplete(automationSourceRoot, targetRoot, 'automation apps')
+}
+
+function syncAutomationLauncher(targetUnpackedDir = unpackedDir) {
+  requireFile(path.join(automationLauncherSourceRoot, 'server.js'), 'automation launcher entry')
+
+  const targetRoot = getAutomationLauncherTargetRoot(targetUnpackedDir)
+  syncDirectoryFiltered(automationLauncherSourceRoot, targetRoot, 'automation launcher')
+}
+
+function verifyAutomationLauncher(targetUnpackedDir = unpackedDir) {
+  const targetRoot = getAutomationLauncherTargetRoot(targetUnpackedDir)
+
+  for (const relativePath of requiredAutomationLauncherResources) {
+    requireFile(path.join(targetRoot, relativePath), `automation launcher resource ${relativePath}`)
+  }
+
+  assertFilteredDirectoryComplete(automationLauncherSourceRoot, targetRoot, 'automation launcher')
 }
 
 function getBackendRuntimeTargetRoot(targetUnpackedDir) {
@@ -510,6 +562,35 @@ async function verifyMicrosoftLoginDemoHealth(targetUnpackedDir = unpackedDir) {
   }
 }
 
+async function verifyShippingAutomationDemoHealth(targetUnpackedDir = unpackedDir) {
+  const appExe = path.join(targetUnpackedDir, 'TOS.exe')
+  const demoRoot = path.join(getAutomationTargetRoot(targetUnpackedDir), 'shipping-automation-demo')
+  const startScript = path.join(demoRoot, 'bin', 'start.js')
+  const dataDir = path.join(demoRoot, `.verify-data-${process.pid}-${Date.now()}`)
+
+  requireFile(appExe, 'packed TOS executable')
+  requireFile(startScript, 'shipping automation demo start script')
+
+  const port = await findFreePort()
+  const state = spawnHealthProcess(appExe, [startScript], {
+    cwd: demoRoot,
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
+      TMS_PLAYWRIGHT_HOST: '127.0.0.1',
+      TMS_PLAYWRIGHT_PORT: String(port),
+      TMS_PLAYWRIGHT_DATA_DIR: dataDir,
+    },
+  })
+
+  try {
+    await waitForHealth(`http://127.0.0.1:${port}/api/health`, state, 'shipping automation demo health')
+  } finally {
+    stopHealthProcess(state)
+    removeDirectoryWithRetry(dataDir)
+  }
+}
+
 async function verifyPackedRuntimeHealth(targetUnpackedDir = unpackedDir) {
   await verifyBackendRuntimeHealth(targetUnpackedDir)
   console.log('Verified packed backend runtime health.')
@@ -517,6 +598,8 @@ async function verifyPackedRuntimeHealth(targetUnpackedDir = unpackedDir) {
   console.log('Verified packed automation console health.')
   await verifyMicrosoftLoginDemoHealth(targetUnpackedDir)
   console.log('Verified packed Microsoft login demo health.')
+  await verifyShippingAutomationDemoHealth(targetUnpackedDir)
+  console.log('Verified packed shipping automation demo health.')
 }
 
 function runNodeEval(source, args, cwd) {
@@ -634,6 +717,8 @@ function finalizeUnpackedApp() {
 
   syncAutomationApps(unpackedDir)
   verifyAutomationApps(unpackedDir)
+  syncAutomationLauncher(unpackedDir)
+  verifyAutomationLauncher(unpackedDir)
   syncBackendRuntime(unpackedDir)
   verifyBackendRuntime(unpackedDir)
 }
@@ -710,10 +795,14 @@ if (require.main === module) {
 
 module.exports = {
   buildSourceFrontend,
+  copyDirectoryFiltered,
   copySourceFrontend,
+  findIncompleteFilteredFiles,
   runFrontendBuild,
   syncAutomationApps,
   verifyAutomationApps,
+  syncAutomationLauncher,
+  verifyAutomationLauncher,
   syncBackendRuntime,
   verifyBackendRuntime,
   verifyPackedRuntimeHealth,

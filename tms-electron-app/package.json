@@ -104,9 +104,23 @@
           "**/*",
           "!**/uploads/**/*",
           "!**/runs/**/*",
+          "!**/run-artifacts/**/*",
           "!**/playwright-user-data/**/*",
           "!**/*.log",
+          "!**/*.stdout.json",
+          "!**/*.stderr.json",
+          "!**/*.local.json",
+          "!**/*.secret.local.json",
+          "!**/executor.secret*.json",
+          "!**/temp-*.py",
           "!**/*.xlsx"
+        ]
+      },
+      {
+        "from": "automation-launcher",
+        "to": "automation-launcher",
+        "filter": [
+          "**/*"
         ]
       },
       {

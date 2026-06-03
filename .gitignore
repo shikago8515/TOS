@@ -31,23 +31,22 @@ tms-backend/backend-data-test/
 uploads/
 runs/
 logs/
+run-artifacts/
+.local-launcher-data/
 playwright-user-data/
 backend-data/
 browser-plugin-profiles/
+*.stdout.json
+*.stderr.json
+temp-*.py
 
 # Local environment
 .env
 .env.*
 !.env.example
 *.local.json
-.claude/
-
-# Local automation output
-*.stdout.json
-*.stderr.json
-run-artifacts/
-tms-electron-app/automation-apps/microsoft-login-n8n-demo/executor.config.json
-tms-electron-app/automation-apps/microsoft-login-n8n-demo/temp-*.py
+*.secret.local.json
+.shared/
 
 # Editors and OS files
 .vscode/

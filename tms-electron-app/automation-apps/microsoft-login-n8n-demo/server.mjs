@@ -442,10 +442,17 @@ function normalizeUploadFileName(body) {
   return String(body?.fileName || body?.filename || "").trim();
 }
 
+function normalizeCredentialValue(value, fallback) {
+  const trimmed = String(value ?? "").trim();
+  return trimmed || String(fallback || "");
+}
+
 function normalizeRunOptions(body) {
   return {
     browser: String(body?.browser || config.browser),
     loginUrl: String(body?.loginUrl || config.loginUrl),
+    username: normalizeCredentialValue(body?.username, config.username),
+    password: normalizeCredentialValue(body?.password, config.password),
     headless: toBoolean(body?.headless, config.headless),
     slowMo: toNumber(body?.slowMo, config.slowMo),
     navigationTimeoutMs: toNumber(body?.navigationTimeoutMs, config.navigationTimeoutMs),
@@ -491,7 +498,7 @@ async function runLogin(rows, options) {
       timeout: options.navigationTimeoutMs,
     });
 
-    await fillMicrosoftLogin(page, config.username, config.password, options);
+    await fillMicrosoftLogin(page, options.username, options.password, options);
 
     if (options.postLoginWaitMs > 0) {
       const homeTileSelectors = [

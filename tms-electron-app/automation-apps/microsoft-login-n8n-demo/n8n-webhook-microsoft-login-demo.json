@@ -37,7 +37,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const rows = $input.all().map((item) => item.json);\n\nreturn [{\n  json: {\n    rows,\n    postLoginWaitMs: 5000,\n    staySignedInAction: 'no'\n  }\n}];"
+        "jsCode": "const rows = $input.all().map((item) => item.json);\nconst webhookItem = $items('Webhook', 0, 0)?.[0] ?? {};\nconst webhookJson = webhookItem.json ?? {};\nconst body = webhookJson.body && typeof webhookJson.body === 'object' ? webhookJson.body : webhookJson;\n\nreturn [{\n  json: {\n    rows,\n    username: body.username || '',\n    password: body.password || '',\n    postLoginWaitMs: 5000,\n    staySignedInAction: 'no'\n  }\n}];"
       },
       "id": "3",
       "name": "Build Login Payload",
@@ -64,7 +64,7 @@
             },
             {
               "name": "x-executor-token",
-              "value": "replace-with-local-executor-token"
+              "value": "local-ms-login-5f1d3d6d4bda4b2db7d54c8ce8c71e91"
             }
           ]
         },

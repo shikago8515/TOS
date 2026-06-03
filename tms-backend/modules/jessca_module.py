@@ -168,9 +168,60 @@ class JesscaModule:
 
         return None
 
+    @staticmethod
+    def _normalize_reference_column_name(column_name: Any) -> str:
+        text = str(column_name or "").strip().lower()
+        text = re.sub(r"\s+", " ", text)
+        return text
+
+    @classmethod
+    def _resolve_reference_columns(cls, ref_df: pd.DataFrame) -> Dict[str, Any]:
+        # 参考表来自手工维护模板，大小写和空格不稳定，必须先归一化再定位关键列。
+        aliases = {
+            "article": ("article no.", "article no", "article number", "article", "货号", "款号"),
+            "style": ("style no.", "style no", "style number", "style", "款式号", "款式"),
+            "price": ("price", "unit price", "reference price", "参考价", "价格"),
+        }
+        normalized_columns = {
+            cls._normalize_reference_column_name(column): column
+            for column in ref_df.columns
+        }
+
+        resolved: Dict[str, Any] = {}
+        for field, field_aliases in aliases.items():
+            for alias in field_aliases:
+                normalized_alias = cls._normalize_reference_column_name(alias)
+                if normalized_alias in normalized_columns:
+                    resolved[field] = normalized_columns[normalized_alias]
+                    break
+
+        missing_fields = [field for field in ("article", "style", "price") if field not in resolved]
+        if missing_fields:
+            raise ValueError(
+                "参考表缺少必要列："
+                + ", ".join(missing_fields)
+                + "；当前列："
+                + ", ".join(str(column) for column in ref_df.columns)
+            )
+
+        return resolved
+
+    @staticmethod
+    def _normalize_reference_text(value: Any) -> str:
+        if value is None or pd.isna(value):
+            return ""
+        return str(value).strip()
+
+    def _parse_reference_price(self, value: Any) -> float:
+        if value is None or pd.isna(value):
+            return 0.0
+        parsed = self._parse_price_value(value)
+        return parsed if parsed is not None else 0.0
+
     def update_reference_table(self, ref_df: pd.DataFrame,
                               all_invoice_data: Dict[Tuple[str, str], Dict[str, float]]) -> Tuple[pd.DataFrame, Dict[str, int]]:
         result_df = ref_df.copy()
+        reference_columns = self._resolve_reference_columns(result_df)
 
         statuses: List[str] = []
         invoice_prices: List[Optional[float]] = []
@@ -179,9 +230,9 @@ class JesscaModule:
         matches = {'一致': 0, '不一致': 0, '未找到': 0}
 
         for _, row in result_df.iterrows():
-            article = str(row.get('article NO.', '')).strip()
-            style = str(row.get('style NO.', '')).strip()
-            ref_price = float(row.get('price', 0))
+            article = self._normalize_reference_text(row.get(reference_columns["article"]))
+            style = self._normalize_reference_text(row.get(reference_columns["style"]))
+            ref_price = self._parse_reference_price(row.get(reference_columns["price"]))
 
             key = (article, style)
 
@@ -365,11 +416,12 @@ class JesscaModule:
             cell.border = summary_border
 
         ref_data_lookup: Dict[Tuple[str, str], float] = {}
+        reference_columns = self._resolve_reference_columns(ref_df)
         for _, ref_row in ref_df.iterrows():
-            article = str(ref_row.get('article NO.', '')).strip()
-            style = str(ref_row.get('style NO.', '')).strip()
+            article = self._normalize_reference_text(ref_row.get(reference_columns["article"]))
+            style = self._normalize_reference_text(ref_row.get(reference_columns["style"]))
             key = (article, style)
-            ref_data_lookup[key] = float(ref_row.get('price', 0))
+            ref_data_lookup[key] = self._parse_reference_price(ref_row.get(reference_columns["price"]))
 
         missing_from_ref_count = sum(1 for key in all_invoice_data if key not in ref_data_lookup)
         data_start_row = header_row + 1
@@ -627,4 +679,3 @@ class JesscaModule:
             result['message'] = f'处理出错：{str(e)}'
 
         return result
-

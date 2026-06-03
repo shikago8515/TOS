@@ -11,12 +11,13 @@ import JaneBomComparePage from '../pages/jane-bom-compare/JaneBomComparePage.vue
 import JaneBomSummaryPage from '../pages/jane-bom-summary/JaneBomSummaryPage.vue'
 import JaneOutboundComparePage from '../pages/jane-outbound-compare/JaneOutboundComparePage.vue'
 import JanePage from '../pages/jane/JanePage.vue'
+import JaneSapPage from '../pages/jane-sap/JaneSapPage.vue'
+import EricInfornexusPage from '../pages/eric-infornexus/EricInfornexusPage.vue'
 import JesscaPage from '../pages/jessca/JesscaPage.vue'
 import SettingsPage from '../pages/settings/SettingsPage.vue'
 import SophiaTinaPage from '../pages/sophia-tina/SophiaTinaPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
 import WebAutomationScenarioPage from '../pages/web-automation/WebAutomationScenarioPage.vue'
-import WebAutomationPage from '../pages/web-automation/WebAutomationPage.vue'
 
 const routeComponents: Partial<Record<string, Component>> = {
   home: HomePage,
@@ -26,9 +27,10 @@ const routeComponents: Partial<Record<string, Component>> = {
   'jane-bom-compare': JaneBomComparePage,
   'jane-outbound-compare': JaneOutboundComparePage,
   eric: EricPage,
+  'jane-sap': JaneSapPage,
+  'eric-infornexus': EricInfornexusPage,
   'sophia-tina': SophiaTinaPage,
   'browser-plugins': BrowserPluginsPage,
-  'web-automation': WebAutomationPage,
   infornexus: InfornexusPage,
   'adidas-materials': AdidasMaterialsPage,
   settings: SettingsPage,

@@ -1,0 +1,17 @@
+{
+  "host": "0.0.0.0",
+  "port": 3003,
+  "token": "local-shipping-automation-72fd26f0f3b54db49c619bbda2be0f8f",
+  "loginUrl": "https://network.infornexus.com",
+  "browser": "chromium",
+  "headless": false,
+  "slowMo": 120,
+  "navigationTimeoutMs": 45000,
+  "postLoginWaitMs": 1200,
+  "keepBrowserOpenOnSuccessMs": 120000,
+  "keepBrowserOpenOnErrorMs": 120000,
+  "launchOptions": {
+    "channel": "msedge",
+    "args": []
+  }
+}
