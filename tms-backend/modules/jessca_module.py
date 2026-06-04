@@ -11,15 +11,61 @@ import re
 import openpyxl
 import xlrd
 import pandas as pd
+from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from typing import List, Dict, Tuple, Any, Optional
+from typing import DefaultDict, List, Dict, Tuple, Any, Optional
 
 # 导入工具模块
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utils.excel_utils import safe_float, ExcelRowAdapter, XlrdAdapter, OpenpyxlAdapter
 from utils.file_utils import ensure_dir, create_thin_border
+
+
+STATUS_MATCHED = "一致"
+STATUS_PRICE_MISMATCH = "价格不一致"
+STATUS_STYLE_SUSPECT = "发票款号疑似错误"
+STATUS_ARTICLE_SUSPECT = "发票Article疑似错误"
+STATUS_MULTI_CANDIDATE = "字段疑似错误-候选多条"
+STATUS_REFERENCE_MISSING = "参考表未找到"
+STATUS_NOT_IN_INVOICE = "未在发票中找到"
+
+DIAGNOSTIC_COLUMNS = [
+    "疑似错误字段",
+    "诊断说明",
+    "建议参考款号",
+    "建议参考Article",
+    "建议参考价格",
+]
+
+
+@dataclass(frozen=True)
+class ReferenceRecord:
+    """参考表基准行，row_key 用来回写到原 DataFrame 行。"""
+
+    row_key: Any
+    article: str
+    style: str
+    price: float
+
+
+@dataclass(frozen=True)
+class InvoiceDiagnostic:
+    """单条发票明细相对于参考表的诊断结果。"""
+
+    invoice_file: str
+    article: str
+    style: str
+    price: float
+    status: str
+    suspected_field: str
+    message: str
+    suggested_style: str
+    suggested_article: str
+    suggested_price: Optional[float]
+    candidate_row_keys: Tuple[Any, ...]
 
 
 class JesscaModule:
@@ -218,59 +264,298 @@ class JesscaModule:
         parsed = self._parse_price_value(value)
         return parsed if parsed is not None else 0.0
 
+    @staticmethod
+    def _price_key(value: Optional[float]) -> int:
+        if value is None:
+            return 0
+        return int(round(float(value) * 100))
+
+    @staticmethod
+    def _status_fill(status: str) -> Optional[PatternFill]:
+        if status in (STATUS_PRICE_MISMATCH, STATUS_STYLE_SUSPECT,
+                      STATUS_ARTICLE_SUSPECT, STATUS_MULTI_CANDIDATE):
+            return PatternFill(start_color='FFFFDDDD', end_color='FFFFDDDD', fill_type='solid')
+        if status in (STATUS_REFERENCE_MISSING, STATUS_NOT_IN_INVOICE):
+            return PatternFill(start_color='FFFFFFCC', end_color='FFFFFFCC', fill_type='solid')
+        if status == STATUS_MATCHED:
+            return PatternFill(start_color='FFDDFFDD', end_color='FFDDFFDD', fill_type='solid')
+        return None
+
+    @staticmethod
+    def _status_font(status: str) -> Optional[Font]:
+        if status in (STATUS_PRICE_MISMATCH, STATUS_STYLE_SUSPECT,
+                      STATUS_ARTICLE_SUSPECT, STATUS_MULTI_CANDIDATE):
+            return Font(bold=True, color='FFFF0000')
+        if status in (STATUS_REFERENCE_MISSING, STATUS_NOT_IN_INVOICE):
+            return Font(bold=True, color='FFCC6600')
+        if status == STATUS_MATCHED:
+            return Font(bold=True, color='FF00AA00')
+        return None
+
+    def _build_reference_records(self, ref_df: pd.DataFrame,
+                                 reference_columns: Dict[str, Any]) -> List[ReferenceRecord]:
+        records: List[ReferenceRecord] = []
+        for row_key, row in ref_df.iterrows():
+            records.append(ReferenceRecord(
+                row_key=row_key,
+                article=self._normalize_reference_text(row.get(reference_columns["article"])),
+                style=self._normalize_reference_text(row.get(reference_columns["style"])),
+                price=self._parse_reference_price(row.get(reference_columns["price"])),
+            ))
+        return records
+
+    def _build_reference_index(self, records: List[ReferenceRecord]) -> Dict[str, Dict[Tuple[Any, ...], List[ReferenceRecord]]]:
+        indexes: Dict[str, DefaultDict[Tuple[Any, ...], List[ReferenceRecord]]] = {
+            "article_style": defaultdict(list),
+            "article_price": defaultdict(list),
+            "style_price": defaultdict(list),
+        }
+        for record in records:
+            price_key = self._price_key(record.price)
+            indexes["article_style"][(record.article, record.style)].append(record)
+            indexes["article_price"][(record.article, price_key)].append(record)
+            indexes["style_price"][(record.style, price_key)].append(record)
+        return {name: dict(index) for name, index in indexes.items()}
+
+    @staticmethod
+    def _unique_reference_records(records: List[ReferenceRecord]) -> List[ReferenceRecord]:
+        unique_records: List[ReferenceRecord] = []
+        seen = set()
+        for record in records:
+            if record.row_key in seen:
+                continue
+            unique_records.append(record)
+            seen.add(record.row_key)
+        return unique_records
+
+    @staticmethod
+    def _join_candidate_values(records: List[ReferenceRecord], field_name: str) -> str:
+        values: List[str] = []
+        for record in records:
+            value = str(getattr(record, field_name))
+            if value and value not in values:
+                values.append(value)
+        return " / ".join(values[:5])
+
+    def _make_invoice_diagnostic(self, invoice_file: str, article: str, style: str,
+                                 price: float, record: ReferenceRecord, status: str,
+                                 suspected_field: str, message: str) -> InvoiceDiagnostic:
+        return InvoiceDiagnostic(
+            invoice_file=invoice_file,
+            article=article,
+            style=style,
+            price=price,
+            status=status,
+            suspected_field=suspected_field,
+            message=message,
+            suggested_style=record.style,
+            suggested_article=record.article,
+            suggested_price=record.price,
+            candidate_row_keys=(record.row_key,),
+        )
+
+    def _diagnose_with_article_style(self, invoice_file: str, article: str, style: str,
+                                     price: float, records: List[ReferenceRecord]) -> InvoiceDiagnostic:
+        matched_records = [
+            record for record in records
+            if self._price_key(record.price) == self._price_key(price)
+        ]
+        if matched_records:
+            return self._make_invoice_diagnostic(
+                invoice_file, article, style, price, matched_records[0],
+                STATUS_MATCHED, "", "发票款号、Article、价格均与参考表一致。"
+            )
+
+        record = records[0]
+        message = f"发票价格 {price:.2f} 与参考价格 {record.price:.2f} 不一致。"
+        return self._make_invoice_diagnostic(
+            invoice_file, article, style, price, record,
+            STATUS_PRICE_MISMATCH, "价格", message
+        )
+
+    def _diagnose_without_exact_key(self, invoice_file: str, article: str, style: str,
+                                    price: float, reference_index: Dict[str, Dict[Tuple[Any, ...], List[ReferenceRecord]]]) -> InvoiceDiagnostic:
+        price_key = self._price_key(price)
+        article_price_records = reference_index["article_price"].get((article, price_key), [])
+        style_price_records = reference_index["style_price"].get((style, price_key), [])
+        candidates = self._unique_reference_records(article_price_records + style_price_records)
+
+        if len(candidates) == 1 and article_price_records:
+            return self._make_invoice_diagnostic(
+                invoice_file, article, style, price, candidates[0], STATUS_STYLE_SUSPECT,
+                "款号", "发票 Article 和价格可匹配参考表，发票款号疑似抓取错误。"
+            )
+        if len(candidates) == 1 and style_price_records:
+            return self._make_invoice_diagnostic(
+                invoice_file, article, style, price, candidates[0], STATUS_ARTICLE_SUSPECT,
+                "Article", "发票款号和价格可匹配参考表，发票 Article 疑似抓取错误。"
+            )
+        if candidates:
+            return self._make_multi_candidate_diagnostic(
+                invoice_file, article, style, price, candidates,
+                bool(article_price_records), bool(style_price_records)
+            )
+        return InvoiceDiagnostic(
+            invoice_file=invoice_file,
+            article=article,
+            style=style,
+            price=price,
+            status=STATUS_REFERENCE_MISSING,
+            suspected_field="",
+            message="发票款号、Article、价格无法用任意两项匹配参考表。",
+            suggested_style="",
+            suggested_article="",
+            suggested_price=None,
+            candidate_row_keys=(),
+        )
+
+    def _make_multi_candidate_diagnostic(self, invoice_file: str, article: str, style: str,
+                                         price: float, candidates: List[ReferenceRecord],
+                                         matched_article_price: bool,
+                                         matched_style_price: bool) -> InvoiceDiagnostic:
+        suspected_field = "款号/Article"
+        if matched_article_price and not matched_style_price:
+            suspected_field = "款号"
+        elif matched_style_price and not matched_article_price:
+            suspected_field = "Article"
+        suggested_prices = sorted({self._price_key(record.price) for record in candidates})
+        suggested_price = suggested_prices[0] / 100 if len(suggested_prices) == 1 else None
+        message = f"两字段反查命中 {len(candidates)} 条参考记录，需人工确认。"
+        return InvoiceDiagnostic(
+            invoice_file=invoice_file,
+            article=article,
+            style=style,
+            price=price,
+            status=STATUS_MULTI_CANDIDATE,
+            suspected_field=suspected_field,
+            message=message,
+            suggested_style=self._join_candidate_values(candidates, "style"),
+            suggested_article=self._join_candidate_values(candidates, "article"),
+            suggested_price=suggested_price,
+            candidate_row_keys=tuple(record.row_key for record in candidates),
+        )
+
+    def _build_invoice_diagnostics(self, all_invoice_data: Dict[Tuple[str, str], Dict[str, float]],
+                                   ref_df: pd.DataFrame) -> List[InvoiceDiagnostic]:
+        reference_columns = self._resolve_reference_columns(ref_df)
+        records = self._build_reference_records(ref_df, reference_columns)
+        reference_index = self._build_reference_index(records)
+        diagnostics: List[InvoiceDiagnostic] = []
+
+        for (article, style), invoice_prices_dict in all_invoice_data.items():
+            article_text = self._normalize_reference_text(article)
+            style_text = self._normalize_reference_text(style)
+            exact_records = reference_index["article_style"].get((article_text, style_text), [])
+            for invoice_file, invoice_price in invoice_prices_dict.items():
+                if exact_records:
+                    diagnostics.append(self._diagnose_with_article_style(
+                        invoice_file, article_text, style_text, invoice_price, exact_records
+                    ))
+                else:
+                    diagnostics.append(self._diagnose_without_exact_key(
+                        invoice_file, article_text, style_text, invoice_price, reference_index
+                    ))
+        return diagnostics
+
+    @staticmethod
+    def _diagnostic_severity(status: str) -> int:
+        severity_order = {
+            STATUS_PRICE_MISMATCH: 0,
+            STATUS_STYLE_SUSPECT: 1,
+            STATUS_ARTICLE_SUSPECT: 1,
+            STATUS_MULTI_CANDIDATE: 2,
+            STATUS_MATCHED: 9,
+        }
+        return severity_order.get(status, 20)
+
+    def _diagnostics_by_reference_row(self, diagnostics: List[InvoiceDiagnostic]) -> Dict[Any, List[InvoiceDiagnostic]]:
+        diagnostics_by_row: Dict[Any, List[InvoiceDiagnostic]] = {}
+        for diagnostic in diagnostics:
+            for row_key in diagnostic.candidate_row_keys:
+                diagnostics_by_row.setdefault(row_key, []).append(diagnostic)
+        for row_key, row_diagnostics in diagnostics_by_row.items():
+            diagnostics_by_row[row_key] = sorted(
+                row_diagnostics,
+                key=lambda item: self._diagnostic_severity(item.status)
+            )
+        return diagnostics_by_row
+
+    @staticmethod
+    def _count_diagnostics(diagnostics: List[InvoiceDiagnostic]) -> Dict[str, int]:
+        counts: Dict[str, int] = {}
+        for diagnostic in diagnostics:
+            counts[diagnostic.status] = counts.get(diagnostic.status, 0) + 1
+        return counts
+
     def update_reference_table(self, ref_df: pd.DataFrame,
                               all_invoice_data: Dict[Tuple[str, str], Dict[str, float]]) -> Tuple[pd.DataFrame, Dict[str, int]]:
         result_df = ref_df.copy()
-        reference_columns = self._resolve_reference_columns(result_df)
+        diagnostics = self._build_invoice_diagnostics(all_invoice_data, result_df)
+        diagnostics_by_row = self._diagnostics_by_reference_row(diagnostics)
 
         statuses: List[str] = []
         invoice_prices: List[Optional[float]] = []
         source_invoices: List[Optional[str]] = []
-
+        suspected_fields: List[str] = []
+        diagnostic_messages: List[str] = []
+        suggested_styles: List[str] = []
+        suggested_articles: List[str] = []
+        suggested_prices: List[Optional[float]] = []
         matches = {'一致': 0, '不一致': 0, '未找到': 0}
 
-        for _, row in result_df.iterrows():
-            article = self._normalize_reference_text(row.get(reference_columns["article"]))
-            style = self._normalize_reference_text(row.get(reference_columns["style"]))
-            ref_price = self._parse_reference_price(row.get(reference_columns["price"]))
-
-            key = (article, style)
-
-            if key in all_invoice_data:
-                invoice_data_for_key = all_invoice_data[key]
-
-                found_inconsistent = False
-                inconsistent_price = None
-                inconsistent_source = None
-
-                for invoice_file, invoice_price in invoice_data_for_key.items():
-                    if abs(invoice_price - ref_price) >= 0.001:
-                        found_inconsistent = True
-                        inconsistent_price = invoice_price
-                        inconsistent_source = invoice_file
-                        break
-
-                if found_inconsistent:
-                    statuses.append('不一致')
-                    invoice_prices.append(inconsistent_price)
-                    source_invoices.append(inconsistent_source)
-                    matches['不一致'] += 1
-                else:
-                    statuses.append('一致')
-                    invoice_prices.append(None)
-                    source_invoices.append(None)
-                    matches['一致'] += 1
-            else:
-                statuses.append('未在发票中找到')
-                invoice_prices.append(None)
-                source_invoices.append(None)
+        for row_key, _ in result_df.iterrows():
+            row_diagnostics = diagnostics_by_row.get(row_key, [])
+            selected = row_diagnostics[0] if row_diagnostics else None
+            if selected is None:
+                self._append_missing_reference_status(
+                    statuses, invoice_prices, source_invoices,
+                    suspected_fields, diagnostic_messages,
+                    suggested_styles, suggested_articles, suggested_prices
+                )
                 matches['未找到'] += 1
+                continue
+
+            statuses.append(selected.status)
+            invoice_prices.append(selected.price if selected.status != STATUS_MATCHED else None)
+            source_invoices.append(selected.invoice_file if selected.status != STATUS_MATCHED else None)
+            suspected_fields.append(selected.suspected_field)
+            diagnostic_messages.append(selected.message)
+            suggested_styles.append(selected.suggested_style)
+            suggested_articles.append(selected.suggested_article)
+            suggested_prices.append(selected.suggested_price)
+            if selected.status == STATUS_MATCHED:
+                matches['一致'] += 1
+            else:
+                matches['不一致'] += 1
 
         result_df['核对状态'] = statuses
         result_df['发票价格'] = invoice_prices
         result_df['来源发票'] = source_invoices
+        result_df['疑似错误字段'] = suspected_fields
+        result_df['诊断说明'] = diagnostic_messages
+        result_df['建议参考款号'] = suggested_styles
+        result_df['建议参考Article'] = suggested_articles
+        result_df['建议参考价格'] = suggested_prices
 
         return result_df, matches
+
+    @staticmethod
+    def _append_missing_reference_status(statuses: List[str],
+                                         invoice_prices: List[Optional[float]],
+                                         source_invoices: List[Optional[str]],
+                                         suspected_fields: List[str],
+                                         diagnostic_messages: List[str],
+                                         suggested_styles: List[str],
+                                         suggested_articles: List[str],
+                                         suggested_prices: List[Optional[float]]) -> None:
+        statuses.append(STATUS_NOT_IN_INVOICE)
+        invoice_prices.append(None)
+        source_invoices.append(None)
+        suspected_fields.append("")
+        diagnostic_messages.append("参考表该行未在发票中找到对应记录。")
+        suggested_styles.append("")
+        suggested_articles.append("")
+        suggested_prices.append(None)
 
     def save_excel_with_summary(self, result_df: pd.DataFrame,
                                 all_invoice_data: Dict[Tuple[str, str], Dict[str, float]],
@@ -303,13 +588,27 @@ class JesscaModule:
             ws_main.row_dimensions[row_idx].height = 20
             is_odd_row = ((row_idx - 2) % 2 == 0)
             row_fill = PatternFill(start_color='FFF2F2F2', end_color='FFF2F2F2', fill_type='solid') if is_odd_row else None
+            row_values = list(row)
+            status_value = row_values[headers.index('核对状态')] if '核对状态' in headers else ''
 
-            for col_idx, value in enumerate(row, 1):
+            for col_idx, value in enumerate(row_values, 1):
                 cell = ws_main.cell(row=row_idx, column=col_idx, value=value)
                 cell.border = thin_border
                 cell.alignment = Alignment(horizontal='left', vertical='center')
                 if row_fill:
                     cell.fill = row_fill
+                header_text = str(headers[col_idx - 1])
+                if header_text == '核对状态':
+                    status_fill = self._status_fill(str(value))
+                    status_font = self._status_font(str(value))
+                    if status_fill:
+                        cell.fill = status_fill
+                    if status_font:
+                        cell.font = status_font
+                elif header_text == '发票价格' and status_value != STATUS_MATCHED and value is not None:
+                    cell.font = Font(color='FFFF0000', bold=True)
+                elif header_text in DIAGNOSTIC_COLUMNS:
+                    cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
 
         # 创建汇总表：按发票明细纵向展开，避免文件多时横向过宽
         ws_summary = wb.create_sheet("汇总表")
@@ -349,7 +648,12 @@ class JesscaModule:
             4: 20,
             5: 10,
             6: 20,
-            7: 42
+            7: 42,
+            8: 16,
+            9: 48,
+            10: 22,
+            11: 22,
+            12: 16
         }
         self._adjust_column_widths(ws_summary, summary_column_widths)
         for col_idx, width in summary_column_widths.items():
@@ -363,7 +667,8 @@ class JesscaModule:
             'sheet_count': len(wb.sheetnames),
             'sheet_names': wb.sheetnames,
             'missing_count': summary_stats['missing_count'],
-            'data_count': summary_stats['data_count']
+            'data_count': summary_stats['data_count'],
+            'diagnostics': summary_stats['diagnostics']
         }
 
     def _write_compact_summary_sheet(self,
@@ -372,7 +677,7 @@ class JesscaModule:
                                      invoice_file_names: List[str],
                                      invoice_file_paths: List[str],
                                      ref_df: pd.DataFrame,
-                                     thin_border: Border) -> Dict[str, int]:
+                                     thin_border: Border) -> Dict[str, Any]:
         """写入窄版汇总表：每张发票命中的价格用纵向明细行展示。"""
         summary_border = Border(
             left=Side(style='thin', color='FFD9E2EC'),
@@ -390,8 +695,8 @@ class JesscaModule:
             '来源发票',
             '发票价',
             '状态',
-            '异常文件'
-        ]
+            '异常文件',
+        ] + DIAGNOSTIC_COLUMNS
 
         title_end_col = openpyxl.utils.get_column_letter(len(header_cells))
         ws_summary.merge_cells(f'A1:{title_end_col}1')
@@ -415,15 +720,15 @@ class JesscaModule:
             cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=False)
             cell.border = summary_border
 
-        ref_data_lookup: Dict[Tuple[str, str], float] = {}
-        reference_columns = self._resolve_reference_columns(ref_df)
-        for _, ref_row in ref_df.iterrows():
-            article = self._normalize_reference_text(ref_row.get(reference_columns["article"]))
-            style = self._normalize_reference_text(ref_row.get(reference_columns["style"]))
-            key = (article, style)
-            ref_data_lookup[key] = self._parse_reference_price(ref_row.get(reference_columns["price"]))
-
-        missing_from_ref_count = sum(1 for key in all_invoice_data if key not in ref_data_lookup)
+        diagnostics = self._build_invoice_diagnostics(all_invoice_data, ref_df)
+        diagnostic_lookup = {
+            (diagnostic.article, diagnostic.style, diagnostic.invoice_file): diagnostic
+            for diagnostic in diagnostics
+        }
+        missing_from_ref_count = sum(
+            1 for diagnostic in diagnostics
+            if diagnostic.status == STATUS_REFERENCE_MISSING
+        )
         data_start_row = header_row + 1
         if missing_from_ref_count > 0:
             data_start_row = header_row + 2
@@ -441,7 +746,6 @@ class JesscaModule:
         data_count = 0
 
         for (article, style), invoice_prices_dict in all_invoice_data.items():
-            ref_price = ref_data_lookup.get((article, style), None)
             rows_to_write = [
                 (invoice_name, invoice_prices_dict[invoice_name])
                 for invoice_name in invoice_file_names
@@ -452,8 +756,14 @@ class JesscaModule:
                 rows_to_write = [('-', None)]
 
             for invoice_name, invoice_price in rows_to_write:
+                diagnostic = diagnostic_lookup.get((article, style, invoice_name))
                 is_odd_row = (data_count % 2 == 0)
                 row_fill = row_fill_style if is_odd_row else None
+                ref_price = diagnostic.suggested_price if diagnostic else None
+                status = diagnostic.status if diagnostic else STATUS_REFERENCE_MISSING
+                abnormal_file = '-'
+                if status != STATUS_MATCHED:
+                    abnormal_file = invoice_path_lookup.get(invoice_name, invoice_name)
 
                 ws_summary.row_dimensions[data_row].height = 24
                 values = [
@@ -462,18 +772,25 @@ class JesscaModule:
                     ref_price if ref_price is not None else '未找到',
                     invoice_name,
                     invoice_price if invoice_price is not None else '-',
-                    '',
-                    '-'
+                    status,
+                    abnormal_file,
+                    diagnostic.suspected_field if diagnostic else '',
+                    diagnostic.message if diagnostic else '发票记录未能匹配参考表。',
+                    diagnostic.suggested_style if diagnostic else '',
+                    diagnostic.suggested_article if diagnostic else '',
+                    diagnostic.suggested_price if diagnostic and diagnostic.suggested_price is not None else '',
                 ]
 
                 for col_idx, value in enumerate(values, 1):
                     cell = ws_summary.cell(row=data_row, column=col_idx, value=value)
                     cell.border = summary_border
                     cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=False)
-                    if col_idx in (3, 5) and isinstance(value, (int, float)):
+                    if col_idx in (3, 5, 12) and isinstance(value, (int, float)):
                         cell.number_format = '0.00'
                     if row_fill:
                         cell.fill = row_fill
+                    if col_idx >= 8:
+                        cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
 
                 invoice_cell = ws_summary.cell(row=data_row, column=4)
                 invoice_cell.fill = no_fill
@@ -482,29 +799,23 @@ class JesscaModule:
                 price_cell = ws_summary.cell(row=data_row, column=5)
                 status_cell = ws_summary.cell(row=data_row, column=6)
                 file_cell = ws_summary.cell(row=data_row, column=7)
+                status_fill = self._status_fill(status)
+                status_font = self._status_font(status)
 
-                if ref_price is None:
-                    status_cell.value = '参考表未找到'
-                    status_cell.fill = PatternFill(start_color='FFFFFFCC', end_color='FFFFFFCC', fill_type='solid')
-                    status_cell.font = Font(bold=True, color='FFCC6600')
-                    file_cell.value = invoice_path_lookup.get(invoice_name, invoice_name)
-                    file_cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
-                    file_cell.font = Font(size=9, color='FF374151')
-                    ws_summary.row_dimensions[data_row].height = 38
-                elif invoice_price is not None and abs(invoice_price - ref_price) >= 0.001:
-                    status_cell.value = '不一致'
-                    status_cell.fill = PatternFill(start_color='FFFFDDDD', end_color='FFFFDDDD', fill_type='solid')
-                    status_cell.font = Font(bold=True, color='FFFF0000')
-                    price_cell.font = Font(color='FFFF0000', bold=True)
+                if status_fill:
+                    status_cell.fill = status_fill
+                if status_font:
+                    status_cell.font = status_font
+                if status != STATUS_MATCHED:
                     file_cell.value = invoice_path_lookup.get(invoice_name, invoice_name)
                     file_cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
                     file_cell.font = Font(size=9, color='FF374151')
                     ws_summary.row_dimensions[data_row].height = 38
                 else:
-                    status_cell.value = '一致'
-                    status_cell.fill = PatternFill(start_color='FFDDFFDD', end_color='FFDDFFDD', fill_type='solid')
-                    status_cell.font = Font(bold=True, color='FF00AA00')
                     file_cell.value = '-'
+
+                if status not in (STATUS_MATCHED, STATUS_REFERENCE_MISSING):
+                    price_cell.font = Font(color='FFFF0000', bold=True)
 
                 data_count += 1
                 data_row += 1
@@ -515,7 +826,8 @@ class JesscaModule:
 
         return {
             'missing_count': missing_from_ref_count,
-            'data_count': data_count
+            'data_count': data_count,
+            'diagnostics': self._count_diagnostics(diagnostics)
         }
 
     @staticmethod
@@ -556,6 +868,7 @@ class JesscaModule:
             'invoice_count': len(invoice_paths),
             'total_items': 0,
             'matches': {'一致': 0, '不一致': 0, '未找到': 0},
+            'diagnostics': {},
             'output_path': None,
             'logs': []
         }
@@ -657,6 +970,7 @@ class JesscaModule:
 
             result['output_path'] = output_path
             result['save_result'] = save_result
+            result['diagnostics'] = save_result.get('diagnostics', {})
 
             log(f"\n{'='*80}")
             log(f"✅ 批量核对完成！")

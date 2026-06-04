@@ -11,6 +11,12 @@ export function buildJesscaSummary(
   const matchedCount = response.matches
     ? Object.values(response.matches).reduce((sum, value) => sum + Number(value || 0), 0)
     : undefined
+  const diagnosticIssueCount = response.diagnostics
+    ? Object.entries(response.diagnostics).reduce(
+        (sum, [status, value]) => sum + (status === '一致' ? 0 : Number(value || 0)),
+        0,
+      )
+    : undefined
 
   return [
     {
@@ -24,6 +30,10 @@ export function buildJesscaSummary(
     {
       label: '匹配数量',
       value: matchedCount === undefined ? '-' : String(matchedCount),
+    },
+    {
+      label: '异常诊断',
+      value: diagnosticIssueCount === undefined ? '-' : String(diagnosticIssueCount),
     },
     {
       label: '结果文件',

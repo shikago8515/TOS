@@ -17,6 +17,7 @@ export interface JesscaProcessResponse {
   invoice_count?: number
   total_items?: number
   matches?: Record<string, number>
+  diagnostics?: Record<string, number>
 }
 
 export async function processJesscaFiles(
