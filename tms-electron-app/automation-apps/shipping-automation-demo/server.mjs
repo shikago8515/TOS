@@ -254,7 +254,9 @@ async function runShippingWorkflow(credentials, runContext) {
   const startedAt = new Date().toISOString();
   const poRows = Array.isArray(runContext?.poRows) ? runContext.poRows : [];
   const shouldFillPoNumbers = Boolean(runContext?.fillPoNumbers);
+  const uniqueChangeEquipmentIds = collectUniqueChangeEquipmentIds(poRows);
   const poResults = [];
+  const createShipmentResults = [];
 
   try {
     browser = await engine.launch(launchOptions);
@@ -278,17 +280,10 @@ async function runShippingWorkflow(credentials, runContext) {
     );
     await page.waitForURL(/\/en\/trade\/PackByScan/, { timeout: config.navigationTimeoutMs });
     await page.waitForTimeout(config.postLoginWaitMs);
-    await clickLocator(
-      page.locator('div.sidepanellinks a[href="#Shipment%20Scan"]'),
-      "Shipment Scan",
-    );
-    await waitForShipmentScanDialog(page);
-
     if (shouldFillPoNumbers) {
-      await selectRemoveChangeEquipmentId(page);
       for (const poRow of poRows) {
         try {
-          await fillShipmentPoNumber(page, poRow.poNo);
+          await processShipmentPoRow(page, poRow);
           poResults.push({
             ...poRow,
             ok: true,
@@ -301,6 +296,24 @@ async function runShippingWorkflow(credentials, runContext) {
           });
         }
       }
+
+      for (const changeEquipmentId of uniqueChangeEquipmentIds) {
+        try {
+          await processCreateShipmentEquipmentId(page, changeEquipmentId);
+          createShipmentResults.push({
+            changeEquipmentId,
+            ok: true,
+          });
+        } catch (error) {
+          createShipmentResults.push({
+            changeEquipmentId,
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    } else {
+      await openShipmentScanDialog(page);
     }
 
     latestScreenshotPath = path.join(artifactsDir, `shipment-scan-success-${Date.now()}.png`);
@@ -308,9 +321,11 @@ async function runShippingWorkflow(credentials, runContext) {
 
     const failedPoCount = poResults.filter((item) => !item.ok).length;
     const completedPoCount = poResults.filter((item) => item.ok).length;
+    const failedCreateShipmentCount = createShipmentResults.filter((item) => !item.ok).length;
+    const completedCreateShipmentCount = createShipmentResults.filter((item) => item.ok).length;
 
     const result = {
-      ok: failedPoCount === 0,
+      ok: failedPoCount === 0 && failedCreateShipmentCount === 0,
       loginSuccess: true,
       shipmentScanOpened: true,
       inputMode: shouldFillPoNumbers ? "local-file" : "open-only",
@@ -319,9 +334,13 @@ async function runShippingWorkflow(credentials, runContext) {
       completedPoCount,
       failedPoCount,
       poResults,
+      uniqueChangeEquipmentIdCount: uniqueChangeEquipmentIds.length,
+      completedCreateShipmentCount,
+      failedCreateShipmentCount,
+      createShipmentResults,
       selectedAction: shouldFillPoNumbers ? "Remove/Change Equipment ID" : "",
       message: shouldFillPoNumbers
-        ? `Shipment Scan opened and ${completedPoCount}/${poRows.length} PO No values were entered.`
+        ? `Shipment Scan processed ${completedPoCount}/${poRows.length} PO rows and Create Shipment processed ${completedCreateShipmentCount}/${uniqueChangeEquipmentIds.length} unique equipment IDs.`
         : "Infor Nexus Shipment Scan opened successfully.",
       generatedAt: new Date().toISOString(),
       finalUrl: page.url(),
@@ -356,6 +375,10 @@ async function runShippingWorkflow(credentials, runContext) {
         poResults.filter((item) => !item.ok).length,
       ),
       poResults,
+      uniqueChangeEquipmentIdCount: uniqueChangeEquipmentIds.length,
+      completedCreateShipmentCount: createShipmentResults.filter((item) => item.ok).length,
+      failedCreateShipmentCount: createShipmentResults.filter((item) => !item.ok).length,
+      createShipmentResults,
       message: failureMessage || "Shipment Scan automation failed.",
       generatedAt: new Date().toISOString(),
       finalUrl: page?.url?.() || "",
@@ -417,6 +440,20 @@ async function waitForShipmentScanDialog(page) {
   });
 }
 
+async function openShipmentScanDialog(page) {
+  const dialogTitle = page.locator("text=Shipment Scan - Select Filters").first();
+  const alreadyVisible = await dialogTitle.isVisible().catch(() => false);
+  if (!alreadyVisible) {
+    await clickLocator(
+      page.locator('div.sidepanellinks a[href="#Shipment%20Scan"]'),
+      "Shipment Scan",
+    );
+  }
+
+  await waitForShipmentScanDialog(page);
+  log("Shipment Scan dialog ready.");
+}
+
 async function selectRemoveChangeEquipmentId(page) {
   const label = page.locator("label.x-form-cb-label", {
     hasText: "Remove/Change Equipment ID",
@@ -436,6 +473,27 @@ async function selectRemoveChangeEquipmentId(page) {
   log("Selected Remove/Change Equipment ID.");
 }
 
+async function processShipmentPoRow(page, poRow) {
+  const normalizedChangeEquipmentId = String(poRow?.changeEquipmentId || "").trim();
+  if (!normalizedChangeEquipmentId) {
+    throw new Error(`Change equipment ID is empty for PO No ${String(poRow?.poNo || "").trim()}.`);
+  }
+
+  await openShipmentScanDialog(page);
+  await selectRemoveChangeEquipmentId(page);
+  await fillShipmentPoNumber(page, poRow.poNo);
+  await waitForShipmentGridRows(page, poRow.poNo);
+  await selectShipmentGridRows(page, poRow.poNo);
+  const dialog = await openChangeEquipmentIdDialog(page, poRow.poNo);
+  await fillChangeEquipmentIdDialog(dialog, normalizedChangeEquipmentId);
+  await clickDialogOk(dialog, "Change Equipment ID");
+  await page.waitForTimeout(config.postLoginWaitMs);
+  log("Completed shipment PO row.", {
+    poNo: String(poRow?.poNo || "").trim(),
+    changeEquipmentId: normalizedChangeEquipmentId,
+  });
+}
+
 async function fillShipmentPoNumber(page, poNo) {
   const normalizedPoNo = String(poNo || "").trim();
   if (!normalizedPoNo) {
@@ -449,6 +507,238 @@ async function fillShipmentPoNumber(page, poNo) {
   await clickShipmentScanOk(page);
   await page.waitForTimeout(config.postLoginWaitMs);
   log("Confirmed PO No.", { poNo: normalizedPoNo });
+}
+
+async function waitForShipmentGridRows(page, poNo) {
+  const timeoutMs = Math.min(config.navigationTimeoutMs, 20000);
+  const rowChecker = page.locator("div.x-grid3-row-checker").first();
+  const emptyState = page.locator("text=No data to display").first();
+  const startedAt = Date.now();
+  let lastDialogError = "";
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const rowVisible = await rowChecker.isVisible().catch(() => false);
+    if (rowVisible) {
+      log("Shipment grid rows loaded.", { poNo });
+      return;
+    }
+
+    lastDialogError = (await getVisibleDialogErrorText(page)) || lastDialogError;
+    await page.waitForTimeout(250);
+  }
+
+  if (lastDialogError) {
+    throw new Error(`PO No ${poNo}: ${lastDialogError}`);
+  }
+
+  const emptyVisible = await emptyState.isVisible().catch(() => false);
+  if (emptyVisible) {
+    throw new Error(`PO No ${poNo}: no shipment rows were loaded after clicking OK.`);
+  }
+
+  throw new Error(`PO No ${poNo}: timed out waiting for shipment rows.`);
+}
+
+async function selectShipmentGridRows(page, poNo) {
+  const rowChecker = page.locator("div.x-grid3-row-checker").first();
+  await rowChecker.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+
+  const headerChecker = page.locator("div.x-grid3-hd-checker").first();
+  const headerVisible = await headerChecker.isVisible().catch(() => false);
+  if (headerVisible) {
+    await headerChecker.click();
+    log("Selected shipment rows with header checker.", { poNo });
+    return;
+  }
+
+  await rowChecker.click();
+  log("Selected first shipment row.", { poNo });
+}
+
+async function openChangeEquipmentIdDialog(page, poNo) {
+  const button = page
+    .locator("button.x-btn-text.icon-edit-small")
+    .filter({ hasText: "Change Equipment ID" })
+    .first();
+  await button.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await button.click();
+  log("Clicked Change Equipment ID.", { poNo });
+
+  const timeoutMs = Math.min(config.navigationTimeoutMs, 15000);
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const errorText = await getVisibleDialogErrorText(page);
+    if (errorText) {
+      throw new Error(`PO No ${poNo}: ${errorText}`);
+    }
+
+    const dialogInfo = await getTopVisibleDialogInfo(page);
+    if (dialogInfo?.id && dialogInfo.inputs?.length) {
+      const dialog = page.locator(`[id="${dialogInfo.id}"]`).first();
+      log("Change Equipment ID dialog opened.", {
+        poNo,
+        dialogId: dialogInfo.id,
+      });
+      return dialog;
+    }
+
+    await page.waitForTimeout(250);
+  }
+
+  throw new Error(`PO No ${poNo}: Change Equipment ID dialog did not appear.`);
+}
+
+async function fillChangeEquipmentIdDialog(dialog, changeEquipmentId) {
+  const input = dialog.locator('input[type="text"], textarea').first();
+  await input.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await input.fill(String(changeEquipmentId || "").trim());
+  log("Entered change equipment ID.", {
+    changeEquipmentId: String(changeEquipmentId || "").trim(),
+  });
+}
+
+async function processCreateShipmentEquipmentId(page, changeEquipmentId) {
+  const normalizedChangeEquipmentId = String(changeEquipmentId || "").trim();
+  if (!normalizedChangeEquipmentId) {
+    throw new Error("Create Shipment change equipment ID is empty.");
+  }
+
+  const dialog = await openCreateShipmentDialog(page);
+  await clearCreateShipmentPoNumber(dialog);
+  await fillCreateShipmentBrowseDays(dialog, "601");
+  await fillCreateShipmentEquipmentId(dialog, normalizedChangeEquipmentId);
+  await clickDialogOk(dialog, "Create Shipment");
+  await page.waitForTimeout(config.postLoginWaitMs);
+  log("Completed Create Shipment row.", {
+    changeEquipmentId: normalizedChangeEquipmentId,
+  });
+}
+
+async function openCreateShipmentDialog(page) {
+  await clickLocator(
+    page.locator('div.sidepanellinks a[href="#Create%20Shipment"]'),
+    "Create Shipment",
+  );
+
+  const timeoutMs = Math.min(config.navigationTimeoutMs, 15000);
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const errorText = await getVisibleDialogErrorText(page);
+    if (errorText) {
+      throw new Error(errorText);
+    }
+
+    const dialogInfo = await getTopVisibleDialogInfo(page);
+    const names = new Set((dialogInfo?.inputs || []).map((input) => input.name));
+    if (dialogInfo?.id
+      && names.has("EquipmentJM")
+      && names.has("poNum")
+      && names.has("executionDateDays")) {
+      const dialog = page.locator(`[id="${dialogInfo.id}"]`).first();
+      log("Create Shipment dialog opened.", {
+        dialogId: dialogInfo.id,
+      });
+      return dialog;
+    }
+
+    await page.waitForTimeout(250);
+  }
+
+  throw new Error("Create Shipment dialog did not appear.");
+}
+
+async function clearCreateShipmentPoNumber(dialog) {
+  const poInput = dialog.locator('input[name="poNum"]').first();
+  await poInput.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await poInput.fill("");
+  log("Cleared Create Shipment PO Numbers.");
+}
+
+async function fillCreateShipmentBrowseDays(dialog, value) {
+  const browseDaysInput = dialog.locator('input[name="executionDateDays"]').first();
+  await browseDaysInput.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await browseDaysInput.fill(String(value || "").trim());
+  log("Entered Create Shipment Browse Days.", {
+    executionDateDays: String(value || "").trim(),
+  });
+}
+
+async function fillCreateShipmentEquipmentId(dialog, changeEquipmentId) {
+  const equipmentInput = dialog.locator('input[name="EquipmentJM"]').first();
+  await equipmentInput.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await equipmentInput.fill(String(changeEquipmentId || "").trim());
+  log("Entered Create Shipment equipment number.", {
+    changeEquipmentId: String(changeEquipmentId || "").trim(),
+  });
+}
+
+async function clickDialogOk(dialog, label) {
+  const okButton = dialog.locator("button.x-btn-text").filter({ hasText: /^OK$/ }).first();
+  await okButton.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await okButton.click();
+  await dialog.waitFor({ state: "hidden", timeout: config.navigationTimeoutMs }).catch(() => {});
+  log(`Clicked ${label} OK.`);
+}
+
+async function getVisibleDialogErrorText(page) {
+  const dialogInfo = await getTopVisibleDialogInfo(page);
+  if (!dialogInfo?.text) {
+    return "";
+  }
+
+  const normalizedText = dialogInfo.text.replace(/\s+/g, " ").trim();
+  if (/Please select at least one Package Range to continue/i.test(normalizedText)) {
+    return "Please select at least one Package Range to continue";
+  }
+
+  if (dialogInfo.isMessageDialog && normalizedText) {
+    return normalizedText;
+  }
+
+  return "";
+}
+
+async function getTopVisibleDialogInfo(page) {
+  return page.evaluate(() => {
+    const isVisible = (element) => {
+      if (!element) {
+        return false;
+      }
+
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none"
+        && style.visibility !== "hidden"
+        && rect.width > 0
+        && rect.height > 0;
+    };
+
+    const dialogs = Array.from(document.querySelectorAll("div.x-window"))
+      .filter(isVisible)
+      .map((element) => {
+        const inputs = Array.from(element.querySelectorAll('input:not([type="hidden"]), textarea, select'))
+          .filter(isVisible)
+          .map((input) => ({
+            id: input.id || "",
+            name: input.getAttribute("name") || "",
+            type: input.getAttribute("type") || "",
+            value: input.value || "",
+          }));
+
+        return {
+          id: element.id || "",
+          text: (element.innerText || "").trim(),
+          zIndex: Number(window.getComputedStyle(element).zIndex || 0),
+          inputs,
+          isMessageDialog: element.className.includes("x-window-dlg"),
+        };
+      })
+      .sort((left, right) => right.zIndex - left.zIndex);
+
+    return dialogs[0] || null;
+  });
 }
 
 async function clickShipmentScanOk(page) {
@@ -498,14 +788,17 @@ async function persistRunArtifacts(result, poRows) {
 
   const latestResultPath = path.join(artifactsDir, "last-result.json");
   const latestFailedJsonPath = path.join(artifactsDir, "last-failed-po-rows.json");
+  const latestFailedExcelPath = path.join(artifactsDir, "last-failed-po-rows.xlsx");
   const failedRows = extractFailedPoRows(result, poRows);
 
   await writeFile(latestResultPath, JSON.stringify(result, null, 2), "utf8");
   await writeFile(latestFailedJsonPath, JSON.stringify(failedRows, null, 2), "utf8");
+  await writeFailedPoWorkbook(latestFailedExcelPath, failedRows);
 
   return {
     latestResultPath,
     latestFailedJsonPath,
+    latestFailedExcelPath,
     failedRowCount: failedRows.length,
   };
 }
@@ -524,10 +817,78 @@ function extractFailedPoRows(result, poRows) {
       return {
         rowIndex: row.rowIndex,
         poNo: row.poNo,
-        reason: resultRow?.error || result?.message || "PO No was not entered.",
+        changeEquipmentId: row.changeEquipmentId,
+        failedStep: classifyPoFailureStep(resultRow?.error || result?.message || ""),
+        reason: resultRow?.error || result?.message || "Shipment PO row was not completed.",
         originalRow: row.originalRow,
       };
     });
+}
+
+async function writeFailedPoWorkbook(targetPath, failedRows) {
+  const exportRows = failedRows.map((row) => ({
+    rowIndex: row.rowIndex,
+    poNo: row.poNo,
+    changeEquipmentId: row.changeEquipmentId || "",
+    failedStep: row.failedStep || "",
+    failureReason: row.reason || "",
+    ...(row.originalRow && typeof row.originalRow === "object" ? row.originalRow : {}),
+  }));
+
+  const worksheet = xlsx.utils.json_to_sheet(exportRows, {
+    header: exportRows.length > 0
+      ? undefined
+      : ["rowIndex", "poNo", "changeEquipmentId", "failedStep", "failureReason"],
+  });
+  const workbook = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(workbook, worksheet, "Failed PO Rows");
+
+  const buffer = xlsx.write(workbook, {
+    type: "buffer",
+    bookType: "xlsx",
+  });
+  await writeFile(targetPath, buffer);
+}
+
+function classifyPoFailureStep(reason) {
+  const normalizedReason = String(reason || "").toLowerCase();
+  if (!normalizedReason) {
+    return "Shipping Automation";
+  }
+
+  if (normalizedReason.includes("po no is empty")) {
+    return "Workbook Validation";
+  }
+
+  if (normalizedReason.includes("change equipment id is empty")) {
+    return "Workbook Validation";
+  }
+
+  if (normalizedReason.includes("shipment scan ok button")) {
+    return "Shipment Scan Confirm";
+  }
+
+  if (normalizedReason.includes("timed out waiting for shipment rows")) {
+    return "Shipment Scan Result Wait";
+  }
+
+  if (normalizedReason.includes("no shipment rows were loaded")) {
+    return "Shipment Scan Result Load";
+  }
+
+  if (normalizedReason.includes("package range")) {
+    return "Change Equipment ID Selection";
+  }
+
+  if (normalizedReason.includes("change equipment id dialog")) {
+    return "Change Equipment ID Dialog";
+  }
+
+  if (normalizedReason.includes("create shipment")) {
+    return "Create Shipment";
+  }
+
+  return "Shipping Automation";
 }
 
 function extractPoRowsFromWorkbookPayload(body) {
@@ -572,6 +933,7 @@ function extractPoRowsFromWorkbookPayload(body) {
     .map((row, index) => ({
       rowIndex: index + 2,
       poNo: extractPoNoValue(row),
+      changeEquipmentId: extractChangeEquipmentIdValue(row),
       originalRow: row,
     }))
     .filter((row) => row.poNo);
@@ -605,6 +967,37 @@ function extractPoNoValue(row) {
 
   const poKey = Object.keys(row).find((key) => normalizeHeaderName(key) === "pono");
   return poKey ? String(row[poKey] ?? "").trim() : "";
+}
+
+function extractChangeEquipmentIdValue(row) {
+  if (!row || typeof row !== "object") {
+    return "";
+  }
+
+  const directValue = row["change equipment ID"] ?? row["Change Equipment ID"] ?? row["Change equipment ID"];
+  if (directValue !== undefined && directValue !== null && String(directValue).trim()) {
+    return String(directValue).trim();
+  }
+
+  const equipmentKey = Object.keys(row).find((key) => normalizeHeaderName(key) === "changeequipmentid");
+  return equipmentKey ? String(row[equipmentKey] ?? "").trim() : "";
+}
+
+function collectUniqueChangeEquipmentIds(poRows) {
+  const uniqueIds = [];
+  const seen = new Set();
+
+  for (const row of Array.isArray(poRows) ? poRows : []) {
+    const normalizedValue = String(row?.changeEquipmentId || "").trim();
+    if (!normalizedValue || seen.has(normalizedValue)) {
+      continue;
+    }
+
+    seen.add(normalizedValue);
+    uniqueIds.push(normalizedValue);
+  }
+
+  return uniqueIds;
 }
 
 function normalizeHeaderName(value) {
