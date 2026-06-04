@@ -460,43 +460,77 @@ async function openShipmentScanDialog(page) {
 }
 
 async function selectRemoveChangeEquipmentId(dialog) {
-  const label = dialog.locator("label.x-form-cb-label", {
-    hasText: "Remove/Change Equipment ID",
+  const manualTarget = dialog.locator("div.x-form-check-wrap", {
+    has: dialog.locator("label.x-form-cb-label", {
+      hasText: /Remove\/Change Equipment ID/i,
+    }),
   }).first();
-  const radio = dialog
-    .locator("xpath=.//label[contains(normalize-space(.), 'Remove/Change Equipment ID')]/preceding-sibling::input[@type='radio'][1]")
-    .first();
+  await manualTarget.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
 
-  const radioChecked = await radio.isChecked().catch(() => false);
-  if (radioChecked) {
+  const radio = manualTarget.locator('input[type="radio"]').first();
+  const label = manualTarget.locator("label.x-form-cb-label").first();
+
+  if (await radio.isChecked().catch(() => false)) {
     log("Selected Remove/Change Equipment ID.");
     return;
   }
 
-  if (await label.isVisible().catch(() => false)) {
-    await label.click({ force: true });
-    const checkedAfterLabelClick = await radio.isChecked().catch(() => false);
-    if (checkedAfterLabelClick) {
-      log("Selected Remove/Change Equipment ID.");
+  const clickTargets = [
+    { locator: manualTarget, label: "wrapper" },
+    { locator: label, label: "label" },
+    { locator: radio, label: "radio" },
+  ];
+
+  for (const target of clickTargets) {
+    const visible = await target.locator.isVisible().catch(() => false);
+    if (!visible) {
+      continue;
+    }
+
+    await target.locator.click({ force: true }).catch(() => {});
+    await dialog.waitForTimeout(150).catch(() => {});
+    if (await radio.isChecked().catch(() => false)) {
+      log("Selected Remove/Change Equipment ID.", { target: target.label });
       return;
     }
   }
 
-  await radio.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
-  await radio.click({ force: true });
-  const checkedAfterRadioClick = await radio.isChecked().catch(() => false);
-  if (checkedAfterRadioClick) {
-    log("Selected Remove/Change Equipment ID.");
+  const selectedByDom = await manualTarget.evaluate((wrapper) => {
+    const input = wrapper.querySelector('input[type="radio"]');
+    const labelNode = wrapper.querySelector("label");
+    const clickables = [wrapper, labelNode, input].filter(Boolean);
+    const fireMouse = (node, type) => {
+      node.dispatchEvent(new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+      }));
+    };
+
+    for (const node of clickables) {
+      fireMouse(node, "mouseover");
+      fireMouse(node, "mousedown");
+      fireMouse(node, "mouseup");
+      fireMouse(node, "click");
+    }
+
+    if (input) {
+      input.checked = true;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      return Boolean(input.checked);
+    }
+
+    return false;
+  }).catch(() => false);
+
+  await dialog.waitForTimeout(150).catch(() => {});
+  if (selectedByDom && await radio.isChecked().catch(() => false)) {
+    log("Selected Remove/Change Equipment ID.", { target: "dom-dispatch" });
     return;
   }
 
-  await radio.check({ force: true });
-  const checkedAfterForceCheck = await radio.isChecked().catch(() => false);
-  if (!checkedAfterForceCheck) {
-    throw new Error("Remove/Change Equipment ID radio was not selected.");
-  }
-
-  log("Selected Remove/Change Equipment ID.");
+  throw new Error("Remove/Change Equipment ID radio was not selected.");
 }
 
 async function processShipmentPoRow(page, poRow) {
