@@ -58,14 +58,14 @@
           <div class="jane-upload-grid">
             <FileUploadBox
               v-model:files="packFiles"
-              label="Pack Size breakdown"
+              label="Size Breakdown Excel"
               :hint="text('用于生成 Final_Data')"
               accept=".xlsx,.xlsm"
               :accept-label="text('支持 .xlsx / .xlsm')"
             />
             <FileUploadBox
               v-model:files="yticFiles"
-              label="YTIC check"
+              label="Check Excel"
               :hint="text('用于提取尺寸、目的地和 SP 核对信息')"
               accept=".xls,.xlsx,.xlsm"
               :accept-label="text('支持 .xls / .xlsx / .xlsm')"
@@ -165,14 +165,14 @@ const sourceCount = computed(() => [packFile.value, yticFile.value].filter(Boole
 
 const fileGroups = computed<FileGroupState[]>(() => [
   {
-    label: 'Pack Size breakdown',
+    label: 'Size Breakdown Excel',
     files: packFiles.value,
     required: true,
     multiple: false,
     expectedCount: 1,
   },
   {
-    label: 'YTIC check',
+    label: 'Check Excel',
     files: yticFiles.value,
     required: true,
     multiple: false,
