@@ -474,13 +474,28 @@ async function selectRemoveChangeEquipmentId(dialog) {
   }
 
   if (await label.isVisible().catch(() => false)) {
-    await label.click();
+    await label.click({ force: true });
+    const checkedAfterLabelClick = await radio.isChecked().catch(() => false);
+    if (checkedAfterLabelClick) {
+      log("Selected Remove/Change Equipment ID.");
+      return;
+    }
+  }
+
+  await radio.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await radio.click({ force: true });
+  const checkedAfterRadioClick = await radio.isChecked().catch(() => false);
+  if (checkedAfterRadioClick) {
     log("Selected Remove/Change Equipment ID.");
     return;
   }
 
-  await radio.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
   await radio.check({ force: true });
+  const checkedAfterForceCheck = await radio.isChecked().catch(() => false);
+  if (!checkedAfterForceCheck) {
+    throw new Error("Remove/Change Equipment ID radio was not selected.");
+  }
+
   log("Selected Remove/Change Equipment ID.");
 }
 
