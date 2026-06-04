@@ -254,9 +254,9 @@ async function runShippingWorkflow(credentials, runContext) {
   const startedAt = new Date().toISOString();
   const poRows = Array.isArray(runContext?.poRows) ? runContext.poRows : [];
   const shouldFillPoNumbers = Boolean(runContext?.fillPoNumbers);
-  const uniqueChangeEquipmentIds = collectUniqueChangeEquipmentIds(poRows);
   const poResults = [];
   const createShipmentResults = [];
+  let createShipmentEquipmentIds = [];
 
   try {
     browser = await engine.launch(launchOptions);
@@ -297,7 +297,11 @@ async function runShippingWorkflow(credentials, runContext) {
         }
       }
 
-      for (const changeEquipmentId of uniqueChangeEquipmentIds) {
+      createShipmentEquipmentIds = collectUniqueChangeEquipmentIds(
+        poResults.filter((item) => item?.ok),
+      );
+
+      for (const changeEquipmentId of createShipmentEquipmentIds) {
         try {
           await processCreateShipmentEquipmentId(page, changeEquipmentId);
           createShipmentResults.push({
@@ -334,13 +338,13 @@ async function runShippingWorkflow(credentials, runContext) {
       completedPoCount,
       failedPoCount,
       poResults,
-      uniqueChangeEquipmentIdCount: uniqueChangeEquipmentIds.length,
+      uniqueChangeEquipmentIdCount: createShipmentEquipmentIds.length,
       completedCreateShipmentCount,
       failedCreateShipmentCount,
       createShipmentResults,
       selectedAction: shouldFillPoNumbers ? "Remove/Change Equipment ID" : "",
       message: shouldFillPoNumbers
-        ? `Shipment Scan processed ${completedPoCount}/${poRows.length} PO rows and Create Shipment processed ${completedCreateShipmentCount}/${uniqueChangeEquipmentIds.length} unique equipment IDs.`
+        ? `Shipment Scan processed ${completedPoCount}/${poRows.length} PO rows and Create Shipment processed ${completedCreateShipmentCount}/${createShipmentEquipmentIds.length} unique equipment IDs.`
         : "Infor Nexus Shipment Scan opened successfully.",
       generatedAt: new Date().toISOString(),
       finalUrl: page.url(),
@@ -375,7 +379,7 @@ async function runShippingWorkflow(credentials, runContext) {
         poResults.filter((item) => !item.ok).length,
       ),
       poResults,
-      uniqueChangeEquipmentIdCount: uniqueChangeEquipmentIds.length,
+      uniqueChangeEquipmentIdCount: createShipmentEquipmentIds.length,
       completedCreateShipmentCount: createShipmentResults.filter((item) => item.ok).length,
       failedCreateShipmentCount: createShipmentResults.filter((item) => !item.ok).length,
       createShipmentResults,
