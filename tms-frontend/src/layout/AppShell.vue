@@ -14,51 +14,68 @@
       <div class="nav-scroll">
         <nav class="menu">
           <template v-for="group in sidebarGroups" :key="group.id">
-            <div v-if="group.showLabel" class="menu-group-title">
-              {{ group.displayLabel }}
+            <button
+              v-if="group.showLabel && group.isCollapsible"
+              class="menu-group-title menu-group-title--button"
+              type="button"
+              :aria-expanded="isNavGroupExpanded(group.id)"
+              @click="toggleNavGroup(group.id)"
+            >
+              <span class="menu-group-label">{{ group.displayLabel }}</span>
+              <AppIcon
+                :name="isNavGroupExpanded(group.id) ? 'chevron-down' : 'chevron-right'"
+                class="menu-group-arrow"
+              />
+            </button>
+            <div v-else-if="group.showLabel" class="menu-group-title">
+              <span class="menu-group-label">{{ group.displayLabel }}</span>
             </div>
 
-            <template v-for="item in group.items" :key="item.id">
-              <div
-                v-if="item.kind === 'parent'"
-                class="menu-parent"
-                :class="{ 'is-active': item.active }"
-              >
-                <div
-                  class="menu-item"
-                  :class="{ 'is-active': item.active }"
-                  @click="toggleNavParent(item.id)"
-                >
-                  <AppIcon :name="getGroupIcon(group.id)" class="menu-icon" />
-                  <span class="menu-label">{{ item.label }}</span>
-                  <AppIcon :name="isNavParentExpanded(item.id) ? 'chevron-down' : 'chevron-right'" class="menu-arrow" />
-                </div>
-
-                <transition name="expand-fade">
-                  <div v-show="isNavParentExpanded(item.id)" class="menu-children">
-                    <RouterLink
-                      v-for="module in item.modules"
-                      :key="module.id"
-                      class="menu-item child-item"
-                      :to="module.path"
-                      :class="{ 'is-active': isModuleActive(module) }"
+            <transition name="expand-fade">
+              <div v-show="isNavGroupExpanded(group.id)" class="menu-group-items">
+                <template v-for="item in group.items" :key="item.id">
+                  <div
+                    v-if="item.kind === 'parent'"
+                    class="menu-parent"
+                    :class="{ 'is-active': item.active }"
+                  >
+                    <div
+                      class="menu-item"
+                      :class="{ 'is-active': item.active }"
+                      @click="toggleNavParent(item.id)"
                     >
-                      <span class="menu-label">{{ getModuleNavLabel(module) }}</span>
-                    </RouterLink>
-                  </div>
-                </transition>
-              </div>
+                      <AppIcon :name="getGroupIcon(group.id)" class="menu-icon" />
+                      <span class="menu-label">{{ item.label }}</span>
+                      <AppIcon :name="isNavParentExpanded(item.id) ? 'chevron-down' : 'chevron-right'" class="menu-arrow" />
+                    </div>
 
-              <RouterLink
-                v-else
-                class="menu-item"
-                :to="item.module.path"
-                :class="{ 'is-active': isModuleActive(item.module) }"
-              >
-                <AppIcon :name="getGroupIcon(group.id)" class="menu-icon" />
-                <span class="menu-label">{{ getModuleNavLabel(item.module) }}</span>
-              </RouterLink>
-            </template>
+                    <transition name="expand-fade">
+                      <div v-show="isNavParentExpanded(item.id)" class="menu-children">
+                        <RouterLink
+                          v-for="module in item.modules"
+                          :key="module.id"
+                          class="menu-item child-item"
+                          :to="module.path"
+                          :class="{ 'is-active': isModuleActive(module) }"
+                        >
+                          <span class="menu-label">{{ getModuleNavLabel(module) }}</span>
+                        </RouterLink>
+                      </div>
+                    </transition>
+                  </div>
+
+                  <RouterLink
+                    v-else
+                    class="menu-item"
+                    :to="item.module.path"
+                    :class="{ 'is-active': isModuleActive(item.module) }"
+                  >
+                    <AppIcon :name="getGroupIcon(group.id)" class="menu-icon" />
+                    <span class="menu-label">{{ getModuleNavLabel(item.module) }}</span>
+                  </RouterLink>
+                </template>
+              </div>
+            </transition>
           </template>
         </nav>
       </div>
@@ -246,6 +263,30 @@ function isModuleActive(module: TosModuleDefinition): boolean {
   return route.name === module.routeName
 }
 
+function isNavGroupCollapsible(groupId: TosModuleGroup): boolean {
+  return groupId !== 'home' && groupId !== 'settings'
+}
+
+function isNavGroupExpanded(groupId: TosModuleGroup): boolean {
+  return !isNavGroupCollapsible(groupId) || expandedNavGroups.value.has(groupId)
+}
+
+function toggleNavGroup(groupId: TosModuleGroup): void {
+  if (!isNavGroupCollapsible(groupId)) {
+    return
+  }
+
+  const nextExpanded = new Set(expandedNavGroups.value)
+
+  if (nextExpanded.has(groupId)) {
+    nextExpanded.delete(groupId)
+  } else {
+    nextExpanded.add(groupId)
+  }
+
+  expandedNavGroups.value = nextExpanded
+}
+
 function isNavParentExpanded(parentId: string): boolean {
   return expandedNavParents.value.has(parentId)
 }
@@ -422,11 +463,49 @@ watch(
 }
 
 .menu-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  background: transparent;
   color: #909399;
   font-size: 12px;
   padding: 12px 14px 6px;
   font-weight: 600;
   letter-spacing: 0.4px;
+  text-align: left;
+}
+
+.menu-group-title--button {
+  cursor: pointer;
+  border-radius: 8px;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.menu-group-title--button:hover {
+  background: #f5f7fa;
+  color: #606266;
+}
+
+.menu-group-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-group-arrow {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.menu-group-items {
+  display: flex;
+  flex-direction: column;
 }
 
 .menu-item {
