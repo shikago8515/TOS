@@ -5,6 +5,10 @@
   "main": "main-simple.js",
   "scripts": {
     "dev": "electron .",
+    "launcher:ensure:dev": "node automation-launcher/bootstrap.js",
+    "launcher:register:dev": "node automation-launcher/register-dev.js --start",
+    "launcher:register:dev:startup": "node automation-launcher/register-dev.js --startup --start",
+    "launcher:unregister:dev": "node automation-launcher/register-dev.js --unregister",
     "clean:update-artifacts": "node scripts/clean-update-artifacts.js",
     "build:backend-runtime": "node scripts/build-backend-runtime.js",
     "verify:renderer-package": "node scripts/verify-renderer-package.js",
@@ -43,6 +47,14 @@
     "productName": "TOS",
     "afterPack": "scripts/after-pack.js",
     "detectUpdateChannel": false,
+    "protocols": [
+      {
+        "name": "TOS Automation Launcher",
+        "schemes": [
+          "tos"
+        ]
+      }
+    ],
     "directories": {
       "output": "dist"
     },
@@ -175,7 +187,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "include": "build/automation-launcher-installer.nsh"
     }
   }
 }

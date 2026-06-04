@@ -1,6 +1,8 @@
 const {
   syncAutomationApps,
   verifyAutomationApps,
+  syncAutomationLauncher,
+  verifyAutomationLauncher,
   syncBackendRuntime,
   verifyBackendRuntime,
 } = require('./run-pack-default')
@@ -15,6 +17,8 @@ exports.default = async function afterPack(context) {
   // electron-builder 的 extraResources 偶尔会漏掉运行时文件，打包后再做一次完整覆盖和校验。
   syncAutomationApps(appOutDir)
   verifyAutomationApps(appOutDir)
+  syncAutomationLauncher(appOutDir)
+  verifyAutomationLauncher(appOutDir)
   syncBackendRuntime(appOutDir)
   verifyBackendRuntime(appOutDir)
   verifyRendererPackage(appOutDir)

@@ -22,6 +22,7 @@ const AUTOMATION_LAUNCHER_HOST = '127.0.0.1';
 const AUTOMATION_LAUNCHER_PORT = 3210;
 const AUTOMATION_LAUNCHER_URL = `http://${AUTOMATION_LAUNCHER_HOST}:${AUTOMATION_LAUNCHER_PORT}`;
 const AUTOMATION_PROTOCOL = 'tos';
+const AUTOMATION_LAUNCHER_BACKGROUND_FLAG = '--automation-launcher-background';
 const DEFAULT_UPDATE_FEED_URL = 'https://tos-updates-1309726828.cos.ap-guangzhou.myqcloud.com/';
 const UPDATE_SOURCE_CONFIG_FILE = 'update-source.json';
 const UPDATE_STATUS_CHANNEL = 'update-status';
@@ -1137,6 +1138,25 @@ function extractProtocolUrl(args) {
     : '';
 }
 
+function hasAutomationLauncherBackgroundFlag(args) {
+  return Array.isArray(args)
+    ? args.includes(AUTOMATION_LAUNCHER_BACKGROUND_FLAG)
+    : false;
+}
+
+function isAutomationLauncherProtocolUrl(rawUrl) {
+  if (!rawUrl) return false;
+
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.protocol === `${AUTOMATION_PROTOCOL}:`
+      && parsed.hostname === 'automation'
+      && parsed.pathname === '/launcher/start';
+  } catch (_error) {
+    return false;
+  }
+}
+
 function registerAutomationProtocol() {
   try {
     if (app.isPackaged) {
@@ -1788,6 +1808,8 @@ function createWindow() {
 }
 
 const initialProtocolUrl = extractProtocolUrl(process.argv);
+const automationBootstrapOnly = hasAutomationLauncherBackgroundFlag(process.argv)
+  || isAutomationLauncherProtocolUrl(initialProtocolUrl);
 const singleInstanceLock = app.requestSingleInstanceLock();
 
 if (!singleInstanceLock) {
@@ -1799,7 +1821,7 @@ if (!singleInstanceLock) {
       queueProtocolCommand(incomingUrl);
     }
 
-    if (mainWindow && !mainWindow.isDestroyed()) {
+    if (!isAutomationLauncherProtocolUrl(incomingUrl) && mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) {
         mainWindow.restore();
       }
@@ -1816,6 +1838,28 @@ if (!singleInstanceLock) {
 registerIpcHandlers();
 app.whenReady().then(async () => {
   registerAutomationProtocol();
+  if (automationBootstrapOnly) {
+    try {
+      await ensureAutomationLauncher();
+      writeDiagnosticEvent('web-automation', 'launcher-bootstrap-success', {
+        url: AUTOMATION_LAUNCHER_URL,
+        mode: hasAutomationLauncherBackgroundFlag(process.argv) ? 'background-flag' : 'protocol',
+      });
+    } catch (error) {
+      writeDiagnosticEvent('web-automation', 'launcher-bootstrap-failure', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      app.exit(1);
+      return;
+    }
+
+    if (initialProtocolUrl) {
+      queueProtocolCommand(initialProtocolUrl);
+    }
+    await flushProtocolCommands();
+    app.quit();
+    return;
+  }
   // 正式界面不暴露 Electron 默认菜单，避免与业务导航重复。
   Menu.setApplicationMenu(null);
 

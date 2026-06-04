@@ -250,6 +250,7 @@ async function runShippingWorkflow(credentials, runContext) {
   let browser = null;
   let context = null;
   let page = null;
+  let lifecycle = null;
   let latestScreenshotPath = "";
   const startedAt = new Date().toISOString();
   const poRows = Array.isArray(runContext?.poRows) ? runContext.poRows : [];
@@ -264,6 +265,7 @@ async function runShippingWorkflow(credentials, runContext) {
       viewport: { width: 1600, height: 1200 },
     });
     page = await context.newPage();
+    lifecycle = trackBrowserLifecycle(page, context, browser);
     page.setDefaultTimeout(config.navigationTimeoutMs);
     page.setDefaultNavigationTimeout(config.navigationTimeoutMs);
 
@@ -281,19 +283,36 @@ async function runShippingWorkflow(credentials, runContext) {
     await page.waitForURL(/\/en\/trade\/PackByScan/, { timeout: config.navigationTimeoutMs });
     await page.waitForTimeout(config.postLoginWaitMs);
     if (shouldFillPoNumbers) {
-      for (const poRow of poRows) {
+      for (let index = 0; index < poRows.length; index += 1) {
+        const poRow = poRows[index];
+        const nextPoRow = poRows[index + 1] || null;
         try {
           await processShipmentPoRow(page, poRow);
           poResults.push({
             ...poRow,
             ok: true,
           });
+          if (nextPoRow && !hasPageLifecycleEnded(page, lifecycle)) {
+            await prepareForNextShipmentPoIteration(page, poRow.poNo, nextPoRow.poNo);
+          }
         } catch (error) {
+          const normalizedError = normalizeRunError(
+            error,
+            page,
+            lifecycle,
+            `PO No ${String(poRow?.poNo || "").trim()}: browser page became unavailable during Shipment Scan.`,
+          );
           poResults.push({
             ...poRow,
             ok: false,
-            error: error instanceof Error ? error.message : String(error),
+            error: normalizedError.message,
           });
+          if (hasPageLifecycleEnded(page, lifecycle) || isClosedTargetError(error)) {
+            throw normalizedError;
+          }
+          if (nextPoRow) {
+            await prepareForNextShipmentPoIteration(page, poRow.poNo, nextPoRow.poNo);
+          }
         }
       }
 
@@ -309,15 +328,33 @@ async function runShippingWorkflow(credentials, runContext) {
             ok: true,
           });
         } catch (error) {
+          const normalizedError = normalizeRunError(
+            error,
+            page,
+            lifecycle,
+            `Change Equipment ID ${changeEquipmentId}: browser page became unavailable during Create Shipment.`,
+          );
           createShipmentResults.push({
             changeEquipmentId,
             ok: false,
-            error: error instanceof Error ? error.message : String(error),
+            error: normalizedError.message,
           });
+          if (hasPageLifecycleEnded(page, lifecycle) || isClosedTargetError(error)) {
+            throw normalizedError;
+          }
         }
       }
     } else {
       await openShipmentScanDialog(page);
+    }
+
+    if (hasPageLifecycleEnded(page, lifecycle)) {
+      throw normalizeRunError(
+        new Error("Browser page became unavailable before capturing the final state."),
+        page,
+        lifecycle,
+        "Browser page became unavailable before capturing the final state.",
+      );
     }
 
     latestScreenshotPath = path.join(artifactsDir, `shipment-scan-success-${Date.now()}.png`);
@@ -347,21 +384,28 @@ async function runShippingWorkflow(credentials, runContext) {
         ? `Shipment Scan processed ${completedPoCount}/${poRows.length} PO rows and Create Shipment processed ${completedCreateShipmentCount}/${createShipmentEquipmentIds.length} unique equipment IDs.`
         : "Infor Nexus Shipment Scan opened successfully.",
       generatedAt: new Date().toISOString(),
-      finalUrl: page.url(),
-      title: await page.title(),
+      finalUrl: safePageUrl(page),
+      title: await safePageTitle(page),
       artifacts: {
         latestScreenshotPath,
+        lifecycleEvents: lifecycle?.events || [],
       },
     };
 
     if (config.keepBrowserOpenOnSuccessMs > 0) {
-      await page.waitForTimeout(config.keepBrowserOpenOnSuccessMs);
+      await page.waitForTimeout(config.keepBrowserOpenOnSuccessMs).catch(() => {});
     }
 
     return result;
   } catch (error) {
-    const failureMessage = error instanceof Error ? error.message : String(error);
-    if (page) {
+    const normalizedError = normalizeRunError(
+      error,
+      page,
+      lifecycle,
+      "Shipment Scan automation browser session became unavailable.",
+    );
+    const failureMessage = normalizedError.message;
+    if (page && !page.isClosed()) {
       latestScreenshotPath = path.join(artifactsDir, `shipment-scan-error-${Date.now()}.png`);
       await page.screenshot({ path: latestScreenshotPath, fullPage: true }).catch(() => {});
     }
@@ -385,15 +429,16 @@ async function runShippingWorkflow(credentials, runContext) {
       createShipmentResults,
       message: failureMessage || "Shipment Scan automation failed.",
       generatedAt: new Date().toISOString(),
-      finalUrl: page?.url?.() || "",
-      title: page ? await page.title().catch(() => "") : "",
+      finalUrl: safePageUrl(page),
+      title: await safePageTitle(page),
       artifacts: {
         latestScreenshotPath,
+        lifecycleEvents: lifecycle?.events || [],
       },
     };
 
     if (page && config.keepBrowserOpenOnErrorMs > 0) {
-      await page.waitForTimeout(config.keepBrowserOpenOnErrorMs);
+      await page.waitForTimeout(config.keepBrowserOpenOnErrorMs).catch(() => {});
     }
 
     return result;
@@ -430,57 +475,186 @@ async function ensureLoggedIn(page, credentials) {
 }
 
 async function waitForShipmentScanDialog(page) {
+  const dialog = getShipmentScanDialog(page);
   await waitForAny(page, [
     () => page.waitForURL(/#Shipment%20Scan/, { timeout: config.navigationTimeoutMs }),
-    () => page.locator("text=Shipment Scan - Select Filters").first().waitFor({
-      state: "visible",
-      timeout: config.navigationTimeoutMs,
-    }),
+    () => dialog.waitFor({ state: "visible", timeout: config.navigationTimeoutMs }),
   ]);
-  await page.locator("text=Shipment Scan - Select Filters").first().waitFor({
-    state: "visible",
-    timeout: config.navigationTimeoutMs,
-  });
+  await dialog.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
 }
 
 function getShipmentScanDialog(page) {
-  return page.locator("div.x-window").filter({ hasText: "Shipment Scan - Select Filters" }).last();
+  return page
+    .locator("div.x-window:visible")
+    .filter({
+      has: page.locator("span.x-window-header-text", {
+        hasText: /^Shipment Scan - Select Filters$/i,
+      }),
+    })
+    .last();
+}
+
+function getShipmentScanWorkspace(page) {
+  return page
+    .locator("div.x-panel:visible")
+    .filter({
+      has: page.locator("span.x-panel-header-text", {
+        hasText: /^Undo Shipment Scan$/i,
+      }),
+    })
+    .first();
+}
+
+function getShipmentScanGrid(page) {
+  return getShipmentScanWorkspace(page)
+    .locator("div.x-grid3:visible")
+    .first();
 }
 
 async function openShipmentScanDialog(page) {
   const dialogTitle = page.locator("text=Shipment Scan - Select Filters").last();
   const alreadyVisible = await dialogTitle.isVisible().catch(() => false);
   if (!alreadyVisible) {
-    await clickLocator(
-      page.locator('div.sidepanellinks a[href="#Shipment%20Scan"]'),
-      "Shipment Scan",
-    );
+    await clickShipmentScanSideLink(page);
   }
 
   await waitForShipmentScanDialog(page);
+  const dialog = getShipmentScanDialog(page);
+  await waitForShipmentScanDialogControls(dialog);
   log("Shipment Scan dialog ready.");
-  return getShipmentScanDialog(page);
+  return dialog;
+}
+
+async function clickShipmentScanSideLink(page) {
+  await clickLocator(
+    page.locator('div.sidepanellinks a[href="#Shipment%20Scan"]'),
+    "Shipment Scan",
+  );
+}
+
+async function prepareForNextShipmentPoIteration(page, currentPoNo, nextPoNo) {
+  const normalizedCurrentPoNo = String(currentPoNo || "").trim();
+  const normalizedNextPoNo = String(nextPoNo || "").trim();
+  if (!normalizedNextPoNo) {
+    return;
+  }
+
+  await clickShipmentScanSideLink(page).catch(() => {});
+  await waitForShipmentScanDialog(page).catch(() => {});
+  log("Prepared Shipment Scan for next PO.", {
+    currentPoNo: normalizedCurrentPoNo,
+    nextPoNo: normalizedNextPoNo,
+  });
+}
+
+async function waitForShipmentScanDialogControls(dialog) {
+  const poInput = dialog.locator('input[name="poNum"], input[name="poNumbers"]').first();
+  const manualTarget = dialog.locator("div.x-form-check-wrap").filter({
+    hasText: /^Remove\/Change Equipment ID$/i,
+  }).first();
+  const removeChangeLabel = manualTarget.locator("label.x-form-cb-label", {
+    hasText: /^Remove\/Change Equipment ID$/i,
+  }).first();
+  const removeChangeRadio = manualTarget.locator('input[type="radio"][name="radioGroup"]').first();
+  const okButton = dialog.locator("button.x-btn-text").filter({ hasText: /^OK$/ }).first();
+
+  await poInput.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await manualTarget.waitFor({ state: "attached", timeout: config.navigationTimeoutMs });
+  await removeChangeLabel.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await removeChangeRadio.waitFor({ state: "attached", timeout: config.navigationTimeoutMs });
+  await okButton.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await dialogPause(dialog, 350);
+}
+
+async function isShipmentScanModeSelected(manualTarget, radio) {
+  const checked = await radio.isChecked().catch(() => false);
+  if (checked) {
+    return true;
+  }
+
+  return manualTarget.evaluate((wrapper) => {
+    const input = wrapper.querySelector('input[type="radio"]');
+    const label = wrapper.querySelector("label");
+    const wrapperClass = String(wrapper.className || "").toLowerCase();
+    const labelClass = String(label?.className || "").toLowerCase();
+    const inputClass = String(input?.className || "").toLowerCase();
+    return Boolean(
+      input?.checked
+      || input?.getAttribute("checked") !== null
+      || wrapperClass.includes("checked")
+      || labelClass.includes("checked")
+      || inputClass.includes("checked"),
+    );
+  }).catch(() => false);
+}
+
+async function waitForShipmentScanModeSelected(manualTarget, radio, timeoutMs = 1500) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await isShipmentScanModeSelected(manualTarget, radio)) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return isShipmentScanModeSelected(manualTarget, radio);
+}
+
+async function dialogPause(dialog, timeoutMs) {
+  await dialog.evaluate((_, ms) => new Promise((resolve) => setTimeout(resolve, ms)), timeoutMs)
+    .catch(() => {});
+}
+
+async function cleanupShipmentScanDialog(page) {
+  await dismissVisibleMessageDialog(page).catch(() => false);
+
+  const dialog = getShipmentScanDialog(page);
+  const dialogVisible = await dialog.isVisible().catch(() => false);
+  if (!dialogVisible) {
+    return;
+  }
+
+  const cancelButton = dialog.locator("button.x-btn-text").filter({ hasText: /^Cancel$/ }).first();
+  const cancelVisible = await cancelButton.isVisible().catch(() => false);
+  if (cancelVisible) {
+    await forceClickLocator(cancelButton, "Shipment Scan Cancel");
+    await dialog.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
+    return;
+  }
+
+  const closeTool = dialog.locator(".x-tool-close").first();
+  const closeVisible = await closeTool.isVisible().catch(() => false);
+  if (closeVisible) {
+    await forceClickLocator(closeTool, "Shipment Scan close tool");
+    await dialog.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
+  }
 }
 
 async function selectRemoveChangeEquipmentId(dialog) {
-  const manualTarget = dialog.locator("div.x-form-check-wrap", {
-    has: dialog.locator("label.x-form-cb-label", {
-      hasText: /Remove\/Change Equipment ID/i,
-    }),
+  const manualTarget = dialog.locator("div.x-form-check-wrap").filter({
+    hasText: /^Remove\/Change Equipment ID$/i,
   }).first();
   await manualTarget.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
 
-  const radio = manualTarget.locator('input[type="radio"]').first();
+  const radio = manualTarget.locator('input[type="radio"][name="radioGroup"]').first();
   const label = manualTarget.locator("label.x-form-cb-label").first();
 
-  if (await radio.isChecked().catch(() => false)) {
+  if (await isShipmentScanModeSelected(manualTarget, radio)) {
     log("Selected Remove/Change Equipment ID.");
     return;
   }
 
+  await radio.scrollIntoViewIfNeeded().catch(() => {});
+  await dialogPause(dialog, 250);
+
+  await radio.check({ force: true }).catch(() => {});
+  if (await waitForShipmentScanModeSelected(manualTarget, radio, 1200)) {
+    log("Selected Remove/Change Equipment ID.", { target: "radio.check" });
+    return;
+  }
+
   const clickTargets = [
-    { locator: manualTarget, label: "wrapper" },
     { locator: label, label: "label" },
+    { locator: manualTarget, label: "wrapper" },
     { locator: radio, label: "radio" },
   ];
 
@@ -490,9 +664,8 @@ async function selectRemoveChangeEquipmentId(dialog) {
       continue;
     }
 
-    await target.locator.click({ force: true }).catch(() => {});
-    await dialog.waitForTimeout(150).catch(() => {});
-    if (await radio.isChecked().catch(() => false)) {
+    await forceClickLocator(target.locator, `Shipment Scan ${target.label}`);
+    if (await waitForShipmentScanModeSelected(manualTarget, radio, 1500)) {
       log("Selected Remove/Change Equipment ID.", { target: target.label });
       return;
     }
@@ -527,8 +700,7 @@ async function selectRemoveChangeEquipmentId(dialog) {
     return false;
   }).catch(() => false);
 
-  await dialog.waitForTimeout(150).catch(() => {});
-  if (selectedByDom && await radio.isChecked().catch(() => false)) {
+  if (selectedByDom && await waitForShipmentScanModeSelected(manualTarget, radio, 1500)) {
     log("Selected Remove/Change Equipment ID.", { target: "dom-dispatch" });
     return;
   }
@@ -542,12 +714,7 @@ async function processShipmentPoRow(page, poRow) {
     throw new Error(`Change equipment ID is empty for PO No ${String(poRow?.poNo || "").trim()}.`);
   }
 
-  const shipmentDialog = await openShipmentScanDialog(page);
-  await fillShipmentPoNumber(shipmentDialog, poRow.poNo);
-  await selectRemoveChangeEquipmentId(shipmentDialog);
-  await clickShipmentScanOk(shipmentDialog);
-  await page.waitForTimeout(config.postLoginWaitMs);
-  log("Confirmed PO No.", { poNo: String(poRow?.poNo || "").trim() });
+  await confirmShipmentScanFilters(page, poRow.poNo);
   await waitForShipmentGridRows(page, poRow.poNo);
   await selectShipmentGridRows(page, poRow.poNo);
   const dialog = await openChangeEquipmentIdDialog(page, poRow.poNo);
@@ -558,6 +725,36 @@ async function processShipmentPoRow(page, poRow) {
     poNo: String(poRow?.poNo || "").trim(),
     changeEquipmentId: normalizedChangeEquipmentId,
   });
+}
+
+async function confirmShipmentScanFilters(page, poNo) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const shipmentDialog = await openShipmentScanDialog(page);
+      await fillShipmentPoNumber(shipmentDialog, poNo);
+      await selectRemoveChangeEquipmentId(shipmentDialog);
+      await dialogPause(shipmentDialog, 350);
+      await clickShipmentScanOk(shipmentDialog);
+      await page.waitForTimeout(config.postLoginWaitMs);
+      log("Confirmed PO No.", {
+        poNo: String(poNo || "").trim(),
+        attempt,
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+      log("Shipment Scan filter attempt failed.", {
+        poNo: String(poNo || "").trim(),
+        attempt,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await cleanupShipmentScanDialog(page);
+      await page.waitForTimeout(500);
+    }
+  }
+
+  throw lastError || new Error(`PO No ${String(poNo || "").trim()}: Shipment Scan filters failed.`);
 }
 
 async function fillShipmentPoNumber(dialog, poNo) {
@@ -571,107 +768,101 @@ async function fillShipmentPoNumber(dialog, poNo) {
     .first();
   await poInput.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
   await poInput.fill(normalizedPoNo);
+  await poInput.press("Tab").catch(() => {});
+  await dialogPause(dialog, 250);
   log("Entered PO No.", { poNo: normalizedPoNo });
 }
 
 async function waitForShipmentGridRows(page, poNo) {
   const timeoutMs = Math.min(config.navigationTimeoutMs, 20000);
-  const rowChecker = page.locator("div.x-grid3-row-checker").first();
-  const emptyState = page.locator("text=No data to display").first();
   const startedAt = Date.now();
   let lastDialogError = "";
-  let blankGridSince = 0;
+  let lastState = null;
+  let noDataSince = 0;
+  let stableMatchCount = 0;
+  let lastSignature = "";
 
   while (Date.now() - startedAt < timeoutMs) {
-    const rowVisible = await rowChecker.isVisible().catch(() => false);
-    if (rowVisible) {
-      log("Shipment grid rows loaded.", { poNo });
-      return;
+    lastDialogError = (await getVisibleDialogErrorText(page)) || lastDialogError;
+    if (lastDialogError) {
+      throw new Error(`PO No ${poNo}: ${lastDialogError}`);
     }
 
-    lastDialogError = (await getVisibleDialogErrorText(page)) || lastDialogError;
-    const blankGridVisible = await isBlankShipmentScanGrid(page);
-    if (blankGridVisible) {
-      blankGridSince = blankGridSince || Date.now();
-      if (Date.now() - blankGridSince >= 1500) {
-        throw new Error(`PO No ${poNo}: shipment page stayed blank after clicking OK.`);
+    const state = await getShipmentGridState(page, poNo);
+    lastState = state;
+
+    if (state.rowCount > 0 && state.matchedPoRowCount > 0) {
+      stableMatchCount = state.rowSignature === lastSignature ? stableMatchCount + 1 : 1;
+      lastSignature = state.rowSignature;
+      if (stableMatchCount >= 2) {
+        log("Shipment grid rows loaded.", {
+          poNo,
+          rowCount: state.rowCount,
+          matchedPoRowCount: state.matchedPoRowCount,
+          packagesSelectedCount: state.packagesSelectedCount,
+        });
+        return;
       }
     } else {
-      blankGridSince = 0;
+      stableMatchCount = 0;
+      lastSignature = state.rowSignature;
+    }
+
+    if (state.noDataVisible && state.rowCount === 0) {
+      noDataSince = noDataSince || Date.now();
+      if (Date.now() - noDataSince >= 1200) {
+        throw new Error(`PO No ${poNo}: no shipment rows were loaded after clicking OK.`);
+      }
+    } else {
+      noDataSince = 0;
     }
 
     await page.waitForTimeout(250);
   }
 
-  if (lastDialogError) {
-    throw new Error(`PO No ${poNo}: ${lastDialogError}`);
-  }
-
-  const emptyVisible = await emptyState.isVisible().catch(() => false);
-  if (emptyVisible) {
-    throw new Error(`PO No ${poNo}: no shipment rows were loaded after clicking OK.`);
-  }
-
-  throw new Error(`PO No ${poNo}: timed out waiting for shipment rows.`);
-}
-
-async function isBlankShipmentScanGrid(page) {
-  return page.evaluate(() => {
-    const isVisible = (element) => {
-      if (!element) {
-        return false;
-      }
-
-      const style = window.getComputedStyle(element);
-      const rect = element.getBoundingClientRect();
-      return style.display !== "none"
-        && style.visibility !== "hidden"
-        && rect.width > 0
-        && rect.height > 0;
-    };
-
-    const dialogTitle = Array.from(document.querySelectorAll("span, div"))
-      .find((element) => isVisible(element) && /Shipment Scan - Select Filters/i.test(element.textContent || ""));
-    if (dialogTitle) {
-      return false;
-    }
-
-    const hasVisibleRows = Array.from(document.querySelectorAll("div.x-grid3-row-checker"))
-      .some((element) => isVisible(element));
-    if (hasVisibleRows) {
-      return false;
-    }
-
-    const hasUndoShipmentScan = Array.from(document.querySelectorAll("span, div, td"))
-      .some((element) => isVisible(element) && /Undo Shipment Scan/i.test(element.textContent || ""));
-    const hasPackagesSelected = Array.from(document.querySelectorAll("span, div, td"))
-      .some((element) => isVisible(element) && /Packages Selected:/i.test(element.textContent || ""));
-    const hasShipmentScanLink = Array.from(document.querySelectorAll('a[href="#Shipment%20Scan"]'))
-      .some((element) => isVisible(element));
-
-    return hasUndoShipmentScan && hasPackagesSelected && hasShipmentScanLink;
-  });
+  throw new Error(`PO No ${poNo}: timed out waiting for shipment rows. State: ${JSON.stringify(lastState || {})}`);
 }
 
 async function selectShipmentGridRows(page, poNo) {
   const timeoutMs = Math.min(config.navigationTimeoutMs, 15000);
   const startedAt = Date.now();
   let lastState = null;
+  let stableSelectedCount = 0;
+  let lastSignature = "";
+  const grid = getShipmentScanGrid(page);
 
   while (Date.now() - startedAt < timeoutMs) {
-    const selectionState = await getShipmentGridSelectionState(page);
+    const selectionState = await getShipmentGridState(page, poNo);
     lastState = selectionState;
 
-    if (selectionState.rowCount > 0 && selectionState.selectedRowCount >= selectionState.rowCount) {
-      log("Selected shipment rows with header checker.", {
-        poNo,
-        rowCount: selectionState.rowCount,
-        selectedRowCount: selectionState.selectedRowCount,
-      });
-      return;
+    if (selectionState.noDataVisible && selectionState.rowCount === 0) {
+      throw new Error(`PO No ${poNo}: no shipment rows were loaded after clicking OK.`);
     }
 
-    const headerChecker = page.locator("div.x-grid3-hd-checker").first();
+    if (selectionState.rowCount > 0
+      && selectionState.matchedPoRowCount > 0
+      && selectionState.selectedRowCount >= selectionState.rowCount
+      && selectionState.packagesSelectedCount > 0) {
+      stableSelectedCount = selectionState.rowSignature === lastSignature ? stableSelectedCount + 1 : 1;
+      lastSignature = selectionState.rowSignature;
+      if (stableSelectedCount >= 2) {
+        log("Selected shipment rows with header checker.", {
+          poNo,
+          rowCount: selectionState.rowCount,
+          selectedRowCount: selectionState.selectedRowCount,
+          packagesSelectedCount: selectionState.packagesSelectedCount,
+        });
+        return;
+      }
+
+      await page.waitForTimeout(200);
+      continue;
+    }
+
+    stableSelectedCount = 0;
+    lastSignature = selectionState.rowSignature;
+
+    const headerChecker = grid.locator("div.x-grid3-hd-checker").first();
     const headerVisible = await headerChecker.isVisible().catch(() => false);
     if (headerVisible) {
       await headerChecker.click({ force: true }).catch(() => {});
@@ -679,7 +870,7 @@ async function selectShipmentGridRows(page, poNo) {
       continue;
     }
 
-    const rowChecker = page.locator("div.x-grid3-row-checker").first();
+    const rowChecker = grid.locator("div.x-grid3-row-checker").first();
     await rowChecker.waitFor({ state: "visible", timeout: 2000 }).catch(() => {});
     const rowVisible = await rowChecker.isVisible().catch(() => false);
     if (rowVisible) {
@@ -695,9 +886,16 @@ async function selectShipmentGridRows(page, poNo) {
 }
 
 async function openChangeEquipmentIdDialog(page, poNo) {
-  const button = page
+  const selectionState = await getShipmentGridState(page, poNo);
+  if (selectionState.rowCount === 0
+    || selectionState.matchedPoRowCount === 0
+    || selectionState.packagesSelectedCount === 0) {
+    throw new Error(`PO No ${poNo}: shipment rows were not ready for Change Equipment ID. State: ${JSON.stringify(selectionState)}`);
+  }
+
+  const button = getShipmentScanWorkspace(page)
     .locator("button.x-btn-text.icon-edit-small")
-    .filter({ hasText: "Change Equipment ID" })
+    .filter({ hasText: /^Change Equipment ID$/ })
     .first();
   await button.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
   await button.click();
@@ -748,8 +946,22 @@ async function applyChangeEquipmentIdDialog(page, dialog, poNo) {
   let sawProcessing = false;
 
   while (Date.now() - startedAt < timeoutMs) {
+    const acceptedConfirmation = await acceptVisibleContinueAnywayDialog(page, {
+      poNo,
+      context: "Change Equipment ID Apply",
+    });
+    if (acceptedConfirmation) {
+      await page.waitForTimeout(250);
+      continue;
+    }
+
     const errorText = await getVisibleDialogErrorText(page);
     if (errorText) {
+      if (isRecoverableChangeEquipmentIdConflictText(errorText)) {
+        const failureMessage = await recoverFromRecoverableChangeEquipmentIdError(page, dialog, poNo, errorText);
+        throw new Error(failureMessage);
+      }
+
       await dismissVisibleMessageDialog(page);
       throw new Error(`PO No ${poNo}: ${errorText}`);
     }
@@ -959,22 +1171,176 @@ async function getShipmentGridSelectionState(page) {
   });
 }
 
+async function getShipmentGridState(page, poNo) {
+  const normalizedPoNo = String(poNo || "").trim();
+  return page.evaluate((targetPo) => {
+    const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+    const isVisible = (element) => {
+      if (!element) {
+        return false;
+      }
+
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none"
+        && style.visibility !== "hidden"
+        && rect.width > 0
+        && rect.height > 0;
+    };
+
+    const workspace = Array.from(document.querySelectorAll("div.x-panel"))
+      .find((element) => isVisible(element)
+        && Array.from(element.querySelectorAll("span.x-panel-header-text"))
+          .some((header) => /Undo Shipment Scan/i.test(normalize(header.textContent))));
+    if (!workspace) {
+      return {
+        rowCount: 0,
+        selectedRowCount: 0,
+        headerSelected: false,
+        matchedPoRowCount: 0,
+        packagesSelectedCount: 0,
+        noDataVisible: false,
+        rowSignature: "",
+      };
+    }
+
+    const grid = Array.from(workspace.querySelectorAll("div.x-grid3"))
+      .find((element) => isVisible(element));
+    if (!grid) {
+      return {
+        rowCount: 0,
+        selectedRowCount: 0,
+        headerSelected: false,
+        matchedPoRowCount: 0,
+        packagesSelectedCount: 0,
+        noDataVisible: false,
+        rowSignature: "",
+      };
+    }
+
+    const rowNodes = Array.from(grid.querySelectorAll("div.x-grid3-row"))
+      .filter((element) => isVisible(element));
+    const rowTexts = rowNodes
+      .map((element) => normalize(element.innerText || element.textContent))
+      .filter(Boolean);
+    const selectedRowCount = rowNodes.filter((rowNode) => {
+      const checker = rowNode.querySelector("div.x-grid3-row-checker");
+      const checkerClass = String(checker?.className || "");
+      const rowClass = String(rowNode.className || "");
+      return isVisible(checker)
+        && (checkerClass.includes("x-grid3-row-checker-on") || rowClass.includes("x-grid3-row-selected"));
+    }).length;
+
+    const headerChecker = Array.from(grid.querySelectorAll("div.x-grid3-hd-checker"))
+      .find((element) => isVisible(element));
+    const headerSelected = Boolean(
+      headerChecker
+      && (
+        String(headerChecker.className || "").includes("x-grid3-hd-checker-on")
+        || String(headerChecker.parentElement?.className || "").includes("x-grid3-hd-checker-on")
+      )
+    );
+    const packagesMatch = normalize(workspace.innerText || workspace.textContent).match(/Packages Selected:\s*(\d+)/i);
+    const matchedPoRowCount = targetPo
+      ? rowTexts.filter((text) => text.includes(targetPo)).length
+      : rowTexts.length;
+    const noDataVisible = Array.from(workspace.querySelectorAll("div, span, td"))
+      .filter((element) => isVisible(element))
+      .some((element) => /No data to display/i.test(normalize(element.textContent)));
+
+    return {
+      rowCount: rowNodes.length,
+      selectedRowCount,
+      headerSelected,
+      matchedPoRowCount,
+      packagesSelectedCount: Number(packagesMatch?.[1] || 0),
+      noDataVisible,
+      rowSignature: rowTexts.slice(0, 8).join(" || ").slice(0, 600),
+    };
+  }, normalizedPoNo).catch(() => ({
+    rowCount: 0,
+    selectedRowCount: 0,
+    headerSelected: false,
+    matchedPoRowCount: 0,
+    packagesSelectedCount: 0,
+    noDataVisible: false,
+    rowSignature: "",
+  }));
+}
+
 async function getVisibleDialogErrorText(page) {
-  const dialogInfo = await getTopVisibleDialogInfo(page);
-  if (!dialogInfo?.text) {
+  const normalizedText = await getVisibleMessageDialogText(page);
+  if (!normalizedText) {
     return "";
   }
 
-  const normalizedText = dialogInfo.text.replace(/\s+/g, " ").trim();
   if (/Please select at least one Package Range to continue/i.test(normalizedText)) {
     return "Please select at least one Package Range to continue";
   }
 
-  if (dialogInfo.isMessageDialog && normalizedText) {
+  if (!isContinueAnywayDialogText(normalizedText)) {
     return normalizedText;
   }
 
   return "";
+}
+
+async function getVisibleMessageDialogText(page) {
+  const dialogInfo = await getTopVisibleDialogInfo(page);
+  if (!dialogInfo?.isMessageDialog || !dialogInfo.text) {
+    return "";
+  }
+
+  return dialogInfo.text.replace(/\s+/g, " ").trim();
+}
+
+function isContinueAnywayDialogText(text) {
+  return /Invalid Equipment Number/i.test(String(text || ""))
+    && /Continue anyway\?/i.test(String(text || ""));
+}
+
+function isRecoverableChangeEquipmentIdConflictText(text) {
+  const normalizedText = String(text || "");
+  return /Container\/Equipment number is already in used/i.test(normalizedText)
+    || /Container\/Equipment number is already in use/i.test(normalizedText)
+    || /Please input another one/i.test(normalizedText);
+}
+
+async function acceptVisibleContinueAnywayDialog(page, metadata = {}) {
+  const dialogText = await getVisibleMessageDialogText(page);
+  if (!isContinueAnywayDialogText(dialogText)) {
+    return false;
+  }
+
+  const dismissed = await dismissVisibleMessageDialog(page);
+  if (dismissed) {
+    log("Accepted continue-anyway dialog.", {
+      ...metadata,
+      text: dialogText,
+    });
+  }
+  return dismissed;
+}
+
+async function recoverFromRecoverableChangeEquipmentIdError(page, dialog, poNo, errorText) {
+  const sawShadow = await hasVisibleModalShadow(page);
+  await dismissVisibleMessageDialog(page).catch(() => false);
+  await page.waitForTimeout(250).catch(() => {});
+  await closeDialogWithCloseTool(dialog, "Change Equipment ID").catch(() => false);
+
+  const failureDetails = [];
+  if (sawShadow) {
+    failureDetails.push("x-shadow modal detected");
+  }
+  failureDetails.push(errorText);
+
+  const failureMessage = `PO No ${poNo}: ${failureDetails.join(". ")}`;
+  log("Recovered from Change Equipment ID conflict and moved to next PO.", {
+    poNo,
+    sawShadow,
+    errorText,
+  });
+  return failureMessage;
 }
 
 async function dismissVisibleMessageDialog(page) {
@@ -1009,6 +1375,44 @@ async function dismissVisibleMessageDialog(page) {
   }
 
   return false;
+}
+
+async function closeDialogWithCloseTool(dialog, label) {
+  const dialogVisible = await dialog.isVisible().catch(() => false);
+  if (!dialogVisible) {
+    return false;
+  }
+
+  const closeTool = dialog.locator(".x-tool-close").first();
+  const closeVisible = await closeTool.isVisible().catch(() => false);
+  if (!closeVisible) {
+    return false;
+  }
+
+  await forceClickLocator(closeTool, `${label} close tool`);
+  await dialog.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
+  log(`Closed ${label} dialog with close tool.`);
+  return true;
+}
+
+async function hasVisibleModalShadow(page) {
+  return page.evaluate(() => {
+    const isVisible = (element) => {
+      if (!element) {
+        return false;
+      }
+
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none"
+        && style.visibility !== "hidden"
+        && rect.width > 0
+        && rect.height > 0;
+    };
+
+    return Array.from(document.querySelectorAll("div.x-shadow"))
+      .some((element) => isVisible(element));
+  }).catch(() => false);
 }
 
 async function getTopVisibleDialogInfo(page) {
@@ -1073,7 +1477,7 @@ async function clickShipmentScanOk(dialog) {
         }
 
         try {
-          await button.click();
+          await forceClickLocator(button, "Shipment Scan OK");
           await dialog.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
           log("Clicked Shipment Scan OK.");
           return;
@@ -1083,7 +1487,7 @@ async function clickShipmentScanOk(dialog) {
       }
     }
 
-    await page.waitForTimeout(250);
+    await dialogPause(dialog, 250);
   }
 
   throw lastError || new Error("Shipment Scan OK button was not found.");
@@ -1190,6 +1594,13 @@ function classifyPoFailureStep(reason) {
 
   if (normalizedReason.includes("package range")) {
     return "Change Equipment ID Selection";
+  }
+
+  if (normalizedReason.includes("container/equipment number is already in used")
+    || normalizedReason.includes("container/equipment number is already in use")
+    || normalizedReason.includes("please input another one")
+    || normalizedReason.includes("x-shadow modal detected")) {
+    return "Change Equipment ID Conflict";
   }
 
   if (normalizedReason.includes("apply did not finish")) {
@@ -1334,6 +1745,103 @@ async function waitForAny(page, attempts) {
     }
   }
   throw lastError || new Error("No expected page state was reached.");
+}
+
+function isClosedTargetError(error) {
+  const normalizedMessage = String(error?.message || error || "").toLowerCase();
+  return normalizedMessage.includes("target page, context or browser has been closed")
+    || normalizedMessage.includes("target closed")
+    || normalizedMessage.includes("page has been closed")
+    || normalizedMessage.includes("browser has been closed")
+    || normalizedMessage.includes("context has been closed")
+    || normalizedMessage.includes("page crashed");
+}
+
+function trackBrowserLifecycle(page, context, browser) {
+  const state = {
+    pageClosed: false,
+    pageCrashed: false,
+    contextClosed: false,
+    browserDisconnected: false,
+    events: [],
+  };
+
+  const record = (type, details = {}) => {
+    state.events.push({
+      type,
+      at: new Date().toISOString(),
+      ...details,
+    });
+    if (state.events.length > 12) {
+      state.events = state.events.slice(-12);
+    }
+  };
+
+  page.on("close", () => {
+    state.pageClosed = true;
+    record("page-close", { url: safePageUrl(page) });
+  });
+  page.on("crash", () => {
+    state.pageCrashed = true;
+    record("page-crash");
+  });
+  context.on("close", () => {
+    state.contextClosed = true;
+    record("context-close");
+  });
+  browser.on("disconnected", () => {
+    state.browserDisconnected = true;
+    record("browser-disconnected");
+  });
+
+  return state;
+}
+
+function hasPageLifecycleEnded(page, lifecycle) {
+  return Boolean(
+    !page
+    || page.isClosed()
+    || lifecycle?.pageClosed
+    || lifecycle?.pageCrashed
+    || lifecycle?.contextClosed
+    || lifecycle?.browserDisconnected,
+  );
+}
+
+function describeLifecycleEvents(lifecycle) {
+  const lastEvent = Array.isArray(lifecycle?.events) ? lifecycle.events[lifecycle.events.length - 1] : null;
+  if (!lastEvent?.type) {
+    return "";
+  }
+
+  return `Last lifecycle event: ${lastEvent.type} at ${lastEvent.at}.`;
+}
+
+function normalizeRunError(error, page, lifecycle, fallbackMessage) {
+  if (isClosedTargetError(error) || hasPageLifecycleEnded(page, lifecycle)) {
+    const lifecycleMessage = describeLifecycleEvents(lifecycle);
+    return new Error(
+      [fallbackMessage, lifecycleMessage].filter(Boolean).join(" "),
+    );
+  }
+
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function safePageUrl(page) {
+  try {
+    return page?.url?.() || "";
+  } catch {
+    return "";
+  }
+}
+
+async function safePageTitle(page) {
+  if (!page || page.isClosed()) {
+    return "";
+  }
+
+  return page.title().catch(() => "");
 }
 
 function authorize(req, body) {
