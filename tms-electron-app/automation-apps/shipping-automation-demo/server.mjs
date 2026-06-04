@@ -412,7 +412,8 @@ async function ensureLoggedIn(page, credentials) {
   if (loginVisible) {
     await usernameField.fill(credentials.username);
     await passwordField.fill(credentials.password);
-    await loginButton.click();
+    await loginButton.click({ force: true });
+    log("Submitted Infor Nexus login.");
   }
 
   await waitForAny(page, [
@@ -422,8 +423,6 @@ async function ensureLoggedIn(page, credentials) {
       timeout: config.navigationTimeoutMs,
     }),
   ]);
-
-  await page.waitForTimeout(config.postLoginWaitMs);
 }
 
 async function waitForShipmentScanDialog(page) {
