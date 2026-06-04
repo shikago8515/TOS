@@ -552,7 +552,7 @@ async function processShipmentPoRow(page, poRow) {
   await selectShipmentGridRows(page, poRow.poNo);
   const dialog = await openChangeEquipmentIdDialog(page, poRow.poNo);
   await fillChangeEquipmentIdDialog(dialog, normalizedChangeEquipmentId);
-  await clickDialogButton(dialog, "Change Equipment ID", /^Apply$/);
+  await applyChangeEquipmentIdDialog(page, dialog, poRow.poNo);
   await page.waitForTimeout(config.postLoginWaitMs);
   log("Completed shipment PO row.", {
     poNo: String(poRow?.poNo || "").trim(),
@@ -738,6 +738,40 @@ async function fillChangeEquipmentIdDialog(dialog, changeEquipmentId) {
   });
 }
 
+async function applyChangeEquipmentIdDialog(page, dialog, poNo) {
+  const applyButton = dialog.locator("button.x-btn-text").filter({ hasText: /^Apply$/ }).first();
+  await applyButton.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await forceClickLocator(applyButton, "Change Equipment ID Apply");
+
+  const timeoutMs = Math.min(config.navigationTimeoutMs, 30000);
+  const startedAt = Date.now();
+  let sawProcessing = false;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const errorText = await getVisibleDialogErrorText(page);
+    if (errorText) {
+      await dismissVisibleMessageDialog(page);
+      throw new Error(`PO No ${poNo}: ${errorText}`);
+    }
+
+    const processingVisible = await hasVisibleWindowText(page, /processing/i);
+    sawProcessing = sawProcessing || processingVisible;
+
+    const dialogVisible = await dialog.isVisible().catch(() => false);
+    if (!dialogVisible) {
+      log("Applied change equipment ID.", {
+        poNo,
+        sawProcessing,
+      });
+      return;
+    }
+
+    await page.waitForTimeout(250);
+  }
+
+  throw new Error(`PO No ${poNo}: Change Equipment ID Apply did not finish.`);
+}
+
 async function processCreateShipmentEquipmentId(page, changeEquipmentId) {
   const normalizedChangeEquipmentId = String(changeEquipmentId || "").trim();
   if (!normalizedChangeEquipmentId) {
@@ -821,11 +855,63 @@ async function clickDialogOk(dialog, label) {
 async function clickDialogButton(dialog, label, buttonPattern) {
   const button = dialog.locator("button.x-btn-text").filter({ hasText: buttonPattern }).first();
   await button.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
-  await button.click();
+  await forceClickLocator(button, `${label} button`);
   await dialog.waitFor({ state: "hidden", timeout: config.navigationTimeoutMs }).catch(() => {});
   log(`Clicked ${label} button.`, {
     buttonPattern: String(buttonPattern),
   });
+}
+
+async function forceClickLocator(locator, label) {
+  const attempts = [
+    async () => locator.click(),
+    async () => locator.click({ force: true }),
+    async () => locator.evaluate((node) => {
+      node.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, cancelable: true, view: window }));
+      node.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+      node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+      node.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+      if (typeof node.click === "function") {
+        node.click();
+      }
+    }),
+  ];
+
+  let lastError = null;
+  for (const attempt of attempts) {
+    try {
+      await attempt();
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error(`${label} click failed.`);
+}
+
+async function hasVisibleWindowText(page, pattern) {
+  return page.evaluate(({ source, flags }) => {
+    const matcher = new RegExp(source, flags);
+    const isVisible = (element) => {
+      if (!element) {
+        return false;
+      }
+
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none"
+        && style.visibility !== "hidden"
+        && rect.width > 0
+        && rect.height > 0;
+    };
+
+    return Array.from(document.querySelectorAll("div.x-window"))
+      .some((element) => isVisible(element) && matcher.test((element.innerText || "").trim()));
+  }, {
+    source: pattern.source,
+    flags: pattern.flags,
+  }).catch(() => false);
 }
 
 async function getShipmentGridSelectionState(page) {
@@ -1104,6 +1190,10 @@ function classifyPoFailureStep(reason) {
 
   if (normalizedReason.includes("package range")) {
     return "Change Equipment ID Selection";
+  }
+
+  if (normalizedReason.includes("apply did not finish")) {
+    return "Change Equipment ID Apply";
   }
 
   if (normalizedReason.includes("change equipment id dialog")) {
