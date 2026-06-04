@@ -297,7 +297,6 @@ const staticTextTranslations: Record<string, string> = {
   处理中点点点: 'Processing...',
   '处理中...': 'Processing...',
   重置: 'Reset',
-  下载结果文件: 'Download Result File',
   请先按预检查提示补齐文件: 'Complete the file precheck before processing',
   请先按预检查提示补齐四类文件: 'Complete all four file groups before processing',
   处理失败请重试: 'Processing failed. Please try again.',

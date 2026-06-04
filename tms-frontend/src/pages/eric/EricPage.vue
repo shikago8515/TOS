@@ -1,98 +1,25 @@
 <template>
-  <section class="jane-page-container">
-    <div class="jane-header">
-      <div class="jane-header__title">
-        <h2>{{ text('Eric 数据处理') }}</h2>
-      </div>
-      <div class="jane-header__stats">
-        <div class="jane-stat">
-          <div class="jane-stat__icon jane-stat__icon--blue">ER</div>
-          <div class="jane-stat__info">
-            <span class="jane-stat__label">{{ text('源文件') }}</span>
-            <span class="jane-stat__value">{{ sourceCount }}/2</span>
-          </div>
-        </div>
-        <div class="jane-stat">
-          <div class="jane-stat__icon" :class="success === true ? 'jane-stat__icon--green' : success === false ? 'jane-stat__icon--orange' : 'jane-stat__icon--slate'">ST</div>
-          <div class="jane-stat__info">
-            <span class="jane-stat__label">{{ text('处理状态') }}</span>
-            <span class="jane-stat__value">{{ statusText }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="jane-toolbar">
-      <span class="jane-toolbar__status">{{ toolbarStatus }}</span>
-      <div class="jane-toolbar__actions">
-        <button class="jane-toolbar__btn" type="button" :disabled="processing" @click="resetForm">
-          {{ text('重置') }}
-        </button>
-        <button
-          class="jane-toolbar__btn"
-          type="button"
-          :disabled="!packFile || processing"
-          @click="startFinalDataOnly"
-        >
-          {{ text('仅生成 Final_Data') }}
-        </button>
-        <button
-          class="jane-toolbar__btn jane-toolbar__btn--primary"
-          type="button"
-          :disabled="!canReconcile || processing"
-          @click="startReconcile"
-        >
-          {{ processing ? text('处理中...') : text('开始核对') }}
-        </button>
-      </div>
-    </div>
+  <ExcelProcessPageShell
+    title="Eric 数据处理"
+    :stats="pageStats"
+    :toolbar-status="toolbarStatus"
+    :actions="toolbarActions"
+  >
+    <ExcelResultNotice
+      :visible="Boolean(message)"
+      :tone="resultNoticeTone"
+      :message="message"
+    />
 
     <div class="jane-grid">
       <div class="jane-main">
-        <section class="jane-section">
-          <div class="jane-section__head">
-            <h3>{{ text('文件上传') }}</h3>
-            <span class="jane-section__badge">{{ text('2 组必传') }}</span>
-          </div>
-
-          <div class="jane-upload-grid">
-            <FileUploadBox
-              v-model:files="packFiles"
-              label="Size Breakdown Excel"
-              :hint="text('用于生成 Final_Data')"
-              accept=".xlsx,.xlsm"
-              :accept-label="text('支持 .xlsx / .xlsm')"
-            />
-            <FileUploadBox
-              v-model:files="yticFiles"
-              label="Check Excel"
-              :hint="text('用于提取尺寸、目的地和 SP 核对信息')"
-              accept=".xls,.xlsx,.xlsm"
-              :accept-label="text('支持 .xls / .xlsx / .xlsm')"
-            />
-          </div>
-
-          <div v-if="processing" class="jane-progress">
-            <div class="jane-progress__label">
-              <strong>{{ text('处理进度') }}</strong>
-              <span>{{ progress }}%</span>
-            </div>
-            <div class="jane-progress__track">
-              <div class="jane-progress__fill" :style="{ width: `${progress}%` }" />
-            </div>
-          </div>
-
-          <section
-            v-if="message"
-            class="jane-alert"
-            :class="success === true ? 'jane-alert--success' : success === false ? 'jane-alert--error' : ''"
-          >
-            <p>{{ text(message) }}</p>
-            <button v-if="success === true && outputFile" class="jane-alert__btn" type="button" @click="downloadResult">
-              {{ text('下载结果文件') }}
-            </button>
-          </section>
-        </section>
+        <ExcelUploadSection
+          :fields="uploadFields"
+          :processing="processing"
+          :progress="progress"
+          badge="2 组必传"
+          @update:files="updateUploadFiles"
+        />
 
         <section v-if="logs.length > 0" class="jane-section">
           <div class="jane-section__head">
@@ -100,7 +27,7 @@
             <span class="jane-section__badge">{{ logs.length }} {{ text('条') }}</span>
           </div>
           <div class="eric-log">
-            <div v-for="(line, i) in logs" :key="i">{{ text(line) }}</div>
+            <div v-for="(line, index) in logs" :key="index">{{ text(line) }}</div>
           </div>
         </section>
       </div>
@@ -121,20 +48,26 @@
         </section>
       </div>
     </div>
-  </section>
+  </ExcelProcessPageShell>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
 import { readErrorMessage } from '../../shared/api/backendClient'
-import {
-  areRequiredFilesReady,
-  type FileGroupState,
-} from '../../shared/files/fileGroups'
+import { areRequiredFilesReady } from '../../shared/files/fileGroups'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
+import {
+  buildExcelFileGroups,
+  ExcelProcessPageShell,
+  ExcelResultNotice,
+  ExcelUploadSection,
+  type ExcelFileField,
+  type ExcelNoticeTone,
+  type ExcelPageStat,
+  type ExcelToolbarAction,
+} from '../../shared/ui/excel-process'
 import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
-import FileUploadBox from '../../shared/ui/FileUploadBox.vue'
 import {
   downloadEricResult,
   processEricFile,
@@ -163,22 +96,28 @@ const yticFile = computed(() => yticFiles.value[0] ?? null)
 const canReconcile = computed(() => Boolean(packFile.value && yticFile.value))
 const sourceCount = computed(() => [packFile.value, yticFile.value].filter(Boolean).length)
 
-const fileGroups = computed<FileGroupState[]>(() => [
+const uploadFields = computed<ExcelFileField[]>(() => [
   {
+    id: 'pack',
     label: 'Size Breakdown Excel',
     files: packFiles.value,
-    required: true,
-    multiple: false,
+    hint: '用于生成 Final_Data',
+    accept: '.xlsx,.xlsm',
+    acceptLabel: '支持 .xlsx / .xlsm',
     expectedCount: 1,
   },
   {
+    id: 'ytic',
     label: 'Check Excel',
     files: yticFiles.value,
-    required: true,
-    multiple: false,
+    hint: '用于提取尺寸、目的地和 SP 核对信息',
+    accept: '.xls,.xlsx,.xlsm',
+    acceptLabel: '支持 .xls / .xlsx / .xlsm',
     expectedCount: 1,
   },
 ])
+
+const fileGroups = computed(() => buildExcelFileGroups(uploadFields.value))
 
 const statusText = computed(() => {
   if (processing.value) return '处理中'
@@ -187,9 +126,64 @@ const statusText = computed(() => {
   return '待处理'
 })
 
+const pageStats = computed<ExcelPageStat[]>(() => [
+  {
+    id: 'source-files',
+    label: '源文件',
+    value: `${sourceCount.value}/2`,
+    iconText: 'ER',
+    tone: 'blue',
+  },
+  {
+    id: 'process-status',
+    label: '处理状态',
+    value: statusText.value,
+    iconText: 'ST',
+    tone: success.value === true ? 'green' : success.value === false ? 'orange' : 'slate',
+  },
+])
+
 const toolbarStatus = computed(() => {
-  const readyCount = fileGroups.value.filter((g) => g.files.length > 0).length
+  const readyCount = fileGroups.value.filter((group) => group.files.length > 0).length
   return `${text('已就绪')} ${readyCount}/2 ${text('组文件')}`
+})
+
+const toolbarActions = computed<ExcelToolbarAction[]>(() => [
+  {
+    id: 'reset',
+    label: '重置',
+    icon: 'refresh-cw',
+    disabled: processing.value,
+    onClick: resetForm,
+  },
+  {
+    id: 'final-data',
+    label: '仅生成 Final_Data',
+    icon: 'file-search',
+    disabled: !packFile.value || processing.value,
+    onClick: startFinalDataOnly,
+  },
+  {
+    id: 'download',
+    label: '下载结果',
+    icon: 'download',
+    visible: success.value === true && Boolean(outputFile.value),
+    onClick: downloadResult,
+  },
+  {
+    id: 'reconcile',
+    label: processing.value ? '处理中...' : '开始核对',
+    icon: processing.value ? 'loader' : 'play-circle',
+    primary: true,
+    disabled: !canReconcile.value || processing.value,
+    onClick: startReconcile,
+  },
+])
+
+const resultNoticeTone = computed<ExcelNoticeTone>(() => {
+  if (success.value === true) return 'success'
+  if (success.value === false) return 'error'
+  return 'info'
 })
 
 const statItems = computed(() =>
@@ -203,6 +197,17 @@ const statItems = computed(() =>
     outputFile: outputFile.value,
   }),
 )
+
+function updateUploadFiles(fieldId: string, files: File[]): void {
+  if (fieldId === 'pack') {
+    packFiles.value = files
+    return
+  }
+
+  if (fieldId === 'ytic') {
+    yticFiles.value = files
+  }
+}
 
 function isPackFile(file: File): boolean {
   return /\.(xlsx|xlsm)$/i.test(file.name)
@@ -253,7 +258,9 @@ async function startReconcile(): Promise<void> {
   try {
     const response = await reconcileEricFiles(
       { packFile: packFile.value, yticFile: yticFile.value },
-      (p) => { progress.value = p },
+      (nextProgress) => {
+        progress.value = nextProgress
+      },
     )
     applyResponse(response, '核对完成', '核对失败')
   } catch (error) {
@@ -274,7 +281,9 @@ async function startFinalDataOnly(): Promise<void> {
   try {
     const response = await processEricFile(
       { excelFile: packFile.value },
-      (p) => { progress.value = p },
+      (nextProgress) => {
+        progress.value = nextProgress
+      },
     )
     applyResponse(response, 'Final_Data 生成完成', 'Final_Data 生成失败')
   } catch (error) {

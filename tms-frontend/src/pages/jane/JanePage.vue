@@ -1,122 +1,42 @@
 <template>
-  <section class="jane-page-container">
-    <div class="jane-header">
-      <div class="jane-header__title">
-        <h2>{{ text('成品表生成') }}</h2>
-        <p class="jane-header__subtitle">{{ text('Copy of TMS + 国家区域统计 → 标准成品表') }}</p>
-      </div>
-      <div class="jane-header__stats">
-        <div class="jane-stat">
-          <div class="jane-stat__icon jane-stat__icon--teal">
-            <AppIcon name="files" />
-          </div>
-          <div class="jane-stat__info">
-            <span class="jane-stat__label">{{ text('已选文件') }}</span>
-            <span class="jane-stat__value">{{ totalFiles }}</span>
-          </div>
-        </div>
-        <div class="jane-stat">
-          <div class="jane-stat__icon jane-stat__icon--slate">
-            <AppIcon name="clock" />
-          </div>
-          <div class="jane-stat__info">
-            <span class="jane-stat__label">{{ text('处理记录') }}</span>
-            <span class="jane-stat__value">{{ historyRecords.length }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="jane-toolbar">
-      <span class="jane-toolbar__status">{{ toolbarStatus }}</span>
-      <div class="jane-toolbar__actions">
-        <button class="jane-toolbar__btn" type="button" :disabled="processing" @click="resetForm">
-          <AppIcon name="refresh-cw" />
-          {{ text('重置') }}
-        </button>
-        <button
-          class="jane-toolbar__btn jane-toolbar__btn--primary"
-          type="button"
-          :disabled="!canProcess || processing"
-          @click="startProcess"
-        >
-          <AppIcon :name="processing ? 'loader' : 'play-circle'" />
-          {{ processing ? text('处理中...') : text('开始处理') }}
-        </button>
-      </div>
-    </div>
+  <ExcelProcessPageShell
+    title="成品表生成"
+    subtitle="Copy of TMS + 国家区域统计 → 标准成品表"
+    :stats="pageStats"
+    :toolbar-status="toolbarStatus"
+    :actions="toolbarActions"
+  >
+    <ExcelResultNotice
+      :visible="Boolean(message)"
+      :tone="resultNoticeTone"
+      :message="message"
+    />
 
     <div class="jane-grid">
       <div class="jane-main">
-        <section class="jane-section">
-          <div class="jane-section__head">
-            <h3>
-              <AppIcon name="download-cloud" />
-              {{ text('文件上传') }}
-            </h3>
-            <span class="jane-section__badge">
-              <AppIcon name="check-circle" />
-              {{ text('2 组必传') }}
-            </span>
-          </div>
-
-          <div class="jane-upload-grid">
-            <FileUploadBox
-              v-model:files="customerFiles"
-              :label="text('Copy of TMS')"
-              :hint="text('上传 1 个 Copy of TMS 文件')"
-            />
-            <FileUploadBox
-              v-model:files="countryFiles"
-              label="country.xlsx"
-              :hint="text('上传国家/区域统计文件')"
-              accept=".xlsx"
-              :accept-label="text('支持 .xlsx')"
-            />
-          </div>
-
-          <label class="jane-filter">
-            <span>
-              <AppIcon name="file-search" />
-              {{ text('Working Number 筛选（可选）') }}
-            </span>
-            <input
-              v-model="workingFilters"
-              type="text"
-              :placeholder="text('多个值用英文逗号分隔')"
-            />
-          </label>
-
-          <div v-if="processing" class="jane-progress">
-            <div class="jane-progress__label">
-              <strong>
-                <AppIcon name="activity" />
-                {{ text('处理进度') }}
-              </strong>
-              <span>{{ progress }}%</span>
-            </div>
-            <div class="jane-progress__track">
-              <div class="jane-progress__fill" :style="{ width: `${progress}%` }" />
-            </div>
-          </div>
+        <ExcelUploadSection
+          :fields="uploadFields"
+          :processing="processing"
+          :progress="progress"
+          badge="2 组必传"
+          @update:files="updateUploadFiles"
+        >
+          <template #after-fields>
+            <label class="jane-filter">
+              <span>
+                <AppIcon name="file-search" />
+                {{ text('Working Number 筛选（可选）') }}
+              </span>
+              <input
+                v-model="workingFilters"
+                type="text"
+                :placeholder="text('多个值用英文逗号分隔')"
+              />
+            </label>
+          </template>
 
           <ResultSummary :items="summaryItems" :status="success ? 'success' : 'error'" />
-
-          <section
-            v-if="message"
-            class="jane-alert"
-            :class="success ? 'jane-alert--success' : 'jane-alert--error'"
-          >
-            <p>
-              <AppIcon :name="success ? 'check-circle' : 'alert-circle'" />
-              {{ text(message) }}
-            </p>
-            <button v-if="success && resultFile" class="jane-alert__btn" type="button" @click="downloadResult">
-              <AppIcon name="download" />
-              {{ text('下载结果文件') }}
-            </button>
-          </section>
-        </section>
+        </ExcelUploadSection>
       </div>
 
       <div class="jane-side">
@@ -124,7 +44,7 @@
         <ProcessHistoryPanel :records="historyRecords" @clear="clearHistory" />
       </div>
     </div>
-  </section>
+  </ExcelProcessPageShell>
 </template>
 
 <script setup lang="ts">
@@ -134,7 +54,6 @@ import { readErrorMessage } from '../../shared/api/backendClient'
 import {
   areRequiredFilesReady,
   serializeInputFiles,
-  type FileGroupState,
 } from '../../shared/files/fileGroups'
 import {
   appendModuleHistory,
@@ -146,8 +65,17 @@ import {
 } from '../../shared/process/processHistory'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import AppIcon from '../../shared/ui/AppIcon.vue'
+import {
+  buildExcelFileGroups,
+  ExcelProcessPageShell,
+  ExcelResultNotice,
+  ExcelUploadSection,
+  type ExcelFileField,
+  type ExcelNoticeTone,
+  type ExcelPageStat,
+  type ExcelToolbarAction,
+} from '../../shared/ui/excel-process'
 import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
-import FileUploadBox from '../../shared/ui/FileUploadBox.vue'
 import ProcessHistoryPanel from '../../shared/ui/ProcessHistoryPanel.vue'
 import ResultSummary from '../../shared/ui/ResultSummary.vue'
 import {
@@ -172,29 +100,84 @@ const summaryItems = ref<ProcessSummaryItem[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(loadModuleHistory(janeModuleId))
 const { text } = useAppLanguage()
 
-const fileGroups = computed<FileGroupState[]>(() => [
+const uploadFields = computed<ExcelFileField[]>(() => [
   {
+    id: 'customer',
     label: 'Copy of TMS',
     files: customerFiles.value,
-    required: true,
-    multiple: false,
+    hint: '上传 1 个 Copy of TMS 文件',
     expectedCount: 1,
   },
   {
+    id: 'country',
     label: 'country.xlsx',
     files: countryFiles.value,
-    required: true,
-    multiple: false,
+    hint: '上传国家/区域统计文件',
+    accept: '.xlsx',
+    acceptLabel: '支持 .xlsx',
     expectedCount: 1,
   },
 ])
 
+const fileGroups = computed(() => buildExcelFileGroups(uploadFields.value))
 const canProcess = computed(() => areRequiredFilesReady(fileGroups.value))
 const totalFiles = computed(() => customerFiles.value.length + countryFiles.value.length)
+const pageStats = computed<ExcelPageStat[]>(() => [
+  {
+    id: 'selected-files',
+    label: '已选文件',
+    value: totalFiles.value,
+    icon: 'files',
+    tone: 'blue',
+  },
+  {
+    id: 'history-records',
+    label: '处理记录',
+    value: historyRecords.value.length,
+    icon: 'clock',
+    tone: 'slate',
+  },
+])
 const toolbarStatus = computed(() => {
   const readyCount = fileGroups.value.filter((g) => g.files.length > 0).length
   return `${text('已就绪')} ${readyCount}/2 ${text('组文件')}，${text('当前共')} ${totalFiles.value} ${text('个文件')}`
 })
+const toolbarActions = computed<ExcelToolbarAction[]>(() => [
+  {
+    id: 'reset',
+    label: '重置',
+    icon: 'refresh-cw',
+    disabled: processing.value,
+    onClick: resetForm,
+  },
+  {
+    id: 'download',
+    label: '下载结果',
+    icon: 'download',
+    visible: success.value && Boolean(resultFile.value),
+    onClick: downloadResult,
+  },
+  {
+    id: 'process',
+    label: processing.value ? '处理中...' : '开始处理',
+    icon: processing.value ? 'loader' : 'play-circle',
+    primary: true,
+    disabled: !canProcess.value || processing.value,
+    onClick: startProcess,
+  },
+])
+const resultNoticeTone = computed<ExcelNoticeTone>(() => (success.value ? 'success' : 'error'))
+
+function updateUploadFiles(fieldId: string, files: File[]): void {
+  if (fieldId === 'customer') {
+    customerFiles.value = files
+    return
+  }
+
+  if (fieldId === 'country') {
+    countryFiles.value = files
+  }
+}
 
 async function startProcess(): Promise<void> {
   if (!canProcess.value || !customerFiles.value[0] || !countryFiles.value[0]) {
