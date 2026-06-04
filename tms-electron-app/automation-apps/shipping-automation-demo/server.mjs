@@ -570,6 +570,7 @@ async function openChangeEquipmentIdDialog(page, poNo) {
   while (Date.now() - startedAt < timeoutMs) {
     const errorText = await getVisibleDialogErrorText(page);
     if (errorText) {
+      await dismissVisibleMessageDialog(page);
       throw new Error(`PO No ${poNo}: ${errorText}`);
     }
 
@@ -698,6 +699,40 @@ async function getVisibleDialogErrorText(page) {
   }
 
   return "";
+}
+
+async function dismissVisibleMessageDialog(page) {
+  const dialogInfo = await getTopVisibleDialogInfo(page);
+  if (!dialogInfo?.id || !dialogInfo.isMessageDialog) {
+    return false;
+  }
+
+  const dialog = page.locator(`[id="${dialogInfo.id}"]`).first();
+  const okButton = dialog.locator("button.x-btn-text").filter({ hasText: /^OK$/ }).first();
+  const okVisible = await okButton.isVisible().catch(() => false);
+  if (okVisible) {
+    await okButton.click().catch(() => {});
+    await dialog.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
+    log("Dismissed visible message dialog.", {
+      dialogId: dialogInfo.id,
+      text: dialogInfo.text,
+    });
+    return true;
+  }
+
+  const closeTool = dialog.locator(".x-tool-close").first();
+  const closeVisible = await closeTool.isVisible().catch(() => false);
+  if (closeVisible) {
+    await closeTool.click().catch(() => {});
+    await dialog.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
+    log("Closed visible message dialog with close tool.", {
+      dialogId: dialogInfo.id,
+      text: dialogInfo.text,
+    });
+    return true;
+  }
+
+  return false;
 }
 
 async function getTopVisibleDialogInfo(page) {
