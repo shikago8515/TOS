@@ -1,79 +1,38 @@
 <template>
-  <section class="jane-page-container">
-    <div class="jane-header">
-      <div class="jane-header__title">
-        <h2>{{ text('报表合并') }}</h2>
-      </div>
-      <div class="jane-header__stats">
-        <div class="jane-stat">
-          <div class="jane-stat__icon jane-stat__icon--blue">
-            <AppIcon name="files" />
-          </div>
-          <div class="jane-stat__info">
-            <span class="jane-stat__label">{{ text('已选文件') }}</span>
-            <span class="jane-stat__value">{{ totalSelectedCount }}</span>
-          </div>
-        </div>
-        <div class="jane-stat">
-          <div class="jane-stat__icon jane-stat__icon--slate">
-            <AppIcon name="clock" />
-          </div>
-          <div class="jane-stat__info">
-            <span class="jane-stat__label">{{ text('处理记录') }}</span>
-            <span class="jane-stat__value">{{ historyRecords.length }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="jane-toolbar">
-      <span class="jane-toolbar__status">{{ toolbarStatus }}</span>
-      <div class="jane-toolbar__actions">
-        <button class="jane-toolbar__btn" type="button" :disabled="processing" @click="resetForm">
-          {{ text('重置') }}
-        </button>
-        <button
-          v-if="success && resultFile"
-          class="jane-toolbar__btn"
-          type="button"
-          @click="downloadResult"
-        >
-          {{ text('下载结果') }}
-        </button>
-        <button
-          class="jane-toolbar__btn jane-toolbar__btn--primary"
-          type="button"
-          :disabled="!canProcess || processing"
-          @click="startProcess"
-        >
-          {{ processing ? text('合并中...') : text('开始合并') }}
-        </button>
-      </div>
-    </div>
-
-    <div v-if="message" class="jane-alert" :class="`jane-alert--${messageTone}`">
-      <AppIcon :name="messageTone === 'success' ? 'check-circle' : messageTone === 'error' ? 'alert-circle' : 'activity'" />
-      <span>{{ message }}</span>
-    </div>
-
-    <SophiaTinaManagerPanel
-      :tms-files="tmsFiles"
-      :article-files="articleFiles"
-      :price-files="priceFiles"
-      :pack-files="packFiles"
-      :file-groups="fileGroups"
-      :processing="processing"
-      :progress="progress"
-      :success="success"
-      :summary-items="summaryItems"
-      :history-records="historyRecords"
-      @update:tms-files="tmsFiles = $event"
-      @update:article-files="articleFiles = $event"
-      @update:price-files="priceFiles = $event"
-      @update:pack-files="packFiles = $event"
-      @clear-history="clearHistory"
+  <ExcelProcessPageShell
+    title="报表合并"
+    :stats="pageStats"
+    :toolbar-status="toolbarStatus"
+    :actions="toolbarActions"
+  >
+    <ExcelResultNotice
+      :visible="Boolean(message)"
+      :tone="messageTone"
+      :message="message"
     />
-  </section>
+
+    <div class="jane-grid">
+      <div class="jane-main">
+        <ExcelUploadSection
+          :fields="uploadFields"
+          :processing="processing"
+          :progress="progress"
+          badge="4 组必传"
+          @update:files="updateUploadFiles"
+        >
+          <ResultSummary
+            :items="summaryItems"
+            :status="success ? 'success' : 'error'"
+          />
+        </ExcelUploadSection>
+      </div>
+
+      <div class="jane-side">
+        <FilePrecheckPanel :groups="fileGroups" />
+        <ProcessHistoryPanel :records="historyRecords" @clear="clearHistory" />
+      </div>
+    </div>
+  </ExcelProcessPageShell>
 </template>
 
 <script setup lang="ts">
@@ -83,7 +42,6 @@ import { readErrorMessage } from '../../shared/api/backendClient'
 import {
   areRequiredFilesReady,
   serializeInputFiles,
-  type FileGroupState,
 } from '../../shared/files/fileGroups'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import {
@@ -94,16 +52,25 @@ import {
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
-import AppIcon from '../../shared/ui/AppIcon.vue'
-import SophiaTinaManagerPanel from './components/SophiaTinaManagerPanel.vue'
+import {
+  buildExcelFileGroups,
+  ExcelProcessPageShell,
+  ExcelResultNotice,
+  ExcelUploadSection,
+  type ExcelFileField,
+  type ExcelNoticeTone,
+  type ExcelPageStat,
+  type ExcelToolbarAction,
+} from '../../shared/ui/excel-process'
+import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
+import ProcessHistoryPanel from '../../shared/ui/ProcessHistoryPanel.vue'
+import ResultSummary from '../../shared/ui/ResultSummary.vue'
 import { downloadSophiaTinaResult, processSophiaTinaFiles } from './sophiaTinaApi'
 import {
   buildSophiaTinaSummary,
   sophiaTinaModuleId,
   sophiaTinaModuleName,
 } from './sophiaTinaModel'
-
-type NoticeTone = 'info' | 'success' | 'warning' | 'error'
 
 const tmsFiles = ref<File[]>([])
 const articleFiles = ref<File[]>([])
@@ -116,36 +83,41 @@ const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(loadModuleHistory(sophiaTinaModuleId))
-const messageTone = ref<NoticeTone>('info')
+const messageTone = ref<ExcelNoticeTone>('info')
 const { text } = useAppLanguage()
 
-const fileGroups = computed<FileGroupState[]>(() => [
+const uploadFields = computed<ExcelFileField[]>(() => [
   {
-    label: 'TMS 文件',
+    id: 'tms',
+    label: 'TMS 文件（可多选）',
     files: tmsFiles.value,
-    required: true,
+    hint: '上传一个或多个 TMS 文件',
     multiple: true,
   },
   {
-    label: 'Article 文件',
+    id: 'article',
+    label: 'Article 文件（可多选）',
     files: articleFiles.value,
-    required: true,
+    hint: '上传一个或多个 Article 文件',
     multiple: true,
   },
   {
-    label: 'Factory Price 文件',
+    id: 'price',
+    label: 'Factory Price 文件（可多选）',
     files: priceFiles.value,
-    required: true,
+    hint: '上传一个或多个 Factory Price 文件',
     multiple: true,
   },
   {
-    label: 'Pack 文件',
+    id: 'pack',
+    label: 'Pack 文件（可多选）',
     files: packFiles.value,
-    required: true,
+    hint: '上传一个或多个 Pack 文件',
     multiple: true,
   },
 ])
 
+const fileGroups = computed(() => buildExcelFileGroups(uploadFields.value))
 const canProcess = computed(() => areRequiredFilesReady(fileGroups.value))
 const readyGroupCount = computed(
   () => fileGroups.value.filter((group) => group.files.length > 0).length,
@@ -160,6 +132,67 @@ const totalSelectedCount = computed(
 const toolbarStatus = computed(
   () => `${text('已就绪')} ${readyGroupCount.value}/4 ${text('组文件')}，${text('当前共')} ${totalSelectedCount.value} ${text('个文件')}`,
 )
+const pageStats = computed<ExcelPageStat[]>(() => [
+  {
+    id: 'selected-files',
+    label: '已选文件',
+    value: totalSelectedCount.value,
+    icon: 'files',
+    tone: 'blue',
+  },
+  {
+    id: 'history-records',
+    label: '处理记录',
+    value: historyRecords.value.length,
+    icon: 'clock',
+    tone: 'slate',
+  },
+])
+const toolbarActions = computed<ExcelToolbarAction[]>(() => [
+  {
+    id: 'reset',
+    label: '重置',
+    icon: 'refresh-cw',
+    disabled: processing.value,
+    onClick: resetForm,
+  },
+  {
+    id: 'download',
+    label: '下载结果',
+    icon: 'download',
+    visible: success.value && Boolean(resultFile.value),
+    onClick: downloadResult,
+  },
+  {
+    id: 'process',
+    label: processing.value ? '合并中...' : '开始合并',
+    icon: processing.value ? 'loader' : 'play-circle',
+    primary: true,
+    disabled: !canProcess.value || processing.value,
+    onClick: startProcess,
+  },
+])
+
+function updateUploadFiles(fieldId: string, files: File[]): void {
+  if (fieldId === 'tms') {
+    tmsFiles.value = files
+    return
+  }
+
+  if (fieldId === 'article') {
+    articleFiles.value = files
+    return
+  }
+
+  if (fieldId === 'price') {
+    priceFiles.value = files
+    return
+  }
+
+  if (fieldId === 'pack') {
+    packFiles.value = files
+  }
+}
 
 async function startProcess(): Promise<void> {
   if (!canProcess.value) {

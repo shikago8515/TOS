@@ -1,112 +1,29 @@
 <template>
-  <section class="jane-page-container">
-    <div class="jane-header">
-      <div class="jane-header__title">
-        <h2>{{ text('BOM核对') }}</h2>
-        <p class="jane-header__subtitle">{{ text('T1 PRODUCTION × BOM汇总 → 面料差异核对') }}</p>
-      </div>
-      <div class="jane-header__stats">
-        <div class="jane-stat">
-          <div class="jane-stat__icon jane-stat__icon--teal">
-            <AppIcon name="files" />
-          </div>
-          <div class="jane-stat__info">
-            <span class="jane-stat__label">{{ text('已选文件') }}</span>
-            <span class="jane-stat__value">{{ totalFiles }}</span>
-          </div>
-        </div>
-        <div class="jane-stat">
-          <div class="jane-stat__icon jane-stat__icon--slate">
-            <AppIcon name="clock" />
-          </div>
-          <div class="jane-stat__info">
-            <span class="jane-stat__label">{{ text('处理记录') }}</span>
-            <span class="jane-stat__value">{{ historyRecords.length }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="jane-toolbar">
-      <span class="jane-toolbar__status">{{ toolbarStatus }}</span>
-      <div class="jane-toolbar__actions">
-        <button class="jane-toolbar__btn" type="button" :disabled="processing" @click="resetForm">
-          <AppIcon name="refresh-cw" />
-          {{ text('重置') }}
-        </button>
-        <button
-          class="jane-toolbar__btn jane-toolbar__btn--primary"
-          type="button"
-          :disabled="!canProcess || processing"
-          @click="startProcess"
-        >
-          <AppIcon :name="processing ? 'loader' : 'shield-check'" />
-          {{ processing ? text('处理中...') : text('开始核对') }}
-        </button>
-      </div>
-    </div>
+  <ExcelProcessPageShell
+    title="BOM核对"
+    subtitle="T1 PRODUCTION × BOM汇总 → 面料差异核对"
+    :stats="pageStats"
+    :toolbar-status="toolbarStatus"
+    :actions="toolbarActions"
+  >
+    <ExcelResultNotice
+      :visible="Boolean(message)"
+      :tone="resultNoticeTone"
+      :message="message"
+    />
 
     <div class="jane-grid">
       <div class="jane-main">
-        <section class="jane-section">
-          <div class="jane-section__head">
-            <h3>
-              <AppIcon name="file-search" />
-              {{ text('文件上传') }}
-            </h3>
-            <span class="jane-section__badge">
-              <AppIcon name="check-circle" />
-              {{ text('2 组必传') }}
-            </span>
-          </div>
-
-          <div class="jane-upload-grid">
-            <FileUploadBox
-              v-model:files="productionFiles"
-              :label="text('T1 PRODUCTION 文件')"
-              :hint="text('输出会保留原表样式并标红差异')"
-              accept=".xlsx,.xlsm"
-              :accept-label="text('支持 .xlsx / .xlsm')"
-            />
-            <FileUploadBox
-              v-model:files="bomSummaryFiles"
-              :label="text('BOM汇总 文件')"
-              :hint="text('BOM汇总 生成的汇总文件')"
-              accept=".xlsx,.xlsm"
-              :accept-label="text('支持 .xlsx / .xlsm')"
-            />
-          </div>
-
-          <div v-if="processing" class="jane-progress">
-            <div class="jane-progress__label">
-              <strong>
-                <AppIcon name="activity" />
-                {{ text('核对进度') }}
-              </strong>
-              <span>{{ progress }}%</span>
-            </div>
-            <div class="jane-progress__track">
-              <div class="jane-progress__fill" :style="{ width: `${progress}%` }" />
-            </div>
-          </div>
-
+        <ExcelUploadSection
+          :fields="uploadFields"
+          :processing="processing"
+          :progress="progress"
+          progress-label="核对进度"
+          badge="2 组必传"
+          @update:files="updateUploadFiles"
+        >
           <ResultSummary :items="summaryItems" :status="success ? 'success' : 'error'" />
-
-          <section
-            v-if="message"
-            class="jane-alert"
-            :class="success ? 'jane-alert--success' : 'jane-alert--error'"
-          >
-            <p>
-              <AppIcon :name="success ? 'check-circle' : 'alert-circle'" />
-              {{ text(message) }}
-            </p>
-            <button v-if="success && resultFile" class="jane-alert__btn" type="button" @click="downloadResult">
-              <AppIcon name="download" />
-              {{ text('下载结果文件') }}
-            </button>
-          </section>
-        </section>
+        </ExcelUploadSection>
       </div>
 
       <div class="jane-side">
@@ -114,7 +31,7 @@
         <ProcessHistoryPanel :records="historyRecords" @clear="clearHistory" />
       </div>
     </div>
-  </section>
+  </ExcelProcessPageShell>
 </template>
 
 <script setup lang="ts">
@@ -124,7 +41,6 @@ import { readErrorMessage } from '../../shared/api/backendClient'
 import {
   areRequiredFilesReady,
   serializeInputFiles,
-  type FileGroupState,
 } from '../../shared/files/fileGroups'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import {
@@ -135,9 +51,17 @@ import {
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
-import AppIcon from '../../shared/ui/AppIcon.vue'
+import {
+  buildExcelFileGroups,
+  ExcelProcessPageShell,
+  ExcelResultNotice,
+  ExcelUploadSection,
+  type ExcelFileField,
+  type ExcelNoticeTone,
+  type ExcelPageStat,
+  type ExcelToolbarAction,
+} from '../../shared/ui/excel-process'
 import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
-import FileUploadBox from '../../shared/ui/FileUploadBox.vue'
 import ProcessHistoryPanel from '../../shared/ui/ProcessHistoryPanel.vue'
 import ResultSummary from '../../shared/ui/ResultSummary.vue'
 import {
@@ -163,29 +87,86 @@ const historyRecords = ref<ProcessHistoryRecord[]>(
 )
 const { text } = useAppLanguage()
 
-const fileGroups = computed<FileGroupState[]>(() => [
+const uploadFields = computed<ExcelFileField[]>(() => [
   {
+    id: 'production',
     label: 'T1 PRODUCTION 文件',
     files: productionFiles.value,
-    required: true,
-    multiple: false,
+    hint: '输出会保留原表样式并标红差异',
+    accept: '.xlsx,.xlsm',
+    acceptLabel: '支持 .xlsx / .xlsm',
     expectedCount: 1,
   },
   {
+    id: 'bom-summary',
     label: 'BOM汇总 文件',
     files: bomSummaryFiles.value,
-    required: true,
-    multiple: false,
+    hint: 'BOM汇总 生成的汇总文件',
+    accept: '.xlsx,.xlsm',
+    acceptLabel: '支持 .xlsx / .xlsm',
     expectedCount: 1,
   },
 ])
 
+const fileGroups = computed(() => buildExcelFileGroups(uploadFields.value))
 const canProcess = computed(() => areRequiredFilesReady(fileGroups.value))
 const totalFiles = computed(() => productionFiles.value.length + bomSummaryFiles.value.length)
+const pageStats = computed<ExcelPageStat[]>(() => [
+  {
+    id: 'selected-files',
+    label: '已选文件',
+    value: totalFiles.value,
+    icon: 'files',
+    tone: 'blue',
+  },
+  {
+    id: 'history-records',
+    label: '处理记录',
+    value: historyRecords.value.length,
+    icon: 'clock',
+    tone: 'slate',
+  },
+])
 const toolbarStatus = computed(() => {
   const readyCount = fileGroups.value.filter((g) => g.files.length > 0).length
   return `${text('已就绪')} ${readyCount}/2 ${text('组文件')}，${text('当前共')} ${totalFiles.value} ${text('个文件')}`
 })
+const toolbarActions = computed<ExcelToolbarAction[]>(() => [
+  {
+    id: 'reset',
+    label: '重置',
+    icon: 'refresh-cw',
+    disabled: processing.value,
+    onClick: resetForm,
+  },
+  {
+    id: 'download',
+    label: '下载结果',
+    icon: 'download',
+    visible: success.value && Boolean(resultFile.value),
+    onClick: downloadResult,
+  },
+  {
+    id: 'process',
+    label: processing.value ? '处理中...' : '开始核对',
+    icon: processing.value ? 'loader' : 'shield-check',
+    primary: true,
+    disabled: !canProcess.value || processing.value,
+    onClick: startProcess,
+  },
+])
+const resultNoticeTone = computed<ExcelNoticeTone>(() => (success.value ? 'success' : 'error'))
+
+function updateUploadFiles(fieldId: string, files: File[]): void {
+  if (fieldId === 'production') {
+    productionFiles.value = files
+    return
+  }
+
+  if (fieldId === 'bom-summary') {
+    bomSummaryFiles.value = files
+  }
+}
 
 async function startProcess(): Promise<void> {
   if (!canProcess.value || !productionFiles.value[0]) {
