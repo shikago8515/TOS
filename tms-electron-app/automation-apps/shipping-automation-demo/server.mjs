@@ -548,7 +548,7 @@ async function processShipmentPoRow(page, poRow) {
   await selectShipmentGridRows(page, poRow.poNo);
   const dialog = await openChangeEquipmentIdDialog(page, poRow.poNo);
   await fillChangeEquipmentIdDialog(dialog, normalizedChangeEquipmentId);
-  await clickDialogOk(dialog, "Change Equipment ID");
+  await clickDialogButton(dialog, "Change Equipment ID", /^Apply$/);
   await page.waitForTimeout(config.postLoginWaitMs);
   log("Completed shipment PO row.", {
     poNo: String(poRow?.poNo || "").trim(),
@@ -650,19 +650,44 @@ async function isBlankShipmentScanGrid(page) {
 }
 
 async function selectShipmentGridRows(page, poNo) {
-  const rowChecker = page.locator("div.x-grid3-row-checker").first();
-  await rowChecker.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  const timeoutMs = Math.min(config.navigationTimeoutMs, 15000);
+  const startedAt = Date.now();
+  let lastState = null;
 
-  const headerChecker = page.locator("div.x-grid3-hd-checker").first();
-  const headerVisible = await headerChecker.isVisible().catch(() => false);
-  if (headerVisible) {
-    await headerChecker.click();
-    log("Selected shipment rows with header checker.", { poNo });
-    return;
+  while (Date.now() - startedAt < timeoutMs) {
+    const selectionState = await getShipmentGridSelectionState(page);
+    lastState = selectionState;
+
+    if (selectionState.rowCount > 0 && selectionState.selectedRowCount >= selectionState.rowCount) {
+      log("Selected shipment rows with header checker.", {
+        poNo,
+        rowCount: selectionState.rowCount,
+        selectedRowCount: selectionState.selectedRowCount,
+      });
+      return;
+    }
+
+    const headerChecker = page.locator("div.x-grid3-hd-checker").first();
+    const headerVisible = await headerChecker.isVisible().catch(() => false);
+    if (headerVisible) {
+      await headerChecker.click({ force: true }).catch(() => {});
+      await page.waitForTimeout(300);
+      continue;
+    }
+
+    const rowChecker = page.locator("div.x-grid3-row-checker").first();
+    await rowChecker.waitFor({ state: "visible", timeout: 2000 }).catch(() => {});
+    const rowVisible = await rowChecker.isVisible().catch(() => false);
+    if (rowVisible) {
+      await rowChecker.click({ force: true }).catch(() => {});
+      await page.waitForTimeout(300);
+      continue;
+    }
+
+    await page.waitForTimeout(250);
   }
 
-  await rowChecker.click();
-  log("Selected first shipment row.", { poNo });
+  throw new Error(`PO No ${poNo}: shipment rows were not fully selected. State: ${JSON.stringify(lastState || {})}`);
 }
 
 async function openChangeEquipmentIdDialog(page, poNo) {
@@ -786,11 +811,62 @@ async function fillCreateShipmentEquipmentId(dialog, changeEquipmentId) {
 }
 
 async function clickDialogOk(dialog, label) {
-  const okButton = dialog.locator("button.x-btn-text").filter({ hasText: /^OK$/ }).first();
-  await okButton.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
-  await okButton.click();
+  await clickDialogButton(dialog, label, /^OK$/);
+}
+
+async function clickDialogButton(dialog, label, buttonPattern) {
+  const button = dialog.locator("button.x-btn-text").filter({ hasText: buttonPattern }).first();
+  await button.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await button.click();
   await dialog.waitFor({ state: "hidden", timeout: config.navigationTimeoutMs }).catch(() => {});
-  log(`Clicked ${label} OK.`);
+  log(`Clicked ${label} button.`, {
+    buttonPattern: String(buttonPattern),
+  });
+}
+
+async function getShipmentGridSelectionState(page) {
+  return page.evaluate(() => {
+    const isVisible = (element) => {
+      if (!element) {
+        return false;
+      }
+
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none"
+        && style.visibility !== "hidden"
+        && rect.width > 0
+        && rect.height > 0;
+    };
+
+    const rowCheckers = Array.from(document.querySelectorAll("div.x-grid3-row-checker"))
+      .filter(isVisible);
+    const selectedRowCount = rowCheckers.filter((element) => {
+      const className = String(element.className || "");
+      if (className.includes("x-grid3-row-checker-on")) {
+        return true;
+      }
+
+      const rowNode = element.closest(".x-grid3-row");
+      return Boolean(rowNode && rowNode.className.includes("x-grid3-row-selected"));
+    }).length;
+
+    const headerChecker = Array.from(document.querySelectorAll("div.x-grid3-hd-checker"))
+      .find(isVisible);
+    const headerSelected = Boolean(
+      headerChecker
+      && (
+        String(headerChecker.className || "").includes("x-grid3-hd-checker-on")
+        || String(headerChecker.parentElement?.className || "").includes("x-grid3-hd-checker-on")
+      )
+    );
+
+    return {
+      rowCount: rowCheckers.length,
+      selectedRowCount,
+      headerSelected,
+    };
+  });
 }
 
 async function getVisibleDialogErrorText(page) {
