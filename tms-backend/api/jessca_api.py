@@ -66,6 +66,7 @@ async def process_jessca(
                 "invoice_count": result['invoice_count'],
                 "total_items": result['total_items'],
                 "matches": result['matches'],
+                "diagnostics": result.get('diagnostics', {}),
                 "output_file": os.path.basename(result['output_path'])
             }
         else:
