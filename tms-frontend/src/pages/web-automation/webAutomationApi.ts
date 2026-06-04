@@ -129,9 +129,10 @@ async function ensureLocalAutomationLauncher(): Promise<void> {
     return
   }
 
+  triggerAutomationProtocol(launcherProtocolUrl)
   const ready = await waitFor(async () => isLauncherReachable(), 12000, 500)
   if (!ready) {
-    throw new Error('Local launcher is not ready. Open TOS EXE once so the tos:// protocol can be registered.')
+    throw new Error('Local launcher is not ready. In source mode run `npm run launcher:register:dev`; in installed mode confirm TOS is installed and the tos:// protocol is registered.')
   }
 }
 

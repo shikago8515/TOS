@@ -205,14 +205,60 @@
               </div>
             </div>
 
+            <div class="ws-field">
+              <label>{{ text('Excel 文件') }}</label>
+              <div
+                class="ws-dropzone"
+                :class="{ 'ws-dropzone--active': selectedFile, 'ws-dropzone--drag': isDragging }"
+                role="button"
+                tabindex="0"
+                @click="openFilePicker"
+                @keydown.enter.prevent="openFilePicker"
+                @keydown.space.prevent="openFilePicker"
+                @dragover.prevent="isDragging = true"
+                @dragleave.prevent="isDragging = false"
+                @drop.prevent="handleDrop"
+              >
+                <input
+                  ref="fileInput"
+                  type="file"
+                  accept=".xlsx,.xls"
+                  @click.stop
+                  @change="handleFileSelect"
+                />
+                <template v-if="selectedFile">
+                  <div class="ws-dropzone__icon ws-dropzone__icon--done">
+                    <AppIcon name="check-circle" />
+                  </div>
+                  <strong>{{ selectedFile.name }}</strong>
+                  <small>{{ formatSize(selectedFile.size) }}</small>
+                  <button class="ws-dropzone__clear" type="button" @click.stop="clearFile">
+                    <AppIcon name="stop-circle" />
+                    {{ text('清除') }}
+                  </button>
+                </template>
+                <template v-else>
+                  <div class="ws-dropzone__icon">
+                    <AppIcon name="upload" />
+                  </div>
+                  <strong>{{ text('点击或拖入 Excel 文件') }}</strong>
+                  <small>{{ text('请包含 PO No 列') }}</small>
+                </template>
+                <div v-if="isDragging" class="ws-dropzone__overlay">
+                  <AppIcon name="download" />
+                  <span>{{ text('释放以上传文件') }}</span>
+                </div>
+              </div>
+            </div>
+
             <div class="ws-card__actions">
               <button
                 class="ws-btn-lg ws-btn-lg--primary"
-                :disabled="sending || !shippingUsername || !shippingPassword"
-                @click="openShippingShipmentScan"
+                :disabled="sending || !shippingUsername || !shippingPassword || !selectedFile"
+                @click="runShippingWithExcel"
               >
                 <AppIcon name="play-circle" />
-                {{ sending ? text('执行中...') : text('登录并打开 Shipment Scan') }}
+                {{ sending ? text('执行中...') : text('上传 Excel 并执行 Shipping') }}
               </button>
             </div>
           </div>
@@ -400,8 +446,8 @@ const route = useRoute()
 const router = useRouter()
 const { text } = useAppLanguage()
 
-const defaultShippingUsername = ''
-const defaultShippingPassword = ''
+const defaultShippingUsername = 'user3@@tmsfashion'
+const defaultShippingPassword = 'tmsbjLILY20260202'
 const defaultMicrosoftUsername = ''
 const defaultMicrosoftPassword = ''
 
@@ -439,7 +485,7 @@ const directExecutorRunUrl = computed(() => {
 })
 const shippingExecutorRunUrl = computed(() => {
   const baseUrl = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, '')
-  return baseUrl ? `${baseUrl}/api/open-shipment-scan` : ''
+  return baseUrl ? `${baseUrl}/api/run-shipping-file` : ''
 })
 const healthRaw = computed(() => executorHealth.value ? JSON.stringify(executorHealth.value, null, 2) : '{}')
 const executorStatusLabel = computed(() => {
@@ -474,7 +520,7 @@ async function initializeScenario(): Promise<void> {
     shippingUsername.value = shippingUsername.value || defaultShippingUsername
     shippingPassword.value = shippingPassword.value || defaultShippingPassword
     statusLabel.value = '待命'
-    statusText.value = '等待登录并打开 Shipment Scan。'
+    statusText.value = '等待上传 Excel，并执行 Shipping 自动化。'
   } else if (isMicrosoftScenario.value) {
     microsoftUsername.value = microsoftUsername.value || defaultMicrosoftUsername
     microsoftPassword.value = microsoftPassword.value || defaultMicrosoftPassword
@@ -626,8 +672,8 @@ function resetWebhookUrl(): void {
   webhookUrl.value = entry.value?.webhookUrl || 'http://127.0.0.1:5678/webhook/microsoft-login-excel-demo'
 }
 
-async function openShippingShipmentScan(): Promise<void> {
-  if (!entry.value || sending.value || !isShippingScenario.value) return
+async function runShippingWithExcel(): Promise<void> {
+  if (!entry.value || sending.value || !isShippingScenario.value || !selectedFile.value) return
 
   const executorReady = await ensureExecutorReady()
   if (!executorReady) {
@@ -639,14 +685,16 @@ async function openShippingShipmentScan(): Promise<void> {
     return
   }
 
+  const file = selectedFile.value
   sending.value = true
   statusLabel.value = '执行中'
-  statusText.value = '正在登录 Infor Nexus 并打开 Shipment Scan...'
+  statusText.value = '正在上传 Excel，并登录 Infor Nexus 输入 PO No...'
   lastResult.value = null
   lastRawResponse.value = ''
   message.value = ''
 
   try {
+    const fileBase64 = await fileToBase64(file)
     const response = await fetch(shippingExecutorRunUrl.value, {
       method: 'POST',
       headers: {
@@ -654,6 +702,8 @@ async function openShippingShipmentScan(): Promise<void> {
         'X-Executor-Token': entry.value.localExecutorToken,
       },
       body: JSON.stringify({
+        fileName: file.name,
+        fileBase64,
         token: entry.value.localExecutorToken,
         username: shippingUsername.value,
         password: shippingPassword.value,
@@ -675,15 +725,15 @@ async function openShippingShipmentScan(): Promise<void> {
 
     if (json?.ok && json?.shipmentScanOpened) {
       statusLabel.value = '成功'
-      statusText.value = '已登录 Infor Nexus 并打开 Shipment Scan。'
+      statusText.value = `Shipping 自动化完成。已输入 ${json.completedPoCount ?? 0}/${json.totalPoCount ?? '?'} 个 PO No。`
       lastResult.value = { ok: true, message: json.message }
       messageTone.value = 'success'
-      message.value = text('已登录 Infor Nexus 并打开 Shipment Scan。')
+      message.value = text('Shipping 自动化执行完成。')
       return
     }
 
     statusLabel.value = '未完成'
-    statusText.value = json?.message || '自动化已触发，但未确认打开 Shipment Scan。'
+    statusText.value = json?.message || 'Shipping 自动化已触发，但未确认全部 PO No 输入完成。'
     lastResult.value = { ok: false, message: json?.message }
     messageTone.value = 'warning'
     message.value = text('自动化已触发，但结果未确认成功。')
