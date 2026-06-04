@@ -440,8 +440,12 @@ async function waitForShipmentScanDialog(page) {
   });
 }
 
+function getShipmentScanDialog(page) {
+  return page.locator("div.x-window").filter({ hasText: "Shipment Scan - Select Filters" }).last();
+}
+
 async function openShipmentScanDialog(page) {
-  const dialogTitle = page.locator("text=Shipment Scan - Select Filters").first();
+  const dialogTitle = page.locator("text=Shipment Scan - Select Filters").last();
   const alreadyVisible = await dialogTitle.isVisible().catch(() => false);
   if (!alreadyVisible) {
     await clickLocator(
@@ -452,15 +456,22 @@ async function openShipmentScanDialog(page) {
 
   await waitForShipmentScanDialog(page);
   log("Shipment Scan dialog ready.");
+  return getShipmentScanDialog(page);
 }
 
-async function selectRemoveChangeEquipmentId(page) {
-  const label = page.locator("label.x-form-cb-label", {
+async function selectRemoveChangeEquipmentId(dialog) {
+  const label = dialog.locator("label.x-form-cb-label", {
     hasText: "Remove/Change Equipment ID",
   }).first();
-  const radio = page
-    .locator("xpath=//label[contains(normalize-space(.), 'Remove/Change Equipment ID')]/preceding-sibling::input[@type='radio'][1]")
+  const radio = dialog
+    .locator("xpath=.//label[contains(normalize-space(.), 'Remove/Change Equipment ID')]/preceding-sibling::input[@type='radio'][1]")
     .first();
+
+  const radioChecked = await radio.isChecked().catch(() => false);
+  if (radioChecked) {
+    log("Selected Remove/Change Equipment ID.");
+    return;
+  }
 
   if (await label.isVisible().catch(() => false)) {
     await label.click();
@@ -479,9 +490,12 @@ async function processShipmentPoRow(page, poRow) {
     throw new Error(`Change equipment ID is empty for PO No ${String(poRow?.poNo || "").trim()}.`);
   }
 
-  await openShipmentScanDialog(page);
-  await selectRemoveChangeEquipmentId(page);
-  await fillShipmentPoNumber(page, poRow.poNo);
+  const shipmentDialog = await openShipmentScanDialog(page);
+  await fillShipmentPoNumber(shipmentDialog, poRow.poNo);
+  await selectRemoveChangeEquipmentId(shipmentDialog);
+  await clickShipmentScanOk(shipmentDialog);
+  await page.waitForTimeout(config.postLoginWaitMs);
+  log("Confirmed PO No.", { poNo: String(poRow?.poNo || "").trim() });
   await waitForShipmentGridRows(page, poRow.poNo);
   await selectShipmentGridRows(page, poRow.poNo);
   const dialog = await openChangeEquipmentIdDialog(page, poRow.poNo);
@@ -494,19 +508,18 @@ async function processShipmentPoRow(page, poRow) {
   });
 }
 
-async function fillShipmentPoNumber(page, poNo) {
+async function fillShipmentPoNumber(dialog, poNo) {
   const normalizedPoNo = String(poNo || "").trim();
   if (!normalizedPoNo) {
     throw new Error("PO No is empty.");
   }
 
-  const poInput = page.locator('input[name="poNum"]').first();
+  const poInput = dialog
+    .locator('input[name="poNum"], input[name="poNumbers"]')
+    .first();
   await poInput.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
   await poInput.fill(normalizedPoNo);
   log("Entered PO No.", { poNo: normalizedPoNo });
-  await clickShipmentScanOk(page);
-  await page.waitForTimeout(config.postLoginWaitMs);
-  log("Confirmed PO No.", { poNo: normalizedPoNo });
 }
 
 async function waitForShipmentGridRows(page, poNo) {
@@ -515,6 +528,7 @@ async function waitForShipmentGridRows(page, poNo) {
   const emptyState = page.locator("text=No data to display").first();
   const startedAt = Date.now();
   let lastDialogError = "";
+  let blankGridSince = 0;
 
   while (Date.now() - startedAt < timeoutMs) {
     const rowVisible = await rowChecker.isVisible().catch(() => false);
@@ -524,6 +538,16 @@ async function waitForShipmentGridRows(page, poNo) {
     }
 
     lastDialogError = (await getVisibleDialogErrorText(page)) || lastDialogError;
+    const blankGridVisible = await isBlankShipmentScanGrid(page);
+    if (blankGridVisible) {
+      blankGridSince = blankGridSince || Date.now();
+      if (Date.now() - blankGridSince >= 1500) {
+        throw new Error(`PO No ${poNo}: shipment page stayed blank after clicking OK.`);
+      }
+    } else {
+      blankGridSince = 0;
+    }
+
     await page.waitForTimeout(250);
   }
 
@@ -537,6 +561,44 @@ async function waitForShipmentGridRows(page, poNo) {
   }
 
   throw new Error(`PO No ${poNo}: timed out waiting for shipment rows.`);
+}
+
+async function isBlankShipmentScanGrid(page) {
+  return page.evaluate(() => {
+    const isVisible = (element) => {
+      if (!element) {
+        return false;
+      }
+
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none"
+        && style.visibility !== "hidden"
+        && rect.width > 0
+        && rect.height > 0;
+    };
+
+    const dialogTitle = Array.from(document.querySelectorAll("span, div"))
+      .find((element) => isVisible(element) && /Shipment Scan - Select Filters/i.test(element.textContent || ""));
+    if (dialogTitle) {
+      return false;
+    }
+
+    const hasVisibleRows = Array.from(document.querySelectorAll("div.x-grid3-row-checker"))
+      .some((element) => isVisible(element));
+    if (hasVisibleRows) {
+      return false;
+    }
+
+    const hasUndoShipmentScan = Array.from(document.querySelectorAll("span, div, td"))
+      .some((element) => isVisible(element) && /Undo Shipment Scan/i.test(element.textContent || ""));
+    const hasPackagesSelected = Array.from(document.querySelectorAll("span, div, td"))
+      .some((element) => isVisible(element) && /Packages Selected:/i.test(element.textContent || ""));
+    const hasShipmentScanLink = Array.from(document.querySelectorAll('a[href="#Shipment%20Scan"]'))
+      .some((element) => isVisible(element));
+
+    return hasUndoShipmentScan && hasPackagesSelected && hasShipmentScanLink;
+  });
 }
 
 async function selectShipmentGridRows(page, poNo) {
@@ -776,11 +838,11 @@ async function getTopVisibleDialogInfo(page) {
   });
 }
 
-async function clickShipmentScanOk(page) {
+async function clickShipmentScanOk(dialog) {
   const candidates = [
-    page.locator("button.x-btn-text").filter({ hasText: /^OK$/ }),
-    page.locator("td.x-btn-center button").filter({ hasText: /^OK$/ }),
-    page.getByRole("button", { name: /^OK$/ }),
+    dialog.locator("button.x-btn-text").filter({ hasText: /^OK$/ }),
+    dialog.locator("td.x-btn-center button").filter({ hasText: /^OK$/ }),
+    dialog.getByRole("button", { name: /^OK$/ }),
   ];
   const startedAt = Date.now();
   const timeoutMs = Math.min(config.navigationTimeoutMs, 15000);
@@ -798,6 +860,7 @@ async function clickShipmentScanOk(page) {
 
         try {
           await button.click();
+          await dialog.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
           log("Clicked Shipment Scan OK.");
           return;
         } catch (error) {
