@@ -122,6 +122,21 @@
         </RouterView>
       </main>
     </section>
+
+    <transition name="toast-slide">
+      <div v-if="toast.visible" class="toast-overlay" @click="toast.visible = false">
+        <div class="toast-card" :class="`toast-${toast.type}`">
+          <AppIcon :name="toast.icon" class="toast-icon" />
+          <div class="toast-body">
+            <p class="toast-title">{{ toast.title }}</p>
+            <p class="toast-message">{{ toast.message }}</p>
+          </div>
+          <button class="toast-close" type="button" @click.stop="toast.visible = false">
+            ×
+          </button>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -172,6 +187,23 @@ const isMobile = ref(false)
 const expandedNavGroups = ref<Set<TosModuleGroup>>(new Set(['excel', 'automation', 'collector']))
 const expandedNavParents = ref<Set<string>>(new Set(['jane-table-making', 'web-automation-group']))
 const { isEnglish, t } = useAppLanguage()
+
+interface ToastState {
+  visible: boolean
+  type: 'warning' | 'error' | 'info'
+  icon: string
+  title: string
+  message: string
+}
+
+const toast = ref<ToastState>({ visible: false, type: 'info', icon: 'info', title: '', message: '' })
+let toastTimer: ReturnType<typeof setTimeout> | null = null
+
+function showToast(type: ToastState['type'], icon: string, title: string, message: string): void {
+  if (toastTimer) clearTimeout(toastTimer)
+  toast.value = { visible: true, type, icon, title, message }
+  toastTimer = setTimeout(() => { toast.value.visible = false }, 4000)
+}
 
 const sidebarGroups = computed<SidebarGroup[]>(() =>
   tosNavGroups
@@ -333,7 +365,7 @@ function getGroupIcon(groupId: TosModuleGroup): string {
 
 async function exportDiagnostics(): Promise<void> {
   if (!window.electronAPI) {
-    alert('导出诊断包功能需要在桌面客户端中使用，当前浏览器预览环境不支持。')
+    showToast('warning', 'alert-circle', '功能受限', '导出诊断包功能需要在桌面客户端中使用，当前浏览器预览环境不支持。')
     return
   }
   await window.electronAPI.exportDiagnosticsPackage()
@@ -752,5 +784,121 @@ watch(
   .main-panel {
     margin-left: 0;
   }
+}
+
+/* Toast */
+.toast-overlay {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  cursor: pointer;
+}
+
+.toast-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 320px;
+  max-width: 420px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.06);
+  border-left: 4px solid #e4e7ed;
+}
+
+.toast-warning {
+  border-left-color: #e6a23c;
+}
+
+.toast-error {
+  border-left-color: #f56c6c;
+}
+
+.toast-info {
+  border-left-color: #409eff;
+}
+
+.toast-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  color: #909399;
+}
+
+.toast-warning .toast-icon {
+  color: #e6a23c;
+}
+
+.toast-error .toast-icon {
+  color: #f56c6c;
+}
+
+.toast-info .toast-icon {
+  color: #409eff;
+}
+
+.toast-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  margin: 0 0 4px;
+}
+
+.toast-message {
+  font-size: 13px;
+  color: #606266;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.toast-close {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #909399;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 4px;
+  font-size: 18px;
+  line-height: 1;
+  transition: background 0.2s;
+}
+
+.toast-close:hover {
+  background: #f5f7fa;
+  color: #303133;
+}
+
+.toast-slide-enter-active {
+  transition: all 0.35s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+.toast-slide-leave-active {
+  transition: all 0.25s ease-in;
+}
+
+.toast-slide-enter-from {
+  opacity: 0;
+  transform: translateX(40px) scale(0.95);
+}
+
+.toast-slide-leave-to {
+  opacity: 0;
+  transform: translateX(20px) scale(0.98);
 }
 </style>
