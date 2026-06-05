@@ -1087,13 +1087,14 @@ function readErrorMessage(error: unknown, fallback: string): string {
   --border: #e2e8f0;
   --muted: #64748b;
   --ink: #0f172a;
-  --radius: 16px;
+  --radius: 14px;
 
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 20px 22px;
-  min-height: 100%;
+  gap: 8px;
+  padding: 10px 14px;
+  height: 100%;
+  overflow: hidden;
   background:
     radial-gradient(ellipse 55% 35% at 50% 0%, rgba(13, 148, 136, 0.04), transparent 55%),
     #f6f9fc;
@@ -1136,10 +1137,10 @@ function readErrorMessage(error: unknown, fallback: string): string {
 .ws-badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 12px;
+  gap: 4px;
+  padding: 3px 10px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 
   :deep(.app-icon) { font-size: 13px; }
@@ -1168,36 +1169,32 @@ function readErrorMessage(error: unknown, fallback: string): string {
 .ws-hero {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 20px 24px;
+  gap: 12px;
+  padding: 12px 18px;
   background: rgba(255, 255, 255, 0.78);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(226, 232, 240, 0.7);
-  border-radius: 18px;
+  border-radius: 14px;
   box-shadow:
     0 1px 3px rgba(0, 0, 0, 0.02),
     0 8px 24px rgba(0, 0, 0, 0.03);
   animation: ws-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  flex-shrink: 0;
 }
 
 .ws-hero__icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
   background: linear-gradient(135deg, #2dd4bf, var(--teal));
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 20px;
   flex-shrink: 0;
-  box-shadow: 0 6px 16px rgba(13, 148, 136, 0.25);
-  transition: transform 0.3s ease;
-
-  &:hover {
-    transform: scale(1.05) rotate(-3deg);
-  }
+  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.2);
 }
 
 .ws-hero__text {
@@ -1205,18 +1202,18 @@ function readErrorMessage(error: unknown, fallback: string): string {
 
   h1 {
     margin: 0;
-    font-size: 20px;
+    font-size: 16px;
     font-weight: 800;
     color: var(--ink);
-    letter-spacing: -0.3px;
+    letter-spacing: -0.2px;
     line-height: 1.3;
   }
 
   p {
-    margin: 2px 0 0;
-    font-size: 13px;
+    margin: 1px 0 0;
+    font-size: 12px;
     color: var(--muted);
-    line-height: 1.5;
+    line-height: 1.4;
   }
 }
 
@@ -1224,12 +1221,13 @@ function readErrorMessage(error: unknown, fallback: string): string {
 .ws-alert {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
-  border-radius: 14px;
-  font-size: 14px;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
   font-weight: 500;
   border: 1px solid;
+  flex-shrink: 0;
 }
 
 .ws-alert__icon {
@@ -1320,35 +1318,30 @@ function readErrorMessage(error: unknown, fallback: string): string {
 .ws-strip {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
   animation: ws-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.06s both;
+  flex-shrink: 0;
 }
 
 .ws-strip__item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
+  gap: 10px;
+  padding: 10px 14px;
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 10px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-  transition: all 0.25s ease;
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
-  }
 }
 
 .ws-strip__icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 14px;
   color: #fff;
   flex-shrink: 0;
 
@@ -1397,16 +1390,28 @@ function readErrorMessage(error: unknown, fallback: string): string {
 /* ===== Main Layout ===== */
 .ws-main {
   display: grid;
-  grid-template-columns: 270px minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 10px;
   animation: ws-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.ws-side,
+.ws-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
 .ws-stage {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 /* ===== Panels (Left Sidebar) ===== */
@@ -1425,7 +1430,7 @@ function readErrorMessage(error: unknown, fallback: string): string {
 }
 
 .ws-panel__bar {
-  height: 3px;
+  height: 2px;
   background: linear-gradient(90deg, var(--teal), #2dd4bf);
   opacity: 0.6;
 }
@@ -1433,16 +1438,16 @@ function readErrorMessage(error: unknown, fallback: string): string {
 .ws-panel__head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 14px 16px 0;
+  gap: 6px;
+  padding: 8px 12px 0;
 
   :deep(.app-icon) {
-    font-size: 16px;
+    font-size: 14px;
     color: var(--teal);
   }
 
   strong {
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 700;
     color: var(--ink);
   }
@@ -1452,8 +1457,8 @@ function readErrorMessage(error: unknown, fallback: string): string {
 .ws-steps {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 16px 16px;
+  gap: 5px;
+  padding: 8px 12px 10px;
 }
 
 /* Buttons */
@@ -1461,20 +1466,20 @@ function readErrorMessage(error: unknown, fallback: string): string {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
   width: 100%;
-  height: 38px;
-  padding: 0 12px;
+  height: 32px;
+  padding: 0 10px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: #fff;
   color: #475569;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 
-  :deep(.app-icon) { font-size: 15px; }
+  :deep(.app-icon) { font-size: 13px; }
 
   &:hover:not(:disabled) {
     border-color: var(--teal-border);
@@ -1518,19 +1523,19 @@ function readErrorMessage(error: unknown, fallback: string): string {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  height: 40px;
-  padding: 0 12px;
+  height: 34px;
+  padding: 0 10px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: #fff;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   flex-shrink: 0;
   cursor: pointer;
   transition: all 0.25s ease;
 
-  :deep(.app-icon) { font-size: 14px; }
+  :deep(.app-icon) { font-size: 13px; }
 
   &:hover {
     border-color: var(--teal-border);
@@ -1542,62 +1547,57 @@ function readErrorMessage(error: unknown, fallback: string): string {
 /* Steps */
 .ws-step {
   display: flex;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 10px;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
   background: #f8fafc;
   border: 1px solid #f1f5f9;
-  transition: all 0.2s ease;
-
-  &:hover {
-    background: #f1f5f9;
-    border-color: #e2e8f0;
-  }
 }
 
 .ws-step__num {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: linear-gradient(135deg, #2dd4bf, var(--teal));
   color: #fff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   flex-shrink: 0;
 }
 
 .ws-step strong {
   display: block;
-  margin-bottom: 2px;
-  font-size: 13px;
+  margin-bottom: 1px;
+  font-size: 12px;
   color: var(--ink);
+  line-height: 1.3;
 }
 
 .ws-step p {
   margin: 0;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
 /* Health */
 .ws-health {
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 10px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
   overflow: hidden;
 
   summary {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 12px 16px;
+    gap: 6px;
+    padding: 8px 12px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--muted);
     transition: color 0.2s;
@@ -1653,7 +1653,7 @@ function readErrorMessage(error: unknown, fallback: string): string {
 }
 
 .ws-card__bar {
-  height: 3px;
+  height: 2px;
   background: linear-gradient(90deg, var(--teal), #2dd4bf, #99f6e4);
   background-size: 200% 100%;
   animation: ws-shimmer 4s linear infinite;
@@ -1669,18 +1669,18 @@ function readErrorMessage(error: unknown, fallback: string): string {
 .ws-card__head {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 18px 20px 0;
+  gap: 10px;
+  padding: 10px 16px 0;
 }
 
 .ws-card__head-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 15px;
   color: #fff;
   flex-shrink: 0;
   transition: transform 0.3s ease;
@@ -1720,14 +1720,14 @@ function readErrorMessage(error: unknown, fallback: string): string {
   min-width: 0;
 
   strong {
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 700;
     color: var(--ink);
   }
 
   p {
-    margin: 2px 0 0;
-    font-size: 13px;
+    margin: 1px 0 0;
+    font-size: 12px;
     color: var(--muted);
   }
 }
@@ -1735,8 +1735,8 @@ function readErrorMessage(error: unknown, fallback: string): string {
 .ws-card__actions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px 20px 20px;
+  gap: 6px;
+  padding: 10px 16px 12px;
 }
 
 /* Large Buttons */
@@ -1744,21 +1744,21 @@ function readErrorMessage(error: unknown, fallback: string): string {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
-  height: 48px;
-  padding: 0 20px;
+  height: 38px;
+  padding: 0 16px;
   border: none;
-  border-radius: 12px;
+  border-radius: 10px;
   background: linear-gradient(135deg, var(--teal), #0f766e);
   color: #fff;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 3px 12px rgba(13, 148, 136, 0.25);
+  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.2);
   transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 
-  :deep(.app-icon) { font-size: 18px; }
+  :deep(.app-icon) { font-size: 15px; }
 
   &:hover:not(:disabled) {
     transform: translateY(-2px);
@@ -1784,13 +1784,13 @@ function readErrorMessage(error: unknown, fallback: string): string {
 
 /* ===== Fields ===== */
 .ws-field {
-  padding: 16px 20px 0;
+  padding: 8px 16px 0;
 }
 
 .ws-field label {
   display: block;
-  margin-bottom: 8px;
-  font-size: 13px;
+  margin-bottom: 4px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--ink);
 }
@@ -1798,7 +1798,7 @@ function readErrorMessage(error: unknown, fallback: string): string {
 .ws-field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 10px;
 }
 
 .ws-input-row {
@@ -1809,13 +1809,13 @@ function readErrorMessage(error: unknown, fallback: string): string {
 .ws-input {
   flex: 1;
   min-width: 0;
-  height: 42px;
-  padding: 0 14px;
+  height: 34px;
+  padding: 0 10px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: #f8fafc;
   color: var(--ink);
-  font-size: 13px;
+  font-size: 12px;
   transition: all 0.25s ease;
 
   &::placeholder {
@@ -1837,19 +1837,19 @@ function readErrorMessage(error: unknown, fallback: string): string {
 .ws-note {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: 8px;
+  padding: 8px 10px;
   border: 1px solid #ccfbf1;
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--teal-soft);
   color: #0f766e;
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 11px;
+  line-height: 1.5;
 
   :deep(.app-icon) {
-    font-size: 16px;
+    font-size: 13px;
     flex-shrink: 0;
-    margin-top: 2px;
+    margin-top: 1px;
     color: var(--teal);
   }
 }
@@ -1861,10 +1861,10 @@ function readErrorMessage(error: unknown, fallback: string): string {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 150px;
-  padding: 24px;
+  min-height: 90px;
+  padding: 14px;
   border: 2px dashed #cbd5e1;
-  border-radius: 14px;
+  border-radius: 10px;
   background: linear-gradient(135deg, #fafcff, #f8fafc);
   cursor: pointer;
   transition: all 0.3s ease;
@@ -1894,27 +1894,27 @@ function readErrorMessage(error: unknown, fallback: string): string {
 }
 
 .ws-dropzone strong {
-  margin-top: 12px;
-  font-size: 14px;
+  margin-top: 6px;
+  font-size: 12px;
   color: #334155;
 }
 
 .ws-dropzone small {
-  margin-top: 4px;
-  font-size: 12px;
+  margin-top: 2px;
+  font-size: 11px;
   color: #94a3b8;
 }
 
 .ws-dropzone__icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   background: linear-gradient(135deg, #2dd4bf, var(--teal));
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 18px;
   transition: transform 0.3s ease;
 
   .ws-dropzone:hover & {
@@ -1981,10 +1981,10 @@ function readErrorMessage(error: unknown, fallback: string): string {
 
 /* ===== Status ===== */
 .ws-status-text {
-  padding: 4px 20px 20px;
-  font-size: 14px;
+  padding: 2px 16px 10px;
+  font-size: 12px;
   color: var(--muted);
-  line-height: 1.7;
+  line-height: 1.5;
   white-space: pre-wrap;
 }
 
@@ -1999,8 +1999,8 @@ function readErrorMessage(error: unknown, fallback: string): string {
 .ws-result-downloads {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  padding: 0 20px 20px;
+  gap: 8px;
+  padding: 0 16px 12px;
 }
 
 /* ===== Raw Response ===== */
