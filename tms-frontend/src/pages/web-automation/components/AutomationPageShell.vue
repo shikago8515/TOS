@@ -474,13 +474,8 @@ function openEntry(path: string): void {
   gap: 10px;
 }
 
-.ap-shell--sap .ap-cards,
-.ap-shell:not(.ap-shell--sap):not(.ap-shell--infornexus) .ap-cards {
+.ap-cards {
   grid-template-columns: repeat(3, 1fr);
-}
-
-.ap-shell--infornexus .ap-cards {
-  grid-template-columns: repeat(2, 1fr);
 }
 
 /* ----- Card ----- */
@@ -790,8 +785,7 @@ function openEntry(path: string): void {
 
 /* ===== Responsive ===== */
 @media (max-width: 1100px) {
-  .ap-shell--sap .ap-cards,
-  .ap-shell:not(.ap-shell--sap):not(.ap-shell--infornexus) .ap-cards {
+  .ap-cards {
     grid-template-columns: repeat(2, 1fr);
   }
 }
@@ -807,9 +801,7 @@ function openEntry(path: string): void {
   .ap-hero__tools { width: 100%; }
   .ap-search { min-width: 0; flex: 1; }
 
-  .ap-shell--sap .ap-cards,
-  .ap-shell--infornexus .ap-cards,
-  .ap-shell:not(.ap-shell--sap):not(.ap-shell--infornexus) .ap-cards {
+  .ap-cards {
     grid-template-columns: 1fr;
   }
 }
