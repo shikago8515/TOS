@@ -8,8 +8,8 @@
   "slowMo": 120,
   "navigationTimeoutMs": 45000,
   "postLoginWaitMs": 1200,
-  "keepBrowserOpenOnSuccessMs": 120000,
-  "keepBrowserOpenOnErrorMs": 120000,
+  "keepBrowserOpenOnSuccessMs": 2000,
+  "keepBrowserOpenOnErrorMs": 2000,
   "launchOptions": {
     "channel": "msedge",
     "args": []

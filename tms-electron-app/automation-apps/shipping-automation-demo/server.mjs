@@ -186,8 +186,8 @@ async function loadConfig() {
     slowMo: Number(merged.slowMo ?? 120),
     navigationTimeoutMs: Number(merged.navigationTimeoutMs ?? 45000),
     postLoginWaitMs: Number(merged.postLoginWaitMs ?? 1200),
-    keepBrowserOpenOnSuccessMs: Number(merged.keepBrowserOpenOnSuccessMs ?? 120000),
-    keepBrowserOpenOnErrorMs: Number(merged.keepBrowserOpenOnErrorMs ?? 120000),
+    keepBrowserOpenOnSuccessMs: Number(merged.keepBrowserOpenOnSuccessMs ?? 2000),
+    keepBrowserOpenOnErrorMs: Number(merged.keepBrowserOpenOnErrorMs ?? 2000),
     launchOptions: merged.launchOptions && typeof merged.launchOptions === "object"
       ? merged.launchOptions
       : {},
@@ -294,10 +294,11 @@ async function runShippingWorkflow(credentials, runContext) {
         const poRow = poRows[index];
         const nextPoRow = poRows[index + 1] || null;
         try {
-          await processShipmentPoRow(page, poRow);
+          const shipmentResult = await processShipmentPoRow(page, poRow);
           poResults.push({
             ...poRow,
             ok: true,
+            changeEquipmentApplyStatus: String(shipmentResult?.status || "applied"),
           });
           if (nextPoRow && !hasPageLifecycleEnded(page, lifecycle)) {
             await prepareForNextShipmentPoIteration(page, poRow.poNo, nextPoRow.poNo);
@@ -780,12 +781,14 @@ async function processShipmentPoRow(page, poRow) {
   await selectShipmentGridRows(page, poRow.poNo);
   const dialog = await openChangeEquipmentIdDialog(page, poRow.poNo);
   await fillChangeEquipmentIdDialog(dialog, normalizedChangeEquipmentId);
-  await applyChangeEquipmentIdDialog(page, dialog, poRow.poNo);
+  const applyResult = await applyChangeEquipmentIdDialog(page, dialog, poRow.poNo);
   await waitForShipmentWorkspaceReadyAfterApply(page, poRow.poNo);
   log("Completed shipment PO row.", {
     poNo: String(poRow?.poNo || "").trim(),
     changeEquipmentId: normalizedChangeEquipmentId,
+    applyStatus: String(applyResult?.status || "applied"),
   });
+  return applyResult;
 }
 
 async function confirmShipmentScanFilters(page, poNo) {
@@ -1091,8 +1094,8 @@ async function applyChangeEquipmentIdDialog(page, dialog, poNo) {
     const errorText = await getVisibleDialogErrorText(page);
     if (errorText) {
       if (isRecoverableChangeEquipmentIdConflictText(errorText)) {
-        const failureMessage = await recoverFromRecoverableChangeEquipmentIdError(page, dialog, poNo, errorText);
-        throw new Error(failureMessage);
+        const recoveryResult = await recoverFromRecoverableChangeEquipmentIdError(page, dialog, poNo, errorText);
+        return recoveryResult;
       }
 
       await dismissVisibleMessageDialog(page);
@@ -1108,7 +1111,9 @@ async function applyChangeEquipmentIdDialog(page, dialog, poNo) {
         poNo,
         sawProcessing,
       });
-      return;
+      return {
+        status: "applied",
+      };
     }
 
     await page.waitForTimeout(250);
@@ -2205,19 +2210,14 @@ async function recoverFromRecoverableChangeEquipmentIdError(page, dialog, poNo, 
   await page.waitForTimeout(250).catch(() => {});
   await closeDialogWithCloseTool(dialog, "Change Equipment ID").catch(() => false);
 
-  const failureDetails = [];
-  if (sawShadow) {
-    failureDetails.push("x-shadow modal detected");
-  }
-  failureDetails.push(errorText);
-
-  const failureMessage = `PO No ${poNo}: ${failureDetails.join(". ")}`;
-  log("Recovered from Change Equipment ID conflict and moved to next PO.", {
+  log("Recovered from Change Equipment ID conflict and treated row as already applied.", {
     poNo,
     sawShadow,
     errorText,
   });
-  return failureMessage;
+  return {
+    status: "already-applied",
+  };
 }
 
 async function dismissVisibleMessageDialog(page) {
@@ -2508,6 +2508,7 @@ function buildPoResultWorkbookRows(result, poRows) {
       poNo: row.poNo,
       changeEquipmentId: row.changeEquipmentId || "",
       ok: Boolean(resultRow?.ok),
+      changeEquipmentApplyStatus: String(resultRow?.changeEquipmentApplyStatus || ""),
       failedStep: resultRow?.ok ? "" : classifyPoFailureStep(failureReason),
       failureReason,
       ...(row.originalRow && typeof row.originalRow === "object" ? row.originalRow : {}),
