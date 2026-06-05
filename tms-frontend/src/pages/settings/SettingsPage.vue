@@ -220,7 +220,7 @@ let unsubscribeUpdateStatus: (() => void) | undefined
 const { currentLanguage, languageOptions, t, text } = useAppLanguage()
 const langOpen = ref(false)
 const currentLangLabel = computed(() => languageOptions.value.find(o => o.value === currentLanguage.value)?.label ?? currentLanguage.value)
-function selectLang(val: string) { currentLanguage.value = val; langOpen.value = false }
+function selectLang(val: 'zh-CN' | 'en-US') { currentLanguage.value = val; langOpen.value = false }
 function closeLang() { langOpen.value = false }
 
 
