@@ -144,8 +144,8 @@ const translations = {
     'en-US': 'Exportable',
   },
   'app.home.serviceAutomation': {
-    'zh-CN': '自动化试验区',
-    'en-US': 'Automation Lab',
+    'zh-CN': '浏览器自动化',
+    'en-US': 'Browser Automation',
   },
   'app.home.serviceAutomationDesc': {
     'zh-CN': '浏览器插件 / 网页自动化',
@@ -454,8 +454,8 @@ const staticTextTranslations: Record<string, string> = {
   '更新源暂未提供 changelog.json': 'The update source has not provided changelog.json',
   检查到新版本后会显示新增优化和修复内容: 'Added, improved, and fixed items will appear after a new version is found',
   '检查到新版本后会显示新增、优化和修复内容': 'Added, improved, and fixed items will appear after a new version is found',
-  '侧边栏新增收起/展开能力，Excel、自动化试验区和网页数据爬取支持分组折叠。':
-    'The sidebar now supports hide/show, and Excel, Automation Lab, and Web Data Collection support collapsible groups.',
+  '侧边栏新增收起/展开能力，Excel、浏览器自动化和网页数据爬取支持分组折叠。':
+    'The sidebar now supports hide/show, and Excel, Browser Automation, and Web Data Collection support collapsible groups.',
   'Excel 处理下新增 Jane-表格制作分组，统一收纳成品表生成和 Jane-BOM汇总。':
     'Added the Jane Table Making group under Excel Processing for Finished Goods Sheet and Jane BOM Summary.',
   '系统设置新增界面语言切换，支持中文和 English。':

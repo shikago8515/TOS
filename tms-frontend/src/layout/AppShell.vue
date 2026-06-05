@@ -323,7 +323,7 @@ function getGroupIcon(groupId: TosModuleGroup): string {
   const map: Record<TosModuleGroup, string> = {
     home: 'radar',
     excel: 'database',
-    automation: 'workflow',
+    automation: 'globe',
     testing: 'shield-check',
     collector: 'globe-search',
     settings: 'monitor-code'

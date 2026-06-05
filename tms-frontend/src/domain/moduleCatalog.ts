@@ -40,7 +40,7 @@ export interface TosNavParentDefinition {
 export const tosNavGroups = [
   { id: 'home', label: '首页', labelEn: 'Home' },
   { id: 'excel', label: 'Excel 处理', labelEn: 'Excel Processing' },
-  { id: 'automation', label: '自动化试验区', labelEn: 'Automation Lab' },
+  { id: 'automation', label: '浏览器自动化', labelEn: 'Browser Automation' },
   { id: 'testing', label: '测试', labelEn: 'Testing' },
   { id: 'collector', label: '网页数据爬取', labelEn: 'Web Data Collection' },
   { id: 'settings', label: '系统', labelEn: 'System' },
