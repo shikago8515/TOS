@@ -1,6 +1,6 @@
 <template>
   <ExcelProcessPageShell
-    title="报表合并-Sophia"
+    title="Sophia-报表合并"
     :stats="pageStats"
     :toolbar-status="toolbarStatus"
     :actions="toolbarActions"

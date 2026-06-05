@@ -2,7 +2,7 @@ import type { ProcessSummaryItem } from '../../shared/process/processHistory'
 import type { SophiaTinaProcessResponse } from './sophiaTinaApi'
 
 export const sophiaTinaModuleId = 'excel-sophia-tina'
-export const sophiaTinaModuleName = '报表合并-Sophia'
+export const sophiaTinaModuleName = 'Sophia-报表合并'
 
 export interface SophiaTinaInputCounts {
   tms: number
