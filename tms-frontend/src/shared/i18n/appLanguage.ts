@@ -104,7 +104,7 @@ const translations = {
     'en-US': 'Excel Processing',
   },
   'app.home.metricExcelDetail': {
-    'zh-CN': '对账核对-Sophia / 报表合并-Sophia / Jane-表格制作 / Eric',
+    'zh-CN': '对账核对-jessica / 报表合并-Sophia / Jane-表格制作 / Eric',
     'en-US': 'Reconciliation / Report Merge / Jane Table Making / Eric',
   },
   'app.home.metricCollector': {
@@ -164,7 +164,7 @@ const translations = {
     'en-US': 'Default Excel module entry',
   },
   'app.home.serviceFilesStatus': {
-    'zh-CN': '对账核对-Sophia',
+    'zh-CN': '对账核对-jessica',
     'en-US': 'Reconciliation',
   },
   'app.module.open': {
@@ -177,7 +177,7 @@ export type TranslationKey = keyof typeof translations
 
 const staticTextTranslations: Record<string, string> = {
   首页: 'Home',
-  '对账核对-Sophia': 'Reconciliation-Sophia',
+  '对账核对-jessica': 'Reconciliation-jessica',
   '报表合并-Sophia': 'Report Merge-Sophia',
   成品表生成: 'Finished Goods Sheet',
   'Jane-BOM汇总': 'Jane BOM Summary',
