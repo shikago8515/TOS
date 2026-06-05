@@ -1,80 +1,112 @@
 <template>
-  <section class="adidas-page">
-    <!-- Hero Banner -->
-    <div class="hero-banner">
-      <div class="hero-content">
-        <div class="hero-badge">
+  <section class="am-page">
+    <!-- ===== 1. Hero ===== -->
+    <header class="am-hero">
+      <div class="am-hero__left">
+        <div class="am-hero__badge">
           <AppIcon name="globe-search" />
           <span>{{ text('网页数据爬取') }}</span>
         </div>
-        <h2 class="hero-title">{{ text('adidas 材料数据收集器') }}</h2>
-        <p class="hero-desc">
+        <h1 class="am-hero__title">{{ text('adidas 材料数据收集器') }}</h1>
+        <p class="am-hero__desc">
           {{ text('通过外部浏览器登录后自动监听 Materials 接口，批量采集并本地落盘。') }}
         </p>
+      </div>
+      <div class="am-hero__right">
         <button
-          class="hero-action"
+          class="am-launch-btn"
           type="button"
           :disabled="launching"
           @click="openCollector"
         >
-          <AppIcon name="browser" />
-          {{ launching ? text('启动中...') : text('打开外部浏览器') }}
-          <svg v-if="!launching" class="arrow-icon" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" />
-          </svg>
+          <AppIcon :name="launching ? 'loader' : 'browser'" :class="{ 'am-spin': launching }" />
+          <span>{{ launching ? text('启动中...') : text('打开外部浏览器') }}</span>
+          <AppIcon v-if="!launching" name="arrow-right" class="am-launch-btn__arrow" />
         </button>
-      </div>
-      <div class="hero-visual">
-        <div class="hero-icon-ring">
-          <AppIcon name="globe-search" />
+        <div class="am-hero__stats">
+          <div
+            v-for="(cap, i) in capabilities"
+            :key="cap.label"
+            class="am-hero__stat"
+            :style="{ animationDelay: `${i * 60 + 100}ms` }"
+          >
+            <AppIcon :name="cap.icon" class="am-hero__stat-icon" />
+            <span class="am-hero__stat-label">{{ cap.label }}</span>
+          </div>
         </div>
       </div>
-    </div>
+    </header>
 
-    <!-- Status Alert -->
-    <transition name="alert-slide">
-      <div v-if="message" class="alert-bar" :class="`alert-bar--${messageTone}`">
-        <AppIcon :name="messageTone === 'success' ? 'check-circle' : messageTone === 'error' ? 'alert-circle' : 'activity'" />
-        <span>{{ message }}</span>
+    <!-- ===== 2. Status Alert ===== -->
+    <transition name="am-alert">
+      <div v-if="message" class="am-alert" :class="`am-alert--${messageTone}`">
+        <div class="am-alert__icon">
+          <AppIcon :name="alertIcon" />
+        </div>
+        <span class="am-alert__text">{{ message }}</span>
+        <button class="am-alert__close" type="button" @click="message = ''">×</button>
       </div>
     </transition>
 
-    <!-- Capability Cards -->
-    <div class="cap-row">
+    <!-- ===== 3. Capability Cards ===== -->
+    <div class="am-caps">
       <article
         v-for="(cap, i) in capabilities"
         :key="cap.label"
-        class="cap-card"
+        class="am-cap-card"
         :style="{ animationDelay: `${i * 80}ms` }"
       >
-        <div class="cap-icon" :class="`cap-icon--${cap.tone}`">
+        <div class="am-cap-card__shimmer" />
+        <div class="am-cap-card__icon" :class="`am-cap-card__icon--${cap.tone}`">
           <AppIcon :name="cap.icon" />
         </div>
-        <div class="cap-body">
-          <span class="cap-label">{{ cap.label }}</span>
-          <span class="cap-value">{{ cap.value }}</span>
+        <div class="am-cap-card__body">
+          <span class="am-cap-card__label">{{ cap.label }}</span>
+          <strong class="am-cap-card__value">{{ cap.value }}</strong>
+          <span class="am-cap-card__desc">{{ cap.desc }}</span>
         </div>
       </article>
     </div>
 
-    <!-- Workflow Timeline -->
-    <section class="timeline-section">
-      <div class="section-head">
+    <!-- ===== 4. Notes ===== -->
+    <section class="am-notes">
+      <div class="am-notes__head">
+        <AppIcon name="info" />
+        <h3>{{ text('操作提示') }}</h3>
+      </div>
+      <div class="am-notes__list">
+        <div
+          v-for="(note, i) in adidasMaterialsNotes"
+          :key="i"
+          class="am-note"
+          :style="{ animationDelay: `${i * 60}ms` }"
+        >
+          <div class="am-note__dot" />
+          <AppIcon :name="note.icon" class="am-note__icon" />
+          <p class="am-note__text">{{ note.text }}</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 5. Workflow Timeline ===== -->
+    <section class="am-timeline-section">
+      <div class="am-section-head">
         <AppIcon name="workflow" />
         <h3>{{ text('运行流程') }}</h3>
       </div>
-      <div class="timeline">
+      <div class="am-timeline">
         <article
           v-for="(step, i) in adidasMaterialsWorkflowSteps"
           :key="step.index"
-          class="timeline-node"
-          :style="{ animationDelay: `${i * 100 + 200}ms` }"
+          class="am-step"
+          :style="{ animationDelay: `${i * 120 + 200}ms` }"
         >
-          <div class="node-dot">
+          <div class="am-step__dot">
             <span>{{ step.index }}</span>
+            <div class="am-step__pulse" />
           </div>
-          <div v-if="i < adidasMaterialsWorkflowSteps.length - 1" class="node-line" />
-          <p class="node-text">{{ step.text }}</p>
+          <div v-if="i < adidasMaterialsWorkflowSteps.length - 1" class="am-step__line" />
+          <p class="am-step__text">{{ step.text }}</p>
         </article>
       </div>
     </section>
@@ -82,11 +114,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import {
+  adidasMaterialsCapabilities,
+  adidasMaterialsNotes,
   adidasMaterialsWorkflowSteps,
   readLaunchSuccessMessage,
   type AdidasMaterialsNoticeTone,
@@ -101,26 +135,23 @@ const message = ref('')
 const messageTone = ref<AdidasMaterialsNoticeTone>('info')
 const { text } = useAppLanguage()
 
-const capabilities = [
-  {
-    icon: 'browser',
-    label: '采集方式',
-    value: '外部浏览器登录后监听接口响应',
-    tone: 'teal',
-  },
-  {
-    icon: 'database',
-    label: '保存策略',
-    value: '每 2000 条自动保存 JSON + CSV',
-    tone: 'blue',
-  },
-  {
-    icon: 'shield-check',
-    label: '恢复能力',
-    value: '本地去重 ID + 待保存批次缓存',
-    tone: 'green',
-  },
-]
+const capabilities = computed(() =>
+  adidasMaterialsCapabilities.map((cap, i) => ({
+    ...cap,
+    icon: ['browser', 'database', 'shield-check'][i],
+    tone: ['teal', 'blue', 'green'][i],
+  })),
+)
+
+const alertIcon = computed(() => {
+  const map: Record<AdidasMaterialsNoticeTone, string> = {
+    info: 'activity',
+    success: 'check-circle',
+    warning: 'alert-circle',
+    error: 'alert-circle',
+  }
+  return map[messageTone.value]
+})
 
 async function openCollector(): Promise<void> {
   launching.value = true
@@ -153,54 +184,68 @@ function readErrorMessage(error: unknown, fallback: string): string {
 </script>
 
 <style scoped lang="scss">
-.adidas-page {
+/* ================================================================
+   adidas Materials Collector — Premium Redesign
+   Palette: teal #0d9488, green #059669, blue #3b82f6, orange #d97706
+   No purple.
+   ================================================================ */
+
+.am-page {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 18px;
+  gap: 16px;
+  padding: 20px 22px;
   min-height: 100%;
-  background: #f8fafc;
+  background:
+    radial-gradient(ellipse 55% 35% at 50% 0%, rgba(13, 148, 136, 0.05), transparent 55%),
+    radial-gradient(ellipse 40% 30% at 85% 85%, rgba(59, 130, 246, 0.04), transparent 50%),
+    #f6f9fc;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
 }
 
-/* ===== Hero ===== */
-.hero-banner {
+/* ===== 1. Hero ===== */
+.am-hero {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 32px;
-  padding: 32px 36px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  animation: slideUp 0.5s ease-out both;
-  overflow: hidden;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 28px;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(226, 232, 240, 0.7);
+  border-radius: 18px;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.02),
+    0 8px 24px rgba(0, 0, 0, 0.03);
+  animation: am-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
   position: relative;
+  overflow: hidden;
 }
 
-.hero-banner::before {
+.am-hero::before {
   content: '';
   position: absolute;
-  top: -60%;
-  right: -10%;
-  width: 300px;
-  height: 300px;
+  top: -40%;
+  right: -5%;
+  width: 260px;
+  height: 260px;
   background: radial-gradient(circle, rgba(13, 148, 136, 0.06) 0%, transparent 70%);
   pointer-events: none;
 }
 
-.hero-content {
+.am-hero__left {
   flex: 1;
   min-width: 0;
   z-index: 1;
 }
 
-.hero-badge {
+.am-hero__badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 5px 12px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   background: #f0fdfa;
   color: #0d9488;
   font-size: 12px;
@@ -214,45 +259,55 @@ function readErrorMessage(error: unknown, fallback: string): string {
   }
 }
 
-.hero-title {
-  margin: 0 0 8px;
-  font-size: 24px;
+.am-hero__title {
+  margin: 0 0 6px;
+  font-size: 22px;
   font-weight: 800;
   color: #0f172a;
   letter-spacing: -0.3px;
+  line-height: 1.3;
 }
 
-.hero-desc {
-  margin: 0 0 20px;
+.am-hero__desc {
+  margin: 0;
   color: #64748b;
-  font-size: 14px;
-  line-height: 1.7;
-  max-width: 540px;
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 480px;
 }
 
-.hero-action {
+.am-hero__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 14px;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+/* Launch Button */
+.am-launch-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 0 24px;
-  height: 44px;
-  color: #ffffff;
+  padding: 0 22px;
+  height: 42px;
+  color: #fff;
   font-size: 14px;
   font-weight: 700;
   background: linear-gradient(135deg, #0d9488, #0f766e);
-  border: 1px solid #0f766e;
-  border-radius: 10px;
+  border: none;
+  border-radius: 12px;
   cursor: pointer;
-  box-shadow: 0 2px 10px rgba(13, 148, 136, 0.3);
-  transition: all 0.25s ease;
+  box-shadow: 0 3px 12px rgba(13, 148, 136, 0.3);
+  transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 
   :deep(.app-icon) {
-    font-size: 18px;
+    font-size: 17px;
   }
 
-  .arrow-icon {
-    width: 16px;
-    height: 16px;
+  &__arrow {
+    font-size: 14px;
     transition: transform 0.25s ease;
   }
 
@@ -260,7 +315,7 @@ function readErrorMessage(error: unknown, fallback: string): string {
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(13, 148, 136, 0.35);
 
-    .arrow-icon {
+    .am-launch-btn__arrow {
       transform: translateX(3px);
     }
   }
@@ -276,150 +331,332 @@ function readErrorMessage(error: unknown, fallback: string): string {
   }
 }
 
-.hero-visual {
-  flex-shrink: 0;
-  z-index: 1;
+.am-spin {
+  animation: am-spin 1s linear infinite;
 }
 
-.hero-icon-ring {
-  width: 80px;
-  height: 80px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, #0d9488, #0f766e);
+/* Hero Stats */
+.am-hero__stats {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #ffffff;
-  font-size: 36px;
-  box-shadow: 0 8px 24px rgba(13, 148, 136, 0.25);
-  animation: float 4s ease-in-out infinite;
+  gap: 8px;
 }
 
-/* ===== Alert ===== */
-.alert-bar {
+.am-hero__stat {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 18px;
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 500;
-  animation: slideUp 0.35s ease-out both;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  animation: am-scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition: all 0.25s ease;
 
-  :deep(.app-icon) {
-    font-size: 18px;
-    flex-shrink: 0;
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
   }
 }
 
-.alert-bar--info {
+.am-hero__stat-icon {
+  font-size: 14px;
+  color: #0d9488;
+}
+
+.am-hero__stat-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+/* ===== 2. Alert ===== */
+.am-alert {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid;
+}
+
+.am-alert__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.am-alert__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.am-alert__close {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  opacity: 0.6;
+  transition: all 0.2s;
+  flex-shrink: 0;
+
+  &:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.06);
+  }
+}
+
+.am-alert--info {
   background: #f0fdfa;
   color: #0f766e;
-  border: 1px solid #ccfbf1;
+  border-color: #ccfbf1;
+
+  .am-alert__icon { background: linear-gradient(135deg, #2dd4bf, #0d9488); }
 }
 
-.alert-bar--success {
+.am-alert--success {
   background: #f0fdf4;
   color: #15803d;
-  border: 1px solid #bbf7d0;
+  border-color: #bbf7d0;
+
+  .am-alert__icon { background: linear-gradient(135deg, #34d399, #059669); }
 }
 
-.alert-bar--warning {
+.am-alert--warning {
   background: #fffbeb;
   color: #b45309;
-  border: 1px solid #fde68a;
+  border-color: #fde68a;
+
+  .am-alert__icon { background: linear-gradient(135deg, #fbbf24, #d97706); }
 }
 
-.alert-bar--error {
+.am-alert--error {
   background: #fef2f2;
   color: #b91c1c;
-  border: 1px solid #fecaca;
+  border-color: #fecaca;
+
+  .am-alert__icon { background: linear-gradient(135deg, #f87171, #dc2626); }
 }
 
-.alert-slide-enter-active { transition: all 0.35s ease; }
-.alert-slide-leave-active { transition: all 0.25s ease; }
-.alert-slide-enter-from { opacity: 0; transform: translateY(-8px); }
-.alert-slide-leave-to { opacity: 0; transform: translateY(-8px); }
+.am-alert-enter-active { transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.am-alert-leave-active { transition: all 0.3s ease-in; }
+.am-alert-enter-from { opacity: 0; transform: translateX(30px); }
+.am-alert-leave-to { opacity: 0; transform: translateX(20px); }
 
-/* ===== Capability Cards ===== */
-.cap-row {
+/* ===== 3. Capability Cards ===== */
+.am-caps {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 14px;
 }
 
-.cap-card {
+.am-cap-card {
   display: flex;
   align-items: flex-start;
   gap: 14px;
   padding: 20px;
-  background: #ffffff;
+  background: #fff;
   border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  transition: all 0.25s ease;
-  animation: fadeScale 0.45s ease-out both;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: am-fadeScale 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  position: relative;
+  overflow: hidden;
 
   &:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+    transform: translateY(-4px);
+    box-shadow:
+      0 6px 16px rgba(0, 0, 0, 0.04),
+      0 12px 32px rgba(0, 0, 0, 0.03);
     border-color: #99f6e4;
+
+    .am-cap-card__icon {
+      transform: scale(1.08) rotate(-3deg);
+    }
+
+    .am-cap-card__shimmer {
+      opacity: 1;
+    }
   }
 }
 
-.cap-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
+.am-cap-card__shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #0d9488, #14b8a6, #2dd4bf, #0d9488);
+  background-size: 200% 100%;
+  animation: am-shimmer 3s linear infinite;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.am-cap-card__icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #ffffff;
-  font-size: 20px;
+  color: #fff;
+  font-size: 22px;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 
-  &--teal { background: linear-gradient(135deg, #2dd4bf, #0d9488); }
-  &--blue { background: linear-gradient(135deg, #60a5fa, #2563eb); }
-  &--green { background: linear-gradient(135deg, #34d399, #059669); }
+  &--teal {
+    background: linear-gradient(135deg, #2dd4bf, #0d9488);
+    box-shadow: 0 4px 12px rgba(13, 148, 136, 0.25);
+  }
+
+  &--blue {
+    background: linear-gradient(135deg, #60a5fa, #2563eb);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+  }
+
+  &--green {
+    background: linear-gradient(135deg, #34d399, #059669);
+    box-shadow: 0 4px 12px rgba(5, 150, 105, 0.2);
+  }
 }
 
-.cap-body {
+.am-cap-card__body {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
 }
 
-.cap-label {
-  color: #64748b;
-  font-size: 12px;
+.am-cap-card__label {
+  color: #94a3b8;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
 
-.cap-value {
-  color: #1e293b;
-  font-size: 14px;
-  font-weight: 600;
+.am-cap-card__value {
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.am-cap-card__desc {
+  color: #64748b;
+  font-size: 13px;
   line-height: 1.5;
+  margin-top: 2px;
 }
 
-/* ===== Timeline ===== */
-.timeline-section {
-  padding: 24px 28px;
-  background: #ffffff;
+/* ===== 4. Notes ===== */
+.am-notes {
+  padding: 20px 24px;
+  background: #fff;
   border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  animation: slideUp 0.5s ease-out 0.15s both;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  animation: am-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
 }
 
-.section-head {
+.am-notes__head {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
+  color: #0f172a;
+
+  :deep(.app-icon) {
+    font-size: 18px;
+    color: #0d9488;
+  }
+
+  h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+  }
+}
+
+.am-notes__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.am-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #f1f5f9;
+  transition: all 0.25s ease;
+  animation: am-slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+
+  &:hover {
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+    transform: translateX(4px);
+  }
+}
+
+.am-note__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2dd4bf, #0d9488);
+  flex-shrink: 0;
+  margin-top: 7px;
+}
+
+.am-note__icon {
+  font-size: 16px;
+  color: #0d9488;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.am-note__text {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ===== 5. Timeline ===== */
+.am-timeline-section {
+  padding: 24px 28px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  animation: am-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+}
+
+.am-section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 22px;
   color: #0f172a;
 
   :deep(.app-icon) {
@@ -434,94 +671,148 @@ function readErrorMessage(error: unknown, fallback: string): string {
   }
 }
 
-.timeline {
+.am-timeline {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 0;
   position: relative;
 }
 
-.timeline-node {
+.am-step {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   position: relative;
   padding: 0 8px;
-  animation: fadeScale 0.4s ease-out both;
+  animation: am-scaleIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
-.node-dot {
-  width: 36px;
-  height: 36px;
+.am-step__dot {
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: linear-gradient(135deg, #0d9488, #0f766e);
-  color: #ffffff;
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   flex-shrink: 0;
   z-index: 2;
-  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.2);
-  transition: all 0.25s ease;
+  box-shadow: 0 3px 10px rgba(13, 148, 136, 0.25);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
 
-  .timeline-node:hover & {
+  .am-step:hover & {
     transform: scale(1.15);
-    box-shadow: 0 4px 14px rgba(13, 148, 136, 0.35);
+    box-shadow: 0 6px 18px rgba(13, 148, 136, 0.35);
   }
 }
 
-.node-line {
+.am-step__pulse {
   position: absolute;
-  top: 18px;
-  left: calc(50% + 22px);
-  right: calc(-50% + 22px);
-  height: 2px;
-  background: linear-gradient(90deg, #0d9488, #99f6e4);
-  z-index: 1;
-  opacity: 0.4;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid rgba(13, 148, 136, 0.3);
+  animation: am-pulse 2.5s ease-out infinite;
+  pointer-events: none;
 }
 
-.node-text {
-  margin: 12px 0 0;
+.am-step__line {
+  position: absolute;
+  top: 20px;
+  left: calc(50% + 24px);
+  right: calc(-50% + 24px);
+  height: 3px;
+  background: linear-gradient(90deg, #0d9488, #99f6e4);
+  z-index: 1;
+  border-radius: 2px;
+  opacity: 0.5;
+}
+
+.am-step__text {
+  margin: 14px 0 0;
   color: #475569;
   font-size: 13px;
   line-height: 1.6;
-  max-width: 200px;
+  max-width: 180px;
 }
 
 /* ===== Animations ===== */
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes am-slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes fadeScale {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
+@keyframes am-fadeScale {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
-@keyframes float {
+@keyframes am-scaleIn {
+  from { opacity: 0; transform: scale(0); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes am-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes am-float {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
+  50%      { transform: translateY(-6px); }
+}
+
+@keyframes am-pulse {
+  0%   { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+@keyframes am-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 
 /* ===== Responsive ===== */
 @media (max-width: 1100px) {
-  .cap-row { grid-template-columns: repeat(2, 1fr); }
-  .timeline { grid-template-columns: repeat(3, 1fr); gap: 16px; }
-  .node-line { display: none; }
+  .am-caps { grid-template-columns: repeat(2, 1fr); }
+  .am-timeline { grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .am-step__line { display: none; }
 }
 
 @media (max-width: 760px) {
-  .hero-banner { flex-direction: column; text-align: center; padding: 24px 20px; }
-  .hero-desc { max-width: 100%; }
-  .hero-visual { display: none; }
-  .cap-row { grid-template-columns: 1fr; }
-  .timeline { grid-template-columns: 1fr; gap: 16px; }
-  .timeline-node { flex-direction: row; text-align: left; gap: 12px; }
-  .node-text { margin: 0; max-width: none; }
+  .am-page { padding: 14px; }
+
+  .am-hero {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 20px;
+  }
+
+  .am-hero__right {
+    align-items: stretch;
+  }
+
+  .am-hero__stats {
+    justify-content: center;
+  }
+
+  .am-launch-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .am-caps { grid-template-columns: 1fr; }
+
+  .am-timeline { grid-template-columns: 1fr; gap: 14px; }
+  .am-step {
+    flex-direction: row;
+    text-align: left;
+    gap: 14px;
+  }
+  .am-step__text { margin: 0; max-width: none; }
 }
 </style>
