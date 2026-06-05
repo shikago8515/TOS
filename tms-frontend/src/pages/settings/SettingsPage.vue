@@ -16,18 +16,26 @@
           <span class="st-status-dot" />
           {{ statusLabel }}
         </span>
-        <label class="st-lang-switch">
+        <div class="st-lang-switch" @click.stop="langOpen = !langOpen">
           <AppIcon name="globe-search" />
-          <select v-model="currentLanguage">
-            <option
-              v-for="option in languageOptions"
-              :key="option.value"
-              :value="option.value"
-            >
-              {{ option.label }}
-            </option>
-          </select>
-        </label>
+          <span class="st-lang-switch__label">{{ currentLangLabel }}</span>
+          <AppIcon name="chevron-down" class="st-lang-switch__arrow" :class="{ 'st-lang-switch__arrow--open': langOpen }" />
+          <transition name="st-dropdown">
+            <div v-if="langOpen" class="st-lang-dropdown">
+              <button
+                v-for="option in languageOptions"
+                :key="option.value"
+                class="st-lang-option"
+                :class="{ 'st-lang-option--active': currentLanguage === option.value }"
+                type="button"
+                @click.stop="selectLang(option.value)"
+              >
+                <span>{{ option.label }}</span>
+                <AppIcon v-if="currentLanguage === option.value" name="check-circle" class="st-lang-option__check" />
+              </button>
+            </div>
+          </transition>
+        </div>
       </div>
     </header>
 
@@ -210,6 +218,11 @@ const message = ref('')
 const messageTone = ref<NoticeTone>('info')
 let unsubscribeUpdateStatus: (() => void) | undefined
 const { currentLanguage, languageOptions, t, text } = useAppLanguage()
+const langOpen = ref(false)
+const currentLangLabel = computed(() => languageOptions.find(o => o.value === currentLanguage.value)?.label ?? currentLanguage.value)
+function selectLang(val: string) { currentLanguage.value = val; langOpen.value = false }
+function closeLang() { langOpen.value = false }
+
 
 const statusLabels: Record<UpdateStatusCode, string> = {
   idle: '待检查',
@@ -359,10 +372,12 @@ onMounted(() => {
     status.value = nextStatus
   })
   void loadSettings()
+  document.addEventListener('click', closeLang)
 })
 
 onBeforeUnmount(() => {
   unsubscribeUpdateStatus?.()
+  document.removeEventListener('click', closeLang)
 })
 
 async function loadSettings(): Promise<void> {
@@ -689,41 +704,114 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
 
 /* Language Switch */
 .st-lang-switch {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #64748b;
+  height: 38px;
+  padding: 0 14px;
+  color: #1e293b;
   font-size: 13px;
+  font-weight: 600;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   cursor: pointer;
+  transition: all 0.25s ease;
+  user-select: none;
 
-  :deep(.app-icon) {
-    font-size: 16px;
-    color: #94a3b8;
+  > :deep(.app-icon) {
+    font-size: 15px;
+    color: #0d9488;
+    flex-shrink: 0;
   }
 
-  select {
-    height: 36px;
-    min-width: 110px;
-    padding: 0 28px 0 10px;
-    color: #1e293b;
-    font: inherit;
-    font-weight: 600;
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: all 0.25s ease;
-
-    &:hover {
-      border-color: #99f6e4;
-    }
-
-    &:focus {
-      outline: none;
-      border-color: #0d9488;
-      box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.08);
-    }
+  &:hover {
+    border-color: #99f6e4;
+    box-shadow: 0 2px 8px rgba(13, 148, 136, 0.08);
   }
+}
+
+.st-lang-switch__label {
+  min-width: 48px;
+}
+
+.st-lang-switch__arrow {
+  font-size: 14px;
+  color: #94a3b8;
+  transition: transform 0.25s ease;
+  flex-shrink: 0;
+
+  &--open {
+    transform: rotate(180deg);
+  }
+}
+
+/* Dropdown */
+.st-lang-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 140px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.08),
+    0 1px 4px rgba(0, 0, 0, 0.04);
+  padding: 4px;
+  z-index: 50;
+  overflow: hidden;
+}
+
+.st-lang-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #f0fdfa;
+    color: #0d9488;
+  }
+
+  &--active {
+    background: #f0fdfa;
+    color: #0d9488;
+  }
+}
+
+.st-lang-option__check {
+  font-size: 15px;
+  color: #0d9488;
+  flex-shrink: 0;
+}
+
+/* Dropdown animation */
+.st-dropdown-enter-active {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.st-dropdown-leave-active {
+  transition: all 0.15s ease-in;
+}
+.st-dropdown-enter-from {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+}
+.st-dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
 }
 
 /* ===== Version Grid ===== */
