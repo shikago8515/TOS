@@ -332,7 +332,11 @@ function getGroupIcon(groupId: TosModuleGroup): string {
 }
 
 async function exportDiagnostics(): Promise<void> {
-  await window.electronAPI?.exportDiagnosticsPackage()
+  if (!window.electronAPI) {
+    alert('导出诊断包功能需要在桌面客户端中使用，当前浏览器预览环境不支持。')
+    return
+  }
+  await window.electronAPI.exportDiagnosticsPackage()
 }
 
 const handleResize = () => {
