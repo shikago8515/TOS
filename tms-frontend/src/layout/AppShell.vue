@@ -415,7 +415,7 @@ watch(
 
 <style scoped>
 .app-layout {
-  --sidebar-width: 268px;
+  --sidebar-width: 232px;
   --topbar-height: 68px;
   height: 100vh;
   width: 100%;
