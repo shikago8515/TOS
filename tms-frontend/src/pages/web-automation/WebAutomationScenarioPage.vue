@@ -1,53 +1,79 @@
 <template>
   <section class="ws-page">
+    <!-- Top Bar -->
     <div class="ws-top">
       <button class="ws-back" type="button" @click="goBack">
         <AppIcon name="arrow-left" />
         <span>{{ text('返回') }}</span>
       </button>
-      <span v-if="entry" class="ws-badge ws-badge--scene">{{ text('自动化场景') }}</span>
+      <span v-if="entry" class="ws-badge ws-badge--scene">
+        <AppIcon name="bot" />
+        {{ text('自动化场景') }}
+      </span>
     </div>
 
-    <div class="ws-hero">
+    <!-- Hero -->
+    <header class="ws-hero">
       <div class="ws-hero__icon">
         <AppIcon name="bot" />
       </div>
       <div class="ws-hero__text">
-        <h2>{{ entry?.title || text('未找到入口') }}</h2>
+        <h1>{{ entry?.title || text('未找到入口') }}</h1>
         <p>{{ entry?.subtitle || text('当前入口不存在，请返回列表重新选择。') }}</p>
       </div>
-    </div>
+    </header>
 
+    <!-- Alert -->
     <transition name="ws-msg">
       <div v-if="message" class="ws-alert" :class="`ws-alert--${messageTone}`">
-        <AppIcon :name="messageTone === 'success' ? 'check-circle' : messageTone === 'error' ? 'alert-circle' : 'info'" />
-        <span>{{ message }}</span>
+        <div class="ws-alert__icon">
+          <AppIcon :name="messageTone === 'success' ? 'check-circle' : messageTone === 'error' ? 'alert-circle' : 'info'" />
+        </div>
+        <span class="ws-alert__text">{{ message }}</span>
       </div>
     </transition>
 
+    <!-- Empty State -->
     <div v-if="!entry" class="ws-empty">
-      <AppIcon name="alert-circle" />
+      <div class="ws-empty__icon">
+        <AppIcon name="alert-circle" />
+      </div>
       <strong>{{ text('入口不存在') }}</strong>
       <span>{{ text('请返回网页自动化入口列表重新选择。') }}</span>
     </div>
 
     <template v-else>
+      <!-- Status Strip -->
       <div class="ws-strip">
         <div class="ws-strip__item">
-          <span class="ws-dot" :class="electronSupported ? 'is-blue' : 'is-slate'" />
-          <span class="ws-strip__label">{{ text('运行模式') }}</span>
-          <strong>{{ electronSupported ? 'Electron' : text('浏览器') }}</strong>
+          <div class="ws-strip__icon ws-strip__icon--blue">
+            <AppIcon name="monitor-code" />
+          </div>
+          <div class="ws-strip__body">
+            <span class="ws-strip__label">{{ text('运行模式') }}</span>
+            <strong>{{ electronSupported ? 'Electron' : text('浏览器') }}</strong>
+          </div>
+          <span class="ws-dot" :class="electronSupported ? 'is-green' : 'is-slate'" />
         </div>
         <div class="ws-strip__item">
+          <div class="ws-strip__icon ws-strip__icon--teal">
+            <AppIcon name="server" />
+          </div>
+          <div class="ws-strip__body">
+            <span class="ws-strip__label">{{ text('执行器') }}</span>
+            <strong>{{ executorStatusLabel }}</strong>
+          </div>
           <span class="ws-dot" :class="executorHealth?.ok ? 'is-green' : 'is-slate'" />
-          <span class="ws-strip__label">{{ text('执行器') }}</span>
-          <strong>{{ executorStatusLabel }}</strong>
         </div>
       </div>
 
+      <!-- Main Layout -->
       <div class="ws-main">
+        <!-- Left Sidebar -->
         <aside class="ws-side">
+          <!-- Executor Control -->
           <div class="ws-panel">
+            <div class="ws-panel__bar" />
             <div class="ws-panel__head">
               <AppIcon name="server" />
               <strong>{{ text('执行器控制') }}</strong>
@@ -74,96 +100,62 @@
                 :disabled="refreshing"
                 @click="refreshExecutorState(false)"
               >
-                <AppIcon name="refresh-cw" />
+                <AppIcon name="refresh-cw" :class="{ 'ws-spin': refreshing }" />
                 {{ refreshing ? text('刷新中') : text('刷新状态') }}
               </button>
             </div>
           </div>
 
+          <!-- Steps -->
           <div class="ws-panel">
+            <div class="ws-panel__bar" />
             <div class="ws-panel__head">
-              <AppIcon name="info" />
+              <AppIcon name="workflow" />
               <strong>{{ text('操作流程') }}</strong>
             </div>
             <div class="ws-steps">
               <template v-if="isShippingScenario">
-                <div class="ws-step">
-                  <span>1</span>
+                <div v-for="(step, i) in shippingSteps" :key="i" class="ws-step">
+                  <span class="ws-step__num">{{ i + 1 }}</span>
                   <div>
-                    <strong>{{ text('输入账号密码') }}</strong>
-                    <p>{{ text('使用当前页面填写 Infor Nexus 登录凭据。') }}</p>
-                  </div>
-                </div>
-                <div class="ws-step">
-                  <span>2</span>
-                  <div>
-                    <strong>{{ text('启动本地执行器') }}</strong>
-                    <p>{{ text('网页端和 EXE 都会走同一套本机启动器。') }}</p>
-                  </div>
-                </div>
-                <div class="ws-step">
-                  <span>3</span>
-                  <div>
-                    <strong>{{ text('打开 Shipment Scan') }}</strong>
-                    <p>{{ text('依次进入 Applications、Print-Scan-Ship、Shipment Scan。') }}</p>
-                  </div>
-                </div>
-                <div class="ws-step">
-                  <span>4</span>
-                  <div>
-                    <strong>{{ text('后续接入 Excel') }}</strong>
-                    <p>{{ text('这一页后续继续承接 Shipping 的上传执行链路。') }}</p>
+                    <strong>{{ text(step.title) }}</strong>
+                    <p>{{ text(step.desc) }}</p>
                   </div>
                 </div>
               </template>
               <template v-else>
-                <div class="ws-step">
-                  <span>1</span>
+                <div v-for="(step, i) in defaultSteps" :key="i" class="ws-step">
+                  <span class="ws-step__num">{{ i + 1 }}</span>
                   <div>
-                    <strong>{{ text('上传 Excel 文件') }}</strong>
-                    <p>{{ text('选择包含数据的 .xlsx 或 .xls 文件。') }}</p>
-                  </div>
-                </div>
-                <div class="ws-step">
-                  <span>2</span>
-                  <div>
-                    <strong>{{ text('本地直连执行（推荐）') }}</strong>
-                    <p>{{ text('前端直接把 Excel 发给本机执行器，不经过 n8n。') }}</p>
-                  </div>
-                </div>
-                <div class="ws-step">
-                  <span>3</span>
-                  <div>
-                    <strong>{{ text('发送至 n8n（保留）') }}</strong>
-                    <p>{{ text('如需编排、通知、审批、数据库联动，可继续走 n8n 链路。') }}</p>
-                  </div>
-                </div>
-                <div class="ws-step">
-                  <span>4</span>
-                  <div>
-                    <strong>{{ text('查看结果') }}</strong>
-                    <p>{{ text('在下方状态区查看执行结果。') }}</p>
+                    <strong>{{ text(step.title) }}</strong>
+                    <p>{{ text(step.desc) }}</p>
                   </div>
                 </div>
               </template>
             </div>
           </div>
 
+          <!-- Health Info -->
           <details class="ws-health">
             <summary>
               <AppIcon name="terminal" />
               <span>{{ text('执行器健康信息') }}</span>
-              <AppIcon name="chevron-down" class="ws-health__chevron" />
+              <AppIcon name="chevron-down" class="ws-chevron" />
             </summary>
             <pre>{{ healthRaw }}</pre>
           </details>
         </aside>
 
+        <!-- Right Stage -->
         <section class="ws-stage">
+          <!-- Shipping Scenario -->
           <div v-if="isShippingScenario" class="ws-card">
+            <div class="ws-card__bar" />
             <div class="ws-card__head">
-              <AppIcon name="play-circle" />
-              <div>
+              <div class="ws-card__head-icon ws-card__head-icon--teal">
+                <AppIcon name="play-circle" />
+              </div>
+              <div class="ws-card__head-text">
                 <strong>{{ text('登录并打开 Shipment Scan') }}</strong>
                 <p>{{ text('本机执行器会登录 Infor Nexus，并自动进入 Shipment Scan 弹窗。') }}</p>
               </div>
@@ -193,7 +185,7 @@
                     autocomplete="current-password"
                   />
                   <button class="ws-btn-sm" type="button" @click="showShippingPassword = !showShippingPassword">
-                    {{ showShippingPassword ? text('隐藏密码') : text('查看密码') }}
+                    <AppIcon :name="showShippingPassword ? 'eye' : 'eye'" />
                   </button>
                 </div>
               </div>
@@ -201,7 +193,8 @@
 
             <div class="ws-field">
               <div class="ws-note">
-                {{ text('如果当前是网页端，点击执行时会先唤起本机 launcher，再启动 Shipping 执行器。') }}
+                <AppIcon name="info" />
+                <span>{{ text('如果当前是网页端，点击执行时会先唤起本机 launcher，再启动 Shipping 执行器。') }}</span>
               </div>
             </div>
 
@@ -253,20 +246,24 @@
 
             <div class="ws-card__actions">
               <button
-                class="ws-btn-lg ws-btn-lg--primary"
+                class="ws-btn-lg"
                 :disabled="sending || !shippingUsername || !shippingPassword || !selectedFile"
                 @click="runShippingWithExcel"
               >
-                <AppIcon name="play-circle" />
+                <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'ws-spin': sending }" />
                 {{ sending ? text('执行中...') : text('上传 Excel 并执行 Shipping') }}
               </button>
             </div>
           </div>
 
+          <!-- Microsoft / Default Scenario -->
           <div v-else class="ws-card">
+            <div class="ws-card__bar" />
             <div class="ws-card__head">
-              <AppIcon name="upload" />
-              <div>
+              <div class="ws-card__head-icon ws-card__head-icon--blue">
+                <AppIcon name="upload" />
+              </div>
+              <div class="ws-card__head-text">
                 <strong>{{ text('上传文件并执行') }}</strong>
                 <p>{{ text('支持本地直连执行器和 n8n 编排两条链路。') }}</p>
               </div>
@@ -296,7 +293,7 @@
                     autocomplete="current-password"
                   />
                   <button class="ws-btn-sm" type="button" @click="showMicrosoftPassword = !showMicrosoftPassword">
-                    {{ showMicrosoftPassword ? text('隐藏密码') : text('查看密码') }}
+                    <AppIcon name="eye" />
                   </button>
                 </div>
               </div>
@@ -304,7 +301,8 @@
 
             <div v-if="isMicrosoftScenario" class="ws-field">
               <div class="ws-note">
-                {{ text('请在本页输入当前任务使用的 Microsoft 账号和密码；本地代码不预置登录凭据。') }}
+                <AppIcon name="info" />
+                <span>{{ text('请在本页输入当前任务使用的 Microsoft 账号和密码；本地代码不预置登录凭据。') }}</span>
               </div>
             </div>
 
@@ -372,11 +370,11 @@
 
             <div class="ws-card__actions">
               <button
-                class="ws-btn-lg ws-btn-lg--primary"
+                class="ws-btn-lg"
                 :disabled="!selectedFile || sending"
                 @click="sendDirectToExecutor"
               >
-                <AppIcon name="play-circle" />
+                <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'ws-spin': sending }" />
                 {{ sending ? text('执行中...') : text('本地直连执行（不经过 n8n）') }}
               </button>
               <button
@@ -390,10 +388,14 @@
             </div>
           </div>
 
-          <div class="ws-card">
+          <!-- Execution Status -->
+          <div class="ws-card ws-card--status">
+            <div class="ws-card__bar" />
             <div class="ws-card__head">
-              <AppIcon name="activity" />
-              <div>
+              <div class="ws-card__head-icon" :class="statusIconClass">
+                <AppIcon :name="statusIconName" />
+              </div>
+              <div class="ws-card__head-text">
                 <strong>{{ text('执行状态') }}</strong>
               </div>
               <span class="ws-badge" :class="statusBadgeClass">{{ statusLabel }}</span>
@@ -422,11 +424,12 @@
             </div>
           </div>
 
+          <!-- Raw Response -->
           <details v-if="lastRawResponse" class="ws-raw">
             <summary>
               <AppIcon name="code" />
               <span>{{ text('原始响应') }}</span>
-              <AppIcon name="chevron-down" class="ws-health__chevron" />
+              <AppIcon name="chevron-down" class="ws-chevron" />
             </summary>
             <pre>{{ lastRawResponse }}</pre>
           </details>
@@ -503,6 +506,20 @@ type ShippingArtifactLinks = {
 }
 const shippingArtifactLinks = ref<ShippingArtifactLinks | null>(null)
 
+const shippingSteps = [
+  { title: '输入账号密码', desc: '使用当前页面填写 Infor Nexus 登录凭据。' },
+  { title: '启动本地执行器', desc: '网页端和 EXE 都会走同一套本机启动器。' },
+  { title: '打开 Shipment Scan', desc: '依次进入 Applications、Print-Scan-Ship、Shipment Scan。' },
+  { title: '后续接入 Excel', desc: '这一页后续继续承接 Shipping 的上传执行链路。' },
+]
+
+const defaultSteps = [
+  { title: '上传 Excel 文件', desc: '选择包含数据的 .xlsx 或 .xls 文件。' },
+  { title: '本地直连执行（推荐）', desc: '前端直接把 Excel 发给本机执行器，不经过 n8n。' },
+  { title: '发送至 n8n（保留）', desc: '如需编排、通知、审批、数据库联动，可继续走 n8n 链路。' },
+  { title: '查看结果', desc: '在下方状态区查看执行结果。' },
+]
+
 const entry = computed(() => getWebAutomationEntry(String(route.params.scenarioId || '')))
 const isShippingScenario = computed(() => entry.value?.id === 'shipping-automation')
 const isMicrosoftScenario = computed(() => entry.value?.id === 'microsoft-login-n8n')
@@ -533,6 +550,18 @@ const statusBadgeClass = computed(() => {
   if (lastResult.value?.ok) return 'ws-badge--ready'
   if (lastResult.value && !lastResult.value.ok) return 'ws-badge--err'
   return ''
+})
+const statusIconClass = computed(() => {
+  if (sending.value) return 'ws-card__head-icon--teal'
+  if (lastResult.value?.ok) return 'ws-card__head-icon--green'
+  if (lastResult.value && !lastResult.value.ok) return 'ws-card__head-icon--red'
+  return 'ws-card__head-icon--slate'
+})
+const statusIconName = computed(() => {
+  if (sending.value) return 'loader'
+  if (lastResult.value?.ok) return 'check-circle'
+  if (lastResult.value && !lastResult.value.ok) return 'alert-circle'
+  return 'activity'
 })
 const canLaunchActiveApp = computed(() => Boolean(entry.value?.appId) && !launching.value)
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
@@ -1037,27 +1066,37 @@ function readErrorMessage(error: unknown, fallback: string): string {
 </script>
 
 <style scoped lang="scss">
+/* ================================================================
+   Web Automation Scenario Page — Refined Design
+   Palette: teal #0d9488, green #059669, blue #2563eb, amber #d97706
+   No purple. Clean, elegant, minimal animations.
+   ================================================================ */
+
 .ws-page {
   --teal: #0d9488;
   --teal-soft: #f0fdfa;
   --teal-border: #99f6e4;
-  --sky: #0284c7;
   --green: #059669;
   --amber: #d97706;
-  --rose: #dc2626;
+  --red: #dc2626;
+  --blue: #2563eb;
   --border: #e2e8f0;
   --muted: #64748b;
   --ink: #0f172a;
-  --radius: 14px;
+  --radius: 16px;
 
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 18px;
+  padding: 20px 22px;
   min-height: 100%;
-  background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(2, 132, 199, 0.03), transparent 50%), #f8fafc;
+  background:
+    radial-gradient(ellipse 55% 35% at 50% 0%, rgba(13, 148, 136, 0.04), transparent 55%),
+    #f6f9fc;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
 }
 
+/* ===== Top Bar ===== */
 .ws-top {
   display: flex;
   align-items: center;
@@ -1070,161 +1109,293 @@ function readErrorMessage(error: unknown, fallback: string): string {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 34px;
-  padding: 0 12px;
+  height: 36px;
+  padding: 0 14px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: #fff;
   color: #475569;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.25s ease;
+
+  :deep(.app-icon) { font-size: 15px; }
+
+  &:hover {
+    border-color: var(--teal-border);
+    color: var(--teal);
+    background: var(--teal-soft);
+  }
 }
 
 .ws-badge {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
+  gap: 5px;
+  padding: 5px 12px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
+
+  :deep(.app-icon) { font-size: 13px; }
 
   &--scene,
   &--ready {
     background: #ecfdf5;
     color: var(--green);
+    border: 1px solid #a7f3d0;
   }
 
   &--wait {
     background: #fff7ed;
     color: var(--amber);
+    border: 1px solid #fed7aa;
   }
 
   &--err {
     background: #fef2f2;
-    color: var(--rose);
-  }
-}
-
-.ws-hero,
-.ws-strip__item,
-.ws-panel,
-.ws-card,
-.ws-health,
-.ws-raw {
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-}
-
-.ws-hero {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 18px 22px;
-}
-
-.ws-hero__icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #38bdf8, var(--sky));
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.ws-hero__text h2 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 800;
-  color: var(--ink);
-}
-
-.ws-hero__text p {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.ws-alert {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  border-radius: 12px;
-  font-size: 14px;
-
-  &--info {
-    background: var(--teal-soft);
-    color: var(--teal);
-    border: 1px solid var(--teal-border);
-  }
-
-  &--success {
-    background: #f0fdf4;
-    color: #15803d;
-    border: 1px solid #bbf7d0;
-  }
-
-  &--warning {
-    background: #fffbeb;
-    color: #b45309;
-    border: 1px solid #fde68a;
-  }
-
-  &--error {
-    background: #fef2f2;
-    color: #b91c1c;
+    color: var(--red);
     border: 1px solid #fecaca;
   }
 }
 
+/* ===== Hero ===== */
+.ws-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 24px;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(226, 232, 240, 0.7);
+  border-radius: 18px;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.02),
+    0 8px 24px rgba(0, 0, 0, 0.03);
+  animation: ws-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.ws-hero__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #2dd4bf, var(--teal));
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+  box-shadow: 0 6px 16px rgba(13, 148, 136, 0.25);
+  transition: transform 0.3s ease;
+
+  &:hover {
+    transform: scale(1.05) rotate(-3deg);
+  }
+}
+
+.ws-hero__text {
+  min-width: 0;
+
+  h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--ink);
+    letter-spacing: -0.3px;
+    line-height: 1.3;
+  }
+
+  p {
+    margin: 2px 0 0;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+}
+
+/* ===== Alert ===== */
+.ws-alert {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid;
+}
+
+.ws-alert__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.ws-alert__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.ws-alert--info {
+  background: var(--teal-soft);
+  color: #0f766e;
+  border-color: #ccfbf1;
+  .ws-alert__icon { background: linear-gradient(135deg, #2dd4bf, var(--teal)); }
+}
+
+.ws-alert--success {
+  background: #f0fdf4;
+  color: #15803d;
+  border-color: #bbf7d0;
+  .ws-alert__icon { background: linear-gradient(135deg, #34d399, var(--green)); }
+}
+
+.ws-alert--warning {
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+  .ws-alert__icon { background: linear-gradient(135deg, #fbbf24, var(--amber)); }
+}
+
+.ws-alert--error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
+  .ws-alert__icon { background: linear-gradient(135deg, #f87171, var(--red)); }
+}
+
+.ws-msg-enter-active { transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+.ws-msg-leave-active { transition: all 0.25s ease-in; }
+.ws-msg-enter-from { opacity: 0; transform: translateY(-10px); }
+.ws-msg-leave-to { opacity: 0; transform: translateY(-8px); }
+
+/* ===== Empty ===== */
 .ws-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  padding: 48px 20px;
+  padding: 56px 20px;
   text-align: center;
-  color: var(--muted);
+  animation: ws-slideUp 0.5s ease both;
 }
 
+.ws-empty__icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #94a3b8, #64748b);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+
+.ws-empty strong {
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.ws-empty span {
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 320px;
+}
+
+/* ===== Status Strip ===== */
 .ws-strip {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
+  animation: ws-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.06s both;
 }
 
 .ws-strip__item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 12px;
+  padding: 14px 18px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  transition: all 0.25s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  }
+}
+
+.ws-strip__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #fff;
+  flex-shrink: 0;
+
+  &--teal {
+    background: linear-gradient(135deg, #2dd4bf, var(--teal));
+    box-shadow: 0 3px 8px rgba(13, 148, 136, 0.2);
+  }
+
+  &--blue {
+    background: linear-gradient(135deg, #60a5fa, var(--blue));
+    box-shadow: 0 3px 8px rgba(37, 99, 235, 0.18);
+  }
+}
+
+.ws-strip__body {
+  flex: 1;
+  min-width: 0;
 }
 
 .ws-strip__label {
+  display: block;
   font-size: 11px;
   color: #94a3b8;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.ws-strip__body strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .ws-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  flex-shrink: 0;
 
   &.is-green { background: #10b981; }
   &.is-blue { background: #0ea5e9; }
   &.is-slate { background: #94a3b8; }
 }
 
+/* ===== Main Layout ===== */
 .ws-main {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: 270px minmax(0, 1fr);
   gap: 14px;
+  animation: ws-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
 }
 
 .ws-side,
@@ -1234,45 +1405,153 @@ function readErrorMessage(error: unknown, fallback: string): string {
   gap: 12px;
 }
 
-.ws-panel__head,
-.ws-card__head {
+/* ===== Panels (Left Sidebar) ===== */
+.ws-panel {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s ease;
+
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  }
+}
+
+.ws-panel__bar {
+  height: 3px;
+  background: linear-gradient(90deg, var(--teal), #2dd4bf);
+  opacity: 0.6;
+}
+
+.ws-panel__head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
-  padding: 16px 16px 0;
-}
+  padding: 14px 16px 0;
 
-.ws-panel__head strong,
-.ws-card__head strong {
-  font-size: 14px;
-  color: var(--ink);
-}
+  :deep(.app-icon) {
+    font-size: 16px;
+    color: var(--teal);
+  }
 
-.ws-card__head p {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--muted);
+  strong {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink);
+  }
 }
 
 .ws-actions,
-.ws-steps,
-.ws-card__actions {
+.ws-steps {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 14px 16px 16px;
+  padding: 12px 16px 16px;
 }
 
+/* Buttons */
+.ws-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+  :deep(.app-icon) { font-size: 15px; }
+
+  &:hover:not(:disabled) {
+    border-color: var(--teal-border);
+    color: var(--teal);
+    background: var(--teal-soft);
+    transform: translateY(-1px);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.ws-btn--primary {
+  background: linear-gradient(135deg, var(--teal), #0f766e);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.2);
+
+  &:hover:not(:disabled) {
+    background: linear-gradient(135deg, #14b8a6, var(--teal));
+    box-shadow: 0 4px 14px rgba(13, 148, 136, 0.3);
+    transform: translateY(-2px);
+    color: #fff;
+  }
+}
+
+.ws-btn--danger {
+  color: var(--red);
+  border-color: #fecaca;
+
+  &:hover:not(:disabled) {
+    background: #fef2f2;
+    border-color: #f87171;
+  }
+}
+
+.ws-btn-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: all 0.25s ease;
+
+  :deep(.app-icon) { font-size: 14px; }
+
+  &:hover {
+    border-color: var(--teal-border);
+    color: var(--teal);
+    background: var(--teal-soft);
+  }
+}
+
+/* Steps */
 .ws-step {
   display: flex;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-radius: 10px;
   background: #f8fafc;
   border: 1px solid #f1f5f9;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+  }
 }
 
-.ws-step > span {
+.ws-step__num {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1300,76 +1579,206 @@ function readErrorMessage(error: unknown, fallback: string): string {
   line-height: 1.5;
 }
 
-.ws-btn,
-.ws-btn-sm,
+/* Health */
+.ws-health {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+
+  summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    transition: color 0.2s;
+
+    &:hover { color: var(--ink); }
+
+    :deep(.app-icon) { font-size: 15px; color: var(--teal); }
+
+    span { flex: 1; }
+  }
+
+  pre {
+    margin: 0;
+    max-height: 220px;
+    overflow: auto;
+    padding: 14px 16px;
+    border-top: 1px solid #f1f5f9;
+    background: #0f172a;
+    color: #a5f3fc;
+    font-size: 12px;
+    font-family: 'Cascadia Code', 'SF Mono', Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
+
+.ws-chevron {
+  transition: transform 0.25s ease;
+  font-size: 14px !important;
+
+  details[open] & {
+    transform: rotate(180deg);
+  }
+}
+
+.ws-spin {
+  animation: ws-spin 1s linear infinite;
+}
+
+/* ===== Cards (Right Stage) ===== */
+.ws-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s ease;
+
+  &:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  }
+}
+
+.ws-card__bar {
+  height: 3px;
+  background: linear-gradient(90deg, var(--teal), #2dd4bf, #99f6e4);
+  background-size: 200% 100%;
+  animation: ws-shimmer 4s linear infinite;
+  opacity: 0.7;
+}
+
+.ws-card--status .ws-card__bar {
+  background: linear-gradient(90deg, var(--teal), #2dd4bf);
+  animation: none;
+  opacity: 0.5;
+}
+
+.ws-card__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 20px 0;
+}
+
+.ws-card__head-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #fff;
+  flex-shrink: 0;
+  transition: transform 0.3s ease;
+
+  .ws-card:hover & {
+    transform: scale(1.06);
+  }
+
+  &--teal {
+    background: linear-gradient(135deg, #2dd4bf, var(--teal));
+    box-shadow: 0 3px 10px rgba(13, 148, 136, 0.2);
+  }
+
+  &--blue {
+    background: linear-gradient(135deg, #60a5fa, var(--blue));
+    box-shadow: 0 3px 10px rgba(37, 99, 235, 0.18);
+  }
+
+  &--green {
+    background: linear-gradient(135deg, #34d399, var(--green));
+    box-shadow: 0 3px 10px rgba(5, 150, 105, 0.18);
+  }
+
+  &--red {
+    background: linear-gradient(135deg, #f87171, var(--red));
+    box-shadow: 0 3px 10px rgba(220, 38, 38, 0.18);
+  }
+
+  &--slate {
+    background: linear-gradient(135deg, #94a3b8, #64748b);
+    box-shadow: 0 3px 10px rgba(100, 116, 139, 0.15);
+  }
+}
+
+.ws-card__head-text {
+  flex: 1;
+  min-width: 0;
+
+  strong {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  p {
+    margin: 2px 0 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+}
+
+.ws-card__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 20px 20px;
+}
+
+/* Large Buttons */
 .ws-btn-lg {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.ws-btn {
-  width: 100%;
-  height: 38px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
-  color: #475569;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.ws-btn--primary {
-  background: linear-gradient(135deg, var(--teal), #0f766e);
-  color: #fff;
-  border-color: transparent;
-}
-
-.ws-btn--danger {
-  color: var(--rose);
-  border-color: #fecaca;
-}
-
-.ws-btn-sm {
-  height: 40px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #fff;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.ws-btn-lg {
+  gap: 8px;
   width: 100%;
   height: 48px;
-  padding: 0 18px;
+  padding: 0 20px;
   border: none;
   border-radius: 12px;
   background: linear-gradient(135deg, var(--teal), #0f766e);
   color: #fff;
   font-size: 15px;
   font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 3px 12px rgba(13, 148, 136, 0.25);
+  transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+
+  :deep(.app-icon) { font-size: 18px; }
+
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(13, 148, 136, 0.35);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
 }
 
 .ws-btn-lg--secondary {
   background: linear-gradient(135deg, #e0f2fe, #bae6fd);
-  color: #0f172a;
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.1);
+
+  &:hover:not(:disabled) {
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.18);
+  }
 }
 
-.ws-btn:disabled,
-.ws-btn-sm:disabled,
-.ws-btn-lg:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
+/* ===== Fields ===== */
 .ws-field {
   padding: 16px 20px 0;
 }
@@ -1385,7 +1794,7 @@ function readErrorMessage(error: unknown, fallback: string): string {
 .ws-field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 
 .ws-input-row {
@@ -1396,25 +1805,52 @@ function readErrorMessage(error: unknown, fallback: string): string {
 .ws-input {
   flex: 1;
   min-width: 0;
-  height: 40px;
-  padding: 0 12px;
+  height: 42px;
+  padding: 0 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: #f8fafc;
   color: var(--ink);
   font-size: 13px;
+  transition: all 0.25s ease;
+
+  &::placeholder {
+    color: #94a3b8;
+  }
+
+  &:hover {
+    border-color: #cbd5e1;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: var(--teal);
+    box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1);
+    background: #fff;
+  }
 }
 
 .ws-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   padding: 12px 14px;
-  border: 1px solid #dbeafe;
+  border: 1px solid #ccfbf1;
   border-radius: 12px;
-  background: linear-gradient(135deg, #eff6ff, #f8fafc);
-  color: #475569;
+  background: var(--teal-soft);
+  color: #0f766e;
   font-size: 13px;
   line-height: 1.6;
+
+  :deep(.app-icon) {
+    font-size: 16px;
+    flex-shrink: 0;
+    margin-top: 2px;
+    color: var(--teal);
+  }
 }
 
+/* ===== Dropzone ===== */
 .ws-dropzone {
   position: relative;
   display: flex;
@@ -1427,9 +1863,15 @@ function readErrorMessage(error: unknown, fallback: string): string {
   border-radius: 14px;
   background: linear-gradient(135deg, #fafcff, #f8fafc);
   cursor: pointer;
+  transition: all 0.3s ease;
 
   input {
     display: none;
+  }
+
+  &:hover {
+    border-color: #94a3b8;
+    background: linear-gradient(135deg, #f8fafc, #f1f5f9);
   }
 
   &--active {
@@ -1442,6 +1884,8 @@ function readErrorMessage(error: unknown, fallback: string): string {
     border-color: var(--teal);
     border-style: solid;
     background: var(--teal-soft);
+    transform: scale(1.01);
+    box-shadow: 0 4px 16px rgba(13, 148, 136, 0.15);
   }
 }
 
@@ -1458,14 +1902,24 @@ function readErrorMessage(error: unknown, fallback: string): string {
 }
 
 .ws-dropzone__icon {
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   border-radius: 16px;
   background: linear-gradient(135deg, #2dd4bf, var(--teal));
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 24px;
+  transition: transform 0.3s ease;
+
+  .ws-dropzone:hover & {
+    transform: scale(1.08);
+  }
+
+  .ws-dropzone--drag & {
+    transform: scale(1.12);
+  }
 }
 
 .ws-dropzone__icon--done {
@@ -1478,14 +1932,21 @@ function readErrorMessage(error: unknown, fallback: string): string {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   background: #fff;
-  color: #94a3b8;
-  font-size: 11px;
+  color: var(--muted);
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: var(--red);
+    color: var(--red);
+    background: #fef2f2;
+  }
 }
 
 .ws-dropzone__overlay {
@@ -1497,47 +1958,38 @@ function readErrorMessage(error: unknown, fallback: string): string {
   justify-content: center;
   gap: 8px;
   background: rgba(240, 253, 250, 0.92);
-  border-radius: 12px;
+  border-radius: 14px;
+  backdrop-filter: blur(4px);
+  z-index: 2;
+
+  :deep(.app-icon) {
+    font-size: 32px;
+    color: var(--teal);
+    animation: ws-float 1.5s ease-in-out infinite;
+  }
+
+  span {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--teal);
+  }
 }
 
-.ws-health summary,
-.ws-raw summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.ws-health summary span,
-.ws-raw summary span {
-  flex: 1;
-}
-
-.ws-health pre,
-.ws-raw pre {
-  margin: 0;
-  max-height: 220px;
-  overflow: auto;
-  padding: 14px 16px;
-  border-top: 1px solid #f1f5f9;
-  background: #0f172a;
-  color: #a5f3fc;
-  font-size: 12px;
-  font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
+/* ===== Status ===== */
 .ws-status-text {
-  padding: 0 20px 20px;
+  padding: 4px 20px 20px;
   font-size: 14px;
   color: var(--muted);
   line-height: 1.7;
   white-space: pre-wrap;
+}
+
+.ws-status-text--ok {
+  color: var(--green);
+}
+
+.ws-status-text--err {
+  color: var(--red);
 }
 
 .ws-result-downloads {
@@ -1547,25 +1999,69 @@ function readErrorMessage(error: unknown, fallback: string): string {
   padding: 0 20px 20px;
 }
 
-.ws-status-text--ok {
-  color: var(--green);
+/* ===== Raw Response ===== */
+.ws-raw {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+
+  summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    transition: color 0.2s;
+
+    &:hover { color: var(--ink); }
+
+    :deep(.app-icon) { font-size: 15px; color: var(--teal); }
+
+    span { flex: 1; }
+  }
+
+  pre {
+    margin: 0;
+    max-height: 220px;
+    overflow: auto;
+    padding: 14px 16px;
+    border-top: 1px solid #f1f5f9;
+    background: #0f172a;
+    color: #a5f3fc;
+    font-size: 12px;
+    font-family: 'Cascadia Code', 'SF Mono', Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 }
 
-.ws-status-text--err {
-  color: var(--rose);
+/* ===== Animations ===== */
+@keyframes ws-slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.ws-msg-enter-active,
-.ws-msg-leave-active {
-  transition: all 0.2s;
+@keyframes ws-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
-.ws-msg-enter-from,
-.ws-msg-leave-to {
-  opacity: 0;
-  transform: translateY(-6px);
+@keyframes ws-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
 }
 
+@keyframes ws-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ===== Responsive ===== */
 @media (max-width: 1100px) {
   .ws-main {
     grid-template-columns: 1fr;
@@ -1577,6 +2073,8 @@ function readErrorMessage(error: unknown, fallback: string): string {
 }
 
 @media (max-width: 680px) {
+  .ws-page { padding: 14px; }
+
   .ws-strip {
     grid-template-columns: 1fr;
   }
