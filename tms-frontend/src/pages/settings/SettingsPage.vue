@@ -288,7 +288,7 @@ const statusLabel = computed(() => text(statusLabels[status.value?.status || 'id
 const statusTone = computed(() => statusTones[status.value?.status || 'idle'])
 const runModeLabel = computed(() => {
   const isPackaged = status.value?.isPackaged ?? versionInfo.value.isPackaged
-  return isPackaged ? text('安装版') : text('开发/预览')
+  return isPackaged ? text('安装版') : text('浏览器')
 })
 const feedUrl = computed(() => status.value?.feedUrl || '')
 const feedUrlText = computed(() => feedUrl.value || '-')
