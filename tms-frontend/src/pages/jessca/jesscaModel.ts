@@ -2,7 +2,7 @@ import type { ProcessSummaryItem } from '../../shared/process/processHistory'
 import type { JesscaProcessResponse } from './jesscaApi'
 
 export const jesscaModuleId = 'excel-jessca'
-export const jesscaModuleName = '对账核对'
+export const jesscaModuleName = '对账核对-Sophia'
 
 export function buildJesscaSummary(
   response: JesscaProcessResponse,

@@ -401,6 +401,25 @@
             <div class="ws-status-text" :class="{ 'ws-status-text--ok': lastResult?.ok, 'ws-status-text--err': lastResult && !lastResult.ok }">
               {{ statusText }}
             </div>
+            <div v-if="isShippingScenario && shippingArtifactLinks?.resultExcelUrl" class="ws-result-downloads">
+              <button
+                class="ws-btn ws-btn--primary"
+                type="button"
+                @click="downloadShippingArtifact(shippingArtifactLinks.resultExcelUrl, 'shipping-last-result.xlsx')"
+              >
+                <AppIcon name="download" />
+                {{ text('下载结果 Excel') }}
+              </button>
+              <button
+                v-if="shippingArtifactLinks.failedPoExcelUrl && shippingArtifactLinks.failedRowCount > 0"
+                class="ws-btn"
+                type="button"
+                @click="downloadShippingArtifact(shippingArtifactLinks.failedPoExcelUrl, 'shipping-last-failed-po-rows.xlsx')"
+              >
+                <AppIcon name="download" />
+                {{ text('下载失败明细 Excel') }}
+              </button>
+            </div>
           </div>
 
           <details v-if="lastRawResponse" class="ws-raw">
@@ -475,6 +494,14 @@ const statusText = ref('等待文件上传并发送。')
 const statusLabel = ref('待命')
 const lastResult = ref<{ ok: boolean; message?: string } | null>(null)
 const lastRawResponse = ref('')
+type ShippingArtifactLinks = {
+  resultExcelUrl: string
+  resultJsonUrl?: string
+  failedPoExcelUrl?: string
+  failedPoJsonUrl?: string
+  failedRowCount: number
+}
+const shippingArtifactLinks = ref<ShippingArtifactLinks | null>(null)
 
 const entry = computed(() => getWebAutomationEntry(String(route.params.scenarioId || '')))
 const isShippingScenario = computed(() => entry.value?.id === 'shipping-automation')
@@ -690,6 +717,7 @@ async function runShippingWithExcel(): Promise<void> {
   statusLabel.value = '执行中'
   statusText.value = '正在上传 Excel，并登录 Infor Nexus 输入 PO No...'
   lastResult.value = null
+  shippingArtifactLinks.value = null
   lastRawResponse.value = ''
   message.value = ''
 
@@ -713,6 +741,7 @@ async function runShippingWithExcel(): Promise<void> {
     const rawText = await response.text()
     lastRawResponse.value = rawText
     const json = safeParseJson(rawText)
+    updateShippingArtifactLinks(json)
 
     if (!response.ok) {
       statusLabel.value = '失败'
@@ -933,6 +962,54 @@ function safeParseJson(rawText: string): Record<string, any> | null {
   } catch {
     return null
   }
+}
+
+function updateShippingArtifactLinks(payload: Record<string, any> | null): void {
+  if (!isShippingScenario.value) {
+    shippingArtifactLinks.value = null
+    return
+  }
+
+  const downloadUrls = payload?.artifacts?.downloadUrls
+  const resultExcelUrl = buildShippingArtifactUrl(downloadUrls?.resultExcelUrl)
+  if (!resultExcelUrl) {
+    shippingArtifactLinks.value = null
+    return
+  }
+
+  shippingArtifactLinks.value = {
+    resultExcelUrl,
+    resultJsonUrl: buildShippingArtifactUrl(downloadUrls?.resultJsonUrl) || undefined,
+    failedPoExcelUrl: buildShippingArtifactUrl(downloadUrls?.failedPoExcelUrl) || undefined,
+    failedPoJsonUrl: buildShippingArtifactUrl(downloadUrls?.failedPoJsonUrl) || undefined,
+    failedRowCount: Number(payload?.artifacts?.failedRowCount ?? 0),
+  }
+}
+
+function buildShippingArtifactUrl(relativePath: string): string {
+  const normalizedPath = String(relativePath || '').trim()
+  if (!normalizedPath) {
+    return ''
+  }
+
+  if (/^https?:\/\//i.test(normalizedPath)) {
+    return normalizedPath
+  }
+
+  const baseUrl = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, '')
+  return baseUrl ? `${baseUrl}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}` : ''
+}
+
+function downloadShippingArtifact(url: string | undefined, fallbackName: string): void {
+  if (!url) return
+
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = fallbackName
+  anchor.rel = 'noopener'
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
 }
 
 function createFallbackAutomationApp(currentEntry: WebAutomationEntry): AutomationAppInfo {
@@ -1461,6 +1538,13 @@ function readErrorMessage(error: unknown, fallback: string): string {
   color: var(--muted);
   line-height: 1.7;
   white-space: pre-wrap;
+}
+
+.ws-result-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 20px 20px;
 }
 
 .ws-status-text--ok {

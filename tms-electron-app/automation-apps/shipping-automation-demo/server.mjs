@@ -16,6 +16,7 @@ const bundledSecretPath = path.join(appRoot, "executor.secret.local.json");
 const runtimeConfigPath = path.join(runtimeDataRoot, "executor.config.local.json");
 const runtimeSecretPath = path.join(runtimeDataRoot, "executor.secret.local.json");
 const artifactsDir = path.join(runtimeDataRoot, "run-artifacts");
+const PREPARE_NEXT_PO_DIALOG_TIMEOUT_MS = 3000;
 
 const sharedExecutorRoot = path.resolve(appRoot, "..", "playwright-console");
 const sharedPackageJson = path.join(sharedExecutorRoot, "package.json");
@@ -34,6 +35,7 @@ let lastRun = null;
 const server = http.createServer(async (req, res) => {
   try {
     setCorsHeaders(res);
+    const requestPath = String(req.url || "/").split("?")[0];
 
     if (req.method === "OPTIONS") {
       res.writeHead(204);
@@ -41,12 +43,16 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (req.method === "GET" && (req.url === "/health" || req.url === "/api/health")) {
+    if (req.method === "GET" && (requestPath === "/health" || requestPath === "/api/health")) {
       sendJson(res, 200, buildHealthPayload());
       return;
     }
 
-    if (req.method === "POST" && (req.url === "/open-shipment-scan" || req.url === "/api/open-shipment-scan")) {
+    if (req.method === "GET" && await trySendArtifactDownload(requestPath, res)) {
+      return;
+    }
+
+    if (req.method === "POST" && (requestPath === "/open-shipment-scan" || requestPath === "/api/open-shipment-scan")) {
       const body = await readJsonBody(req);
       authorize(req, body);
 
@@ -82,7 +88,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (req.method === "POST" && (req.url === "/run-shipping-file" || req.url === "/api/run-shipping-file")) {
+    if (req.method === "POST" && (requestPath === "/run-shipping-file" || requestPath === "/api/run-shipping-file")) {
       const body = await readJsonBody(req);
       authorize(req, body);
 
@@ -130,7 +136,7 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 404, {
       ok: false,
       message: "Not found",
-      path: req.url,
+      path: requestPath,
       method: req.method,
     });
   } catch (error) {
@@ -257,6 +263,7 @@ async function runShippingWorkflow(credentials, runContext) {
   const shouldFillPoNumbers = Boolean(runContext?.fillPoNumbers);
   const poResults = [];
   const createShipmentResults = [];
+  let createShipmentBatches = [];
   let createShipmentEquipmentIds = [];
 
   try {
@@ -307,6 +314,11 @@ async function runShippingWorkflow(credentials, runContext) {
             ok: false,
             error: normalizedError.message,
           });
+          log("Shipment PO failed; recorded and continuing.", {
+            poNo: String(poRow?.poNo || "").trim(),
+            error: normalizedError.message,
+            nextPoNo: String(nextPoRow?.poNo || "").trim(),
+          });
           if (hasPageLifecycleEnded(page, lifecycle) || isClosedTargetError(error)) {
             throw normalizedError;
           }
@@ -316,15 +328,34 @@ async function runShippingWorkflow(credentials, runContext) {
         }
       }
 
-      createShipmentEquipmentIds = collectUniqueChangeEquipmentIds(
-        poResults.filter((item) => item?.ok),
-      );
+      createShipmentBatches = collectCreateShipmentBatches(poRows);
+      createShipmentEquipmentIds = createShipmentBatches.map((batch) => batch.changeEquipmentId);
+      if (createShipmentBatches.length > 0) {
+        log("Prepared Create Shipment batches.", {
+          batchCount: createShipmentBatches.length,
+          targetPoCount: createShipmentBatches.reduce(
+            (sum, batch) => sum + (Array.isArray(batch?.targetPairs) ? batch.targetPairs.length : 0),
+            0,
+          ),
+          successfulPoCount: poResults.filter((item) => item?.ok).length,
+          failedPoCount: poResults.filter((item) => !item?.ok).length,
+          equipmentIds: createShipmentEquipmentIds,
+        });
+      } else {
+        log("Skipping Create Shipment because workbook rows did not produce any eligible target pairs.", {
+          totalPoCount: poRows.length,
+          successfulPoCount: poResults.filter((item) => item?.ok).length,
+          failedPoCount: poResults.filter((item) => !item?.ok).length,
+        });
+      }
 
-      for (const changeEquipmentId of createShipmentEquipmentIds) {
+      for (const createShipmentBatch of createShipmentBatches) {
+        const changeEquipmentId = createShipmentBatch.changeEquipmentId;
         try {
-          await processCreateShipmentEquipmentId(page, changeEquipmentId);
+          await processCreateShipmentEquipmentId(page, createShipmentBatch);
           createShipmentResults.push({
             changeEquipmentId,
+            poNos: createShipmentBatch.poNos,
             ok: true,
           });
         } catch (error) {
@@ -336,6 +367,7 @@ async function runShippingWorkflow(credentials, runContext) {
           );
           createShipmentResults.push({
             changeEquipmentId,
+            poNos: createShipmentBatch.poNos,
             ok: false,
             error: normalizedError.message,
           });
@@ -474,13 +506,13 @@ async function ensureLoggedIn(page, credentials) {
   ]);
 }
 
-async function waitForShipmentScanDialog(page) {
+async function waitForShipmentScanDialog(page, timeoutMs = config.navigationTimeoutMs) {
   const dialog = getShipmentScanDialog(page);
   await waitForAny(page, [
-    () => page.waitForURL(/#Shipment%20Scan/, { timeout: config.navigationTimeoutMs }),
-    () => dialog.waitFor({ state: "visible", timeout: config.navigationTimeoutMs }),
+    () => page.waitForURL(/#Shipment%20Scan/, { timeout: timeoutMs }),
+    () => dialog.waitFor({ state: "visible", timeout: timeoutMs }),
   ]);
-  await dialog.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await dialog.waitFor({ state: "visible", timeout: timeoutMs });
 }
 
 function getShipmentScanDialog(page) {
@@ -511,18 +543,21 @@ function getShipmentScanGrid(page) {
     .first();
 }
 
-async function openShipmentScanDialog(page) {
-  const dialogTitle = page.locator("text=Shipment Scan - Select Filters").last();
-  const alreadyVisible = await dialogTitle.isVisible().catch(() => false);
+async function openShipmentScanDialog(page, options = {}) {
+  const timeoutMs = Number(options?.timeoutMs) > 0
+    ? Number(options.timeoutMs)
+    : config.navigationTimeoutMs;
+  const dialog = getShipmentScanDialog(page);
+  const alreadyVisible = await dialog.isVisible().catch(() => false);
   if (!alreadyVisible) {
     await clickShipmentScanSideLink(page);
   }
 
-  await waitForShipmentScanDialog(page);
-  const dialog = getShipmentScanDialog(page);
-  await waitForShipmentScanDialogControls(dialog);
+  await waitForShipmentScanDialog(page, timeoutMs);
+  const visibleDialog = getShipmentScanDialog(page);
+  await waitForShipmentScanDialogControls(visibleDialog, timeoutMs);
   log("Shipment Scan dialog ready.");
-  return dialog;
+  return visibleDialog;
 }
 
 async function clickShipmentScanSideLink(page) {
@@ -539,15 +574,26 @@ async function prepareForNextShipmentPoIteration(page, currentPoNo, nextPoNo) {
     return;
   }
 
-  await clickShipmentScanSideLink(page).catch(() => {});
-  await waitForShipmentScanDialog(page).catch(() => {});
-  log("Prepared Shipment Scan for next PO.", {
-    currentPoNo: normalizedCurrentPoNo,
-    nextPoNo: normalizedNextPoNo,
-  });
+  try {
+    await openShipmentScanDialog(page, {
+      timeoutMs: PREPARE_NEXT_PO_DIALOG_TIMEOUT_MS,
+    });
+    log("Prepared Shipment Scan for next PO.", {
+      currentPoNo: normalizedCurrentPoNo,
+      nextPoNo: normalizedNextPoNo,
+      timeoutMs: PREPARE_NEXT_PO_DIALOG_TIMEOUT_MS,
+    });
+  } catch (error) {
+    log("Shipment Scan preparation deferred to next iteration.", {
+      currentPoNo: normalizedCurrentPoNo,
+      nextPoNo: normalizedNextPoNo,
+      timeoutMs: PREPARE_NEXT_PO_DIALOG_TIMEOUT_MS,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
-async function waitForShipmentScanDialogControls(dialog) {
+async function waitForShipmentScanDialogControls(dialog, timeoutMs = config.navigationTimeoutMs) {
   const poInput = dialog.locator('input[name="poNum"], input[name="poNumbers"]').first();
   const manualTarget = dialog.locator("div.x-form-check-wrap").filter({
     hasText: /^Remove\/Change Equipment ID$/i,
@@ -558,11 +604,11 @@ async function waitForShipmentScanDialogControls(dialog) {
   const removeChangeRadio = manualTarget.locator('input[type="radio"][name="radioGroup"]').first();
   const okButton = dialog.locator("button.x-btn-text").filter({ hasText: /^OK$/ }).first();
 
-  await poInput.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
-  await manualTarget.waitFor({ state: "attached", timeout: config.navigationTimeoutMs });
-  await removeChangeLabel.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
-  await removeChangeRadio.waitFor({ state: "attached", timeout: config.navigationTimeoutMs });
-  await okButton.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await poInput.waitFor({ state: "visible", timeout: timeoutMs });
+  await manualTarget.waitFor({ state: "attached", timeout: timeoutMs });
+  await removeChangeLabel.waitFor({ state: "visible", timeout: timeoutMs });
+  await removeChangeRadio.waitFor({ state: "attached", timeout: timeoutMs });
+  await okButton.waitFor({ state: "visible", timeout: timeoutMs });
   await dialogPause(dialog, 350);
 }
 
@@ -720,7 +766,7 @@ async function processShipmentPoRow(page, poRow) {
   const dialog = await openChangeEquipmentIdDialog(page, poRow.poNo);
   await fillChangeEquipmentIdDialog(dialog, normalizedChangeEquipmentId);
   await applyChangeEquipmentIdDialog(page, dialog, poRow.poNo);
-  await page.waitForTimeout(config.postLoginWaitMs);
+  await waitForShipmentWorkspaceReadyAfterApply(page, poRow.poNo);
   log("Completed shipment PO row.", {
     poNo: String(poRow?.poNo || "").trim(),
     changeEquipmentId: normalizedChangeEquipmentId,
@@ -736,7 +782,6 @@ async function confirmShipmentScanFilters(page, poNo) {
       await selectRemoveChangeEquipmentId(shipmentDialog);
       await dialogPause(shipmentDialog, 350);
       await clickShipmentScanOk(shipmentDialog);
-      await page.waitForTimeout(config.postLoginWaitMs);
       log("Confirmed PO No.", {
         poNo: String(poNo || "").trim(),
         attempt,
@@ -774,11 +819,14 @@ async function fillShipmentPoNumber(dialog, poNo) {
 }
 
 async function waitForShipmentGridRows(page, poNo) {
-  const timeoutMs = Math.min(config.navigationTimeoutMs, 20000);
+  const timeoutMs = Math.min(config.navigationTimeoutMs, 12000);
   const startedAt = Date.now();
   let lastDialogError = "";
   let lastState = null;
   let noDataSince = 0;
+  let emptyGridSince = 0;
+  let staleNonMatchingSince = 0;
+  let lastNonMatchingSignature = "";
   let stableMatchCount = 0;
   let lastSignature = "";
 
@@ -808,19 +856,89 @@ async function waitForShipmentGridRows(page, poNo) {
       lastSignature = state.rowSignature;
     }
 
-    if (state.noDataVisible && state.rowCount === 0) {
+    if (state.rowCount === 0) {
       noDataSince = noDataSince || Date.now();
-      if (Date.now() - noDataSince >= 1200) {
+      const noDataThresholdMs = state.noDataVisible ? 900 : 2800;
+      if (Date.now() - noDataSince >= noDataThresholdMs) {
+        log("Shipment grid returned no rows; skipping PO.", {
+          poNo,
+          noDataVisible: state.noDataVisible,
+          waitedMs: Date.now() - startedAt,
+        });
         throw new Error(`PO No ${poNo}: no shipment rows were loaded after clicking OK.`);
       }
     } else {
       noDataSince = 0;
     }
 
+    if (state.rowCount === 0 && !state.noDataVisible) {
+      emptyGridSince = emptyGridSince || Date.now();
+      if (Date.now() - emptyGridSince >= 2800) {
+        log("Shipment grid stayed empty; skipping PO.", {
+          poNo,
+          waitedMs: Date.now() - startedAt,
+        });
+        throw new Error(`PO No ${poNo}: shipment grid stayed empty after clicking OK.`);
+      }
+    } else {
+      emptyGridSince = 0;
+    }
+
+    if (state.rowCount > 0 && state.matchedPoRowCount === 0) {
+      const currentSignature = state.rowSignature || `rows:${state.rowCount}`;
+      staleNonMatchingSince = currentSignature === lastNonMatchingSignature
+        ? (staleNonMatchingSince || Date.now())
+        : Date.now();
+      lastNonMatchingSignature = currentSignature;
+      if (Date.now() - staleNonMatchingSince >= 2200) {
+        log("Shipment grid did not switch to the requested PO; skipping PO.", {
+          poNo,
+          rowCount: state.rowCount,
+          waitedMs: Date.now() - startedAt,
+          sample: String(state.rowSignature || "").slice(0, 180),
+        });
+        throw new Error(`PO No ${poNo}: shipment grid did not switch to rows for this PO.`);
+      }
+    } else {
+      staleNonMatchingSince = 0;
+      lastNonMatchingSignature = "";
+    }
+
     await page.waitForTimeout(250);
   }
 
   throw new Error(`PO No ${poNo}: timed out waiting for shipment rows. State: ${JSON.stringify(lastState || {})}`);
+}
+
+async function waitForShipmentWorkspaceReadyAfterApply(page, poNo) {
+  const timeoutMs = Math.min(config.navigationTimeoutMs, 4000);
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const processingVisible = await hasVisibleWindowText(page, /processing/i);
+    const visibleDialog = await getTopVisibleDialogInfo(page).catch(() => null);
+    const workspaceVisible = await getShipmentScanWorkspace(page).isVisible().catch(() => false);
+    const shipmentScanLinkVisible = await page
+      .locator('div.sidepanellinks a[href="#Shipment%20Scan"]')
+      .first()
+      .isVisible()
+      .catch(() => false);
+
+    if (!processingVisible && workspaceVisible && shipmentScanLinkVisible && !visibleDialog?.id) {
+      log("Shipment workspace ready after Apply.", {
+        poNo: String(poNo || "").trim(),
+        waitedMs: Date.now() - startedAt,
+      });
+      return;
+    }
+
+    await page.waitForTimeout(150);
+  }
+
+  log("Shipment workspace was still settling after Apply; continuing anyway.", {
+    poNo: String(poNo || "").trim(),
+    waitedMs: Date.now() - startedAt,
+  });
 }
 
 async function selectShipmentGridRows(page, poNo) {
@@ -984,30 +1102,149 @@ async function applyChangeEquipmentIdDialog(page, dialog, poNo) {
   throw new Error(`PO No ${poNo}: Change Equipment ID Apply did not finish.`);
 }
 
-async function processCreateShipmentEquipmentId(page, changeEquipmentId) {
-  const normalizedChangeEquipmentId = String(changeEquipmentId || "").trim();
+async function processCreateShipmentEquipmentId(page, createShipmentBatch) {
+  const normalizedChangeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
+  const targetPairs = Array.isArray(createShipmentBatch?.targetPairs)
+    ? createShipmentBatch.targetPairs
+    : [];
   if (!normalizedChangeEquipmentId) {
     throw new Error("Create Shipment change equipment ID is empty.");
+  }
+  if (targetPairs.length === 0) {
+    throw new Error(`Create Shipment ${normalizedChangeEquipmentId}: target PO rows are empty.`);
   }
 
   const dialog = await openCreateShipmentDialog(page);
   await clearCreateShipmentPoNumber(dialog);
   await fillCreateShipmentBrowseDays(dialog, "601");
   await fillCreateShipmentEquipmentId(dialog, normalizedChangeEquipmentId);
-  await clickDialogOk(dialog, "Create Shipment");
-  await page.waitForTimeout(config.postLoginWaitMs);
+  await clickDialogOk(dialog, "Create Shipment Filter");
+  await waitForCreateShipmentGridRows(page, createShipmentBatch);
+  const selectionSummary = await selectCreateShipmentGridRows(page, createShipmentBatch);
+  if (!selectionSummary?.selectedTargetRowCount) {
+    throw new Error(`Create Shipment ${normalizedChangeEquipmentId}: no matching rows were selected for the requested PO/equipment pairs.`);
+  }
+  const previousUrl = safePageUrl(page);
+  await clickCreateShipmentWorkspaceButton(page, createShipmentBatch, selectionSummary);
+  await waitForCreateShipmentNextStep(page, createShipmentBatch, previousUrl);
+  await page.waitForTimeout(config.postLoginWaitMs).catch(() => {});
   log("Completed Create Shipment row.", {
     changeEquipmentId: normalizedChangeEquipmentId,
+    poNos: createShipmentBatch.poNos,
+    selectedTargetRowCount: selectionSummary.selectedTargetRowCount,
+    missingTargetPairCount: selectionSummary.missingTargetPairCount,
   });
 }
 
 async function openCreateShipmentDialog(page) {
-  await clickLocator(
-    page.locator('div.sidepanellinks a[href="#Create%20Shipment"]'),
-    "Create Shipment",
-  );
+  const timeoutMs = Math.min(config.navigationTimeoutMs, 20000);
+  const startedAt = Date.now();
+  let lastError = null;
 
-  const timeoutMs = Math.min(config.navigationTimeoutMs, 15000);
+  while (Date.now() - startedAt < timeoutMs) {
+    const dialog = await findVisibleCreateShipmentDialog(page);
+    if (dialog) {
+      return dialog;
+    }
+
+    const attempt = Math.floor((Date.now() - startedAt) / 4500) + 1;
+    try {
+      await activateCreateShipmentEntry(page, attempt);
+    } catch (error) {
+      lastError = error;
+    }
+
+    const remainingMs = Math.max(1500, Math.min(4500, timeoutMs - (Date.now() - startedAt)));
+    try {
+      const dialog = await waitForVisibleCreateShipmentDialog(page, remainingMs);
+      if (dialog) {
+        return dialog;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+
+    await page.waitForTimeout(300);
+  }
+
+  const suffix = lastError instanceof Error && lastError.message
+    ? ` Last error: ${lastError.message}`
+    : "";
+  throw new Error(`Create Shipment dialog did not appear.${suffix}`);
+}
+
+async function activateCreateShipmentEntry(page, attempt = 1) {
+  const link = page
+    .locator('div.sidepanellinks a[href="#Create%20Shipment"], div.sidepanellinks a[href="#Create Shipment"]')
+    .first();
+  await link.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+
+  const row = link.locator("xpath=ancestor::tr[1]").first();
+  const wrapper = link.locator("xpath=ancestor::div[contains(@class,'sidepanellinks')][1]").first();
+  const strategies = [
+    {
+      label: "side-link",
+      run: async () => {
+        await forceClickLocator(link, "Create Shipment");
+      },
+    },
+    {
+      label: "link-wrapper",
+      run: async () => {
+        await forceClickLocator(wrapper, "Create Shipment wrapper");
+      },
+    },
+    {
+      label: "link-row",
+      run: async () => {
+        await forceClickLocator(row, "Create Shipment row");
+      },
+    },
+    {
+      label: "dom-dispatch",
+      run: async () => {
+        await page.evaluate(() => {
+          const target = document.querySelector('div.sidepanellinks a[href="#Create%20Shipment"], div.sidepanellinks a[href="#Create Shipment"]');
+          if (!target) {
+            throw new Error("Create Shipment side link was not found in DOM.");
+          }
+
+          target.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, cancelable: true, view: window }));
+          target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+          target.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+          target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+          if (typeof target.click === "function") {
+            target.click();
+          }
+        });
+      },
+    },
+    {
+      label: "hash-fallback",
+      run: async () => {
+        await page.evaluate(() => {
+          const currentHref = String(window.location.href || "");
+          const nextHref = currentHref.replace(/#.*$/, "") + "#Create Shipment";
+          if (currentHref !== nextHref) {
+            window.location.hash = "Create Shipment";
+          } else {
+            window.location.hash = "Create Shipment";
+          }
+        });
+      },
+    },
+  ];
+
+  const strategy = strategies[Math.min(attempt - 1, strategies.length - 1)];
+  await strategy.run();
+  log("Clicked Create Shipment.", {
+    attempt,
+    strategy: strategy.label,
+    url: page.url(),
+  });
+}
+
+async function waitForVisibleCreateShipmentDialog(page, timeoutMs) {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
@@ -1016,23 +1253,92 @@ async function openCreateShipmentDialog(page) {
       throw new Error(errorText);
     }
 
-    const dialogInfo = await getTopVisibleDialogInfo(page);
-    const names = new Set((dialogInfo?.inputs || []).map((input) => input.name));
-    if (dialogInfo?.id
-      && names.has("EquipmentJM")
-      && names.has("poNum")
-      && names.has("executionDateDays")) {
-      const dialog = page.locator(`[id="${dialogInfo.id}"]`).first();
-      log("Create Shipment dialog opened.", {
-        dialogId: dialogInfo.id,
-      });
+    const dialog = await findVisibleCreateShipmentDialog(page);
+    if (dialog) {
       return dialog;
     }
 
     await page.waitForTimeout(250);
   }
 
-  throw new Error("Create Shipment dialog did not appear.");
+  return null;
+}
+
+async function findVisibleCreateShipmentDialog(page) {
+  const dialogInfo = await getVisibleCreateShipmentDialogInfo(page);
+  if (!dialogInfo?.id) {
+    return null;
+  }
+
+  const dialog = page.locator(`[id="${dialogInfo.id}"]`).first();
+  const browseDaysInput = dialog.locator('input[name="executionDateDays"]').first();
+  const equipmentInput = dialog.locator('input[name="EquipmentJM"]').first();
+  const poInput = dialog.locator('input[name="poNum"]').first();
+  const ready = await Promise.any([
+    browseDaysInput.waitFor({ state: "visible", timeout: 1200 }).then(() => true),
+    equipmentInput.waitFor({ state: "visible", timeout: 1200 }).then(() => true),
+    poInput.waitFor({ state: "visible", timeout: 1200 }).then(() => true),
+  ]).catch(() => false);
+
+  if (!ready) {
+    return null;
+  }
+
+  log("Create Shipment dialog opened.", {
+    dialogId: dialogInfo.id,
+    inputNames: dialogInfo.inputs.map((input) => input.name).filter(Boolean),
+  });
+  return dialog;
+}
+
+async function getVisibleCreateShipmentDialogInfo(page) {
+  return page.evaluate(() => {
+    const isVisible = (element) => {
+      if (!element) {
+        return false;
+      }
+
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none"
+        && style.visibility !== "hidden"
+        && rect.width > 0
+        && rect.height > 0;
+    };
+
+    const dialogs = Array.from(document.querySelectorAll("div.x-window"))
+      .filter(isVisible)
+      .map((element) => {
+        const inputs = Array.from(element.querySelectorAll('input:not([type="hidden"]), textarea, select'))
+          .filter(isVisible)
+          .map((input) => ({
+            id: input.id || "",
+            name: input.getAttribute("name") || "",
+            type: input.getAttribute("type") || "",
+            value: input.value || "",
+          }));
+
+        const text = (element.innerText || "").trim();
+        const names = new Set(inputs.map((input) => input.name).filter(Boolean));
+        const matchesByInputs = names.has("EquipmentJM")
+          || names.has("executionDateDays")
+          || (names.has("poNum") && /Browse Days|Equipment/i.test(text));
+        const matchesByText = /Create Shipment/i.test(text)
+          && (names.has("EquipmentJM") || names.has("executionDateDays") || names.has("poNum"));
+
+        return {
+          id: element.id || "",
+          text,
+          zIndex: Number(window.getComputedStyle(element).zIndex || 0),
+          inputs,
+          matches: matchesByInputs || matchesByText,
+        };
+      })
+      .filter((dialog) => dialog.matches)
+      .sort((left, right) => right.zIndex - left.zIndex);
+
+    return dialogs[0] || null;
+  }).catch(() => null);
 }
 
 async function clearCreateShipmentPoNumber(dialog) {
@@ -1058,6 +1364,186 @@ async function fillCreateShipmentEquipmentId(dialog, changeEquipmentId) {
   log("Entered Create Shipment equipment number.", {
     changeEquipmentId: String(changeEquipmentId || "").trim(),
   });
+}
+
+function getCreateShipmentWorkspace(page) {
+  return page
+    .locator("div.x-panel:visible")
+    .filter({
+      has: page.locator("span.x-panel-header-text", {
+        hasText: /^Create Shipment$/i,
+      }),
+    })
+    .first();
+}
+
+function getCreateShipmentGrid(page) {
+  return getCreateShipmentWorkspace(page)
+    .locator("div.x-grid3:visible")
+    .first();
+}
+
+async function waitForCreateShipmentGridRows(page, createShipmentBatch) {
+  const changeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
+  const timeoutMs = Math.min(config.navigationTimeoutMs, 15000);
+  const startedAt = Date.now();
+  let lastState = null;
+  let stableMatchCount = 0;
+  let lastSignature = "";
+  let noDataSince = 0;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const errorText = await getVisibleDialogErrorText(page);
+    if (errorText) {
+      throw new Error(errorText);
+    }
+
+    const state = await getCreateShipmentGridState(page, createShipmentBatch);
+    lastState = state;
+
+    if (state.rowCount > 0 && state.matchedEquipmentRowCount > 0) {
+      stableMatchCount = state.rowSignature === lastSignature ? stableMatchCount + 1 : 1;
+      lastSignature = state.rowSignature;
+      if (stableMatchCount >= 2) {
+        log("Create Shipment grid rows loaded.", {
+          changeEquipmentId,
+          rowCount: state.rowCount,
+          matchedEquipmentRowCount: state.matchedEquipmentRowCount,
+          matchedTargetPairRowCount: state.matchedTargetPairRowCount,
+          selectedRowCount: state.selectedRowCount,
+        });
+        return;
+      }
+    } else {
+      stableMatchCount = 0;
+      lastSignature = state.rowSignature;
+    }
+
+    if (state.rowCount === 0) {
+      noDataSince = noDataSince || Date.now();
+      if (state.noDataVisible && Date.now() - noDataSince >= 1000) {
+        throw new Error(`Create Shipment ${changeEquipmentId}: no rows were loaded after confirming filters.`);
+      }
+    } else {
+      noDataSince = 0;
+    }
+
+    await page.waitForTimeout(250);
+  }
+
+  throw new Error(`Create Shipment ${changeEquipmentId}: timed out waiting for filtered grid rows. State: ${JSON.stringify(lastState || {})}`);
+}
+
+async function selectCreateShipmentGridRows(page, createShipmentBatch) {
+  const changeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
+  const timeoutMs = Math.min(config.navigationTimeoutMs, 10000);
+  const startedAt = Date.now();
+  let lastPlan = null;
+  const grid = getCreateShipmentGrid(page);
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const plan = await getCreateShipmentGridSelectionPlan(page, createShipmentBatch);
+    lastPlan = plan;
+
+    if (plan.matchedTargetRowCount > 0
+      && plan.pendingToggleCount === 0
+      && plan.selectedTargetRowCount === plan.matchedTargetRowCount
+      && plan.unexpectedSelectedCount === 0) {
+      log("Selected Create Shipment rows by PO/equipment matching.", {
+        changeEquipmentId,
+        rowCount: plan.rowCount,
+        matchedTargetRowCount: plan.matchedTargetRowCount,
+        selectedTargetRowCount: plan.selectedTargetRowCount,
+        missingTargetPairCount: plan.missingTargetPairCount,
+      });
+      return plan;
+    }
+
+    if (plan.matchedTargetRowCount === 0 && plan.rowCount > 0) {
+      throw new Error(`Create Shipment ${changeEquipmentId}: no grid rows matched the requested PO/equipment pairs.`);
+    }
+
+    const nextAction = Array.isArray(plan.actions)
+      ? plan.actions.find((item) => Boolean(item && item.needsToggle))
+      : null;
+    if (nextAction) {
+      const checker = grid.locator("div.x-grid3-row-checker").nth(nextAction.index);
+      await checker.waitFor({ state: "visible", timeout: 2000 }).catch(() => {});
+      await forceClickLocator(
+        checker,
+        `Create Shipment row checker ${nextAction.poNo || nextAction.equipmentNumber || nextAction.index}`,
+      );
+      await page.waitForTimeout(300);
+      continue;
+    }
+
+    await page.waitForTimeout(250);
+  }
+
+  throw new Error(`Create Shipment ${changeEquipmentId}: grid rows were not fully selected. State: ${JSON.stringify(lastPlan || {})}`);
+}
+
+async function clickCreateShipmentWorkspaceButton(page, createShipmentBatch, selectionSummary) {
+  const changeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
+  const button = getCreateShipmentWorkspace(page)
+    .locator("button.x-btn-text.icon-gear-ok-small")
+    .filter({ hasText: /^Create Shipment$/i })
+    .first();
+  await button.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await forceClickLocator(button, "Create Shipment workspace button");
+  log("Clicked Create Shipment workspace button.", {
+    changeEquipmentId,
+    poNos: createShipmentBatch?.poNos || [],
+    selectedTargetRowCount: selectionSummary?.selectedTargetRowCount || 0,
+    missingTargetPairCount: selectionSummary?.missingTargetPairCount || 0,
+    url: safePageUrl(page),
+  });
+}
+
+async function waitForCreateShipmentNextStep(page, createShipmentBatch, previousUrl) {
+  const changeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
+  const timeoutMs = Math.min(config.navigationTimeoutMs, 15000);
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const errorText = await getVisibleDialogErrorText(page);
+    if (errorText) {
+      throw new Error(`Create Shipment ${changeEquipmentId}: ${errorText}`);
+    }
+
+    const currentUrl = safePageUrl(page);
+    if (previousUrl && currentUrl && currentUrl !== previousUrl) {
+      log("Create Shipment moved to next page.", {
+        changeEquipmentId,
+        previousUrl,
+        currentUrl,
+      });
+      return;
+    }
+
+    const topDialog = await getTopVisibleDialogInfo(page);
+    if (topDialog?.id && !topDialog.isMessageDialog) {
+      log("Create Shipment opened next dialog.", {
+        changeEquipmentId,
+        dialogId: topDialog.id,
+      });
+      return;
+    }
+
+    const workspaceVisible = await getCreateShipmentWorkspace(page).isVisible().catch(() => false);
+    if (!workspaceVisible) {
+      log("Create Shipment workspace transitioned.", {
+        changeEquipmentId,
+        previousUrl,
+        currentUrl,
+      });
+      return;
+    }
+
+    await page.waitForTimeout(250);
+  }
+
+  throw new Error(`Create Shipment ${changeEquipmentId}: did not move to the next page after clicking Create Shipment.`);
 }
 
 async function clickDialogOk(dialog, label) {
@@ -1265,6 +1751,216 @@ async function getShipmentGridState(page, poNo) {
     packagesSelectedCount: 0,
     noDataVisible: false,
     rowSignature: "",
+  }));
+}
+
+async function getCreateShipmentGridState(page, createShipmentBatch) {
+  const plan = await getCreateShipmentGridSelectionPlan(page, createShipmentBatch);
+  return {
+    rowCount: plan.rowCount,
+    selectedRowCount: plan.selectedRowCount,
+    headerSelected: plan.headerSelected,
+    matchedEquipmentRowCount: plan.matchedEquipmentRowCount,
+    matchedTargetPairRowCount: plan.matchedTargetRowCount,
+    noDataVisible: plan.noDataVisible,
+    rowSignature: plan.rowSignature,
+  };
+}
+
+async function getCreateShipmentGridSelectionPlan(page, createShipmentBatch) {
+  const normalizedChangeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
+  const targetPairs = Array.isArray(createShipmentBatch?.targetPairs)
+    ? createShipmentBatch.targetPairs.map((item) => ({
+      poNo: String(item?.poNo || "").trim(),
+      changeEquipmentId: String(item?.changeEquipmentId || "").trim(),
+    })).filter((item) => item.poNo && item.changeEquipmentId)
+    : [];
+
+  return page.evaluate(({ targetEquipmentId, targetPairsInput }) => {
+    const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+    const isVisible = (element) => {
+      if (!element) {
+        return false;
+      }
+
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none"
+        && style.visibility !== "hidden"
+        && rect.width > 0
+        && rect.height > 0;
+    };
+    const buildPairKey = (equipmentNumber, poNo) => `${normalize(equipmentNumber)}|||${normalize(poNo)}`;
+
+    const workspace = Array.from(document.querySelectorAll("div.x-panel"))
+      .find((element) => isVisible(element)
+        && Array.from(element.querySelectorAll("span.x-panel-header-text"))
+          .some((header) => /Create Shipment/i.test(normalize(header.textContent))));
+    if (!workspace) {
+      return {
+        rowCount: 0,
+        selectedRowCount: 0,
+        headerSelected: false,
+        matchedEquipmentRowCount: 0,
+        matchedTargetRowCount: 0,
+        selectedTargetRowCount: 0,
+        missingTargetPairCount: targetPairsInput.length,
+        unexpectedSelectedCount: 0,
+        pendingToggleCount: 0,
+        noDataVisible: false,
+        rowSignature: "",
+        actions: [],
+      };
+    }
+
+    const grid = Array.from(workspace.querySelectorAll("div.x-grid3"))
+      .find((element) => isVisible(element));
+    if (!grid) {
+      return {
+        rowCount: 0,
+        selectedRowCount: 0,
+        headerSelected: false,
+        matchedEquipmentRowCount: 0,
+        matchedTargetRowCount: 0,
+        selectedTargetRowCount: 0,
+        missingTargetPairCount: targetPairsInput.length,
+        unexpectedSelectedCount: 0,
+        pendingToggleCount: 0,
+        noDataVisible: false,
+        rowSignature: "",
+        actions: [],
+      };
+    }
+
+    const headerCells = Array.from(grid.querySelectorAll("td.x-grid3-hd, td.x-grid3-cell-first, td"))
+      .filter((element) => isVisible(element) && element.closest(".x-grid3-header"));
+    const headerEntries = headerCells.map((cell, index) => ({
+      index,
+      text: normalize(cell.innerText || cell.textContent),
+      className: String(cell.className || ""),
+    }));
+    const equipmentColIndex = headerEntries.find((item) => /Equipment Number/i.test(item.text) || /equipmentRef/i.test(item.className))?.index ?? 1;
+    const poColIndex = headerEntries.find((item) => /PO Numbers/i.test(item.text) || /poNums/i.test(item.className))?.index ?? 2;
+
+    const targetPairCounts = new Map();
+    for (const pair of targetPairsInput) {
+      const pairKey = buildPairKey(pair.changeEquipmentId, pair.poNo);
+      targetPairCounts.set(pairKey, Number(targetPairCounts.get(pairKey) || 0) + 1);
+    }
+    const remainingPairCounts = new Map(targetPairCounts);
+
+    const rowNodes = Array.from(grid.querySelectorAll("div.x-grid3-row"))
+      .filter((element) => isVisible(element));
+    const actions = [];
+    let matchedEquipmentRowCount = 0;
+    let matchedTargetRowCount = 0;
+    let selectedRowCount = 0;
+    let selectedTargetRowCount = 0;
+    let unexpectedSelectedCount = 0;
+
+    rowNodes.forEach((rowNode, index) => {
+      const rowCells = Array.from(rowNode.querySelectorAll("td.x-grid3-cell, td"))
+        .filter((element) => element.closest(".x-grid3-row") === rowNode);
+      const equipmentText = normalize(
+        rowNode.querySelector('td[class*="equipmentRef"] .x-grid3-cell-inner, div[class*="equipmentRef"]')
+          ?.textContent
+          || rowCells[equipmentColIndex]?.textContent
+          || "",
+      );
+      const poText = normalize(
+        rowNode.querySelector('td[class*="poNums"] .x-grid3-cell-inner, div[class*="poNums"]')
+          ?.textContent
+          || rowCells[poColIndex]?.textContent
+          || "",
+      );
+      const checker = rowNode.querySelector("div.x-grid3-row-checker");
+      const checkerClass = String(checker?.className || "");
+      const rowClass = String(rowNode.className || "");
+      const selected = isVisible(checker)
+        && (checkerClass.includes("x-grid3-row-checker-on") || rowClass.includes("x-grid3-row-selected"));
+
+      if (selected) {
+        selectedRowCount += 1;
+      }
+
+      const equipmentMatches = equipmentText === normalize(targetEquipmentId);
+      if (equipmentMatches) {
+        matchedEquipmentRowCount += 1;
+      }
+
+      const pairKey = buildPairKey(equipmentText, poText);
+      const remainingCount = Number(remainingPairCounts.get(pairKey) || 0);
+      const shouldSelect = equipmentMatches && remainingCount > 0;
+      if (shouldSelect) {
+        remainingPairCounts.set(pairKey, remainingCount - 1);
+        matchedTargetRowCount += 1;
+        if (selected) {
+          selectedTargetRowCount += 1;
+        }
+      } else if (selected) {
+        unexpectedSelectedCount += 1;
+      }
+
+      actions.push({
+        index,
+        poNo: poText,
+        equipmentNumber: equipmentText,
+        selected,
+        shouldSelect,
+        needsToggle: selected !== shouldSelect,
+      });
+    });
+
+    const missingTargetPairCount = Array.from(remainingPairCounts.values())
+      .reduce((sum, count) => sum + Number(count || 0), 0);
+    const headerChecker = Array.from(grid.querySelectorAll("div.x-grid3-hd-checker"))
+      .find((element) => isVisible(element));
+    const headerSelected = Boolean(
+      headerChecker
+      && (
+        String(headerChecker.className || "").includes("x-grid3-hd-checker-on")
+        || String(headerChecker.parentElement?.className || "").includes("x-grid3-hd-checker-on")
+      )
+    );
+    const noDataVisible = Array.from(workspace.querySelectorAll("div, span, td"))
+      .filter((element) => isVisible(element))
+      .some((element) => /No data to display/i.test(normalize(element.textContent)));
+    const rowSignature = actions
+      .map((item) => `${item.equipmentNumber}|${item.poNo}|${item.selected ? "1" : "0"}|${item.shouldSelect ? "1" : "0"}`)
+      .slice(0, 8)
+      .join(" || ")
+      .slice(0, 600);
+
+    return {
+      rowCount: rowNodes.length,
+      selectedRowCount,
+      headerSelected,
+      matchedEquipmentRowCount,
+      matchedTargetRowCount,
+      selectedTargetRowCount,
+      missingTargetPairCount,
+      unexpectedSelectedCount,
+      pendingToggleCount: actions.filter((item) => item.needsToggle).length,
+      noDataVisible,
+      rowSignature,
+      actions,
+    };
+  }, {
+    targetEquipmentId: normalizedChangeEquipmentId,
+    targetPairsInput: targetPairs,
+  }).catch(() => ({
+    rowCount: 0,
+    selectedRowCount: 0,
+    headerSelected: false,
+    matchedEquipmentRowCount: 0,
+    matchedTargetRowCount: 0,
+    selectedTargetRowCount: 0,
+    missingTargetPairCount: targetPairs.length,
+    unexpectedSelectedCount: 0,
+    pendingToggleCount: 0,
+    noDataVisible: false,
+    rowSignature: "",
+    actions: [],
   }));
 }
 
@@ -1503,19 +2199,28 @@ async function persistRunArtifacts(result, poRows) {
   await mkdir(artifactsDir, { recursive: true });
 
   const latestResultPath = path.join(artifactsDir, "last-result.json");
+  const latestResultExcelPath = path.join(artifactsDir, "last-result.xlsx");
   const latestFailedJsonPath = path.join(artifactsDir, "last-failed-po-rows.json");
   const latestFailedExcelPath = path.join(artifactsDir, "last-failed-po-rows.xlsx");
   const failedRows = extractFailedPoRows(result, poRows);
 
   await writeFile(latestResultPath, JSON.stringify(result, null, 2), "utf8");
+  await writeRunResultWorkbook(latestResultExcelPath, result, poRows);
   await writeFile(latestFailedJsonPath, JSON.stringify(failedRows, null, 2), "utf8");
   await writeFailedPoWorkbook(latestFailedExcelPath, failedRows);
 
   return {
     latestResultPath,
+    latestResultExcelPath,
     latestFailedJsonPath,
     latestFailedExcelPath,
     failedRowCount: failedRows.length,
+    downloadUrls: {
+      resultJsonUrl: "/artifacts/last-result.json",
+      resultExcelUrl: "/artifacts/last-result.xlsx",
+      failedPoJsonUrl: "/artifacts/last-failed-po-rows.json",
+      failedPoExcelUrl: "/artifacts/last-failed-po-rows.xlsx",
+    },
   };
 }
 
@@ -1566,6 +2271,93 @@ async function writeFailedPoWorkbook(targetPath, failedRows) {
   await writeFile(targetPath, buffer);
 }
 
+async function writeRunResultWorkbook(targetPath, result, poRows) {
+  const workbook = xlsx.utils.book_new();
+  const poResultRows = buildPoResultWorkbookRows(result, poRows);
+  const createShipmentRows = buildCreateShipmentWorkbookRows(result);
+  const summaryRows = buildRunSummaryRows(result, poResultRows, createShipmentRows);
+
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet(summaryRows),
+    "Summary",
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet(poResultRows, {
+      header: poResultRows.length > 0
+        ? undefined
+        : ["rowIndex", "poNo", "changeEquipmentId", "ok", "failedStep", "failureReason"],
+    }),
+    "PO Results",
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet(createShipmentRows, {
+      header: createShipmentRows.length > 0
+        ? undefined
+        : ["changeEquipmentId", "poNos", "ok", "failureReason"],
+    }),
+    "Create Shipment",
+  );
+
+  const buffer = xlsx.write(workbook, {
+    type: "buffer",
+    bookType: "xlsx",
+  });
+  await writeFile(targetPath, buffer);
+}
+
+function buildPoResultWorkbookRows(result, poRows) {
+  const resultRows = Array.isArray(result?.poResults) ? result.poResults : [];
+  const resultByRowIndex = new Map(resultRows.map((item) => [item.rowIndex, item]));
+
+  return poRows.map((row) => {
+    const resultRow = resultByRowIndex.get(row.rowIndex);
+    const failureReason = resultRow?.ok
+      ? ""
+      : resultRow?.error || result?.message || "Shipment PO row was not completed.";
+    return {
+      rowIndex: row.rowIndex,
+      poNo: row.poNo,
+      changeEquipmentId: row.changeEquipmentId || "",
+      ok: Boolean(resultRow?.ok),
+      failedStep: resultRow?.ok ? "" : classifyPoFailureStep(failureReason),
+      failureReason,
+      ...(row.originalRow && typeof row.originalRow === "object" ? row.originalRow : {}),
+    };
+  });
+}
+
+function buildCreateShipmentWorkbookRows(result) {
+  const createShipmentResults = Array.isArray(result?.createShipmentResults)
+    ? result.createShipmentResults
+    : [];
+
+  return createShipmentResults.map((item) => ({
+    changeEquipmentId: String(item?.changeEquipmentId || "").trim(),
+    poNos: Array.isArray(item?.poNos) ? item.poNos.join(", ") : "",
+    ok: Boolean(item?.ok),
+    failureReason: item?.ok ? "" : String(item?.error || result?.message || "").trim(),
+  }));
+}
+
+function buildRunSummaryRows(result, poResultRows, createShipmentRows) {
+  return [
+    { metric: "ok", value: Boolean(result?.ok) ? "true" : "false" },
+    { metric: "message", value: String(result?.message || "") },
+    { metric: "generatedAt", value: String(result?.generatedAt || "") },
+    { metric: "inputFileName", value: String(result?.inputFileName || "") },
+    { metric: "totalPoCount", value: Number(result?.totalPoCount ?? poResultRows.length) },
+    { metric: "completedPoCount", value: Number(result?.completedPoCount ?? poResultRows.filter((item) => item.ok).length) },
+    { metric: "failedPoCount", value: Number(result?.failedPoCount ?? poResultRows.filter((item) => !item.ok).length) },
+    { metric: "uniqueChangeEquipmentIdCount", value: Number(result?.uniqueChangeEquipmentIdCount ?? 0) },
+    { metric: "completedCreateShipmentCount", value: Number(result?.completedCreateShipmentCount ?? createShipmentRows.filter((item) => item.ok).length) },
+    { metric: "failedCreateShipmentCount", value: Number(result?.failedCreateShipmentCount ?? createShipmentRows.filter((item) => !item.ok).length) },
+    { metric: "finalUrl", value: String(result?.finalUrl || "") },
+  ];
+}
+
 function classifyPoFailureStep(reason) {
   const normalizedReason = String(reason || "").toLowerCase();
   if (!normalizedReason) {
@@ -1589,6 +2381,14 @@ function classifyPoFailureStep(reason) {
   }
 
   if (normalizedReason.includes("no shipment rows were loaded")) {
+    return "Shipment Scan Result Load";
+  }
+
+  if (normalizedReason.includes("shipment grid stayed empty")) {
+    return "Shipment Scan Result Load";
+  }
+
+  if (normalizedReason.includes("did not switch to rows for this po")) {
     return "Shipment Scan Result Load";
   }
 
@@ -1687,12 +2487,23 @@ function extractPoNoValue(row) {
     return "";
   }
 
-  const directValue = row["PO No"] ?? row["PO NO"] ?? row["PO no"] ?? row["PO No."] ?? row["PO Number"] ?? row["PO"];
+  const directValue = row["PO No"]
+    ?? row["PO NO"]
+    ?? row["PO no"]
+    ?? row["PO No1"]
+    ?? row["PO NO1"]
+    ?? row["PO no1"]
+    ?? row["PO No."]
+    ?? row["PO Number"]
+    ?? row["PO"];
   if (directValue !== undefined && directValue !== null && String(directValue).trim()) {
     return String(directValue).trim();
   }
 
-  const poKey = Object.keys(row).find((key) => normalizeHeaderName(key) === "pono");
+  const poKey = Object.keys(row).find((key) => {
+    const normalizedKey = normalizeHeaderName(key);
+    return normalizedKey === "pono" || normalizedKey === "pono1";
+  });
   return poKey ? String(row[poKey] ?? "").trim() : "";
 }
 
@@ -1708,6 +2519,42 @@ function extractChangeEquipmentIdValue(row) {
 
   const equipmentKey = Object.keys(row).find((key) => normalizeHeaderName(key) === "changeequipmentid");
   return equipmentKey ? String(row[equipmentKey] ?? "").trim() : "";
+}
+
+function collectCreateShipmentBatches(poRows) {
+  const batches = [];
+  const batchByEquipmentId = new Map();
+
+  for (const row of Array.isArray(poRows) ? poRows : []) {
+    const poNo = String(row?.poNo || "").trim();
+    const changeEquipmentId = String(row?.changeEquipmentId || "").trim();
+    if (!poNo || !changeEquipmentId) {
+      continue;
+    }
+
+    let batch = batchByEquipmentId.get(changeEquipmentId);
+    if (!batch) {
+      batch = {
+        changeEquipmentId,
+        poNos: [],
+        targetPairs: [],
+      };
+      batchByEquipmentId.set(changeEquipmentId, batch);
+      batches.push(batch);
+    }
+
+    if (!batch.poNos.includes(poNo)) {
+      batch.poNos.push(poNo);
+    }
+
+    batch.targetPairs.push({
+      rowIndex: Number(row?.rowIndex || 0),
+      poNo,
+      changeEquipmentId,
+    });
+  }
+
+  return batches;
 }
 
 function collectUniqueChangeEquipmentIds(poRows) {
@@ -1867,8 +2714,82 @@ function setCorsHeaders(res) {
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
   });
   res.end(JSON.stringify(payload, null, 2));
+}
+
+async function trySendArtifactDownload(requestPath, res) {
+  const artifactEntry = resolveArtifactDownload(requestPath);
+  if (!artifactEntry) {
+    return false;
+  }
+
+  if (!existsSync(artifactEntry.filePath)) {
+    sendJson(res, 404, {
+      ok: false,
+      message: "Requested artifact does not exist yet.",
+      path: requestPath,
+    });
+    return true;
+  }
+
+  const buffer = await readFile(artifactEntry.filePath);
+  res.writeHead(200, {
+    "Content-Type": artifactEntry.contentType,
+    "Content-Disposition": `attachment; filename="${artifactEntry.downloadName}"`,
+    "Cache-Control": "no-store",
+  });
+  res.end(buffer);
+  return true;
+}
+
+function resolveArtifactDownload(requestPath) {
+  const normalizedPath = String(requestPath || "");
+  const artifactMap = {
+    "/artifacts/last-result.json": {
+      filePath: path.join(artifactsDir, "last-result.json"),
+      contentType: "application/json; charset=utf-8",
+      downloadName: "shipping-last-result.json",
+    },
+    "/api/artifacts/last-result.json": {
+      filePath: path.join(artifactsDir, "last-result.json"),
+      contentType: "application/json; charset=utf-8",
+      downloadName: "shipping-last-result.json",
+    },
+    "/artifacts/last-result.xlsx": {
+      filePath: path.join(artifactsDir, "last-result.xlsx"),
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      downloadName: "shipping-last-result.xlsx",
+    },
+    "/api/artifacts/last-result.xlsx": {
+      filePath: path.join(artifactsDir, "last-result.xlsx"),
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      downloadName: "shipping-last-result.xlsx",
+    },
+    "/artifacts/last-failed-po-rows.json": {
+      filePath: path.join(artifactsDir, "last-failed-po-rows.json"),
+      contentType: "application/json; charset=utf-8",
+      downloadName: "shipping-last-failed-po-rows.json",
+    },
+    "/api/artifacts/last-failed-po-rows.json": {
+      filePath: path.join(artifactsDir, "last-failed-po-rows.json"),
+      contentType: "application/json; charset=utf-8",
+      downloadName: "shipping-last-failed-po-rows.json",
+    },
+    "/artifacts/last-failed-po-rows.xlsx": {
+      filePath: path.join(artifactsDir, "last-failed-po-rows.xlsx"),
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      downloadName: "shipping-last-failed-po-rows.xlsx",
+    },
+    "/api/artifacts/last-failed-po-rows.xlsx": {
+      filePath: path.join(artifactsDir, "last-failed-po-rows.xlsx"),
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      downloadName: "shipping-last-failed-po-rows.xlsx",
+    },
+  };
+
+  return artifactMap[normalizedPath] || null;
 }
 
 async function readJsonBody(req) {

@@ -9,6 +9,8 @@
     "launcher:register:dev": "node automation-launcher/register-dev.js --start",
     "launcher:register:dev:startup": "node automation-launcher/register-dev.js --startup --start",
     "launcher:unregister:dev": "node automation-launcher/register-dev.js --unregister",
+    "shipping:web:debug:start": "powershell -ExecutionPolicy Bypass -File scripts/start-shipping-web-debug.ps1",
+    "shipping:web:debug:stop": "powershell -ExecutionPolicy Bypass -File scripts/stop-shipping-web-debug.ps1",
     "clean:update-artifacts": "node scripts/clean-update-artifacts.js",
     "build:backend-runtime": "node scripts/build-backend-runtime.js",
     "verify:renderer-package": "node scripts/verify-renderer-package.js",
