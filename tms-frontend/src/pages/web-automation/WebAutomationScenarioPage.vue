@@ -1093,8 +1093,7 @@ function readErrorMessage(error: unknown, fallback: string): string {
   flex-direction: column;
   gap: 8px;
   padding: 10px 14px;
-  height: 100%;
-  overflow: hidden;
+  min-height: 100%;
   background:
     radial-gradient(ellipse 55% 35% at 50% 0%, rgba(13, 148, 136, 0.04), transparent 55%),
     #f6f9fc;
@@ -1393,25 +1392,13 @@ function readErrorMessage(error: unknown, fallback: string): string {
   grid-template-columns: 240px minmax(0, 1fr);
   gap: 10px;
   animation: ws-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
 }
 
-.ws-side {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  overflow-y: auto;
-  min-height: 0;
-}
-
+.ws-side,
 .ws-stage {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow-y: auto;
-  min-height: 0;
 }
 
 /* ===== Panels (Left Sidebar) ===== */
