@@ -1848,8 +1848,8 @@ function readErrorMessage(error: unknown, fallback: string): string {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 90px;
-  padding: 14px;
+  min-height: 80px;
+  padding: 12px;
   border: 2px dashed #cbd5e1;
   border-radius: 10px;
   background: linear-gradient(135deg, #fafcff, #f8fafc);
@@ -1869,6 +1869,11 @@ function readErrorMessage(error: unknown, fallback: string): string {
     border-color: #86efac;
     border-style: solid;
     background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 10px;
+    min-height: auto;
+    padding: 8px 12px;
   }
 
   &--drag {
@@ -1916,22 +1921,28 @@ function readErrorMessage(error: unknown, fallback: string): string {
 .ws-dropzone__icon--done {
   background: linear-gradient(135deg, #34d399, var(--green));
   border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
 }
 
 .ws-dropzone__clear {
-  margin-top: 10px;
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px 12px;
+  gap: 3px;
+  padding: 3px 8px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 6px;
   background: #fff;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  flex-shrink: 0;
+
+  :deep(.app-icon) { font-size: 12px; }
 
   &:hover {
     border-color: var(--red);
