@@ -26,7 +26,7 @@ class JaneModule:
 
     DESTINATION_CATEGORY_OVERRIDES = {
         'china': '中国单',
-        'south africa': '南非单',
+        'south africa': '欧美单',
     }
 
     REGION_TO_CATEGORY = {
@@ -37,8 +37,11 @@ class JaneModule:
         'APAC': '亚洲单',
     }
 
-    CATEGORY_ORDER = ['欧美单', '亚洲单', '中国单', '南非单', '其他']
+    CATEGORY_ORDER = ['欧美单', '亚洲单', '中国单', '其他']
     VALID_CATEGORIES = set(CATEGORY_ORDER)
+    CATEGORY_ALIASES = {
+        '南非单': '欧美单',
+    }
     DEFAULT_CATEGORY = '其他'
     MIN_REQUIRED_FIELD_RATE = 0.9
     MIN_COUNTRY_MATCH_RATE = 0.8
@@ -339,6 +342,46 @@ class JaneModule:
         )
         return resolved_columns
 
+    def sort_tms_rows_for_generation(
+        self,
+        df: pd.DataFrame,
+        logs: Optional[List[str]] = None
+    ) -> pd.DataFrame:
+        """按 Article、国家、Working 的业务顺序排序，保证生成表和 Summary 顺序一致。"""
+
+        sorted_df = df.copy()
+        country_col = self._find_column(sorted_df, ['Country/Region', 'DESTINATION', 'Destination'])
+        sort_article_col = '_Jane_SORT_ARTICLE'
+        sort_country_col = '_Jane_SORT_COUNTRY'
+        sort_working_col = '_Jane_SORT_WORKING'
+        sort_index_col = '_Jane_SORT_INDEX'
+        helper_cols = [sort_article_col, sort_country_col, sort_working_col, sort_index_col]
+
+        sorted_df[sort_article_col] = sorted_df['Article Number'].apply(
+            lambda value: self._normalize_text(value).upper()
+        )
+        if country_col is None:
+            sorted_df[sort_country_col] = ''
+            if logs is not None:
+                logs.append("  ⚠️ TMS 未找到 Country/Region 或 Destination 列，国家排序按空值处理")
+        else:
+            sorted_df[sort_country_col] = sorted_df[country_col].apply(
+                lambda value: self._normalize_text(value).upper()
+            )
+        sorted_df[sort_working_col] = sorted_df['Working Number'].apply(
+            lambda value: self._normalize_text(value).upper()
+        )
+        sorted_df[sort_index_col] = range(len(sorted_df))
+
+        sorted_df = sorted_df.sort_values(
+            by=helper_cols,
+            kind='mergesort',
+            na_position='last',
+        )
+        if logs is not None:
+            logs.append("  已按 Article Number → Country/Region/Destination → Working Number 排序")
+        return sorted_df.drop(columns=helper_cols).reset_index(drop=True)
+
     def get_category(self, destination: Any, region: Any) -> str:
         """根据国家/地区与 REGION 返回统计单别。"""
 
@@ -358,7 +401,7 @@ class JaneModule:
 
         分类优先级：
         1. country 表如有 CATEGORY/单别/分类列，直接使用该列；
-        2. China、South Africa 两个业务特例按国家名归类；
+        2. China 按国家名归入中国单，South Africa 按业务规则归入欧美单；
         3. 其他国家按 REGION 归类。
         """
 
@@ -394,6 +437,7 @@ class JaneModule:
             destination = self._normalize_text(row[destination_col])
             region = self._normalize_text(row[region_col])
             manual_category = self._normalize_text(row[category_col]) if category_col else ''
+            manual_category = self.CATEGORY_ALIASES.get(manual_category, manual_category)
             if manual_category:
                 if manual_category in self.VALID_CATEGORIES:
                     category = manual_category
@@ -631,7 +675,7 @@ class JaneModule:
             article_list_cells: Dict[str, Tuple[int, int, Optional[int]]] = area['article_list_cells']
 
             if not category_rows:
-                logs.append(f"  ⚠️ {working_num} 未找到 欧美单/亚洲单/中国单/南非单 统计区，跳过分类统计")
+                logs.append(f"  ⚠️ {working_num} 未找到 欧美单/亚洲单/中国单 统计区，跳过分类统计")
                 continue
 
             category_totals: Dict[str, float] = {category: 0 for category in self.CATEGORY_ORDER}
@@ -941,7 +985,6 @@ class JaneModule:
             '欧美单': 'B7DEE8',
             '亚洲单': 'CCC0DA',
             '中国单': 'FCD5B4',
-            '南非单': 'E6B8B7',
             '其他': 'D9EAD3',
         }
 
@@ -1662,10 +1705,11 @@ class JaneModule:
             
             if working_filters_set:
                 df_filtered = df_result[df_result['Working Number'].astype(str).isin(working_filters_set)]
-                working_order = list(df_filtered['Working Number'].unique())
             else:
                 df_filtered = df_result
-                working_order = list(df_filtered['Working Number'].unique())
+
+            df_filtered = self.sort_tms_rows_for_generation(df_filtered, result['logs'])
+            working_order = list(df_filtered['Working Number'].unique())
             
             log(f"筛选后：{len(df_filtered)} 行数据，{len(working_order)} 个 Working Number")
             
@@ -1731,4 +1775,3 @@ class JaneModule:
             result['message'] = f'处理出错：{str(e)}'
         
         return result
-
