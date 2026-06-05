@@ -1057,7 +1057,11 @@ function createFallbackAutomationApp(currentEntry: WebAutomationEntry): Automati
 }
 
 function goBack(): void {
-  void router.push('/web-automation')
+  if (window.history.length > 1) {
+    router.back()
+  } else {
+    void router.push('/')
+  }
 }
 
 function readErrorMessage(error: unknown, fallback: string): string {
