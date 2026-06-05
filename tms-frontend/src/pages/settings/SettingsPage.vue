@@ -219,7 +219,7 @@ const messageTone = ref<NoticeTone>('info')
 let unsubscribeUpdateStatus: (() => void) | undefined
 const { currentLanguage, languageOptions, t, text } = useAppLanguage()
 const langOpen = ref(false)
-const currentLangLabel = computed(() => languageOptions.find(o => o.value === currentLanguage.value)?.label ?? currentLanguage.value)
+const currentLangLabel = computed(() => languageOptions.value.find(o => o.value === currentLanguage.value)?.label ?? currentLanguage.value)
 function selectLang(val: string) { currentLanguage.value = val; langOpen.value = false }
 function closeLang() { langOpen.value = false }
 
