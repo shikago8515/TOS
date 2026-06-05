@@ -317,7 +317,7 @@ class EricModuleYticSourceTests(unittest.TestCase):
                     46218,
                     "",
                     "By Sea",
-                    "United Arab Emirates",
+                    "Germany",
                     106,
                     "2T,3T,4T,5T,2XS,XS,S,M,L,XL",
                     "PIECES",
@@ -334,7 +334,7 @@ class EricModuleYticSourceTests(unittest.TestCase):
                     46218,
                     10,
                     "By Sea",
-                    "United Arab Emirates",
+                    "United kingdom",
                     "",
                     "",
                     "",
@@ -408,6 +408,16 @@ class EricModuleYticSourceTests(unittest.TestCase):
                 self.assertIs(wb["YTIC_Destination_Extract"]["O3"].value, False)
                 self.assertEqual(wb["YTIC_SP_Extract"]["J3"].value, "=I3-I4")
                 self.assertIsNone(wb["YTIC_SP_Extract"]["J4"].value)
+                sp_sheet = wb["YTIC_SP_Extract"]
+                highlighted_fill = "FFEBF1DE"
+                for cell_address in ("A2", "L2", "O2", "A3", "L3", "O3"):
+                    self.assertEqual(sp_sheet[cell_address].fill.fgColor.rgb, highlighted_fill)
+                for cell_address in ("A4", "L4", "O4"):
+                    self.assertNotEqual(sp_sheet[cell_address].fill.fgColor.rgb, highlighted_fill)
+                self.assertNotEqual(
+                    wb["YTIC_Destination_Extract"]["A2"].fill.fgColor.rgb,
+                    highlighted_fill,
+                )
                 rows = list(wb["PO_Text_Compare"].iter_rows(values_only=True))
                 self.assertEqual(
                     rows,

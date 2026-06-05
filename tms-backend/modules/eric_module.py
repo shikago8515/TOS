@@ -14,7 +14,7 @@ import re
 from contextlib import redirect_stdout
 from datetime import date, datetime, timedelta
 from io import StringIO
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
@@ -93,10 +93,22 @@ YTIC_SP_HEADERS = [
     "SIZE RANGE",
     "UOM",
 ]
+# Eric 要求这些国家在 YTIC_SP_Extract 中整行标浅绿色，便于人工核对。
+ERIC_SP_COUNTRY_HIGHLIGHT_COLOR = "FFEBF1DE"
+ERIC_SP_COUNTRY_HIGHLIGHT_DESTINATIONS = {
+    "GERMANY",
+    "UNITED STATES",
+    "ITALY",
+    "UNITED KINGDOM",
+    "JAPAN",
+    "HONG KONG",
+    "MONACO",
+}
 
 SheetRows = List[List[Any]]
 WorkbookRows = Dict[str, SheetRows]
 QuantityKey = Tuple[str, str, str]
+RowFillResolver = Callable[[Sequence[Any]], Optional[PatternFill]]
 
 
 def ensure_dir(dir_path: str):
@@ -1104,6 +1116,7 @@ class EricModule:
         title: str,
         headers: Sequence[str],
         rows: Sequence[Sequence[Any]],
+        row_fill_resolver: Optional[RowFillResolver] = None,
     ):
         ws = wb.create_sheet(title[:31])
         ws.append(list(headers))
@@ -1123,6 +1136,11 @@ class EricModule:
                 cell = ws.cell(row=current_row, column=column)
                 if isinstance(cell.value, (datetime, date)):
                     cell.number_format = EXCEL_DATE_FORMAT
+            if row_fill_resolver:
+                row_fill = row_fill_resolver(normalized_row)
+                if row_fill:
+                    for column in range(1, len(headers) + 1):
+                        ws.cell(row=current_row, column=column).fill = copy.copy(row_fill)
 
         if headers:
             max_col_letter = get_column_letter(len(headers))
@@ -1135,6 +1153,25 @@ class EricModule:
                 cell.font = header_font
 
         self.autofit_columns(ws, min_width=8, max_width=42)
+
+    @staticmethod
+    def build_ytic_sp_row_fill_resolver(headers: Sequence[str]) -> RowFillResolver:
+        header_index = EricModule.index_headers(headers)
+        destination_index = header_index.get("*DESTINATION")
+        if destination_index is None:
+            destination_index = header_index.get("DESTINATION")
+        highlight_fill = PatternFill("solid", fgColor=ERIC_SP_COUNTRY_HIGHLIGHT_COLOR)
+
+        def resolve(row: Sequence[Any]) -> Optional[PatternFill]:
+            if destination_index is None:
+                return None
+            destination = EricModule.row_value(row, destination_index)
+            destination_key = EricModule.normalize_text_key(destination)
+            if destination_key in ERIC_SP_COUNTRY_HIGHLIGHT_DESTINATIONS:
+                return highlight_fill
+            return None
+
+        return resolve
 
     def write_reconciliation_workbook(
         self,
@@ -1235,6 +1272,7 @@ class EricModule:
             "YTIC_SP_Extract",
             ytic_data["sp_headers"],
             ytic_sp_rows,
+            row_fill_resolver=self.build_ytic_sp_row_fill_resolver(ytic_data["sp_headers"]),
         )
         for sheet_name in ("Summary", "PO_Check", "YTIC_Size_Extract"):
             if sheet_name in wb.sheetnames:
