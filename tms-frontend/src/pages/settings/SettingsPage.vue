@@ -750,9 +750,10 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
 /* Dropdown */
 .st-lang-dropdown {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 4px);
+  left: 0;
   right: 0;
-  min-width: 140px;
+  width: 100%;
   background: #fff;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -760,7 +761,7 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
     0 4px 16px rgba(0, 0, 0, 0.08),
     0 1px 4px rgba(0, 0, 0, 0.04);
   padding: 4px;
-  z-index: 50;
+  z-index: 9999;
   overflow: hidden;
 }
 
