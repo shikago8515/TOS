@@ -232,8 +232,8 @@ function openEntry(path: string): void {
 .ap-shell {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 20px 22px;
+  gap: 8px;
+  padding: 10px 14px;
   min-height: 100%;
   background:
     radial-gradient(ellipse 55% 35% at 50% 0%, rgba(13, 148, 136, 0.04), transparent 55%),
@@ -255,33 +255,34 @@ function openEntry(path: string): void {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 18px 24px;
+  gap: 12px;
+  padding: 12px 18px;
   background: rgba(255, 255, 255, 0.78);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(226, 232, 240, 0.7);
-  border-radius: 18px;
+  border-radius: 14px;
   box-shadow:
     0 1px 3px rgba(0, 0, 0, 0.02),
     0 8px 24px rgba(0, 0, 0, 0.03);
+  flex-shrink: 0;
 }
 
 .ap-hero__brand {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
 }
 
 .ap-hero__icon-wrap {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 20px;
   color: #fff;
   flex-shrink: 0;
   transition: transform 0.3s ease;
@@ -293,17 +294,17 @@ function openEntry(path: string): void {
 
 .ap-shell--sap .ap-hero__icon-wrap {
   background: linear-gradient(135deg, #14b8a6, #0d9488);
-  box-shadow: 0 6px 16px rgba(13, 148, 136, 0.25);
+  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.2);
 }
 
 .ap-shell--infornexus .ap-hero__icon-wrap {
   background: linear-gradient(135deg, #60a5fa, #3b82f6);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.25);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
 }
 
 .ap-shell:not(.ap-shell--sap):not(.ap-shell--infornexus) .ap-hero__icon-wrap {
   background: linear-gradient(135deg, #2dd4bf, #0d9488);
-  box-shadow: 0 6px 16px rgba(13, 148, 136, 0.25);
+  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.2);
 }
 
 .ap-hero__text {
@@ -312,18 +313,18 @@ function openEntry(path: string): void {
 
 .ap-hero__title {
   margin: 0;
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 800;
   color: #0f172a;
-  letter-spacing: -0.3px;
+  letter-spacing: -0.2px;
   line-height: 1.3;
 }
 
 .ap-hero__desc {
-  margin: 2px 0 0;
-  font-size: 13px;
+  margin: 1px 0 0;
+  font-size: 12px;
   color: #64748b;
-  line-height: 1.5;
+  line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -332,25 +333,25 @@ function openEntry(path: string): void {
 .ap-hero__tools {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
 .ap-search {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 38px;
-  padding: 0 14px;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
   background: #fff;
   border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  border-radius: 8px;
   transition: all 0.25s ease;
-  min-width: 200px;
+  min-width: 180px;
 }
 
 .ap-search__icon {
-  font-size: 15px;
+  font-size: 13px;
   color: #94a3b8;
   flex-shrink: 0;
   transition: color 0.2s;
@@ -361,7 +362,7 @@ function openEntry(path: string): void {
   background: transparent;
   outline: none;
   color: #1e293b;
-  font-size: 13px;
+  font-size: 12px;
   width: 100%;
   min-width: 0;
 }
@@ -381,11 +382,11 @@ function openEntry(path: string): void {
 }
 
 .ap-badge {
-  padding: 5px 12px;
+  padding: 3px 10px;
   border-radius: 999px;
   background: #f1f5f9;
   color: #64748b;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -395,18 +396,18 @@ function openEntry(path: string): void {
 /* ----- Stats ----- */
 .ap-stats {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .ap-stat {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 18px 12px 14px;
+  gap: 8px;
+  padding: 8px 14px 8px 10px;
   background: #fff;
   border: 1px solid #e2e8f0;
-  border-radius: 14px;
+  border-radius: 10px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
   transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   animation: ap-scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -419,13 +420,13 @@ function openEntry(path: string): void {
 }
 
 .ap-stat__icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 14px;
   color: #fff;
   flex-shrink: 0;
 }
@@ -452,7 +453,7 @@ function openEntry(path: string): void {
 }
 
 .ap-stat__label {
-  font-size: 11px;
+  font-size: 10px;
   color: #94a3b8;
   font-weight: 600;
   text-transform: uppercase;
@@ -460,7 +461,7 @@ function openEntry(path: string): void {
 }
 
 .ap-stat__num {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 800;
   color: #0f172a;
   line-height: 1.2;
@@ -470,7 +471,7 @@ function openEntry(path: string): void {
 /* ----- Card Grid ----- */
 .ap-cards {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .ap-shell--sap .ap-cards,
@@ -486,11 +487,11 @@ function openEntry(path: string): void {
 .ap-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 0 20px 20px;
+  gap: 8px;
+  padding: 0 14px 14px;
   background: #fff;
   border: 1px solid #e8eef3;
-  border-radius: 16px;
+  border-radius: 14px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   animation: ap-scaleIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -499,9 +500,9 @@ function openEntry(path: string): void {
 }
 
 .ap-card__bar {
-  height: 3px;
+  height: 2px;
   background: #e2e8f0;
-  margin: 0 -20px;
+  margin: 0 -14px;
   opacity: 0.5;
 }
 
@@ -548,18 +549,18 @@ function openEntry(path: string): void {
 .ap-card__top {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding-top: 16px;
+  gap: 10px;
+  padding-top: 10px;
 }
 
 .ap-card__icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 15px;
   color: #fff;
   flex-shrink: 0;
   transition: transform 0.3s ease;
@@ -590,14 +591,14 @@ function openEntry(path: string): void {
 }
 
 .ap-card__title {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
   color: #0f172a;
   line-height: 1.3;
 }
 
 .ap-card__sub {
-  font-size: 12px;
+  font-size: 11px;
   color: #94a3b8;
   margin-top: 1px;
   white-space: nowrap;
@@ -606,9 +607,9 @@ function openEntry(path: string): void {
 }
 
 .ap-card__tag {
-  padding: 4px 10px;
+  padding: 3px 8px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   flex-shrink: 0;
   letter-spacing: 0.2px;
@@ -635,9 +636,9 @@ function openEntry(path: string): void {
 /* Description */
 .ap-card__desc {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
   color: #64748b;
-  line-height: 1.6;
+  line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -648,17 +649,17 @@ function openEntry(path: string): void {
 .ap-card__tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
 }
 
 .ap-chip {
   display: inline-flex;
   align-items: center;
-  padding: 3px 9px;
-  border-radius: 6px;
+  padding: 2px 7px;
+  border-radius: 5px;
   background: #f1f5f9;
   color: #475569;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   border: 1px solid #e2e8f0;
   transition: all 0.2s ease;
@@ -672,19 +673,19 @@ function openEntry(path: string): void {
 /* Card bottom actions */
 .ap-card__bot {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   margin-top: auto;
-  padding-top: 4px;
+  padding-top: 2px;
 }
 
 .ap-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 36px;
-  padding: 0 14px;
-  border-radius: 10px;
-  font-size: 12px;
+  gap: 4px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
@@ -694,7 +695,7 @@ function openEntry(path: string): void {
 }
 
 .ap-btn .app-icon {
-  font-size: 14px;
+  font-size: 13px;
 }
 
 /* Primary button */
@@ -752,39 +753,39 @@ function openEntry(path: string): void {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 56px 20px;
+  gap: 8px;
+  padding: 40px 20px;
   text-align: center;
   animation: ap-scaleIn 0.4s ease both;
 }
 
 .ap-empty__icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
   background: linear-gradient(135deg, #94a3b8, #64748b);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 20px;
   animation: ap-float 2.6s ease-in-out infinite;
-  box-shadow: 0 6px 20px rgba(100, 116, 139, 0.2);
+  box-shadow: 0 4px 16px rgba(100, 116, 139, 0.2);
 }
 
 .ap-empty__title {
   margin: 0;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
   color: #1e293b;
 }
 
 .ap-empty__desc {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
   color: #94a3b8;
-  max-width: 320px;
-  line-height: 1.6;
+  max-width: 280px;
+  line-height: 1.5;
 }
 
 /* ===== Responsive ===== */
