@@ -5,6 +5,7 @@ import type {
 } from '../../types/electronApi'
 
 const fallbackVersion = '0.9.7-beta.1.6'
+const previewUpdateFeedUrl = 'https://github.com/shikago8515/TOS/releases/latest/download/'
 
 export function hasUpdateBridge(): boolean {
   return Boolean(window.electronAPI?.getUpdateStatus)
@@ -79,8 +80,8 @@ function buildUnsupportedStatus(): UpdateStatus {
     status: 'unsupported',
     currentVersion: fallbackVersion,
     isPackaged: false,
-    feedUrl: '',
-    feedUrlSource: 'none',
+    feedUrl: previewUpdateFeedUrl,
+    feedUrlSource: 'preview',
     updateAvailable: false,
     checking: false,
     downloading: false,

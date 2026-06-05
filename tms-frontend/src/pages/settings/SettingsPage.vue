@@ -65,6 +65,19 @@
       </div>
     </div>
 
+    <div class="st-feed-row">
+      <div class="st-feed-row__icon">
+        <AppIcon name="link" />
+      </div>
+      <div class="st-feed-row__content">
+        <span class="st-feed-row__label">{{ t('app.settings.feedUrl') }}</span>
+        <span class="st-feed-row__value">
+          <span v-if="feedUrlSourceLabel" class="st-feed-row__source">{{ feedUrlSourceLabel }}</span>
+          <span class="st-feed-row__url" :title="feedUrlText">{{ feedUrlText }}</span>
+        </span>
+      </div>
+    </div>
+
     <!-- ===== Alert ===== -->
     <transition name="st-alert">
       <div v-if="noticeText" class="st-alert" :class="`st-alert--${noticeTone}`">
@@ -254,6 +267,7 @@ const feedSourceLabels: Record<string, string> = {
   env: '环境变量',
   'user-config': '本地配置',
   package: '打包配置',
+  preview: '预览参考',
   none: '未读取',
 }
 
@@ -277,11 +291,10 @@ const runModeLabel = computed(() => {
   return isPackaged ? text('安装版') : text('开发/预览')
 })
 const feedUrl = computed(() => status.value?.feedUrl || '')
-const feedUrlLabel = computed(() => {
-  if (!feedUrl.value) return '-'
+const feedUrlText = computed(() => feedUrl.value || '-')
+const feedUrlSourceLabel = computed(() => {
   const rawSource = feedSourceLabels[status.value?.feedUrlSource || ''] || status.value?.feedUrlSource
-  const source = rawSource ? text(rawSource) : ''
-  return source ? `${source}: ${feedUrl.value}` : feedUrl.value
+  return rawSource ? text(rawSource) : ''
 })
 const noticeText = computed(() => message.value || status.value?.error || '')
 const noticeTone = computed(() => {
@@ -356,14 +369,6 @@ const versionItems = computed(() => [
     value: runModeLabel.value,
     tone: 'slate',
     mono: false,
-  },
-  {
-    key: 'feed',
-    icon: 'link',
-    label: t('app.settings.feedUrl'),
-    value: feedUrlLabel.value,
-    tone: 'green',
-    mono: true,
   },
 ])
 
@@ -820,7 +825,7 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
 /* ===== Version Grid ===== */
 .st-ver-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   animation: st-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.06s both;
 }
@@ -908,6 +913,73 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
 .st-mono {
   font-family: 'Cascadia Code', Consolas, 'Courier New', monospace;
   font-size: 12px !important;
+}
+
+/* ===== Feed Row ===== */
+.st-feed-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 15px 18px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  animation: st-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.09s both;
+}
+
+.st-feed-row__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #fff;
+  font-size: 18px;
+  background: linear-gradient(135deg, #34d399, #059669);
+  box-shadow: 0 3px 10px rgba(5, 150, 105, 0.18);
+}
+
+.st-feed-row__content {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.st-feed-row__label {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.st-feed-row__value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.st-feed-row__source {
+  flex-shrink: 0;
+  color: #0f766e;
+}
+
+.st-feed-row__url {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Cascadia Code', Consolas, 'Courier New', monospace;
 }
 
 /* ===== Alert ===== */
@@ -1324,7 +1396,7 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
 
 /* ===== Responsive ===== */
 @media (max-width: 1100px) {
-  .st-ver-grid { grid-template-columns: repeat(2, 1fr); }
+  .st-ver-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .st-changelog-grid { grid-template-columns: 1fr; }
 }
 
@@ -1342,6 +1414,21 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
   }
 
   .st-ver-grid { grid-template-columns: 1fr; }
+
+  .st-feed-row {
+    align-items: flex-start;
+    padding: 14px;
+  }
+
+  .st-feed-row__value {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .st-feed-row__url {
+    max-width: 100%;
+  }
 
   .st-manual {
     flex-direction: column;

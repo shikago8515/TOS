@@ -63,7 +63,7 @@
     "publish": [
       {
         "provider": "generic",
-        "url": "https://tos-updates-1309726828.cos.ap-guangzhou.myqcloud.com/"
+        "url": "https://github.com/shikago8515/TOS/releases/latest/download/"
       }
     ],
     "files": [
@@ -176,6 +176,7 @@
     ],
     "win": {
       "signAndEditExecutable": false,
+      "artifactName": "${productName}.Setup.${version}.${ext}",
       "target": [
         {
           "target": "nsis",

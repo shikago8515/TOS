@@ -23,7 +23,7 @@ const AUTOMATION_LAUNCHER_PORT = 3210;
 const AUTOMATION_LAUNCHER_URL = `http://${AUTOMATION_LAUNCHER_HOST}:${AUTOMATION_LAUNCHER_PORT}`;
 const AUTOMATION_PROTOCOL = 'tos';
 const AUTOMATION_LAUNCHER_BACKGROUND_FLAG = '--automation-launcher-background';
-const DEFAULT_UPDATE_FEED_URL = 'https://tos-updates-1309726828.cos.ap-guangzhou.myqcloud.com/';
+const DEFAULT_UPDATE_FEED_URL = 'https://github.com/shikago8515/TOS/releases/latest/download/';
 const UPDATE_SOURCE_CONFIG_FILE = 'update-source.json';
 const UPDATE_STATUS_CHANNEL = 'update-status';
 const MANUAL_DOWNLOADS_FILE = 'manual-downloads.json';
@@ -262,7 +262,7 @@ function configureAutoUpdater() {
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
-  // COS/CDN 的 Range 与缓存状态不稳定时，差分下载更容易造成半更新，发布版统一下载完整安装包。
+  // GitHub Release 和普通静态源的 Range/缓存行为不完全一致，发布版统一下载完整安装包。
   autoUpdater.disableDifferentialDownload = true;
   autoUpdater.allowPrerelease = true;
   autoUpdater.allowDowngrade = false;
