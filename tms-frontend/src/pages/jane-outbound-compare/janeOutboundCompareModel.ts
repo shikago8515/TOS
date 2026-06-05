@@ -2,7 +2,7 @@ import type { ProcessSummaryItem } from '../../shared/process/processHistory'
 import type { JaneOutboundCompareProcessResponse } from './janeOutboundCompareApi'
 
 export const janeOutboundCompareModuleId = 'excel-jane-outbound-compare'
-export const janeOutboundCompareModuleName = 'Jane-OUTBOUND核对'
+export const janeOutboundCompareModuleName = 'Jane - OUTBOUND核对'
 
 export interface JaneOutboundCompareInputCounts {
   outbound: number

@@ -2,7 +2,7 @@ import type { ProcessSummaryItem } from '../../shared/process/processHistory'
 import type { JaneBomSummaryProcessResponse } from './janeBomSummaryApi'
 
 export const janeBomSummaryModuleId = 'excel-jane-bom-summary'
-export const janeBomSummaryModuleName = 'Jane-BOM汇总'
+export const janeBomSummaryModuleName = 'Jane - BOM汇总'
 
 export interface JaneBomSummaryInputCounts {
   bom: number

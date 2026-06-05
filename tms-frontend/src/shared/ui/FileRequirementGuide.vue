@@ -29,9 +29,9 @@ type FileRequirementOwner =
   | 'Jessca'
   | 'Sophia & Tina'
   | 'Jane'
-  | 'Jane-BOM汇总'
-  | 'Jane-BOM核对'
-  | 'Jane-OUTBOUND核对'
+  | 'Jane - BOM汇总'
+  | 'Jane - BOM核对'
+  | 'Jane - OUTBOUND核对'
 
 interface FileRequirementGuideModel {
   summary: string
@@ -124,7 +124,7 @@ const guides: Record<FileRequirementOwner, FileRequirementGuideModel> = {
       '输出标准成品表和对应统计结果。',
     ],
   },
-  'Jane-BOM汇总': {
+  'Jane - BOM汇总': {
     summary: 'BOM MAIN COMPONENT 汇总',
     files: [
       {
@@ -143,7 +143,7 @@ const guides: Record<FileRequirementOwner, FileRequirementGuideModel> = {
       '当前只汇总 BOM 里的 MAIN COMPONENT 物料，并按 Article/Color 展开。',
     ],
   },
-  'Jane-BOM核对': {
+  'Jane - BOM核对': {
     summary: 'T1 PRODUCTION 与 BOM汇总 面料核对',
     files: [
       {
@@ -162,7 +162,7 @@ const guides: Record<FileRequirementOwner, FileRequirementGuideModel> = {
       '材料号或供应商不一致会标红；BOM汇总 有但生产表缺少的材料会写入诊断。',
     ],
   },
-  'Jane-OUTBOUND核对': {
+  'Jane - OUTBOUND核对': {
     summary: 'T1 OUTBOUND 与 TMS 出库核对',
     files: [
       {

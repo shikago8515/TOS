@@ -2,7 +2,7 @@ import type { ProcessSummaryItem } from '../../shared/process/processHistory'
 import type { JaneBomCompareProcessResponse } from './janeBomCompareApi'
 
 export const janeBomCompareModuleId = 'excel-jane-bom-compare'
-export const janeBomCompareModuleName = 'Jane-BOM核对'
+export const janeBomCompareModuleName = 'Jane - BOM核对'
 
 export interface JaneBomCompareInputCounts {
   production: number
