@@ -1,88 +1,89 @@
 <template>
-  <section class="auto-shell" :class="`auto-shell--${variant}`">
+  <section class="ap-shell" :class="`ap-shell--${variant}`">
     <!-- ===== Hero ===== -->
-    <header class="auto-hero">
-      <div class="auto-hero__brand">
-        <div class="auto-hero__icon-wrap">
+    <header class="ap-hero">
+      <div class="ap-hero__brand">
+        <div class="ap-hero__icon-wrap">
           <AppIcon :name="heroIcon" />
         </div>
-        <div class="auto-hero__text">
-          <h1 class="auto-hero__title">{{ text(pageTitle) }}</h1>
-          <p class="auto-hero__desc">{{ text(pageSubtitle) }}</p>
+        <div class="ap-hero__text">
+          <h1 class="ap-hero__title">{{ text(pageTitle) }}</h1>
+          <p class="ap-hero__desc">{{ text(pageSubtitle) }}</p>
         </div>
       </div>
-      <div class="auto-hero__tools">
-        <div class="auto-search">
-          <AppIcon name="search" class="auto-search__icon" />
+      <div class="ap-hero__tools">
+        <div class="ap-search">
+          <AppIcon name="file-search" class="ap-search__icon" />
           <input v-model.trim="searchQuery" type="text" :placeholder="text('搜索入口')" />
         </div>
-        <span class="auto-badge">{{ filteredEntries.length }}/{{ entries.length }}</span>
+        <span class="ap-badge">{{ filteredEntries.length }}/{{ entries.length }}</span>
       </div>
     </header>
 
     <!-- ===== Stats ===== -->
-    <div class="auto-stats">
+    <div class="ap-stats">
       <div
         v-for="stat in stats"
         :key="stat.key"
-        class="auto-stat"
-        :class="`auto-stat--${stat.tone}`"
+        class="ap-stat"
+        :class="`ap-stat--${stat.tone}`"
         :style="{ animationDelay: `${stat.delay}ms` }"
       >
-        <div class="auto-stat__icon">
+        <div class="ap-stat__icon">
           <AppIcon :name="stat.icon" />
         </div>
-        <div class="auto-stat__body">
-          <span class="auto-stat__label">{{ text(stat.label) }}</span>
-          <strong class="auto-stat__num">{{ stat.value }}</strong>
+        <div class="ap-stat__body">
+          <span class="ap-stat__label">{{ text(stat.label) }}</span>
+          <strong class="ap-stat__num">{{ stat.value }}</strong>
         </div>
       </div>
     </div>
 
     <!-- ===== Cards ===== -->
-    <div v-if="filteredEntries.length" class="auto-cards">
+    <div v-if="filteredEntries.length" class="ap-cards">
       <article
         v-for="(entry, i) in filteredEntries"
         :key="entry.id"
-        class="auto-card"
+        class="ap-card"
         :class="getCardClasses(entry)"
         :style="{ animationDelay: `${i * 70}ms` }"
       >
-        <div class="auto-card__top">
-          <div class="auto-card__icon" :class="`auto-card__icon--${entry.status}`">
+        <div class="ap-card__bar" />
+        <div class="ap-card__top">
+          <div class="ap-card__icon" :class="`ap-card__icon--${entry.status}`">
             <AppIcon :name="getCardIcon(entry)" />
           </div>
-          <div class="auto-card__head">
-            <div class="auto-card__title">{{ entry.title }}</div>
-            <div class="auto-card__sub">{{ entry.subtitle }}</div>
+          <div class="ap-card__head">
+            <div class="ap-card__title">{{ entry.title }}</div>
+            <div class="ap-card__sub">{{ entry.subtitle }}</div>
           </div>
-          <span class="auto-card__tag" :class="`auto-card__tag--${entry.status}`">
+          <span class="ap-card__tag" :class="`ap-card__tag--${entry.status}`">
             {{ getEntryStatusLabel(entry.status) }}
           </span>
         </div>
 
-        <p class="auto-card__desc">{{ entry.description }}</p>
+        <p class="ap-card__desc">{{ entry.description }}</p>
 
-        <div class="auto-card__tags">
-          <span v-for="tag in entry.tags" :key="tag" class="auto-chip">
+        <div class="ap-card__tags">
+          <span v-for="tag in entry.tags" :key="tag" class="ap-chip">
             {{ tag }}
           </span>
         </div>
 
-        <div class="auto-card__bot">
+        <div class="ap-card__bot">
           <button
             v-if="entry.status === 'online'"
-            class="auto-btn auto-btn--primary"
+            class="ap-btn ap-btn--primary"
             type="button"
             @click="openEntry(entry.routePath)"
           >
             <AppIcon name="play-circle" />
             <span>{{ text('进入场景') }}</span>
-            <AppIcon name="arrow-right" class="auto-btn__arrow" />
+            <AppIcon name="arrow-right" class="ap-btn__arrow" />
           </button>
           <button
             v-else-if="entry.status === 'soon'"
-            class="auto-btn auto-btn--soon"
+            class="ap-btn ap-btn--soon"
             type="button"
             disabled
           >
@@ -91,7 +92,7 @@
           </button>
           <button
             v-else
-            class="auto-btn auto-btn--offline"
+            class="ap-btn ap-btn--offline"
             type="button"
             disabled
           >
@@ -100,7 +101,7 @@
           </button>
           <button
             v-if="entry.status === 'online'"
-            class="auto-btn auto-btn--ghost"
+            class="ap-btn ap-btn--ghost"
             type="button"
             @click="openEntry(entry.routePath)"
           >
@@ -112,12 +113,12 @@
     </div>
 
     <!-- ===== Empty ===== -->
-    <div v-else class="auto-empty">
-      <div class="auto-empty__icon">
-        <AppIcon name="search" />
+    <div v-else class="ap-empty">
+      <div class="ap-empty__icon">
+        <AppIcon name="file-search" />
       </div>
-      <h3 class="auto-empty__title">{{ text('没有匹配的入口') }}</h3>
-      <p class="auto-empty__desc">{{ text('请调整搜索条件') }}</p>
+      <h3 class="ap-empty__title">{{ text('没有匹配的入口') }}</h3>
+      <p class="ap-empty__desc">{{ text('请调整搜索条件') }}</p>
     </div>
   </section>
 </template>
@@ -131,7 +132,6 @@ import {
   webAutomationEntries,
   type WebAutomationEntry,
   getEntryStatusLabel,
-  getEntryStatusTone,
 } from '../webAutomationModel'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 
@@ -161,9 +161,9 @@ function getCardIcon(entry: WebAutomationEntry): string {
 
 function getCardClasses(entry: WebAutomationEntry) {
   return {
-    'auto-card--soon': entry.status === 'soon',
-    'auto-card--offline': entry.status === 'offline',
-    'auto-card--highlight': entry.status === 'online',
+    'ap-card--soon': entry.status === 'soon',
+    'ap-card--offline': entry.status === 'offline',
+    'ap-card--online': entry.status === 'online',
   }
 }
 
@@ -202,64 +202,61 @@ function openEntry(path: string): void {
 </script>
 
 <style scoped>
-/* ===================================================================
-   AUTO SHELL — Premium Redesign
-   Palette: teal (#0d9488), emerald (#059669), blue (#3b82f6)
-   No purple tones.
-   =================================================================== */
-@keyframes auto-fadeUp {
-  from { opacity: 0; transform: translateY(18px); }
+/* ================================================================
+   Automation Page Shell — Refined Design
+   Palette: teal #0d9488, green #059669, blue #2563eb
+   No purple. Clean, elegant, subtle animations.
+   ================================================================ */
+
+@keyframes ap-slideUp {
+  from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-@keyframes auto-fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-@keyframes auto-scaleIn {
+
+@keyframes ap-scaleIn {
   from { opacity: 0; transform: scale(0.94); }
   to   { opacity: 1; transform: scale(1); }
 }
-@keyframes auto-shimmer {
+
+@keyframes ap-shimmer {
   0%   { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
-@keyframes auto-float {
+
+@keyframes ap-float {
   0%, 100% { transform: translateY(0); }
   50%      { transform: translateY(-4px); }
 }
-@keyframes auto-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(13, 148, 136, 0.25); }
-  50%      { box-shadow: 0 0 0 8px rgba(13, 148, 136, 0); }
-}
 
 /* ----- Shell ----- */
-.auto-shell {
+.ap-shell {
   display: flex;
   flex-direction: column;
   gap: 14px;
   padding: 20px 22px;
   min-height: 100%;
   background:
-    radial-gradient(ellipse 55% 35% at 50% 0%, rgba(13, 148, 136, 0.05), transparent 55%),
-    radial-gradient(ellipse 40% 30% at 80% 90%, rgba(59, 130, 246, 0.04), transparent 50%),
+    radial-gradient(ellipse 55% 35% at 50% 0%, rgba(13, 148, 136, 0.04), transparent 55%),
+    radial-gradient(ellipse 40% 30% at 80% 90%, rgba(59, 130, 246, 0.03), transparent 50%),
     #f6f9fc;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
 }
 
-.auto-shell > * {
-  animation: auto-fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+.ap-shell > * {
+  animation: ap-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.auto-shell > *:nth-child(1) { animation-delay: 0s; }
-.auto-shell > *:nth-child(2) { animation-delay: 0.06s; }
-.auto-shell > *:nth-child(3) { animation-delay: 0.12s; }
+
+.ap-shell > *:nth-child(1) { animation-delay: 0s; }
+.ap-shell > *:nth-child(2) { animation-delay: 0.06s; }
+.ap-shell > *:nth-child(3) { animation-delay: 0.12s; }
 
 /* ----- Hero ----- */
-.auto-hero {
+.ap-hero {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 22px;
+  padding: 18px 24px;
   background: rgba(255, 255, 255, 0.78);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -270,42 +267,50 @@ function openEntry(path: string): void {
     0 8px 24px rgba(0, 0, 0, 0.03);
 }
 
-.auto-hero__brand {
+.ap-hero__brand {
   display: flex;
   align-items: center;
   gap: 14px;
   min-width: 0;
 }
 
-.auto-hero__icon-wrap {
-  width: 46px;
-  height: 46px;
+.ap-hero__icon-wrap {
+  width: 48px;
+  height: 48px;
   border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  font-size: 24px;
   color: #fff;
   flex-shrink: 0;
-  box-shadow: 0 6px 16px rgba(13, 148, 136, 0.25);
   transition: transform 0.3s ease;
 }
-.auto-shell--sap .auto-hero__icon-wrap {
-  background: linear-gradient(135deg, #14b8a6, #0d9488);
-}
-.auto-shell--infornexus .auto-hero__icon-wrap {
-  background: linear-gradient(135deg, #60a5fa, #3b82f6);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.25);
-}
-.auto-shell:not(.auto-shell--sap):not(.auto-shell--infornexus) .auto-hero__icon-wrap {
-  background: linear-gradient(135deg, #2dd4bf, #0d9488);
-}
-.auto-hero__icon-wrap:hover {
+
+.ap-hero__icon-wrap:hover {
   transform: scale(1.05) rotate(-3deg);
 }
 
-.auto-hero__text { min-width: 0; }
-.auto-hero__title {
+.ap-shell--sap .ap-hero__icon-wrap {
+  background: linear-gradient(135deg, #14b8a6, #0d9488);
+  box-shadow: 0 6px 16px rgba(13, 148, 136, 0.25);
+}
+
+.ap-shell--infornexus .ap-hero__icon-wrap {
+  background: linear-gradient(135deg, #60a5fa, #3b82f6);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.25);
+}
+
+.ap-shell:not(.ap-shell--sap):not(.ap-shell--infornexus) .ap-hero__icon-wrap {
+  background: linear-gradient(135deg, #2dd4bf, #0d9488);
+  box-shadow: 0 6px 16px rgba(13, 148, 136, 0.25);
+}
+
+.ap-hero__text {
+  min-width: 0;
+}
+
+.ap-hero__title {
   margin: 0;
   font-size: 20px;
   font-weight: 800;
@@ -313,42 +318,45 @@ function openEntry(path: string): void {
   letter-spacing: -0.3px;
   line-height: 1.3;
 }
-.auto-hero__desc {
+
+.ap-hero__desc {
   margin: 2px 0 0;
   font-size: 13px;
   color: #64748b;
   line-height: 1.5;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.auto-hero__tools {
+.ap-hero__tools {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
 }
 
-.auto-search {
+.ap-search {
   display: flex;
   align-items: center;
   gap: 8px;
   height: 38px;
   padding: 0 14px;
-  background: #f8fafc;
+  background: #fff;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   transition: all 0.25s ease;
   min-width: 200px;
 }
-.auto-search__icon {
+
+.ap-search__icon {
   font-size: 15px;
   color: #94a3b8;
   flex-shrink: 0;
   transition: color 0.2s;
 }
-.auto-search input {
+
+.ap-search input {
   border: none;
   background: transparent;
   outline: none;
@@ -357,16 +365,23 @@ function openEntry(path: string): void {
   width: 100%;
   min-width: 0;
 }
-.auto-search input::placeholder { color: #94a3b8; }
-.auto-search:focus-within {
+
+.ap-search input::placeholder {
+  color: #94a3b8;
+}
+
+.ap-search:focus-within {
   border-color: #0d9488;
   box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.08);
   background: #fff;
 }
-.auto-search:focus-within .auto-search__icon { color: #0d9488; }
 
-.auto-badge {
-  padding: 4px 12px;
+.ap-search:focus-within .ap-search__icon {
+  color: #0d9488;
+}
+
+.ap-badge {
+  padding: 5px 12px;
   border-radius: 999px;
   background: #f1f5f9;
   color: #64748b;
@@ -378,33 +393,34 @@ function openEntry(path: string): void {
 }
 
 /* ----- Stats ----- */
-.auto-stats {
+.ap-stats {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
 }
 
-.auto-stat {
+.ap-stat {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 18px 10px 14px;
+  padding: 12px 18px 12px 14px;
   background: #fff;
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
   transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-  animation: auto-scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: ap-scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
   cursor: default;
 }
-.auto-stat:hover {
+
+.ap-stat:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
 }
 
-.auto-stat__icon {
-  width: 34px;
-  height: 34px;
+.ap-stat__icon {
+  width: 36px;
+  height: 36px;
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -413,32 +429,37 @@ function openEntry(path: string): void {
   color: #fff;
   flex-shrink: 0;
 }
-.auto-stat--online .auto-stat__icon {
+
+.ap-stat--online .ap-stat__icon {
   background: linear-gradient(135deg, #34d399, #059669);
   box-shadow: 0 3px 8px rgba(5, 150, 105, 0.2);
 }
-.auto-stat--soon .auto-stat__icon {
+
+.ap-stat--soon .ap-stat__icon {
   background: linear-gradient(135deg, #fbbf24, #d97706);
   box-shadow: 0 3px 8px rgba(217, 119, 6, 0.2);
 }
-.auto-stat--offline .auto-stat__icon {
+
+.ap-stat--offline .ap-stat__icon {
   background: linear-gradient(135deg, #94a3b8, #64748b);
   box-shadow: 0 3px 8px rgba(100, 116, 139, 0.15);
 }
 
-.auto-stat__body {
+.ap-stat__body {
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
-.auto-stat__label {
+
+.ap-stat__label {
   font-size: 11px;
   color: #94a3b8;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
-.auto-stat__num {
+
+.ap-stat__num {
   font-size: 20px;
   font-weight: 800;
   color: #0f172a;
@@ -447,87 +468,93 @@ function openEntry(path: string): void {
 }
 
 /* ----- Card Grid ----- */
-.auto-cards {
+.ap-cards {
   display: grid;
   gap: 14px;
 }
-/* Variant: default / sap — 3 columns */
-.auto-shell--sap .auto-cards,
-.auto-shell:not(.auto-shell--sap):not(.auto-shell--infornexus) .auto-cards {
+
+.ap-shell--sap .ap-cards,
+.ap-shell:not(.ap-shell--sap):not(.ap-shell--infornexus) .ap-cards {
   grid-template-columns: repeat(3, 1fr);
 }
-/* Variant: infornexus — 2 columns (wider cards) */
-.auto-shell--infornexus .auto-cards {
+
+.ap-shell--infornexus .ap-cards {
   grid-template-columns: repeat(2, 1fr);
 }
 
 /* ----- Card ----- */
-.auto-card {
+.ap-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 20px;
+  padding: 0 20px 20px;
   background: #fff;
   border: 1px solid #e8eef3;
   border-radius: 16px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  animation: auto-scaleIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: ap-scaleIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
   position: relative;
   overflow: hidden;
 }
-.auto-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
+
+.ap-card__bar {
   height: 3px;
-  opacity: 0;
-  transition: opacity 0.3s ease;
+  background: #e2e8f0;
+  margin: 0 -20px;
+  opacity: 0.5;
 }
-.auto-card--highlight::before {
+
+.ap-card--online .ap-card__bar {
   background: linear-gradient(90deg, #0d9488, #14b8a6, #2dd4bf);
   background-size: 200% 100%;
-  animation: auto-shimmer 3s linear infinite;
+  animation: ap-shimmer 4s linear infinite;
   opacity: 1;
 }
-.auto-card--soon::before {
+
+.ap-card--soon .ap-card__bar {
   background: linear-gradient(90deg, #fbbf24, #f59e0b);
-  opacity: 0.6;
-}
-.auto-card--offline::before {
-  background: linear-gradient(90deg, #94a3b8, #cbd5e1);
-  opacity: 0.3;
+  opacity: 0.7;
 }
 
-.auto-card:hover {
+.ap-card:hover {
   transform: translateY(-4px);
   box-shadow:
-    0 6px 16px rgba(0,0,0,0.04),
-    0 12px 32px rgba(0,0,0,0.03);
+    0 6px 16px rgba(0, 0, 0, 0.04),
+    0 12px 32px rgba(0, 0, 0, 0.03);
   border-color: #b8e6dc;
 }
-.auto-card--soon:hover { border-color: #fde68a; }
-.auto-card--offline:hover { border-color: #e2e8f0; }
 
-/* Variant accent on card hover */
-.auto-shell--sap .auto-card--highlight:hover {
+.ap-card--soon:hover {
+  border-color: #fde68a;
+}
+
+.ap-card--offline:hover {
+  border-color: #e2e8f0;
+  transform: translateY(-2px);
+}
+
+.ap-shell--sap .ap-card--online:hover {
   border-color: #99f6e4;
   box-shadow: 0 6px 20px rgba(13, 148, 136, 0.08);
 }
-.auto-shell--infornexus .auto-card--highlight:hover {
+
+.ap-shell--infornexus .ap-card--online:hover {
   border-color: #93c5fd;
   box-shadow: 0 6px 20px rgba(59, 130, 246, 0.08);
 }
 
 /* Card top row */
-.auto-card__top {
+.ap-card__top {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding-top: 16px;
 }
-.auto-card__icon {
-  width: 40px;
-  height: 40px;
+
+.ap-card__icon {
+  width: 42px;
+  height: 42px;
   border-radius: 12px;
   display: flex;
   align-items: center;
@@ -537,33 +564,39 @@ function openEntry(path: string): void {
   flex-shrink: 0;
   transition: transform 0.3s ease;
 }
-.auto-card:hover .auto-card__icon {
+
+.ap-card:hover .ap-card__icon {
   transform: scale(1.06);
 }
-.auto-card__icon--online {
+
+.ap-card__icon--online {
   background: linear-gradient(135deg, #2dd4bf, #0d9488);
   box-shadow: 0 3px 10px rgba(13, 148, 136, 0.2);
 }
-.auto-card__icon--soon {
+
+.ap-card__icon--soon {
   background: linear-gradient(135deg, #fbbf24, #d97706);
   box-shadow: 0 3px 10px rgba(217, 119, 6, 0.15);
 }
-.auto-card__icon--offline {
+
+.ap-card__icon--offline {
   background: linear-gradient(135deg, #94a3b8, #64748b);
   box-shadow: 0 3px 10px rgba(100, 116, 139, 0.1);
 }
 
-.auto-card__head {
+.ap-card__head {
   flex: 1;
   min-width: 0;
 }
-.auto-card__title {
+
+.ap-card__title {
   font-size: 15px;
   font-weight: 700;
   color: #0f172a;
   line-height: 1.3;
 }
-.auto-card__sub {
+
+.ap-card__sub {
   font-size: 12px;
   color: #94a3b8;
   margin-top: 1px;
@@ -572,7 +605,7 @@ function openEntry(path: string): void {
   text-overflow: ellipsis;
 }
 
-.auto-card__tag {
+.ap-card__tag {
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 11px;
@@ -580,24 +613,27 @@ function openEntry(path: string): void {
   flex-shrink: 0;
   letter-spacing: 0.2px;
 }
-.auto-card__tag--online {
+
+.ap-card__tag--online {
   background: #ecfdf5;
   color: #059669;
   border: 1px solid #a7f3d0;
 }
-.auto-card__tag--soon {
+
+.ap-card__tag--soon {
   background: #fffbeb;
   color: #d97706;
   border: 1px solid #fde68a;
 }
-.auto-card__tag--offline {
+
+.ap-card__tag--offline {
   background: #f8fafc;
   color: #94a3b8;
   border: 1px solid #e2e8f0;
 }
 
 /* Description */
-.auto-card__desc {
+.ap-card__desc {
   margin: 0;
   font-size: 13px;
   color: #64748b;
@@ -609,12 +645,13 @@ function openEntry(path: string): void {
 }
 
 /* Tags */
-.auto-card__tags {
+.ap-card__tags {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
-.auto-chip {
+
+.ap-chip {
   display: inline-flex;
   align-items: center;
   padding: 3px 9px;
@@ -626,26 +663,27 @@ function openEntry(path: string): void {
   border: 1px solid #e2e8f0;
   transition: all 0.2s ease;
 }
-.auto-chip:hover {
+
+.ap-chip:hover {
   background: #e2e8f0;
   transform: translateY(-1px);
 }
 
 /* Card bottom actions */
-.auto-card__bot {
+.ap-card__bot {
   display: flex;
   gap: 8px;
   margin-top: auto;
   padding-top: 4px;
 }
 
-.auto-btn {
+.ap-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 34px;
+  height: 36px;
   padding: 0 14px;
-  border-radius: 9px;
+  border-radius: 10px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -654,31 +692,35 @@ function openEntry(path: string): void {
   position: relative;
   overflow: hidden;
 }
-.auto-btn .app-icon {
+
+.ap-btn .app-icon {
   font-size: 14px;
 }
 
 /* Primary button */
-.auto-btn--primary {
+.ap-btn--primary {
   border: none;
   color: #fff;
   background: linear-gradient(135deg, #0d9488, #0f766e);
-  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.25);
+  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.2);
 }
-.auto-btn--primary:hover:not(:disabled) {
+
+.ap-btn--primary:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(13, 148, 136, 0.35);
+  box-shadow: 0 4px 16px rgba(13, 148, 136, 0.3);
 }
-.auto-btn--primary .auto-btn__arrow {
+
+.ap-btn--primary .ap-btn__arrow {
   transition: transform 0.25s ease;
   font-size: 13px;
 }
-.auto-btn--primary:hover .auto-btn__arrow {
+
+.ap-btn--primary:hover .ap-btn__arrow {
   transform: translateX(3px);
 }
 
 /* Soon / offline buttons */
-.auto-btn--soon, .auto-btn--offline {
+.ap-btn--soon, .ap-btn--offline {
   border: 1px solid #e2e8f0;
   background: #fff;
   color: #94a3b8;
@@ -687,54 +729,57 @@ function openEntry(path: string): void {
 }
 
 /* Ghost button */
-.auto-btn--ghost {
+.ap-btn--ghost {
   border: 1px solid #e2e8f0;
   background: #fff;
   color: #64748b;
 }
-.auto-btn--ghost:hover:not(:disabled) {
+
+.ap-btn--ghost:hover:not(:disabled) {
   background: #f0fdfa;
   border-color: #99f6e4;
   color: #0d9488;
 }
 
-/* Variant: infornexus ghost button accent */
-.auto-shell--infornexus .auto-btn--ghost:hover:not(:disabled) {
+.ap-shell--infornexus .ap-btn--ghost:hover:not(:disabled) {
   background: #eff6ff;
   border-color: #93c5fd;
   color: #3b82f6;
 }
 
 /* ===== Empty ===== */
-.auto-empty {
+.ap-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 56px 20px;
   text-align: center;
-  animation: auto-scaleIn 0.4s ease both;
+  animation: ap-scaleIn 0.4s ease both;
 }
-.auto-empty__icon {
+
+.ap-empty__icon {
   width: 56px;
   height: 56px;
   border-radius: 16px;
-  background: linear-gradient(135deg, #2dd4bf, #0d9488);
+  background: linear-gradient(135deg, #94a3b8, #64748b);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 24px;
-  animation: auto-float 2.6s ease-in-out infinite;
-  box-shadow: 0 6px 20px rgba(13, 148, 136, 0.2);
+  animation: ap-float 2.6s ease-in-out infinite;
+  box-shadow: 0 6px 20px rgba(100, 116, 139, 0.2);
 }
-.auto-empty__title {
+
+.ap-empty__title {
   margin: 0;
   font-size: 16px;
   font-weight: 700;
   color: #1e293b;
 }
-.auto-empty__desc {
+
+.ap-empty__desc {
   margin: 0;
   font-size: 13px;
   color: #94a3b8;
@@ -744,28 +789,33 @@ function openEntry(path: string): void {
 
 /* ===== Responsive ===== */
 @media (max-width: 1100px) {
-  .auto-shell--sap .auto-cards,
-  .auto-shell:not(.auto-shell--sap):not(.auto-shell--infornexus) .auto-cards {
+  .ap-shell--sap .ap-cards,
+  .ap-shell:not(.ap-shell--sap):not(.ap-shell--infornexus) .ap-cards {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
 @media (max-width: 860px) {
-  .auto-shell { padding: 14px; }
-  .auto-hero {
+  .ap-shell { padding: 14px; }
+
+  .ap-hero {
     flex-direction: column;
     align-items: stretch;
   }
-  .auto-hero__tools { width: 100%; }
-  .auto-search { min-width: 0; flex: 1; }
-  .auto-shell--sap .auto-cards,
-  .auto-shell--infornexus .auto-cards,
-  .auto-shell:not(.auto-shell--sap):not(.auto-shell--infornexus) .auto-cards {
+
+  .ap-hero__tools { width: 100%; }
+  .ap-search { min-width: 0; flex: 1; }
+
+  .ap-shell--sap .ap-cards,
+  .ap-shell--infornexus .ap-cards,
+  .ap-shell:not(.ap-shell--sap):not(.ap-shell--infornexus) .ap-cards {
     grid-template-columns: 1fr;
   }
 }
+
 @media (max-width: 600px) {
-  .auto-hero__brand { flex-wrap: wrap; }
-  .auto-stats { flex-direction: column; }
-  .auto-stat { width: 100%; }
+  .ap-hero__brand { flex-wrap: wrap; }
+  .ap-stats { flex-direction: column; }
+  .ap-stat { width: 100%; }
 }
 </style>
