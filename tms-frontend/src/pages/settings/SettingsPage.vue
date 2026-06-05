@@ -601,6 +601,8 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
     0 1px 3px rgba(0, 0, 0, 0.02),
     0 8px 24px rgba(0, 0, 0, 0.03);
   animation: st-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  position: relative;
+  z-index: 10;
 }
 
 .st-hero__left {
