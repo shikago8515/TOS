@@ -191,12 +191,6 @@
               </div>
             </div>
 
-            <div class="ws-field">
-              <div class="ws-note">
-                <AppIcon name="info" />
-                <span>{{ text('如果当前是网页端，点击执行时会先唤起本机 launcher，再启动 Shipping 执行器。') }}</span>
-              </div>
-            </div>
 
             <div class="ws-field">
               <label>{{ text('Excel 文件') }}</label>
@@ -254,6 +248,34 @@
                 {{ sending ? text('执行中...') : text('上传 Excel 并执行 Shipping') }}
               </button>
             </div>
+
+            <!-- Inline Status -->
+            <transition name="ws-msg">
+              <div v-if="lastResult || sending" class="ws-inline-status" :class="inlineStatusClass">
+                <AppIcon :name="statusIconName" class="ws-inline-status__icon" />
+                <span class="ws-inline-status__text">{{ statusText }}</span>
+                <span class="ws-badge ws-badge--sm" :class="statusBadgeClass">{{ statusLabel }}</span>
+              </div>
+            </transition>
+            <div v-if="isShippingScenario && shippingArtifactLinks?.resultExcelUrl" class="ws-inline-downloads">
+              <button
+                class="ws-btn-sm ws-btn-sm--primary"
+                type="button"
+                @click="downloadShippingArtifact(shippingArtifactLinks.resultExcelUrl, 'shipping-last-result.xlsx')"
+              >
+                <AppIcon name="download" />
+                {{ text('结果 Excel') }}
+              </button>
+              <button
+                v-if="shippingArtifactLinks.failedPoExcelUrl && shippingArtifactLinks.failedRowCount > 0"
+                class="ws-btn-sm"
+                type="button"
+                @click="downloadShippingArtifact(shippingArtifactLinks.failedPoExcelUrl, 'shipping-last-failed-po-rows.xlsx')"
+              >
+                <AppIcon name="download" />
+                {{ text('失败明细') }}
+              </button>
+            </div>
           </div>
 
           <!-- Microsoft / Default Scenario -->
@@ -299,12 +321,6 @@
               </div>
             </div>
 
-            <div v-if="isMicrosoftScenario" class="ws-field">
-              <div class="ws-note">
-                <AppIcon name="info" />
-                <span>{{ text('请在本页输入当前任务使用的 Microsoft 账号和密码；本地代码不预置登录凭据。') }}</span>
-              </div>
-            </div>
 
             <div class="ws-field">
               <label>{{ text('Webhook 地址') }}</label>
@@ -386,42 +402,15 @@
                 {{ sending ? text('发送中...') : text('发送至 n8n 编排执行') }}
               </button>
             </div>
-          </div>
 
-          <!-- Execution Status -->
-          <div class="ws-card ws-card--status">
-            <div class="ws-card__bar" />
-            <div class="ws-card__head">
-              <div class="ws-card__head-icon" :class="statusIconClass">
-                <AppIcon :name="statusIconName" />
+            <!-- Inline Status -->
+            <transition name="ws-msg">
+              <div v-if="lastResult || sending" class="ws-inline-status" :class="inlineStatusClass">
+                <AppIcon :name="statusIconName" class="ws-inline-status__icon" />
+                <span class="ws-inline-status__text">{{ statusText }}</span>
+                <span class="ws-badge ws-badge--sm" :class="statusBadgeClass">{{ statusLabel }}</span>
               </div>
-              <div class="ws-card__head-text">
-                <strong>{{ text('执行状态') }}</strong>
-              </div>
-              <span class="ws-badge" :class="statusBadgeClass">{{ statusLabel }}</span>
-            </div>
-            <div class="ws-status-text" :class="{ 'ws-status-text--ok': lastResult?.ok, 'ws-status-text--err': lastResult && !lastResult.ok }">
-              {{ statusText }}
-            </div>
-            <div v-if="isShippingScenario && shippingArtifactLinks?.resultExcelUrl" class="ws-result-downloads">
-              <button
-                class="ws-btn ws-btn--primary"
-                type="button"
-                @click="downloadShippingArtifact(shippingArtifactLinks.resultExcelUrl, 'shipping-last-result.xlsx')"
-              >
-                <AppIcon name="download" />
-                {{ text('下载结果 Excel') }}
-              </button>
-              <button
-                v-if="shippingArtifactLinks.failedPoExcelUrl && shippingArtifactLinks.failedRowCount > 0"
-                class="ws-btn"
-                type="button"
-                @click="downloadShippingArtifact(shippingArtifactLinks.failedPoExcelUrl, 'shipping-last-failed-po-rows.xlsx')"
-              >
-                <AppIcon name="download" />
-                {{ text('下载失败明细 Excel') }}
-              </button>
-            </div>
+            </transition>
           </div>
 
           <!-- Raw Response -->
@@ -551,11 +540,11 @@ const statusBadgeClass = computed(() => {
   if (lastResult.value && !lastResult.value.ok) return 'ws-badge--err'
   return ''
 })
-const statusIconClass = computed(() => {
-  if (sending.value) return 'ws-card__head-icon--teal'
-  if (lastResult.value?.ok) return 'ws-card__head-icon--green'
-  if (lastResult.value && !lastResult.value.ok) return 'ws-card__head-icon--red'
-  return 'ws-card__head-icon--slate'
+const inlineStatusClass = computed(() => {
+  if (sending.value) return 'ws-inline-status--info'
+  if (lastResult.value?.ok) return 'ws-inline-status--ok'
+  if (lastResult.value && !lastResult.value.ok) return 'ws-inline-status--err'
+  return ''
 })
 const statusIconName = computed(() => {
   if (sending.value) return 'loader'
@@ -1992,6 +1981,69 @@ function readErrorMessage(error: unknown, fallback: string): string {
 
 .ws-status-text--err {
   color: var(--red);
+}
+
+/* Inline Status */
+.ws-inline-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  margin: 0 16px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  border: 1px solid;
+}
+
+.ws-inline-status__icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.ws-inline-status__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-inline-status--info {
+  background: var(--teal-soft);
+  border-color: #ccfbf1;
+  color: #0f766e;
+  .ws-inline-status__icon { color: var(--teal); }
+}
+
+.ws-inline-status--ok {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #15803d;
+  .ws-inline-status__icon { color: var(--green); }
+}
+
+.ws-inline-status--err {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+  .ws-inline-status__icon { color: var(--red); }
+}
+
+.ws-inline-downloads {
+  display: flex;
+  gap: 6px;
+  padding: 0 16px 10px;
+}
+
+.ws-badge--sm {
+  padding: 2px 8px;
+  font-size: 10px;
+}
+
+.ws-btn-sm--primary {
+  background: linear-gradient(135deg, var(--teal), #0f766e);
+  color: #fff;
+  border-color: transparent;
 }
 
 .ws-result-downloads {
