@@ -16,6 +16,15 @@
           <span class="st-status-dot" />
           {{ statusLabel }}
         </span>
+        <button
+          class="st-btn st-btn--outline st-btn--sm"
+          type="button"
+          :disabled="isActionLocked"
+          @click="handleCheck"
+        >
+          <AppIcon name="refresh-cw" :class="{ 'st-spin': status?.checking || activeAction === 'check' }" />
+          {{ status?.checking || activeAction === 'check' ? text('检查中...') : text('检查更新') }}
+        </button>
         <div class="st-lang-switch" @click.stop="langOpen = !langOpen">
           <AppIcon name="globe-search" />
           <span class="st-lang-switch__label">{{ currentLangLabel }}</span>
@@ -150,15 +159,6 @@
 
     <!-- ===== Actions ===== -->
     <footer class="st-actions">
-      <button
-        class="st-btn st-btn--outline"
-        type="button"
-        :disabled="isActionLocked"
-        @click="handleCheck"
-      >
-        <AppIcon name="refresh-cw" :class="{ 'st-spin': status?.checking || activeAction === 'check' }" />
-        {{ status?.checking || activeAction === 'check' ? text('检查中...') : text('检查更新') }}
-      </button>
       <button
         v-if="canDownload"
         class="st-btn st-btn--primary"
@@ -1275,6 +1275,13 @@ function parseVersion(version: string): { main: number[]; pre: Array<string | nu
     border-color: #99f6e4;
     color: #0d9488;
   }
+}
+
+.st-btn--sm {
+  height: 34px;
+  padding: 0 14px;
+  font-size: 12px;
+  border-radius: 9px;
 }
 
 .st-btn--primary {
