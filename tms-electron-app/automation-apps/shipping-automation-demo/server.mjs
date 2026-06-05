@@ -349,7 +349,9 @@ async function runShippingWorkflow(credentials, runContext) {
         });
       }
 
-      for (const createShipmentBatch of createShipmentBatches) {
+      for (let batchIndex = 0; batchIndex < createShipmentBatches.length; batchIndex += 1) {
+        const createShipmentBatch = createShipmentBatches[batchIndex];
+        const nextCreateShipmentBatch = createShipmentBatches[batchIndex + 1] || null;
         const changeEquipmentId = createShipmentBatch.changeEquipmentId;
         try {
           await processCreateShipmentEquipmentId(page, createShipmentBatch);
@@ -371,9 +373,22 @@ async function runShippingWorkflow(credentials, runContext) {
             ok: false,
             error: normalizedError.message,
           });
+          log("Create Shipment batch failed.", {
+            changeEquipmentId,
+            poNos: createShipmentBatch.poNos,
+            error: normalizedError.message,
+          });
           if (hasPageLifecycleEnded(page, lifecycle) || isClosedTargetError(error)) {
             throw normalizedError;
           }
+        }
+
+        if (nextCreateShipmentBatch && !hasPageLifecycleEnded(page, lifecycle)) {
+          await reopenPrintScanShipForNextCreateShipmentBatch(
+            page,
+            createShipmentBatch,
+            nextCreateShipmentBatch,
+          );
         }
       }
     } else {
@@ -1127,10 +1142,16 @@ async function processCreateShipmentEquipmentId(page, createShipmentBatch) {
   const previousUrl = safePageUrl(page);
   await clickCreateShipmentWorkspaceButton(page, createShipmentBatch, selectionSummary);
   await waitForCreateShipmentNextStep(page, createShipmentBatch, previousUrl);
+  await applyCreateShipmentIssueDate(page, createShipmentBatch);
+  await applyCreateShipmentInvoiceNumber(page, createShipmentBatch);
+  await applyCreateShipmentShipmentDate(page, createShipmentBatch);
+  await clickCreateShipmentPreviewStep(page, createShipmentBatch);
   await page.waitForTimeout(config.postLoginWaitMs).catch(() => {});
   log("Completed Create Shipment row.", {
     changeEquipmentId: normalizedChangeEquipmentId,
     poNos: createShipmentBatch.poNos,
+    issueDate: createShipmentBatch.issueDate || "",
+    invoiceNumber: createShipmentBatch.invoiceNumber || "",
     selectedTargetRowCount: selectionSummary.selectedTargetRowCount,
     missingTargetPairCount: selectionSummary.missingTargetPairCount,
   });
@@ -1379,7 +1400,7 @@ function getCreateShipmentWorkspace(page) {
 
 function getCreateShipmentGrid(page) {
   return getCreateShipmentWorkspace(page)
-    .locator("div.x-grid3:visible")
+    .locator("div.x-grid3-viewport:visible")
     .first();
 }
 
@@ -1391,6 +1412,8 @@ async function waitForCreateShipmentGridRows(page, createShipmentBatch) {
   let stableMatchCount = 0;
   let lastSignature = "";
   let noDataSince = 0;
+  let staleNonMatchingSince = 0;
+  let lastNonMatchingSignature = "";
 
   while (Date.now() - startedAt < timeoutMs) {
     const errorText = await getVisibleDialogErrorText(page);
@@ -1428,6 +1451,20 @@ async function waitForCreateShipmentGridRows(page, createShipmentBatch) {
       noDataSince = 0;
     }
 
+    if (state.rowCount > 0 && state.matchedEquipmentRowCount === 0) {
+      const currentSignature = state.rowSignature || `rows:${state.rowCount}`;
+      staleNonMatchingSince = currentSignature === lastNonMatchingSignature
+        ? (staleNonMatchingSince || Date.now())
+        : Date.now();
+      lastNonMatchingSignature = currentSignature;
+      if (Date.now() - staleNonMatchingSince >= 1800) {
+        throw new Error(`Create Shipment ${changeEquipmentId}: grid did not switch to rows for this equipment number.`);
+      }
+    } else {
+      staleNonMatchingSince = 0;
+      lastNonMatchingSignature = "";
+    }
+
     await page.waitForTimeout(250);
   }
 
@@ -1442,7 +1479,7 @@ async function selectCreateShipmentGridRows(page, createShipmentBatch) {
   const grid = getCreateShipmentGrid(page);
 
   while (Date.now() - startedAt < timeoutMs) {
-    const plan = await getCreateShipmentGridSelectionPlan(page, createShipmentBatch);
+    const plan = await getCreateShipmentGridSelectionPlanExact(page, createShipmentBatch);
     lastPlan = plan;
 
     if (plan.matchedTargetRowCount > 0
@@ -1504,6 +1541,7 @@ async function waitForCreateShipmentNextStep(page, createShipmentBatch, previous
   const changeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
   const timeoutMs = Math.min(config.navigationTimeoutMs, 15000);
   const startedAt = Date.now();
+  const summaryIssueDateMonth = page.locator("#PackingManifest_issueDate_month").first();
 
   while (Date.now() - startedAt < timeoutMs) {
     const errorText = await getVisibleDialogErrorText(page);
@@ -1514,6 +1552,16 @@ async function waitForCreateShipmentNextStep(page, createShipmentBatch, previous
     const currentUrl = safePageUrl(page);
     if (previousUrl && currentUrl && currentUrl !== previousUrl) {
       log("Create Shipment moved to next page.", {
+        changeEquipmentId,
+        previousUrl,
+        currentUrl,
+      });
+      return;
+    }
+
+    const summaryReady = await summaryIssueDateMonth.isVisible().catch(() => false);
+    if (summaryReady) {
+      log("Create Shipment summary form ready.", {
         changeEquipmentId,
         previousUrl,
         currentUrl,
@@ -1544,6 +1592,143 @@ async function waitForCreateShipmentNextStep(page, createShipmentBatch, previous
   }
 
   throw new Error(`Create Shipment ${changeEquipmentId}: did not move to the next page after clicking Create Shipment.`);
+}
+
+async function applyCreateShipmentIssueDate(page, createShipmentBatch) {
+  const changeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
+  const issueDateParts = normalizeIssueDateParts(createShipmentBatch?.issueDate);
+  if (!issueDateParts) {
+    throw new Error(`Create Shipment ${changeEquipmentId}: Issue Date is missing or invalid in workbook.`);
+  }
+
+  const monthSelect = page.locator("#PackingManifest_issueDate_month").first();
+  const daySelect = page.locator("#PackingManifest_issueDate_day").first();
+  const yearSelect = page.locator("#PackingManifest_issueDate_year").first();
+
+  await monthSelect.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await daySelect.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await yearSelect.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+
+  await monthSelect.selectOption(String(issueDateParts.month));
+  await daySelect.selectOption(String(issueDateParts.day));
+  await yearSelect.selectOption(String(issueDateParts.year));
+  await page.waitForTimeout(250).catch(() => {});
+
+  log("Applied Create Shipment Issue Date.", {
+    changeEquipmentId,
+    issueDate: issueDateParts.normalized,
+    issueDateSource: createShipmentBatch?.issueDateSource || "",
+  });
+}
+
+async function applyCreateShipmentInvoiceNumber(page, createShipmentBatch) {
+  const changeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
+  if (createShipmentBatch?.invoiceNumberConflict) {
+    throw new Error(`Create Shipment ${changeEquipmentId}: multiple Invoice Number values were found for the same change equipment ID.`);
+  }
+
+  const invoiceNumber = String(createShipmentBatch?.invoiceNumber || "").trim();
+  if (!invoiceNumber) {
+    throw new Error(`Create Shipment ${changeEquipmentId}: Invoice Number is missing in workbook.`);
+  }
+
+  const invoiceInput = page
+    .locator("#PackingManifest_shipmentDetail__1_invoiceNumber, input[name=\"PackingManifest_shipmentDetail__1_invoiceNumber\"]")
+    .first();
+  await invoiceInput.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await invoiceInput.fill(invoiceNumber);
+  await page.waitForTimeout(200).catch(() => {});
+
+  log("Applied Create Shipment Invoice Number.", {
+    changeEquipmentId,
+    invoiceNumber,
+    invoiceNumberSource: createShipmentBatch?.invoiceNumberSource || "",
+  });
+}
+
+async function applyCreateShipmentShipmentDate(page, createShipmentBatch) {
+  const changeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
+  const issueDateParts = normalizeIssueDateParts(createShipmentBatch?.issueDate);
+  if (!issueDateParts) {
+    throw new Error(`Create Shipment ${changeEquipmentId}: Ex-Factory Date could not reuse Issue Date because the workbook Issue Date is missing or invalid.`);
+  }
+
+  const trigger = page.locator("#PackingManifest_shipmentDetail__1_shipmentDate__1_eventDateTimeInTZtrigger").first();
+  const monthSelect = page.locator("#PackingManifest_shipmentDetail__1_shipmentDate__1_eventDateTimeInTZ_month").first();
+  const daySelect = page.locator("#PackingManifest_shipmentDetail__1_shipmentDate__1_eventDateTimeInTZ_day").first();
+  const yearSelect = page.locator("#PackingManifest_shipmentDetail__1_shipmentDate__1_eventDateTimeInTZ_year").first();
+
+  await trigger.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await trigger.scrollIntoViewIfNeeded().catch(() => {});
+  await monthSelect.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await daySelect.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await yearSelect.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+
+  await monthSelect.selectOption(String(issueDateParts.month));
+  await daySelect.selectOption(String(issueDateParts.day));
+  await yearSelect.selectOption(String(issueDateParts.year));
+  await page.waitForTimeout(250).catch(() => {});
+
+  log("Applied Create Shipment Ex-Factory Date.", {
+    changeEquipmentId,
+    shipmentDate: issueDateParts.normalized,
+    shipmentDateSource: createShipmentBatch?.issueDateSource || "",
+  });
+}
+
+async function clickCreateShipmentPreviewStep(page, createShipmentBatch) {
+  const changeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
+  const previewLink = page.locator("a[href*=\"jumpToStep('Review')\"]").first();
+  const timeoutMs = Math.min(config.navigationTimeoutMs, 15000);
+  const startedAt = Date.now();
+
+  await previewLink.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await previewLink.scrollIntoViewIfNeeded().catch(() => {});
+  await forceClickLocator(previewLink, "Create Shipment Preview step");
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const errorText = await getVisibleDialogErrorText(page);
+    if (errorText) {
+      throw new Error(`Create Shipment ${changeEquipmentId}: ${errorText}`);
+    }
+
+    const currentTitle = await safePageTitle(page);
+    if (/Packing List - Preview/i.test(currentTitle) || /^Preview$/i.test(currentTitle)) {
+      log("Create Shipment moved to Preview step.", {
+        changeEquipmentId,
+        currentTitle,
+        currentUrl: safePageUrl(page),
+      });
+      return;
+    }
+
+    await page.waitForTimeout(250).catch(() => {});
+  }
+
+  throw new Error(`Create Shipment ${changeEquipmentId}: Preview step did not open after clicking Preview.`);
+}
+
+async function reopenPrintScanShipForNextCreateShipmentBatch(page, currentBatch, nextBatch) {
+  const currentEquipmentId = String(currentBatch?.changeEquipmentId || "").trim();
+  const nextEquipmentId = String(nextBatch?.changeEquipmentId || "").trim();
+  const applicationsLink = page.locator("#navmenu__applications").first();
+  const printScanShipLink = page.locator("#navmenu__inprogressmanifestsprintscanship").first();
+  const createShipmentLink = page
+    .locator('div.sidepanellinks a[href="#Create%20Shipment"], div.sidepanellinks a[href="#Create Shipment"]')
+    .first();
+
+  await clickLocator(applicationsLink, "Applications");
+  await clickLocator(printScanShipLink, "Print-Scan-Ship");
+  await page.waitForURL(/\/en\/trade\/PackByScan/, { timeout: config.navigationTimeoutMs }).catch(() => {});
+  await createShipmentLink.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await page.waitForTimeout(config.postLoginWaitMs).catch(() => {});
+
+  log("Reopened Print-Scan-Ship for next Create Shipment batch.", {
+    currentEquipmentId,
+    nextEquipmentId,
+    currentUrl: safePageUrl(page),
+    currentTitle: await safePageTitle(page),
+  });
 }
 
 async function clickDialogOk(dialog, label) {
@@ -1755,19 +1940,20 @@ async function getShipmentGridState(page, poNo) {
 }
 
 async function getCreateShipmentGridState(page, createShipmentBatch) {
-  const plan = await getCreateShipmentGridSelectionPlan(page, createShipmentBatch);
+  const plan = await getCreateShipmentGridSelectionPlanExact(page, createShipmentBatch);
   return {
     rowCount: plan.rowCount,
     selectedRowCount: plan.selectedRowCount,
     headerSelected: plan.headerSelected,
     matchedEquipmentRowCount: plan.matchedEquipmentRowCount,
     matchedTargetPairRowCount: plan.matchedTargetRowCount,
+    matchedTargetPairCount: plan.matchedTargetPairCount,
     noDataVisible: plan.noDataVisible,
     rowSignature: plan.rowSignature,
   };
 }
 
-async function getCreateShipmentGridSelectionPlan(page, createShipmentBatch) {
+async function getCreateShipmentGridSelectionPlanExact(page, createShipmentBatch) {
   const normalizedChangeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
   const targetPairs = Array.isArray(createShipmentBatch?.targetPairs)
     ? createShipmentBatch.targetPairs.map((item) => ({
@@ -1792,29 +1978,18 @@ async function getCreateShipmentGridSelectionPlan(page, createShipmentBatch) {
     };
     const buildPairKey = (equipmentNumber, poNo) => `${normalize(equipmentNumber)}|||${normalize(poNo)}`;
 
-    const workspace = Array.from(document.querySelectorAll("div.x-panel"))
-      .find((element) => isVisible(element)
-        && Array.from(element.querySelectorAll("span.x-panel-header-text"))
-          .some((header) => /Create Shipment/i.test(normalize(header.textContent))));
-    if (!workspace) {
-      return {
-        rowCount: 0,
-        selectedRowCount: 0,
-        headerSelected: false,
-        matchedEquipmentRowCount: 0,
-        matchedTargetRowCount: 0,
-        selectedTargetRowCount: 0,
-        missingTargetPairCount: targetPairsInput.length,
-        unexpectedSelectedCount: 0,
-        pendingToggleCount: 0,
-        noDataVisible: false,
-        rowSignature: "",
-        actions: [],
-      };
-    }
+    const grid = Array.from(document.querySelectorAll("div.x-grid3-viewport"))
+      .filter((element) => isVisible(element))
+      .find((element) => {
+        const headerTexts = Array.from(
+          element.querySelectorAll(".x-grid3-header td, .x-grid3-header div.x-grid3-hd-inner, td.x-grid3-hd, div.x-grid3-hd-inner"),
+        )
+          .map((header) => normalize(header.textContent))
+          .filter(Boolean);
+        return headerTexts.some((text) => /Equipment Number/i.test(text))
+          && headerTexts.some((text) => /PO Numbers/i.test(text));
+      });
 
-    const grid = Array.from(workspace.querySelectorAll("div.x-grid3"))
-      .find((element) => isVisible(element));
     if (!grid) {
       return {
         rowCount: 0,
@@ -1822,6 +1997,7 @@ async function getCreateShipmentGridSelectionPlan(page, createShipmentBatch) {
         headerSelected: false,
         matchedEquipmentRowCount: 0,
         matchedTargetRowCount: 0,
+        matchedTargetPairCount: 0,
         selectedTargetRowCount: 0,
         missingTargetPairCount: targetPairsInput.length,
         unexpectedSelectedCount: 0,
@@ -1849,11 +2025,12 @@ async function getCreateShipmentGridSelectionPlan(page, createShipmentBatch) {
     }
     const remainingPairCounts = new Map(targetPairCounts);
 
-    const rowNodes = Array.from(grid.querySelectorAll("div.x-grid3-row"))
+    const rowNodes = Array.from(grid.querySelectorAll("tbody.x-grid3-body tr.x-grid3-row, tr.x-grid3-row"))
       .filter((element) => isVisible(element));
     const actions = [];
     let matchedEquipmentRowCount = 0;
     let matchedTargetRowCount = 0;
+    let matchedTargetPairCount = 0;
     let selectedRowCount = 0;
     let selectedTargetRowCount = 0;
     let unexpectedSelectedCount = 0;
@@ -1862,13 +2039,13 @@ async function getCreateShipmentGridSelectionPlan(page, createShipmentBatch) {
       const rowCells = Array.from(rowNode.querySelectorAll("td.x-grid3-cell, td"))
         .filter((element) => element.closest(".x-grid3-row") === rowNode);
       const equipmentText = normalize(
-        rowNode.querySelector('td[class*="equipmentRef"] .x-grid3-cell-inner, div[class*="equipmentRef"]')
+        rowNode.querySelector('td.x-grid3-td-eqp-equipmentRef .tgv-cell-inner, td[class*="equipmentRef"] .x-grid3-cell-inner, div[class*="equipmentRef"]')
           ?.textContent
           || rowCells[equipmentColIndex]?.textContent
           || "",
       );
       const poText = normalize(
-        rowNode.querySelector('td[class*="poNums"] .x-grid3-cell-inner, div[class*="poNums"]')
+        rowNode.querySelector('td.x-grid3-td-eqp-poNums .tgv-cell-inner, td[class*="poNums"] .x-grid3-cell-inner, div[class*="poNums"]')
           ?.textContent
           || rowCells[poColIndex]?.textContent
           || "",
@@ -1893,6 +2070,7 @@ async function getCreateShipmentGridSelectionPlan(page, createShipmentBatch) {
       const shouldSelect = equipmentMatches && remainingCount > 0;
       if (shouldSelect) {
         remainingPairCounts.set(pairKey, remainingCount - 1);
+        matchedTargetPairCount += 1;
         matchedTargetRowCount += 1;
         if (selected) {
           selectedTargetRowCount += 1;
@@ -1907,6 +2085,7 @@ async function getCreateShipmentGridSelectionPlan(page, createShipmentBatch) {
         equipmentNumber: equipmentText,
         selected,
         shouldSelect,
+        matchedPairKey: shouldSelect ? pairKey : "",
         needsToggle: selected !== shouldSelect,
       });
     });
@@ -1922,7 +2101,7 @@ async function getCreateShipmentGridSelectionPlan(page, createShipmentBatch) {
         || String(headerChecker.parentElement?.className || "").includes("x-grid3-hd-checker-on")
       )
     );
-    const noDataVisible = Array.from(workspace.querySelectorAll("div, span, td"))
+    const noDataVisible = Array.from(document.querySelectorAll("div, span, td"))
       .filter((element) => isVisible(element))
       .some((element) => /No data to display/i.test(normalize(element.textContent)));
     const rowSignature = actions
@@ -1937,6 +2116,7 @@ async function getCreateShipmentGridSelectionPlan(page, createShipmentBatch) {
       headerSelected,
       matchedEquipmentRowCount,
       matchedTargetRowCount,
+      matchedTargetPairCount,
       selectedTargetRowCount,
       missingTargetPairCount,
       unexpectedSelectedCount,
@@ -1954,6 +2134,7 @@ async function getCreateShipmentGridSelectionPlan(page, createShipmentBatch) {
     headerSelected: false,
     matchedEquipmentRowCount: 0,
     matchedTargetRowCount: 0,
+    matchedTargetPairCount: 0,
     selectedTargetRowCount: 0,
     missingTargetPairCount: targetPairs.length,
     unexpectedSelectedCount: 0,
@@ -2149,6 +2330,11 @@ async function getTopVisibleDialogInfo(page) {
       .sort((left, right) => right.zIndex - left.zIndex);
 
     return dialogs[0] || null;
+  }).catch((error) => {
+    if (isTransientExecutionContextError(error)) {
+      return null;
+    }
+    throw error;
   });
 }
 
@@ -2461,6 +2647,8 @@ function extractPoRowsFromWorkbookPayload(body) {
       rowIndex: index + 2,
       poNo: extractPoNoValue(row),
       changeEquipmentId: extractChangeEquipmentIdValue(row),
+      issueDate: extractIssueDateValue(row),
+      invoiceNumber: extractInvoiceNumberValue(row),
       originalRow: row,
     }))
     .filter((row) => row.poNo);
@@ -2521,6 +2709,65 @@ function extractChangeEquipmentIdValue(row) {
   return equipmentKey ? String(row[equipmentKey] ?? "").trim() : "";
 }
 
+function extractIssueDateValue(row) {
+  if (!row || typeof row !== "object") {
+    return "";
+  }
+
+  const preferredKeys = [
+    "Issue Date",
+    "issue date",
+    "PODD Date",
+    "PODD  Date",
+    "PODD",
+    "Date",
+    "date",
+  ];
+  for (const key of preferredKeys) {
+    const value = row[key];
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+
+  const dateKey = Object.keys(row).find((key) => {
+    const normalizedKey = normalizeHeaderName(key);
+    return normalizedKey === "issuedate"
+      || normalizedKey === "podddate"
+      || normalizedKey === "date";
+  });
+  return dateKey ? String(row[dateKey] ?? "").trim() : "";
+}
+
+function extractInvoiceNumberValue(row) {
+  if (!row || typeof row !== "object") {
+    return "";
+  }
+
+  const preferredKeys = [
+    "Invoice Number",
+    "invoice number",
+    "Invoice No",
+    "Invoice No.",
+    "invoice no",
+    "Invoice",
+  ];
+  for (const key of preferredKeys) {
+    const value = row[key];
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+
+  const invoiceKey = Object.keys(row).find((key) => {
+    const normalizedKey = normalizeHeaderName(key);
+    return normalizedKey === "invoicenumber"
+      || normalizedKey === "invoiceno"
+      || normalizedKey === "invoice";
+  });
+  return invoiceKey ? String(row[invoiceKey] ?? "").trim() : "";
+}
+
 function collectCreateShipmentBatches(poRows) {
   const batches = [];
   const batchByEquipmentId = new Map();
@@ -2528,6 +2775,8 @@ function collectCreateShipmentBatches(poRows) {
   for (const row of Array.isArray(poRows) ? poRows : []) {
     const poNo = String(row?.poNo || "").trim();
     const changeEquipmentId = String(row?.changeEquipmentId || "").trim();
+    const issueDate = String(row?.issueDate || "").trim();
+    const invoiceNumber = String(row?.invoiceNumber || "").trim();
     if (!poNo || !changeEquipmentId) {
       continue;
     }
@@ -2538,6 +2787,11 @@ function collectCreateShipmentBatches(poRows) {
         changeEquipmentId,
         poNos: [],
         targetPairs: [],
+        issueDate: "",
+        issueDateSource: "",
+        invoiceNumber: "",
+        invoiceNumberSource: "",
+        invoiceNumberConflict: false,
       };
       batchByEquipmentId.set(changeEquipmentId, batch);
       batches.push(batch);
@@ -2551,10 +2805,75 @@ function collectCreateShipmentBatches(poRows) {
       rowIndex: Number(row?.rowIndex || 0),
       poNo,
       changeEquipmentId,
+      issueDate,
+      invoiceNumber,
     });
+
+    if (issueDate && !batch.issueDate) {
+      batch.issueDate = issueDate;
+      batch.issueDateSource = `row ${Number(row?.rowIndex || 0)}`;
+    }
+
+    if (invoiceNumber && !batch.invoiceNumber) {
+      batch.invoiceNumber = invoiceNumber;
+      batch.invoiceNumberSource = `row ${Number(row?.rowIndex || 0)}`;
+    } else if (
+      invoiceNumber
+      && batch.invoiceNumber
+      && batch.invoiceNumber !== invoiceNumber
+    ) {
+      batch.invoiceNumberConflict = true;
+    }
   }
 
   return batches;
+}
+
+function normalizeIssueDateParts(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return null;
+  }
+
+  const directDate = new Date(raw);
+  if (!Number.isNaN(directDate.getTime())) {
+    return {
+      year: directDate.getFullYear(),
+      month: directDate.getMonth() + 1,
+      day: directDate.getDate(),
+      normalized: `${directDate.getFullYear()}-${String(directDate.getMonth() + 1).padStart(2, "0")}-${String(directDate.getDate()).padStart(2, "0")}`,
+    };
+  }
+
+  const dateMatch = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/)
+    || raw.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (!dateMatch) {
+    return null;
+  }
+
+  let year;
+  let month;
+  let day;
+  if (dateMatch[1].length === 4) {
+    year = Number(dateMatch[1]);
+    month = Number(dateMatch[2]);
+    day = Number(dateMatch[3]);
+  } else {
+    month = Number(dateMatch[1]);
+    day = Number(dateMatch[2]);
+    year = Number(dateMatch[3]);
+  }
+
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  return {
+    year,
+    month,
+    day,
+    normalized: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+  };
 }
 
 function collectUniqueChangeEquipmentIds(poRows) {
@@ -2602,6 +2921,13 @@ function isClosedTargetError(error) {
     || normalizedMessage.includes("browser has been closed")
     || normalizedMessage.includes("context has been closed")
     || normalizedMessage.includes("page crashed");
+}
+
+function isTransientExecutionContextError(error) {
+  const normalizedMessage = String(error?.message || error || "").toLowerCase();
+  return normalizedMessage.includes("execution context was destroyed")
+    || normalizedMessage.includes("cannot find context with specified id")
+    || normalizedMessage.includes("most likely because of a navigation");
 }
 
 function trackBrowserLifecycle(page, context, browser) {
