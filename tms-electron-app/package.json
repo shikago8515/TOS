@@ -1,6 +1,6 @@
 {
   "name": "tms-integration-tool",
-  "version": "0.9.7-beta.1.6",
+  "version": "0.9.8-beta.0.5",
   "description": "TOS integration tool",
   "main": "main-simple.js",
   "scripts": {
@@ -176,7 +176,6 @@
     ],
     "win": {
       "signAndEditExecutable": false,
-      "artifactName": "${productName}.Setup.${version}.${ext}",
       "target": [
         {
           "target": "nsis",

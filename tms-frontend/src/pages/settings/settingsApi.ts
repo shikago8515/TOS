@@ -4,7 +4,7 @@ import type {
   UpdateStatus,
 } from '../../types/electronApi'
 
-const fallbackVersion = '0.9.7-beta.1.6'
+const fallbackVersion = '0.9.8-beta.0.5'
 const previewUpdateFeedUrl = 'https://github.com/shikago8515/TOS/releases/latest/download/'
 
 export function hasUpdateBridge(): boolean {
