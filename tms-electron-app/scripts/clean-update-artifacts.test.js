@@ -59,3 +59,28 @@ test('removes generated manual download metadata and downloads folder', () => {
   assert.equal(fs.existsSync(path.join(distDir, 'downloads')), false)
   assert.equal(fs.existsSync(packagedResource), true)
 })
+
+test('removes canonical and legacy installer artifacts from the top-level dist folder', () => {
+  const root = makeTempDir()
+  const distDir = path.join(root, 'dist')
+  const canonicalInstaller = path.join(distDir, 'TOS.Setup.0.9.8-beta.0.5.exe')
+  const canonicalBlockmap = path.join(distDir, 'TOS.Setup.0.9.8-beta.0.5.exe.blockmap')
+  const legacyInstaller = path.join(distDir, 'TOS Setup 0.9.8-beta.0.5.exe')
+  const legacyBlockmap = path.join(distDir, 'TOS Setup 0.9.8-beta.0.5.exe.blockmap')
+  const packagedResource = path.join(distDir, 'win-unpacked', 'resources', 'app.asar')
+
+  fs.mkdirSync(path.dirname(packagedResource), { recursive: true })
+  fs.writeFileSync(canonicalInstaller, 'installer')
+  fs.writeFileSync(canonicalBlockmap, 'blockmap')
+  fs.writeFileSync(legacyInstaller, 'legacy installer')
+  fs.writeFileSync(legacyBlockmap, 'legacy blockmap')
+  fs.writeFileSync(packagedResource, 'asar')
+
+  runCleanerAgainst(root)
+
+  assert.equal(fs.existsSync(canonicalInstaller), false)
+  assert.equal(fs.existsSync(canonicalBlockmap), false)
+  assert.equal(fs.existsSync(legacyInstaller), false)
+  assert.equal(fs.existsSync(legacyBlockmap), false)
+  assert.equal(fs.existsSync(packagedResource), true)
+})

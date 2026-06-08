@@ -49,6 +49,10 @@ function readExpectedVersion() {
   return readJson(packagePath).version
 }
 
+function buildInstallerName(version) {
+  return `TOS.Setup.${version}.exe`
+}
+
 function parseLatestYml(filePath) {
   const content = fs.readFileSync(filePath, 'utf8')
 
@@ -98,7 +102,7 @@ function collectMissingUnpackedResources(appOutDir) {
 function collectLatestYmlIssues(distDir, expectedVersion) {
   const issues = []
   const latestPath = path.join(distDir, 'latest.yml')
-  const expectedInstallerName = `TOS Setup ${expectedVersion}.exe`
+  const expectedInstallerName = buildInstallerName(expectedVersion)
 
   if (!fileExists(latestPath)) {
     return ['missing release artifact: latest.yml']
@@ -165,7 +169,7 @@ function collectLatestYmlIssues(distDir, expectedVersion) {
 function collectTopLevelArtifactIssues(distDir, expectedVersion) {
   const issues = []
   const changelogPath = path.join(distDir, 'changelog.json')
-  const installerName = `TOS Setup ${expectedVersion}.exe`
+  const installerName = buildInstallerName(expectedVersion)
   const blockmapName = `${installerName}.blockmap`
 
   if (!fileExists(path.join(distDir, installerName))) {
@@ -196,7 +200,7 @@ function collectManualDownloadIssues(distDir, expectedVersion) {
   const issues = []
   const manifestPath = path.join(distDir, 'manual-downloads.json')
   const expectedZipName = `TOS_v${expectedVersion}_Windows_x64_unpacked.zip`
-  const expectedZipUrl = `downloads/${expectedVersion}/${expectedZipName}`
+  const expectedZipUrl = expectedZipName
 
   if (!fileExists(manifestPath)) {
     return ['missing release artifact: manual-downloads.json']
@@ -265,10 +269,6 @@ function collectUnexpectedManualDownloadArtifactIssues(distDir) {
       pattern: /^TOS_v.+_Portable\.exe$/i,
       message: 'unexpected portable release artifact',
     },
-    {
-      pattern: /^TOS_v.+_Windows_x64_unpacked\.zip$/i,
-      message: 'unexpected unpacked zip release artifact',
-    },
   ]
   const issues = []
 
@@ -294,12 +294,22 @@ function collectStaleArtifactIssues(distDir, expectedVersion) {
 
   const issues = []
   const artifactPatterns = [
-    /^TOS Setup (.+)\.exe$/i,
-    /^TOS Setup (.+)\.exe\.blockmap$/i,
+    /^TOS\.Setup\.(.+)\.exe$/i,
+    /^TOS\.Setup\.(.+)\.exe\.blockmap$/i,
+    /^TOS_v(.+)_Windows_x64_unpacked\.zip$/i,
+  ]
+  const legacyArtifactPatterns = [
+    /^TOS Setup .+\.exe$/i,
+    /^TOS Setup .+\.exe\.blockmap$/i,
   ]
 
   for (const entry of fs.readdirSync(distDir, { withFileTypes: true })) {
     if (!entry.isFile()) continue
+
+    if (legacyArtifactPatterns.some((pattern) => pattern.test(entry.name))) {
+      issues.push(`legacy release artifact name is not allowed: ${entry.name}`)
+      continue
+    }
 
     for (const pattern of artifactPatterns) {
       const match = entry.name.match(pattern)
