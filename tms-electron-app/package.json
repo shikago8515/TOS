@@ -47,6 +47,7 @@
   "build": {
     "appId": "com.tomwell.tms",
     "productName": "TOS",
+    "artifactName": "TOS.Setup.${version}.${ext}",
     "afterPack": "scripts/after-pack.js",
     "detectUpdateChannel": false,
     "protocols": [

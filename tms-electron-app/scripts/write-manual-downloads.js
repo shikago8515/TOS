@@ -59,9 +59,8 @@ function createManualDownloadZip(options = {}) {
   const sourceDir = path.resolve(options.appOutDir || appOutDir)
   const outputDir = path.resolve(options.outputDir || distDir)
   const zipName = `TOS_v${version}_Windows_x64_unpacked.zip`
-  const zipRelativePath = path.join('downloads', version, zipName)
-  const zipUrl = zipRelativePath.replace(/\\/g, '/')
-  const zipPath = path.join(outputDir, zipRelativePath)
+  const zipUrl = zipName
+  const zipPath = path.join(outputDir, zipName)
   const outputManifestPath = path.join(outputDir, 'manual-downloads.json')
 
   requireDirectory(sourceDir, 'win-unpacked app directory')

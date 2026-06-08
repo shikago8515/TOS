@@ -7,6 +7,8 @@ const artifactNamePatterns = [
   /^alpha\.yml$/i,
   /^beta\.yml$/i,
   /^manual-downloads\.json$/i,
+  /^TOS\.Setup\..+\.exe$/i,
+  /^TOS\.Setup\..+\.exe\.blockmap$/i,
   /^TOS Setup .+\.exe$/i,
   /^TOS Setup .+\.exe\.blockmap$/i,
   /^TOS_v.+_Portable\.exe$/i,
