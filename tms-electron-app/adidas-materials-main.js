@@ -1788,13 +1788,15 @@ ${preloadSource}
     }
   }
 
-  ipcMain.handle('launch-adidas-material-collector', async () => {
+  async function launchCollectorSafely() {
     try {
       return await launchCollectorWindow();
     } catch (error) {
       return { success: false, error: error.message };
     }
-  });
+  }
+
+  ipcMain.handle('launch-adidas-material-collector', launchCollectorSafely);
 
   ipcMain.handle('adidas-materials:get-state', () => publicState());
 
@@ -1871,6 +1873,10 @@ ${preloadSource}
       // The app is quitting; keep shutdown deterministic.
     }
   });
+
+  return {
+    launchCollector: launchCollectorSafely
+  };
 }
 
 module.exports = {

@@ -3,9 +3,12 @@ export interface ElectronActionResult {
   error?: string
   url?: string
   command?: string
+  mode?: string
   alreadyOpen?: boolean
   alreadyRunning?: boolean
   browser?: string
+  port?: number
+  profileDir?: string
 }
 
 export interface ExternalModuleInfo {

@@ -1808,7 +1808,7 @@ function createWindow() {
 }
 
 const initialProtocolUrl = extractProtocolUrl(process.argv);
-const automationBootstrapOnly = hasAutomationLauncherBackgroundFlag(process.argv)
+const automationLauncherBootstrapOnly = hasAutomationLauncherBackgroundFlag(process.argv)
   || isAutomationLauncherProtocolUrl(initialProtocolUrl);
 const singleInstanceLock = app.requestSingleInstanceLock();
 
@@ -1838,7 +1838,7 @@ if (!singleInstanceLock) {
 registerIpcHandlers();
 app.whenReady().then(async () => {
   registerAutomationProtocol();
-  if (automationBootstrapOnly) {
+  if (automationLauncherBootstrapOnly) {
     try {
       await ensureAutomationLauncher();
       writeDiagnosticEvent('web-automation', 'launcher-bootstrap-success', {
