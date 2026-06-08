@@ -5,6 +5,16 @@ const asar = require('@electron/asar')
 const appDir = path.resolve(__dirname, '..')
 const defaultDistDir = path.join(appDir, 'dist')
 const requiredRendererFiles = ['dist-frontend/index.html']
+const maxAppAsarSizeBytes = 250 * 1024 * 1024
+const maxIssueSamples = 5
+
+const extraResourcePrefixes = [
+  'automation-apps/',
+  'automation-launcher/',
+  'backend-runtime/',
+  'browser-plugins/',
+  'external-apps/',
+]
 
 function normalizePackagePath(filePath) {
   return filePath.replace(/\\/g, '/').replace(/^\/+/, '')
@@ -45,6 +55,74 @@ function listPackagedAppFiles(appOutDir) {
   throw new Error(`Packaged app resources not found under ${appOutDir}`)
 }
 
+function formatMegabytes(bytes) {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function appendSampledIssue(issues, files, predicate, message) {
+  const matches = files.filter(predicate)
+  if (matches.length === 0) {
+    return
+  }
+
+  const sample = matches.slice(0, maxIssueSamples).join(', ')
+  const suffix = matches.length > maxIssueSamples
+    ? ` (+${matches.length - maxIssueSamples} more)`
+    : ''
+
+  issues.push(`${message}: ${sample}${suffix}`)
+}
+
+function isForbiddenDistArtifact(filePath) {
+  const topLevelName = filePath.split('/')[0]
+  return topLevelName === 'dist' || (
+    topLevelName.startsWith('dist-') &&
+    topLevelName !== 'dist-frontend'
+  )
+}
+
+function collectPackagedAppHygieneIssues(appOutDir, packagedFiles) {
+  const files = Array.from(packagedFiles || []).map(normalizePackagePath)
+  const issues = []
+  const appAsarPath = path.join(appOutDir, 'resources', 'app.asar')
+
+  if (fs.existsSync(appAsarPath)) {
+    const appAsarSize = fs.statSync(appAsarPath).size
+    if (appAsarSize > maxAppAsarSizeBytes) {
+      issues.push(
+        `app.asar is ${formatMegabytes(appAsarSize)}; expected at most ${formatMegabytes(maxAppAsarSizeBytes)}`,
+      )
+    }
+  }
+
+  appendSampledIssue(
+    issues,
+    files,
+    isForbiddenDistArtifact,
+    'generated dist output leaked into app.asar',
+  )
+  appendSampledIssue(
+    issues,
+    files,
+    (filePath) => /(^|\/)win-unpacked\//.test(filePath),
+    'nested win-unpacked output leaked into app.asar',
+  )
+  appendSampledIssue(
+    issues,
+    files,
+    (filePath) => /(^|\/)app\.asar$/.test(filePath),
+    'nested app.asar leaked into app.asar',
+  )
+  appendSampledIssue(
+    issues,
+    files,
+    (filePath) => extraResourcePrefixes.some((prefix) => filePath.startsWith(prefix)),
+    'extraResources content was also packed into app.asar',
+  )
+
+  return issues
+}
+
 function findCandidateAppOutDirs() {
   if (process.argv[2]) {
     return [path.resolve(appDir, process.argv[2])]
@@ -74,12 +152,14 @@ function verifyRendererPackage(appOutDir) {
   const hasRendererStyle = Array.from(packagedFiles).some((filePath) => (
     filePath.startsWith('dist-frontend/assets/') && filePath.endsWith('.css')
   ))
+  const hygieneIssues = collectPackagedAppHygieneIssues(appOutDir, packagedFiles)
 
-  if (missingFiles.length > 0 || !hasRendererScript || !hasRendererStyle) {
+  if (missingFiles.length > 0 || !hasRendererScript || !hasRendererStyle || hygieneIssues.length > 0) {
     const details = [
       missingFiles.length > 0 ? `missing files: ${missingFiles.join(', ')}` : '',
       hasRendererScript ? '' : 'missing dist-frontend JS asset',
       hasRendererStyle ? '' : 'missing dist-frontend CSS asset',
+      ...hygieneIssues,
     ].filter(Boolean).join('; ')
 
     throw new Error(
@@ -108,5 +188,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  collectPackagedAppHygieneIssues,
+  listPackagedAppFiles,
   verifyRendererPackage,
 }

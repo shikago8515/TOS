@@ -51,6 +51,25 @@ test('electron-builder excludes archived legacy files from app.asar', () => {
   )
 })
 
+test('electron-builder excludes generated package outputs from app.asar', () => {
+  const requiredExclusions = [
+    '!dist-dnd-fix/**/*',
+    '!dist-realtest/**/*',
+    '!dist-tms-automation-check/**/*',
+    '!dist-*/win-unpacked/**/*',
+    '!dist-*/**/app.asar',
+    '!backend-runtime/**/*',
+    '!automation-launcher/**/*',
+  ]
+
+  for (const exclusion of requiredExclusions) {
+    assert(
+      packageJson.build.files.includes(exclusion),
+      `build.files should include ${exclusion}`,
+    )
+  }
+})
+
 test('portable release entrypoints stay disabled', () => {
   assert.equal(packageJson.scripts['pack:portable'], undefined)
   assert.equal(packageJson.build.portable, undefined)
