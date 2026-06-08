@@ -12,7 +12,10 @@ export interface LocalExecutorHealth {
   ok: boolean
   busy?: boolean
   activeRun?: unknown
+  activeRuns?: unknown[]
+  activeRunCount?: number
   lastRun?: unknown
+  recentRuns?: unknown[]
   dataDir?: string
   runtimeConfigPath?: string
   runtimeSecretPath?: string

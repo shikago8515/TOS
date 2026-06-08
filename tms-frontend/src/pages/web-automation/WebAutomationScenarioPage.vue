@@ -525,7 +525,8 @@ const executorStatusLabel = computed(() => {
   if (activeApp.value) {
     const label = getAutomationAppStatusLabel(activeApp.value)
     if (executorHealth.value?.ok) {
-      return executorHealth.value.busy ? `${label} / 忙碌` : `${label} / 就绪`
+      const activeRunCount = Number(executorHealth.value.activeRunCount || 0)
+      return activeRunCount > 0 ? `${label} / 运行 ${activeRunCount} 个任务` : `${label} / 就绪`
     }
     if (activeApp.value.running) {
       return `${label} / 未连通`

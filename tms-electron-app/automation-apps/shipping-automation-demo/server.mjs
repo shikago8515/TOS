@@ -29,8 +29,9 @@ const browserEngines = { chromium, firefox, webkit };
 await ensureRuntimeFiles();
 const config = await loadConfig();
 
-let activeRun = null;
+const activeRuns = new Map();
 let lastRun = null;
+const recentRuns = [];
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -52,38 +53,99 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    const shipping2BulkRoute = requestPath.match(/^\/(?:api\/)?run-shipping2-(unreleased|released)-bulk$/);
+    if (req.method === "POST" && shipping2BulkRoute) {
+      const bulkType = shipping2BulkRoute[1];
+      const body = await readJsonBody(req);
+      authorize(req, body);
+
+      const requestBulkType = String(body?.bulkType || "").trim().toLowerCase();
+      if (requestBulkType && requestBulkType !== bulkType) {
+        const error = new Error("Bulk type does not match the requested automation route.");
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const credentials = resolveCredentials(body);
+      assertWorkbookPayload(body);
+      const inputFileName = normalizeUploadFileName(body);
+      const activeRun = registerActiveRun({
+        action: `run-shipping2-${bulkType}-bulk`,
+        browser: config.browser,
+        bulkType,
+        inputFileName,
+        inputMode: "shipping2-bulk",
+      });
+
+      try {
+        const result = await runShipping2BulkFile(credentials, bulkType, inputFileName, activeRun.runId);
+        recordCompletedRun({
+          runId: activeRun.runId,
+          startedAt: activeRun.startedAt,
+          finishedAt: result.generatedAt,
+          ok: result.ok,
+          finalUrl: result.finalUrl,
+          bulkType,
+          inputFileName,
+          homeOpened: result.homeOpened,
+        });
+        sendJson(res, result.ok ? 200 : 500, result);
+      } finally {
+        activeRuns.delete(activeRun.runId);
+      }
+      return;
+    }
+
     if (req.method === "POST" && (requestPath === "/open-shipment-scan" || requestPath === "/api/open-shipment-scan")) {
       const body = await readJsonBody(req);
       authorize(req, body);
 
-      if (activeRun) {
-        sendJson(res, 409, {
-          ok: false,
-          message: "Executor is busy with another run.",
-          activeRun,
-        });
-        return;
-      }
-
       const credentials = resolveCredentials(body);
-      activeRun = {
-        startedAt: new Date().toISOString(),
+      const activeRun = registerActiveRun({
         action: "open-shipment-scan",
         browser: config.browser,
-      };
+      });
 
       try {
-        const result = await openShipmentScan(credentials);
-        lastRun = {
+        const result = await openShipmentScan(credentials, activeRun.runId);
+        recordCompletedRun({
+          runId: activeRun.runId,
           startedAt: activeRun.startedAt,
           finishedAt: result.generatedAt,
           ok: result.ok,
           finalUrl: result.finalUrl,
           shipmentScanOpened: result.shipmentScanOpened,
-        };
+        });
         sendJson(res, result.ok ? 200 : 500, result);
       } finally {
-        activeRun = null;
+        activeRuns.delete(activeRun.runId);
+      }
+      return;
+    }
+
+    if (req.method === "POST" && (requestPath === "/open-infornexus-home" || requestPath === "/api/open-infornexus-home")) {
+      const body = await readJsonBody(req);
+      authorize(req, body);
+
+      const credentials = resolveCredentials(body);
+      const activeRun = registerActiveRun({
+        action: "open-infornexus-home",
+        browser: config.browser,
+      });
+
+      try {
+        const result = await openInfornexusHome(credentials, activeRun.runId);
+        recordCompletedRun({
+          runId: activeRun.runId,
+          startedAt: activeRun.startedAt,
+          finishedAt: result.generatedAt,
+          ok: result.ok,
+          finalUrl: result.finalUrl,
+          homeOpened: result.homeOpened,
+        });
+        sendJson(res, result.ok ? 200 : 500, result);
+      } finally {
+        activeRuns.delete(activeRun.runId);
       }
       return;
     }
@@ -92,31 +154,22 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       authorize(req, body);
 
-      if (activeRun) {
-        sendJson(res, 409, {
-          ok: false,
-          message: "Executor is busy with another run.",
-          activeRun,
-        });
-        return;
-      }
-
       const credentials = resolveCredentials(body);
       const poRows = extractPoRowsFromWorkbookPayload(body);
       const inputFileName = normalizeUploadFileName(body);
-      activeRun = {
-        startedAt: new Date().toISOString(),
+      const activeRun = registerActiveRun({
         action: "run-shipping-file",
         browser: config.browser,
         inputFileName,
         inputMode: "local-file",
         totalPoCount: poRows.length,
-      };
+      });
 
       try {
-        const result = await runShippingFile(credentials, poRows, inputFileName);
-        result.artifacts = await persistRunArtifacts(result, poRows);
-        lastRun = {
+        const result = await runShippingFile(credentials, poRows, inputFileName, activeRun.runId);
+        result.artifacts = await persistRunArtifacts(result, poRows, activeRun.runId);
+        recordCompletedRun({
+          runId: activeRun.runId,
           startedAt: activeRun.startedAt,
           finishedAt: result.generatedAt,
           ok: result.ok,
@@ -125,10 +178,10 @@ const server = http.createServer(async (req, res) => {
           totalPoCount: result.totalPoCount,
           completedPoCount: result.completedPoCount,
           failedPoCount: result.failedPoCount,
-        };
+        });
         sendJson(res, result.ok ? 200 : 500, result);
       } finally {
-        activeRun = null;
+        activeRuns.delete(activeRun.runId);
       }
       return;
     }
@@ -195,11 +248,15 @@ async function loadConfig() {
 }
 
 function buildHealthPayload() {
+  const activeRunList = Array.from(activeRuns.values());
   return {
     ok: true,
-    busy: Boolean(activeRun),
-    activeRun,
+    busy: activeRunList.length > 0,
+    activeRun: activeRunList[0] || null,
+    activeRuns: activeRunList,
+    activeRunCount: activeRunList.length,
     lastRun,
+    recentRuns,
     dataDir: runtimeDataRoot,
     runtimeConfigPath,
     runtimeSecretPath,
@@ -229,19 +286,74 @@ function resolveCredentials(body) {
   return { username, password };
 }
 
-async function openShipmentScan(credentials) {
+function registerActiveRun(run) {
+  const runId = createRunId(run?.action || "run");
+  const activeRun = {
+    runId,
+    startedAt: new Date().toISOString(),
+    ...run,
+  };
+  activeRuns.set(runId, activeRun);
+  return activeRun;
+}
+
+function recordCompletedRun(run) {
+  lastRun = run;
+  recentRuns.unshift(run);
+  recentRuns.splice(20);
+}
+
+function createRunId(action) {
+  const actionSlug = sanitizeFileSegment(action || "run");
+  const randomPart = Math.random().toString(36).slice(2, 10);
+  return `${Date.now().toString(36)}-${randomPart}-${actionSlug}`;
+}
+
+function sanitizeFileSegment(value) {
+  return String(value || "run")
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "run";
+}
+
+async function openShipmentScan(credentials, runId) {
   return runShippingWorkflow(credentials, {
+    runId,
     poRows: [],
     inputFileName: "",
     fillPoNumbers: false,
+    targetPage: "shipment-scan",
   });
 }
 
-async function runShippingFile(credentials, poRows, inputFileName) {
+async function openInfornexusHome(credentials, runId) {
   return runShippingWorkflow(credentials, {
+    runId,
+    poRows: [],
+    inputFileName: "",
+    fillPoNumbers: false,
+    targetPage: "home",
+  });
+}
+
+async function runShipping2BulkFile(credentials, bulkType, inputFileName, runId) {
+  return runShippingWorkflow(credentials, {
+    runId,
+    poRows: [],
+    inputFileName,
+    fillPoNumbers: false,
+    targetPage: "home",
+    shipping2BulkType: bulkType,
+  });
+}
+
+async function runShippingFile(credentials, poRows, inputFileName, runId) {
+  return runShippingWorkflow(credentials, {
+    runId,
     poRows,
     inputFileName,
     fillPoNumbers: true,
+    targetPage: "shipment-scan",
   });
 }
 
@@ -261,6 +373,23 @@ async function runShippingWorkflow(credentials, runContext) {
   const startedAt = new Date().toISOString();
   const poRows = Array.isArray(runContext?.poRows) ? runContext.poRows : [];
   const shouldFillPoNumbers = Boolean(runContext?.fillPoNumbers);
+  const runId = String(runContext?.runId || createRunId("adhoc"));
+  const targetPage = runContext?.targetPage === "home" ? "home" : "shipment-scan";
+  const shipping2BulkType = ["unreleased", "released"].includes(runContext?.shipping2BulkType)
+    ? runContext.shipping2BulkType
+    : "";
+  const shipping2BulkLabel = shipping2BulkType === "unreleased"
+    ? "Unreleased Bulk"
+    : shipping2BulkType === "released"
+      ? "released Bulk"
+      : "";
+  const isShipping2BulkRun = Boolean(shipping2BulkType);
+  const shouldOpenShipmentScan = targetPage === "shipment-scan";
+  const artifactPrefix = isShipping2BulkRun
+    ? `shipping2-${shipping2BulkType}-bulk`
+    : shouldOpenShipmentScan
+      ? "shipment-scan"
+      : "infornexus-home";
   const poResults = [];
   const createShipmentResults = [];
   let createShipmentBatches = [];
@@ -282,13 +411,18 @@ async function runShippingWorkflow(credentials, runContext) {
     });
 
     await ensureLoggedIn(page, credentials);
-    await clickLocator(page.locator("#navmenu__applications"), "Applications");
-    await clickLocator(
-      page.locator("#navmenu__inprogressmanifestsprintscanship"),
-      "Print-Scan-Ship",
-    );
-    await page.waitForURL(/\/en\/trade\/PackByScan/, { timeout: config.navigationTimeoutMs });
     await page.waitForTimeout(config.postLoginWaitMs);
+
+    if (shouldOpenShipmentScan) {
+      await clickLocator(page.locator("#navmenu__applications"), "Applications");
+      await clickLocator(
+        page.locator("#navmenu__inprogressmanifestsprintscanship"),
+        "Print-Scan-Ship",
+      );
+      await page.waitForURL(/\/en\/trade\/PackByScan/, { timeout: config.navigationTimeoutMs });
+      await page.waitForTimeout(config.postLoginWaitMs);
+    }
+
     if (shouldFillPoNumbers) {
       for (let index = 0; index < poRows.length; index += 1) {
         const poRow = poRows[index];
@@ -392,7 +526,7 @@ async function runShippingWorkflow(credentials, runContext) {
           );
         }
       }
-    } else {
+    } else if (shouldOpenShipmentScan) {
       await openShipmentScanDialog(page);
     }
 
@@ -405,7 +539,7 @@ async function runShippingWorkflow(credentials, runContext) {
       );
     }
 
-    latestScreenshotPath = path.join(artifactsDir, `shipment-scan-success-${Date.now()}.png`);
+    latestScreenshotPath = path.join(artifactsDir, `${artifactPrefix}-${runId}-success-${Date.now()}.png`);
     await page.screenshot({ path: latestScreenshotPath, fullPage: true });
 
     const failedPoCount = poResults.filter((item) => !item.ok).length;
@@ -414,10 +548,13 @@ async function runShippingWorkflow(credentials, runContext) {
     const completedCreateShipmentCount = createShipmentResults.filter((item) => item.ok).length;
 
     const result = {
+      runId,
       ok: failedPoCount === 0 && failedCreateShipmentCount === 0,
       loginSuccess: true,
-      shipmentScanOpened: true,
-      inputMode: shouldFillPoNumbers ? "local-file" : "open-only",
+      shipmentScanOpened: shouldOpenShipmentScan,
+      homeOpened: !shouldOpenShipmentScan,
+      bulkType: shipping2BulkType,
+      inputMode: isShipping2BulkRun ? "shipping2-bulk" : shouldFillPoNumbers ? "local-file" : shouldOpenShipmentScan ? "open-only" : "login-only",
       inputFileName: runContext?.inputFileName || "",
       totalPoCount: poRows.length,
       completedPoCount,
@@ -430,7 +567,11 @@ async function runShippingWorkflow(credentials, runContext) {
       selectedAction: shouldFillPoNumbers ? "Remove/Change Equipment ID" : "",
       message: shouldFillPoNumbers
         ? `Shipment Scan processed ${completedPoCount}/${poRows.length} PO rows and Create Shipment processed ${completedCreateShipmentCount}/${createShipmentEquipmentIds.length} unique equipment IDs.`
-        : "Infor Nexus Shipment Scan opened successfully.",
+        : isShipping2BulkRun
+          ? `${shipping2BulkLabel} browser automation entered successfully.`
+          : shouldOpenShipmentScan
+          ? "Infor Nexus Shipment Scan opened successfully."
+          : "Infor Nexus logged in successfully.",
       generatedAt: new Date().toISOString(),
       finalUrl: safePageUrl(page),
       title: await safePageTitle(page),
@@ -450,19 +591,26 @@ async function runShippingWorkflow(credentials, runContext) {
       error,
       page,
       lifecycle,
-      "Shipment Scan automation browser session became unavailable.",
+      isShipping2BulkRun
+        ? `${shipping2BulkLabel} browser session became unavailable.`
+        : shouldOpenShipmentScan
+        ? "Shipment Scan automation browser session became unavailable."
+        : "Infor Nexus login browser session became unavailable.",
     );
     const failureMessage = normalizedError.message;
     if (page && !page.isClosed()) {
-      latestScreenshotPath = path.join(artifactsDir, `shipment-scan-error-${Date.now()}.png`);
+      latestScreenshotPath = path.join(artifactsDir, `${artifactPrefix}-${runId}-error-${Date.now()}.png`);
       await page.screenshot({ path: latestScreenshotPath, fullPage: true }).catch(() => {});
     }
 
     const result = {
+      runId,
       ok: false,
       loginSuccess: false,
       shipmentScanOpened: false,
-      inputMode: shouldFillPoNumbers ? "local-file" : "open-only",
+      homeOpened: false,
+      bulkType: shipping2BulkType,
+      inputMode: isShipping2BulkRun ? "shipping2-bulk" : shouldFillPoNumbers ? "local-file" : shouldOpenShipmentScan ? "open-only" : "login-only",
       inputFileName: runContext?.inputFileName || "",
       totalPoCount: poRows.length,
       completedPoCount: poResults.filter((item) => item.ok).length,
@@ -475,7 +623,11 @@ async function runShippingWorkflow(credentials, runContext) {
       completedCreateShipmentCount: createShipmentResults.filter((item) => item.ok).length,
       failedCreateShipmentCount: createShipmentResults.filter((item) => !item.ok).length,
       createShipmentResults,
-      message: failureMessage || "Shipment Scan automation failed.",
+      message: failureMessage || (isShipping2BulkRun
+        ? `${shipping2BulkLabel} automation failed.`
+        : shouldOpenShipmentScan
+          ? "Shipment Scan automation failed."
+          : "Infor Nexus login automation failed."),
       generatedAt: new Date().toISOString(),
       finalUrl: safePageUrl(page),
       title: await safePageTitle(page),
@@ -2381,14 +2533,28 @@ async function clickLocator(locator, label) {
   log(`Clicked ${label}.`);
 }
 
-async function persistRunArtifacts(result, poRows) {
+async function persistRunArtifacts(result, poRows, runId) {
   await mkdir(artifactsDir, { recursive: true });
 
+  const safeRunId = sanitizeFileSegment(runId || result?.runId || createRunId("artifact"));
+  const resultJsonName = `${safeRunId}-result.json`;
+  const resultExcelName = `${safeRunId}-result.xlsx`;
+  const failedJsonName = `${safeRunId}-failed-po-rows.json`;
+  const failedExcelName = `${safeRunId}-failed-po-rows.xlsx`;
+  const runResultPath = path.join(artifactsDir, resultJsonName);
+  const runResultExcelPath = path.join(artifactsDir, resultExcelName);
+  const runFailedJsonPath = path.join(artifactsDir, failedJsonName);
+  const runFailedExcelPath = path.join(artifactsDir, failedExcelName);
   const latestResultPath = path.join(artifactsDir, "last-result.json");
   const latestResultExcelPath = path.join(artifactsDir, "last-result.xlsx");
   const latestFailedJsonPath = path.join(artifactsDir, "last-failed-po-rows.json");
   const latestFailedExcelPath = path.join(artifactsDir, "last-failed-po-rows.xlsx");
   const failedRows = extractFailedPoRows(result, poRows);
+
+  await writeFile(runResultPath, JSON.stringify(result, null, 2), "utf8");
+  await writeRunResultWorkbook(runResultExcelPath, result, poRows);
+  await writeFile(runFailedJsonPath, JSON.stringify(failedRows, null, 2), "utf8");
+  await writeFailedPoWorkbook(runFailedExcelPath, failedRows);
 
   await writeFile(latestResultPath, JSON.stringify(result, null, 2), "utf8");
   await writeRunResultWorkbook(latestResultExcelPath, result, poRows);
@@ -2396,16 +2562,25 @@ async function persistRunArtifacts(result, poRows) {
   await writeFailedPoWorkbook(latestFailedExcelPath, failedRows);
 
   return {
+    runId: safeRunId,
+    resultPath: runResultPath,
+    resultExcelPath: runResultExcelPath,
+    failedJsonPath: runFailedJsonPath,
+    failedExcelPath: runFailedExcelPath,
     latestResultPath,
     latestResultExcelPath,
     latestFailedJsonPath,
     latestFailedExcelPath,
     failedRowCount: failedRows.length,
     downloadUrls: {
-      resultJsonUrl: "/artifacts/last-result.json",
-      resultExcelUrl: "/artifacts/last-result.xlsx",
-      failedPoJsonUrl: "/artifacts/last-failed-po-rows.json",
-      failedPoExcelUrl: "/artifacts/last-failed-po-rows.xlsx",
+      resultJsonUrl: `/artifacts/${resultJsonName}`,
+      resultExcelUrl: `/artifacts/${resultExcelName}`,
+      failedPoJsonUrl: `/artifacts/${failedJsonName}`,
+      failedPoExcelUrl: `/artifacts/${failedExcelName}`,
+      latestResultJsonUrl: "/artifacts/last-result.json",
+      latestResultExcelUrl: "/artifacts/last-result.xlsx",
+      latestFailedPoJsonUrl: "/artifacts/last-failed-po-rows.json",
+      latestFailedPoExcelUrl: "/artifacts/last-failed-po-rows.xlsx",
     },
   };
 }
@@ -2603,6 +2778,32 @@ function classifyPoFailureStep(reason) {
   }
 
   return "Shipping Automation";
+}
+
+function assertWorkbookPayload(body) {
+  const fileBase64 = String(body?.fileBase64 || body?.fileContentBase64 || "").trim();
+  if (!fileBase64) {
+    const error = new Error("fileBase64 must be a non-empty base64 string.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const inputFileName = normalizeUploadFileName(body);
+  if (inputFileName && !/\.(xlsx|xls)$/i.test(inputFileName)) {
+    const error = new Error("Uploaded file must be an .xlsx or .xls workbook.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const normalizedBase64 = fileBase64.replace(/^data:.*;base64,/, "");
+  const workbookBuffer = Buffer.from(normalizedBase64, "base64");
+  if (!workbookBuffer.length) {
+    const error = new Error("Decoded workbook content is empty.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return workbookBuffer;
 }
 
 function extractPoRowsFromWorkbookPayload(body) {
@@ -3116,7 +3317,33 @@ function resolveArtifactDownload(requestPath) {
     },
   };
 
-  return artifactMap[normalizedPath] || null;
+  if (artifactMap[normalizedPath]) {
+    return artifactMap[normalizedPath];
+  }
+
+  const dynamicMatch = normalizedPath.match(/^\/(?:api\/)?artifacts\/([A-Za-z0-9._-]+\.(?:json|xlsx|png))$/);
+  if (!dynamicMatch) {
+    return null;
+  }
+
+  const downloadName = dynamicMatch[1];
+  const filePath = path.resolve(artifactsDir, downloadName);
+  if (!filePath.startsWith(path.resolve(artifactsDir) + path.sep)) {
+    return null;
+  }
+
+  const ext = path.extname(downloadName).toLowerCase();
+  const contentType = ext === ".xlsx"
+    ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    : ext === ".png"
+      ? "image/png"
+      : "application/json; charset=utf-8";
+
+  return {
+    filePath,
+    contentType,
+    downloadName,
+  };
 }
 
 async function readJsonBody(req) {
