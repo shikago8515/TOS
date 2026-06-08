@@ -1,32 +1,60 @@
 # TOS Source Workspace
 
-This repository is the reconstructed source workspace for the TOS desktop tool.
+TOS 是一个 Windows x64 桌面工具，当前源码工作区由三部分组成：
 
-The current source baseline was recovered from the packaged Electron `win-unpacked` build. The backend and Electron shell are recoverable source assets. The frontend application source was not present in the package, so `tms-frontend` must be rebuilt from the current product behavior and backend API contracts.
+- `tms-electron-app/`：Electron 主进程、preload、打包与发布脚本。
+- `tms-frontend/`：Vue 3、TypeScript、Vite 前端重建源码。
+- `tms-backend/`：Python FastAPI 后端与 Excel 处理模块。
 
-## Repository Layout
+`tms-electron-app/recovered-frontend/` 是恢复出的打包前端基线，只作为行为和视觉参考，不是长期源码。
 
-```text
-tms-electron-app/  Electron desktop shell and packaging config
-tms-backend/       FastAPI backend and Excel processing modules
-tms-frontend/      Frontend rebuild workspace
-docs/              Recovery notes and engineering standards
+## 当前工程事实
+
+- 后端入口是 `tms-backend/main.py`，默认监听 `http://127.0.0.1:8000`。
+- 前端开发服务器由 `tms-frontend/package.json` 定义，当前是 `http://127.0.0.1:5174`。
+- Electron 打包默认使用 `tms-frontend/dist`；`TOS_FRONTEND_SOURCE=recovered` 仅用于紧急回退。
+- 仓库根目录 `package.json` 当前没有可用 scripts；运行检查命令时进入对应子目录。
+
+## 常用验证命令
+
+```powershell
+cd tms-frontend
+npm run typecheck
+npm run test
+npm run build
 ```
 
-## Current Status
+```powershell
+cd tms-backend
+python -m unittest discover tests/ -v
+python -m compileall .
+```
 
-| Area | Status |
-| --- | --- |
-| Electron shell | Recovered from `resources/app.asar` |
-| Backend | Recovered from `resources/backend` |
-| Frontend | Source missing; rebuild required |
-| GitHub remote | `https://github.com/shikago8515/TOS.git` |
+```powershell
+cd tms-electron-app
+npm run build:frontend
+npm run pack
+npm run verify:renderer-package
+npm run verify:release-package
+```
 
-## Next Work
+发布前完整验证使用：
 
-1. Rebuild `tms-frontend` with Vue 3, TypeScript, and Vite.
-2. Keep the FastAPI endpoints compatible while adding typed response schemas.
-3. Add sample-driven regression tests for each Excel processing module.
-4. Use feature branches and automated checks before merging to `main`.
+```powershell
+cd tms-electron-app
+npm run build:win
+```
 
-See `docs/source-recovery-and-engineering-plan.md` for the full recovery assessment and engineering control plan.
+## 开发规则摘要
+
+- 开发任务先读取项目级 `AGENTS.md`，再按当前源码和 `package.json` scripts 核实。
+- 搜索默认排除 `node_modules`、`dist`、`build`、恢复基线、归档目录和运行数据目录。
+- 前端新增或调整页面时同步 `src/domain/moduleCatalog.ts`、`src/app/routeCatalog.ts`、`src/app/router.ts`。
+- 后端保持 `api/{module}_api.py` + `modules/{module}_module.py` 边界，上传和下载文件名必须做 basename、扩展名和目录边界校验。
+- 未经明确要求，不执行 `git add`、`commit`、`push`、`pull`、`merge`、`rebase`、`reset` 或发布操作。
+
+## 后续重点
+
+1. 继续按恢复基线补齐仍处于 `validation` 或 `placeholder` 的前端模块。
+2. 为前后端接口补充更完整的契约测试和响应 schema。
+3. 按发布敏感规则单独收紧 Electron 外部 URL 打开策略。

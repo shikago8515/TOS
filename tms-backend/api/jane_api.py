@@ -4,20 +4,35 @@
 Jane API Router
 """
 
+import logging
 import os
 import shutil
-from fastapi import APIRouter, File, UploadFile, Form, HTTPException
+from typing import NoReturn, Optional
+from uuid import uuid4
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from typing import Optional
 
 # 导入模块
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from modules.jane_module import JaneModule
+from utils.file_utils import (
+    copy_output_to_directory,
+    copy_upload_to_path,
+    resolve_download_path,
+    sanitize_output_logs,
+    sanitize_output_reference,
+    validate_upload_filename,
+)
 
 
 router = APIRouter(prefix="/jane", tags=["Jane"])
 jane_module = JaneModule()
+logger = logging.getLogger(__name__)
+
+ALLOWED_EXCEL_EXTENSIONS = {".xlsx", ".xlsm", ".xls"}
+PROCESSING_ERROR_MESSAGE = "处理失败，请查看诊断日志或稍后重试"
 
 # 临时目录
 UPLOAD_DIR = os.path.join(
@@ -25,6 +40,36 @@ UPLOAD_DIR = os.path.join(
     "uploads"
 )
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+def _validate_excel_filename(filename: Optional[str], label: str) -> str:
+    try:
+        return validate_upload_filename(filename, ALLOWED_EXCEL_EXTENSIONS, label)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _download_path(filename: str) -> str:
+    try:
+        return resolve_download_path(UPLOAD_DIR, filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _copy_output_to_upload_dir(output_path: str) -> str:
+    try:
+        return copy_output_to_directory(output_path, UPLOAD_DIR)
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=PROCESSING_ERROR_MESSAGE) from exc
+
+
+def _raise_processing_error(exc: Exception) -> NoReturn:
+    logger.exception("Jane processing failed")
+    raise HTTPException(status_code=500, detail=PROCESSING_ERROR_MESSAGE) from exc
+
+
+def _public_message(message: str, output_path: str, output_filename: str) -> str:
+    return sanitize_output_reference(message, output_path, output_filename)
 
 
 @router.post("/test")
@@ -35,26 +80,40 @@ async def test_jane(
     """
     Jane 测试验证
     """
-    
-    # 保存上传的文件
-    tms_path = os.path.join(UPLOAD_DIR, tms_file.filename)
-    with open(tms_path, "wb") as f:
-        shutil.copyfileobj(tms_file.file, f)
-    
-    country_path = os.path.join(UPLOAD_DIR, country_file.filename)
-    with open(country_path, "wb") as f:
-        shutil.copyfileobj(country_file.file, f)
-    
-    # 执行测试
+
+    work_dir = os.path.join(UPLOAD_DIR, f"jane_test_{uuid4().hex}")
+    os.makedirs(work_dir, exist_ok=True)
     try:
+        tms_name = _validate_excel_filename(tms_file.filename, "TMS 文件")
+        tms_path = os.path.join(work_dir, tms_name)
+        copy_upload_to_path(tms_file, tms_path)
+
+        country_name = _validate_excel_filename(country_file.filename, "Country 文件")
+        country_path = os.path.join(work_dir, country_name)
+        copy_upload_to_path(country_file, country_path)
+
         result = jane_module.process_reports(
             tms_path=tms_path,
             country_path=country_path,
             output_dir=UPLOAD_DIR
         )
+        if result.get("success") and result.get("output_path"):
+            output_path = result["output_path"]
+            output_filename = _copy_output_to_upload_dir(output_path)
+            result = {
+                **result,
+                "message": _public_message(result.get("message", ""), output_path, output_filename),
+                "logs": sanitize_output_logs(result.get("logs", []), output_path, output_filename),
+                "output_path": output_filename,
+                "output_file": output_filename,
+            }
         return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _raise_processing_error(exc)
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
 
 
 @router.post("/process")
@@ -67,23 +126,19 @@ async def process_jane(
     """
     处理 Jane 成品表生成
     """
-    
-    # 保存上传的文件
-    tms_path = os.path.join(UPLOAD_DIR, tms_file.filename)
-    with open(tms_path, "wb") as f:
-        shutil.copyfileobj(tms_file.file, f)
-    
-    country_path = os.path.join(UPLOAD_DIR, country_file.filename)
-    with open(country_path, "wb") as f:
-        shutil.copyfileobj(country_file.file, f)
-    
-    # 解析筛选条件
-    filters_list = None
-    if working_filters:
-        filters_list = working_filters.split(',')
-    
-    # 处理数据
+
+    work_dir = os.path.join(UPLOAD_DIR, f"jane_process_{uuid4().hex}")
+    os.makedirs(work_dir, exist_ok=True)
     try:
+        tms_name = _validate_excel_filename(tms_file.filename, "TMS 文件")
+        tms_path = os.path.join(work_dir, tms_name)
+        copy_upload_to_path(tms_file, tms_path)
+
+        country_name = _validate_excel_filename(country_file.filename, "Country 文件")
+        country_path = os.path.join(work_dir, country_name)
+        copy_upload_to_path(country_file, country_path)
+
+        filters_list = working_filters.split(',') if working_filters else None
         result = jane_module.process_reports(
             tms_path=tms_path,
             country_path=country_path,
@@ -93,12 +148,14 @@ async def process_jane(
         
         # 返回结果
         if result['success'] and result['output_path']:
+            output_path = result['output_path']
+            output_filename = _copy_output_to_upload_dir(output_path)
             return {
                 "success": True,
-                "message": result['message'],
-                "logs": result['logs'],
+                "message": _public_message(result['message'], output_path, output_filename),
+                "logs": sanitize_output_logs(result['logs'], output_path, output_filename),
                 "working_count": result['working_count'],
-                "output_file": os.path.basename(result['output_path'])
+                "output_file": output_filename
             }
         else:
             return {
@@ -106,8 +163,12 @@ async def process_jane(
                 "message": result['message'],
                 "logs": result['logs']
             }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _raise_processing_error(exc)
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
 
 
 @router.get("/download/{filename}")
@@ -115,7 +176,7 @@ async def download_jane_result(filename: str):
     """
     下载 Jane 处理结果
     """
-    file_path = os.path.join(UPLOAD_DIR, filename)
+    file_path = _download_path(filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="文件不存在")
     
