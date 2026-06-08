@@ -1,5 +1,6 @@
 const http = require('http')
 const path = require('path')
+const { launchAdidasMaterialsCollector } = require('./adidas-materials-direct')
 const {
   getAutomationApps,
   launchAutomationApp,
@@ -56,6 +57,12 @@ const server = http.createServer(async (req, res) => {
         ok: true,
         apps,
       })
+      return
+    }
+
+    if (req.method === 'POST' && requestUrl.pathname === '/api/adidas-materials/start') {
+      const result = await launchAdidasMaterialsCollector({ userDataDir })
+      sendJson(res, result.success ? 200 : 500, result)
       return
     }
 
