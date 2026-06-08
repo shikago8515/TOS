@@ -70,7 +70,7 @@
                     :to="item.module.path"
                     :class="{ 'is-active': isModuleActive(item.module) }"
                   >
-                    <AppIcon :name="getGroupIcon(group.id)" class="menu-icon" />
+                    <AppIcon :name="getModuleIcon(item.module)" class="menu-icon" />
                     <span class="menu-label">{{ getModuleNavLabel(item.module) }}</span>
                   </RouterLink>
                 </template>
@@ -366,6 +366,25 @@ function getGroupIcon(groupId: TosModuleGroup): string {
   return map[groupId] || 'layers'
 }
 
+function getModuleIcon(module: TosModuleDefinition): string {
+  const customIcons: Record<string, string> = {
+    'jessca': 'check-circle',
+    'sophia-tina': 'files',
+    'jane': 'grid',
+    'jane-bom-summary': 'bar-chart',
+    'jane-bom-compare': 'sliders',
+    'jane-outbound-compare': 'sliders',
+    'eric': 'terminal',
+    'it-invoice-pdf-reorder': 'file-search',
+    'browser-plugins': 'puzzle',
+    'infornexus': 'globe',
+    'jane-sap': 'server',
+    'eric-infornexus': 'globe',
+    'adidas-materials': 'package',
+  }
+  return customIcons[module.id] || getGroupIcon(module.group)
+}
+
 async function exportDiagnostics(): Promise<void> {
   if (!window.electronAPI) {
     showToast('warning', 'alert-circle', '功能受限', '导出诊断包功能需要在桌面客户端中使用，当前浏览器预览环境不支持。')
@@ -571,14 +590,44 @@ watch(
   border: none;
   width: 100%;
   text-align: left;
+  position: relative;
+}
+
+.menu-item::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%) scaleY(0);
+  width: 3px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--soft-accent, #0d9488);
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.3s ease;
+  opacity: 0;
+}
+
+.menu-item.is-active::before {
+  transform: translateY(-50%) scaleY(1);
+  opacity: 1;
+}
+
+.menu-item:hover::before {
+  transform: translateY(-50%) scaleY(0.6);
+  opacity: 0.5;
 }
 
 .menu-icon {
   font-size: 17px;
   color: var(--soft-text-muted, #909399);
-  transition: all 0.25s ease;
+  transition: all 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   margin-right: 10px;
   flex-shrink: 0;
+}
+
+.menu-item:hover .menu-icon {
+  color: var(--soft-text-secondary, #606266);
+  transform: scale(1.08);
 }
 
 .menu-label {
@@ -604,6 +653,7 @@ watch(
   color: var(--soft-accent, #0d9488);
   background: var(--soft-accent-light, #f0fdfa);
   font-weight: 600;
+  padding-left: 16px;
   box-shadow:
     inset 2px 2px 4px rgba(13, 148, 136, 0.06),
     inset -2px -2px 4px rgba(255, 255, 255, 0.9);
@@ -611,6 +661,7 @@ watch(
 
 .menu-item.is-active .menu-icon {
   color: var(--soft-accent, #0d9488);
+  filter: drop-shadow(0 0 3px rgba(13, 148, 136, 0.25));
 }
 
 .menu-children {
@@ -622,6 +673,10 @@ watch(
 .child-item {
   height: 38px;
   font-size: 13px;
+}
+
+.child-item::before {
+  display: none;
 }
 
 .sidebar-hidden .side-nav {
@@ -656,7 +711,7 @@ watch(
 
 .topbar {
   height: var(--topbar-height);
-  margin: 14px 16px 0;
+  margin: 10px 10px 0;
   border-radius: var(--soft-radius, 16px);
   background: var(--soft-surface, #ffffff);
   border: none;
@@ -814,13 +869,13 @@ watch(
 .content-shell {
   flex: 1;
   min-height: 0;
-  margin: 12px 16px 14px;
+  margin: 10px 10px 14px;
   border-radius: var(--soft-radius, 16px);
   background: var(--soft-surface, #ffffff);
   border: none;
   box-shadow: var(--soft-shadow, 6px 6px 14px rgba(166,180,200,0.35), -6px -6px 14px rgba(255,255,255,0.85));
   overflow-y: auto;
-  padding: 20px;
+  padding: 16px;
   transition: box-shadow 0.35s ease;
 }
 

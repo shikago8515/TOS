@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PO 发票顺序重排 — 智能文档工作台</title>
+  <style>
+    :root {
+      --white: #ffffff;
+      --gray-50: #f8f9fa;
+      --gray-100: #f0f0f0;
+      --gray-200: #e2e2e2;
+      --gray-300: #c8c8c8;
+      --gray-400: #999999;
+      --gray-500: #666666;
+      --gray-600: #444444;
+      --gray-700: #333333;
+      --gray-800: #222222;
+      --gray-900: #111111;
+      --blue: #2563eb;
+      --blue-light: #e8f0fe;
+      --blue-dark: #1d4ed8;
+      --green: #16a34a;
+      --green-light: #dcfce7;
+      --amber: #d97706;
+      --amber-light: #fef3c7;
+      --red: #dc2626;
+      --red-light: #fee2e2;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --shadow: 0 1px 3px rgba(0,0,0,0.08);
+      --shadow-md: 0 4px 8px rgba(0,0,0,0.06);
+      --radius-sm: 6px;
+      --radius: 10px;
+      --radius-lg: 14px;
+      --radius-full: 9999px;
+    }
+
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--gray-50);
+      color: var(--gray-800);
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ===== 顶部导航 ===== */
+    .topbar {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--white);
+      border-bottom: 1px solid var(--gray-200);
+    }
+    .topbar-inner {
+      width: 100%; max-width: 1500px; margin: 0 auto;
+      padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-icon {
+      width: 40px; height: 40px;
+      background: var(--gray-200); border-radius: var(--radius);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .brand-icon svg { width: 22px; height: 22px; color: var(--gray-600); }
+    .brand-text h1 { margin: 0; font-size: 17px; font-weight: 700; color: var(--gray-900); }
+    .brand-text p { margin: 2px 0 0; font-size: 12px; color: var(--gray-400); }
+    .api-box {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--gray-50); border: 1px solid var(--gray-200);
+      border-radius: var(--radius-full); padding: 5px 5px 5px 14px; font-size: 13px;
+    }
+    .api-box label { color: var(--gray-500); font-weight: 500; white-space: nowrap; display: flex; align-items: center; gap: 5px; cursor: pointer; }
+    .api-box input {
+      width: 190px; border: 1px solid var(--gray-200); border-radius: var(--radius-full); padding: 6px 12px;
+      font-size: 13px; color: var(--gray-700); background: var(--white); outline: none;
+    }
+    .api-box input:focus { border-color: var(--blue); }
+
+    /* ===== 主容器 ===== */
+    .app { width: 100%; max-width: 1500px; margin: 0 auto; padding: 22px 24px 40px; }
+
+    /* ===== 工作台双栏 ===== */
+    .workbench-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+      gap: 18px; align-items: start;
+    }
+
+    /* ===== 卡片（功能区域区分） ===== */
+    .card {
+      background: var(--white); border-radius: var(--radius-lg); border: 1px solid var(--gray-200);
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 16px 20px 12px; display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 12px; border-bottom: 1px solid var(--gray-100);
+    }
+    .card-header-left { display: flex; align-items: flex-start; gap: 12px; }
+    .card-icon {
+      width: 36px; height: 36px; border-radius: var(--radius);
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      background: var(--gray-100);
+    }
+    .card-icon svg { width: 18px; height: 18px; color: var(--gray-600); }
+    .card-title h2 { margin: 0; font-size: 15px; font-weight: 700; color: var(--gray-900); }
+    .card-title p { margin: 3px 0 0; font-size: 12px; color: var(--gray-500); }
+    .card-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 12px; border-radius: var(--radius-full); font-size: 12px; font-weight: 600;
+      background: var(--gray-100); color: var(--gray-600); flex-shrink: 0;
+    }
+    .card-badge.active { background: var(--blue-light); color: var(--blue); }
+    .card-badge.success { background: var(--green-light); color: var(--green); }
+    .card-body { padding: 18px 22px 22px; }
+
+    /* 左侧发票卡 — 极淡蓝灰调 */
+    .card-invoice {
+      background: #fafbfc;
+    }
+    .card-invoice .card-header {
+      background: #f3f5f8;
+    }
+    .card-invoice .card-icon {
+      background: #e2e6ec;
+    }
+    .card-invoice .card-icon svg {
+      color: #4a5568;
+    }
+
+    /* 右侧PO卡 — 极淡绿灰调 */
+    .output-card {
+      background: #f9fbfa;
+    }
+    .output-card .card-header {
+      background: #f1f6f3;
+    }
+    .output-card .card-icon {
+      background: #dfe8e3;
+    }
+    .output-card .card-icon svg {
+      color: #3d6b52;
+    }
+
+    /* ===== 上传区 ===== */
+    .dropzone {
+      position: relative; min-height: 118px;
+      border: 2px dashed var(--gray-300); border-radius: var(--radius);
+      background: var(--gray-50);
+      padding: 18px; display: flex; flex-direction: column; justify-content: center;
+      align-items: center; gap: 8px; cursor: pointer; text-align: center;
+    }
+    .dropzone:hover { border-color: var(--gray-400); background: var(--gray-100); }
+    .dropzone.dragging { border-color: var(--blue); background: var(--blue-light); }
+    .dropzone.has-file { border-style: solid; border-color: var(--gray-300); background: var(--gray-50); }
+    .dropzone-icon {
+      width: 42px; height: 42px; background: var(--white); border-radius: var(--radius);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .dropzone-icon svg { width: 20px; height: 20px; color: var(--gray-400); }
+    .dropzone-title { font-size: 14px; font-weight: 600; color: var(--gray-700); }
+    .dropzone-note { font-size: 12px; color: var(--gray-400); max-width: 280px; }
+    .dropzone-file { font-size: 13px; color: var(--gray-700); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    input[type="file"] { display: none; }
+
+    /* ===== 按钮 ===== */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      min-height: 32px; padding: 6px 12px; border-radius: var(--radius-sm);
+      border: 1px solid var(--gray-200); background: var(--white); color: var(--gray-700);
+      font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; white-space: nowrap;
+    }
+    .btn:hover { background: var(--gray-50); border-color: var(--gray-300); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+    .btn-primary { background: var(--blue); color: var(--white); border-color: var(--blue); }
+    .btn-primary:hover { background: var(--blue-dark); border-color: var(--blue-dark); }
+    .btn-emerald { background: var(--green); color: var(--white); border-color: var(--green); }
+    .btn-emerald:hover { background: #15803d; border-color: #15803d; }
+    .btn-soft { background: var(--blue-light); color: var(--blue); border-color: transparent; }
+    .btn-soft:hover { background: #d0e4ff; }
+    .btn-rose-soft { background: var(--red-light); color: var(--red); border-color: transparent; }
+    .btn-rose-soft:hover { background: #fccccc; }
+    .btn-amber-soft { background: var(--amber-light); color: var(--amber); border-color: transparent; }
+    .btn-lg { min-height: 42px; padding: 10px 20px; font-size: 13px; gap: 8px; }
+    .btn-lg svg { width: 16px; height: 16px; }
+
+    /* ===== 工具栏 ===== */
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+
+    /* ===== 指标 ===== */
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+    .metric {
+      background: var(--white); border: 1px solid var(--gray-200);
+      border-radius: var(--radius); padding: 12px;
+    }
+    .metric-label {
+      color: var(--gray-400); font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.4px; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;
+    }
+    .metric-label svg { width: 12px; height: 12px; }
+    .metric-value { font-size: 19px; font-weight: 800; color: var(--gray-900); font-variant-numeric: tabular-nums; }
+
+    /* ===== 表格 ===== */
+    .table-wrap { border: 1px solid var(--gray-200); border-radius: var(--radius); overflow: hidden; background: var(--white); }
+    .table-scroll { overflow: auto; max-height: 320px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid var(--gray-100); vertical-align: middle; white-space: nowrap; }
+    th {
+      background: var(--gray-50); color: var(--gray-600);
+      font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px;
+      position: sticky; top: 0; z-index: 2;
+    }
+    tbody tr:hover { background: var(--gray-50); }
+    tbody tr:last-child td { border-bottom: none; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    /* ===== 标签 ===== */
+    .tag { display: inline-flex; align-items: center; gap: 4px; min-height: 20px;
+      padding: 2px 10px; border-radius: var(--radius-full); font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .tag-success { background: var(--green-light); color: var(--green); }
+    .tag-warn { background: var(--amber-light); color: var(--amber); }
+    .tag-info { background: var(--blue-light); color: var(--blue); }
+
+    /* ===== 消息 ===== */
+    .toast {
+      min-height: 20px; padding: 8px 12px; border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 500; margin-top: 10px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .toast svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .toast-error { background: var(--red-light); color: var(--red); border: 1px solid #f5baba; }
+    .toast-success { background: var(--green-light); color: var(--green); border: 1px solid #bae6c2; }
+    .toast-warning { background: var(--amber-light); color: var(--amber); border: 1px solid #fde49b; }
+    .toast-info { background: var(--blue-light); color: var(--blue); border: 1px solid #b6d4fe; }
+
+    /* ===== 右侧卡片区分 ===== */
+    .output-card .card-header { background: var(--gray-50); }
+
+    /* ===== 文本域 ===== */
+    .textarea {
+      width: 100%; min-height: 130px; resize: vertical; border: 1px solid var(--gray-200);
+      border-radius: var(--radius); padding: 12px;
+      font-family: "SF Mono", Consolas, "Courier New", monospace; font-size: 13px;
+      line-height: 1.6; color: var(--gray-700); background: var(--gray-50); outline: none;
+    }
+    .textarea:focus { border-color: var(--blue); background: var(--white); }
+    .field-label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; margin-top: 10px; }
+    .field-label span { font-size: 12px; font-weight: 600; color: var(--gray-600); }
+    .field-label .hint { font-size: 11px; color: var(--gray-400); font-weight: 400; }
+
+    /* ===== 生成操作区 ===== */
+    .generate-bar {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      margin: 14px 0; padding: 14px;
+      background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius); flex-wrap: wrap;
+    }
+    .generate-bar .status-text { font-size: 13px; color: var(--gray-600); font-weight: 500; }
+
+    /* ===== 空状态 ===== */
+    .empty-state { text-align: center; padding: 28px 20px; color: var(--gray-400); }
+    .empty-state svg { width: 36px; height: 36px; margin-bottom: 8px; opacity: 0.45; }
+    .empty-state p { margin: 0; font-size: 13px; }
+
+    /* ===== 子模块（自定义提取） ===== */
+    .sub-module { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--gray-200); }
+    .sub-module-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+    .sub-module-header h3 { margin: 0; font-size: 14px; font-weight: 700; color: var(--gray-800); }
+    .extract-config { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; margin: 8px 0; }
+    .text-input {
+      width: 100%; min-height: 34px; border: 1px solid var(--gray-200);
+      border-radius: var(--radius-sm); padding: 7px 10px;
+      font-family: Consolas, "Courier New", monospace; font-size: 13px; outline: none;
+    }
+    .text-input:focus { border-color: var(--blue); }
+    .radio-row, .preset-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .radio-pill {
+      display: inline-flex; align-items: center; gap: 5px; min-height: 28px;
+      padding: 4px 10px; border: 1px solid var(--gray-200); border-radius: var(--radius-full);
+      font-size: 12px; cursor: pointer; background: var(--white);
+    }
+    .radio-pill:hover { border-color: var(--gray-300); background: var(--gray-50); }
+    .radio-pill input { margin: 0; accent-color: var(--blue); }
+    .mini-drop { min-height: 72px; padding: 12px; margin-top: 8px; }
+    .number-list {
+      border: 1px solid var(--gray-200); border-radius: var(--radius); background: var(--white);
+      max-height: 200px; overflow: auto; margin-top: 10px; font-size: 13px;
+    }
+    .number-group { padding: 7px 10px; background: var(--gray-50); border-bottom: 1px solid var(--gray-200); font-weight: 700; color: var(--gray-700); font-size: 12px; }
+    .number-row { display: flex; gap: 10px; padding: 5px 10px; border-bottom: 1px solid var(--gray-100); font-family: Consolas, "Courier New", monospace; }
+    .number-row span:first-child { color: var(--gray-400); width: 36px; flex: 0 0 auto; text-align: right; }
+
+    /* ===== 复选框行 ===== */
+    .check-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+
+    /* ===== 快捷模式 ===== */
+    .quick-mode { margin-bottom: 18px; }
+    .quick-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .quick-header h3 { margin: 0; font-size: 14px; font-weight: 700; color: var(--gray-700); display: flex; align-items: center; gap: 6px; }
+    .quick-header .divider { flex: 1; height: 1px; background: var(--gray-200); }
+    .upload-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+
+    /* ===== 结果面板 ===== */
+    .result-card { margin-top: 18px; border: 1px solid var(--gray-200); background: #f8fbf8; }
+    .result-card .card-header { background: #eff5f1; border-bottom-color: var(--gray-200); }
+
+    /* ===== 快捷模式卡片 ===== */
+    .quick-mode .card { background: #fafaf9; }
+    .quick-mode .card-body { padding: 14px 18px 18px; }
+    .quick-mode .dropzone { min-height: 78px; padding: 12px; }
+
+    /* ===== 加载 ===== */
+    .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: var(--white); border-radius: 50%; animation: spin 0.7s linear infinite; }
+
+    /* ===== 页脚 ===== */
+    .app-footer { text-align: center; padding: 20px 0; color: var(--gray-400); font-size: 12px; }
+    .log-panel { margin-top: 18px; }
+    .log-list {
+      max-height: 180px;
+      overflow: auto;
+      border: 1px solid var(--gray-200);
+      border-radius: 12px;
+      background: #0f172a;
+      color: #dbeafe;
+      padding: 10px 12px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .log-line { display: flex; gap: 8px; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 3px 0; }
+    .log-line:last-child { border-bottom: none; }
+    .log-time { color: #93c5fd; flex: 0 0 auto; }
+    .log-text { color: #e5e7eb; }
+
+    /* ===== 响应式 ===== */
+    @media (max-width: 980px) {
+      .workbench-grid { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .upload-pair { grid-template-columns: 1fr; }
+      .extract-config { grid-template-columns: 1fr; }
+      .generate-bar { flex-direction: column; align-items: stretch; }
+    }
+    @media (max-width: 640px) {
+      .topbar-inner { flex-direction: column; align-items: stretch; }
+      .api-box { width: 100%; }
+      .api-box input { flex: 1; width: auto; }
+      .metrics { grid-template-columns: 1fr; }
+      .toolbar { justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        </div>
+        <div class="brand-text">
+          <h1>PO 发票顺序重排</h1>
+          <p>智能文档解析与页面重排工作台</p>
+        </div>
+      </div>
+      <label class="api-box">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <input id="apiBase" type="text" value="http://127.0.0.1:8000" placeholder="API地址">
+      </label>
+    </div>
+  </nav>
+
+  <main class="app">
+    <!-- 工作台双栏 -->
+    <section id="workbench">
+      <!-- 快捷模式 -->
+      <section class="quick-mode">
+        <div class="quick-header">
+          <h3>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--blue)"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            快捷模式
+          </h3>
+          <div class="divider"></div>
+        </div>
+        <div class="card">
+          <div class="card-body">
+            <div class="upload-pair">
+              <label class="dropzone" id="invoiceDrop">
+                <input id="invoiceFile" type="file" accept="application/pdf,.pdf">
+                <div class="dropzone-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+                <div class="dropzone-title">发票 PDF</div>
+                <div class="dropzone-note">用于提取 PO 顺序、数量、金额</div>
+                <div class="dropzone-file" id="invoiceName" style="display:none"></div>
+              </label>
+              <label class="dropzone" id="poDrop">
+                <input id="poFile" type="file" accept="application/pdf,.pdf">
+                <div class="dropzone-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+                <div class="dropzone-title">PO PDF</div>
+                <div class="dropzone-note">用于按发票顺序匹配 PO 页面</div>
+                <div class="dropzone-file" id="poName" style="display:none"></div>
+              </label>
+            </div>
+            <div class="toolbar" style="justify-content:space-between;margin-top:14px;margin-bottom:0;">
+              <div id="status" style="font-size:13px;color:var(--gray-500);font-weight:500;display:flex;align-items:center;gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span>等待上传文件</span>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button class="btn" id="resetBtn" type="button">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>清空
+                </button>
+                <button class="btn btn-primary" id="processBtn" type="button">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>一键生成 PDF
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="workbench-grid">
+        <!-- 左侧：发票提取 -->
+        <section class="card card-invoice">
+          <div class="card-header">
+            <div class="card-header-left">
+              <div class="card-icon ocean">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              </div>
+              <div class="card-title">
+                <h2>发票 PO 提取</h2>
+                <p>上传发票 PDF，自动提取 PO 顺序、数量、金额和页脚汇总</p>
+              </div>
+            </div>
+            <span class="card-badge" id="wbInvoiceCount">0 个PO</span>
+          </div>
+          <div class="card-body">
+            <label class="dropzone" id="wbInvoiceDrop">
+              <input id="wbInvoiceFile" type="file" accept="application/pdf,.pdf">
+              <div class="dropzone-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </div>
+              <div class="dropzone-title">点击或拖拽上传发票 PDF</div>
+              <div class="dropzone-note">支持自动解析，上传后立即提取数据</div>
+              <div class="dropzone-file" id="wbInvoiceName" style="display:none"></div>
+            </label>
+
+            <div class="toolbar">
+              <button class="btn btn-soft" id="wbPreviewInvoiceBtn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>提取发票
+              </button>
+              <button class="btn btn-soft" id="wbSyncBtn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>同步到PO
+              </button>
+              <button class="btn" id="wbCopyPoBtn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>复制PO
+              </button>
+              <button class="btn" id="wbDownloadPoBtn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>下载TXT
+              </button>
+              <button class="btn" id="wbDownloadCsvBtn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>下载CSV
+              </button>
+              <button class="btn btn-rose-soft" id="wbClearInvoiceBtn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>清空
+              </button>
+            </div>
+
+            <div class="metrics">
+              <div class="metric">
+                <div class="metric-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>总数量</div>
+                <div class="metric-value" id="wbInvoiceQty">-</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>货品金额</div>
+                <div class="metric-value" id="wbInvoiceAmount">-</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>PO净额</div>
+                <div class="metric-value" id="wbInvoiceNet">-</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>发票总额</div>
+                <div class="metric-value" id="wbInvoiceTotal">-</div>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <div class="table-scroll">
+                <table>
+                  <thead><tr><th>序号</th><th>PO号</th><th>发票页</th><th>Article</th><th>描述</th><th class="num">数量</th><th class="num">金额</th><th class="num">净额</th></tr></thead>
+                  <tbody id="wbInvoiceRows">
+                    <tr><td colspan="8"><div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg><p>等待上传发票 PDF 并提取数据</p></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div id="wbInvoiceMessage"></div>
+
+            <!-- 自定义数字提取 -->
+            <div class="sub-module">
+              <div class="sub-module-header">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <div class="card-icon amber" style="width:28px;height:28px;border-radius:8px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                  </div>
+                  <h3>自定义数字提取</h3>
+                </div>
+                <span class="card-badge" id="wbExtractCount">0 个号码</span>
+              </div>
+
+              <div class="extract-config">
+                <input class="text-input" id="wbExtractPattern" type="text" value="090|45" placeholder="如 090|45 或 \d{10}">
+                <button class="btn btn-soft" id="wbApplyExtractRuleBtn" type="button">应用规则</button>
+                <button class="btn btn-soft" id="wbExtractPdfBtn" type="button">从PDF提取</button>
+              </div>
+
+              <div class="radio-row" id="wbExtractTypeGroup">
+                <label class="radio-pill"><input type="radio" name="wbExtractType" value="startsWith" checked>开头匹配</label>
+                <label class="radio-pill"><input type="radio" name="wbExtractType" value="contains">包含匹配</label>
+                <label class="radio-pill"><input type="radio" name="wbExtractType" value="regex">正则表达式</label>
+                <label class="radio-pill"><input type="radio" name="wbExtractType" value="exact">精确匹配</label>
+              </div>
+
+              <div class="preset-row">
+                <span style="font-size:12px;color:var(--gray-500);">预设：</span>
+                <button class="btn" data-extract-pattern="090|45" data-extract-type="startsWith" type="button">090/45开头</button>
+                <button class="btn" data-extract-pattern="\d{10}" data-extract-type="regex" type="button">10位数字</button>
+                <button class="btn" data-extract-pattern="\d{8,}" data-extract-type="regex" type="button">≥8位数字</button>
+              </div>
+
+              <label class="dropzone mini-drop" id="wbExtractDrop">
+                <input id="wbExtractFiles" type="file" accept="application/pdf,.pdf" multiple>
+                <div class="dropzone-title" style="font-size:13px;">自定义提取 PDF</div>
+                <div class="dropzone-note" id="wbExtractName">未选择文件，可多选</div>
+              </label>
+
+              <textarea class="textarea" id="wbPasteText" placeholder="粘贴文本，然后点击“从粘贴提取”" style="min-height:80px;margin-top:10px;"></textarea>
+
+              <div class="toolbar">
+                <button class="btn btn-soft" id="wbExtractPasteBtn" type="button">从粘贴提取</button>
+                <button class="btn btn-soft" id="wbExtractPageBtn" type="button">抓取页面文本</button>
+                <button class="btn" id="wbExtractCopyBtn" type="button">复制全部</button>
+                <button class="btn" id="wbExtractDownloadBtn" type="button">下载TXT</button>
+                <button class="btn btn-rose-soft" id="wbExtractClearBtn" type="button">清空</button>
+              </div>
+
+              <div class="number-list" id="wbExtractResults"><div class="empty-state" style="padding:16px;"><p>等待提取号码</p></div></div>
+              <div id="wbExtractMessage"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 右侧：PO匹配 -->
+        <section class="card output-card">
+          <div class="card-header">
+            <div class="card-header-left">
+              <div class="card-icon emerald">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>
+              </div>
+              <div class="card-title">
+                <h2>PO PDF 匹配与输出</h2>
+                <p>上传 PO PDF，按发票 PO 顺序生成汇总页与重排文档</p>
+              </div>
+            </div>
+            <span class="card-badge" id="wbPoCount">0 个PO</span>
+          </div>
+          <div class="card-body">
+            <label class="dropzone" id="wbPoDrop">
+              <input id="wbPoFile" type="file" accept="application/pdf,.pdf">
+              <div class="dropzone-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </div>
+              <div class="dropzone-title">点击或拖拽上传 PO PDF</div>
+              <div class="dropzone-note">上传后自动识别每个 PO 对应的页面</div>
+              <div class="dropzone-file" id="wbPoName" style="display:none"></div>
+            </label>
+
+            <div class="toolbar">
+              <button class="btn btn-soft" id="wbPreviewPoBtn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>识别PO页码
+              </button>
+              <button class="btn btn-soft" id="wbApplyListBtn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>刷新匹配
+              </button>
+              <button class="btn" id="wbCopyListBtn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>复制列表
+              </button>
+              <button class="btn btn-rose-soft" id="wbClearPoBtn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>清空
+              </button>
+            </div>
+
+            <div class="check-row">
+              <label class="radio-pill"><input type="checkbox" id="wbPrintCurrentOnly" checked>打印当前页</label>
+              <label class="radio-pill"><input type="checkbox" id="wbPrintNextPage" checked>同时打印下一页</label>
+              <label class="radio-pill"><input type="checkbox" id="wbIncludeNotFound">摘要包含未找到PO</label>
+            </div>
+
+            <div class="field-label"><span>PO 列表</span><span class="hint">一行一个，可手动调整顺序</span></div>
+            <textarea class="textarea" id="wbPoList" placeholder="4501749160&#10;4501749225&#10;4501749152"></textarea>
+
+            <div class="generate-bar">
+              <span class="status-text" id="wbStatusText">准备好后点击下方按钮生成重排 PDF</span>
+              <div style="display:flex;gap:10px;align-items:center;">
+                <a class="btn btn-emerald btn-lg" id="wbDownloadResult" href="#" download hidden>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>下载结果PDF
+                </a>
+                <button class="btn btn-primary btn-lg" id="wbGenerateBtn" type="button">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>生成重排PDF
+                </button>
+              </div>
+            </div>
+
+            <div class="toolbar" style="margin-top:0;margin-bottom:10px;">
+              <button class="btn" id="wbOpenResultBtn" type="button" hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>打开/打印结果
+              </button>
+              <button class="btn btn-amber-soft" id="wbPrintSummaryBtn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>打印摘要
+              </button>
+            </div>
+
+            <div class="table-wrap">
+              <div class="table-scroll">
+                <table>
+                  <thead><tr><th>序号</th><th>PO号</th><th>PO页</th><th>Article</th><th class="num">数量</th><th class="num">金额</th><th>状态</th><th>操作</th></tr></thead>
+                  <tbody id="wbMatchRows">
+                    <tr><td colspan="8"><div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg><p>等待上传 PO PDF 或同步 PO 列表</p></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div id="wbPoMessage"></div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- 结果面板 -->
+    <section class="card result-card legacy-panel" id="resultPanel" hidden>
+      <div class="card-header">
+        <div class="card-header-left">
+          <div class="card-icon emerald">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </div>
+          <div class="card-title">
+            <h2>处理结果</h2>
+            <p id="resultStatus" style="margin:2px 0 0;color:var(--green);font-weight:600;"></p>
+          </div>
+        </div>
+        <a class="btn btn-emerald btn-lg" id="downloadLink" href="#" download>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>下载结果 PDF
+        </a>
+      </div>
+      <div class="card-body">
+        <div class="metrics" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+          <div class="metric"><div class="metric-label">发票 PO 数</div><div class="metric-value" id="invoicePoCount">-</div></div>
+          <div class="metric"><div class="metric-label">已输出 PO 数</div><div class="metric-value" id="outputPoCount">-</div></div>
+          <div class="metric"><div class="metric-label">总数量</div><div class="metric-value" id="totalQuantity">-</div></div>
+          <div class="metric"><div class="metric-label">PO 净额合计</div><div class="metric-value" id="totalNetAmount">-</div></div>
+        </div>
+        <div class="table-wrap">
+          <div class="table-scroll" style="max-height:380px">
+            <table>
+              <thead><tr><th style="width:56px">序号</th><th>PO号</th><th>PO页</th><th>Article</th><th>描述</th><th class="num">数量</th><th class="num">单价</th><th class="num">货品金额</th><th class="num">净额</th><th>状态</th></tr></thead>
+              <tbody id="entryRows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div style="margin-top:10px;font-size:13px;color:var(--gray-500)" id="notes"></div>
+      </div>
+    </section>
+
+    <section class="card log-panel">
+      <div class="card-header">
+        <div class="card-header-left">
+          <div class="card-icon ocean">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
+          </div>
+          <div class="card-title">
+            <h2>处理日志</h2>
+            <p>前端操作与后端解析步骤会显示在这里</p>
+          </div>
+        </div>
+        <button class="btn" id="clearLogBtn" type="button">清空日志</button>
+      </div>
+      <div class="card-body">
+        <div class="log-list" id="processLog">
+          <div class="log-line"><span class="log-time">--:--:--</span><span class="log-text">等待操作</span></div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="app-footer">PO 发票顺序重排工具 · 智能文档处理工作台</footer>
+  </main>
+
+  <div id="wbPrintArea" style="display:none;"></div>
+
+  <script>
+    const ICONS = {
+      info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+      check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+      alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+      x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+    };
+
+function api(path) {
+      const base = document.getElementById('apiBase').value.replace(/\/+$/, '');
+      return `${base}${path}`;
+    }
+    function showToast(el, message, type) {
+      const icons = { error: ICONS.x, success: ICONS.check, warning: ICONS.alert, info: ICONS.info };
+      if (!message) { el.innerHTML = ''; el.className = ''; return; }
+      el.innerHTML = (icons[type] || '') + '<span style="margin-left:6px">' + escapeHtml(message) + '</span>';
+      el.className = 'toast toast-' + (type || 'info');
+    }
+    function escapeHtml(v) {
+      return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+    function esc(v) {
+      return escapeHtml(v);
+    }
+    function valueOrDash(v) { return v === null || v === undefined || v === '' ? '-' : v; }
+    function setBusy(btn, busy) {
+      if (busy && btn.disabled) return;
+      btn.disabled = busy;
+      if (busy) {
+        if (!btn.dataset.originalHtml) btn.dataset.originalHtml = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner"></span><span>处理中...</span>';
+      } else if (btn.dataset.originalHtml) {
+        btn.innerHTML = btn.dataset.originalHtml;
+        delete btn.dataset.originalHtml;
+      }
+    }
+    function animateValue(el, v) { el.textContent = v; el.classList.remove('animate'); void el.offsetWidth; el.classList.add('animate'); }
+    function addLog(message) {
+      const box = document.getElementById('processLog');
+      if (!box) return;
+      const now = new Date().toLocaleTimeString();
+      if (box.children.length === 1 && box.textContent.includes('等待操作')) box.innerHTML = '';
+      const line = document.createElement('div');
+      line.className = 'log-line';
+      line.innerHTML = '<span class="log-time">' + escapeHtml(now) + '</span><span class="log-text">' + escapeHtml(message) + '</span>';
+      box.appendChild(line);
+      box.scrollTop = box.scrollHeight;
+    }
+    function addBackendLogs(payload) {
+      const logs = payload?.logs || payload?.detail?.logs || [];
+      logs.forEach(item => addLog('[后端] ' + item));
+    }
+
+    function bindDropzone(dropId, inputId, nameId, onFile) {
+      const drop = document.getElementById(dropId);
+      const input = document.getElementById(inputId);
+      const nameEl = document.getElementById(nameId);
+      ['dragenter','dragover'].forEach(n => drop.addEventListener(n, e => { e.preventDefault(); drop.classList.add('dragging'); }));
+      ['dragleave','drop'].forEach(n => drop.addEventListener(n, e => { e.preventDefault(); drop.classList.remove('dragging'); }));
+      drop.addEventListener('drop', e => {
+        const f = Array.from(e.dataTransfer.files).find(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+        if (!f) return;
+        const dt = new DataTransfer(); dt.items.add(f); input.files = dt.files;
+        showFileName(input, nameEl); drop.classList.add('has-file'); if (onFile) onFile();
+      });
+      input.addEventListener('change', () => { showFileName(input, nameEl); drop.classList.toggle('has-file', input.files.length > 0); if (onFile) onFile(); });
+    }
+    function showFileName(input, label) {
+      if (input.files.length) { label.textContent = input.files[0].name; label.style.display = 'flex'; }
+      else label.style.display = 'none';
+    }
+    function showMultiName(input, label) {
+      label.textContent = input.files.length ? Array.from(input.files).map(f => f.name).join('；') : '未选择文件，可多选';
+    }
+
+    // ===================== 工作台 =====================
+    (() => {
+      const state = { invoiceEntries: [], invoiceSummary: null, poPages: new Map(), extractGroups: [], extractNumbers: [], latestResult: null };
+      const el = {
+        apiBase: document.getElementById('apiBase'), invoiceFile: document.getElementById('wbInvoiceFile'), invoiceDrop: document.getElementById('wbInvoiceDrop'),
+        invoiceName: document.getElementById('wbInvoiceName'), invoiceRows: document.getElementById('wbInvoiceRows'), invoiceMessage: document.getElementById('wbInvoiceMessage'),
+        invoiceCount: document.getElementById('wbInvoiceCount'), invoiceQty: document.getElementById('wbInvoiceQty'), invoiceAmount: document.getElementById('wbInvoiceAmount'),
+        invoiceNet: document.getElementById('wbInvoiceNet'), invoiceTotal: document.getElementById('wbInvoiceTotal'), previewInvoiceBtn: document.getElementById('wbPreviewInvoiceBtn'),
+        syncBtn: document.getElementById('wbSyncBtn'), copyPoBtn: document.getElementById('wbCopyPoBtn'), downloadPoBtn: document.getElementById('wbDownloadPoBtn'),
+        downloadCsvBtn: document.getElementById('wbDownloadCsvBtn'), clearInvoiceBtn: document.getElementById('wbClearInvoiceBtn'),
+        extractPattern: document.getElementById('wbExtractPattern'), applyExtractRuleBtn: document.getElementById('wbApplyExtractRuleBtn'),
+        extractPdfBtn: document.getElementById('wbExtractPdfBtn'), extractFiles: document.getElementById('wbExtractFiles'), extractDrop: document.getElementById('wbExtractDrop'),
+        extractName: document.getElementById('wbExtractName'), extractTypeGroup: document.getElementById('wbExtractTypeGroup'), pasteText: document.getElementById('wbPasteText'),
+        extractPasteBtn: document.getElementById('wbExtractPasteBtn'), extractPageBtn: document.getElementById('wbExtractPageBtn'), extractCopyBtn: document.getElementById('wbExtractCopyBtn'),
+        extractDownloadBtn: document.getElementById('wbExtractDownloadBtn'), extractClearBtn: document.getElementById('wbExtractClearBtn'), extractResults: document.getElementById('wbExtractResults'),
+        extractCount: document.getElementById('wbExtractCount'), extractMessage: document.getElementById('wbExtractMessage'),
+        poFile: document.getElementById('wbPoFile'), poDrop: document.getElementById('wbPoDrop'), poName: document.getElementById('wbPoName'),
+        poCount: document.getElementById('wbPoCount'), previewPoBtn: document.getElementById('wbPreviewPoBtn'), applyListBtn: document.getElementById('wbApplyListBtn'),
+        copyListBtn: document.getElementById('wbCopyListBtn'), clearPoBtn: document.getElementById('wbClearPoBtn'),
+        printCurrentOnly: document.getElementById('wbPrintCurrentOnly'), printNextPage: document.getElementById('wbPrintNextPage'), includeNotFound: document.getElementById('wbIncludeNotFound'),
+        poList: document.getElementById('wbPoList'), generateBtn: document.getElementById('wbGenerateBtn'), downloadResult: document.getElementById('wbDownloadResult'),
+        openResultBtn: document.getElementById('wbOpenResultBtn'), printSummaryBtn: document.getElementById('wbPrintSummaryBtn'), printArea: document.getElementById('wbPrintArea'),
+        matchRows: document.getElementById('wbMatchRows'), poMessage: document.getElementById('wbPoMessage'), statusText: document.getElementById('wbStatusText'),
+        clearLogBtn: document.getElementById('clearLogBtn'), processLog: document.getElementById('processLog')
+      };
+
+      bindDropzone('wbInvoiceDrop', 'wbInvoiceFile', 'wbInvoiceName', () => previewInvoice());
+      bindDropzone('wbPoDrop', 'wbPoFile', 'wbPoName', () => previewPo());
+      bindExtractDrop();
+
+      el.previewInvoiceBtn.addEventListener('click', previewInvoice);
+      el.previewPoBtn.addEventListener('click', previewPo);
+      el.syncBtn.addEventListener('click', syncInvoiceToPoList);
+      el.copyPoBtn.addEventListener('click', () => copyText(invoicePoText(), el.invoiceMessage, '已复制发票PO顺序'));
+      el.downloadPoBtn.addEventListener('click', () => downloadText('invoice_po_order.txt', invoicePoText()));
+      el.downloadCsvBtn.addEventListener('click', downloadInvoiceCsv);
+      el.clearInvoiceBtn.addEventListener('click', clearInvoice);
+      el.extractFiles.addEventListener('change', () => showMultiName(el.extractFiles, el.extractName));
+      el.applyExtractRuleBtn.addEventListener('click', () => { try { buildLocalRegex(el.extractPattern.value.trim(), selectedExtractType()); showToast(el.extractMessage, '规则已应用', 'success'); } catch (e) { showToast(el.extractMessage, e.message, 'error'); } });
+      el.extractPdfBtn.addEventListener('click', extractFromPdf);
+      el.extractPasteBtn.addEventListener('click', extractFromPaste);
+      el.extractPageBtn.addEventListener('click', extractFromPageText);
+      el.extractCopyBtn.addEventListener('click', () => copyText(state.extractNumbers.join('\n'), el.extractMessage, '已复制全部提取号码'));
+      el.extractDownloadBtn.addEventListener('click', () => downloadText('extracted_numbers.txt', state.extractNumbers.join('\n'), el.extractMessage));
+      el.extractClearBtn.addEventListener('click', clearExtraction);
+      document.querySelectorAll('[data-extract-pattern]').forEach(b => b.addEventListener('click', () => {
+        el.extractPattern.value = b.dataset.extractPattern || '';
+        const r = el.extractTypeGroup.querySelector('input[value="' + (b.dataset.extractType || 'startsWith') + '"]');
+        if (r) r.checked = true; showToast(el.extractMessage, '已切换预设', 'success');
+      }));
+      el.applyListBtn.addEventListener('click', renderMatches);
+      el.copyListBtn.addEventListener('click', () => copyText(el.poList.value, el.poMessage, '已复制当前PO列表'));
+      el.clearPoBtn.addEventListener('click', clearPo);
+      el.poList.addEventListener('input', renderMatches);
+      el.matchRows.addEventListener('click', e => { const b = e.target.closest('[data-single-po]'); if (b) generateSinglePo(b.dataset.singlePo); });
+      el.generateBtn.addEventListener('click', generatePdf);
+      el.openResultBtn.addEventListener('click', openResultPdf);
+      el.printSummaryBtn.addEventListener('click', printSummary);
+      el.clearLogBtn.addEventListener('click', () => { el.processLog.innerHTML = '<div class="log-line"><span class="log-time">--:--:--</span><span class="log-text">等待操作</span></div>'; });
+      el.extractPattern.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); el.applyExtractRuleBtn.click(); } });
+      document.addEventListener('keydown', e => {
+        if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'v') { e.preventDefault(); navigator.clipboard.readText().then(t => { if (t.trim()) { el.pasteText.value = t; extractFromPaste(); } }).catch(() => showToast(el.extractMessage, '无法读取剪贴板', 'warning')); }
+        if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'c') { e.preventDefault(); copyText(state.extractNumbers.join('\n'), el.extractMessage, '已复制全部提取号码'); }
+        if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); downloadText('extracted_numbers.txt', state.extractNumbers.join('\n'), el.extractMessage); }
+      });
+
+      async function postForm(path, formData) {
+        addLog('[前端] 请求 ' + path);
+        const r = await fetch(api(path), { method: 'POST', body: formData });
+        let p = null; try { p = await r.json(); } catch { p = {}; }
+        addBackendLogs(p);
+        if (!r.ok) {
+          const detail = p?.detail;
+          const message = typeof detail === 'object' ? detail.message : detail;
+          addLog('[前端] 请求失败：' + (message || r.status));
+          throw new Error(message || '处理失败');
+        }
+        addLog('[前端] 请求完成 ' + path);
+        return p;
+      }
+
+      async function previewInvoice() {
+        if (!el.invoiceFile.files.length) { showToast(el.invoiceMessage, '请先选择发票PDF', 'error'); return; }
+        addLog('[前端] 开始提取发票：' + el.invoiceFile.files[0].name);
+        setBusy(el.previewInvoiceBtn, true); showToast(el.invoiceMessage, '正在提取发票数据...', 'info');
+        try {
+          const d = new FormData(); d.append('invoice_pdf', el.invoiceFile.files[0]);
+          const p = await postForm('/api/preview-invoice', d);
+          state.invoiceEntries = p.entries || []; state.invoiceSummary = p.summary || null;
+          renderInvoice(); syncInvoiceToPoList(false);
+          showToast(el.invoiceMessage, '已提取 ' + state.invoiceEntries.length + ' 个PO', 'success');
+          if (state.invoiceEntries.length) el.invoiceCount.classList.add('active');
+        } catch (e) { showToast(el.invoiceMessage, e.message, 'error'); } finally { setBusy(el.previewInvoiceBtn, false); }
+      }
+      async function previewPo() {
+        if (!el.poFile.files.length) { showToast(el.poMessage, '请先选择PO PDF', 'error'); return; }
+        addLog('[前端] 开始识别PO PDF：' + el.poFile.files[0].name);
+        setBusy(el.previewPoBtn, true); showToast(el.poMessage, '正在识别PO页码...', 'info');
+        try {
+          const d = new FormData(); d.append('po_pdf', el.poFile.files[0]);
+          const p = await postForm('/api/preview-po', d);
+          state.poPages = new Map((p.poPages || []).map(i => [i.po, i.pages || []]));
+          animateValue(el.poCount, (p.poCount || 0) + ' 个PO'); el.poCount.classList.add('success');
+          renderMatches(); showToast(el.poMessage, '已识别 ' + (p.poCount || 0) + ' 个PO，共 ' + (p.pageCount || 0) + ' 页', 'success');
+        } catch (e) { showToast(el.poMessage, e.message, 'error'); } finally { setBusy(el.previewPoBtn, false); }
+      }
+      async function extractFromPdf() {
+        if (!el.extractFiles.files.length) { showToast(el.extractMessage, '请先选择用于提取的PDF', 'error'); return; }
+        addLog('[前端] 开始自定义数字提取，文件数：' + el.extractFiles.files.length);
+        setBusy(el.extractPdfBtn, true); showToast(el.extractMessage, '正在按规则提取PDF号码...', 'info');
+        try {
+          const d = new FormData(); Array.from(el.extractFiles.files).forEach(f => d.append('files', f));
+          d.append('pattern', el.extractPattern.value.trim()); d.append('search_type', selectedExtractType());
+          const p = await postForm('/api/extract-numbers', d);
+          state.extractGroups = p.files || []; state.extractNumbers = p.numbers || [];
+          renderExtraction(); syncExtractedTenDigitsToPoList();
+          showToast(el.extractMessage, '已提取 ' + state.extractNumbers.length + ' 个号码', 'success');
+        } catch (e) { showToast(el.extractMessage, e.message, 'error'); } finally { setBusy(el.extractPdfBtn, false); }
+      }
+      function extractFromPaste() {
+        if (!el.pasteText.value.trim()) { showToast(el.extractMessage, '请先粘贴文本', 'error'); return; }
+        addLocalExtraction('粘贴文本', el.pasteText.value);
+      }
+      function extractFromPageText() { addLocalExtraction('页面文本', document.body.innerText || ''); }
+      function addLocalExtraction(fileName, text) {
+        let regex; try { regex = buildLocalRegex(el.extractPattern.value.trim(), selectedExtractType()); } catch (e) { showToast(el.extractMessage, e.message, 'error'); return; }
+        const existing = new Set(state.extractNumbers); const numbers = [];
+        for (const v of extractTextNumbers(text, regex)) { if (!existing.has(v)) { existing.add(v); numbers.push(v); } }
+        if (!numbers.length) { showToast(el.extractMessage, '未找到新的匹配号码', 'warning'); return; }
+        state.extractNumbers = [...state.extractNumbers, ...numbers];
+        state.extractGroups.unshift({ fileName, pages: [{ pageNum: 1, numbers }] });
+        renderExtraction(); syncExtractedTenDigitsToPoList(); showToast(el.extractMessage, '新增 ' + numbers.length + ' 个号码', 'success');
+      }
+      function buildLocalRegex(pattern, type) {
+        if (!pattern) throw new Error('提取规则不能为空');
+        if (type === 'startsWith') { const p = pattern.split('|').map(s => s.trim()).filter(Boolean); if (!p.length) throw new Error('开头匹配规则不能为空'); return new RegExp('\\b(?:' + p.map(escapeRegex).join('|') + ')\\d*\\b', 'g'); }
+        if (type === 'contains') return new RegExp('\\b\\d*' + escapeRegex(pattern) + '\\d*\\b', 'g');
+        if (type === 'exact') { const v = pattern.split('|').map(s => s.trim()).filter(Boolean); if (!v.length) throw new Error('精确匹配规则不能为空'); return new RegExp('\\b(?:' + v.map(escapeRegex).join('|') + ')\\b', 'g'); }
+        if (type === 'regex') return new RegExp(pattern, 'g');
+        throw new Error('不支持的提取类型：' + type);
+      }
+      function extractTextNumbers(text, regex) { const v = []; for (const m of String(text || '').matchAll(regex)) { const val = (m[1] || m[0] || '').trim(); if (val) v.push(val); } return v; }
+      function renderExtraction() {
+        animateValue(el.extractCount, state.extractNumbers.length + ' 个号码');
+        if (!state.extractNumbers.length) { el.extractResults.innerHTML = '<div class="empty-state" style="padding:16px"><p>等待提取号码</p></div>'; return; }
+        let idx = 0;
+        el.extractResults.innerHTML = state.extractGroups.map(f => {
+          const pages = (f.pages || []).map(pg => {
+            const rows = (pg.numbers || []).map(n => { idx++; return '<div class="number-row"><span>' + String(idx).padStart(3, '0') + '</span><strong>' + esc(n) + '</strong></div>'; }).join('');
+            return '<div class="number-group">第 ' + pg.pageNum + ' 页 · ' + (pg.numbers || []).length + ' 个</div>' + rows;
+          }).join('');
+          return '<div class="number-group">' + esc(f.fileName || '文件') + '</div>' + pages;
+        }).join('');
+      }
+      function syncExtractedTenDigitsToPoList() {
+        const digits = state.extractNumbers.filter(n => /^\d{10}$/.test(n));
+        if (!digits.length) return; el.poList.value = digits.join('\n'); renderMatches();
+      }
+      function selectedExtractType() { return el.extractTypeGroup.querySelector('input[name="wbExtractType"]:checked')?.value || 'startsWith'; }
+
+      async function generatePdf() {
+        if (!el.invoiceFile.files.length || !el.poFile.files.length) { showToast(el.poMessage, '请先上传发票PDF和PO PDF', 'error'); return; }
+        addLog('[前端] 开始生成重排PDF');
+        setBusy(el.generateBtn, true); el.downloadResult.hidden = true; el.openResultBtn.hidden = true;
+        showToast(el.poMessage, '正在生成重排PDF...', 'info'); el.statusText.textContent = '正在生成重排 PDF，请稍候...'; el.statusText.style.color = '';
+        try {
+          const d = new FormData(); d.append('invoice_pdf', el.invoiceFile.files[0]); d.append('po_pdf', el.poFile.files[0]);
+          d.append('po_order_text', el.poList.value.trim());
+          d.append('print_current_only', el.printCurrentOnly.checked ? 'true' : 'false');
+          d.append('print_next_page', el.printNextPage.checked ? 'true' : 'false');
+          d.append('include_not_found', el.includeNotFound.checked ? 'true' : 'false');
+          const p = await postForm('/api/process', d);
+          state.latestResult = p; state.invoiceEntries = p.entries || state.invoiceEntries;
+          renderResult(p); renderMatches(p.entries || []);
+          el.downloadResult.href = api(p.downloadUrl); el.downloadResult.download = p.fileName; el.downloadResult.hidden = false; el.openResultBtn.hidden = false;
+          showToast(el.poMessage, '生成完成：' + p.fileName, 'success');
+          el.statusText.textContent = '生成成功！可下载结果文件'; el.statusText.style.color = 'var(--green)';
+        } catch (e) { showToast(el.poMessage, e.message, 'error'); el.statusText.textContent = '生成失败，请检查输入后重试'; el.statusText.style.color = 'var(--red)'; }
+        finally { setBusy(el.generateBtn, false); }
+      }
+      async function generateSinglePo(po) {
+        if (!po) return;
+        if (!el.invoiceFile.files.length || !el.poFile.files.length) { showToast(el.poMessage, '请先上传发票PDF和PO PDF', 'error'); return; }
+        showToast(el.poMessage, '正在生成单个PO：' + po, 'info');
+        try {
+          const d = new FormData(); d.append('invoice_pdf', el.invoiceFile.files[0]); d.append('po_pdf', el.poFile.files[0]);
+          d.append('po_order_text', po); d.append('print_current_only', el.printCurrentOnly.checked ? 'true' : 'false'); d.append('print_next_page', el.printNextPage.checked ? 'true' : 'false');
+          const p = await postForm('/api/process', d); state.latestResult = p;
+          el.downloadResult.href = api(p.downloadUrl); el.downloadResult.download = p.fileName; el.downloadResult.hidden = false; el.openResultBtn.hidden = false;
+          showToast(el.poMessage, '单个PO生成完成：' + po, 'success'); window.open(api(p.downloadUrl), '_blank');
+        } catch (e) { showToast(el.poMessage, e.message, 'error'); }
+      }
+      function openResultPdf() {
+        if (!state.latestResult || !state.latestResult.downloadUrl) { showToast(el.poMessage, '请先生成结果PDF', 'warning'); return; }
+        window.open(api(state.latestResult.downloadUrl), '_blank');
+      }
+      function printSummary() {
+        const entries = state.latestResult?.entries || state.invoiceEntries;
+        if (!entries.length) { showToast(el.poMessage, '没有可打印的摘要，请先提取发票或生成结果', 'warning'); return; }
+        const summary = state.latestResult?.summary || state.invoiceSummary || {};
+        const rows = entries.filter(en => el.includeNotFound.checked || en.status !== 'missing').map(en => '<tr><td>' + esc(en.index || '') + '</td><td>' + esc(en.po || '') + '</td><td>' + esc((en.poPages || state.poPages.get(en.po) || []).join(', ') || '-') + '</td><td>' + esc(en.articleNo || '-') + '</td><td style="text-align:right">' + esc(valueOrDash(en.quantity)) + '</td><td style="text-align:right">' + esc(valueOrDash(en.totalAmount)) + '</td><td style="text-align:right">' + esc(valueOrDash(en.netAmount)) + '</td><td>' + (en.status === 'missing' ? '未找到' : '已匹配') + '</td></tr>').join('');
+        el.printArea.innerHTML = '<style>@media print { body > *:not(#wbPrintArea) { display: none !important; } #wbPrintArea { display: block !important; font-family: "Microsoft YaHei", Arial, sans-serif; padding: 24px; } table { width: 100%; border-collapse: collapse; font-size: 12px; } th, td { border: 1px solid #888; padding: 6px; } th { background: #f0f2f5; } }</style><h2>PO 搜索结果摘要</h2><p>生成时间：' + new Date().toLocaleString() + '</p><p>PO数量：' + (summary.invoicePoCount || entries.length) + '；总数量：' + valueOrDash(summary.totalQuantity) + '；PO净额：' + valueOrDash(summary.totalNetAmount) + '</p><table><thead><tr><th>序号</th><th>PO号</th><th>PO页</th><th>Article</th><th>数量</th><th>货品金额</th><th>净额</th><th>状态</th></tr></thead><tbody>' + rows + '</tbody></table>';
+        el.printArea.style.display = 'block'; window.print();
+        setTimeout(() => { el.printArea.style.display = 'none'; el.printArea.innerHTML = ''; }, 800);
+      }
+
+      function renderInvoice() {
+        const summary = state.invoiceSummary || {}; const totals = summary.invoiceTotals || {};
+        animateValue(el.invoiceCount, state.invoiceEntries.length + ' 个PO');
+        animateValue(el.invoiceQty, valueOrDash(summary.totalQuantity)); animateValue(el.invoiceAmount, valueOrDash(summary.totalAmount));
+        animateValue(el.invoiceNet, valueOrDash(summary.totalNetAmount || totals.total_po_net_amount)); animateValue(el.invoiceTotal, valueOrDash(totals.invoice_total));
+        if (!state.invoiceEntries.length) {
+          el.invoiceRows.innerHTML = '<tr><td colspan="8"><div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg><p>等待上传发票 PDF 并提取数据</p></div></td></tr>';
+          return;
+        }
+        el.invoiceRows.innerHTML = state.invoiceEntries.map((entry, i) => '<tr style="animation:fadeIn 0.3s ease ' + (i * 0.02) + 's both"><td>' + entry.index + '</td><td><strong>' + esc(entry.po) + '</strong></td><td>' + esc((entry.invoicePages || []).join(', ') || '-') + '</td><td>' + esc(entry.articleNo || '-') + '</td><td>' + esc(entry.description || '-') + '</td><td class="num">' + esc(valueOrDash(entry.quantity)) + '</td><td class="num">' + esc(valueOrDash(entry.totalAmount)) + '</td><td class="num">' + esc(valueOrDash(entry.netAmount)) + '</td></tr>').join('');
+      }
+      function renderResult(payload) {
+        const summary = payload.summary || {}; const totals = summary.invoiceTotals || {};
+        animateValue(el.invoiceCount, (summary.invoicePoCount || 0) + ' 个PO');
+        animateValue(el.invoiceQty, valueOrDash(summary.totalQuantity)); animateValue(el.invoiceAmount, valueOrDash(summary.totalAmount));
+        animateValue(el.invoiceNet, valueOrDash(summary.totalNetAmount || totals.total_po_net_amount)); animateValue(el.invoiceTotal, valueOrDash(totals.invoice_total));
+      }
+      function renderMatches(resultEntries) {
+        const poList = parsePoList(el.poList.value);
+        const sourceEntries = resultEntries && resultEntries.length ? resultEntries : state.invoiceEntries;
+        const invoiceMap = new Map(sourceEntries.map(en => [en.po, en]));
+        if (!poList.length) {
+          el.matchRows.innerHTML = '<tr><td colspan="8"><div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg><p>等待同步或输入 PO 列表</p></div></td></tr>';
+          return;
+        }
+        el.matchRows.innerHTML = poList.map((po, idx) => {
+          const entry = invoiceMap.get(po) || {};
+          const pages = entry.poPages && entry.poPages.length ? entry.poPages : (state.poPages.get(po) || []);
+          const found = pages.length > 0;
+          return '<tr style="animation:fadeIn 0.3s ease ' + (idx * 0.02) + 's both"><td>' + (idx + 1) + '</td><td><strong>' + esc(po) + '</strong></td><td>' + esc(pages.join(', ') || '-') + '</td><td>' + esc(entry.articleNo || '-') + '</td><td class="num">' + esc(valueOrDash(entry.quantity)) + '</td><td class="num">' + esc(valueOrDash(entry.totalAmount)) + '</td><td><span class="tag ' + (found ? 'tag-success' : 'tag-warn') + '">' + (found ? '已匹配' : '未找到') + '</span></td><td><button class="btn btn-soft" type="button" data-single-po="' + esc(po) + '">单独生成</button></td></tr>';
+        }).join('');
+        const extra = [...state.poPages.keys()].filter(po => !poList.includes(po));
+        if (extra.length) showToast(el.poMessage, 'PO PDF中有但当前列表未包含：' + extra.join(', '), 'warning');
+      }
+      function syncInvoiceToPoList(showToastMsg = true) {
+        const text = invoicePoText(); el.poList.value = text; renderMatches();
+        if (showToastMsg) showToast(el.poMessage, text ? '已同步发票PO顺序到右侧列表' : '没有可同步的PO', text ? 'success' : 'warning');
+      }
+      function invoicePoText() { return state.invoiceEntries.map(en => en.po).join('\n'); }
+      function parsePoList(text) { const seen = new Set(); const list = []; for (const m of String(text || '').matchAll(/\b\d{10}\b/g)) { const po = m[0]; if (!seen.has(po)) { seen.add(po); list.push(po); } } return list; }
+      async function copyText(text, messageEl, successMessage) {
+        if (!text || !text.trim()) { showToast(messageEl, '没有可复制的内容', 'warning'); return; }
+        try { await navigator.clipboard.writeText(text); showToast(messageEl, successMessage, 'success'); } catch { showToast(messageEl, '浏览器未允许复制，请手动选择文本复制', 'warning'); }
+      }
+      function downloadText(filename, text, messageEl = el.invoiceMessage) {
+        if (!text || !text.trim()) { showToast(messageEl, '没有可下载的内容', 'warning'); return; }
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' }); const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = filename; a.click(); URL.revokeObjectURL(a.href);
+      }
+      function downloadInvoiceCsv() {
+        if (!state.invoiceEntries.length) { showToast(el.invoiceMessage, '没有可下载的发票明细', 'warning'); return; }
+        const header = ['序号','PO号','发票页','Working No','Article','描述','数量','单价','货品金额','净额'];
+        const rows = state.invoiceEntries.map(en => [en.index, en.po, (en.invoicePages || []).join('|'), en.workingNo || '', en.articleNo || '', en.description || '', en.quantity || '', en.unitPrice || '', en.totalAmount || '', en.netAmount || '']);
+        const csv = [header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
+        const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }); const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = 'invoice_po_details.csv'; a.click(); URL.revokeObjectURL(a.href);
+      }
+      function csvCell(v) { return '"' + String(v ?? '').replace(/"/g, '""') + '"'; }
+      function clearInvoice() {
+        el.invoiceFile.value = ''; showName(el.invoiceFile, el.invoiceName); el.invoiceDrop.classList.remove('has-file');
+        state.invoiceEntries = []; state.invoiceSummary = null; renderInvoice(); syncInvoiceToPoList(false);
+        showToast(el.invoiceMessage, '已清空发票数据', 'info'); el.invoiceCount.classList.remove('active');
+      }
+      function clearPo() {
+        el.poFile.value = ''; showName(el.poFile, el.poName); el.poDrop.classList.remove('has-file');
+        el.poList.value = ''; state.poPages = new Map(); state.latestResult = null;
+        animateValue(el.poCount, '0 个PO'); el.poCount.classList.remove('success');
+        el.downloadResult.hidden = true; el.openResultBtn.hidden = true; renderMatches();
+        showToast(el.poMessage, '已清空PO数据', 'info'); el.statusText.textContent = '准备好后点击下方按钮生成重排 PDF'; el.statusText.style.color = '';
+      }
+      function clearExtraction() { state.extractGroups = []; state.extractNumbers = []; el.extractFiles.value = ''; el.extractName.textContent = '未选择文件，可多选'; el.pasteText.value = ''; renderExtraction(); showToast(el.extractMessage, '已清空提取结果', 'info'); }
+      function bindExtractDrop() {
+        ['dragenter','dragover'].forEach(n => el.extractDrop.addEventListener(n, e => { e.preventDefault(); el.extractDrop.classList.add('dragging'); }));
+        ['dragleave','drop'].forEach(n => el.extractDrop.addEventListener(n, e => { e.preventDefault(); el.extractDrop.classList.remove('dragging'); }));
+        el.extractDrop.addEventListener('drop', e => {
+          const files = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+          if (!files.length) { showToast(el.extractMessage, '请拖入PDF文件', 'error'); return; }
+          const dt = new DataTransfer(); files.forEach(f => dt.items.add(f)); el.extractFiles.files = dt.files; showMultiName(el.extractFiles, el.extractName);
+        });
+      }
+      function showName(input, label) { label.textContent = input.files.length ? input.files[0].name : '未选择文件'; }
+    })();
+
+    // ===================== 快捷模式 =====================
+    (() => {
+      const invoiceFile = document.getElementById('invoiceFile'); const poFile = document.getElementById('poFile');
+      const invoiceName = document.getElementById('invoiceName'); const poName = document.getElementById('poName');
+      const statusEl = document.getElementById('status'); const processBtn = document.getElementById('processBtn');
+      const resetBtn = document.getElementById('resetBtn'); const resultPanel = document.getElementById('resultPanel');
+      const resultStatus = document.getElementById('resultStatus'); const downloadLink = document.getElementById('downloadLink');
+      const entryRows = document.getElementById('entryRows'); const notes = document.getElementById('notes');
+
+      bindDropzone('invoiceDrop', 'invoiceFile', 'invoiceName'); bindDropzone('poDrop', 'poFile', 'poName');
+      processBtn.addEventListener('click', processFiles); resetBtn.addEventListener('click', resetForm);
+
+      function setStatus(message, type) {
+        const icons = {
+          error: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+          success: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+          info: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
+        };
+        statusEl.innerHTML = (icons[type] || icons.info) + '<span style="margin-left:6px">' + escapeHtml(message) + '</span>';
+      }
+
+      async function processFiles() {
+        if (!invoiceFile.files.length || !poFile.files.length) { setStatus('请先选择两个 PDF 文件', 'error'); return; }
+        processBtn.disabled = true; resultPanel.hidden = true; resultPanel.classList.add('legacy-panel'); setStatus('正在上传并处理...', 'info');
+        const data = new FormData(); data.append('invoice_pdf', invoiceFile.files[0]); data.append('po_pdf', poFile.files[0]);
+        try {
+          const response = await fetch(api('/api/process'), { method: 'POST', body: data });
+          const payload = await response.json(); if (!response.ok) throw new Error(payload.detail || '处理失败');
+          renderResult(payload); setStatus('生成完成', 'success');
+        } catch (error) { setStatus(error.message, 'error'); } finally { processBtn.disabled = false; }
+      }
+      function renderResult(payload) {
+        const summary = payload.summary || {};
+        animateValue(document.getElementById('invoicePoCount'), summary.invoicePoCount ?? '-');
+        animateValue(document.getElementById('outputPoCount'), summary.outputPoCount ?? '-');
+        animateValue(document.getElementById('totalQuantity'), summary.totalQuantity ?? '-');
+        animateValue(document.getElementById('totalNetAmount'), summary.totalNetAmount ?? '-');
+        resultStatus.textContent = payload.fileName || '';
+        downloadLink.href = api(payload.downloadUrl); downloadLink.download = payload.fileName;
+        entryRows.innerHTML = '';
+        for (const entry of payload.entries || []) {
+          const tr = document.createElement('tr'); tr.style.animation = 'fadeIn 0.3s ease';
+          tr.innerHTML = '<td>' + entry.index + '</td><td><strong>' + escapeHtml(entry.po) + '</strong></td><td>' + escapeHtml((entry.poPages || []).join(', ') || '-') + '</td><td>' + escapeHtml(entry.articleNo || '-') + '</td><td>' + escapeHtml(entry.description || '-') + '</td><td class="num">' + escapeHtml(entry.quantity || '-') + '</td><td class="num">' + escapeHtml(entry.unitPrice || '-') + '</td><td class="num">' + escapeHtml(entry.totalAmount || '-') + '</td><td class="num">' + escapeHtml(entry.netAmount || '-') + '</td><td><span class="tag ' + (entry.status === 'found' ? 'tag-success' : 'tag-warn') + '">' + (entry.status === 'found' ? '已输出' : '未找到') + '</span></td>';
+          entryRows.appendChild(tr);
+        }
+        const np = [];
+        if (summary.missingPoNumbers && summary.missingPoNumbers.length) np.push('发票中有但 PO PDF 未找到：' + summary.missingPoNumbers.join(', '));
+        if (summary.extraPoNumbers && summary.extraPoNumbers.length) np.push('PO PDF 中有但发票未包含，已跳过：' + summary.extraPoNumbers.join(', '));
+        notes.innerHTML = np.join('；');
+        resultPanel.hidden = false; resultPanel.classList.remove('legacy-panel');
+      }
+      function resetForm() {
+        invoiceFile.value = ''; poFile.value = '';
+        showFileName(invoiceFile, invoiceName); showFileName(poFile, poName);
+        document.getElementById('invoiceDrop').classList.remove('has-file'); document.getElementById('poDrop').classList.remove('has-file');
+        resultPanel.hidden = true; resultPanel.classList.add('legacy-panel'); setStatus('等待上传文件', 'info');
+      }
+    })();
+  </script>
+</body>
+</html>

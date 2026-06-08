@@ -8,6 +8,7 @@ import EricPage from '../pages/eric/EricPage.vue'
 import EricInfornexusPage from '../pages/eric-infornexus/EricInfornexusPage.vue'
 import HomePage from '../pages/home/HomePage.vue'
 import InfornexusPage from '../pages/infornexus/InfornexusPage.vue'
+import ItInvoicePdfReorderPage from '../pages/it-invoice-pdf-reorder/ItInvoicePdfReorderPage.vue'
 import JaneBomComparePage from '../pages/jane-bom-compare/JaneBomComparePage.vue'
 import JaneBomSummaryPage from '../pages/jane-bom-summary/JaneBomSummaryPage.vue'
 import JaneOutboundComparePage from '../pages/jane-outbound-compare/JaneOutboundComparePage.vue'
@@ -28,6 +29,7 @@ const routeComponents: Partial<Record<string, Component>> = {
   'jane-bom-compare': JaneBomComparePage,
   'jane-outbound-compare': JaneOutboundComparePage,
   eric: EricPage,
+  'it-invoice-pdf-reorder': ItInvoicePdfReorderPage,
   'jane-sap': JaneSapPage,
   'eric-infornexus': EricInfornexusPage,
   'sophia-tina': SophiaTinaPage,
