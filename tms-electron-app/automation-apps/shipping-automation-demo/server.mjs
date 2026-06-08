@@ -87,6 +87,7 @@ const server = http.createServer(async (req, res) => {
           finalUrl: result.finalUrl,
           bulkType,
           inputFileName,
+          eventManagementOpened: result.eventManagementOpened,
           homeOpened: result.homeOpened,
         });
         sendJson(res, result.ok ? 200 : 500, result);
@@ -342,7 +343,7 @@ async function runShipping2BulkFile(credentials, bulkType, inputFileName, runId)
     poRows: [],
     inputFileName,
     fillPoNumbers: false,
-    targetPage: "home",
+    targetPage: "event-management",
     shipping2BulkType: bulkType,
   });
 }
@@ -374,7 +375,9 @@ async function runShippingWorkflow(credentials, runContext) {
   const poRows = Array.isArray(runContext?.poRows) ? runContext.poRows : [];
   const shouldFillPoNumbers = Boolean(runContext?.fillPoNumbers);
   const runId = String(runContext?.runId || createRunId("adhoc"));
-  const targetPage = runContext?.targetPage === "home" ? "home" : "shipment-scan";
+  const targetPage = ["home", "event-management"].includes(runContext?.targetPage)
+    ? runContext.targetPage
+    : "shipment-scan";
   const shipping2BulkType = ["unreleased", "released"].includes(runContext?.shipping2BulkType)
     ? runContext.shipping2BulkType
     : "";
@@ -385,6 +388,7 @@ async function runShippingWorkflow(credentials, runContext) {
       : "";
   const isShipping2BulkRun = Boolean(shipping2BulkType);
   const shouldOpenShipmentScan = targetPage === "shipment-scan";
+  const shouldOpenEventManagement = targetPage === "event-management" || isShipping2BulkRun;
   const artifactPrefix = isShipping2BulkRun
     ? `shipping2-${shipping2BulkType}-bulk`
     : shouldOpenShipmentScan
@@ -421,6 +425,11 @@ async function runShippingWorkflow(credentials, runContext) {
       );
       await page.waitForURL(/\/en\/trade\/PackByScan/, { timeout: config.navigationTimeoutMs });
       await page.waitForTimeout(config.postLoginWaitMs);
+    } else if (shouldOpenEventManagement) {
+      await openEventManagement(page);
+      if (isShipping2BulkRun) {
+        await openShipping2BulkWorksheet(page, shipping2BulkType);
+      }
     }
 
     if (shouldFillPoNumbers) {
@@ -552,7 +561,9 @@ async function runShippingWorkflow(credentials, runContext) {
       ok: failedPoCount === 0 && failedCreateShipmentCount === 0,
       loginSuccess: true,
       shipmentScanOpened: shouldOpenShipmentScan,
-      homeOpened: !shouldOpenShipmentScan,
+      eventManagementOpened: shouldOpenEventManagement,
+      shipping2WorksheetOpened: isShipping2BulkRun,
+      homeOpened: !shouldOpenShipmentScan && !shouldOpenEventManagement,
       bulkType: shipping2BulkType,
       inputMode: isShipping2BulkRun ? "shipping2-bulk" : shouldFillPoNumbers ? "local-file" : shouldOpenShipmentScan ? "open-only" : "login-only",
       inputFileName: runContext?.inputFileName || "",
@@ -564,11 +575,11 @@ async function runShippingWorkflow(credentials, runContext) {
       completedCreateShipmentCount,
       failedCreateShipmentCount,
       createShipmentResults,
-      selectedAction: shouldFillPoNumbers ? "Remove/Change Equipment ID" : "",
+      selectedAction: isShipping2BulkRun ? shipping2BulkLabel : shouldFillPoNumbers ? "Remove/Change Equipment ID" : "",
       message: shouldFillPoNumbers
         ? `Shipment Scan processed ${completedPoCount}/${poRows.length} PO rows and Create Shipment processed ${completedCreateShipmentCount}/${createShipmentEquipmentIds.length} unique equipment IDs.`
         : isShipping2BulkRun
-          ? `${shipping2BulkLabel} browser automation entered successfully.`
+          ? `${shipping2BulkLabel} worksheet opened successfully.`
           : shouldOpenShipmentScan
           ? "Infor Nexus Shipment Scan opened successfully."
           : "Infor Nexus logged in successfully.",
@@ -608,6 +619,8 @@ async function runShippingWorkflow(credentials, runContext) {
       ok: false,
       loginSuccess: false,
       shipmentScanOpened: false,
+      eventManagementOpened: false,
+      shipping2WorksheetOpened: false,
       homeOpened: false,
       bulkType: shipping2BulkType,
       inputMode: isShipping2BulkRun ? "shipping2-bulk" : shouldFillPoNumbers ? "local-file" : shouldOpenShipmentScan ? "open-only" : "login-only",
@@ -672,6 +685,36 @@ async function ensureLoggedIn(page, credentials) {
       timeout: config.navigationTimeoutMs,
     }),
   ]);
+}
+
+async function openEventManagement(page) {
+  await clickLocator(page.locator("#navmenu__applications"), "Applications");
+  await clickLocator(
+    page.locator("#navmenu__inprogresseventmanagement"),
+    "Event Management",
+  );
+  await page.waitForURL(/\/en\/trade\/InProgressEventManagement/, {
+    timeout: config.navigationTimeoutMs,
+  });
+  await page.waitForTimeout(config.postLoginWaitMs);
+  log("Event Management page opened.");
+}
+
+async function openShipping2BulkWorksheet(page, bulkType) {
+  const worksheetLabel = bulkType === "released" ? "Released Bulk" : "Unreleased Bulk";
+  const worksheetLink = page
+    .locator('td.listtablecell a[href*="TrackingWorksheet"]')
+    .filter({ hasText: exactTextRegex(worksheetLabel) });
+
+  await clickLocator(worksheetLink, worksheetLabel);
+  await page.waitForURL(/\/en\/trade\/TrackingWorksheet/, {
+    timeout: config.navigationTimeoutMs,
+  });
+  await page.waitForTimeout(config.postLoginWaitMs);
+  log("Shipping 2 worksheet opened.", {
+    bulkType,
+    worksheetLabel,
+  });
 }
 
 async function waitForShipmentScanDialog(page, timeoutMs = config.navigationTimeoutMs) {
@@ -3097,6 +3140,14 @@ function collectUniqueChangeEquipmentIds(poRows) {
 
 function normalizeHeaderName(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function exactTextRegex(value) {
+  return new RegExp(`^\\s*${escapeRegExp(value)}\\s*$`, "i");
+}
+
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function normalizeUploadFileName(body) {

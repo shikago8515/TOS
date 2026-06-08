@@ -5,6 +5,7 @@ import { tosRouteDefinitions, tosRouteRedirects } from './routeCatalog'
 import AdidasMaterialsPage from '../pages/adidas-materials/AdidasMaterialsPage.vue'
 import BrowserPluginsPage from '../pages/browser-plugins/BrowserPluginsPage.vue'
 import EricPage from '../pages/eric/EricPage.vue'
+import EricInfornexusPage from '../pages/eric-infornexus/EricInfornexusPage.vue'
 import HomePage from '../pages/home/HomePage.vue'
 import InfornexusPage from '../pages/infornexus/InfornexusPage.vue'
 import JaneBomComparePage from '../pages/jane-bom-compare/JaneBomComparePage.vue'
@@ -12,11 +13,11 @@ import JaneBomSummaryPage from '../pages/jane-bom-summary/JaneBomSummaryPage.vue
 import JaneOutboundComparePage from '../pages/jane-outbound-compare/JaneOutboundComparePage.vue'
 import JanePage from '../pages/jane/JanePage.vue'
 import JaneSapPage from '../pages/jane-sap/JaneSapPage.vue'
-import EricInfornexusPage from '../pages/eric-infornexus/EricInfornexusPage.vue'
 import JesscaPage from '../pages/jessca/JesscaPage.vue'
-import SettingsPage from '../pages/settings/SettingsPage.vue'
-import SophiaTinaPage from '../pages/sophia-tina/SophiaTinaPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
+import SettingsPage from '../pages/settings/SettingsPage.vue'
+import ShippingAutomation2Page from '../pages/shipping-automation-2/ShippingAutomation2Page.vue'
+import SophiaTinaPage from '../pages/sophia-tina/SophiaTinaPage.vue'
 import WebAutomationScenarioPage from '../pages/web-automation/WebAutomationScenarioPage.vue'
 
 const routeComponents: Partial<Record<string, Component>> = {
@@ -54,6 +55,14 @@ const moduleRoutes: RouteRecordRaw[] = tosRouteDefinitions.map((route) => ({
 }))
 
 const scenarioRoutes: RouteRecordRaw[] = [
+  {
+    path: '/web-automation/scenarios/shipping-automation-2',
+    name: 'web-automation-scenario-shipping-automation-2',
+    component: ShippingAutomation2Page,
+    meta: {
+      title: 'shipping 2 自动化',
+    },
+  },
   {
     path: '/web-automation/scenarios/:scenarioId',
     name: 'web-automation-scenario',

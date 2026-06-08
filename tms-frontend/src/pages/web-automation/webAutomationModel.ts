@@ -14,7 +14,6 @@ export interface WebAutomationEntry {
   webhookUrl: string
   routePath: string
   tags: readonly string[]
-  /** 入口状态：online=可用 | soon=即将上线 | offline=暂不可用 */
   status: 'online' | 'soon' | 'offline'
 }
 
@@ -46,6 +45,19 @@ export const webAutomationEntries: WebAutomationEntry[] = [
     status: 'online',
   },
   {
+    id: 'shipping-automation-2',
+    title: 'shipping 2 自动化',
+    subtitle: 'Infor Nexus 登录与页面预备流程',
+    description: '先登录 Infor Nexus 并进入站点，后续页面操作会继续在这个独立场景里扩展。',
+    appId: 'shipping-automation-demo',
+    executorBaseUrl: 'http://127.0.0.1:3003',
+    localExecutorToken: 'local-shipping-automation-72fd26f0f3b54db49c619bbda2be0f8f',
+    webhookUrl: 'https://network.infornexus.com',
+    routePath: '/web-automation/scenarios/shipping-automation-2',
+    tags: ['Shipping 2', 'InforNexus'],
+    status: 'online',
+  },
+  {
     id: 'infornexus-sync',
     title: 'Infornexus 数据同步',
     subtitle: '跨平台数据自动同步',
@@ -74,7 +86,7 @@ export const webAutomationEntries: WebAutomationEntry[] = [
   {
     id: 'form-auto-fill',
     title: '智能表单填充',
-    subtitle: 'AI 辅助表单识别与填充',
+    subtitle: 'AI 辅助表单识别与填写',
     description: '智能识别表单结构，匹配 Excel 列完成批量填充。',
     appId: 'form-auto-fill',
     executorBaseUrl: 'http://127.0.0.1:3006',
