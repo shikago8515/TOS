@@ -5,6 +5,7 @@ import {
   buildBackendDownloadUrl,
   getBackendBaseUrl,
   readErrorMessage,
+  readResponseMessage,
 } from './backendClient'
 
 function stubWindow(electronAPI?: Partial<ElectronApi>): void {
@@ -39,6 +40,21 @@ describe('backendClient', () => {
   })
 
   it('returns fallback text for non-Error failures', () => {
-    expect(readErrorMessage('network failed', '无法连接后端服务')).toBe('无法连接后端服务')
+    expect(readErrorMessage('network failed', 'fallback message')).toBe(
+      'fallback message',
+    )
+  })
+
+  it('formats FastAPI validation details', () => {
+    expect(
+      readResponseMessage({
+        detail: [
+          {
+            loc: ['body', 'price_files'],
+            msg: 'Field required',
+          },
+        ],
+      }),
+    ).toBe('缺少必传字段 price_files')
   })
 })

@@ -75,7 +75,13 @@ export function buildFilePrechecks(groups: readonly FileGroupState[]): FileGroup
 }
 
 export function areRequiredFilesReady(groups: readonly FileGroupState[]): boolean {
-  return buildFilePrechecks(groups).every((group) => group.status === 'ready')
+  const prechecks = buildFilePrechecks(groups)
+
+  return prechecks.every((precheck, index) => {
+    const group = groups[index]
+
+    return group.required ? precheck.status === 'ready' : precheck.status !== 'error'
+  })
 }
 
 export function serializeInputFiles(groups: readonly FileGroupState[]): string[] {

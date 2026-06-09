@@ -2,7 +2,9 @@ import os
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
+from xml.etree import ElementTree
 
 import pandas as pd
 from openpyxl import load_workbook
@@ -13,6 +15,99 @@ if BACKEND_ROOT not in sys.path:
     sys.path.insert(0, BACKEND_ROOT)
 
 from modules.sophia_tina_module import SophiaTinaModule
+
+
+def _workbook_zip_entries(path: str, prefix: str) -> list[str]:
+    with zipfile.ZipFile(path) as archive:
+        return sorted(name for name in archive.namelist() if name.startswith(prefix))
+
+
+def _pivot_cache_sources(path: str) -> list[tuple[str, str | None, str | None]]:
+    namespace = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    sources: list[tuple[str, str | None, str | None]] = []
+    with zipfile.ZipFile(path) as archive:
+        cache_entries = sorted(
+            name
+            for name in archive.namelist()
+            if name.startswith("xl/pivotCache/pivotCacheDefinition") and name.endswith(".xml")
+        )
+        for entry in cache_entries:
+            root = ElementTree.fromstring(archive.read(entry))
+            source = root.find(".//main:worksheetSource", namespace)
+            sources.append(
+                (
+                    entry,
+                    source.attrib.get("sheet") if source is not None else None,
+                    source.attrib.get("ref") if source is not None else None,
+                )
+            )
+    return sources
+
+
+def _pivot_cache_refresh_values(path: str) -> list[str | None]:
+    values: list[str | None] = []
+    with zipfile.ZipFile(path) as archive:
+        cache_entries = sorted(
+            name
+            for name in archive.namelist()
+            if name.startswith("xl/pivotCache/pivotCacheDefinition") and name.endswith(".xml")
+        )
+        for entry in cache_entries:
+            root = ElementTree.fromstring(archive.read(entry))
+            values.append(root.attrib.get("refreshOnLoad"))
+    return values
+
+
+def _pivot_cache_record_counts(path: str) -> list[str | None]:
+    values: list[str | None] = []
+    with zipfile.ZipFile(path) as archive:
+        cache_entries = sorted(
+            name
+            for name in archive.namelist()
+            if name.startswith("xl/pivotCache/pivotCacheDefinition") and name.endswith(".xml")
+        )
+        for entry in cache_entries:
+            root = ElementTree.fromstring(archive.read(entry))
+            values.append(root.attrib.get("recordCount"))
+    return values
+
+
+def _pivot_cache_records_counts(path: str) -> list[str]:
+    counts: list[str] = []
+    with zipfile.ZipFile(path) as archive:
+        records_entries = sorted(
+            name
+            for name in archive.namelist()
+            if name.startswith("xl/pivotCache/pivotCacheRecords") and name.endswith(".xml")
+        )
+        for entry in records_entries:
+            root = ElementTree.fromstring(archive.read(entry))
+            counts.append(root.attrib["count"])
+    return counts
+
+
+def _table_refs(path: str) -> list[str]:
+    namespace = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    refs: list[str] = []
+    with zipfile.ZipFile(path) as archive:
+        table_entries = sorted(
+            name for name in archive.namelist() if name.startswith("xl/tables/table") and name.endswith(".xml")
+        )
+        for entry in table_entries:
+            root = ElementTree.fromstring(archive.read(entry))
+            refs.append(root.attrib["ref"])
+            auto_filter = root.find("main:autoFilter", namespace)
+            if auto_filter is not None:
+                refs.append(auto_filter.attrib["ref"])
+    return refs
+
+
+def _workbook_calc_pr(path: str) -> dict[str, str]:
+    namespace = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    with zipfile.ZipFile(path) as archive:
+        root = ElementTree.fromstring(archive.read("xl/workbook.xml"))
+    calc_pr = root.find("main:calcPr", namespace)
+    return calc_pr.attrib if calc_pr is not None else {}
 
 
 class SophiaTinaModulePricePriorityTests(unittest.TestCase):
@@ -160,43 +255,41 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
                 "price.xlsx",
                 [
                     {
+                        "Pack": "PACK-SS26",
                         "Season": "SS26",
                         "Working Number": "WN-FINAL",
                         "Article Number": "ART-F",
                         "Factory": "FACTORY-A",
                         "Factory Price": 11.0,
+                        "TMS Price": 14.0,
                     },
                     {
+                        "Pack": "PACK-SS26",
                         "Season": "SS26",
                         "Working Number": "WN-P2",
                         "Article Number": "ART-P2",
                         "Factory": "FACTORY-B",
                         "Factory Price": 7.0,
+                        "TMS Price": 11.0,
                     },
                     {
+                        "Pack": "PACK-SS26",
                         "Season": "SS26",
                         "Working Number": "WN-P1",
                         "Article Number": "ART-P1",
                         "Factory": "FACTORY-C",
                         "Factory Price": 8.0,
+                        "TMS Price": 12.0,
                     },
                     {
+                        "Pack": "PACK-SS26",
                         "Season": "SS26",
                         "Working Number": "WN-PREC",
                         "Article Number": "ART-PREC",
                         "Factory": "FACTORY-D",
                         "Factory Price": 9.0,
+                        "TMS Price": 10.0,
                     },
-                ],
-            )
-            pack_path = self._write_excel(
-                work_dir,
-                "pack.xlsx",
-                [
-                    {"Pack": "PACK-SS26", "Season": "SS26", "Working Number": "WN-FINAL"},
-                    {"Pack": "PACK-SS26", "Season": "SS26", "Working Number": "WN-P2"},
-                    {"Pack": "PACK-SS26", "Season": "SS26", "Working Number": "WN-P1"},
-                    {"Pack": "PACK-SS26", "Season": "SS26", "Working Number": "WN-PREC"},
                 ],
             )
 
@@ -204,59 +297,309 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
                 [tms_path],
                 [article_path],
                 [price_path],
-                [pack_path],
-                str(work_dir),
+                output_dir=str(work_dir),
             )
 
             self.assertTrue(result["success"], result["message"])
-            wb = load_workbook(result["output_path"], data_only=True)
+            wb = load_workbook(result["output_path"], data_only=False, read_only=True)
             ws = wb["Result"]
-            headers = [cell.value for cell in ws[1]]
-            column_by_name = {name: index + 1 for index, name in enumerate(headers)}
-            rows_by_working = {
-                ws.cell(row=row_index, column=column_by_name["Working Number"]).value: row_index
-                for row_index in range(2, ws.max_row + 1)
-            }
+            try:
+                headers = [cell.value for cell in ws[1]]
+                column_by_name = {name: index + 1 for index, name in enumerate(headers)}
+                self.assertEqual(
+                    headers,
+                    [
+                        "Pack",
+                        "Season",
+                        "Factory",
+                        "Working Number",
+                        "Article Number",
+                        "Article Name",
+                        "CRD",
+                        "PODD",
+                        "Gps Customer Number",
+                        "Country/Region",
+                        "Shipment Method",
+                        "Marketing Forecast(M)",
+                        "Quantity",
+                        "Factory Price(USD)",
+                        "Factory Amount(USD)",
+                        "TMS Price(USD)",
+                        "TMS Amount(USD)",
+                    ],
+                )
+                rows_by_working = {
+                    ws.cell(row=row_index, column=column_by_name["Working Number"]).value: row_index
+                    for row_index in range(2, ws.max_row + 1)
+                }
 
-            final_row = rows_by_working["WN-FINAL"]
-            self.assertEqual(
-                ws.cell(final_row, column=column_by_name["TMS Price(USD)"]).value,
-                15.25,
+                final_row = rows_by_working["WN-FINAL"]
+                self.assertEqual(
+                    ws.cell(final_row, column=column_by_name["TMS Price(USD)"]).value,
+                    15.25,
+                )
+                self.assertEqual(
+                    ws.cell(final_row, column=column_by_name["TMS Amount(USD)"]).value,
+                    "=P2*M2",
+                )
+                self.assertEqual(ws.cell(final_row, column=column_by_name["Pack"]).value, "PACK-SS26")
+
+                p2_row = rows_by_working["WN-P2"]
+                self.assertEqual(
+                    ws.cell(p2_row, column=column_by_name["TMS Price(USD)"]).value,
+                    12.5,
+                )
+                self.assertEqual(
+                    ws.cell(p2_row, column=column_by_name["TMS Amount(USD)"]).value,
+                    "=P3*M3",
+                )
+
+                p1_row = rows_by_working["WN-P1"]
+                self.assertEqual(
+                    ws.cell(p1_row, column=column_by_name["TMS Price(USD)"]).value,
+                    13.0,
+                )
+                self.assertEqual(
+                    ws.cell(p1_row, column=column_by_name["TMS Amount(USD)"]).value,
+                    "=P4*M4",
+                )
+
+                prec_row = rows_by_working["WN-PREC"]
+                self.assertEqual(
+                    ws.cell(prec_row, column=column_by_name["TMS Price(USD)"]).value,
+                    6.75,
+                )
+                self.assertEqual(
+                    ws.cell(prec_row, column=column_by_name["TMS Amount(USD)"]).value,
+                    "=P5*M5",
+                )
+            finally:
+                wb.close()
+
+    def test_optional_allocation_and_shipment_files_update_result_and_summaries(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            work_dir = Path(temp_dir)
+            tms_path = self._write_excel(
+                work_dir,
+                "tms.xlsx",
+                [
+                    {
+                        "Factory": "FACTORY-SOURCE",
+                        "PO Number": "PO-1",
+                        "Working Number": "WN-1",
+                        "Article Number": "ART-1",
+                        "Article Description": "Article one",
+                        "Customer Request Date (CRD)": "2026-01-10",
+                        "PODD": "2026-02-20",
+                        "Shipment Method": "Ocean",
+                        "Gps Customer Number": "GPS-1",
+                        "Country/Region": "CHINA",
+                        "Ordered Quantity": 10,
+                    },
+                    {
+                        "Factory": "FACTORY-SOURCE",
+                        "PO Number": "PO-2",
+                        "Working Number": "WN-2",
+                        "Article Number": "ART-2",
+                        "Article Description": "Article two",
+                        "Customer Request Date (CRD)": "2026-01-11",
+                        "PODD": "2026-03-31",
+                        "Shipment Method": "Ocean",
+                        "Gps Customer Number": "GPS-2",
+                        "Country/Region": "UNITED STATES",
+                        "Ordered Quantity": 12,
+                    },
+                    {
+                        "Factory": "FACTORY-SOURCE",
+                        "PO Number": "PO-2",
+                        "Working Number": "WN-3",
+                        "Article Number": "ART-3",
+                        "Article Description": "Article three",
+                        "Customer Request Date (CRD)": "2026-01-12",
+                        "PODD": "2026-03-31",
+                        "Shipment Method": "Ocean",
+                        "Gps Customer Number": "GPS-3",
+                        "Country/Region": "BRAZIL",
+                        "Ordered Quantity": 8,
+                    },
+                ],
             )
-            self.assertEqual(
-                ws.cell(final_row, column=column_by_name["TMS Amount(USD)"]).value,
-                30.5,
+            tms_price_path = self._write_excel(
+                work_dir,
+                "tms-price.xlsx",
+                [
+                    {
+                        "Working Number (M)": "WN-1",
+                        "Article Number (A)": "ART-1",
+                        "Season (M)": "SS26",
+                        "Marketing Forecast (M)": 100,
+                        "Milestone (C)": "Final",
+                        "Intl. FOB (C)": 15.0,
+                        "Factory Group Code (MF)": "FACTORY-ALLOC",
+                    },
+                    {
+                        "Working Number (M)": "WN-2",
+                        "Article Number (A)": "ART-2",
+                        "Season (M)": "FW26",
+                        "Marketing Forecast (M)": 200,
+                        "Milestone (C)": "Final",
+                        "Intl. FOB (C)": 20.0,
+                        "Factory Group Code (MF)": "FACTORY-SOURCE",
+                    },
+                    {
+                        "Working Number (M)": "WN-3",
+                        "Article Number (A)": "ART-3",
+                        "Season (M)": "FW26",
+                        "Marketing Forecast (M)": 300,
+                        "Milestone (C)": "Final",
+                        "Intl. FOB (C)": 30.0,
+                        "Factory Group Code (MF)": "FACTORY-SOURCE",
+                    },
+                ],
+            )
+            price_path = self._write_excel(
+                work_dir,
+                "price.xlsx",
+                [
+                    {
+                        "Pack": "PACK-SS26",
+                        "Season": "SS26",
+                        "Working Number": "WN-1",
+                        "Article Number": "ART-1",
+                        "Factory": "FACTORY-ALLOC",
+                        "Factory Price": 10.0,
+                        "TMS Price": 15.0,
+                    },
+                    {
+                        "Pack": "PACK-FW26",
+                        "Season": "FW26",
+                        "Working Number": "WN-2",
+                        "Article Number": "ART-2",
+                        "Factory": "FACTORY-SOURCE",
+                        "Factory Price": 12.0,
+                        "TMS Price": 20.0,
+                    },
+                    {
+                        "Pack": "PACK-FW26",
+                        "Season": "FW26",
+                        "Working Number": "WN-3",
+                        "Article Number": "ART-3",
+                        "Factory": "FACTORY-SOURCE",
+                        "Factory Price": 13.0,
+                        "TMS Price": 30.0,
+                    },
+                ],
+            )
+            allocation_path = self._write_excel(
+                work_dir,
+                "allocation.xlsx",
+                [
+                    {"Allocation": "FACTORY-ALLOC", "PO": "PO-1"},
+                ],
+            )
+            shipment_path = self._write_excel(
+                work_dir,
+                "shipment.xlsx",
+                [
+                    {
+                        "purchasingdocument": "PO-1",
+                        "shippinginstruction_desc": "AIR",
+                        "po_delivery_date": "2026-02-01",
+                        "pord_order_qty": 4,
+                    },
+                    {
+                        "purchasingdocument": "PO-1",
+                        "shippinginstruction_desc": "Ocean",
+                        "po_delivery_date": "2026-02-15",
+                        "pord_order_qty": 6,
+                    },
+                    {
+                        "purchasingdocument": "PO-2",
+                        "shippinginstruction_desc": "Rail",
+                        "po_delivery_date": "2026-04-01",
+                        "pord_order_qty": 20,
+                    },
+                ],
             )
 
-            p2_row = rows_by_working["WN-P2"]
-            self.assertEqual(
-                ws.cell(p2_row, column=column_by_name["TMS Price(USD)"]).value,
-                12.5,
-            )
-            self.assertEqual(
-                ws.cell(p2_row, column=column_by_name["TMS Amount(USD)"]).value,
-                37.5,
-            )
-
-            p1_row = rows_by_working["WN-P1"]
-            self.assertEqual(
-                ws.cell(p1_row, column=column_by_name["TMS Price(USD)"]).value,
-                13.0,
-            )
-            self.assertEqual(
-                ws.cell(p1_row, column=column_by_name["TMS Amount(USD)"]).value,
-                52.0,
+            result = self.module.process_reports(
+                [tms_path],
+                [tms_price_path],
+                [price_path],
+                output_dir=str(work_dir),
+                allocation_paths=[allocation_path],
+                shipment_method_paths=[shipment_path],
             )
 
-            prec_row = rows_by_working["WN-PREC"]
-            self.assertEqual(
-                ws.cell(prec_row, column=column_by_name["TMS Price(USD)"]).value,
-                6.75,
+            self.assertTrue(result["success"], result["message"])
+            wb = load_workbook(result["output_path"], data_only=False, read_only=True)
+            try:
+                self.assertEqual(
+                    wb.sheetnames[:9],
+                    [
+                        "Monthly Summary (By Fty)",
+                        "Seasonal Summary (By Fty)",
+                        "Country Analysis (S)",
+                        "Country Analysis (Y)",
+                        "Y2Y Comparison(Qtty & Value)",
+                        "Fty Order Analysis",
+                        "Ship Method Analysis",
+                        "Development Style Qty",
+                        "S2S Development Analysis",
+                    ],
+                )
+                ws = wb["Result"]
+                headers = [cell.value for cell in ws[1]]
+                column_by_name = {name: index + 1 for index, name in enumerate(headers)}
+                self.assertEqual(ws.max_row, 5)
+                result_rows = [
+                    {
+                        header: ws.cell(row=row_index, column=column_by_name[header]).value
+                        for header in headers
+                    }
+                    for row_index in range(2, ws.max_row + 1)
+                ]
+                po1_rows = [row for row in result_rows if row["Working Number"] == "WN-1"]
+                self.assertEqual([row["Quantity"] for row in po1_rows], [4, 6])
+                self.assertEqual({row["Factory"] for row in po1_rows}, {"FACTORY-ALLOC"})
+                self.assertEqual([row["Shipment Method"] for row in po1_rows], ["AIR", "Ocean"])
+                self.assertEqual(
+                    [str(row["PODD"])[:10] for row in po1_rows],
+                    ["2026-02-01", "2026-02-15"],
+                )
+
+                po2_rows = [row for row in result_rows if row["Working Number"] in {"WN-2", "WN-3"}]
+                self.assertEqual([row["Quantity"] for row in po2_rows], [12, 8])
+                self.assertEqual({row["Shipment Method"] for row in po2_rows}, {"Ocean"})
+
+                self.assertEqual(ws["O2"].value, "=N2*M2")
+                self.assertEqual(ws["Q2"].value, "=P2*M2")
+
+                diagnostics = wb["Diagnostics"]
+                diagnostics_text = "\n".join(
+                    str(diagnostics.cell(row=row, column=2).value)
+                    for row in range(2, diagnostics.max_row + 1)
+                )
+                self.assertIn("SHIPMENT_PO_MULTI_COMBO", diagnostics_text)
+            finally:
+                wb.close()
+
+            pivot_entries = _workbook_zip_entries(result["output_path"], "xl/pivotTables/pivotTable")
+            self.assertEqual(len(pivot_entries), 9)
+            self.assertTrue(
+                _workbook_zip_entries(result["output_path"], "xl/pivotCache/pivotCacheDefinition")
             )
+            self.assertEqual(_table_refs(result["output_path"]), ["A1:Q5", "A1:Q5"])
             self.assertEqual(
-                ws.cell(prec_row, column=column_by_name["TMS Amount(USD)"]).value,
-                33.75,
+                {source for _, sheet_name, source in _pivot_cache_sources(result["output_path"]) if sheet_name == "Result"},
+                {"A1:Q5"},
             )
+            self.assertEqual(set(_pivot_cache_refresh_values(result["output_path"])), {"1"})
+            self.assertEqual(set(_pivot_cache_record_counts(result["output_path"])), {"0"})
+            self.assertEqual(set(_pivot_cache_records_counts(result["output_path"])), {"0"})
+            self.assertFalse(_workbook_zip_entries(result["output_path"], "xl/calcChain.xml"))
+            self.assertEqual(_workbook_calc_pr(result["output_path"]).get("fullCalcOnLoad"), "1")
+            self.assertEqual(_workbook_calc_pr(result["output_path"]).get("forceFullCalc"), "1")
 
 
 if __name__ == "__main__":

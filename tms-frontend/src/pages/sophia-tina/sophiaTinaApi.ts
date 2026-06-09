@@ -5,9 +5,10 @@ import {
 
 export interface SophiaTinaProcessRequest {
   tmsFiles: File[]
-  articleFiles: File[]
+  tmsPriceFiles: File[]
   priceFiles: File[]
-  packFiles: File[]
+  allocationFiles: File[]
+  shipmentMethodFiles: File[]
 }
 
 export interface SophiaTinaProcessResponse {
@@ -31,14 +32,17 @@ export async function processSophiaTinaFiles(
   request.tmsFiles.forEach((file) => {
     formData.append('tms_files', file)
   })
-  request.articleFiles.forEach((file) => {
-    formData.append('article_files', file)
+  request.tmsPriceFiles.forEach((file) => {
+    formData.append('tms_price_files', file)
   })
   request.priceFiles.forEach((file) => {
     formData.append('price_files', file)
   })
-  request.packFiles.forEach((file) => {
-    formData.append('pack_files', file)
+  request.allocationFiles.forEach((file) => {
+    formData.append('allocation_files', file)
+  })
+  request.shipmentMethodFiles.forEach((file) => {
+    formData.append('shipment_method_files', file)
   })
 
   return postFormData<SophiaTinaProcessResponse>({

@@ -86,9 +86,12 @@ def _save_uploads(files: List[UploadFile], work_dir: str, label: str) -> List[st
 @router.post("/process")
 async def process_sophia_tina(
     tms_files: List[UploadFile] = File(...),
-    article_files: List[UploadFile] = File(...),
+    tms_price_files: Optional[List[UploadFile]] = File(None),
+    article_files: Optional[List[UploadFile]] = File(None),
     price_files: List[UploadFile] = File(...),
-    pack_files: List[UploadFile] = File(...),
+    pack_files: Optional[List[UploadFile]] = File(None),
+    allocation_files: Optional[List[UploadFile]] = File(None),
+    shipment_method_files: Optional[List[UploadFile]] = File(None),
     output_dir: Optional[str] = Form(None)
 ):
     """
@@ -99,16 +102,31 @@ async def process_sophia_tina(
     os.makedirs(work_dir, exist_ok=True)
     try:
         tms_paths = _save_uploads(tms_files, work_dir, "TMS 文件")
-        article_paths = _save_uploads(article_files, work_dir, "Article 文件")
+        tms_price_uploads = tms_price_files or article_files or []
+        if not tms_price_uploads:
+            raise HTTPException(status_code=400, detail="请选择要上传的 TMS Price 文件")
+        tms_price_paths = _save_uploads(tms_price_uploads, work_dir, "TMS Price 文件")
         price_paths = _save_uploads(price_files, work_dir, "Price 文件")
-        pack_paths = _save_uploads(pack_files, work_dir, "Pack 文件")
+        pack_paths = _save_uploads(pack_files or [], work_dir, "Pack 文件") if pack_files else None
+        allocation_paths = (
+            _save_uploads(allocation_files or [], work_dir, "Allocation Factory 文件")
+            if allocation_files
+            else None
+        )
+        shipment_method_paths = (
+            _save_uploads(shipment_method_files or [], work_dir, "Shipment Method 文件")
+            if shipment_method_files
+            else None
+        )
 
         result = st_module.process_reports(
             tms_paths, 
-            article_paths, 
+            tms_price_paths,
             price_paths, 
             pack_paths,
-            output_dir if output_dir else UPLOAD_DIR
+            output_dir if output_dir else UPLOAD_DIR,
+            allocation_paths=allocation_paths,
+            shipment_method_paths=shipment_method_paths,
         )
         
         # 返回结果
