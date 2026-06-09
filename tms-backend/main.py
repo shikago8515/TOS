@@ -19,6 +19,8 @@ from api.jane_outbound_compare_api import router as jane_outbound_compare_router
 from api.eric_api import router as eric_router
 from api.it_invoice_pdf_reorder_api import legacy_router as it_invoice_pdf_reorder_legacy_router
 from api.it_invoice_pdf_reorder_api import router as it_invoice_pdf_reorder_router
+from api.tms_finance_internal_reconciliation_api import router as tms_finance_internal_reconciliation_router
+from api.tms_finance_work_sales_api import router as tms_finance_work_sales_router
 
 
 # 创建 FastAPI 应用
@@ -47,6 +49,8 @@ app.include_router(jane_outbound_compare_router, prefix="/api")
 app.include_router(eric_router, prefix="/api")
 app.include_router(it_invoice_pdf_reorder_router, prefix="/api")
 app.include_router(it_invoice_pdf_reorder_legacy_router, prefix="/api")
+app.include_router(tms_finance_internal_reconciliation_router, prefix="/api")
+app.include_router(tms_finance_work_sales_router, prefix="/api")
 
 
 # 根路径
