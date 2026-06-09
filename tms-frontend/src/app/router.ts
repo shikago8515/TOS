@@ -19,6 +19,7 @@ import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
 import SettingsPage from '../pages/settings/SettingsPage.vue'
 import ShippingAutomation2Page from '../pages/shipping-automation-2/ShippingAutomation2Page.vue'
 import SophiaTinaPage from '../pages/sophia-tina/SophiaTinaPage.vue'
+import TmsFinanceInternalReconciliationPage from '../pages/tms-finance-internal-reconciliation/TmsFinanceInternalReconciliationPage.vue'
 import WebAutomationScenarioPage from '../pages/web-automation/WebAutomationScenarioPage.vue'
 
 const routeComponents: Partial<Record<string, Component>> = {
@@ -30,6 +31,8 @@ const routeComponents: Partial<Record<string, Component>> = {
   'jane-outbound-compare': JaneOutboundComparePage,
   eric: EricPage,
   'it-invoice-pdf-reorder': ItInvoicePdfReorderPage,
+  'tms-finance-internal-reconciliation': TmsFinanceInternalReconciliationPage,
+  'tms-finance-work-sales': TmsFinanceInternalReconciliationPage,
   'jane-sap': JaneSapPage,
   'eric-infornexus': EricInfornexusPage,
   'sophia-tina': SophiaTinaPage,
