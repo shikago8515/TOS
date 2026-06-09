@@ -231,8 +231,14 @@ const staticTextTranslations: Record<string, string> = {
   Article文件: 'Article Files',
   'Article 文件': 'Article Files',
   'Article 文件（可多选）': 'Article Files (multiple)',
+  'TMS Price 文件': 'TMS Price Files',
+  'TMS Price 文件（可多选）': 'TMS Price Files (multiple)',
   'Factory Price 文件': 'Factory Price Files',
   'Factory Price 文件（可多选）': 'Factory Price Files (multiple)',
+  'Allocation Factory 文件': 'Allocation Factory Files',
+  'Allocation Factory 文件（可选，可多选）': 'Allocation Factory Files (optional, multiple)',
+  'Shipment Method 文件': 'Shipment Method Files',
+  'Shipment Method 文件（可选，可多选）': 'Shipment Method Files (optional, multiple)',
   'Pack 文件': 'Pack Files',
   'Pack 文件（可多选）': 'Pack Files (multiple)',
   客户文件: 'Customer File',
@@ -312,11 +318,24 @@ const staticTextTranslations: Record<string, string> = {
     'Merge multiple Sophia & Tina Excel file types and generate analysis reports automatically.',
   '上传一个或多个 TMS 文件。': 'Upload one or more TMS files.',
   '上传一个或多个 Article 文件。': 'Upload one or more Article files.',
+  '上传 article-season-cbd-app-hdw 类型文件，用于 Season、Marketing Forecast 和 TMS Price':
+    'Upload article-season-cbd-app-hdw files for Season, Marketing Forecast, and TMS Price.',
   '上传一个或多个 Factory Price 文件。': 'Upload one or more Factory Price files.',
   '上传一个或多个 Pack 文件。': 'Upload one or more Pack files.',
+  '按 PO 覆盖 Result 中的 Factory；未上传时使用 TMS Factory':
+    'Override Result Factory by PO; uses TMS Factory when omitted.',
+  '按 PO 覆盖 Shipment Method、PODD 和 Quantity；未上传时使用 TMS 字段':
+    'Override Shipment Method, PODD, and Quantity by PO; uses TMS fields when omitted.',
   多类Excel文件统一合并: 'Merge multiple Excel file types',
   '多类 Excel 文件统一合并': 'Merge multiple Excel file types',
   '四类文件都需要至少上传 1 个。': 'Each of the four file groups requires at least one file.',
+  'TMS、TMS Price 和 Factory Price 需要至少上传 1 个。':
+    'TMS, TMS Price, and Factory Price each require at least one file.',
+  'Allocation Factory 和 Shipment Method 未上传时，会使用 TMS 文件中的字段。':
+    'When Allocation Factory and Shipment Method are omitted, fields from TMS are used.',
+  '请先补齐 TMS、TMS Price 和 Factory Price 文件，再开始合并。':
+    'Complete TMS, TMS Price, and Factory Price files before merging.',
+  必传就绪: 'Required ready',
   '输出合并后的 Sophia & Tina 分析报表。': 'Exports the merged Sophia & Tina analysis report.',
   '上传客户文件和 country.xlsx 后自动生成标准成品表。':
     'Upload Copy of TMS and country.xlsx to generate the standard finished goods sheet.',

@@ -6,9 +6,10 @@ export const sophiaTinaModuleName = 'Sophia - 报表合并'
 
 export interface SophiaTinaInputCounts {
   tms: number
-  article: number
+  tmsPrice: number
   price: number
-  pack: number
+  allocation: number
+  shipmentMethod: number
 }
 
 export function buildSophiaTinaSummary(
@@ -17,12 +18,16 @@ export function buildSophiaTinaSummary(
 ): ProcessSummaryItem[] {
   return [
     {
-      label: 'TMS / Article',
-      value: `${counts.tms} / ${counts.article}`,
+      label: 'TMS / TMS Price',
+      value: `${counts.tms} / ${counts.tmsPrice}`,
     },
     {
-      label: 'Price / Pack',
-      value: `${counts.price} / ${counts.pack}`,
+      label: 'Factory Price',
+      value: String(counts.price),
+    },
+    {
+      label: 'Allocation / Shipment',
+      value: `${counts.allocation} / ${counts.shipmentMethod}`,
     },
     {
       label: 'Working Number',

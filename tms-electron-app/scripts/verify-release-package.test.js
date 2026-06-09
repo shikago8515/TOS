@@ -34,8 +34,10 @@ const requiredUnpackedResourcePaths = [
   'resources/backend/main.py',
   'resources/backend/api/.gitkeep',
   'resources/backend/modules/.gitkeep',
+  'resources/backend/templates/sophia_tina_pivot_template.xlsx',
   'resources/backend-runtime/tos-backend/tos-backend.exe',
   'resources/backend-runtime/tos-backend/_internal/base_library.zip',
+  'resources/backend-runtime/tos-backend/_internal/templates/sophia_tina_pivot_template.xlsx',
   'resources/external-apps/infornexus/electron-app.exe',
 ]
 
@@ -54,7 +56,7 @@ function sha512Base64(content) {
 
 function touchManualDownloadArtifacts(distDir, version, content = 'manual download zip') {
   const zipName = `TOS_v${version}_Windows_x64_unpacked.zip`
-  const zipUrl = `downloads/${version}/${zipName}`
+  const zipUrl = zipName
   touch(path.join(distDir, zipUrl), content)
   touch(path.join(distDir, 'manual-downloads.json'), JSON.stringify({
     version,
@@ -118,7 +120,7 @@ test('reports latest.yml when the referenced installer is missing', () => {
   touch(path.join(appOutDir, 'resources', 'external-apps', 'infornexus', 'electron-app.exe'))
   touch(path.join(root, 'latest.yml'), [
     'version: 0.9.6-beta.2',
-    'path: TOS Setup 0.9.6-beta.2.exe',
+    'path: TOS.Setup.0.9.6-beta.2.exe',
   ].join('\n'))
 
   const issues = collectReleasePackageIssues({
@@ -134,7 +136,7 @@ test('reports latest.yml installer sha512 mismatches', () => {
   const root = makeTempDir()
   const appOutDir = path.join(root, 'win-unpacked')
   const version = '0.9.6-beta.3'
-  const installerName = `TOS Setup ${version}.exe`
+  const installerName = `TOS.Setup.${version}.exe`
 
   touch(path.join(root, installerName), 'installer')
   touch(path.join(root, `${installerName}.blockmap`), 'blockmap')
@@ -161,6 +163,7 @@ test('reports latest.yml installer sha512 mismatches', () => {
 test('reports stale top-level release artifacts for another version', () => {
   const root = makeTempDir()
   const appOutDir = path.join(root, 'win-unpacked')
+  touch(path.join(root, 'TOS.Setup.0.9.6-beta.2.exe'))
   touch(path.join(root, 'TOS Setup 0.9.6-beta.2.exe'))
   touch(path.join(root, 'TOS_v0.9.6-beta.2_Portable.exe'))
 
@@ -170,7 +173,8 @@ test('reports stale top-level release artifacts for another version', () => {
     expectedVersion: '0.9.6-beta.3',
   })
 
-  assert(issues.some((issue) => issue.includes('TOS Setup 0.9.6-beta.2.exe')))
+  assert(issues.some((issue) => issue.includes('TOS.Setup.0.9.6-beta.2.exe')))
+  assert(issues.some((issue) => issue.includes('legacy release artifact name is not allowed: TOS Setup 0.9.6-beta.2.exe')))
   assert(issues.some((issue) => issue.includes('TOS_v0.9.6-beta.2_Portable.exe')))
 })
 
@@ -189,26 +193,26 @@ test('reports any portable artifact even when it matches the current version', (
   assert(issues.some((issue) => issue.includes(`TOS_v${version}_Portable.exe`)))
 })
 
-test('reports any unpacked zip download artifact even when it matches the current version', () => {
+test('reports stale unpacked zip release artifacts for another version', () => {
   const root = makeTempDir()
   const appOutDir = path.join(root, 'win-unpacked')
-  const version = '0.9.6-beta.3'
-  touch(path.join(root, `TOS_v${version}_Windows_x64_unpacked.zip`))
+  const staleVersion = '0.9.6-beta.2'
+  touch(path.join(root, `TOS_v${staleVersion}_Windows_x64_unpacked.zip`))
 
   const issues = collectReleasePackageIssues({
     distDir: root,
     appOutDir,
-    expectedVersion: version,
+    expectedVersion: '0.9.6-beta.3',
   })
 
-  assert(issues.some((issue) => issue.includes(`TOS_v${version}_Windows_x64_unpacked.zip`)))
+  assert(issues.some((issue) => issue.includes(`TOS_v${staleVersion}_Windows_x64_unpacked.zip`)))
 })
 
 test('reports missing manual download manifest for release artifacts', () => {
   const root = makeTempDir()
   const appOutDir = path.join(root, 'win-unpacked')
   const version = '0.9.6-beta.3'
-  const installerName = `TOS Setup ${version}.exe`
+  const installerName = `TOS.Setup.${version}.exe`
 
   touchRequiredUnpackedResources(appOutDir, version)
   touch(path.join(root, installerName), 'installer')
@@ -236,7 +240,7 @@ test('reports manual download zip metadata mismatches', () => {
   const appOutDir = path.join(root, 'win-unpacked')
   const version = '0.9.6-beta.3'
   const zipName = `TOS_v${version}_Windows_x64_unpacked.zip`
-  const zipUrl = `downloads/${version}/${zipName}`
+  const zipUrl = zipName
 
   touch(path.join(root, zipUrl), 'manual zip')
   touch(path.join(root, 'manual-downloads.json'), JSON.stringify({
@@ -266,7 +270,7 @@ test('accepts installer release artifacts with a manual zip fallback', () => {
   const root = makeTempDir()
   const appOutDir = path.join(root, 'win-unpacked')
   const version = '0.9.6-beta.3'
-  const installerName = `TOS Setup ${version}.exe`
+  const installerName = `TOS.Setup.${version}.exe`
 
   touchRequiredUnpackedResources(appOutDir, version)
   touch(path.join(root, installerName), 'installer')
@@ -327,4 +331,27 @@ test('reports backend runtime older than packaged backend source', () => {
   })
 
   assert(issues.some((issue) => issue.includes('backend runtime is older than packaged backend source')))
+})
+
+test('reports missing Sophia Tina pivot templates in backend resources', () => {
+  const root = makeTempDir()
+  const appOutDir = path.join(root, 'win-unpacked')
+  const version = '0.9.8-beta.0.6'
+
+  touchRequiredUnpackedResources(appOutDir, version)
+  fs.rmSync(path.join(appOutDir, 'resources/backend/templates/sophia_tina_pivot_template.xlsx'), { force: true })
+  fs.rmSync(
+    path.join(appOutDir, 'resources/backend-runtime/tos-backend/_internal/templates/sophia_tina_pivot_template.xlsx'),
+    { force: true },
+  )
+
+  const issues = collectReleasePackageIssues({
+    distDir: root,
+    appOutDir,
+    expectedVersion: version,
+    skipArtifacts: true,
+  })
+
+  assert(issues.some((issue) => issue.includes('resources/backend/templates/sophia_tina_pivot_template.xlsx')))
+  assert(issues.some((issue) => issue.includes('resources/backend-runtime/tos-backend/_internal/templates/sophia_tina_pivot_template.xlsx')))
 })

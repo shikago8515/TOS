@@ -81,6 +81,13 @@
 3. 优化 Jane 模块时先核对现有页面、API 模块和后端处理模块的契约；不要只改单端并假设另一端兼容。
 4. Jane 前端 UI 调整必须保持现有产品体验和共享样式一致，避免重新设计导航模型或视觉语言。
 
+## Sophia/Tina 模块边界
+
+1. Sophia/Tina 报表使用原生 PivotTable 模板刷新路线；不要用 `openpyxl` 从零创建 PivotTable，也不要回退为静态汇总 sheet，除非用户明确改需求。
+2. `tms-backend/templates/sophia_tina_pivot_template.xlsx` 是后端运行必需资源。修改模板、生成逻辑或发行配置时，必须同时验证源码环境和 PyInstaller runtime 环境都能找到模板。
+3. 发行包内模板必须同时存在于 `resources/backend/templates/sophia_tina_pivot_template.xlsx` 和 `resources/backend-runtime/tos-backend/_internal/templates/sophia_tina_pivot_template.xlsx`。
+4. 修改 Sophia/Tina 报表生成逻辑后，至少运行 `python -m unittest tests.test_sophia_tina_module -v`，并检查生成文件仍保留原生 pivot XML、`Table1` 范围和 PivotCache source range。
+
 ## 后端规则
 
 1. 保持现有 FastAPI API 兼容，除非用户明确要求 breaking change。
@@ -96,8 +103,14 @@
 1. 修改 `tms-electron-app/main-simple.js`、`preload.js`、`package.json`、`scripts/`、自动更新、协议注册或 NSIS 配置前，先说明影响面。
 2. `electron-builder`、自动更新 feed、`manual-downloads.json`、`update-changelog.json`、COS/CDN 地址、`TOS_FRONTEND_SOURCE`、安装包输出规则属于发布敏感区域。
 3. 发布敏感改动必须成套验证，不能只改单文件后建议发布。
-4. `automation-apps/`、`automation-launcher/`、`browser-plugins/`、`external-apps/` 是独立运行边界。修改时先读对应 README、registry 和启动脚本。
-5. 不修改 `archive/legacy-packaging/`，除非任务明确是处理历史打包方案。
+4. 正式 Windows 本地发行入口是 `cd tms-electron-app && npm run build:win`；`npm run pack` 不是正式发行入口。
+5. 修改 `electron-builder`、`backend-runtime`、`extraResources`、`afterPack`、更新清单或发行校验脚本时，必须成套运行 `verify-renderer-package` 和 `verify-release-package`。
+6. `app.asar` 必须保持瘦身校验，不得包含 `backend-runtime/`、`automation-apps/`、`automation-launcher/`、`browser-plugins/`、`external-apps/`、旧 `dist*` 或嵌套 `app.asar`。
+7. 本地发行产物默认只保留在 `tms-electron-app/dist`，不上传 GitCode/GitHub Release，除非用户明确要求。
+8. 发行完成后报告 installer、免安装 zip、`app.asar`、`backend-runtime`、`external-apps` 的实际大小。
+9. `backend-runtime` 依赖瘦身是独立优化项；不要在普通打包修复里顺手移除 `torch`、`cv2`、`pyarrow`、`scipy` 等大依赖。
+10. `automation-apps/`、`automation-launcher/`、`browser-plugins/`、`external-apps/` 是独立运行边界。修改时先读对应 README、registry 和启动脚本。
+11. 不修改 `archive/legacy-packaging/`，除非任务明确是处理历史打包方案。
 
 ## 可用检查命令
 
@@ -128,13 +141,18 @@ npm run build:frontend
 npm run pack
 npm run verify:renderer-package
 npm run verify:release-package
+node --test scripts/build-backend-runtime.test.js scripts/run-pack-default.test.js scripts/legacy-archive.test.js scripts/verify-release-package.test.js
 ```
+
+`npm run pack` 只用于普通打包/校验，不作为正式 Windows 发行入口。
 
 ### 发布前完整验证
 
 ```powershell
 cd tms-electron-app
 npm run build:win
+node scripts/verify-renderer-package.js
+node scripts/verify-release-package.js
 ```
 
 发布前还应手动验证 Electron 启动、后端 `/health`、主要业务模块 Excel 上传/处理/下载、更新状态和诊断导出。

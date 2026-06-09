@@ -57,6 +57,11 @@ const requiredBackendRuntimeResources = [
   'tos-backend/_internal/_socket.pyd',
   'tos-backend/_internal/_ssl.pyd',
   'tos-backend/_internal/_asyncio.pyd',
+  'tos-backend/_internal/templates/sophia_tina_pivot_template.xlsx',
+]
+
+const backendRuntimeIncludedXlsxPaths = [
+  'tos-backend/_internal/templates/sophia_tina_pivot_template.xlsx',
 ]
 
 function nodeEnv() {
@@ -100,7 +105,44 @@ function removeDirectoryWithRetry(targetDir, attempts = 5) {
   }
 }
 
-function shouldSkipRuntimeResource(relativePath, isDirectory) {
+function normalizeResourcePath(relativePath) {
+  return relativePath.replace(/\\/g, '/')
+}
+
+function isIncludedXlsxPath(relativePath, options = {}) {
+  if (!Array.isArray(options.includeXlsxPaths)) {
+    return false
+  }
+
+  const normalized = normalizeResourcePath(relativePath)
+  return options.includeXlsxPaths
+    .map((includedPath) => normalizeResourcePath(includedPath))
+    .includes(normalized)
+}
+
+function copyIncludedXlsxPaths(sourceDir, targetDir, options = {}) {
+  if (!Array.isArray(options.includeXlsxPaths)) {
+    return
+  }
+
+  for (const includedPath of options.includeXlsxPaths) {
+    const normalized = normalizeResourcePath(includedPath)
+    if (normalized.startsWith('../') || path.isAbsolute(normalized)) {
+      throw new Error(`Refusing to copy unsafe include path: ${includedPath}`)
+    }
+
+    const sourcePath = path.join(sourceDir, ...normalized.split('/'))
+    if (!fs.existsSync(sourcePath)) {
+      continue
+    }
+
+    const targetPath = path.join(targetDir, ...normalized.split('/'))
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true })
+    fs.copyFileSync(sourcePath, targetPath)
+  }
+}
+
+function shouldSkipRuntimeResource(relativePath, isDirectory, options = {}) {
   const normalized = relativePath.replace(/\\/g, '/')
   const parts = normalized.split('/')
 
@@ -117,6 +159,10 @@ function shouldSkipRuntimeResource(relativePath, isDirectory) {
     return false
   }
 
+  if (isIncludedXlsxPath(normalized, options)) {
+    return false
+  }
+
   return (
     normalized.endsWith('.log') ||
     normalized.endsWith('.xlsx') ||
@@ -129,7 +175,7 @@ function shouldSkipRuntimeResource(relativePath, isDirectory) {
   )
 }
 
-function copyDirectoryFilteredWithRobocopy(sourceDir, targetDir) {
+function copyDirectoryFilteredWithRobocopy(sourceDir, targetDir, options = {}) {
   if (process.platform !== 'win32') {
     return false
   }
@@ -181,11 +227,12 @@ function copyDirectoryFilteredWithRobocopy(sourceDir, targetDir) {
     ].filter(Boolean).join('\n'))
   }
 
+  copyIncludedXlsxPaths(sourceDir, targetDir, options)
   return true
 }
 
-function copyDirectoryFiltered(sourceDir, targetDir, rootDir = sourceDir) {
-  if (rootDir === sourceDir && copyDirectoryFilteredWithRobocopy(sourceDir, targetDir)) {
+function copyDirectoryFiltered(sourceDir, targetDir, rootDir = sourceDir, options = {}) {
+  if (rootDir === sourceDir && copyDirectoryFilteredWithRobocopy(sourceDir, targetDir, options)) {
     return
   }
 
@@ -196,12 +243,12 @@ function copyDirectoryFiltered(sourceDir, targetDir, rootDir = sourceDir) {
     const targetPath = path.join(targetDir, entry.name)
     const relativePath = path.relative(rootDir, sourcePath)
 
-    if (shouldSkipRuntimeResource(relativePath, entry.isDirectory())) {
+    if (shouldSkipRuntimeResource(relativePath, entry.isDirectory(), options)) {
       continue
     }
 
     if (entry.isDirectory()) {
-      copyDirectoryFiltered(sourcePath, targetPath, rootDir)
+      copyDirectoryFiltered(sourcePath, targetPath, rootDir, options)
       continue
     }
 
@@ -212,7 +259,7 @@ function copyDirectoryFiltered(sourceDir, targetDir, rootDir = sourceDir) {
   }
 }
 
-function findIncompleteFilteredFiles(sourceDir, targetDir, rootDir = sourceDir, incomplete = []) {
+function findIncompleteFilteredFiles(sourceDir, targetDir, rootDir = sourceDir, options = {}, incomplete = []) {
   if (!fs.existsSync(sourceDir)) {
     return incomplete
   }
@@ -222,12 +269,12 @@ function findIncompleteFilteredFiles(sourceDir, targetDir, rootDir = sourceDir, 
     const targetPath = path.join(targetDir, entry.name)
     const relativePath = path.relative(rootDir, sourcePath)
 
-    if (shouldSkipRuntimeResource(relativePath, entry.isDirectory())) {
+    if (shouldSkipRuntimeResource(relativePath, entry.isDirectory(), options)) {
       continue
     }
 
     if (entry.isDirectory()) {
-      findIncompleteFilteredFiles(sourcePath, targetPath, rootDir, incomplete)
+      findIncompleteFilteredFiles(sourcePath, targetPath, rootDir, options, incomplete)
       continue
     }
 
@@ -248,8 +295,8 @@ function findIncompleteFilteredFiles(sourceDir, targetDir, rootDir = sourceDir, 
   return incomplete
 }
 
-function assertFilteredDirectoryComplete(sourceRoot, targetRoot, label) {
-  const incomplete = findIncompleteFilteredFiles(sourceRoot, targetRoot)
+function assertFilteredDirectoryComplete(sourceRoot, targetRoot, label, options = {}) {
+  const incomplete = findIncompleteFilteredFiles(sourceRoot, targetRoot, sourceRoot, options)
 
   if (incomplete.length === 0) {
     return
@@ -260,13 +307,13 @@ function assertFilteredDirectoryComplete(sourceRoot, targetRoot, label) {
   throw new Error(`${label} copy is incomplete; missing or mismatched ${incomplete.length} file(s):\n${preview}${suffix}`)
 }
 
-function syncDirectoryFiltered(sourceRoot, targetRoot, label, attempts = 4) {
+function syncDirectoryFiltered(sourceRoot, targetRoot, label, attempts = 4, options = {}) {
   removeDirectoryWithRetry(targetRoot)
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    copyDirectoryFiltered(sourceRoot, targetRoot)
+    copyDirectoryFiltered(sourceRoot, targetRoot, sourceRoot, options)
 
-    const incomplete = findIncompleteFilteredFiles(sourceRoot, targetRoot)
+    const incomplete = findIncompleteFilteredFiles(sourceRoot, targetRoot, sourceRoot, options)
     if (incomplete.length === 0) {
       return
     }
@@ -277,7 +324,7 @@ function syncDirectoryFiltered(sourceRoot, targetRoot, label, attempts = 4) {
     }
   }
 
-  assertFilteredDirectoryComplete(sourceRoot, targetRoot, label)
+  assertFilteredDirectoryComplete(sourceRoot, targetRoot, label, options)
 }
 
 function getAutomationTargetRoot(targetUnpackedDir) {
@@ -333,7 +380,13 @@ function syncBackendRuntime(targetUnpackedDir = unpackedDir) {
   )
 
   const targetRoot = getBackendRuntimeTargetRoot(targetUnpackedDir)
-  syncDirectoryFiltered(backendRuntimeSourceRoot, targetRoot, 'backend runtime')
+  syncDirectoryFiltered(
+    backendRuntimeSourceRoot,
+    targetRoot,
+    'backend runtime',
+    4,
+    { includeXlsxPaths: backendRuntimeIncludedXlsxPaths },
+  )
 }
 
 function verifyBackendRuntime(targetUnpackedDir = unpackedDir) {
@@ -350,7 +403,12 @@ function verifyBackendRuntime(targetUnpackedDir = unpackedDir) {
     throw new Error(`backend runtime Python DLL not found in: ${internalDir}`)
   }
 
-  assertFilteredDirectoryComplete(backendRuntimeSourceRoot, targetRoot, 'backend runtime')
+  assertFilteredDirectoryComplete(
+    backendRuntimeSourceRoot,
+    targetRoot,
+    'backend runtime',
+    { includeXlsxPaths: backendRuntimeIncludedXlsxPaths },
+  )
 }
 
 function sleep(ms) {

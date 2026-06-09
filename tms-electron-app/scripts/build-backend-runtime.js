@@ -5,6 +5,7 @@ const { spawnSync } = require('child_process')
 const electronDir = path.resolve(__dirname, '..')
 const repoRoot = path.resolve(electronDir, '..')
 const backendDir = path.join(repoRoot, 'tms-backend')
+const templateDir = path.join(backendDir, 'templates')
 const runtimeRoot = path.join(electronDir, 'backend-runtime')
 const runtimeDir = path.join(runtimeRoot, 'tos-backend')
 const workPath = path.join(backendDir, 'build', 'pyinstaller')
@@ -33,16 +34,8 @@ function requireFile(filePath, label) {
   }
 }
 
-function main() {
-  requireFile(launcherPath, 'backend launcher')
-  fs.mkdirSync(runtimeRoot, { recursive: true })
-
-  // 发布包优先运行 backend-runtime，所以每次打包前必须用当前后端源码重建它。
-  assertInside(runtimeRoot, runtimeDir)
-  fs.rmSync(runtimeDir, { recursive: true, force: true })
-
-  const pyinstaller = getPyInstallerCommand()
-  const args = [
+function buildPyInstallerArgs() {
+  return [
     '--noconfirm',
     '--clean',
     '--onedir',
@@ -54,13 +47,28 @@ function main() {
     runtimeRoot,
     '--workpath',
     workPath,
-    launcherPath
+    '--add-data',
+    `${templateDir}${path.delimiter}templates`,
+    launcherPath,
   ]
+}
+
+function main() {
+  requireFile(launcherPath, 'backend launcher')
+  requireFile(path.join(templateDir, 'sophia_tina_pivot_template.xlsx'), 'Sophia/Tina pivot template')
+  fs.mkdirSync(runtimeRoot, { recursive: true })
+
+  // 发布包优先运行 backend-runtime，所以每次打包前必须用当前后端源码重建它。
+  assertInside(runtimeRoot, runtimeDir)
+  fs.rmSync(runtimeDir, { recursive: true, force: true })
+
+  const pyinstaller = getPyInstallerCommand()
+  const args = buildPyInstallerArgs()
 
   const result = spawnSync(pyinstaller, args, {
     cwd: backendDir,
     stdio: 'inherit',
-    shell: false
+    shell: false,
   })
 
   if (result.error) {
@@ -75,8 +83,21 @@ function main() {
     : path.join(runtimeDir, 'tos-backend')
   requireFile(runtimeExe, 'backend runtime executable')
   requireFile(path.join(runtimeDir, '_internal', 'base_library.zip'), 'backend runtime base library')
+  requireFile(
+    path.join(runtimeDir, '_internal', 'templates', 'sophia_tina_pivot_template.xlsx'),
+    'backend runtime Sophia/Tina pivot template',
+  )
 
   console.log(`Backend runtime rebuilt: ${runtimeDir}`)
 }
 
-main()
+if (require.main === module) {
+  main()
+}
+
+module.exports = {
+  backendDir,
+  buildPyInstallerArgs,
+  main,
+  templateDir,
+}

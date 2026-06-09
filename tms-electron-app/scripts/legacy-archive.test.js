@@ -53,13 +53,16 @@ test('electron-builder excludes archived legacy files from app.asar', () => {
 
 test('electron-builder excludes generated package outputs from app.asar', () => {
   const requiredExclusions = [
+    '!automation-apps/**/*',
+    '!automation-launcher/**/*',
+    '!backend-runtime/**/*',
+    '!browser-plugins/**/*',
     '!dist-dnd-fix/**/*',
     '!dist-realtest/**/*',
     '!dist-tms-automation-check/**/*',
     '!dist-*/win-unpacked/**/*',
     '!dist-*/**/app.asar',
-    '!backend-runtime/**/*',
-    '!automation-launcher/**/*',
+    '!external-apps/**/*',
   ]
 
   for (const exclusion of requiredExclusions) {
@@ -68,6 +71,18 @@ test('electron-builder excludes generated package outputs from app.asar', () => 
       `build.files should include ${exclusion}`,
     )
   }
+})
+
+test('electron-builder packages backend templates as backend source resources', () => {
+  const backendResource = packageJson.build.extraResources.find((entry) => (
+    entry.from === '../tms-backend' && entry.to === 'backend'
+  ))
+
+  assert(backendResource, 'backend extraResource should exist')
+  assert(
+    backendResource.filter.includes('templates/**/*'),
+    'backend extraResource should include templates/**/*',
+  )
 })
 
 test('portable release entrypoints stay disabled', () => {

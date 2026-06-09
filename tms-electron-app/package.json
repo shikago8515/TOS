@@ -1,6 +1,6 @@
 {
   "name": "tms-integration-tool",
-  "version": "0.9.8-beta.0.5",
+  "version": "0.9.8-beta.0.6",
   "description": "TOS integration tool",
   "main": "main-simple.js",
   "scripts": {
@@ -47,6 +47,7 @@
   "build": {
     "appId": "com.tomwell.tms",
     "productName": "TOS",
+    "artifactName": "TOS.Setup.${version}.${ext}",
     "afterPack": "scripts/after-pack.js",
     "detectUpdateChannel": false,
     "protocols": [
@@ -173,6 +174,7 @@
           "requirements.txt",
           "api/**/*",
           "modules/**/*",
+          "templates/**/*",
           "utils/**/*",
           "!**/__pycache__/**/*",
           "!uploads/**/*",

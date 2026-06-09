@@ -1,5 +1,5 @@
 {
-  "date": "2026-06-05",
+  "date": "2026-06-09",
   "added": [
     "系统设置的版本与更新页面新增 DG.Luenthai 版权角标。",
     "侧边栏新增收起/展开能力，Excel、自动化试验区和网页数据爬取支持分组折叠。",
@@ -10,6 +10,7 @@
     "Jane-BOM核对支持上传 Jane-BOM汇总 生成的 BOM汇总.xlsx，直接与 T1 PRODUCTION 进行面料核对。"
   ],
   "improved": [
+    "Sophia/Tina 报表合并改为基于原生 PivotTable 模板刷新，Result 修改后可在 Excel Refresh All 同步透视汇总。",
     "网页自动化 UI 执行流程关闭 slowMo、视觉高亮延迟和固定等待，提升现有自动化动作速度。",
     "补齐英文界面下 Excel 核心页面、上传组件、文件预检查、结果摘要、处理记录和系统设置的英文显示。",
     "版本号在系统设置中统一显示为大写 V 前缀，避免侧边栏和底栏出现冗余信息。",
@@ -22,6 +23,7 @@
     "Jane 成品表 Sub. Total 行的 PO QTY 改为纵向汇总本列数据行。"
   ],
   "fixed": [
+    "修复发布包可能缺少 Sophia/Tina 原生透视模板导致生成报表失败的问题。",
     "修复发布包优先运行旧 backend-runtime，导致后端模块修改未在 TOS.exe 中生效的问题。",
     "修复 Eric 核对结果中 YTIC_SP_Extract 补充行字段错位的问题。",
     "修复 Eric 核对结果中 YTIC 目的地、尺码和 Final_Data 对比顺序不便核对的问题。",
