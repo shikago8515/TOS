@@ -22,6 +22,7 @@ from modules.it_invoice_pdf_reorder_module import (
 
 
 router = APIRouter(prefix="/it-invoice-pdf-reorder", tags=["IT Invoice PDF Reorder"])
+legacy_router = APIRouter(tags=["IT Invoice PDF Reorder Legacy"])
 logger = logging.getLogger(__name__)
 
 DATA_ROOT = Path(
@@ -39,6 +40,7 @@ def health() -> dict[str, str]:
 
 
 @router.post("/preview-invoice")
+@legacy_router.post("/preview-invoice")
 async def preview_invoice(invoice_pdf: UploadFile = File(...)) -> dict[str, Any]:
     ensure_pdf(invoice_pdf, "发票PDF")
     logs = [f"收到发票PDF：{invoice_pdf.filename or 'invoice.pdf'}"]
@@ -74,6 +76,7 @@ async def preview_invoice(invoice_pdf: UploadFile = File(...)) -> dict[str, Any]
 
 
 @router.post("/preview-po")
+@legacy_router.post("/preview-po")
 async def preview_po(po_pdf: UploadFile = File(...)) -> dict[str, Any]:
     ensure_pdf(po_pdf, "PO PDF")
     logs = [f"收到PO PDF：{po_pdf.filename or 'po.pdf'}"]
@@ -104,6 +107,7 @@ async def preview_po(po_pdf: UploadFile = File(...)) -> dict[str, Any]:
 
 
 @router.post("/extract-numbers")
+@legacy_router.post("/extract-numbers")
 async def extract_numbers(
     files: list[UploadFile] | None = File(None),
     pattern: str = Form("090|45"),
@@ -163,6 +167,7 @@ async def extract_numbers(
 
 
 @router.post("/process")
+@legacy_router.post("/process")
 async def process_pdfs(
     invoice_pdf: UploadFile = File(...),
     po_pdf: UploadFile = File(...),

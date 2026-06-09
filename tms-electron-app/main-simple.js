@@ -16,7 +16,13 @@ let protocolCommandQueue = [];
 let protocolQueueBusy = false;
 const BACKEND_HOST = '127.0.0.1';
 const BACKEND_PORT = 8000;
-const BACKEND_URL = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
+const BACKEND_PORT_CANDIDATES = [8000, 8001, 8002, 8003, 8004, 8005];
+const REQUIRED_BACKEND_OPENAPI_PATHS = [
+  '/api/it-invoice-pdf-reorder/preview-invoice',
+  '/api/it-invoice-pdf-reorder/preview-po'
+];
+let activeBackendPort = BACKEND_PORT;
+let activeBackendUrl = buildBackendUrl(BACKEND_PORT);
 const APP_DISPLAY_NAME = 'TOS'/*12345678*/;
 const AUTOMATION_LAUNCHER_HOST = '127.0.0.1';
 const AUTOMATION_LAUNCHER_PORT = 3210;
@@ -1257,7 +1263,7 @@ async function buildDiagnosticsManifest() {
       backendMainExists: fs.existsSync(path.join(backendDir, 'main.py')),
       automationRegistryExists: fs.existsSync(path.join(automationAppRoot, 'registry.json')),
       browserPluginRegistryExists: fs.existsSync(path.join(browserPluginRoot, 'registry.json')),
-      backendHealth: await requestBackendHealth(800)
+      backendHealth: await requestBackendHealth(activeBackendPort, 800)
     },
     paths: {
       logsDir: getLogsDir(),
@@ -1400,37 +1406,74 @@ function getBackendDataDir() {
   return path.join(app.getPath('userData'), 'backend-data');
 }
 
-function requestBackendHealth(timeoutMs = 1500) {
+function buildBackendUrl(port = activeBackendPort) {
+  return `http://${BACKEND_HOST}:${port}`;
+}
+
+function requestBackendJson(port, pathname, timeoutMs = 1500) {
   return new Promise((resolve) => {
-    const req = http.get(`${BACKEND_URL}/health`, (res) => {
+    const req = http.get(`${buildBackendUrl(port)}${pathname}`, (res) => {
       let body = '';
       res.setEncoding('utf8');
       res.on('data', (chunk) => {
         body += chunk;
       });
       res.on('end', () => {
-        resolve(res.statusCode === 200 && /ok/i.test(body));
+        if (res.statusCode !== 200) {
+          resolve(null);
+          return;
+        }
+        try {
+          resolve(body ? JSON.parse(body) : {});
+        } catch (_error) {
+          resolve(null);
+        }
       });
     });
 
-    req.on('error', () => resolve(false));
+    req.on('error', () => resolve(null));
     req.setTimeout(timeoutMs, () => {
       req.destroy();
-      resolve(false);
+      resolve(null);
     });
   });
 }
 
-async function waitForBackend(timeoutMs = 15000) {
+async function requestBackendHealth(port = activeBackendPort, timeoutMs = 1500) {
+  const payload = await requestBackendJson(port, '/health', timeoutMs);
+  return Boolean(payload && /ok/i.test(JSON.stringify(payload)));
+}
+
+async function requestBackendCompatibility(port = activeBackendPort, timeoutMs = 2500) {
+  if (!await requestBackendHealth(port, timeoutMs)) {
+    return { healthy: false, compatible: false };
+  }
+
+  const openapi = await requestBackendJson(port, '/openapi.json', timeoutMs);
+  const paths = openapi && typeof openapi === 'object' && openapi.paths && typeof openapi.paths === 'object'
+    ? openapi.paths
+    : {};
+  const missingPaths = REQUIRED_BACKEND_OPENAPI_PATHS.filter((routePath) => !Object.prototype.hasOwnProperty.call(paths, routePath));
+
+  return {
+    healthy: true,
+    compatible: missingPaths.length === 0,
+    version: openapi && openapi.info && openapi.info.version,
+    missingPaths
+  };
+}
+
+async function waitForBackend(port, timeoutMs = 15000) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    if (await requestBackendHealth(1000)) return true;
+    const readiness = await requestBackendCompatibility(port, 1000);
+    if (readiness.compatible) return true;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   return false;
 }
 
-async function spawnBackendWith(candidate, backendDir, logStream) {
+async function spawnBackendWith(candidate, backendDir, logStream, port) {
   const args = [
     ...candidate.args,
     '-m',
@@ -1439,7 +1482,7 @@ async function spawnBackendWith(candidate, backendDir, logStream) {
     '--host',
     BACKEND_HOST,
     '--port',
-    String(BACKEND_PORT)
+    String(port)
   ];
 
   const child = spawn(candidate.command, args, {
@@ -1467,7 +1510,7 @@ async function spawnBackendWith(candidate, backendDir, logStream) {
   return child;
 }
 
-async function spawnBundledBackend(executablePath, logStream) {
+async function spawnBundledBackend(executablePath, logStream, port) {
   const child = spawn(executablePath, [], {
     cwd: path.dirname(executablePath),
     windowsHide: true,
@@ -1477,7 +1520,7 @@ async function spawnBundledBackend(executablePath, logStream) {
       PYTHONIOENCODING: 'utf-8',
       PYTHONUTF8: '1',
       TOS_BACKEND_HOST: BACKEND_HOST,
-      TOS_BACKEND_PORT: String(BACKEND_PORT),
+      TOS_BACKEND_PORT: String(port),
       TMS_BACKEND_DATA_DIR: getBackendDataDir()
     }
   });
@@ -1496,8 +1539,21 @@ async function spawnBundledBackend(executablePath, logStream) {
 }
 
 async function startBackendServer() {
-  if (await requestBackendHealth()) {
-    return { success: true, alreadyRunning: true, url: BACKEND_URL };
+  if (backendProcess && !backendProcess.killed) {
+    return { success: true, alreadyRunning: true, url: activeBackendUrl, port: activeBackendPort };
+  }
+
+  const defaultReadiness = await requestBackendCompatibility(BACKEND_PORT);
+  if (defaultReadiness.compatible) {
+    activeBackendPort = BACKEND_PORT;
+    activeBackendUrl = buildBackendUrl(BACKEND_PORT);
+    return {
+      success: true,
+      alreadyRunning: true,
+      url: activeBackendUrl,
+      port: activeBackendPort,
+      version: defaultReadiness.version
+    };
   }
 
   const backendDir = getBackendDir();
@@ -1510,19 +1566,35 @@ async function startBackendServer() {
   const logStream = fs.openSync(logPath, 'a');
 
   const errors = [];
+  if (defaultReadiness.healthy && !defaultReadiness.compatible) {
+    errors.push(
+      `${buildBackendUrl(BACKEND_PORT)} is an older incompatible backend`
+      + (defaultReadiness.version ? ` (${defaultReadiness.version})` : '')
+      + (defaultReadiness.missingPaths && defaultReadiness.missingPaths.length
+        ? ` missing ${defaultReadiness.missingPaths.join(', ')}`
+        : '')
+    );
+  }
+  const candidatePorts = defaultReadiness.healthy && !defaultReadiness.compatible
+    ? BACKEND_PORT_CANDIDATES.filter((port) => port !== BACKEND_PORT)
+    : BACKEND_PORT_CANDIDATES;
 
   if (bundledBackendExecutable) {
-    try {
-      const child = await spawnBundledBackend(bundledBackendExecutable, logStream);
-      const isReady = await waitForBackend();
-      if (isReady) {
-        backendProcess = child;
-        return { success: true, url: BACKEND_URL, command: bundledBackendExecutable };
+    for (const port of candidatePorts) {
+      try {
+        const child = await spawnBundledBackend(bundledBackendExecutable, logStream, port);
+        const isReady = await waitForBackend(port);
+        if (isReady) {
+          backendProcess = child;
+          activeBackendPort = port;
+          activeBackendUrl = buildBackendUrl(port);
+          return { success: true, url: activeBackendUrl, port, command: bundledBackendExecutable };
+        }
+        child.kill();
+        errors.push(`${bundledBackendExecutable} on ${buildBackendUrl(port)}: backend did not become ready`);
+      } catch (error) {
+        errors.push(`${bundledBackendExecutable} on ${buildBackendUrl(port)}: ${error.message}`);
       }
-      child.kill();
-      errors.push(`${bundledBackendExecutable}: backend did not become ready`);
-    } catch (error) {
-      errors.push(`${bundledBackendExecutable}: ${error.message}`);
     }
   }
 
@@ -1545,17 +1617,21 @@ async function startBackendServer() {
   ];
 
   for (const candidate of candidates) {
-    try {
-      const child = await spawnBackendWith(candidate, backendDir, logStream);
-      const isReady = await waitForBackend();
-      if (isReady) {
-        backendProcess = child;
-        return { success: true, url: BACKEND_URL, command: candidate.command };
+    for (const port of candidatePorts) {
+      try {
+        const child = await spawnBackendWith(candidate, backendDir, logStream, port);
+        const isReady = await waitForBackend(port);
+        if (isReady) {
+          backendProcess = child;
+          activeBackendPort = port;
+          activeBackendUrl = buildBackendUrl(port);
+          return { success: true, url: activeBackendUrl, port, command: candidate.command };
+        }
+        child.kill();
+        errors.push(`${candidate.command} on ${buildBackendUrl(port)}: backend did not become ready`);
+      } catch (error) {
+        errors.push(`${candidate.command} on ${buildBackendUrl(port)}: ${error.message}`);
       }
-      child.kill();
-      errors.push(`${candidate.command}: backend did not become ready`);
-    } catch (error) {
-      errors.push(`${candidate.command}: ${error.message}`);
     }
   }
 
@@ -1569,7 +1645,7 @@ async function startBackendServer() {
 }
 
 function registerIpcHandlers() {
-  ipcMain.handle('get-backend-url', () => BACKEND_URL);
+  ipcMain.handle('get-backend-url', () => activeBackendUrl);
   ipcMain.handle('start-backend-server', () => startBackendServer());
   ipcMain.handle('get-app-version', () => ({
     version: app.getVersion(),
