@@ -99,11 +99,53 @@ export function readErrorMessage(error: unknown, fallback: string): string {
   return fallback
 }
 
-function readResponseMessage(data: unknown): string | undefined {
+export function readResponseMessage(data: unknown): string | undefined {
   if (data && typeof data === 'object' && 'message' in data) {
     const message = (data as { message?: unknown }).message
-    return typeof message === 'string' ? message : undefined
+    if (typeof message === 'string') {
+      return message
+    }
+  }
+
+  if (data && typeof data === 'object' && 'detail' in data) {
+    const detail = (data as { detail?: unknown }).detail
+    if (typeof detail === 'string') {
+      return detail
+    }
+
+    if (Array.isArray(detail)) {
+      const messages = detail
+        .map((entry) => formatValidationDetail(entry))
+        .filter((entry): entry is string => Boolean(entry))
+
+      return messages.length > 0 ? messages.join('；') : undefined
+    }
   }
 
   return undefined
+}
+
+function formatValidationDetail(entry: unknown): string | undefined {
+  if (!entry || typeof entry !== 'object') {
+    return undefined
+  }
+
+  const detail = entry as { loc?: unknown; msg?: unknown }
+  const fieldPath = Array.isArray(detail.loc)
+    ? detail.loc
+        .map((part) => String(part))
+        .filter((part) => part !== 'body')
+        .join('.')
+    : ''
+  const message = typeof detail.msg === 'string' ? detail.msg : ''
+
+  if (message === 'Field required' && fieldPath) {
+    return `缺少必传字段 ${fieldPath}`
+  }
+
+  if (fieldPath && message) {
+    return `${fieldPath}: ${message}`
+  }
+
+  return message || fieldPath || undefined
 }

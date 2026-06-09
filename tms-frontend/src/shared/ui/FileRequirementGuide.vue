@@ -85,7 +85,7 @@ const guides: Record<FileRequirementOwner, FileRequirementGuideModel> = {
         required: true,
       },
       {
-        name: 'Article 文件',
+        name: 'TMS Price 文件',
         detail: '可多选，支持 .xls / .xlsx',
         required: true,
       },
@@ -95,13 +95,19 @@ const guides: Record<FileRequirementOwner, FileRequirementGuideModel> = {
         required: true,
       },
       {
-        name: 'Pack 文件',
+        name: 'Allocation Factory 文件',
         detail: '可多选，支持 .xls / .xlsx',
-        required: true,
+        required: false,
+      },
+      {
+        name: 'Shipment Method 文件',
+        detail: '可多选，支持 .xls / .xlsx',
+        required: false,
       },
     ],
     notes: [
-      '四类文件都需要至少上传 1 个。',
+      'TMS、TMS Price 和 Factory Price 需要至少上传 1 个。',
+      'Allocation Factory 和 Shipment Method 未上传时，会使用 TMS 文件中的字段。',
       '输出合并后的 Sophia & Tina 分析报表。',
     ],
   },

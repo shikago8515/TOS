@@ -17,7 +17,7 @@
           :fields="uploadFields"
           :processing="processing"
           :progress="progress"
-          badge="4 组必传"
+          badge="3 组必传 + 2 组可选"
           @update:files="updateUploadFiles"
         >
           <ResultSummary
@@ -73,9 +73,10 @@ import {
 } from './sophiaTinaModel'
 
 const tmsFiles = ref<File[]>([])
-const articleFiles = ref<File[]>([])
+const tmsPriceFiles = ref<File[]>([])
 const priceFiles = ref<File[]>([])
-const packFiles = ref<File[]>([])
+const allocationFiles = ref<File[]>([])
+const shipmentMethodFiles = ref<File[]>([])
 const processing = ref(false)
 const progress = ref(0)
 const message = ref('')
@@ -95,10 +96,10 @@ const uploadFields = computed<ExcelFileField[]>(() => [
     multiple: true,
   },
   {
-    id: 'article',
-    label: 'Article 文件（可多选）',
-    files: articleFiles.value,
-    hint: '上传一个或多个 Article 文件',
+    id: 'tms-price',
+    label: 'TMS Price 文件（可多选）',
+    files: tmsPriceFiles.value,
+    hint: '上传 article-season-cbd-app-hdw 类型文件，用于 Season、Marketing Forecast 和 TMS Price',
     multiple: true,
   },
   {
@@ -109,28 +110,38 @@ const uploadFields = computed<ExcelFileField[]>(() => [
     multiple: true,
   },
   {
-    id: 'pack',
-    label: 'Pack 文件（可多选）',
-    files: packFiles.value,
-    hint: '上传一个或多个 Pack 文件',
+    id: 'allocation',
+    label: 'Allocation Factory 文件（可选，可多选）',
+    files: allocationFiles.value,
+    hint: '按 PO 覆盖 Result 中的 Factory；未上传时使用 TMS Factory',
     multiple: true,
+    required: false,
+  },
+  {
+    id: 'shipment-method',
+    label: 'Shipment Method 文件（可选，可多选）',
+    files: shipmentMethodFiles.value,
+    hint: '按 PO 覆盖 Shipment Method、PODD 和 Quantity；未上传时使用 TMS 字段',
+    multiple: true,
+    required: false,
   },
 ])
 
 const fileGroups = computed(() => buildExcelFileGroups(uploadFields.value))
 const canProcess = computed(() => areRequiredFilesReady(fileGroups.value))
 const readyGroupCount = computed(
-  () => fileGroups.value.filter((group) => group.files.length > 0).length,
+  () => fileGroups.value.filter((group) => group.required && group.files.length > 0).length,
 )
 const totalSelectedCount = computed(
   () =>
     tmsFiles.value.length +
-    articleFiles.value.length +
+    tmsPriceFiles.value.length +
     priceFiles.value.length +
-    packFiles.value.length,
+    allocationFiles.value.length +
+    shipmentMethodFiles.value.length,
 )
 const toolbarStatus = computed(
-  () => `${text('已就绪')} ${readyGroupCount.value}/4 ${text('组文件')}，${text('当前共')} ${totalSelectedCount.value} ${text('个文件')}`,
+  () => `${text('必传就绪')} ${readyGroupCount.value}/3 ${text('组文件')}，${text('当前共')} ${totalSelectedCount.value} ${text('个文件')}`,
 )
 const pageStats = computed<ExcelPageStat[]>(() => [
   {
@@ -179,8 +190,8 @@ function updateUploadFiles(fieldId: string, files: File[]): void {
     return
   }
 
-  if (fieldId === 'article') {
-    articleFiles.value = files
+  if (fieldId === 'tms-price') {
+    tmsPriceFiles.value = files
     return
   }
 
@@ -189,15 +200,20 @@ function updateUploadFiles(fieldId: string, files: File[]): void {
     return
   }
 
-  if (fieldId === 'pack') {
-    packFiles.value = files
+  if (fieldId === 'allocation') {
+    allocationFiles.value = files
+    return
+  }
+
+  if (fieldId === 'shipment-method') {
+    shipmentMethodFiles.value = files
   }
 }
 
 async function startProcess(): Promise<void> {
   if (!canProcess.value) {
     messageTone.value = 'warning'
-    message.value = '请先补齐四类文件，再开始合并。'
+    message.value = '请先补齐 TMS、TMS Price 和 Factory Price 文件，再开始合并。'
     success.value = false
     return
   }
@@ -216,9 +232,10 @@ async function startProcess(): Promise<void> {
     const response = await processSophiaTinaFiles(
       {
         tmsFiles: tmsFiles.value,
-        articleFiles: articleFiles.value,
+        tmsPriceFiles: tmsPriceFiles.value,
         priceFiles: priceFiles.value,
-        packFiles: packFiles.value,
+        allocationFiles: allocationFiles.value,
+        shipmentMethodFiles: shipmentMethodFiles.value,
       },
       (nextProgress) => {
         progress.value = nextProgress
@@ -231,9 +248,10 @@ async function startProcess(): Promise<void> {
     message.value = response.error ? `${response.message} - ${response.error}` : response.message
     summaryItems.value = buildSophiaTinaSummary(response, {
       tms: tmsFiles.value.length,
-      article: articleFiles.value.length,
+      tmsPrice: tmsPriceFiles.value.length,
       price: priceFiles.value.length,
-      pack: packFiles.value.length,
+      allocation: allocationFiles.value.length,
+      shipmentMethod: shipmentMethodFiles.value.length,
     })
     recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles)
   } catch (error) {
@@ -261,9 +279,10 @@ async function downloadResult(): Promise<void> {
 
 function resetForm(): void {
   tmsFiles.value = []
-  articleFiles.value = []
+  tmsPriceFiles.value = []
   priceFiles.value = []
-  packFiles.value = []
+  allocationFiles.value = []
+  shipmentMethodFiles.value = []
   processing.value = false
   progress.value = 0
   message.value = ''
