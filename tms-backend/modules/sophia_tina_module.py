@@ -26,6 +26,47 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utils.file_utils import ensure_dir, create_thin_border
 
 
+PIVOT_TEMPLATE_FILENAME = "sophia_tina_pivot_template.xlsx"
+
+
+def _unique_existing_order(paths: List[str]) -> List[str]:
+    seen: Set[str] = set()
+    unique_paths: List[str] = []
+    for path in paths:
+        normalized = os.path.abspath(path)
+        if normalized not in seen:
+            seen.add(normalized)
+            unique_paths.append(normalized)
+    return unique_paths
+
+
+def _candidate_pivot_template_paths() -> List[str]:
+    paths: List[str] = []
+    override_path = os.environ.get("TOS_SOPHIA_TINA_TEMPLATE_PATH")
+    if override_path:
+        paths.append(override_path)
+
+    module_dir = os.path.dirname(__file__)
+    paths.append(os.path.join(module_dir, "..", "templates", PIVOT_TEMPLATE_FILENAME))
+
+    runtime_root = getattr(sys, "_MEIPASS", None)
+    if runtime_root:
+        paths.append(os.path.join(runtime_root, "templates", PIVOT_TEMPLATE_FILENAME))
+
+    if getattr(sys, "frozen", False):
+        paths.append(os.path.join(os.path.dirname(sys.executable), "_internal", "templates", PIVOT_TEMPLATE_FILENAME))
+
+    return _unique_existing_order(paths)
+
+
+def _resolve_pivot_template_path() -> str:
+    candidates = _candidate_pivot_template_paths()
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    return candidates[0]
+
+
 class SophiaTinaModule:
     """Sophia & Tina 报表生成业务逻辑"""
 
@@ -62,7 +103,7 @@ class SophiaTinaModule:
     OOXML_X14AC_NS = "http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac"
     OOXML_XML_NS = "http://www.w3.org/XML/1998/namespace"
     PIVOT_TEMPLATE_PATH = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "templates", "sophia_tina_pivot_template.xlsx")
+        os.path.join(os.path.dirname(__file__), "..", "templates", PIVOT_TEMPLATE_FILENAME)
     )
 
     def __init__(self):
@@ -102,13 +143,15 @@ class SophiaTinaModule:
     ) -> None:
         """保存 Sophia & Tina 结果报表"""
 
-        if not os.path.exists(self.PIVOT_TEMPLATE_PATH):
-            raise FileNotFoundError(f"Sophia/Tina pivot template not found: {self.PIVOT_TEMPLATE_PATH}")
+        template_path = _resolve_pivot_template_path()
+        if not os.path.exists(template_path):
+            raise FileNotFoundError(f"Sophia/Tina pivot template not found: {template_path}")
 
         self._save_st_result_from_pivot_template(
             results,
             output_path,
             diagnostics or [],
+            template_path,
         )
         return
 
@@ -217,18 +260,20 @@ class SophiaTinaModule:
         results: List[Dict[str, Any]],
         output_path: str,
         diagnostics: List[Dict[str, Any]],
+        template_path: str,
     ) -> None:
         """Write editable Result data into the native PivotTable template."""
         table_ref = f"A1:Q{max(len(results) + 1, 1)}"
-        replacements = self._build_pivot_template_replacements(results, diagnostics, table_ref)
+        replacements = self._build_pivot_template_replacements(results, diagnostics, table_ref, template_path)
         skip_entries = {"xl/calcChain.xml"}
-        self._replace_xlsx_entries(self.PIVOT_TEMPLATE_PATH, output_path, replacements, skip_entries)
+        self._replace_xlsx_entries(template_path, output_path, replacements, skip_entries)
 
     def _build_pivot_template_replacements(
         self,
         results: List[Dict[str, Any]],
         diagnostics: List[Dict[str, Any]],
         table_ref: str,
+        template_path: str,
     ) -> Dict[str, bytes]:
         replacements: Dict[str, bytes] = {
             "xl/worksheets/sheet10.xml": self._result_sheet_xml(results, table_ref),
@@ -236,7 +281,7 @@ class SophiaTinaModule:
             "xl/worksheets/sheet12.xml": self._diagnostics_sheet_xml(diagnostics),
         }
 
-        with zipfile.ZipFile(self.PIVOT_TEMPLATE_PATH, "r") as archive:
+        with zipfile.ZipFile(template_path, "r") as archive:
             replacements["xl/tables/table1.xml"] = self._updated_table_xml(
                 archive.read("xl/tables/table1.xml"),
                 table_ref,

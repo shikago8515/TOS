@@ -24,7 +24,7 @@ from api.it_invoice_pdf_reorder_api import router as it_invoice_pdf_reorder_rout
 app = FastAPI(
     title="TMS Backend API",
     description="TMS 报表自动化工具后端 API 服务",
-    version="0.9.8-beta.0.5"
+    version="0.9.8-beta.0.6"
 )
 
 # 添加 CORS 中间件
@@ -52,7 +52,7 @@ app.include_router(it_invoice_pdf_reorder_router, prefix="/api")
 async def root():
     return {
         "message": "TMS Backend API is running",
-        "version": "0.9.8-beta.0.5",
+        "version": "0.9.8-beta.0.6",
         "docs": "/docs"
     }
 

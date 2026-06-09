@@ -34,8 +34,10 @@ const requiredUnpackedResourcePaths = [
   'resources/backend/main.py',
   'resources/backend/api/.gitkeep',
   'resources/backend/modules/.gitkeep',
+  'resources/backend/templates/sophia_tina_pivot_template.xlsx',
   'resources/backend-runtime/tos-backend/tos-backend.exe',
   'resources/backend-runtime/tos-backend/_internal/base_library.zip',
+  'resources/backend-runtime/tos-backend/_internal/templates/sophia_tina_pivot_template.xlsx',
   'resources/external-apps/infornexus/electron-app.exe',
 ]
 
@@ -329,4 +331,27 @@ test('reports backend runtime older than packaged backend source', () => {
   })
 
   assert(issues.some((issue) => issue.includes('backend runtime is older than packaged backend source')))
+})
+
+test('reports missing Sophia Tina pivot templates in backend resources', () => {
+  const root = makeTempDir()
+  const appOutDir = path.join(root, 'win-unpacked')
+  const version = '0.9.8-beta.0.6'
+
+  touchRequiredUnpackedResources(appOutDir, version)
+  fs.rmSync(path.join(appOutDir, 'resources/backend/templates/sophia_tina_pivot_template.xlsx'), { force: true })
+  fs.rmSync(
+    path.join(appOutDir, 'resources/backend-runtime/tos-backend/_internal/templates/sophia_tina_pivot_template.xlsx'),
+    { force: true },
+  )
+
+  const issues = collectReleasePackageIssues({
+    distDir: root,
+    appOutDir,
+    expectedVersion: version,
+    skipArtifacts: true,
+  })
+
+  assert(issues.some((issue) => issue.includes('resources/backend/templates/sophia_tina_pivot_template.xlsx')))
+  assert(issues.some((issue) => issue.includes('resources/backend-runtime/tos-backend/_internal/templates/sophia_tina_pivot_template.xlsx')))
 })

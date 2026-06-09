@@ -32,8 +32,10 @@ const requiredUnpackedResources = [
   'resources/backend/main.py',
   'resources/backend/api',
   'resources/backend/modules',
+  'resources/backend/templates/sophia_tina_pivot_template.xlsx',
   'resources/backend-runtime/tos-backend/tos-backend.exe',
   'resources/backend-runtime/tos-backend/_internal/base_library.zip',
+  'resources/backend-runtime/tos-backend/_internal/templates/sophia_tina_pivot_template.xlsx',
   'resources/external-apps/infornexus/electron-app.exe',
 ]
 

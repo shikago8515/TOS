@@ -14,7 +14,7 @@ BACKEND_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if BACKEND_ROOT not in sys.path:
     sys.path.insert(0, BACKEND_ROOT)
 
-from modules.sophia_tina_module import SophiaTinaModule
+from modules.sophia_tina_module import SophiaTinaModule, _resolve_pivot_template_path
 
 
 def _workbook_zip_entries(path: str, prefix: str) -> list[str]:
@@ -108,6 +108,23 @@ def _workbook_calc_pr(path: str) -> dict[str, str]:
         root = ElementTree.fromstring(archive.read("xl/workbook.xml"))
     calc_pr = root.find("main:calcPr", namespace)
     return calc_pr.attrib if calc_pr is not None else {}
+
+
+class SophiaTinaTemplatePathTests(unittest.TestCase):
+    def test_pivot_template_path_can_be_overridden_for_runtime_packaging(self):
+        original_override = os.environ.get("TOS_SOPHIA_TINA_TEMPLATE_PATH")
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                template_path = Path(temp_dir) / "sophia_tina_pivot_template.xlsx"
+                template_path.write_bytes(b"template")
+                os.environ["TOS_SOPHIA_TINA_TEMPLATE_PATH"] = str(template_path)
+
+                self.assertEqual(_resolve_pivot_template_path(), str(template_path))
+        finally:
+            if original_override is None:
+                os.environ.pop("TOS_SOPHIA_TINA_TEMPLATE_PATH", None)
+            else:
+                os.environ["TOS_SOPHIA_TINA_TEMPLATE_PATH"] = original_override
 
 
 class SophiaTinaModulePricePriorityTests(unittest.TestCase):
