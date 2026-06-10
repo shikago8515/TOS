@@ -4,8 +4,7 @@ import {
 } from '../../shared/api/backendClient'
 
 export interface TmsFinanceInternalReconciliationRequest {
-  sampleFile: File
-  bulkFile: File
+  sourceFiles: File[]
   targetFile: File
 }
 
@@ -17,7 +16,10 @@ export interface TmsFinanceInternalReconciliationTotals {
 
 export interface TmsFinanceInternalReconciliationSourceSummary {
   sample_rows?: number
+  book_rows?: number
   bulk_rows?: number
+  source_rows?: number
+  source_files?: number
 }
 
 export interface TmsFinanceInternalReconciliationResponse {
@@ -26,6 +28,11 @@ export interface TmsFinanceInternalReconciliationResponse {
   error?: string
   output_file?: string
   result_file?: string
+  updated_count?: number
+  source_row_count?: number
+  target_row_count?: number
+  excluded_rows?: number[]
+  excluded_columns?: number[]
   appended_count?: number
   skipped_count?: number
   duplicate_count?: number
@@ -41,8 +48,9 @@ export async function processTmsFinanceInternalReconciliationFiles(
 ): Promise<TmsFinanceInternalReconciliationResponse> {
   const formData = new FormData()
 
-  formData.append('sample_file', request.sampleFile)
-  formData.append('bulk_file', request.bulkFile)
+  request.sourceFiles.forEach((sourceFile) => {
+    formData.append('source_files', sourceFile)
+  })
   formData.append('target_file', request.targetFile)
 
   return postFormData<TmsFinanceInternalReconciliationResponse>({

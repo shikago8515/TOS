@@ -4,27 +4,39 @@ import type { TmsFinanceInternalReconciliationResponse } from './tmsFinanceInter
 export const tmsFinanceInternalReconciliationModuleId =
   'excel-tms-finance-internal-reconciliation'
 export const tmsFinanceInternalReconciliationModuleName =
-  '内销对账单导入'
+  '内销对账表数据提取'
 
 export function buildTmsFinanceInternalReconciliationSummary(
   response: TmsFinanceInternalReconciliationResponse,
 ): ProcessSummaryItem[] {
   return [
     {
-      label: 'Sample 提取行',
+      label: '来源提取行',
+      value: String(response.source_row_count ?? response.source_summary?.source_rows ?? '-'),
+    },
+    {
+      label: 'Sample 行',
       value: String(response.source_summary?.sample_rows ?? '-'),
     },
     {
-      label: 'Bulk 提取行',
-      value: String(response.source_summary?.bulk_rows ?? '-'),
+      label: 'Book 行',
+      value: String(response.source_summary?.book_rows ?? response.source_summary?.bulk_rows ?? '-'),
     },
     {
-      label: '新增行',
-      value: String(response.appended_count ?? '-'),
+      label: '回填行',
+      value: String(response.updated_count ?? response.appended_count ?? '-'),
     },
     {
-      label: '跳过重复',
-      value: String(response.skipped_count ?? '-'),
+      label: '目标处理行',
+      value: String(response.target_row_count ?? '-'),
+    },
+    {
+      label: '排除行',
+      value: formatNumberList(response.excluded_rows),
+    },
+    {
+      label: '排除列',
+      value: formatNumberList(response.excluded_columns),
     },
     {
       label: 'QTY 合计',
@@ -56,4 +68,8 @@ export function buildTmsFinanceInternalReconciliationSummary(
 
 function formatAmount(value: number | undefined): string {
   return typeof value === 'number' ? value.toFixed(2) : '-'
+}
+
+function formatNumberList(values: number[] | undefined): string {
+  return values && values.length > 0 ? values.join(', ') : '-'
 }
