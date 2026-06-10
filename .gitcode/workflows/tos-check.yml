@@ -1,0 +1,64 @@
+name: tos-check
+
+on:
+  push:
+    branches:
+      - main
+      - 'codex/**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check:
+    name: Full repository checks
+    runs-on: euleros-2.10.1
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      PYTHON: python3
+    steps:
+      - name: Checkout source
+        env:
+          GITCODE_REF: ${{ gitcode.ref }}
+          GITCODE_SHA: ${{ gitcode.sha }}
+        run: |
+          rm -rf repo_workspace
+          git clone --no-checkout --depth 1 https://gitcode.com/shikago8515/TOS.git repo_workspace
+          cd repo_workspace
+          if [ -n "$GITCODE_REF" ]; then
+            git fetch --depth 1 origin "$GITCODE_REF" || true
+          fi
+          if [ -n "$GITCODE_SHA" ]; then
+            git checkout --detach "$GITCODE_SHA"
+          else
+            git checkout main
+          fi
+
+      - name: Install Node.js and dependencies
+        run: |
+          cd repo_workspace
+          NODE_VERSION=22.11.0
+          NODE_DIST="node-v${NODE_VERSION}-linux-x64"
+          NODE_ARCHIVE="${NODE_DIST}.tar.xz"
+          mkdir -p .ci
+          if [ ! -x ".ci/${NODE_DIST}/bin/node" ]; then
+            if command -v curl >/dev/null 2>&1; then
+              curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/${NODE_ARCHIVE}" -o ".ci/${NODE_ARCHIVE}"
+            else
+              wget -q "https://nodejs.org/dist/v${NODE_VERSION}/${NODE_ARCHIVE}" -O ".ci/${NODE_ARCHIVE}"
+            fi
+            tar -xJf ".ci/${NODE_ARCHIVE}" -C .ci
+          fi
+          export PATH="$PWD/.ci/${NODE_DIST}/bin:$PATH"
+          node --version
+          npm --version
+          python3 --version
+          npm run ci:install
+
+      - name: Run full repository checks
+        run: |
+          cd repo_workspace
+          NODE_VERSION=22.11.0
+          NODE_DIST="node-v${NODE_VERSION}-linux-x64"
+          export PATH="$PWD/.ci/${NODE_DIST}/bin:$PATH"
+          PYTHON=python3 npm run check
