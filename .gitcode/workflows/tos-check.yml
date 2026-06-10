@@ -11,12 +11,28 @@ on:
 
 jobs:
   check:
+    name: Full repository checks
     runs-on: euleros-2.10.1
     env:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       PYTHON: python3
     steps:
-      - uses: checkout-action@0.0.1
+      - name: Checkout source
+        env:
+          GITCODE_REF: ${{ gitcode.ref }}
+          GITCODE_SHA: ${{ gitcode.sha }}
+        run: |
+          rm -rf repo_workspace
+          git clone --no-checkout --depth 1 https://gitcode.com/shikago8515/TOS.git repo_workspace
+          cd repo_workspace
+          if [ -n "$GITCODE_REF" ]; then
+            git fetch --depth 1 origin "$GITCODE_REF" || true
+          fi
+          if [ -n "$GITCODE_SHA" ]; then
+            git checkout --detach "$GITCODE_SHA"
+          else
+            git checkout main
+          fi
 
       - name: Use Node.js
         uses: setup-node@0.0.1
