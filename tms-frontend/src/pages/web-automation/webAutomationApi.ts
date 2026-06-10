@@ -22,6 +22,12 @@ export interface LocalExecutorHealth {
   config?: Record<string, unknown>
 }
 
+export interface ExecutorCredentials {
+  ok: boolean
+  hasStoredCredentials: boolean
+  username: string
+}
+
 export function hasElectronAutomationSupport(): boolean {
   return Boolean(window.electronAPI?.getAutomationApps)
 }
@@ -123,6 +129,29 @@ export async function probeLocalExecutorHealth(baseUrl: string): Promise<LocalEx
     : new Error('Local executor did not respond.')
 }
 
+export async function fetchExecutorCredentials(baseUrl: string): Promise<ExecutorCredentials> {
+  return requestExecutorJson<ExecutorCredentials>('GET', baseUrl, '/api/credentials')
+}
+
+export async function saveExecutorCredentials(
+  baseUrl: string,
+  token: string,
+  username: string,
+  password: string,
+): Promise<ExecutorCredentials> {
+  return requestExecutorJson<ExecutorCredentials>('PUT', baseUrl, '/api/credentials', {
+    username,
+    password,
+  }, token)
+}
+
+export async function clearExecutorCredentials(
+  baseUrl: string,
+  token: string,
+): Promise<ExecutorCredentials> {
+  return requestExecutorJson<ExecutorCredentials>('DELETE', baseUrl, '/api/credentials', {}, token)
+}
+
 export async function probeLocalAutomationLauncherHealth(): Promise<boolean> {
   return isLauncherReachable()
 }
@@ -196,6 +225,43 @@ async function requestLauncherJson<T = Record<string, unknown>>(
       : payload && typeof payload.error === 'string'
         ? payload.error
         : `Launcher request failed with HTTP ${response.status}.`
+    throw new Error(message)
+  }
+
+  return (payload || {}) as T
+}
+
+async function requestExecutorJson<T = Record<string, unknown>>(
+  method: string,
+  baseUrl: string,
+  pathname: string,
+  body?: Record<string, unknown>,
+  token?: string,
+): Promise<T> {
+  const normalizedUrl = String(baseUrl || '').replace(/\/+$/, '')
+  const headers: Record<string, string> = {}
+  let requestBody: string | undefined
+
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json'
+    requestBody = JSON.stringify(body)
+  }
+  if (token) {
+    headers['X-Executor-Token'] = token
+  }
+
+  const response = await fetchWithTimeout(`${normalizedUrl}${pathname}`, {
+    method,
+    headers,
+    body: requestBody,
+  }, 5000)
+  const rawText = await response.text()
+  const payload = safeParseJson(rawText)
+
+  if (!response.ok) {
+    const message = payload && typeof payload.message === 'string'
+      ? payload.message
+      : `Executor request failed with HTTP ${response.status}.`
     throw new Error(message)
   }
 

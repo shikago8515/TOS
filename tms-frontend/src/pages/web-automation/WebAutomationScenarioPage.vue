@@ -172,6 +172,11 @@
               <span v-else class="ws-badge ws-badge--wait">{{ text('等待执行器') }}</span>
             </div>
 
+            <div class="ws-credential-note" :class="{ 'ws-credential-note--ready': hasStoredCredentials }">
+              <AppIcon :name="hasStoredCredentials ? 'check-circle' : 'alert-circle'" />
+              <span>{{ credentialStatusText }}</span>
+            </div>
+
             <div class="ws-field ws-field-grid">
               <div>
                 <label>{{ text('User ID') }}</label>
@@ -200,6 +205,26 @@
               </div>
             </div>
 
+            <div class="ws-credential-actions">
+              <button
+                class="ws-btn-sm ws-btn-sm--primary"
+                type="button"
+                :disabled="credentialSaving || !shippingUsername || !shippingPassword"
+                @click="saveCurrentCredentials"
+              >
+                <AppIcon name="shield-check" />
+                {{ credentialSaving ? text('保存中') : text('保存本机凭据') }}
+              </button>
+              <button
+                class="ws-btn-sm"
+                type="button"
+                :disabled="credentialClearing || !hasStoredCredentials"
+                @click="clearCurrentCredentials"
+              >
+                <AppIcon name="stop-circle" />
+                {{ credentialClearing ? text('清除中') : text('清除本机凭据') }}
+              </button>
+            </div>
 
             <div class="ws-field">
               <label>{{ text('Excel 文件') }}</label>
@@ -250,7 +275,7 @@
             <div class="ws-card__actions">
               <button
                 class="ws-btn-lg"
-                :disabled="sending || !shippingUsername || !shippingPassword || !selectedFile"
+                :disabled="!canRunShippingAutomation"
                 @click="runInfornexusDirectWithExcel"
               >
                 <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'ws-spin': sending }" />
@@ -302,6 +327,11 @@
               <span v-else class="ws-badge ws-badge--wait">{{ text('等待执行器') }}</span>
             </div>
 
+            <div v-if="isMicrosoftScenario" class="ws-credential-note" :class="{ 'ws-credential-note--ready': hasStoredCredentials }">
+              <AppIcon :name="hasStoredCredentials ? 'check-circle' : 'alert-circle'" />
+              <span>{{ credentialStatusText }}</span>
+            </div>
+
             <div v-if="isMicrosoftScenario" class="ws-field ws-field-grid">
               <div>
                 <label>{{ text('Microsoft 账号') }}</label>
@@ -330,6 +360,26 @@
               </div>
             </div>
 
+            <div v-if="isMicrosoftScenario" class="ws-credential-actions">
+              <button
+                class="ws-btn-sm ws-btn-sm--primary"
+                type="button"
+                :disabled="credentialSaving || !microsoftUsername || !microsoftPassword"
+                @click="saveCurrentCredentials"
+              >
+                <AppIcon name="shield-check" />
+                {{ credentialSaving ? text('保存中') : text('保存本机凭据') }}
+              </button>
+              <button
+                class="ws-btn-sm"
+                type="button"
+                :disabled="credentialClearing || !hasStoredCredentials"
+                @click="clearCurrentCredentials"
+              >
+                <AppIcon name="stop-circle" />
+                {{ credentialClearing ? text('清除中') : text('清除本机凭据') }}
+              </button>
+            </div>
 
             <div class="ws-field">
               <label>{{ text('Webhook 地址') }}</label>
@@ -396,7 +446,7 @@
             <div class="ws-card__actions">
               <button
                 class="ws-btn-lg"
-                :disabled="!selectedFile || sending"
+                :disabled="!canRunDirectExecutor"
                 @click="sendDirectToExecutor"
               >
                 <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'ws-spin': sending }" />
@@ -443,8 +493,10 @@ import { useRoute, useRouter } from 'vue-router'
 
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import type { AutomationAppInfo } from '../../types/electronApi'
-import type { LocalExecutorHealth } from './webAutomationApi'
+import type { ExecutorCredentials, LocalExecutorHealth } from './webAutomationApi'
 import {
+  clearExecutorCredentials,
+  fetchExecutorCredentials,
   fetchAutomationApps,
   hasElectronAutomationSupport,
   launchAutomationConsole,
@@ -452,8 +504,13 @@ import {
   probeLocalAutomationLauncherHealth,
   probeLocalExecutorHealth,
   recordWebAutomationEvent,
+  saveExecutorCredentials,
   stopAutomationConsole,
 } from './webAutomationApi'
+import {
+  buildExecutorCredentialsPayload,
+  canRunWithCredentials,
+} from './webAutomationCredentials'
 import {
   getAutomationAppStatusLabel,
   getWebAutomationEntry,
@@ -467,16 +524,19 @@ const router = useRouter()
 const { text } = useAppLanguage()
 
 const defaultShippingUsername = 'user3@@tmsfashion'
-const defaultShippingPassword = 'tmsbjLILY20260202'
+const defaultShippingPassword = ''
 const defaultMicrosoftUsername = ''
 const defaultMicrosoftPassword = ''
 
 const electronSupported = hasElectronAutomationSupport()
 const activeApp = ref<AutomationAppInfo | null>(null)
 const executorHealth = ref<LocalExecutorHealth | null>(null)
+const executorCredentials = ref<ExecutorCredentials | null>(null)
 const launcherReachable = ref(false)
 const launching = ref(false)
 const refreshing = ref(false)
+const credentialSaving = ref(false)
+const credentialClearing = ref(false)
 const sending = ref(false)
 const message = ref('')
 const messageTone = ref<WebAutomationNoticeTone>('info')
@@ -591,6 +651,38 @@ const statusIconName = computed(() => {
 })
 const canLaunchActiveApp = computed(() => Boolean(entry.value?.appId) && !launching.value)
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
+const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
+const savedCredentialUsername = computed(() => executorCredentials.value?.username || '')
+const activeUsername = computed(() => isInfornexusDirectScenario.value ? shippingUsername.value : microsoftUsername.value)
+const activePassword = computed(() => isInfornexusDirectScenario.value ? shippingPassword.value : microsoftPassword.value)
+const credentialStatusText = computed(() => {
+  if (hasStoredCredentials.value) {
+    return savedCredentialUsername.value
+      ? `本机已保存凭据：${savedCredentialUsername.value}`
+      : '本机已保存凭据。'
+  }
+  return '本机未保存凭据。首次执行前请填写账号密码并保存。'
+})
+const canRunShippingAutomation = computed(() => canRunWithCredentials({
+  username: shippingUsername.value,
+  password: shippingPassword.value,
+  hasStoredCredentials: hasStoredCredentials.value,
+  hasSelectedFile: Boolean(selectedFile.value),
+  sending: sending.value,
+}))
+const canRunDirectExecutor = computed(() => {
+  if (!isMicrosoftScenario.value) {
+    return Boolean(selectedFile.value) && !sending.value
+  }
+
+  return canRunWithCredentials({
+    username: microsoftUsername.value,
+    password: microsoftPassword.value,
+    hasStoredCredentials: hasStoredCredentials.value,
+    hasSelectedFile: Boolean(selectedFile.value),
+    sending: sending.value,
+  })
+})
 
 onMounted(() => {
   void initializeScenario()
@@ -644,6 +736,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
     }
 
     executorHealth.value = await probeLocalExecutorHealth(entry.value.executorBaseUrl)
+    await refreshExecutorCredentials()
     if (activeApp.value) {
       activeApp.value = { ...activeApp.value, running: true }
     }
@@ -654,6 +747,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
     }
   } catch {
     executorHealth.value = null
+    executorCredentials.value = null
     launcherReachable.value = false
     activeApp.value = activeApp.value || fallbackApp
     if (!silent) {
@@ -662,6 +756,78 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
     }
   } finally {
     refreshing.value = false
+  }
+}
+
+async function refreshExecutorCredentials(): Promise<void> {
+  if (!entry.value || !entry.value.executorBaseUrl) return
+
+  try {
+    executorCredentials.value = await fetchExecutorCredentials(entry.value.executorBaseUrl)
+    const username = executorCredentials.value.username || ''
+    if (username && !shippingUsername.value && isInfornexusDirectScenario.value) {
+      shippingUsername.value = username
+    }
+    if (username && !microsoftUsername.value && isMicrosoftScenario.value) {
+      microsoftUsername.value = username
+    }
+  } catch {
+    executorCredentials.value = null
+  }
+}
+
+async function saveCurrentCredentials(): Promise<void> {
+  if (!entry.value || credentialSaving.value) return
+
+  const username = activeUsername.value.trim()
+  const password = activePassword.value
+  if (!username || !password) {
+    messageTone.value = 'warning'
+    message.value = text('请先填写账号和密码。')
+    return
+  }
+
+  credentialSaving.value = true
+  try {
+    executorCredentials.value = await saveExecutorCredentials(
+      entry.value.executorBaseUrl,
+      entry.value.localExecutorToken,
+      username,
+      password,
+    )
+    if (isInfornexusDirectScenario.value) {
+      shippingUsername.value = executorCredentials.value.username || username
+      shippingPassword.value = ''
+    } else if (isMicrosoftScenario.value) {
+      microsoftUsername.value = executorCredentials.value.username || username
+      microsoftPassword.value = ''
+    }
+    messageTone.value = 'success'
+    message.value = text('本机凭据已保存。')
+  } catch (error) {
+    messageTone.value = 'error'
+    message.value = readErrorMessage(error, text('保存本机凭据失败。'))
+  } finally {
+    credentialSaving.value = false
+  }
+}
+
+async function clearCurrentCredentials(): Promise<void> {
+  if (!entry.value || credentialClearing.value) return
+
+  credentialClearing.value = true
+  try {
+    executorCredentials.value = await clearExecutorCredentials(
+      entry.value.executorBaseUrl,
+      entry.value.localExecutorToken,
+    )
+    messageTone.value = 'info'
+    message.value = text('本机凭据已清除。')
+  } catch (error) {
+    messageTone.value = 'error'
+    message.value = readErrorMessage(error, text('清除本机凭据失败。'))
+  } finally {
+    credentialClearing.value = false
   }
 }
 
@@ -802,8 +968,11 @@ async function runShippingWithExcel(): Promise<void> {
         fileName: file.name,
         fileBase64,
         token: entry.value.localExecutorToken,
-        username: shippingUsername.value,
-        password: shippingPassword.value,
+        ...buildExecutorCredentialsPayload({
+          username: shippingUsername.value,
+          password: shippingPassword.value,
+          hasStoredCredentials: hasStoredCredentials.value,
+        }),
       }),
     })
 
@@ -881,8 +1050,11 @@ async function runInfornexusAutoAddWithExcel(): Promise<void> {
         fileName: file.name,
         fileBase64,
         token: entry.value.localExecutorToken,
-        username: shippingUsername.value,
-        password: shippingPassword.value,
+        ...buildExecutorCredentialsPayload({
+          username: shippingUsername.value,
+          password: shippingPassword.value,
+          hasStoredCredentials: hasStoredCredentials.value,
+        }),
       }),
     })
 
@@ -957,8 +1129,13 @@ async function sendDirectToExecutor(): Promise<void> {
         fileName: selectedFile.value.name,
         fileBase64,
         token: entry.value.localExecutorToken,
-        username: isMicrosoftScenario.value ? microsoftUsername.value : undefined,
-        password: isMicrosoftScenario.value ? microsoftPassword.value : undefined,
+        ...(isMicrosoftScenario.value
+          ? buildExecutorCredentialsPayload({
+            username: microsoftUsername.value,
+            password: microsoftPassword.value,
+            hasStoredCredentials: hasStoredCredentials.value,
+          })
+          : {}),
       }),
     })
 
@@ -1904,6 +2081,39 @@ function readErrorMessage(error: unknown, fallback: string): string {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.ws-credential-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 16px 0;
+  padding: 8px 10px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+
+  :deep(.app-icon) {
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+}
+
+.ws-credential-note--ready {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.ws-credential-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 16px 0;
 }
 
 .ws-input-row {
