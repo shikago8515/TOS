@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
-from typing import NoReturn, Optional
+from typing import List, NoReturn, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -72,31 +72,42 @@ def _raise_processing_error(exc: Exception) -> NoReturn:
 
 @router.post("/process")
 async def process_internal_reconciliation(
-    sample_file: UploadFile = File(...),
-    bulk_file: UploadFile = File(...),
     target_file: UploadFile = File(...),
+    source_files: Optional[List[UploadFile]] = File(None),
+    sample_file: Optional[UploadFile] = File(None),
+    bulk_file: Optional[UploadFile] = File(None),
     output_dir: Optional[str] = Form(None),
 ):
-    """处理内销对账单导入。"""
+    """处理内销对账表数据提取。"""
 
     work_dir = os.path.join(UPLOAD_DIR, f"tms_finance_internal_reconciliation_{uuid4().hex}")
     os.makedirs(work_dir, exist_ok=True)
 
     try:
-        sample_name = _validate_excel_filename(sample_file.filename, "合并Sample 文件")
-        bulk_name = _validate_excel_filename(bulk_file.filename, "合并BULK 文件")
-        target_name = _validate_excel_filename(target_file.filename, "内销对账单 文件")
+        source_uploads: List[UploadFile] = []
+        if source_files:
+            source_uploads.extend(source_files)
+        if sample_file is not None:
+            source_uploads.append(sample_file)
+        if bulk_file is not None:
+            source_uploads.append(bulk_file)
 
-        sample_path = os.path.join(work_dir, f"sample_{sample_name}")
-        bulk_path = os.path.join(work_dir, f"bulk_{bulk_name}")
+        if not source_uploads:
+            raise HTTPException(status_code=400, detail="请至少上传一个 Sample/Bulk 来源文件")
+
+        source_paths: List[str] = []
+        for index, source_upload in enumerate(source_uploads, start=1):
+            source_name = _validate_excel_filename(source_upload.filename, f"来源文件 {index}")
+            source_path = os.path.join(work_dir, f"source_{index}_{source_name}")
+            copy_upload_to_path(source_upload, source_path)
+            source_paths.append(source_path)
+
+        target_name = _validate_excel_filename(target_file.filename, "内销对账单 文件")
         target_path = os.path.join(work_dir, f"target_{target_name}")
-        copy_upload_to_path(sample_file, sample_path)
-        copy_upload_to_path(bulk_file, bulk_path)
         copy_upload_to_path(target_file, target_path)
 
         result = tms_finance_module.process_files(
-            sample_path=sample_path,
-            bulk_path=bulk_path,
+            source_paths=source_paths,
             target_path=target_path,
             output_dir=output_dir if output_dir else UPLOAD_DIR,
         )
@@ -113,9 +124,14 @@ async def process_internal_reconciliation(
             "message": public_message,
             "logs": sanitize_output_logs(result["logs"], output_path, output_filename),
             "output_file": output_filename,
-            "appended_count": result["appended_count"],
-            "skipped_count": result["skipped_count"],
-            "duplicate_count": result["duplicate_count"],
+            "updated_count": result["updated_count"],
+            "source_row_count": result["source_row_count"],
+            "target_row_count": result["target_row_count"],
+            "excluded_rows": result["excluded_rows"],
+            "excluded_columns": result["excluded_columns"],
+            "appended_count": result.get("appended_count", 0),
+            "skipped_count": result.get("skipped_count", 0),
+            "duplicate_count": result.get("duplicate_count", 0),
             "diagnostic_count": result["diagnostic_count"],
             "diagnostics": result["diagnostics"],
             "totals": result["totals"],
@@ -123,6 +139,8 @@ async def process_internal_reconciliation(
         }
     except HTTPException:
         raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         _raise_processing_error(exc)
     finally:

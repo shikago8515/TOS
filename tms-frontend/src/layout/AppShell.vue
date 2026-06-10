@@ -39,15 +39,17 @@
                     class="menu-parent"
                     :class="{ 'is-active': item.active }"
                   >
-                    <div
+                    <button
                       class="menu-item"
                       :class="{ 'is-active': item.active }"
-                      @click="toggleNavParent(item.id)"
+                      type="button"
+                      :aria-expanded="isNavParentExpanded(item.id)"
+                      @click="activateNavParent(item)"
                     >
                       <AppIcon :name="getGroupIcon(group.id)" class="menu-icon" />
                       <span class="menu-label">{{ item.label }}</span>
                       <AppIcon :name="isNavParentExpanded(item.id) ? 'chevron-down' : 'chevron-right'" class="menu-arrow" />
-                    </div>
+                    </button>
 
                     <transition name="expand-fade">
                       <div v-show="isNavParentExpanded(item.id)" class="menu-children">
@@ -145,7 +147,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
-import { RouterLink, RouterView, useRoute } from 'vue-router'
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 
 import {
   getModulesByGroup,
@@ -158,6 +160,7 @@ import {
 } from '../domain/moduleCatalog'
 import { useAppLanguage } from '../shared/i18n/appLanguage'
 import AppIcon from '../shared/ui/AppIcon.vue'
+import { resolveSidebarParentActivation } from './sidebarNavigation'
 
 interface SidebarModuleItem {
   id: string
@@ -185,6 +188,7 @@ interface SidebarGroup extends TosNavGroupDefinition {
 type SidebarItem = SidebarModuleItem | SidebarParentItem
 
 const route = useRoute()
+const router = useRouter()
 const isSidebarHidden = ref(false)
 const isMobile = ref(false)
 const expandedNavGroups = ref<Set<TosModuleGroup>>(new Set(['excel', 'automation', 'collector']))
@@ -326,16 +330,19 @@ function isNavParentExpanded(parentId: string): boolean {
   return expandedNavParents.value.has(parentId)
 }
 
-function toggleNavParent(parentId: string): void {
-  const nextExpanded = new Set(expandedNavParents.value)
+function activateNavParent(item: SidebarParentItem): void {
+  const result = resolveSidebarParentActivation({
+    parentId: item.id,
+    childModules: item.modules,
+    activeRouteName: route.name,
+    expandedParentIds: expandedNavParents.value,
+  })
 
-  if (nextExpanded.has(parentId)) {
-    nextExpanded.delete(parentId)
-  } else {
-    nextExpanded.add(parentId)
+  expandedNavParents.value = result.expandedParentIds
+
+  if (result.targetPath) {
+    void router.push(result.targetPath)
   }
-
-  expandedNavParents.value = nextExpanded
 }
 
 function toggleSidebar(): void {

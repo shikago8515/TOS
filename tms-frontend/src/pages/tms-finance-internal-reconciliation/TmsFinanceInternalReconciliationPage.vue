@@ -6,6 +6,28 @@
     :toolbar-status="toolbarStatus"
     :actions="toolbarActions"
   >
+    <section class="tms-finance-switcher" aria-label="TMS 财务处理流程">
+      <button
+        v-for="option in tmsFinanceProcessOptions"
+        :key="option.id"
+        class="tms-finance-switcher__item"
+        :class="{ 'is-active': option.id === activeProcessId }"
+        type="button"
+        :disabled="processing || option.id === activeProcessId"
+        :aria-pressed="option.id === activeProcessId"
+        @click="switchProcess(option)"
+      >
+        <span class="tms-finance-switcher__icon">
+          <AppIcon :name="option.icon" />
+        </span>
+        <span class="tms-finance-switcher__copy">
+          <strong>{{ text(option.label) }}</strong>
+          <small>{{ text(option.subtitle) }}</small>
+        </span>
+        <span class="tms-finance-switcher__badge">{{ text(option.badge) }}</span>
+      </button>
+    </section>
+
     <ExcelResultNotice
       :visible="Boolean(message)"
       :tone="messageTone"
@@ -40,7 +62,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { readErrorMessage } from '../../shared/api/backendClient'
 import {
@@ -66,6 +88,7 @@ import {
   type ExcelPageStat,
   type ExcelToolbarAction,
 } from '../../shared/ui/excel-process'
+import AppIcon from '../../shared/ui/AppIcon.vue'
 import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
 import ProcessHistoryPanel from '../../shared/ui/ProcessHistoryPanel.vue'
 import ResultSummary from '../../shared/ui/ResultSummary.vue'
@@ -76,67 +99,25 @@ import {
 import {
   buildTmsFinanceInternalReconciliationSummary,
   tmsFinanceInternalReconciliationModuleId,
-  tmsFinanceInternalReconciliationModuleName,
 } from './tmsFinanceInternalReconciliationModel'
 import {
   downloadTmsFinanceWorkSalesResult,
   processTmsFinanceWorkSalesFiles,
 } from './tmsFinanceWorkSalesApi'
+import { buildTmsFinanceWorkSalesSummary } from './tmsFinanceWorkSalesModel'
 import {
-  buildTmsFinanceWorkSalesSummary,
-  tmsFinanceWorkSalesModuleId,
-  tmsFinanceWorkSalesModuleName,
-} from './tmsFinanceWorkSalesModel'
-
-type TmsFinanceProcessId = 'internal-reconciliation' | 'work-sales'
-
-interface TmsFinanceProcessOption {
-  id: TmsFinanceProcessId
-  label: string
-  subtitle: string
-  badge: string
-  requiredGroups: number
-  progressLabel: string
-  idleActionLabel: string
-  processingActionLabel: string
-  moduleId: string
-  moduleName: string
-  routeName: string
-}
-
-const processOptions: TmsFinanceProcessOption[] = [
-  {
-    id: 'internal-reconciliation',
-    label: '内销对账单导入',
-    subtitle: '合并Sample + 合并BULK → 内销对账单',
-    badge: '3 组必传',
-    requiredGroups: 3,
-    progressLabel: '导入进度',
-    idleActionLabel: '开始导入',
-    processingActionLabel: '导入中...',
-    moduleId: tmsFinanceInternalReconciliationModuleId,
-    moduleName: tmsFinanceInternalReconciliationModuleName,
-    routeName: 'tms-finance-internal-reconciliation',
-  },
-  {
-    id: 'work-sales',
-    label: 'Work Sales 数据提取',
-    subtitle: 'iPlix Turnover Details + 补充参考表 → Work Sales 汇总',
-    badge: '2 组必传',
-    requiredGroups: 2,
-    progressLabel: '导入进度',
-    idleActionLabel: '开始导入',
-    processingActionLabel: '导入中...',
-    moduleId: tmsFinanceWorkSalesModuleId,
-    moduleName: tmsFinanceWorkSalesModuleName,
-    routeName: 'tms-finance-work-sales',
-  },
-]
+  getTmsFinanceProcessById,
+  getTmsFinanceProcessByRoute,
+  getTmsFinanceResultMetricValue,
+  tmsFinanceProcessOptions,
+  type TmsFinanceProcessId,
+  type TmsFinanceProcessOption,
+} from './tmsFinancePageModel'
 
 const route = useRoute()
+const router = useRouter()
 const activeProcessId = ref<TmsFinanceProcessId>(resolveProcessIdFromRoute(route.name))
-const sampleFiles = ref<File[]>([])
-const bulkFiles = ref<File[]>([])
+const internalSourceFiles = ref<File[]>([])
 const reconciliationTargetFiles = ref<File[]>([])
 const iplixFiles = ref<File[]>([])
 const workSalesReferenceFiles = ref<File[]>([])
@@ -153,9 +134,7 @@ const historyRecords = ref<ProcessHistoryRecord[]>(
 const { text } = useAppLanguage()
 
 const activeProcess = computed<TmsFinanceProcessOption>(
-  () =>
-    processOptions.find((process) => process.id === activeProcessId.value)
-    ?? processOptions[0],
+  () => getTmsFinanceProcessById(activeProcessId.value),
 )
 
 const uploadFields = computed<ExcelFileField[]>(() => {
@@ -184,28 +163,19 @@ const uploadFields = computed<ExcelFileField[]>(() => {
 
   return [
     {
-      id: 'sample',
-      label: '合并Sample 文件',
-      files: sampleFiles.value,
-      hint: '上传目标月份的合并Sample工作簿',
+      id: 'internal-sources',
+      label: 'Sample/Bulk 来源文件',
+      files: internalSourceFiles.value,
+      hint: '可一次上传多个合并Sample、合并BULK工作簿，按上传顺序回填',
+      multiple: true,
       accept: '.xlsx,.xlsm',
       acceptLabel: '支持 .xlsx / .xlsm',
-      expectedCount: 1,
-    },
-    {
-      id: 'bulk',
-      label: '合并BULK 文件',
-      files: bulkFiles.value,
-      hint: '上传目标月份的合并BULK工作簿',
-      accept: '.xlsx,.xlsm',
-      acceptLabel: '支持 .xlsx / .xlsm',
-      expectedCount: 1,
     },
     {
       id: 'target',
       label: '内销对账单',
       files: reconciliationTargetFiles.value,
-      hint: '上传要追加未清账的内销对账单工作簿',
+      hint: '上传要回填未清账尾部已有行的内销对账大表',
       accept: '.xlsx,.xlsm',
       acceptLabel: '支持 .xlsx / .xlsm',
       expectedCount: 1,
@@ -221,12 +191,11 @@ const readyGroupCount = computed(
 const totalFiles = computed(() =>
   activeProcessId.value === 'work-sales'
     ? iplixFiles.value.length + workSalesReferenceFiles.value.length
-    : sampleFiles.value.length + bulkFiles.value.length + reconciliationTargetFiles.value.length,
+    : internalSourceFiles.value.length + reconciliationTargetFiles.value.length,
 )
-const appendedCount = computed(() => {
-  const item = summaryItems.value.find((entry) => entry.label === '新增行')
-  return item?.value ?? '-'
-})
+const resultMetricValue = computed(() =>
+  getTmsFinanceResultMetricValue(summaryItems.value, activeProcess.value),
+)
 
 const pageStats = computed<ExcelPageStat[]>(() => [
   {
@@ -237,9 +206,9 @@ const pageStats = computed<ExcelPageStat[]>(() => [
     tone: 'blue',
   },
   {
-    id: 'appended-count',
-    label: '新增行',
-    value: appendedCount.value,
+    id: 'result-count',
+    label: activeProcess.value.resultMetricLabel,
+    value: resultMetricValue.value,
     icon: 'plus',
     tone: 'green',
   },
@@ -300,13 +269,8 @@ watch(
 )
 
 function updateUploadFiles(fieldId: string, files: File[]): void {
-  if (fieldId === 'sample') {
-    sampleFiles.value = files
-    return
-  }
-
-  if (fieldId === 'bulk') {
-    bulkFiles.value = files
+  if (fieldId === 'internal-sources') {
+    internalSourceFiles.value = files
     return
   }
 
@@ -326,9 +290,15 @@ function updateUploadFiles(fieldId: string, files: File[]): void {
 }
 
 function resolveProcessIdFromRoute(routeName: unknown): TmsFinanceProcessId {
-  return routeName === 'tms-finance-work-sales'
-    ? 'work-sales'
-    : 'internal-reconciliation'
+  return getTmsFinanceProcessByRoute(routeName).id
+}
+
+function switchProcess(option: TmsFinanceProcessOption): void {
+  if (processing.value || option.id === activeProcessId.value) {
+    return
+  }
+
+  void router.push({ name: option.routeName })
 }
 
 async function startProcess(): Promise<void> {
@@ -348,9 +318,9 @@ async function startProcess(): Promise<void> {
 }
 
 async function startInternalReconciliationProcess(): Promise<void> {
-  if (!sampleFiles.value[0] || !bulkFiles.value[0] || !reconciliationTargetFiles.value[0]) {
+  if (internalSourceFiles.value.length === 0 || !reconciliationTargetFiles.value[0]) {
     messageTone.value = 'warning'
-    message.value = '请先补齐合并Sample、合并BULK和内销对账单文件。'
+    message.value = '请先上传 Sample/Bulk 来源文件和内销对账单。'
     success.value = false
     return
   }
@@ -362,8 +332,7 @@ async function startInternalReconciliationProcess(): Promise<void> {
   try {
     const response = await processTmsFinanceInternalReconciliationFiles(
       {
-        sampleFile: sampleFiles.value[0],
-        bulkFile: bulkFiles.value[0],
+        sourceFiles: internalSourceFiles.value,
         targetFile: reconciliationTargetFiles.value[0],
       },
       (nextProgress) => {
@@ -466,8 +435,7 @@ function resetForm(): void {
     iplixFiles.value = []
     workSalesReferenceFiles.value = []
   } else {
-    sampleFiles.value = []
-    bulkFiles.value = []
+    internalSourceFiles.value = []
     reconciliationTargetFiles.value = []
   }
   processing.value = false
@@ -508,4 +476,115 @@ function clearHistory(): void {
 
 <style lang="scss">
 @use '../../shared/styles/jane-page.scss';
+
+.tms-finance-switcher {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.tms-finance-switcher__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 86px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #334155;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+  transition:
+    border-color 0.22s ease,
+    box-shadow 0.22s ease,
+    transform 0.22s ease;
+}
+
+.tms-finance-switcher__item:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: #99f6e4;
+  box-shadow: 0 10px 24px rgba(13, 148, 136, 0.1);
+}
+
+.tms-finance-switcher__item.is-active {
+  border-color: #14b8a6;
+  background: #f0fdfa;
+  box-shadow:
+    inset 0 0 0 1px rgba(20, 184, 166, 0.18),
+    0 8px 20px rgba(13, 148, 136, 0.08);
+}
+
+.tms-finance-switcher__item:disabled {
+  cursor: default;
+}
+
+.tms-finance-switcher__icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  background: linear-gradient(135deg, #2dd4bf, #0d9488);
+  box-shadow: 0 5px 12px rgba(13, 148, 136, 0.22);
+}
+
+.tms-finance-switcher__icon .app-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.tms-finance-switcher__copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tms-finance-switcher__copy strong {
+  color: #0f172a;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.tms-finance-switcher__copy small {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.tms-finance-switcher__badge {
+  align-self: start;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .tms-finance-switcher {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .tms-finance-switcher__item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .tms-finance-switcher__badge {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
 </style>
