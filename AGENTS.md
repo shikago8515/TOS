@@ -58,7 +58,9 @@
 5. 组件样式默认 scoped；全局 CSS 仅限 reset、design tokens 和项目级基础样式。
 6. 后端请求通过 `tms-frontend/src/shared/api/backendClient.ts` 或 feature API 模块；组件不要散落直接 `fetch`。
 7. 文件上传、进度、结果展示、处理历史优先复用 `shared/ui` 和 `shared/process` 中已有组件。
-8. 当前项目未配置 ESLint、Prettier 或前端测试脚本；不要在规则或报告中声称已经运行不存在的命令。
+8. Excel 处理型页面优先复用 `shared/ui/excel-process`、`FilePrecheckPanel`、`ProcessHistoryPanel`、`ResultSummary`、`shared/process` 与 `shared/styles/jane-page.scss`；页面内只保留业务字段、按钮文案、API 参数映射、结果摘要转换和历史 module id 等差异。
+9. 当左侧导航和路由已经表达子流程时，不在页面内容区重复做大卡片式流程切换入口，除非产品明确要求。
+10. 当前项目未配置 ESLint、Prettier；前端测试脚本以 `tms-frontend/package.json` 为准，当前有 `npm run test`。不要在规则或报告中声称已经运行不存在的命令。
 
 ## Jane 模块边界
 
@@ -121,6 +123,7 @@
 ```powershell
 cd tms-frontend
 npm run typecheck
+npm run test
 npm run build
 npm run preview
 ```

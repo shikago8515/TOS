@@ -40,6 +40,7 @@ npm run preview
 - 导航和模块元数据来自 `src/domain/moduleCatalog.ts`。
 - 路由定义来自 `src/app/routeCatalog.ts` 和 `src/app/router.ts`。
 - 文件上传、进度、结果展示和处理历史优先复用 `src/shared/ui` 与 `src/shared/process`。
+- Excel 处理型页面优先复用 `src/shared/ui/excel-process`、`FilePrecheckPanel`、`ProcessHistoryPanel`、`ResultSummary` 和 `src/shared/styles/jane-page.scss`；已有侧边栏和路由表达子流程时，不在内容区重复实现大卡片式流程切换。
 - 页面组件使用 Vue 3 Composition API 和 `<script setup>`。
 - 组件样式默认 scoped；全局 CSS 仅用于 reset、design tokens 和项目级基础样式。
 
@@ -55,6 +56,8 @@ npm run preview
 - `/jane-bom-compare`
 - `/jane-outbound-compare`
 - `/eric`
+- `/tms-finance-internal-reconciliation`
+- `/tms-finance-work-sales`
 - `/browser-plugins`
 - `/web-automation`
 - `/infornexus`

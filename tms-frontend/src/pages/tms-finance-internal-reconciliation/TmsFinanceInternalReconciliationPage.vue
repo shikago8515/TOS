@@ -6,28 +6,6 @@
     :toolbar-status="toolbarStatus"
     :actions="toolbarActions"
   >
-    <section class="tms-finance-switcher" aria-label="TMS 财务处理流程">
-      <button
-        v-for="option in tmsFinanceProcessOptions"
-        :key="option.id"
-        class="tms-finance-switcher__item"
-        :class="{ 'is-active': option.id === activeProcessId }"
-        type="button"
-        :disabled="processing || option.id === activeProcessId"
-        :aria-pressed="option.id === activeProcessId"
-        @click="switchProcess(option)"
-      >
-        <span class="tms-finance-switcher__icon">
-          <AppIcon :name="option.icon" />
-        </span>
-        <span class="tms-finance-switcher__copy">
-          <strong>{{ text(option.label) }}</strong>
-          <small>{{ text(option.subtitle) }}</small>
-        </span>
-        <span class="tms-finance-switcher__badge">{{ text(option.badge) }}</span>
-      </button>
-    </section>
-
     <ExcelResultNotice
       :visible="Boolean(message)"
       :tone="messageTone"
@@ -62,7 +40,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 
 import { readErrorMessage } from '../../shared/api/backendClient'
 import {
@@ -88,7 +66,6 @@ import {
   type ExcelPageStat,
   type ExcelToolbarAction,
 } from '../../shared/ui/excel-process'
-import AppIcon from '../../shared/ui/AppIcon.vue'
 import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
 import ProcessHistoryPanel from '../../shared/ui/ProcessHistoryPanel.vue'
 import ResultSummary from '../../shared/ui/ResultSummary.vue'
@@ -109,13 +86,11 @@ import {
   getTmsFinanceProcessById,
   getTmsFinanceProcessByRoute,
   getTmsFinanceResultMetricValue,
-  tmsFinanceProcessOptions,
   type TmsFinanceProcessId,
   type TmsFinanceProcessOption,
 } from './tmsFinancePageModel'
 
 const route = useRoute()
-const router = useRouter()
 const activeProcessId = ref<TmsFinanceProcessId>(resolveProcessIdFromRoute(route.name))
 const internalSourceFiles = ref<File[]>([])
 const reconciliationTargetFiles = ref<File[]>([])
@@ -293,14 +268,6 @@ function resolveProcessIdFromRoute(routeName: unknown): TmsFinanceProcessId {
   return getTmsFinanceProcessByRoute(routeName).id
 }
 
-function switchProcess(option: TmsFinanceProcessOption): void {
-  if (processing.value || option.id === activeProcessId.value) {
-    return
-  }
-
-  void router.push({ name: option.routeName })
-}
-
 async function startProcess(): Promise<void> {
   if (!canProcess.value) {
     messageTone.value = 'warning'
@@ -476,115 +443,4 @@ function clearHistory(): void {
 
 <style lang="scss">
 @use '../../shared/styles/jane-page.scss';
-
-.tms-finance-switcher {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.tms-finance-switcher__item {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  min-height: 86px;
-  padding: 14px 16px;
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.9);
-  color: #334155;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
-  transition:
-    border-color 0.22s ease,
-    box-shadow 0.22s ease,
-    transform 0.22s ease;
-}
-
-.tms-finance-switcher__item:hover:not(:disabled) {
-  transform: translateY(-1px);
-  border-color: #99f6e4;
-  box-shadow: 0 10px 24px rgba(13, 148, 136, 0.1);
-}
-
-.tms-finance-switcher__item.is-active {
-  border-color: #14b8a6;
-  background: #f0fdfa;
-  box-shadow:
-    inset 0 0 0 1px rgba(20, 184, 166, 0.18),
-    0 8px 20px rgba(13, 148, 136, 0.08);
-}
-
-.tms-finance-switcher__item:disabled {
-  cursor: default;
-}
-
-.tms-finance-switcher__icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: #ffffff;
-  background: linear-gradient(135deg, #2dd4bf, #0d9488);
-  box-shadow: 0 5px 12px rgba(13, 148, 136, 0.22);
-}
-
-.tms-finance-switcher__icon .app-icon {
-  width: 20px;
-  height: 20px;
-}
-
-.tms-finance-switcher__copy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.tms-finance-switcher__copy strong {
-  color: #0f172a;
-  font-size: 15px;
-  line-height: 1.3;
-}
-
-.tms-finance-switcher__copy small {
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.45;
-  white-space: normal;
-}
-
-.tms-finance-switcher__badge {
-  align-self: start;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: #e0f2fe;
-  color: #0369a1;
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-@media (max-width: 900px) {
-  .tms-finance-switcher {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 520px) {
-  .tms-finance-switcher__item {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .tms-finance-switcher__badge {
-    grid-column: 2;
-    justify-self: start;
-  }
-}
 </style>

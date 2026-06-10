@@ -73,6 +73,7 @@ const toneClass = computed(() => toneCycle[props.index % toneCycle.length])
   align-items: center;
   gap: 12px;
   padding: 14px 16px;
+  min-height: 74px;
   background: var(--soft-bg, #f0f4f8);
   border: none;
   border-radius: var(--soft-radius-sm, 12px);
@@ -139,13 +140,18 @@ const toneClass = computed(() => toneCycle[props.index % toneCycle.length])
   line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .shortcut__stage {
   font-size: 11px;
   color: var(--soft-text-muted, #94a3b8);
   margin-top: 2px;
+  white-space: nowrap;
 }
 
 .shortcut__arrow {

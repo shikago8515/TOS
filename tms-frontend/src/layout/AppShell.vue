@@ -112,9 +112,16 @@
             <span>{{ displayDate }}</span>
           </div>
 
-          <button class="topbar-action" type="button" @click="exportDiagnostics">
+          <button
+            class="topbar-action"
+            type="button"
+            :title="t('app.diagnostics.export')"
+            :aria-label="t('app.diagnostics.export')"
+            @click="exportDiagnostics"
+          >
             <AppIcon name="activity" class="action-icon" />
-            <span class="action-label">{{ t('app.diagnostics.export') }}</span>
+            <span class="action-label action-label--full">{{ t('app.diagnostics.export') }}</span>
+            <span class="action-label action-label--short">{{ diagnosticsShortLabel }}</span>
           </button>
         </div>
       </header>
@@ -260,6 +267,8 @@ const pageTitle = computed(() => {
 const sidebarToggleLabel = computed(() =>
   isSidebarHidden.value ? t('app.sidebar.show') : t('app.sidebar.hide'),
 )
+
+const diagnosticsShortLabel = computed(() => (isEnglish.value ? 'Diag' : '诊断'))
 
 const displayDate = computed(() => {
   const today = new Date()
@@ -725,6 +734,7 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 0 16px 0 12px;
   flex-shrink: 0;
   box-shadow: var(--soft-shadow, 6px 6px 14px rgba(166,180,200,0.35), -6px -6px 14px rgba(255,255,255,0.85));
@@ -741,6 +751,8 @@ watch(
   display: flex;
   align-items: center;
   gap: 14px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .menu-btn {
@@ -773,15 +785,19 @@ watch(
 .breadcrumb {
   display: flex;
   align-items: center;
+  min-width: 0;
+  flex: 1 1 auto;
   font-size: 14px;
   color: var(--soft-text-secondary, #64748b);
   gap: 10px;
+  white-space: nowrap;
 }
 
 .breadcrumb-home {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  flex: 0 0 auto;
   color: var(--soft-text-muted, #94a3b8);
   font-weight: 500;
   transition: color 0.25s ease;
@@ -802,15 +818,21 @@ watch(
 }
 
 .breadcrumb-item.current {
+  min-width: 0;
+  max-width: min(42vw, 420px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--soft-text, #1e293b);
   font-weight: 700;
-  letter-spacing: -0.2px;
+  letter-spacing: 0;
 }
 
 .topbar-right {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: 0 0 auto;
 }
 
 .topbar-pill {
@@ -852,6 +874,10 @@ watch(
     3px 3px 8px rgba(13, 148, 136, 0.25),
     -2px -2px 6px rgba(255, 255, 255, 0.6);
   transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.action-label--short {
+  display: none;
 }
 
 .action-icon {
@@ -917,6 +943,93 @@ watch(
 @media (max-width: 992px) {
   .main-panel {
     margin-left: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-layout {
+    --topbar-height: 60px;
+  }
+
+  .topbar {
+    margin: 8px 8px 0;
+    padding: 0 10px;
+    gap: 8px;
+    border-radius: 14px;
+  }
+
+  .topbar-left {
+    gap: 8px;
+  }
+
+  .menu-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    flex: 0 0 36px;
+  }
+
+  .breadcrumb {
+    gap: 6px;
+    font-size: 13px;
+  }
+
+  .breadcrumb-item.current {
+    max-width: 22vw;
+  }
+
+  .topbar-right {
+    gap: 6px;
+  }
+
+  .topbar-pill {
+    height: 34px;
+    padding: 0 10px;
+    gap: 5px;
+    font-size: 12px;
+  }
+
+  .topbar-action {
+    height: 36px;
+    padding: 0 12px;
+    gap: 5px;
+    border-radius: 10px;
+    font-size: 12px;
+  }
+
+  .action-label--full {
+    display: none;
+  }
+
+  .action-label--short {
+    display: inline;
+  }
+
+  .content-shell {
+    margin: 8px 8px 12px;
+    padding: 12px;
+    border-radius: 14px;
+  }
+}
+
+@media (max-width: 520px) {
+  .breadcrumb-home span,
+  .breadcrumb-separator {
+    display: none;
+  }
+
+  .breadcrumb-item.current {
+    max-width: 28vw;
+  }
+}
+
+@media (max-width: 380px) {
+  .topbar-pill {
+    padding: 0 8px;
+  }
+
+  .topbar-action {
+    padding: 0 10px;
   }
 }
 

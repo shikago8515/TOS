@@ -59,6 +59,9 @@ product UI while replacing recovered bundled assets with maintainable source.
 - No broad selectors such as `div`, `button`, or `.el-*` outside shared style
   files.
 - Do not create a new visual language; match the recovered TOS UI.
+- Excel-processing pages should reuse the shared page shell, upload section,
+  precheck panel, result summary, process history, and `jane-page.scss` layout
+  styles instead of defining a parallel local layout.
 
 ## AI Change Intake
 
@@ -69,8 +72,14 @@ Before accepting generated code:
 - Check that component names and props follow this standard.
 - Check that no page duplicates an existing upload, process-result, module-card,
   log, or diagnostics component.
+- Check that Excel-processing pages keep only business differences in the page:
+  fields, button text, API parameter mapping, result-summary conversion, and
+  history module ids.
+- Check that pages do not add large in-content process switchers when sidebar
+  navigation and route names already express the subprocess.
 - Check that no new raw API call bypasses the shared API layer.
-- Run typecheck, lint, build, and route parity checks before merge.
+- Run the available typecheck, test, build, and route parity checks before
+  merge.
 
 ## Merge Gate
 
