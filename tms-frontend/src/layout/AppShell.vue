@@ -33,48 +33,38 @@
 
             <transition name="expand-fade">
               <div v-show="isNavGroupExpanded(group.id)" class="menu-group-items">
-                <template v-for="item in group.items" :key="item.id">
-                  <div
-                    v-if="item.kind === 'parent'"
-                    class="menu-parent"
-                    :class="{ 'is-active': item.active }"
+                <template v-for="cat in group.categories" :key="cat.id">
+                  <!-- Category title (only shown for groups with multiple categories) -->
+                  <button
+                    v-if="!group.hasSingleCategory"
+                    class="menu-category-title"
+                    type="button"
+                    :aria-expanded="expandedCategories.has(cat.id)"
+                    @click="toggleCategory(cat.id)"
                   >
-                    <button
+                    <span class="menu-label">{{ getCategoryLabel(cat.cat) }}</span>
+                    <AppIcon
+                      :name="expandedCategories.has(cat.id) ? 'chevron-down' : 'chevron-right'"
+                      class="menu-arrow"
+                    />
+                  </button>
+
+                  <!-- Category items: shown directly if single-category, else under category toggle -->
+                  <template v-if="group.hasSingleCategory || expandedCategories.has(cat.id)">
+                    <RouterLink
+                      v-for="mod in cat.modules"
+                      :key="mod.id"
                       class="menu-item"
-                      :class="{ 'is-active': item.active }"
-                      type="button"
-                      :aria-expanded="isNavParentExpanded(item.id)"
-                      @click="activateNavParent(item)"
+                      :class="[
+                        !group.hasSingleCategory ? 'child-item' : '',
+                        isModuleActive(mod) ? 'is-active' : ''
+                      ]"
+                      :to="mod.path"
                     >
-                      <AppIcon :name="getGroupIcon(group.id)" class="menu-icon" />
-                      <span class="menu-label">{{ item.label }}</span>
-                      <AppIcon :name="isNavParentExpanded(item.id) ? 'chevron-down' : 'chevron-right'" class="menu-arrow" />
-                    </button>
-
-                    <transition name="expand-fade">
-                      <div v-show="isNavParentExpanded(item.id)" class="menu-children">
-                        <RouterLink
-                          v-for="module in item.modules"
-                          :key="module.id"
-                          class="menu-item child-item"
-                          :to="module.path"
-                          :class="{ 'is-active': isModuleActive(module) }"
-                        >
-                          <span class="menu-label">{{ getModuleNavLabel(module) }}</span>
-                        </RouterLink>
-                      </div>
-                    </transition>
-                  </div>
-
-                  <RouterLink
-                    v-else
-                    class="menu-item"
-                    :to="item.module.path"
-                    :class="{ 'is-active': isModuleActive(item.module) }"
-                  >
-                    <AppIcon :name="getModuleIcon(item.module)" class="menu-icon" />
-                    <span class="menu-label">{{ getModuleNavLabel(item.module) }}</span>
-                  </RouterLink>
+                      <AppIcon :name="getModuleIcon(mod)" class="menu-icon" />
+                      <span class="menu-label">{{ getModuleNavLabel(mod) }}</span>
+                    </RouterLink>
+                  </template>
                 </template>
               </div>
             </transition>
@@ -154,52 +144,39 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
-import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
 
 import {
   getModulesByGroup,
-  getNavParentsByGroup,
   tosNavGroups,
+  tosModuleCategoryLabels,
+  type TosModuleCategory,
   type TosModuleDefinition,
   type TosModuleGroup,
   type TosNavGroupDefinition,
-  type TosNavParentDefinition,
 } from '../domain/moduleCatalog'
 import { useAppLanguage } from '../shared/i18n/appLanguage'
 import AppIcon from '../shared/ui/AppIcon.vue'
-import { resolveSidebarParentActivation } from './sidebarNavigation'
 
-interface SidebarModuleItem {
+interface SidebarCategory {
   id: string
-  kind: 'module'
-  module: TosModuleDefinition
-  order: number
-}
-
-interface SidebarParentItem {
-  id: string
-  kind: 'parent'
-  label: string
+  cat: TosModuleCategory
   modules: TosModuleDefinition[]
-  order: number
-  active: boolean
 }
 
 interface SidebarGroup extends TosNavGroupDefinition {
-  items: SidebarItem[]
+  categories: SidebarCategory[]
+  hasSingleCategory: boolean
   displayLabel: string
   isCollapsible: boolean
   showLabel: boolean
 }
 
-type SidebarItem = SidebarModuleItem | SidebarParentItem
-
 const route = useRoute()
-const router = useRouter()
 const isSidebarHidden = ref(false)
 const isMobile = ref(false)
-const expandedNavGroups = ref<Set<TosModuleGroup>>(new Set(['excel', 'automation', 'collector']))
-const expandedNavParents = ref<Set<string>>(new Set(['jane-table-making', 'web-automation-group']))
+const expandedNavGroups = ref<Set<TosModuleGroup>>(new Set(['jessica', 'sophia', 'jane', 'eric', 'it', 'finance-excel']))
+const expandedCategories = ref<Set<string>>(new Set())
 const { isEnglish, t } = useAppLanguage()
 
 interface ToastState {
@@ -223,32 +200,26 @@ const sidebarGroups = computed<SidebarGroup[]>(() =>
   tosNavGroups
     .map((group) => {
       const modules = getModulesByGroup(group.id).filter(shouldShowInSidebar)
-      const parents = getNavParentsByGroup(group.id)
-      const parentItems = parents
-        .map((parent) => buildSidebarParent(parent, modules))
-        .filter((item): item is SidebarParentItem => item !== null)
-      const parentIds = new Set(parentItems.map((parent) => parent.id))
-      const moduleItems = modules
-        .filter((module) => !module.navParentId || !parentIds.has(module.navParentId))
-        .map<SidebarModuleItem>((module) => ({
-          id: module.id,
-          kind: 'module',
-          module,
-          order: module.order,
-        }))
-      const items = [...moduleItems, ...parentItems].sort(
-        (left, right) => left.order - right.order,
-      )
+      const catMap = new Map<TosModuleCategory, TosModuleDefinition[]>()
+      for (const mod of modules) {
+        const list = catMap.get(mod.category)
+        if (list) { list.push(mod) } else { catMap.set(mod.category, [mod]) }
+      }
+      const categories: SidebarCategory[] = []
+      for (const [cat, catModules] of catMap) {
+        categories.push({ id: `${group.id}:${cat}`, cat, modules: catModules })
+      }
 
       return {
         ...group,
-        items,
+        categories,
+        hasSingleCategory: categories.length <= 1,
         displayLabel: getGroupLabel(group),
-        isCollapsible: group.id !== 'home' && group.id !== 'settings',
-        showLabel: group.id === 'collector' || items.length > 1,
+        isCollapsible: group.id !== 'home',
+        showLabel: group.id !== 'home',
       }
     })
-    .filter((group) => group.items.length > 0),
+    .filter((group) => group.categories.length > 0),
 )
 
 const pageTitle = computed(() => {
@@ -281,30 +252,8 @@ const displayDate = computed(() => {
   return `${month}/${day}${weekdays[today.getDay()]}`
 })
 
-function buildSidebarParent(
-  parent: TosNavParentDefinition,
-  modules: TosModuleDefinition[],
-): SidebarParentItem | null {
-  const childModules = modules
-    .filter((module) => module.navParentId === parent.id)
-    .sort((left, right) => left.order - right.order)
-
-  if (childModules.length === 0) {
-    return null
-  }
-
-  return {
-    id: parent.id,
-    kind: 'parent',
-    label: getParentLabel(parent),
-    modules: childModules,
-    order: parent.order,
-    active: childModules.some(isModuleActive),
-  }
-}
-
 function shouldShowInSidebar(module: TosModuleDefinition): boolean {
-  return module.stage !== 'placeholder' || module.group === 'settings'
+  return module.stage !== 'placeholder'
 }
 
 function isModuleActive(module: TosModuleDefinition): boolean {
@@ -312,7 +261,7 @@ function isModuleActive(module: TosModuleDefinition): boolean {
 }
 
 function isNavGroupCollapsible(groupId: TosModuleGroup): boolean {
-  return groupId !== 'home' && groupId !== 'settings'
+  return groupId !== 'home'
 }
 
 function isNavGroupExpanded(groupId: TosModuleGroup): boolean {
@@ -335,23 +284,14 @@ function toggleNavGroup(groupId: TosModuleGroup): void {
   expandedNavGroups.value = nextExpanded
 }
 
-function isNavParentExpanded(parentId: string): boolean {
-  return expandedNavParents.value.has(parentId)
+function toggleCategory(catId: string): void {
+  const next = new Set(expandedCategories.value)
+  if (next.has(catId)) { next.delete(catId) } else { next.add(catId) }
+  expandedCategories.value = next
 }
 
-function activateNavParent(item: SidebarParentItem): void {
-  const result = resolveSidebarParentActivation({
-    parentId: item.id,
-    childModules: item.modules,
-    activeRouteName: route.name,
-    expandedParentIds: expandedNavParents.value,
-  })
-
-  expandedNavParents.value = result.expandedParentIds
-
-  if (result.targetPath) {
-    void router.push(result.targetPath)
-  }
+function getCategoryLabel(cat: TosModuleCategory): string {
+  return isEnglish.value ? tosModuleCategoryLabels[cat].labelEn : tosModuleCategoryLabels[cat].label
 }
 
 function toggleSidebar(): void {
@@ -362,10 +302,6 @@ function getGroupLabel(group: TosNavGroupDefinition): string {
   return isEnglish.value ? group.labelEn : group.label
 }
 
-function getParentLabel(parent: TosNavParentDefinition): string {
-  return isEnglish.value ? parent.labelEn : parent.label
-}
-
 function getModuleNavLabel(module: TosModuleDefinition): string {
   return isEnglish.value ? module.navLabelEn : module.navLabel
 }
@@ -373,11 +309,13 @@ function getModuleNavLabel(module: TosModuleDefinition): string {
 function getGroupIcon(groupId: TosModuleGroup): string {
   const map: Record<TosModuleGroup, string> = {
     home: 'radar',
-    excel: 'database',
-    automation: 'globe',
-    testing: 'shield-check',
-    collector: 'globe-search',
-    settings: 'monitor-code'
+    jessica: 'check-circle',
+    sophia: 'files',
+    jane: 'grid',
+    eric: 'terminal',
+    it: 'file-search',
+    'finance-excel': 'database',
+    'general-tools': 'layers',
   }
   return map[groupId] || 'layers'
 }
@@ -431,18 +369,19 @@ watch(
     const activeModules = tosNavGroups
       .flatMap((group) => getModulesByGroup(group.id))
       .filter((module) => isModuleActive(module))
-    const activeParents = activeModules
-      .filter((module) => module.navParentId)
-      .map((module) => module.navParentId as string)
-    const activeGroups = activeModules.map((module) => module.group)
 
-    if (activeParents.length === 0 && activeGroups.length === 0) {
+    if (activeModules.length === 0) {
       return
     }
 
-    expandedNavParents.value = new Set([...expandedNavParents.value, ...activeParents])
+    const activeGroups = activeModules.map((module) => module.group)
     expandedNavGroups.value = new Set([...expandedNavGroups.value, ...activeGroups])
-    
+
+    const activeCatIds = activeModules
+      .filter((mod) => mod.category)
+      .map((mod) => `${mod.group}:${mod.category}`)
+    expandedCategories.value = new Set([...expandedCategories.value, ...activeCatIds])
+
     if (isMobile.value) {
       isSidebarHidden.value = true
     }
@@ -680,15 +619,34 @@ watch(
   filter: drop-shadow(0 0 3px rgba(13, 148, 136, 0.25));
 }
 
-.menu-children {
-  padding-left: 20px;
+.menu-category-title {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--soft-text-muted, #909399);
+  font-size: 12px;
+  padding: 6px 14px 6px 24px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--soft-radius-xs, 10px);
+  transition: all 0.25s ease;
+}
+
+.menu-category-title:hover {
+  background: var(--soft-bg, #f0f4f8);
+  color: var(--soft-text-secondary, #606266);
 }
 
 .child-item {
   height: 38px;
   font-size: 13px;
+  padding-left: 28px;
 }
 
 .child-item::before {

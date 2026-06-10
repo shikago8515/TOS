@@ -118,8 +118,8 @@ const displayDate = computed(() => {
 
 const heroSubtitle = computed(() =>
   isEnglish.value
-    ? 'Excel processing, browser automation, and web data collection in one place.'
-    : 'Excel 数据处理、浏览器自动化和网页数据采集，一站式工作台。',
+    ? 'Data processing, browser automation, and tools — all in one place.'
+    : '数据核对、报表制作、浏览器自动化与通用工具，一站式工作台。',
 )
 
 const iconMap: Record<string, string> = {
@@ -135,7 +135,7 @@ const metricCards = computed(() =>
     value: m.value,
     label: t(m.labelKey),
     detail: m.detailKey ? t(m.detailKey) : homeShortcutModules
-      .filter((mod) => mod.group === 'automation')
+      .filter((mod) => mod.group === 'general-tools')
       .map((mod) => isEnglish.value ? mod.navLabelEn : mod.navLabel)
       .join(' / '),
     tone: m.tone === 'blue' ? 'teal' : m.tone === 'green' ? 'green' : 'orange',

@@ -1,13 +1,21 @@
 import {
   getModuleById,
   getModulesByGroup,
+  type TosModuleDefinition,
   type TosModuleId,
 } from '../../domain/moduleCatalog'
 import type { TranslationKey } from '../../shared/i18n/appLanguage'
 
-const excelModules = getModulesByGroup('excel')
-const collectorModules = getModulesByGroup('collector')
-const automationModules = getModulesByGroup('automation')
+const excelModules = [
+  ...getModulesByGroup('jessica'),
+  ...getModulesByGroup('sophia'),
+  ...getModulesByGroup('jane'),
+  ...getModulesByGroup('eric'),
+  ...getModulesByGroup('it'),
+  ...getModulesByGroup('finance-excel'),
+]
+const collectorModules = getModulesByGroup('general-tools')
+const automationModules: TosModuleDefinition[] = []
 
 export const homeMetricTiles = [
   {
