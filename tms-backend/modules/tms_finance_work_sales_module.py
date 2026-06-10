@@ -119,7 +119,7 @@ class TmsFinanceWorkSalesModule:
     def process_files(
         self,
         iplix_path: str,
-        reference_path: str,
+        reference_path: Optional[str] = None,
         output_dir: Optional[str] = None,
         today: Optional[date] = None,
     ) -> Dict[str, Any]:
@@ -130,8 +130,15 @@ class TmsFinanceWorkSalesModule:
         if not sales_rows:
             raise ValueError("iPlix Turnover Details 未读取到 Sales 明细")
 
-        reference_rows, reference_diagnostics = self._extract_reference_rows(reference_path)
-        reference_map, duplicate_reference_diagnostics = self._build_reference_map(reference_rows)
+        has_reference = bool(reference_path)
+        if has_reference:
+            reference_rows, reference_diagnostics = self._extract_reference_rows(reference_path)
+            reference_map, duplicate_reference_diagnostics = self._build_reference_map(reference_rows)
+        else:
+            reference_rows = []
+            reference_diagnostics = []
+            reference_map = {}
+            duplicate_reference_diagnostics = []
         diagnostics: List[Dict[str, Any]] = [
             *reference_diagnostics,
             *duplicate_reference_diagnostics,
@@ -150,12 +157,13 @@ class TmsFinanceWorkSalesModule:
                 row_diagnostics.append("Sales/Purchase 明细不一致，已按原行序横向合并")
 
             style_key = self._normalize_style_key(sales_row.style)
-            reference = reference_map.get(style_key)
-            if reference:
-                matched_reference_count += 1
-            else:
-                missing_reference_count += 1
-                row_diagnostics.append("参考表未匹配到 Style，补充价格和文本字段留空")
+            reference = reference_map.get(style_key) if has_reference else None
+            if has_reference:
+                if reference:
+                    matched_reference_count += 1
+                else:
+                    missing_reference_count += 1
+                    row_diagnostics.append("参考表未匹配到 Style，补充价格和文本字段留空")
 
             factory = ""
             if reference:
@@ -212,7 +220,7 @@ class TmsFinanceWorkSalesModule:
             "logs": [
                 f"Sales 明细提取 {len(sales_rows)} 行",
                 f"Purchase 明细提取 {len(purchase_rows)} 行",
-                f"参考表读取 {len(reference_rows)} 行",
+                f"参考表读取 {len(reference_rows)} 行" if has_reference else "补充参考表未上传，参考字段留空",
                 f"生成 Work Sales 汇总 {len(output_rows)} 行",
             ],
         }
@@ -221,6 +229,12 @@ class TmsFinanceWorkSalesModule:
         self,
         workbook_path: str,
     ) -> Tuple[List[DetailRow], List[DetailRow]]:
+        extension = os.path.splitext(workbook_path)[1].lower()
+        if extension == ".xls":
+            return self._extract_xls_turnover_detail_rows(workbook_path)
+        if extension not in {".xlsx", ".xlsm"}:
+            raise ValueError("iPlix 导出 Excel 仅支持 .xls / .xlsx / .xlsm")
+
         workbook = openpyxl.load_workbook(workbook_path, data_only=True, read_only=True)
         try:
             if self.DETAIL_SHEET_NAME not in workbook.sheetnames:
@@ -237,9 +251,72 @@ class TmsFinanceWorkSalesModule:
         finally:
             workbook.close()
 
+    def _extract_xls_turnover_detail_rows(
+        self,
+        workbook_path: str,
+    ) -> Tuple[List[DetailRow], List[DetailRow]]:
+        book = xlrd.open_workbook(workbook_path, on_demand=True)
+        try:
+            if self.DETAIL_SHEET_NAME not in book.sheet_names():
+                raise ValueError("iPlix 文件缺少 Turnover Details Sheet")
+            sheet = book.sheet_by_name(self.DETAIL_SHEET_NAME)
+            read_cell = lambda row, column: sheet.cell_value(row - 1, column - 1)
+            sales_header_row = self._find_sales_header_row_from_reader(
+                sheet.nrows,
+                sheet.ncols,
+                read_cell,
+            )
+            purchase_header_row = self._find_purchase_header_row_from_reader(
+                sheet.nrows,
+                sheet.ncols,
+                read_cell,
+            )
+            sales_columns = self._build_detail_columns_from_reader(
+                sales_header_row,
+                sheet.ncols,
+                read_cell,
+            )
+            purchase_columns = self._build_detail_columns_from_reader(
+                purchase_header_row,
+                sheet.ncols,
+                read_cell,
+            )
+            return (
+                self._read_detail_rows_from_reader(
+                    sheet.name,
+                    sheet.nrows,
+                    sheet.ncols,
+                    sales_header_row,
+                    sales_columns,
+                    read_cell,
+                ),
+                self._read_detail_rows_from_reader(
+                    sheet.name,
+                    sheet.nrows,
+                    sheet.ncols,
+                    purchase_header_row,
+                    purchase_columns,
+                    read_cell,
+                ),
+            )
+        finally:
+            book.release_resources()
+
     def _find_sales_header_row(self, ws: Worksheet) -> int:
-        for row in range(1, ws.max_row + 1):
-            headers = self._header_values(ws, row)
+        return self._find_sales_header_row_from_reader(
+            ws.max_row,
+            ws.max_column,
+            lambda row, column: ws.cell(row, column).value,
+        )
+
+    def _find_sales_header_row_from_reader(
+        self,
+        max_row: int,
+        max_column: int,
+        read_cell: Callable[[int, int], Any],
+    ) -> int:
+        for row in range(1, max_row + 1):
+            headers = self._header_values_from_reader(row, max_column, read_cell)
             if (
                 "STYLE NUMBER" in headers
                 and "SALES INVOICE NUMBER" in headers
@@ -249,21 +326,61 @@ class TmsFinanceWorkSalesModule:
         raise ValueError("Turnover Details 缺少 Sales 明细表头")
 
     def _find_purchase_header_row(self, ws: Worksheet) -> int:
-        for row in range(1, ws.max_row + 1):
-            headers = self._header_values(ws, row)
+        return self._find_purchase_header_row_from_reader(
+            ws.max_row,
+            ws.max_column,
+            lambda row, column: ws.cell(row, column).value,
+        )
+
+    def _find_purchase_header_row_from_reader(
+        self,
+        max_row: int,
+        max_column: int,
+        read_cell: Callable[[int, int], Any],
+    ) -> int:
+        for row in range(1, max_row + 1):
+            headers = self._header_values_from_reader(row, max_column, read_cell)
             if "STYLE NUMBER" in headers and "PURCHASE AMOUNT" in headers:
                 return row
         raise ValueError("Turnover Details 缺少 Purchase 明细表头")
 
     def _header_values(self, ws: Worksheet, row: int) -> set[str]:
+        return self._header_values_from_reader(
+            row,
+            ws.max_column,
+            lambda row_index, column: ws.cell(row_index, column).value,
+        )
+
+    def _header_values_from_reader(
+        self,
+        row: int,
+        max_column: int,
+        read_cell: Callable[[int, int], Any],
+    ) -> set[str]:
         return {
-            self._normalize_header(ws.cell(row, column).value)
-            for column in range(1, ws.max_column + 1)
-            if self._normalize_header(ws.cell(row, column).value)
+            self._normalize_header(read_cell(row, column))
+            for column in range(1, max_column + 1)
+            if self._normalize_header(read_cell(row, column))
         }
 
     def _build_detail_columns(self, ws: Worksheet, header_row: int) -> DetailColumns:
-        header_map = self._build_header_map(ws, header_row)
+        return self._build_detail_columns_from_reader(
+            header_row,
+            ws.max_column,
+            lambda row, column: ws.cell(row, column).value,
+        )
+
+    def _build_detail_columns_from_reader(
+        self,
+        header_row: int,
+        max_column: int,
+        read_cell: Callable[[int, int], Any],
+    ) -> DetailColumns:
+        header_map = {
+            self._normalize_header(read_cell(header_row, column)): column
+            for column in range(1, max_column + 1)
+            if self._normalize_header(read_cell(header_row, column))
+        }
         return DetailColumns(
             style=self._required_column(header_map, ["STYLE NUMBER", "WORKING STYLE NUMBER"]),
             unit_price=self._required_column(
@@ -282,34 +399,66 @@ class TmsFinanceWorkSalesModule:
         header_row: int,
         columns: DetailColumns,
     ) -> List[DetailRow]:
+        return self._read_detail_rows_from_reader(
+            ws.title,
+            ws.max_row,
+            ws.max_column,
+            header_row,
+            columns,
+            lambda row, column: ws.cell(row, column).value,
+        )
+
+    def _read_detail_rows_from_reader(
+        self,
+        sheet_name: str,
+        max_row: int,
+        max_column: int,
+        header_row: int,
+        columns: DetailColumns,
+        read_cell: Callable[[int, int], Any],
+    ) -> List[DetailRow]:
         rows: List[DetailRow] = []
         row_index = header_row + 1
-        while row_index <= ws.max_row:
-            if self._is_detail_stop_row(ws, row_index, columns):
+        while row_index <= max_row:
+            if self._is_detail_stop_row_from_reader(row_index, max_column, columns, read_cell):
                 break
-            style = self._clean_text(ws.cell(row_index, columns.style).value)
-            invoice = self._clean_text(ws.cell(row_index, columns.invoice).value)
+            style = self._clean_text(read_cell(row_index, columns.style))
+            invoice = self._clean_text(read_cell(row_index, columns.invoice))
             if style or invoice:
                 rows.append(
                     DetailRow(
-                        source_sheet=ws.title,
+                        source_sheet=sheet_name,
                         source_row=row_index,
                         invoice=invoice,
                         style=style,
-                        unit_price=self._money_or_none(ws.cell(row_index, columns.unit_price).value),
-                        quantity=ws.cell(row_index, columns.quantity).value,
-                        merchandiser=self._clean_text(ws.cell(row_index, columns.merchandiser).value),
-                        handover_date=ws.cell(row_index, columns.handover_date).value,
+                        unit_price=self._money_or_none(read_cell(row_index, columns.unit_price)),
+                        quantity=read_cell(row_index, columns.quantity),
+                        merchandiser=self._clean_text(read_cell(row_index, columns.merchandiser)),
+                        handover_date=read_cell(row_index, columns.handover_date),
                     )
                 )
             row_index += 1
         return rows
 
     def _is_detail_stop_row(self, ws: Worksheet, row: int, columns: DetailColumns) -> bool:
-        values = [ws.cell(row, column).value for column in range(1, min(ws.max_column, 18) + 1)]
+        return self._is_detail_stop_row_from_reader(
+            row,
+            ws.max_column,
+            columns,
+            lambda row_index, column: ws.cell(row_index, column).value,
+        )
+
+    def _is_detail_stop_row_from_reader(
+        self,
+        row: int,
+        max_column: int,
+        columns: DetailColumns,
+        read_cell: Callable[[int, int], Any],
+    ) -> bool:
+        values = [read_cell(row, column) for column in range(1, min(max_column, 18) + 1)]
         if all(value in (None, "") for value in values):
             return True
-        style = self._clean_text(ws.cell(row, columns.style).value)
+        style = self._clean_text(read_cell(row, columns.style))
         if style:
             return False
         return any(

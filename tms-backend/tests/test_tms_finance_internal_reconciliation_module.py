@@ -99,7 +99,7 @@ class TmsFinanceInternalReconciliationModuleTests(unittest.TestCase):
                 "old-sales",
                 "2024-07-05",
                 "old-purchase",
-                "Book",
+                "Bulk",
                 "新龙泰",
                 "adidas",
                 1,
@@ -257,7 +257,7 @@ class TmsFinanceInternalReconciliationModuleTests(unittest.TestCase):
             self._append_source_row(
                 ws,
                 3 + offset,
-                remark="Book",
+                remark="Bulk",
                 style=f"RC2610OW{offset:03d}",
                 order=f"0901888{offset:03d}",
                 article=f"KX{1867 + offset}",
@@ -290,7 +290,7 @@ class TmsFinanceInternalReconciliationModuleTests(unittest.TestCase):
             self.assertEqual(result["appended_count"], 0)
             self.assertEqual(result["source_row_count"], 22)
             self.assertEqual(result["target_row_count"], 207)
-            self.assertEqual(result["source_summary"]["book_rows"], 8)
+            self.assertEqual(result["source_summary"]["bulk_rows"], 8)
             self.assertEqual(result["source_summary"]["sample_rows"], 14)
             self.assertEqual(result["totals"]["quantity"], 442)
             self.assertEqual(result["totals"]["purchase_amount"], 1380.86)
@@ -303,7 +303,7 @@ class TmsFinanceInternalReconciliationModuleTests(unittest.TestCase):
             ws = output_wb["未清账"]
             self.assertEqual(ws.max_row, 210)
             self.assertEqual(ws.cell(186, 12).value, "HISTORY186")
-            self.assertEqual(ws.cell(187, 5).value, "Book")
+            self.assertEqual(ws.cell(187, 5).value, "Bulk")
             self.assertEqual(ws.cell(187, 6).value, "万代")
             self.assertEqual(ws.cell(187, 8).value, 10)
             self.assertEqual(ws.cell(187, 9).value, 11.3)
@@ -320,7 +320,7 @@ class TmsFinanceInternalReconciliationModuleTests(unittest.TestCase):
             self.assertEqual(ws.cell(188, 6).value, "万代")
             self.assertEqual(ws.cell(189, 6).value, "新龙泰")
             self.assertEqual(ws.cell(191, 6).value, "测试工厂")
-            self.assertEqual(ws.cell(194, 5).value, "Book")
+            self.assertEqual(ws.cell(194, 5).value, "Bulk")
             self.assertEqual(ws.cell(194, 8).value, 120)
             self.assertEqual(ws.cell(195, 5).value, "Sample")
             self.assertEqual(ws.cell(195, 6).value, "新龙泰")
@@ -356,7 +356,7 @@ class TmsFinanceInternalReconciliationModuleTests(unittest.TestCase):
 
             output_wb = openpyxl.load_workbook(result["output_path"], data_only=False)
             ws = output_wb["未清账"]
-            self.assertEqual(ws.cell(200, 5).value, "Book")
+            self.assertEqual(ws.cell(200, 5).value, "Bulk")
             self.assertEqual(ws.cell(200, 9).value, 1.11)
             self.assertEqual(ws.cell(200, 10).value, 1118.23)
             self.assertEqual(ws.cell(200, 22).value, "#FS200(sales-200)")

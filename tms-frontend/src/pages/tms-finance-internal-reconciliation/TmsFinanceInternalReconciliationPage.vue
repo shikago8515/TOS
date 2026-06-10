@@ -61,7 +61,6 @@ import {
   ExcelProcessPageShell,
   ExcelResultNotice,
   ExcelUploadSection,
-  type ExcelFileField,
   type ExcelNoticeTone,
   type ExcelPageStat,
   type ExcelToolbarAction,
@@ -89,6 +88,7 @@ import {
   type TmsFinanceProcessId,
   type TmsFinanceProcessOption,
 } from './tmsFinancePageModel'
+import { buildTmsFinanceUploadFields } from './tmsFinanceUploadFields'
 
 const route = useRoute()
 const activeProcessId = ref<TmsFinanceProcessId>(resolveProcessIdFromRoute(route.name))
@@ -112,51 +112,14 @@ const activeProcess = computed<TmsFinanceProcessOption>(
   () => getTmsFinanceProcessById(activeProcessId.value),
 )
 
-const uploadFields = computed<ExcelFileField[]>(() => {
-  if (activeProcessId.value === 'work-sales') {
-    return [
-      {
-        id: 'iplix',
-        label: 'iPlix 导出 Excel',
-        files: iplixFiles.value,
-        hint: '上传包含 Turnover Details Sheet 的 iPlix 导出文件',
-        accept: '.xlsx,.xlsm',
-        acceptLabel: '支持 .xlsx / .xlsm',
-        expectedCount: 1,
-      },
-      {
-        id: 'work-sales-reference',
-        label: '补充参考表',
-        files: workSalesReferenceFiles.value,
-        hint: '上传含 Buyer、Factory、Customer 及 SAS/Promo/Upcharge 的匹配表',
-        accept: '.xls,.xlsx,.xlsm',
-        acceptLabel: '支持 .xls / .xlsx / .xlsm',
-        expectedCount: 1,
-      },
-    ]
-  }
-
-  return [
-    {
-      id: 'internal-sources',
-      label: 'Sample/Bulk 来源文件',
-      files: internalSourceFiles.value,
-      hint: '可一次上传多个合并Sample、合并BULK工作簿，按上传顺序回填',
-      multiple: true,
-      accept: '.xlsx,.xlsm',
-      acceptLabel: '支持 .xlsx / .xlsm',
-    },
-    {
-      id: 'target',
-      label: '内销对账单',
-      files: reconciliationTargetFiles.value,
-      hint: '上传要回填未清账尾部已有行的内销对账大表',
-      accept: '.xlsx,.xlsm',
-      acceptLabel: '支持 .xlsx / .xlsm',
-      expectedCount: 1,
-    },
-  ]
-})
+const uploadFields = computed(() =>
+  buildTmsFinanceUploadFields(activeProcessId.value, {
+    internalSourceFiles: internalSourceFiles.value,
+    reconciliationTargetFiles: reconciliationTargetFiles.value,
+    iplixFiles: iplixFiles.value,
+    workSalesReferenceFiles: workSalesReferenceFiles.value,
+  }),
+)
 
 const fileGroups = computed(() => buildExcelFileGroups(uploadFields.value))
 const canProcess = computed(() => areRequiredFilesReady(fileGroups.value))
@@ -321,9 +284,9 @@ async function startInternalReconciliationProcess(): Promise<void> {
 }
 
 async function startWorkSalesProcess(): Promise<void> {
-  if (!iplixFiles.value[0] || !workSalesReferenceFiles.value[0]) {
+  if (!iplixFiles.value[0]) {
     messageTone.value = 'warning'
-    message.value = '请先补齐 iPlix 导出 Excel 和补充参考表。'
+    message.value = '请先上传 iPlix 导出 Excel。'
     success.value = false
     return
   }

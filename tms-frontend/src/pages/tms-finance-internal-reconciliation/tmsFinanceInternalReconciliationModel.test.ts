@@ -16,7 +16,7 @@ describe('tmsFinanceInternalReconciliationModel', () => {
       output_file: 'result.xlsx',
       source_summary: {
         sample_rows: 14,
-        book_rows: 8,
+        bulk_rows: 8,
         source_rows: 22,
         source_files: 2,
       },
@@ -29,7 +29,7 @@ describe('tmsFinanceInternalReconciliationModel', () => {
 
     expect(summary).toContainEqual({ label: '来源提取行', value: '22' })
     expect(summary).toContainEqual({ label: 'Sample 行', value: '14' })
-    expect(summary).toContainEqual({ label: 'Book 行', value: '8' })
+    expect(summary).toContainEqual({ label: 'Bulk 行', value: '8' })
     expect(summary).toContainEqual({ label: '回填行', value: '22' })
     expect(summary).toContainEqual({ label: '目标处理行', value: '207' })
     expect(summary).toContainEqual({ label: '排除行', value: '203' })

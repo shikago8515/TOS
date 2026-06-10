@@ -5,7 +5,7 @@ import {
 
 export interface TmsFinanceWorkSalesRequest {
   iplixFile: File
-  referenceFile: File
+  referenceFile?: File
 }
 
 export interface TmsFinanceWorkSalesTotals {
@@ -42,7 +42,9 @@ export async function processTmsFinanceWorkSalesFiles(
   const formData = new FormData()
 
   formData.append('iplix_file', request.iplixFile)
-  formData.append('reference_file', request.referenceFile)
+  if (request.referenceFile) {
+    formData.append('reference_file', request.referenceFile)
+  }
 
   return postFormData<TmsFinanceWorkSalesResponse>({
     path: '/api/tms-finance/work-sales/process',

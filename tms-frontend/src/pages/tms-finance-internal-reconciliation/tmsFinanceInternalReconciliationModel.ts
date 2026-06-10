@@ -19,8 +19,8 @@ export function buildTmsFinanceInternalReconciliationSummary(
       value: String(response.source_summary?.sample_rows ?? '-'),
     },
     {
-      label: 'Book 行',
-      value: String(response.source_summary?.book_rows ?? response.source_summary?.bulk_rows ?? '-'),
+      label: 'Bulk 行',
+      value: String(response.source_summary?.bulk_rows ?? response.source_summary?.book_rows ?? '-'),
     },
     {
       label: '回填行',

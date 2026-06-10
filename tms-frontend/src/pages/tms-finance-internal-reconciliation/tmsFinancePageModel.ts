@@ -47,10 +47,10 @@ export const tmsFinanceProcessOptions: readonly TmsFinanceProcessOption[] = [
   {
     id: 'work-sales',
     label: 'Work Sales 数据提取',
-    subtitle: 'iPlix Turnover Details + 补充参考表 → Work Sales 汇总',
-    badge: '2 组必传',
+    subtitle: 'iPlix Turnover Details → Work Sales 汇总，补充参考表选填',
+    badge: '1 必传 1 选填',
     icon: 'bar-chart',
-    requiredGroups: 2,
+    requiredGroups: 1,
     progressLabel: '提取进度',
     idleActionLabel: '开始提取',
     processingActionLabel: '提取中...',

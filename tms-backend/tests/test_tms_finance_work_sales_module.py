@@ -1,3 +1,4 @@
+import base64
 import os
 import sys
 import tempfile
@@ -60,6 +61,96 @@ PURCHASE_HEADERS = [
     "SALES INVOICE NUMBER",
 ]
 
+WORK_SALES_XLS_FIXTURE = (
+    "0M8R4KGxGuEAAAAAAAAAAAAAAAAAAAAAPgADAP7/CQAGAAAAAAAAAAAAAAABAAAACQAAAAAAAAAAEAAA/v///wAA"
+    "AAD+////AAAAAAgAAAD/////////////////////////////////////////////////////////////////////"
+    "////////////////////////////////////////////////////////////////////////////////////////"
+    "////////////////////////////////////////////////////////////////////////////////////////"
+    "////////////////////////////////////////////////////////////////////////////////////////"
+    "////////////////////////////////////////////////////////////////////////////////////////"
+    "////////////////////////////////////////////////////////////////////////////////////////"
+    "//////////////////////////////////////////////////////////////////8JCBAAAAYFALsNzAcAAAAA"
+    "BgAAAOEAAgCwBMEAAgAAAOIAAABcAHAATm9uZSAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg"
+    "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg"
+    "ICAgIEIAAgCwBGEBAgAAAD0BAgABAJwAAgAOABkAAgAAABIAAgAAAGMAAgAAABMAAgAAAK8BAgAAALwBAgAAAEAA"
+    "AgAAAI0AAgAAAD0AEgDgAVoAzz9OKjgAAAAAAAEAWAIiAAIAAAAOAAIAAQC3AQIAAADaAAIAAAAxABUAyAAAAP9/"
+    "kAEAAAAAAQAFAEFyaWFsMQAVAMgAAAD/f5ABAAAAAAEABQBBcmlhbDEAFQDIAAAA/3+QAQAAAAABAAUAQXJpYWwx"
+    "ABUAyAAAAP9/kAEAAAAAAQAFAEFyaWFsMQAVAMgAAAD/f5ABAAAAAAEABQBBcmlhbDEAFQDIAAAA/3+QAQAAAAAB"
+    "AAUAQXJpYWwxABUAyAAAAP9/kAEAAAAAAQAFAEFyaWFsHgQMAKQABwAAR2VuZXJhbOAAFAAGAKQA9f8gAAD0AAAA"
+    "AAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8g"
+    "AAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAG"
+    "AKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADA"
+    "IOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAA"
+    "AAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8g"
+    "AAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQAAQAgAAD4AAAAAAAAAADAIOAAFAAH"
+    "AKQAAQAgAAD4AAAAAAAAAADAIJMCBAAAgAD/YAECAAEAhQAYAAMGAAAAABAAVHVybm92ZXIgRGV0YWlsc/wAVAIr"
+    "AAAAHAAAABkAAFR1cm5vdmVyIERldGFpbHMgTUFZIDIwMjYMAABTdHlsZSBOdW1iZXIXAABVbml0IFByaWNlKGlu"
+    "Y2x1ZGUgVkFUKRcAAFVuaXQgUHJpY2UoZXhjbHVkZSBWQVQpDQAAU2hpcCBRdWFudGl0eSEAAFRvdGFsIHByaWNl"
+    "IGV4Y2x1ZGluZyBWQVQgYW5kIFZBUwMAAFZBUxQAAFByb21vIHByaWNlIHVwY2hhcmdlHAAAU2FsZXMgQW1vdW50"
+    "IGFmdGVyIGRlZHVjdGlvbgoAAFZBVCBBbW91bnQdAABHcm9zcyBBbW91bnQoaW5jbHVkZSB0aGUgVkFUKQkAAEFS"
+    "IEFtb3VudCoAAFRvdGFsIGFtb3VudCBpbiBJcGxleCBzeXN0ZW0gKGluY2x1ZGUgVkFUKSoAAFRvdGFsIGFtb3Vu"
+    "dCBpbiBJcGxleCBzeXN0ZW0gKGV4Y2x1ZGUgVkFUKQoAAGRpZmZlcmVuY2UFAABNRVJDSA0AAEhBTkRPVkVSIERB"
+    "VEUUAABTQUxFUyBJTlZPSUNFIE5VTUJFUgwAAFJDMjYxME9XMDAxLggAAENhcm9saW5lCgAAMjAyNi0wNS0wNw0A"
+    "ADE0LTA1LTI2LTAwNjMZAABQdXJjaGFzZSBEZXRhaWxzIE1BWSAyMDI2DwAAUHVyY2hhc2UgQW1vdW50FgAATkVU"
+    "IFJFLVJPVVRFIFNVUkNIQVJHRRIAAFJFLVJPVVRFIFNVUkNIQVJHRQwAAEdyb3NzIEFtb3VudAkAAEFQIEFtb3Vu"
+    "dAoAAAAJCBAAAAYQALsNzAcAAAAABgAAAA0AAgABAAwAAgBkAA8AAgABABEAAgAAABAACAD8qfHSTWJQP18AAgAA"
+    "AIAACAAAAAAAAQAAACUCBAAAAP8AgQACAAEMAAIOAAAAAAALAAAAAAASAAAAKgACAAAAKwACAAAAggACAAEAGwAC"
+    "AAAAGgACAAAAFAAFAAIAACZQFQAFAAIAACZGgwACAAEAhAACAAAAJgAIADMzMzMzM9M/JwAIADMzMzMzM9M/KAAI"
+    "AIXrUbgeheM/KQAIAK5H4XoUrtc/oQAiAAkAZAABAAEAAQCDACwBLAGamZmZmZm5P5qZmZmZmbk/AQASAAIAAADd"
+    "AAIAAAAZAAIAAABjAAIAAAATAAIAAAAIAhAAAAAAAAEA/wAAAAAAAAEPAP0ACgAAAAAAEQAAAAAACAIQAAIAAAAS"
+    "AP8AAAAAAAABDwD9AAoAAgAAABEAAQAAAP0ACgACAAEAEQACAAAA/QAKAAIAAgARAAMAAAD9AAoAAgADABEABAAA"
+    "AP0ACgACAAQAEQAFAAAA/QAKAAIABQARAAYAAAD9AAoAAgAGABEABwAAAP0ACgACAAcAEQAIAAAA/QAKAAIACAAR"
+    "AAkAAAD9AAoAAgAJABEACgAAAP0ACgACAAoAEQALAAAA/QAKAAIACwARAAwAAAD9AAoAAgAMABEADQAAAP0ACgAC"
+    "AA0AEQAOAAAAAQIGAAIADgARAP0ACgACAA8AEQAPAAAA/QAKAAIAEAARABAAAAD9AAoAAgARABEAEQAAAAgCEAAD"
+    "AAAAEgD/AAAAAAAAAQ8A/QAKAAMAAAARABIAAAABAgYAAwABABEAvQASAAMAAgARAJfDAAARAIYuAAADAL4AHAAD"
+    "AAQAEQARABEAEQARABEAEQARABEAEQARAA4A/QAKAAMADwARABMAAAD9AAoAAwAQABEAFAAAAP0ACgADABEAEQAV"
+    "AAAACAIQAAQAAAAEAP8AAAAAAAABDwAGACMABAADABEAAwAAAAAA//8AAAAAAAANACUDAAMAA8ADwBkQAAAIAhAA"
+    "BgAAAAEA/wAAAAAAAAEPAP0ACgAGAAAAEQAWAAAACAIQAAgAAAASAP8AAAAAAAABDwD9AAoACAAAABEAAQAAAP0A"
+    "CgAIAAEAEQACAAAA/QAKAAgAAgARAAMAAAD9AAoACAADABEABAAAAP0ACgAIAAQAEQAXAAAA/QAKAAgABQARABgA"
+    "AAD9AAoACAAGABEACQAAAP0ACgAIAAcAEQAZAAAA/QAKAAgACAARABoAAAD9AAoACAAJABEAGwAAAP0ACgAIAAoA"
+    "EQAMAAAA/QAKAAgACwARAA0AAAD9AAoACAAMABEADgAAAL4ACgAIAA0AEQARAA4A/QAKAAgADwARAA8AAAD9AAoA"
+    "CAAQABEAEAAAAP0ACgAIABEAEQARAAAACAIQAAkAAAASAP8AAAAAAAABDwD9AAoACQAAABEAEgAAAAECBgAJAAEA"
+    "EQC9ABIACQACABEA27EAABEAhi4AAAMAvgAcAAkABAARABEAEQARABEAEQARABEAEQARABEADgD9AAoACQAPABEA"
+    "EwAAAP0ACgAJABAAEQAUAAAA/QAKAAkAEQARABUAAAAIAhAACgAAAAQA/wAAAAAAAAEPAAYAIwAKAAMAEQADAAAA"
+    "AAD//wAAAAAAAA0AJQkACQADwAPAGRAAAD4CEgC2AgAAAABAAAAAAAAAAAAAAAAKAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAIAAAADAAAA"
+    "BAAAAAUAAAAGAAAABwAAAP7////9/////v//////////////////////////////////////////////////////"
+    "////////////////////////////////////////////////////////////////////////////////////////"
+    "////////////////////////////////////////////////////////////////////////////////////////"
+    "////////////////////////////////////////////////////////////////////////////////////////"
+    "////////////////////////////////////////////////////////////////////////////////////////"
+    "////////////////////////////////////////////////////////////////////////////////////////"
+    "////////////////////////////////////////////////////////////////////////////////////////"
+    "//////////////////////////////////////////////////9SAG8AbwB0ACAARQBuAHQAcgB5AAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFgAFAf//////////AQAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAP7///8AAAAAAAAAAFcAbwByAGsAYgBvAG8AawAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASAAIB////////////////AAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH///////////////8AAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAD+////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf///////////////wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAP7///8AAAAAAAAAAA=="
+)
+
 
 def _sample_rows(count: int = 2) -> list[dict[str, object]]:
     base = [
@@ -88,6 +179,11 @@ def _sample_rows(count: int = 2) -> list[dict[str, object]]:
         source["invoice"] = f"{source['invoice']}-{index + 1:03d}"
         rows.append(source)
     return rows
+
+
+def _write_work_sales_xls_fixture(path: str) -> None:
+    with open(path, "wb") as fp:
+        fp.write(base64.b64decode(WORK_SALES_XLS_FIXTURE))
 
 
 class TmsFinanceWorkSalesModuleTests(unittest.TestCase):
@@ -270,6 +366,59 @@ class TmsFinanceWorkSalesModuleTests(unittest.TestCase):
             finally:
                 output_wb.close()
 
+    def test_process_reads_legacy_xls_iplix_workbook(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            iplix_path = os.path.join(tmpdir, "iplix.xls")
+            reference_path = os.path.join(tmpdir, "reference.xlsx")
+            _write_work_sales_xls_fixture(iplix_path)
+            self._create_reference_workbook(reference_path)
+
+            result = self.module.process_files(
+                iplix_path=iplix_path,
+                reference_path=reference_path,
+                output_dir=tmpdir,
+                today=date(2026, 6, 9),
+            )
+
+            self.assertEqual(result["extracted_count"], 1)
+            self.assertEqual(result["matched_reference_count"], 1)
+            output_wb = openpyxl.load_workbook(result["output_path"])
+            try:
+                ws = output_wb["Work Sales Summary"]
+                self.assertEqual(ws["A5"].value, "14-05-26-0063")
+                self.assertEqual(ws["B5"].value, "RC2610OW001.")
+                self.assertEqual(ws["C5"].value, 125.17)
+                self.assertEqual(ws["F5"].value, 113.82)
+            finally:
+                output_wb.close()
+
+    def test_process_without_optional_reference_keeps_work_sales_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            iplix_path = os.path.join(tmpdir, "iplix.xlsx")
+            self._create_iplix_workbook(iplix_path, _sample_rows(2))
+
+            result = self.module.process_files(
+                iplix_path=iplix_path,
+                reference_path=None,
+                output_dir=tmpdir,
+                today=date(2026, 6, 9),
+            )
+
+            self.assertEqual(result["extracted_count"], 2)
+            self.assertEqual(result["matched_reference_count"], 0)
+            self.assertEqual(result["missing_reference_count"], 0)
+            self.assertEqual(result["source_summary"]["reference_rows"], 0)
+            output_wb = openpyxl.load_workbook(result["output_path"])
+            try:
+                ws = output_wb["Work Sales Summary"]
+                self.assertEqual(ws["A5"].value, "14-05-26-0063-001")
+                self.assertIsNone(ws["D5"].value)
+                self.assertIsNone(ws["E5"].value)
+                self.assertIsNone(ws["G5"].value)
+                self.assertEqual(ws["H5"].value, "Caroline")
+            finally:
+                output_wb.close()
+
     def test_api_processes_upload_and_downloads_result(self) -> None:
         from api.tms_finance_work_sales_api import router
 
@@ -310,6 +459,68 @@ class TmsFinanceWorkSalesModuleTests(unittest.TestCase):
                 f"/api/tms-finance/work-sales/download/{payload['output_file']}",
             )
             self.assertEqual(download_response.status_code, 200)
+
+    def test_api_processes_without_optional_reference_file(self) -> None:
+        from api.tms_finance_work_sales_api import router
+
+        app = FastAPI()
+        app.include_router(router, prefix="/api")
+        client = TestClient(app)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            iplix_path = os.path.join(tmpdir, "iplix.xlsx")
+            self._create_iplix_workbook(iplix_path, _sample_rows(2))
+
+            with open(iplix_path, "rb") as iplix_file:
+                response = client.post(
+                    "/api/tms-finance/work-sales/process",
+                    files={
+                        "iplix_file": (
+                            "iplix.xlsx",
+                            iplix_file,
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        ),
+                    },
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertEqual(payload["extracted_count"], 2)
+            self.assertEqual(payload["source_summary"]["reference_rows"], 0)
+            self.assertIn("output_file", payload)
+
+    def test_api_processes_legacy_xls_iplix_upload(self) -> None:
+        from api.tms_finance_work_sales_api import router
+
+        app = FastAPI()
+        app.include_router(router, prefix="/api")
+        client = TestClient(app)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            iplix_path = os.path.join(tmpdir, "iplix.xls")
+            reference_path = os.path.join(tmpdir, "reference.xlsx")
+            _write_work_sales_xls_fixture(iplix_path)
+            self._create_reference_workbook(reference_path)
+
+            with open(iplix_path, "rb") as iplix_file, open(reference_path, "rb") as reference_file:
+                response = client.post(
+                    "/api/tms-finance/work-sales/process",
+                    files={
+                        "iplix_file": (
+                            "iplix.xls",
+                            iplix_file,
+                            "application/vnd.ms-excel",
+                        ),
+                        "reference_file": (
+                            "reference.xlsx",
+                            reference_file,
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        ),
+                    },
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["extracted_count"], 1)
 
     def test_api_rejects_invalid_extension(self) -> None:
         from api.tms_finance_work_sales_api import router

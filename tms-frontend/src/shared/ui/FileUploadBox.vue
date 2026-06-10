@@ -6,6 +6,7 @@
     </div>
 
     <p v-if="hint" class="upload-hint">{{ text(hint) }}</p>
+    <p v-if="validationMessage" class="upload-error">{{ text(validationMessage) }}</p>
 
     <label
       class="upload-dropzone"
@@ -13,6 +14,7 @@
         'upload-dropzone--has-files': files.length > 0,
         'upload-dropzone--dragging': isDragging,
       }"
+      @dragenter.prevent="isDragging = true"
       @dragover.prevent="isDragging = true"
       @dragleave.prevent="isDragging = false"
       @drop.prevent="handleDrop"
@@ -53,6 +55,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { filterAcceptedFiles } from '../files/fileAcceptance'
 import { formatFileSize } from '../files/fileGroups'
 import { useAppLanguage } from '../i18n/appLanguage'
 import AppIcon from './AppIcon.vue'
@@ -82,22 +85,39 @@ const emit = defineEmits<{
 
 const { text } = useAppLanguage()
 const isDragging = ref(false)
+const validationMessage = ref('')
 
 function handleInput(event: Event): void {
   const input = event.target as HTMLInputElement
   const nextFiles = Array.from(input.files ?? [])
-  emit('update:files', props.multiple ? nextFiles : nextFiles.slice(0, 1))
+  applySelectedFiles(nextFiles)
   input.value = ''
 }
 
 function handleDrop(event: DragEvent): void {
   isDragging.value = false
   const nextFiles = Array.from(event.dataTransfer?.files ?? [])
-  emit('update:files', props.multiple ? nextFiles : nextFiles.slice(0, 1))
+  applySelectedFiles(nextFiles)
 }
 
 function removeFile(file: File): void {
+  validationMessage.value = ''
   emit('update:files', props.files.filter((entry) => entry !== file))
+}
+
+function applySelectedFiles(files: File[]): void {
+  const { accepted, rejectedNames } = filterAcceptedFiles(files, props.accept)
+
+  validationMessage.value =
+    rejectedNames.length > 0
+      ? `不支持的文件格式：${rejectedNames.join('、')}`
+      : ''
+
+  if (accepted.length === 0) {
+    return
+  }
+
+  emit('update:files', props.multiple ? accepted : accepted.slice(0, 1))
 }
 </script>
 
@@ -154,6 +174,14 @@ function removeFile(file: File): void {
   color: #64748b;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.upload-error {
+  margin: 0;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 /* --- Dropzone --- */

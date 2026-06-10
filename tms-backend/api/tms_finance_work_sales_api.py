@@ -32,7 +32,7 @@ router = APIRouter(
 tms_finance_work_sales_module = TmsFinanceWorkSalesModule()
 logger = logging.getLogger(__name__)
 
-ALLOWED_IPLIX_EXTENSIONS = {".xlsx", ".xlsm"}
+ALLOWED_IPLIX_EXTENSIONS = {".xls", ".xlsx", ".xlsm"}
 ALLOWED_REFERENCE_EXTENSIONS = {".xls", ".xlsx", ".xlsm"}
 PROCESSING_ERROR_MESSAGE = "处理失败，请查看诊断日志或稍后重试"
 
@@ -76,7 +76,7 @@ def _raise_processing_error(exc: Exception) -> NoReturn:
 @router.post("/process")
 async def process_work_sales(
     iplix_file: UploadFile = File(...),
-    reference_file: UploadFile = File(...),
+    reference_file: Optional[UploadFile] = File(None),
     output_dir: Optional[str] = Form(None),
 ):
     """处理 Work Sales 数据提取。"""
@@ -90,16 +90,17 @@ async def process_work_sales(
             "iPlix 导出 Excel",
             ALLOWED_IPLIX_EXTENSIONS,
         )
-        reference_name = _validate_upload(
-            reference_file.filename,
-            "补充参考表",
-            ALLOWED_REFERENCE_EXTENSIONS,
-        )
-
         iplix_path = os.path.join(work_dir, f"iplix_{iplix_name}")
-        reference_path = os.path.join(work_dir, f"reference_{reference_name}")
         copy_upload_to_path(iplix_file, iplix_path)
-        copy_upload_to_path(reference_file, reference_path)
+        reference_path = None
+        if reference_file is not None:
+            reference_name = _validate_upload(
+                reference_file.filename,
+                "补充参考表",
+                ALLOWED_REFERENCE_EXTENSIONS,
+            )
+            reference_path = os.path.join(work_dir, f"reference_{reference_name}")
+            copy_upload_to_path(reference_file, reference_path)
 
         result = tms_finance_work_sales_module.process_files(
             iplix_path=iplix_path,

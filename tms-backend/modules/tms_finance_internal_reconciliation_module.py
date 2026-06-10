@@ -201,7 +201,7 @@ class TmsFinanceInternalReconciliationModule:
             "sales_amount_with_tax": Decimal("0"),
         }
         sample_count = 0
-        book_count = 0
+        bulk_count = 0
 
         for item, target_row in zip(source_rows, write_rows):
             self._write_target_row(
@@ -216,8 +216,8 @@ class TmsFinanceInternalReconciliationModule:
             totals["sales_amount_with_tax"] += self._decimal_or_zero(item.values.get("sales_amount"))
             if item.values.get("remark") == "Sample":
                 sample_count += 1
-            elif item.values.get("remark") == "Book":
-                book_count += 1
+            elif item.values.get("remark") == "Bulk":
+                bulk_count += 1
 
         output_filename = f"tms_finance_internal_reconciliation_{uuid4().hex}.xlsx"
         output_path = os.path.join(output_root, output_filename)
@@ -247,7 +247,7 @@ class TmsFinanceInternalReconciliationModule:
             },
             "source_summary": {
                 "sample_rows": sample_count,
-                "book_rows": book_count,
+                "bulk_rows": bulk_count,
                 "source_rows": len(source_rows),
                 "source_files": len(source_path_list),
             },
@@ -481,7 +481,7 @@ class TmsFinanceInternalReconciliationModule:
         columns: SourceColumns,
     ) -> ExtractedRow:
         warehouse = self._clean_text(values_ws.cell(row, columns.warehouse).value)
-        remark = "Sample" if warehouse.upper() == "MSO" else "Book"
+        remark = "Sample" if warehouse.upper() == "MSO" else "Bulk"
         vendor = self._map_vendor(
             values_ws.cell(row, columns.vendor_code).value,
             values_ws.cell(row, columns.vendor_name).value,
