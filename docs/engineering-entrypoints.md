@@ -31,5 +31,5 @@
 
 - GitCode 工作流位于 `.gitcode/workflows/tos-check.yml`。
 - `main`、`codex/**` 分支 push，以及面向 `main` 的合并请求会运行完整 `npm run check`。
-- CI 会设置 `PYTHON=python3` 和 `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`；当前远端检查只运行脚本级测试，不下载浏览器，也不做真实浏览器自动化 smoke。
+- CI 会设置 `PYTHON=python3` 和 `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`，并在 runner 内下载使用 Node.js 22.11.0；当前远端检查只运行脚本级测试，不下载浏览器，也不做真实浏览器自动化 smoke。
 - 远端检查不运行 `npm run pack`、`npm run build:win`、发布清单写入命令或任何上传发布产物的命令。

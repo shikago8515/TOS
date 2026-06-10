@@ -34,24 +34,31 @@ jobs:
             git checkout main
           fi
 
-      - name: Use Node.js
-        uses: setup-node@0.0.1
-        with:
-          node-version: '22.11.0'
-
-      - name: Show runtime versions
+      - name: Install Node.js and dependencies
         run: |
           cd repo_workspace
+          NODE_VERSION=22.11.0
+          NODE_DIST="node-v${NODE_VERSION}-linux-x64"
+          NODE_ARCHIVE="${NODE_DIST}.tar.xz"
+          mkdir -p .ci
+          if [ ! -x ".ci/${NODE_DIST}/bin/node" ]; then
+            if command -v curl >/dev/null 2>&1; then
+              curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/${NODE_ARCHIVE}" -o ".ci/${NODE_ARCHIVE}"
+            else
+              wget -q "https://nodejs.org/dist/v${NODE_VERSION}/${NODE_ARCHIVE}" -O ".ci/${NODE_ARCHIVE}"
+            fi
+            tar -xJf ".ci/${NODE_ARCHIVE}" -C .ci
+          fi
+          export PATH="$PWD/.ci/${NODE_DIST}/bin:$PATH"
           node --version
           npm --version
           python3 --version
-
-      - name: Install dependencies
-        run: |
-          cd repo_workspace
           npm run ci:install
 
       - name: Run full repository checks
         run: |
           cd repo_workspace
+          NODE_VERSION=22.11.0
+          NODE_DIST="node-v${NODE_VERSION}-linux-x64"
+          export PATH="$PWD/.ci/${NODE_DIST}/bin:$PATH"
           PYTHON=python3 npm run check
