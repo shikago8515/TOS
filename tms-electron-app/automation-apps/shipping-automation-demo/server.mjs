@@ -1,9 +1,10 @@
-import http from "node:http";
+﻿import http from "node:http";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { createShipping2ReleasedBulkAutomation } from "./shipping2-released-bulk.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,6 +29,18 @@ const browserEngines = { chromium, firefox, webkit };
 
 await ensureRuntimeFiles();
 const config = await loadConfig();
+const {
+  extractShipping2ReleasedBulkRowsFromWorkbookPayload,
+  processShipping2ReleasedBulkWorksheet,
+  formatReleasedBulkSaveDecisionMessage,
+} = createShipping2ReleasedBulkAutomation({
+  config,
+  log,
+  forceClickLocator,
+  xlsx,
+  assertWorkbookPayload,
+  resolveWorksheetName,
+});
 
 const activeRuns = new Map();
 let lastRun = null;
@@ -67,7 +80,13 @@ const server = http.createServer(async (req, res) => {
       }
 
       const credentials = resolveCredentials(body);
-      assertWorkbookPayload(body);
+      const releasedBulkRows = bulkType === "released"
+        ? extractShipping2ReleasedBulkRowsFromWorkbookPayload(body)
+        : [];
+      const releasedBulkPoNumbers = releasedBulkRows.map((row) => row.poNo).filter(Boolean);
+      if (bulkType !== "released") {
+        assertWorkbookPayload(body);
+      }
       const inputFileName = normalizeUploadFileName(body);
       const activeRun = registerActiveRun({
         action: `run-shipping2-${bulkType}-bulk`,
@@ -75,10 +94,13 @@ const server = http.createServer(async (req, res) => {
         bulkType,
         inputFileName,
         inputMode: "shipping2-bulk",
+        ...(bulkType === "released" ? { totalPoCount: releasedBulkPoNumbers.length } : {}),
       });
 
       try {
-        const result = await runShipping2BulkFile(credentials, bulkType, inputFileName, activeRun.runId);
+        const result = await runShipping2BulkFile(credentials, bulkType, inputFileName, activeRun.runId, {
+          releasedBulkRows,
+        });
         recordCompletedRun({
           runId: activeRun.runId,
           startedAt: activeRun.startedAt,
@@ -89,6 +111,8 @@ const server = http.createServer(async (req, res) => {
           inputFileName,
           eventManagementOpened: result.eventManagementOpened,
           homeOpened: result.homeOpened,
+          releasedBulkFilterApplied: result.releasedBulkFilterApplied,
+          releasedBulkPoCount: result.releasedBulkPoCount,
         });
         sendJson(res, result.ok ? 200 : 500, result);
       } finally {
@@ -143,6 +167,41 @@ const server = http.createServer(async (req, res) => {
           ok: result.ok,
           finalUrl: result.finalUrl,
           homeOpened: result.homeOpened,
+        });
+        sendJson(res, result.ok ? 200 : 500, result);
+      } finally {
+        activeRuns.delete(activeRun.runId);
+      }
+      return;
+    }
+
+    if (req.method === "POST" && (requestPath === "/run-infornexus-auto-add-file" || requestPath === "/api/run-infornexus-auto-add-file")) {
+      const body = await readJsonBody(req);
+      authorize(req, body);
+
+      const credentials = resolveCredentials(body);
+      const idRows = extractInfornexusAutoAddRowsFromWorkbookPayload(body);
+      const inputFileName = normalizeUploadFileName(body);
+      const activeRun = registerActiveRun({
+        action: "run-infornexus-auto-add-file",
+        browser: config.browser,
+        inputFileName,
+        inputMode: "infornexus-auto-add",
+        totalIdCount: idRows.length,
+      });
+
+      try {
+        const result = await runInfornexusAutoAddFile(credentials, idRows, inputFileName, activeRun.runId);
+        recordCompletedRun({
+          runId: activeRun.runId,
+          startedAt: activeRun.startedAt,
+          finishedAt: result.generatedAt,
+          ok: result.ok,
+          finalUrl: result.finalUrl,
+          inputFileName,
+          totalIdCount: result.totalIdCount,
+          completedIdCount: result.completedIdCount,
+          failedIdCount: result.failedIdCount,
         });
         sendJson(res, result.ok ? 200 : 500, result);
       } finally {
@@ -237,9 +296,9 @@ async function loadConfig() {
     password: String(secret.password || ""),
     browser: String(merged.browser || "chromium"),
     headless: Boolean(merged.headless),
-    slowMo: Number(merged.slowMo ?? 120),
+    slowMo: Number(merged.slowMo ?? 40),
     navigationTimeoutMs: Number(merged.navigationTimeoutMs ?? 45000),
-    postLoginWaitMs: Number(merged.postLoginWaitMs ?? 1200),
+    postLoginWaitMs: Number(merged.postLoginWaitMs ?? 500),
     keepBrowserOpenOnSuccessMs: Number(merged.keepBrowserOpenOnSuccessMs ?? 2000),
     keepBrowserOpenOnErrorMs: Number(merged.keepBrowserOpenOnErrorMs ?? 2000),
     launchOptions: merged.launchOptions && typeof merged.launchOptions === "object"
@@ -337,7 +396,7 @@ async function openInfornexusHome(credentials, runId) {
   });
 }
 
-async function runShipping2BulkFile(credentials, bulkType, inputFileName, runId) {
+async function runShipping2BulkFile(credentials, bulkType, inputFileName, runId, options = {}) {
   return runShippingWorkflow(credentials, {
     runId,
     poRows: [],
@@ -345,6 +404,9 @@ async function runShipping2BulkFile(credentials, bulkType, inputFileName, runId)
     fillPoNumbers: false,
     targetPage: "event-management",
     shipping2BulkType: bulkType,
+    releasedBulkRows: Array.isArray(options?.releasedBulkRows)
+      ? options.releasedBulkRows
+      : [],
   });
 }
 
@@ -356,6 +418,173 @@ async function runShippingFile(credentials, poRows, inputFileName, runId) {
     fillPoNumbers: true,
     targetPage: "shipment-scan",
   });
+}
+
+async function runInfornexusAutoAddFile(credentials, idRows, inputFileName, runId) {
+  return runInfornexusAutoAddWorkflow(credentials, {
+    runId,
+    idRows,
+    inputFileName,
+  });
+}
+
+async function runInfornexusAutoAddWorkflow(credentials, runContext) {
+  const engine = browserEngines[config.browser] || chromium;
+  const launchOptions = {
+    headless: config.headless,
+    slowMo: config.slowMo,
+    ...config.launchOptions,
+  };
+
+  let browser = null;
+  let context = null;
+  let page = null;
+  let lifecycle = null;
+  let latestScreenshotPath = "";
+  const startedAt = new Date().toISOString();
+  const idRows = Array.isArray(runContext?.idRows) ? runContext.idRows : [];
+  const runId = String(runContext?.runId || createRunId("infornexus-auto-add"));
+  const idResults = [];
+
+  try {
+    browser = await engine.launch(launchOptions);
+    context = await browser.newContext({
+      viewport: { width: 1600, height: 1200 },
+    });
+    page = await context.newPage();
+    lifecycle = trackBrowserLifecycle(page, context, browser);
+    page.setDefaultTimeout(config.navigationTimeoutMs);
+    page.setDefaultNavigationTimeout(config.navigationTimeoutMs);
+
+    await page.goto(config.loginUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: config.navigationTimeoutMs,
+    });
+
+    await ensureLoggedIn(page, credentials);
+    await page.waitForTimeout(config.postLoginWaitMs);
+    await waitForInfornexusAutoAddSearchReady(page);
+
+    for (const idRow of idRows) {
+      const id = String(idRow?.id || "").trim();
+      try {
+        const itemResult = await processInfornexusAutoAddId(page, id);
+        idResults.push({
+          ...idRow,
+          ok: true,
+          ...itemResult,
+        });
+      } catch (error) {
+        const normalizedError = normalizeRunError(
+          error,
+          page,
+          lifecycle,
+          `ID ${id}: browser page became unavailable during Infornexus auto add.`,
+        );
+        idResults.push({
+          ...idRow,
+          ok: false,
+          error: normalizedError.message,
+        });
+        log("Infornexus auto-add ID failed; recorded and continuing.", {
+          id,
+          rowIndex: Number(idRow?.rowIndex || 0),
+          error: normalizedError.message,
+        });
+        if (hasPageLifecycleEnded(page, lifecycle) || isClosedTargetError(error)) {
+          throw normalizedError;
+        }
+      }
+    }
+
+    if (hasPageLifecycleEnded(page, lifecycle)) {
+      throw normalizeRunError(
+        new Error("Browser page became unavailable before capturing the final state."),
+        page,
+        lifecycle,
+        "Browser page became unavailable before capturing the final state.",
+      );
+    }
+
+    latestScreenshotPath = path.join(artifactsDir, `infornexus-auto-add-${runId}-success-${Date.now()}.png`);
+    await page.screenshot({ path: latestScreenshotPath, fullPage: true });
+
+    const failedIdCount = idResults.filter((item) => !item.ok).length;
+    const completedIdCount = idResults.filter((item) => item.ok).length;
+    const result = {
+      runId,
+      ok: failedIdCount === 0,
+      loginSuccess: true,
+      inputMode: "infornexus-auto-add",
+      inputFileName: runContext?.inputFileName || "",
+      totalIdCount: idRows.length,
+      completedIdCount,
+      failedIdCount,
+      idResults,
+      message: `Infornexus auto add processed ${completedIdCount}/${idRows.length} IDs.`,
+      generatedAt: new Date().toISOString(),
+      finalUrl: safePageUrl(page),
+      title: await safePageTitle(page),
+      artifacts: {
+        latestScreenshotPath,
+        lifecycleEvents: lifecycle?.events || [],
+      },
+    };
+
+    if (config.keepBrowserOpenOnSuccessMs > 0) {
+      await page.waitForTimeout(config.keepBrowserOpenOnSuccessMs).catch(() => {});
+    }
+
+    return result;
+  } catch (error) {
+    const normalizedError = normalizeRunError(
+      error,
+      page,
+      lifecycle,
+      "Infornexus auto-add browser session became unavailable.",
+    );
+    const failureMessage = normalizedError.message;
+    if (page && !page.isClosed()) {
+      latestScreenshotPath = path.join(artifactsDir, `infornexus-auto-add-${runId}-error-${Date.now()}.png`);
+      await page.screenshot({ path: latestScreenshotPath, fullPage: true }).catch(() => {});
+    }
+
+    const result = {
+      runId,
+      ok: false,
+      loginSuccess: false,
+      inputMode: "infornexus-auto-add",
+      inputFileName: runContext?.inputFileName || "",
+      totalIdCount: idRows.length,
+      completedIdCount: idResults.filter((item) => item.ok).length,
+      failedIdCount: Math.max(
+        idRows.length - idResults.filter((item) => item.ok).length,
+        idResults.filter((item) => !item.ok).length,
+      ),
+      idResults,
+      message: failureMessage || "Infornexus auto add failed.",
+      generatedAt: new Date().toISOString(),
+      finalUrl: safePageUrl(page),
+      title: await safePageTitle(page),
+      artifacts: {
+        latestScreenshotPath,
+        lifecycleEvents: lifecycle?.events || [],
+      },
+    };
+
+    if (page && config.keepBrowserOpenOnErrorMs > 0) {
+      await page.waitForTimeout(config.keepBrowserOpenOnErrorMs).catch(() => {});
+    }
+
+    return result;
+  } finally {
+    await context?.close().catch(() => {});
+    await browser?.close().catch(() => {});
+    log("Infornexus auto-add run finished.", {
+      startedAt,
+      screenshot: latestScreenshotPath,
+    });
+  }
 }
 
 async function runShippingWorkflow(credentials, runContext) {
@@ -387,6 +616,9 @@ async function runShippingWorkflow(credentials, runContext) {
       ? "released Bulk"
       : "";
   const isShipping2BulkRun = Boolean(shipping2BulkType);
+  const releasedBulkRows = shipping2BulkType === "released" && Array.isArray(runContext?.releasedBulkRows)
+    ? runContext.releasedBulkRows
+    : [];
   const shouldOpenShipmentScan = targetPage === "shipment-scan";
   const shouldOpenEventManagement = targetPage === "event-management" || isShipping2BulkRun;
   const artifactPrefix = isShipping2BulkRun
@@ -398,6 +630,7 @@ async function runShippingWorkflow(credentials, runContext) {
   const createShipmentResults = [];
   let createShipmentBatches = [];
   let createShipmentEquipmentIds = [];
+  let releasedBulkResult = null;
 
   try {
     browser = await engine.launch(launchOptions);
@@ -429,6 +662,9 @@ async function runShippingWorkflow(credentials, runContext) {
       await openEventManagement(page);
       if (isShipping2BulkRun) {
         await openShipping2BulkWorksheet(page, shipping2BulkType);
+        if (shipping2BulkType === "released") {
+          releasedBulkResult = await processShipping2ReleasedBulkWorksheet(page, releasedBulkRows);
+        }
       }
     }
 
@@ -555,10 +791,12 @@ async function runShippingWorkflow(credentials, runContext) {
     const completedPoCount = poResults.filter((item) => item.ok).length;
     const failedCreateShipmentCount = createShipmentResults.filter((item) => !item.ok).length;
     const completedCreateShipmentCount = createShipmentResults.filter((item) => item.ok).length;
+    const failedReleasedBulkRowCount = Number(releasedBulkResult?.failedRowCount || 0);
+    const completedReleasedBulkRowCount = Number(releasedBulkResult?.updatedRowCount || 0);
 
     const result = {
       runId,
-      ok: failedPoCount === 0 && failedCreateShipmentCount === 0,
+      ok: failedPoCount === 0 && failedCreateShipmentCount === 0 && failedReleasedBulkRowCount === 0,
       loginSuccess: true,
       shipmentScanOpened: shouldOpenShipmentScan,
       eventManagementOpened: shouldOpenEventManagement,
@@ -571,6 +809,13 @@ async function runShippingWorkflow(credentials, runContext) {
       completedPoCount,
       failedPoCount,
       poResults,
+      releasedBulkFilterApplied: Boolean(releasedBulkResult?.filterApplied),
+      releasedBulkSaved: Boolean(releasedBulkResult?.saved),
+      releasedBulkSaveResult: releasedBulkResult?.saveResult || null,
+      releasedBulkPoCount: releasedBulkRows.length,
+      releasedBulkUpdatedRowCount: completedReleasedBulkRowCount,
+      releasedBulkFailedRowCount: failedReleasedBulkRowCount,
+      releasedBulkUpdateResults: releasedBulkResult?.rowResults || [],
       uniqueChangeEquipmentIdCount: createShipmentEquipmentIds.length,
       completedCreateShipmentCount,
       failedCreateShipmentCount,
@@ -579,7 +824,9 @@ async function runShippingWorkflow(credentials, runContext) {
       message: shouldFillPoNumbers
         ? `Shipment Scan processed ${completedPoCount}/${poRows.length} PO rows and Create Shipment processed ${completedCreateShipmentCount}/${createShipmentEquipmentIds.length} unique equipment IDs.`
         : isShipping2BulkRun
-          ? `${shipping2BulkLabel} worksheet opened successfully.`
+          ? releasedBulkResult
+            ? `Released Bulk filtered ${releasedBulkRows.length} PO numbers and updated ${completedReleasedBulkRowCount}/${releasedBulkRows.length} rows. ${formatReleasedBulkSaveDecisionMessage(releasedBulkResult.saveResult)}`
+            : `${shipping2BulkLabel} worksheet opened successfully.`
           : shouldOpenShipmentScan
           ? "Infor Nexus Shipment Scan opened successfully."
           : "Infor Nexus logged in successfully.",
@@ -632,6 +879,17 @@ async function runShippingWorkflow(credentials, runContext) {
         poResults.filter((item) => !item.ok).length,
       ),
       poResults,
+      releasedBulkFilterApplied: Boolean(releasedBulkResult?.filterApplied),
+      releasedBulkSaved: Boolean(releasedBulkResult?.saved),
+      releasedBulkSaveResult: releasedBulkResult?.saveResult || null,
+      releasedBulkPoCount: releasedBulkRows.length,
+      releasedBulkUpdatedRowCount: Number(releasedBulkResult?.updatedRowCount || 0),
+      releasedBulkFailedRowCount: releasedBulkResult
+        ? Number(releasedBulkResult.failedRowCount || 0)
+        : shipping2BulkType === "released"
+          ? releasedBulkRows.length
+          : 0,
+      releasedBulkUpdateResults: releasedBulkResult?.rowResults || [],
       uniqueChangeEquipmentIdCount: createShipmentEquipmentIds.length,
       completedCreateShipmentCount: createShipmentResults.filter((item) => item.ok).length,
       failedCreateShipmentCount: createShipmentResults.filter((item) => !item.ok).length,
@@ -666,25 +924,191 @@ async function runShippingWorkflow(credentials, runContext) {
 }
 
 async function ensureLoggedIn(page, credentials) {
+  const startedAt = Date.now();
+  const applicationsMenu = page.locator("#navmenu__applications").first();
+  if (await applicationsMenu.isVisible().catch(() => false)) {
+    log("Infor Nexus session already logged in.", {
+      elapsedMs: Date.now() - startedAt,
+      finalUrl: safePageUrl(page),
+    });
+    return;
+  }
+
   const usernameField = page.getByPlaceholder("Username");
   const passwordField = page.getByPlaceholder("Password");
   const loginButton = page.getByRole("button", { name: "Log In" });
 
-  const loginVisible = await usernameField.isVisible().catch(() => false);
+  const loginVisible = await usernameField
+    .waitFor({ state: "visible", timeout: Math.min(config.navigationTimeoutMs, 8000) })
+    .then(() => true)
+    .catch(() => false);
   if (loginVisible) {
     await usernameField.fill(credentials.username);
     await passwordField.fill(credentials.password);
-    await loginButton.click({ force: true });
-    log("Submitted Infor Nexus login.");
+    await loginButton.click({ force: true, noWaitAfter: true });
+    log("Submitted Infor Nexus login.", {
+      elapsedMs: Date.now() - startedAt,
+    });
   }
 
+  await waitForInforNexusLoggedIn(page, Math.min(config.navigationTimeoutMs, 30000));
+  log("Infor Nexus logged-in shell ready.", {
+    elapsedMs: Date.now() - startedAt,
+    finalUrl: safePageUrl(page),
+  });
+}
+
+async function waitForInforNexusLoggedIn(page, timeoutMs = config.navigationTimeoutMs) {
   await waitForAny(page, [
-    () => page.waitForURL(/\/en\/trade\//, { timeout: config.navigationTimeoutMs }),
-    () => page.locator("#navmenu__applications").waitFor({
+    () => page.locator("#navmenu__applications").first().waitFor({
+      state: "visible",
+      timeout: timeoutMs,
+    }),
+    () => page.locator("#navmenu__inprogresseventmanagement, #navmenu__inprogressmanifestsprintscanship").first().waitFor({
+      state: "attached",
+      timeout: timeoutMs,
+    }),
+    () => page.waitForURL((url) => (
+      /\/en\/trade\/?/.test(url.pathname)
+      && !/login/i.test(url.pathname)
+    ), { timeout: timeoutMs }),
+  ]);
+}
+
+function getInfornexusAutoAddSearchInput(page) {
+  return page
+    .locator('[name="tradecardForm"] [name="TradeSearchCriteria_newSearchParams_searchText"], [name="TradeSearchCriteria_newSearchParams_searchText"]')
+    .first();
+}
+
+function getInfornexusAutoAddSearchButton(page) {
+  return page
+    .locator('[name="tradecardForm"] input[value="Search"], input[value="Search"], button:has-text("Search"), [role="button"]:has-text("Search")')
+    .first();
+}
+
+function getInfornexusAutoAddResultCheckbox(page) {
+  return page
+    .locator('.listtablerowodd [type="checkbox"], .listtableroweven [type="checkbox"], [name="searchResults"] [type="checkbox"]')
+    .first();
+}
+
+function getInfornexusAutoAddButton(page) {
+  return page
+    .locator('[name="searchResults"] [type="button"], [name="searchResults"] input[type="button"], [name="searchResults"] button')
+    .first();
+}
+
+async function waitForInfornexusAutoAddSearchReady(page) {
+  const searchInput = getInfornexusAutoAddSearchInput(page);
+  try {
+    await searchInput.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+    await getInfornexusAutoAddSearchButton(page).waitFor({
       state: "visible",
       timeout: config.navigationTimeoutMs,
-    }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Infornexus auto-add search form was not found after login. ${message}`);
+  }
+}
+
+async function processInfornexusAutoAddId(page, id) {
+  const normalizedId = String(id || "").trim();
+  if (!normalizedId) {
+    throw new Error("ID is empty.");
+  }
+
+  await waitForInfornexusAutoAddSearchReady(page);
+  await fillInfornexusAutoAddSearchInput(page, normalizedId);
+  await page.waitForTimeout(100);
+
+  const searchButton = getInfornexusAutoAddSearchButton(page);
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: config.navigationTimeoutMs }).catch(() => null),
+    forceClickLocator(searchButton, "Infornexus Search"),
   ]);
+  await page.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(350);
+
+  const resultInfo = await waitForInfornexusAutoAddResultCount(page, normalizedId);
+  if (resultInfo.matchCount >= 2) {
+    log("Infornexus ID already appears added.", {
+      id: normalizedId,
+      matchCount: resultInfo.matchCount,
+    });
+    return {
+      id: normalizedId,
+      status: "already-added",
+      matchCount: resultInfo.matchCount,
+    };
+  }
+
+  const checkbox = getInfornexusAutoAddResultCheckbox(page);
+  await checkbox.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await forceClickLocator(checkbox, "Infornexus result checkbox");
+  await page.waitForTimeout(100);
+
+  const addButton = getInfornexusAutoAddButton(page);
+  await addButton.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: config.navigationTimeoutMs }).catch(() => null),
+    forceClickLocator(addButton, "Infornexus Add"),
+  ]);
+  await page.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(350);
+
+  log("Infornexus ID searched and added.", {
+    id: normalizedId,
+    matchCount: resultInfo.matchCount,
+  });
+  return {
+    id: normalizedId,
+    status: "added",
+    matchCount: resultInfo.matchCount,
+  };
+}
+
+async function fillInfornexusAutoAddSearchInput(page, id) {
+  const searchInput = getInfornexusAutoAddSearchInput(page);
+  await searchInput.evaluate((element, value) => {
+    const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value");
+    if (descriptor?.set) {
+      descriptor.set.call(element, value);
+    } else {
+      element.value = value;
+    }
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  }, id);
+}
+
+async function waitForInfornexusAutoAddResultCount(page, id, timeoutMs = config.navigationTimeoutMs) {
+  const normalizedId = String(id || "").trim();
+  const startedAt = Date.now();
+  let firstSeenAt = 0;
+  let lastMatchCount = 0;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    lastMatchCount = await countInfornexusAutoAddResultCells(page, normalizedId);
+    if (lastMatchCount > 0) {
+      if (!firstSeenAt) {
+        firstSeenAt = Date.now();
+      }
+      if (lastMatchCount >= 2 || Date.now() - firstSeenAt > 2000) {
+        return { matchCount: lastMatchCount };
+      }
+    }
+    await page.waitForTimeout(150);
+  }
+
+  throw new Error(`ID ${normalizedId}: search result was not found. Last match count: ${lastMatchCount}.`);
+}
+
+async function countInfornexusAutoAddResultCells(page, id) {
+  return page.locator(".listtablecell").evaluateAll((cells, targetId) => {
+    return cells.filter((cell) => String(cell.textContent || "").includes(targetId)).length;
+  }, id).catch(() => 0);
 }
 
 async function openEventManagement(page) {
@@ -2849,6 +3273,52 @@ function assertWorkbookPayload(body) {
   return workbookBuffer;
 }
 
+function extractInfornexusAutoAddRowsFromWorkbookPayload(body) {
+  const workbookBuffer = assertWorkbookPayload(body);
+
+  let workbook;
+  try {
+    workbook = xlsx.read(workbookBuffer, { type: "buffer" });
+  } catch (error) {
+    const parseError = new Error(`Failed to parse uploaded workbook: ${error.message || error}`);
+    parseError.statusCode = 400;
+    throw parseError;
+  }
+
+  const sheetName = resolveWorksheetName(workbook, body?.sheetName);
+  if (!sheetName) {
+    const error = new Error("Uploaded workbook does not contain any worksheet.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const worksheet = workbook.Sheets[sheetName];
+  const rows = xlsx.utils.sheet_to_json(worksheet, {
+    header: 1,
+    defval: "",
+  });
+
+  const idRows = [];
+  for (let index = 1; index < rows.length; index += 1) {
+    const row = rows[index];
+    const value = Array.isArray(row) ? String(row[1] ?? "").trim() : "";
+    if (value && value.length === 10) {
+      idRows.push({
+        rowIndex: index + 1,
+        id: value,
+      });
+    }
+  }
+
+  if (idRows.length === 0) {
+    const error = new Error("Uploaded workbook must contain at least one 10-character ID in the second column.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return idRows;
+}
+
 function extractPoRowsFromWorkbookPayload(body) {
   const fileBase64 = String(body?.fileBase64 || body?.fileContentBase64 || "").trim();
   if (!fileBase64) {
@@ -3155,15 +3625,21 @@ function normalizeUploadFileName(body) {
 }
 
 async function waitForAny(page, attempts) {
-  let lastError = null;
-  for (const attempt of attempts) {
+  const errors = [];
+  const runners = attempts.map(async (attempt) => {
     try {
       return await attempt(page);
     } catch (error) {
-      lastError = error;
+      errors.push(error);
+      throw error;
     }
+  });
+
+  try {
+    return await Promise.any(runners);
+  } catch (error) {
+    throw errors[errors.length - 1] || error || new Error("No expected page state was reached.");
   }
-  throw lastError || new Error("No expected page state was reached.");
 }
 
 function isClosedTargetError(error) {

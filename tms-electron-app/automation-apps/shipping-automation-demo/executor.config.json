@@ -5,9 +5,9 @@
   "loginUrl": "https://network.infornexus.com",
   "browser": "chromium",
   "headless": false,
-  "slowMo": 120,
+  "slowMo": 40,
   "navigationTimeoutMs": 45000,
-  "postLoginWaitMs": 1200,
+  "postLoginWaitMs": 500,
   "keepBrowserOpenOnSuccessMs": 2000,
   "keepBrowserOpenOnErrorMs": 2000,
   "launchOptions": {

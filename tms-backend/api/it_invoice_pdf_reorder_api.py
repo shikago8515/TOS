@@ -319,6 +319,11 @@ def build_summary(result: Any) -> dict[str, Any]:
     total_amount = sum((entry.total_amount for entry in result.invoice_entries), Decimal("0"))
     net_values = [entry.net_amount for entry in result.invoice_entries if entry.net_amount is not None]
     total_net_amount = sum(net_values, Decimal("0")) if net_values else None
+    total_shas_vas_price = sum_optional_decimal(entry.shas_vas_price for entry in result.invoice_entries)
+    total_merchandise_amount = sum((entry.merchandise_amount for entry in result.invoice_entries), Decimal("0"))
+    total_adjustment = sum((entry.total_adjustment for entry in result.invoice_entries), Decimal("0"))
+    total_taxes = sum_optional_decimal(entry.total_taxes for entry in result.invoice_entries)
+    order_total = sum_optional_decimal(entry.order_total for entry in result.invoice_entries)
 
     return {
         "invoicePoCount": len(result.invoice_entries),
@@ -328,6 +333,11 @@ def build_summary(result: Any) -> dict[str, Any]:
         "totalQuantity": decimal_to_text(total_quantity),
         "totalAmount": decimal_to_text(total_amount),
         "totalNetAmount": decimal_to_text(total_net_amount),
+        "totalShasVasPrice": decimal_to_text(total_shas_vas_price),
+        "totalMerchandiseAmount": decimal_to_text(total_merchandise_amount),
+        "totalAdjustment": decimal_to_text(total_adjustment),
+        "totalTaxes": decimal_to_text(total_taxes),
+        "orderTotal": decimal_to_text(order_total),
         "invoiceTotals": {key: decimal_to_text(value) for key, value in result.invoice_totals.items()},
     }
 
@@ -337,12 +347,22 @@ def build_invoice_preview_summary(entries: list[Any], totals: dict[str, Decimal]
     total_amount = sum((entry.total_amount for entry in entries), Decimal("0"))
     net_values = [entry.net_amount for entry in entries if entry.net_amount is not None]
     total_net_amount = sum(net_values, Decimal("0")) if net_values else None
+    total_shas_vas_price = sum_optional_decimal(entry.shas_vas_price for entry in entries)
+    total_merchandise_amount = sum((entry.merchandise_amount for entry in entries), Decimal("0"))
+    total_adjustment = sum((entry.total_adjustment for entry in entries), Decimal("0"))
+    total_taxes = sum_optional_decimal(entry.total_taxes for entry in entries)
+    order_total = sum_optional_decimal(entry.order_total for entry in entries)
 
     return {
         "invoicePoCount": len(entries),
         "totalQuantity": decimal_to_text(total_quantity),
         "totalAmount": decimal_to_text(total_amount),
         "totalNetAmount": decimal_to_text(total_net_amount),
+        "totalShasVasPrice": decimal_to_text(total_shas_vas_price),
+        "totalMerchandiseAmount": decimal_to_text(total_merchandise_amount),
+        "totalAdjustment": decimal_to_text(total_adjustment),
+        "totalTaxes": decimal_to_text(total_taxes),
+        "orderTotal": decimal_to_text(order_total),
         "invoiceTotals": {key: decimal_to_text(value) for key, value in totals.items()},
     }
 
@@ -361,8 +381,23 @@ def entry_to_payload(idx: int, entry: Any, po_pages: dict[str, list[int]] | None
         "unitPrice": decimal_to_text(entry.unit_price),
         "totalAmount": decimal_to_text(entry.total_amount),
         "netAmount": decimal_to_text(entry.net_amount),
+        "shasVasPrice": decimal_to_text(entry.shas_vas_price),
+        "merchandiseAmount": decimal_to_text(entry.merchandise_amount),
+        "totalAdjustment": decimal_to_text(entry.total_adjustment),
+        "totalTaxes": decimal_to_text(entry.total_taxes),
+        "orderTotal": decimal_to_text(entry.order_total),
         "status": "found" if pages else "missing",
     }
+
+
+def sum_optional_decimal(values: Any) -> Decimal | None:
+    total = Decimal("0")
+    found = False
+    for value in values:
+        if value is not None:
+            total += value
+            found = True
+    return total if found else None
 
 
 def decimal_to_text(value: Decimal | None) -> str | None:

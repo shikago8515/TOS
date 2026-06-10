@@ -3,7 +3,7 @@
     variant="infornexus"
     page-title="Eric - Infornexus"
     page-subtitle="Infor Nexus 运输自动化流程"
-    :allowed-entry-ids="['shipping-automation', 'shipping-automation-2', 'email-report-bot', 'form-auto-fill']"
+    :allowed-entry-ids="['shipping-automation', 'shipping-automation-2', 'infornexus-auto-add']"
   />
 </template>
 

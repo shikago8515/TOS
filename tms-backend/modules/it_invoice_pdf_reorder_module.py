@@ -25,6 +25,13 @@ from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, 
 PO_ROW_RE = re.compile(r"(?m)^(?P<line>(?P<po>\d{10})\s+\d+\s+\S+\s+\S+.+)$")
 ORDER_NUMBER_RE = re.compile(r"Order\s+Number\s+Version\s+(\d{10})\s+\d+", re.I)
 MONEY_RE = re.compile(r"^-?\d[\d,]*(?:\.\d+)?$")
+SHAS_VAS_RE = re.compile(
+    r"\b(?:ZPSH\s+)?SHAS\s+price\s+"
+    r"(?P<unit_price>-?\d[\d,]*(?:\.\d+)?)\s+CNY\s+per\s+Unit\s+"
+    r"(?P<quantity>[\d,]+(?:\.\d+)?)\s+"
+    r"(?P<amount>-?\d[\d,]*(?:\.\d+)?)",
+    re.I | re.S,
+)
 
 
 @dataclass
@@ -39,6 +46,11 @@ class InvoiceEntry:
     unit_price: Decimal | None = None
     total_amount: Decimal = Decimal("0")
     net_amount: Decimal | None = None
+    shas_vas_price: Decimal | None = None
+    merchandise_amount: Decimal = Decimal("0")
+    total_adjustment: Decimal = Decimal("0")
+    total_taxes: Decimal | None = None
+    order_total: Decimal | None = None
     invoice_pages: list[int] | None = None
     line_count: int = 1
 
@@ -111,11 +123,20 @@ def parse_invoice_pdf(invoice_pdf: Path) -> tuple[list[InvoiceEntry], dict[str, 
 
         net_amount_match = re.search(r"\bNet\s+Amount\s+([\d,]+(?:\.\d+)?)", section, re.I)
         net_amount = to_decimal(net_amount_match.group(1)) if net_amount_match else None
+        shas_vas_price, total_adjustment = parse_shas_vas_adjustment(section)
+        merchandise_amount = total_amount
+        total_taxes = parse_labeled_money(section, "Total Taxes")
+        order_total = parse_labeled_money(section, "Order Total")
 
         existing = entries_by_po.get(parsed.po)
         if existing:
             existing.quantity += quantity
             existing.total_amount += total_amount
+            existing.merchandise_amount += merchandise_amount
+            existing.total_adjustment += total_adjustment
+            existing.shas_vas_price = add_optional_decimal(existing.shas_vas_price, shas_vas_price)
+            existing.total_taxes = add_optional_decimal(existing.total_taxes, total_taxes)
+            existing.order_total = add_optional_decimal(existing.order_total, order_total)
             if net_amount is not None:
                 existing.net_amount = (existing.net_amount or Decimal("0")) + net_amount
             existing.line_count += 1
@@ -127,11 +148,18 @@ def parse_invoice_pdf(invoice_pdf: Path) -> tuple[list[InvoiceEntry], dict[str, 
         parsed.unit_price = unit_price
         parsed.total_amount = total_amount
         parsed.net_amount = net_amount
+        parsed.shas_vas_price = shas_vas_price
+        parsed.merchandise_amount = merchandise_amount
+        parsed.total_adjustment = total_adjustment
+        parsed.total_taxes = total_taxes
+        parsed.order_total = order_total
         parsed.invoice_pages = [page_num] if page_num else []
         entries_by_po[parsed.po] = parsed
 
     totals = parse_invoice_totals(full_text)
-    return list(entries_by_po.values()), totals
+    entries = list(entries_by_po.values())
+    fill_derived_financials(entries, totals)
+    return entries, totals
 
 
 def parse_invoice_po_line(line: str) -> InvoiceEntry | None:
@@ -180,6 +208,50 @@ def parse_quantity_price_amount(section: str) -> tuple[Decimal | None, Decimal |
     return quantity, unit_price, total_amount
 
 
+def parse_shas_vas_adjustment(section: str) -> tuple[Decimal | None, Decimal]:
+    unit_price: Decimal | None = None
+    total_amount = Decimal("0")
+
+    for match in SHAS_VAS_RE.finditer(section):
+        unit_price = add_optional_decimal(unit_price, to_decimal(match.group("unit_price")))
+        total_amount += to_decimal(match.group("amount"))
+
+    return unit_price, total_amount
+
+
+def parse_labeled_money(section: str, label: str) -> Decimal | None:
+    match = re.search(
+        re.escape(label).replace(r"\ ", r"\s+") + r"\s+(-?\d[\d,]*(?:\.\d+)?)",
+        section,
+        re.I,
+    )
+    return to_decimal(match.group(1)) if match else None
+
+
+def add_optional_decimal(left: Decimal | None, right: Decimal | None) -> Decimal | None:
+    if left is None:
+        return right
+    if right is None:
+        return left
+    return left + right
+
+
+def fill_derived_financials(entries: list[InvoiceEntry], totals: dict[str, Decimal]) -> None:
+    total_po_net_amount = totals.get("total_po_net_amount")
+    total_vat = totals.get("total_vat")
+
+    for entry in entries:
+        if entry.net_amount is None:
+            entry.net_amount = entry.merchandise_amount + entry.total_adjustment
+
+        if entry.total_taxes is None and entry.net_amount is not None and total_po_net_amount and total_vat:
+            entry.total_taxes = entry.net_amount * total_vat / total_po_net_amount
+
+        if entry.order_total is None:
+            order_base = entry.net_amount if entry.net_amount is not None else entry.merchandise_amount + entry.total_adjustment
+            entry.order_total = order_base + (entry.total_taxes or Decimal("0"))
+
+
 def find_page_number_before(text: str, pos: int) -> int | None:
     marker = "---PDF_PAGE_"
     marker_pos = text.rfind(marker, 0, pos)
@@ -195,6 +267,8 @@ def parse_invoice_totals(full_text: str) -> dict[str, Decimal]:
         "total_po_net_amount": r"Total\s+PO\s+Net\s+Amount",
         "total_vat": r"Total\s+VAT",
         "invoice_total": r"Invoice\s+Total",
+        "total_taxes": r"Total\s+Taxes",
+        "order_total": r"Order\s+Total",
     }
     totals: dict[str, Decimal] = {}
     for key, label_re in labels.items():
@@ -293,8 +367,11 @@ def create_summary_pdf(
         "描述",
         "数量",
         "单价",
-        "货品金额",
-        "净额",
+        "Shas Vas Price",
+        "Merchandise Amount",
+        "Total Adjustment",
+        "Total Taxes",
+        "Order Total",
         "状态",
     ]
     rows: list[list] = [[Paragraph(text, normal_style) for text in header]]
@@ -312,13 +389,32 @@ def create_summary_pdf(
                 Paragraph(entry.description, small_style),
                 Paragraph(format_quantity(entry.quantity), right_style),
                 Paragraph(format_decimal(entry.unit_price), right_style),
-                Paragraph(format_decimal(entry.total_amount), right_style),
-                Paragraph(format_decimal(entry.net_amount), right_style),
+                Paragraph(format_decimal(entry.shas_vas_price, places=6), right_style),
+                Paragraph(format_decimal(entry.merchandise_amount), right_style),
+                Paragraph(format_decimal(entry.total_adjustment), right_style),
+                Paragraph(format_decimal(entry.total_taxes), right_style),
+                Paragraph(format_decimal(entry.order_total), right_style),
                 Paragraph(status, normal_style),
             ]
         )
 
-    col_widths = [12 * mm, 27 * mm, 15 * mm, 17 * mm, 28 * mm, 19 * mm, 52 * mm, 15 * mm, 18 * mm, 22 * mm, 20 * mm, 24 * mm]
+    col_widths = [
+        8 * mm,
+        23 * mm,
+        12 * mm,
+        12 * mm,
+        22 * mm,
+        17 * mm,
+        34 * mm,
+        12 * mm,
+        14 * mm,
+        17 * mm,
+        22 * mm,
+        20 * mm,
+        17 * mm,
+        18 * mm,
+        22 * mm,
+    ]
     table = Table(rows, repeatRows=1, colWidths=col_widths)
     table.setStyle(
         TableStyle(
@@ -358,9 +454,14 @@ def create_summary_pdf(
 
 def create_totals_table(result: ParseResult, normal_style: ParagraphStyle, right_style: ParagraphStyle) -> Table:
     sum_quantity = sum((entry.quantity for entry in result.invoice_entries), Decimal("0"))
-    sum_total_amount = sum((entry.total_amount for entry in result.invoice_entries), Decimal("0"))
-    net_values = [entry.net_amount for entry in result.invoice_entries if entry.net_amount is not None]
-    sum_net_amount = sum(net_values, Decimal("0")) if net_values else None
+    sum_shas_vas_price = sum_optional(entry.shas_vas_price for entry in result.invoice_entries)
+    sum_merchandise_amount = sum((entry.merchandise_amount for entry in result.invoice_entries), Decimal("0"))
+    sum_total_adjustment = sum((entry.total_adjustment for entry in result.invoice_entries), Decimal("0"))
+    sum_total_taxes = sum_optional(entry.total_taxes for entry in result.invoice_entries)
+    sum_order_total = sum_optional(entry.order_total for entry in result.invoice_entries)
+    footer_total_adjustment = None
+    if result.invoice_totals.get("total_po_net_amount") is not None:
+        footer_total_adjustment = result.invoice_totals["total_po_net_amount"] - sum_merchandise_amount
 
     data = [
         [
@@ -374,24 +475,29 @@ def create_totals_table(result: ParseResult, normal_style: ParagraphStyle, right
             Paragraph(format_quantity(result.invoice_totals.get("total_quantity")), right_style),
         ],
         [
-            Paragraph("货品金额合计", normal_style),
-            Paragraph(format_decimal(sum_total_amount), right_style),
+            Paragraph("Shas Vas Price", normal_style),
+            Paragraph(format_decimal(sum_shas_vas_price, places=6), right_style),
             Paragraph("-", right_style),
         ],
         [
-            Paragraph("PO净额合计", normal_style),
-            Paragraph(format_decimal(sum_net_amount), right_style),
-            Paragraph(format_decimal(result.invoice_totals.get("total_po_net_amount")), right_style),
+            Paragraph("Merchandise Amount", normal_style),
+            Paragraph(format_decimal(sum_merchandise_amount), right_style),
+            Paragraph("-", right_style),
         ],
         [
-            Paragraph("VAT", normal_style),
-            Paragraph("-", right_style),
-            Paragraph(format_decimal(result.invoice_totals.get("total_vat")), right_style),
+            Paragraph("Total Adjustment", normal_style),
+            Paragraph(format_decimal(sum_total_adjustment), right_style),
+            Paragraph(format_decimal(footer_total_adjustment), right_style),
         ],
         [
-            Paragraph("发票总额", normal_style),
-            Paragraph("-", right_style),
-            Paragraph(format_decimal(result.invoice_totals.get("invoice_total")), right_style),
+            Paragraph("Total Taxes", normal_style),
+            Paragraph(format_decimal(sum_total_taxes), right_style),
+            Paragraph(format_decimal(result.invoice_totals.get("total_taxes") or result.invoice_totals.get("total_vat")), right_style),
+        ],
+        [
+            Paragraph("Order Total", normal_style),
+            Paragraph(format_decimal(sum_order_total), right_style),
+            Paragraph(format_decimal(result.invoice_totals.get("order_total") or result.invoice_totals.get("invoice_total")), right_style),
         ],
     ]
     table = Table(data, colWidths=[42 * mm, 42 * mm, 42 * mm])
@@ -410,6 +516,16 @@ def create_totals_table(result: ParseResult, normal_style: ParagraphStyle, right
         )
     )
     return table
+
+
+def sum_optional(values: Iterable[Decimal | None]) -> Decimal | None:
+    total = Decimal("0")
+    found = False
+    for value in values:
+        if value is not None:
+            total += value
+            found = True
+    return total if found else None
 
 
 def build_reordered_pdf(

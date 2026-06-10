@@ -123,6 +123,15 @@
                   </div>
                 </div>
               </template>
+              <template v-else-if="isInfornexusAutoAddScenario">
+                <div v-for="(step, i) in infornexusAutoAddSteps" :key="i" class="ws-step">
+                  <span class="ws-step__num">{{ i + 1 }}</span>
+                  <div>
+                    <strong>{{ text(step.title) }}</strong>
+                    <p>{{ text(step.desc) }}</p>
+                  </div>
+                </div>
+              </template>
               <template v-else>
                 <div v-for="(step, i) in defaultSteps" :key="i" class="ws-step">
                   <span class="ws-step__num">{{ i + 1 }}</span>
@@ -148,16 +157,16 @@
 
         <!-- Right Stage -->
         <section class="ws-stage">
-          <!-- Shipping Scenario -->
-          <div v-if="isShippingScenario" class="ws-card">
+          <!-- Infor Nexus Direct Scenarios -->
+          <div v-if="isInfornexusDirectScenario" class="ws-card">
             <div class="ws-card__bar" />
             <div class="ws-card__head">
               <div class="ws-card__head-icon ws-card__head-icon--teal">
-                <AppIcon name="play-circle" />
+                <AppIcon :name="isInfornexusAutoAddScenario ? 'globe-search' : 'play-circle'" />
               </div>
               <div class="ws-card__head-text">
-                <strong>{{ text('登录并打开 Shipment Scan') }}</strong>
-                <p>{{ text('本机执行器会登录 Infor Nexus，并自动进入 Shipment Scan 弹窗。') }}</p>
+                <strong>{{ text(directScenarioTitle) }}</strong>
+                <p>{{ text(directScenarioDescription) }}</p>
               </div>
               <span v-if="executorHealth?.ok" class="ws-badge ws-badge--ready">{{ text('执行器就绪') }}</span>
               <span v-else class="ws-badge ws-badge--wait">{{ text('等待执行器') }}</span>
@@ -229,7 +238,7 @@
                     <AppIcon name="upload" />
                   </div>
                   <strong>{{ text('点击或拖入 Excel 文件') }}</strong>
-                  <small>{{ text('请包含 PO No 列') }}</small>
+                  <small>{{ text(directScenarioExcelHint) }}</small>
                 </template>
                 <div v-if="isDragging" class="ws-dropzone__overlay">
                   <AppIcon name="download" />
@@ -242,10 +251,10 @@
               <button
                 class="ws-btn-lg"
                 :disabled="sending || !shippingUsername || !shippingPassword || !selectedFile"
-                @click="runShippingWithExcel"
+                @click="runInfornexusDirectWithExcel"
               >
                 <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'ws-spin': sending }" />
-                {{ sending ? text('执行中...') : text('上传 Excel 并执行 Shipping') }}
+                {{ sending ? text('执行中...') : text(directScenarioRunLabel) }}
               </button>
             </div>
 
@@ -502,6 +511,13 @@ const shippingSteps = [
   { title: '后续接入 Excel', desc: '这一页后续继续承接 Shipping 的上传执行链路。' },
 ]
 
+const infornexusAutoAddSteps = [
+  { title: '上传 Excel 文件', desc: '读取第一张表第二列，从第二行开始提取 10 位 ID。' },
+  { title: '启动本地执行器', desc: '由 3003 执行器启动可视浏览器并登录 Infor Nexus。' },
+  { title: '自动搜索添加', desc: '按 Excel 顺序逐个搜索、勾选并点击添加。' },
+  { title: '查看结果', desc: '完成数量和失败明细会在页面下方返回。' },
+]
+
 const defaultSteps = [
   { title: '上传 Excel 文件', desc: '选择包含数据的 .xlsx 或 .xls 文件。' },
   { title: '本地直连执行（推荐）', desc: '前端直接把 Excel 发给本机执行器，不经过 n8n。' },
@@ -511,6 +527,8 @@ const defaultSteps = [
 
 const entry = computed(() => getWebAutomationEntry(String(route.params.scenarioId || '')))
 const isShippingScenario = computed(() => entry.value?.id === 'shipping-automation')
+const isInfornexusAutoAddScenario = computed(() => entry.value?.id === 'infornexus-auto-add')
+const isInfornexusDirectScenario = computed(() => isShippingScenario.value || isInfornexusAutoAddScenario.value)
 const isMicrosoftScenario = computed(() => entry.value?.id === 'microsoft-login-n8n')
 const directExecutorRunUrl = computed(() => {
   const baseUrl = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, '')
@@ -520,6 +538,24 @@ const shippingExecutorRunUrl = computed(() => {
   const baseUrl = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, '')
   return baseUrl ? `${baseUrl}/api/run-shipping-file` : ''
 })
+const infornexusAutoAddExecutorRunUrl = computed(() => {
+  const baseUrl = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, '')
+  return baseUrl ? `${baseUrl}/api/run-infornexus-auto-add-file` : ''
+})
+const directScenarioTitle = computed(() =>
+  isInfornexusAutoAddScenario.value ? '搜索并添加 Infornexus ID' : '登录并打开 Shipment Scan',
+)
+const directScenarioDescription = computed(() =>
+  isInfornexusAutoAddScenario.value
+    ? '本机执行器会读取 Excel 第二列 ID，登录 Infor Nexus 后自动搜索、勾选和添加。'
+    : '本机执行器会登录 Infor Nexus，并自动进入 Shipment Scan 弹窗。',
+)
+const directScenarioExcelHint = computed(() =>
+  isInfornexusAutoAddScenario.value ? '请把 10 位 ID 放在第二列' : '请包含 PO No 列',
+)
+const directScenarioRunLabel = computed(() =>
+  isInfornexusAutoAddScenario.value ? '上传 Excel 并执行自动搜索添加' : '上传 Excel 并执行 Shipping',
+)
 const healthRaw = computed(() => executorHealth.value ? JSON.stringify(executorHealth.value, null, 2) : '{}')
 const executorStatusLabel = computed(() => {
   if (activeApp.value) {
@@ -567,6 +603,11 @@ async function initializeScenario(): Promise<void> {
     shippingPassword.value = shippingPassword.value || defaultShippingPassword
     statusLabel.value = '待命'
     statusText.value = '等待上传 Excel，并执行 Shipping 自动化。'
+  } else if (isInfornexusAutoAddScenario.value) {
+    shippingUsername.value = shippingUsername.value || defaultShippingUsername
+    shippingPassword.value = shippingPassword.value || defaultShippingPassword
+    statusLabel.value = '待命'
+    statusText.value = '等待上传 Excel，并执行 Infornexus 自动搜索添加。'
   } else if (isMicrosoftScenario.value) {
     microsoftUsername.value = microsoftUsername.value || defaultMicrosoftUsername
     microsoftPassword.value = microsoftPassword.value || defaultMicrosoftPassword
@@ -718,6 +759,15 @@ function resetWebhookUrl(): void {
   webhookUrl.value = entry.value?.webhookUrl || 'http://127.0.0.1:5678/webhook/microsoft-login-excel-demo'
 }
 
+async function runInfornexusDirectWithExcel(): Promise<void> {
+  if (isInfornexusAutoAddScenario.value) {
+    await runInfornexusAutoAddWithExcel()
+    return
+  }
+
+  await runShippingWithExcel()
+}
+
 async function runShippingWithExcel(): Promise<void> {
   if (!entry.value || sending.value || !isShippingScenario.value || !selectedFile.value) return
 
@@ -782,6 +832,84 @@ async function runShippingWithExcel(): Promise<void> {
 
     statusLabel.value = '未完成'
     statusText.value = json?.message || 'Shipping 自动化已触发，但未确认全部 PO No 输入完成。'
+    lastResult.value = { ok: false, message: json?.message }
+    messageTone.value = 'warning'
+    message.value = text('自动化已触发，但结果未确认成功。')
+  } catch (error) {
+    statusLabel.value = '异常'
+    statusText.value = `本地执行异常：${readErrorMessage(error, '网络错误')}`
+    lastResult.value = { ok: false }
+    messageTone.value = 'error'
+    message.value = text('本地执行异常，请确认执行器已启动且端口可访问。')
+  } finally {
+    sending.value = false
+    await refreshExecutorState(true).catch(() => {})
+  }
+}
+
+async function runInfornexusAutoAddWithExcel(): Promise<void> {
+  if (!entry.value || sending.value || !isInfornexusAutoAddScenario.value || !selectedFile.value) return
+
+  const executorReady = await ensureExecutorReady()
+  if (!executorReady) {
+    statusLabel.value = '未就绪'
+    statusText.value = '本机执行器尚未就绪，请先启动执行器后再试。'
+    lastResult.value = { ok: false, message: 'Executor is not ready.' }
+    messageTone.value = 'warning'
+    message.value = text('本机执行器未就绪，请先启动。')
+    return
+  }
+
+  const file = selectedFile.value
+  sending.value = true
+  statusLabel.value = '执行中'
+  statusText.value = '正在上传 Excel，并启动 Infornexus 自动搜索添加...'
+  lastResult.value = null
+  shippingArtifactLinks.value = null
+  lastRawResponse.value = ''
+  message.value = ''
+
+  try {
+    const fileBase64 = await fileToBase64(file)
+    const response = await fetch(infornexusAutoAddExecutorRunUrl.value, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Executor-Token': entry.value.localExecutorToken,
+      },
+      body: JSON.stringify({
+        fileName: file.name,
+        fileBase64,
+        token: entry.value.localExecutorToken,
+        username: shippingUsername.value,
+        password: shippingPassword.value,
+      }),
+    })
+
+    const rawText = await response.text()
+    lastRawResponse.value = rawText
+    const json = safeParseJson(rawText)
+
+    if (!response.ok) {
+      statusLabel.value = '失败'
+      statusText.value = json?.message || `本地执行失败，HTTP ${response.status}。`
+      lastResult.value = { ok: false, message: json?.message || `HTTP ${response.status}` }
+      messageTone.value = 'error'
+      message.value = text('Infornexus 自动搜索添加执行失败，请查看原始响应。')
+      return
+    }
+
+    if (json?.ok) {
+      statusLabel.value = '成功'
+      statusText.value = `Infornexus 自动搜索添加完成。已处理 ${json.completedIdCount ?? 0}/${json.totalIdCount ?? '?'} 个 ID。`
+      lastResult.value = { ok: true, message: json.message }
+      messageTone.value = 'success'
+      message.value = text('Infornexus 自动搜索添加执行完成。')
+      return
+    }
+
+    statusLabel.value = '未完成'
+    statusText.value = json?.message || 'Infornexus 自动搜索添加已触发，但未确认全部 ID 完成。'
     lastResult.value = { ok: false, message: json?.message }
     messageTone.value = 'warning'
     message.value = text('自动化已触发，但结果未确认成功。')
