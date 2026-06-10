@@ -1,4 +1,15 @@
 {
+  "private": true,
+  "scripts": {
+    "check": "node scripts/engineering/run-checks.mjs all",
+    "check:quick": "node scripts/engineering/run-checks.mjs quick",
+    "check:frontend": "node scripts/engineering/run-checks.mjs frontend",
+    "check:backend": "node scripts/engineering/run-checks.mjs backend",
+    "check:electron": "node scripts/engineering/run-checks.mjs electron",
+    "dev:frontend": "npm --prefix tms-frontend run dev",
+    "preview:frontend": "npm --prefix tms-frontend run preview",
+    "dev:electron": "npm --prefix tms-electron-app run dev"
+  },
   "devDependencies": {
     "electron-builder": "^26.8.1"
   }

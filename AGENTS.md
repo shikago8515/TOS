@@ -18,7 +18,7 @@
 - 后端入口是 `tms-backend/main.py`，默认监听 `127.0.0.1:8000`。
 - 前端开发服务器端口以 `tms-frontend/package.json` 为准，当前是 `127.0.0.1:5174`。
 - Electron 打包默认使用 `tms-frontend/dist`；`TOS_FRONTEND_SOURCE=recovered` 只用于紧急回退。
-- 仓库根目录 `package.json` 当前没有可用 scripts；运行前端、后端或 Electron 检查命令时必须进入对应子目录。
+- 仓库根目录 `package.json` 提供工程入口 scripts，用于编排前端、后端和 Electron 子项目的现有检查命令。
 
 ## 默认探索边界
 
@@ -116,7 +116,19 @@
 
 ## 可用检查命令
 
-按改动范围选择最接近的真实命令。若命令不存在，明确说明未运行原因。
+按改动范围选择最接近的真实命令。若命令不存在，明确说明未运行原因。优先使用仓库根目录工程入口；需要调试单个子项目时，再切到对应子项目目录运行原生命令。
+
+### 根目录入口
+
+```powershell
+npm run check:quick
+npm run check:frontend
+npm run check:backend
+npm run check:electron
+npm run check
+```
+
+`npm run check:quick` 运行前端 typecheck/test、后端 unittest 和 Electron script tests；`npm run check` 运行完整前端、后端和 Electron 脚本检查。根目录入口不运行 `npm run pack`、`npm run build:win` 或发布清单写入命令。
 
 ### 前端
 
