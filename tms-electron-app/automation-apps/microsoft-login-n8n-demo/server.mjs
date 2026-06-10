@@ -34,6 +34,7 @@ let lastRun = null;
 const server = http.createServer(async (req, res) => {
   try {
     setCorsHeaders(res);
+    const requestPath = String(req.url || "/").split("?")[0];
 
     if (req.method === "OPTIONS") {
       res.writeHead(204);
@@ -48,6 +49,27 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && (req.url === "/health" || req.url === "/api/health")) {
       sendJson(res, 200, buildHealthPayload());
+      return;
+    }
+
+    if (req.method === "GET" && (requestPath === "/credentials" || requestPath === "/api/credentials")) {
+      sendJson(res, 200, buildCredentialsPayload());
+      return;
+    }
+
+    if (req.method === "PUT" && (requestPath === "/credentials" || requestPath === "/api/credentials")) {
+      const body = await readJsonBody(req);
+      authorize(req, body);
+      const result = await saveCredentials(body);
+      sendJson(res, 200, result);
+      return;
+    }
+
+    if (req.method === "DELETE" && (requestPath === "/credentials" || requestPath === "/api/credentials")) {
+      const body = await readJsonBody(req);
+      authorize(req, body);
+      const result = await clearCredentials();
+      sendJson(res, 200, result);
       return;
     }
 
@@ -192,7 +214,7 @@ async function loadConfig() {
 
 function setCorsHeaders(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Executor-Token");
 }
 
@@ -243,6 +265,41 @@ async function persistRunArtifacts(result, rows) {
     failedRowCount: failedRows.length,
     xlsxExportError,
   };
+}
+
+function buildCredentialsPayload() {
+  return {
+    ok: true,
+    hasStoredCredentials: Boolean(config.username && config.password),
+    username: config.username || "",
+  };
+}
+
+async function saveCredentials(body) {
+  const username = String(body?.username || body?.userId || "").trim();
+  const password = String(body?.password || "");
+  if (!username || !password) {
+    const error = new Error("Username and password are required.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  await writeCredentialsFile({ username, password });
+  config.username = username;
+  config.password = password;
+  return buildCredentialsPayload();
+}
+
+async function clearCredentials() {
+  await writeCredentialsFile({ username: "", password: "" });
+  config.username = "";
+  config.password = "";
+  return buildCredentialsPayload();
+}
+
+async function writeCredentialsFile(secret) {
+  await mkdir(runtimeDataRoot, { recursive: true });
+  await writeFile(runtimeSecretPath, `${JSON.stringify(secret, null, 2)}\n`, "utf8");
 }
 
 function extractFailedRowsForManualFollowUp(result, rows) {
@@ -2702,6 +2759,7 @@ function buildHealthPayload() {
       staySignedInAction: config.staySignedInAction,
       loginUrlPreview: previewUrl(config.loginUrl),
       username: config.username,
+      hasStoredCredentials: Boolean(config.username && config.password),
     },
   };
 }
