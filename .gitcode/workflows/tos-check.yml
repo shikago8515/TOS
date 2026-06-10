@@ -1,0 +1,41 @@
+name: tos-check
+
+on:
+  push:
+    branches:
+      - main
+      - 'codex/**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check:
+    runs-on: euleros-2.10.1
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      PYTHON: python3
+    steps:
+      - uses: checkout-action@0.0.1
+
+      - name: Use Node.js
+        uses: setup-node@0.0.1
+        with:
+          node-version: '22.11.0'
+
+      - name: Show runtime versions
+        run: |
+          cd repo_workspace
+          node --version
+          npm --version
+          python3 --version
+
+      - name: Install dependencies
+        run: |
+          cd repo_workspace
+          npm run ci:install
+
+      - name: Run full repository checks
+        run: |
+          cd repo_workspace
+          PYTHON=python3 npm run check

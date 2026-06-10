@@ -6,6 +6,7 @@
     "check:frontend": "node scripts/engineering/run-checks.mjs frontend",
     "check:backend": "node scripts/engineering/run-checks.mjs backend",
     "check:electron": "node scripts/engineering/run-checks.mjs electron",
+    "ci:install": "node scripts/engineering/install-ci-deps.mjs",
     "dev:frontend": "npm --prefix tms-frontend run dev",
     "preview:frontend": "npm --prefix tms-frontend run preview",
     "dev:electron": "npm --prefix tms-electron-app run dev"

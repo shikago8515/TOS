@@ -11,6 +11,7 @@
 | `npm run check:backend` | 后端完整检查 | `python -m unittest discover tests/ -v`、`python -m compileall .` |
 | `npm run check:electron` | Electron 脚本测试 | 自动发现 `tms-electron-app/scripts/*.test.js` 并运行 `node --test` |
 | `npm run check` | 完整工程检查 | 前端完整检查、后端完整检查、Electron 脚本测试 |
+| `npm run ci:install` | GitCode CI 依赖安装 | 根目录、前端、Electron、Playwright console 的 `npm ci`，以及后端 `pip install -r requirements.txt` |
 
 ## 开发入口
 
@@ -25,3 +26,10 @@
 - 根目录入口不运行 `npm run pack`、`npm run build:win`、`verify:renderer-package`、`verify:release-package`、`write:update-changelog` 或 `write:manual-downloads`。
 - 发布、打包、更新清单和安装包校验仍按 `tms-electron-app/README.md` 与 `AGENTS.md` 的发布敏感规则单独执行。
 - 子项目原生命令仍然可用；根目录入口只是日常开发检查的统一编排层。
+
+## GitCode 远端检查
+
+- GitCode 工作流位于 `.gitcode/workflows/tos-check.yml`。
+- `main`、`codex/**` 分支 push，以及面向 `main` 的合并请求会运行完整 `npm run check`。
+- CI 会设置 `PYTHON=python3` 和 `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`；当前远端检查只运行脚本级测试，不下载浏览器，也不做真实浏览器自动化 smoke。
+- 远端检查不运行 `npm run pack`、`npm run build:win`、发布清单写入命令或任何上传发布产物的命令。

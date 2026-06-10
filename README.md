@@ -14,6 +14,7 @@ TOS 是一个 Windows x64 桌面工具，当前源码工作区由三部分组成
 - 前端开发服务器由 `tms-frontend/package.json` 定义，当前是 `http://127.0.0.1:5174`。
 - Electron 打包默认使用 `tms-frontend/dist`；`TOS_FRONTEND_SOURCE=recovered` 仅用于紧急回退。
 - 仓库根目录 `package.json` 提供工程入口 scripts，用于编排前端、后端和 Electron 子项目的现有检查命令。
+- GitCode 远端检查位于 `.gitcode/workflows/tos-check.yml`，对 `main`、`codex/**` 分支 push 和面向 `main` 的合并请求运行完整 `npm run check`。
 
 ## 文档地图
 
@@ -38,6 +39,8 @@ npm run check
 ```
 
 `npm run check:quick` 运行前端 typecheck/test、后端 unittest 和 Electron script tests；`npm run check` 运行完整前端、后端和 Electron 脚本检查。
+
+GitCode CI 使用同一套根目录入口：先运行 `npm run ci:install` 安装依赖，再运行 `PYTHON=python3 npm run check`。该远端检查不触发 `npm run pack`、`npm run build:win` 或发布清单写入命令。
 
 也可以进入子目录运行单项命令：
 
