@@ -460,6 +460,10 @@
   grid-template-columns: 1fr;
 }
 
+.jane-page-container .jane-upload-grid .upload-hint {
+  min-height: 39px;
+}
+
 .jane-page-container .upload-dropzone {
   min-height: 148px;
   padding: 22px 18px;
@@ -803,6 +807,10 @@
   .jane-page-container .jane-upload-grid {
     grid-template-columns: 1fr;
     gap: 14px;
+  }
+
+  .jane-page-container .jane-upload-grid .upload-hint {
+    min-height: 0;
   }
 
   .jane-page-container .upload-dropzone {

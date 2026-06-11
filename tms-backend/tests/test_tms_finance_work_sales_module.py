@@ -1,9 +1,8 @@
-import base64
 import os
 import sys
 import tempfile
 import unittest
-from datetime import date, datetime
+from datetime import datetime
 
 import openpyxl
 from fastapi import FastAPI
@@ -18,6 +17,47 @@ from modules.tms_finance_work_sales_module import (  # noqa: E402
     TmsFinanceWorkSalesModule,
 )
 
+
+BULK_SALES_HEADERS = [
+    "R",
+    "MONTH",
+    "YEAR",
+    "SALES INVOICE NUMBER",
+    "SALES INVOICE DATE",
+    "*SALES INVOICE AMT (GROSS)",
+    "*SALES INVOICE AMT (NET)",
+    "TAX (%)",
+    "TAX AMT",
+    "*BUYER NAME",
+    "BILL TO",
+    "FACTORY  PAYMENT TERM",
+    "BUYER PAYMENT TERM",
+    "ACTUAL BUYER PAYMENT TERM",
+    "STYLE NUMBER",
+    "CUSTOMER SEASON",
+    "ORDER NUMBER",
+    "COLOR CODE",
+    "FACTORY  CURRENCY",
+    "FACTORY  UNIT PX",
+    "BUYER  CURRENCY",
+    "BUYER  UNIT PX",
+    "ESTIMATED LANDED COST UNIT PRICE (USD)",
+    "ESTIMATED LANDED COST AMOUNT (USD)",
+    "ACT SAILING DATE",
+    "PROJECTED SAILING DATE",
+    "REAL FACTORY  PRICE / USD",
+    "ROE AGREED",
+    "*ORDER QTY",
+    "SHIP QTY",
+    "L/C NUMBER",
+    "INVOICE STATUS",
+    "NAME OF FACTORY",
+    "LCs BENEFICIARY",
+    "PUR INVOICE AMOUNT",
+    "SHIP MODE",
+    "ACTUAL SHIP MODE",
+    "HANDOVER DATE",
+]
 
 SALES_HEADERS = [
     "Style Number",
@@ -61,365 +101,230 @@ PURCHASE_HEADERS = [
     "SALES INVOICE NUMBER",
 ]
 
-WORK_SALES_XLS_FIXTURE = (
-    "0M8R4KGxGuEAAAAAAAAAAAAAAAAAAAAAPgADAP7/CQAGAAAAAAAAAAAAAAABAAAACQAAAAAAAAAAEAAA/v///wAA"
-    "AAD+////AAAAAAgAAAD/////////////////////////////////////////////////////////////////////"
-    "////////////////////////////////////////////////////////////////////////////////////////"
-    "////////////////////////////////////////////////////////////////////////////////////////"
-    "////////////////////////////////////////////////////////////////////////////////////////"
-    "////////////////////////////////////////////////////////////////////////////////////////"
-    "////////////////////////////////////////////////////////////////////////////////////////"
-    "//////////////////////////////////////////////////////////////////8JCBAAAAYFALsNzAcAAAAA"
-    "BgAAAOEAAgCwBMEAAgAAAOIAAABcAHAATm9uZSAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg"
-    "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg"
-    "ICAgIEIAAgCwBGEBAgAAAD0BAgABAJwAAgAOABkAAgAAABIAAgAAAGMAAgAAABMAAgAAAK8BAgAAALwBAgAAAEAA"
-    "AgAAAI0AAgAAAD0AEgDgAVoAzz9OKjgAAAAAAAEAWAIiAAIAAAAOAAIAAQC3AQIAAADaAAIAAAAxABUAyAAAAP9/"
-    "kAEAAAAAAQAFAEFyaWFsMQAVAMgAAAD/f5ABAAAAAAEABQBBcmlhbDEAFQDIAAAA/3+QAQAAAAABAAUAQXJpYWwx"
-    "ABUAyAAAAP9/kAEAAAAAAQAFAEFyaWFsMQAVAMgAAAD/f5ABAAAAAAEABQBBcmlhbDEAFQDIAAAA/3+QAQAAAAAB"
-    "AAUAQXJpYWwxABUAyAAAAP9/kAEAAAAAAQAFAEFyaWFsHgQMAKQABwAAR2VuZXJhbOAAFAAGAKQA9f8gAAD0AAAA"
-    "AAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8g"
-    "AAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAG"
-    "AKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADA"
-    "IOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAA"
-    "AAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQA9f8g"
-    "AAD0AAAAAAAAAADAIOAAFAAGAKQA9f8gAAD0AAAAAAAAAADAIOAAFAAGAKQAAQAgAAD4AAAAAAAAAADAIOAAFAAH"
-    "AKQAAQAgAAD4AAAAAAAAAADAIJMCBAAAgAD/YAECAAEAhQAYAAMGAAAAABAAVHVybm92ZXIgRGV0YWlsc/wAVAIr"
-    "AAAAHAAAABkAAFR1cm5vdmVyIERldGFpbHMgTUFZIDIwMjYMAABTdHlsZSBOdW1iZXIXAABVbml0IFByaWNlKGlu"
-    "Y2x1ZGUgVkFUKRcAAFVuaXQgUHJpY2UoZXhjbHVkZSBWQVQpDQAAU2hpcCBRdWFudGl0eSEAAFRvdGFsIHByaWNl"
-    "IGV4Y2x1ZGluZyBWQVQgYW5kIFZBUwMAAFZBUxQAAFByb21vIHByaWNlIHVwY2hhcmdlHAAAU2FsZXMgQW1vdW50"
-    "IGFmdGVyIGRlZHVjdGlvbgoAAFZBVCBBbW91bnQdAABHcm9zcyBBbW91bnQoaW5jbHVkZSB0aGUgVkFUKQkAAEFS"
-    "IEFtb3VudCoAAFRvdGFsIGFtb3VudCBpbiBJcGxleCBzeXN0ZW0gKGluY2x1ZGUgVkFUKSoAAFRvdGFsIGFtb3Vu"
-    "dCBpbiBJcGxleCBzeXN0ZW0gKGV4Y2x1ZGUgVkFUKQoAAGRpZmZlcmVuY2UFAABNRVJDSA0AAEhBTkRPVkVSIERB"
-    "VEUUAABTQUxFUyBJTlZPSUNFIE5VTUJFUgwAAFJDMjYxME9XMDAxLggAAENhcm9saW5lCgAAMjAyNi0wNS0wNw0A"
-    "ADE0LTA1LTI2LTAwNjMZAABQdXJjaGFzZSBEZXRhaWxzIE1BWSAyMDI2DwAAUHVyY2hhc2UgQW1vdW50FgAATkVU"
-    "IFJFLVJPVVRFIFNVUkNIQVJHRRIAAFJFLVJPVVRFIFNVUkNIQVJHRQwAAEdyb3NzIEFtb3VudAkAAEFQIEFtb3Vu"
-    "dAoAAAAJCBAAAAYQALsNzAcAAAAABgAAAA0AAgABAAwAAgBkAA8AAgABABEAAgAAABAACAD8qfHSTWJQP18AAgAA"
-    "AIAACAAAAAAAAQAAACUCBAAAAP8AgQACAAEMAAIOAAAAAAALAAAAAAASAAAAKgACAAAAKwACAAAAggACAAEAGwAC"
-    "AAAAGgACAAAAFAAFAAIAACZQFQAFAAIAACZGgwACAAEAhAACAAAAJgAIADMzMzMzM9M/JwAIADMzMzMzM9M/KAAI"
-    "AIXrUbgeheM/KQAIAK5H4XoUrtc/oQAiAAkAZAABAAEAAQCDACwBLAGamZmZmZm5P5qZmZmZmbk/AQASAAIAAADd"
-    "AAIAAAAZAAIAAABjAAIAAAATAAIAAAAIAhAAAAAAAAEA/wAAAAAAAAEPAP0ACgAAAAAAEQAAAAAACAIQAAIAAAAS"
-    "AP8AAAAAAAABDwD9AAoAAgAAABEAAQAAAP0ACgACAAEAEQACAAAA/QAKAAIAAgARAAMAAAD9AAoAAgADABEABAAA"
-    "AP0ACgACAAQAEQAFAAAA/QAKAAIABQARAAYAAAD9AAoAAgAGABEABwAAAP0ACgACAAcAEQAIAAAA/QAKAAIACAAR"
-    "AAkAAAD9AAoAAgAJABEACgAAAP0ACgACAAoAEQALAAAA/QAKAAIACwARAAwAAAD9AAoAAgAMABEADQAAAP0ACgAC"
-    "AA0AEQAOAAAAAQIGAAIADgARAP0ACgACAA8AEQAPAAAA/QAKAAIAEAARABAAAAD9AAoAAgARABEAEQAAAAgCEAAD"
-    "AAAAEgD/AAAAAAAAAQ8A/QAKAAMAAAARABIAAAABAgYAAwABABEAvQASAAMAAgARAJfDAAARAIYuAAADAL4AHAAD"
-    "AAQAEQARABEAEQARABEAEQARABEAEQARAA4A/QAKAAMADwARABMAAAD9AAoAAwAQABEAFAAAAP0ACgADABEAEQAV"
-    "AAAACAIQAAQAAAAEAP8AAAAAAAABDwAGACMABAADABEAAwAAAAAA//8AAAAAAAANACUDAAMAA8ADwBkQAAAIAhAA"
-    "BgAAAAEA/wAAAAAAAAEPAP0ACgAGAAAAEQAWAAAACAIQAAgAAAASAP8AAAAAAAABDwD9AAoACAAAABEAAQAAAP0A"
-    "CgAIAAEAEQACAAAA/QAKAAgAAgARAAMAAAD9AAoACAADABEABAAAAP0ACgAIAAQAEQAXAAAA/QAKAAgABQARABgA"
-    "AAD9AAoACAAGABEACQAAAP0ACgAIAAcAEQAZAAAA/QAKAAgACAARABoAAAD9AAoACAAJABEAGwAAAP0ACgAIAAoA"
-    "EQAMAAAA/QAKAAgACwARAA0AAAD9AAoACAAMABEADgAAAL4ACgAIAA0AEQARAA4A/QAKAAgADwARAA8AAAD9AAoA"
-    "CAAQABEAEAAAAP0ACgAIABEAEQARAAAACAIQAAkAAAASAP8AAAAAAAABDwD9AAoACQAAABEAEgAAAAECBgAJAAEA"
-    "EQC9ABIACQACABEA27EAABEAhi4AAAMAvgAcAAkABAARABEAEQARABEAEQARABEAEQARABEADgD9AAoACQAPABEA"
-    "EwAAAP0ACgAJABAAEQAUAAAA/QAKAAkAEQARABUAAAAIAhAACgAAAAQA/wAAAAAAAAEPAAYAIwAKAAMAEQADAAAA"
-    "AAD//wAAAAAAAA0AJQkACQADwAPAGRAAAD4CEgC2AgAAAABAAAAAAAAAAAAAAAAKAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAIAAAADAAAA"
-    "BAAAAAUAAAAGAAAABwAAAP7////9/////v//////////////////////////////////////////////////////"
-    "////////////////////////////////////////////////////////////////////////////////////////"
-    "////////////////////////////////////////////////////////////////////////////////////////"
-    "////////////////////////////////////////////////////////////////////////////////////////"
-    "////////////////////////////////////////////////////////////////////////////////////////"
-    "////////////////////////////////////////////////////////////////////////////////////////"
-    "////////////////////////////////////////////////////////////////////////////////////////"
-    "//////////////////////////////////////////////////9SAG8AbwB0ACAARQBuAHQAcgB5AAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFgAFAf//////////AQAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAP7///8AAAAAAAAAAFcAbwByAGsAYgBvAG8AawAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASAAIB////////////////AAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH///////////////8AAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAD+////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf///////////////wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    "AAAAAAAAAAAAAP7///8AAAAAAAAAAA=="
-)
 
-
-def _sample_rows(count: int = 2) -> list[dict[str, object]]:
-    base = [
+def _bulk_rows() -> list[dict[str, object]]:
+    return [
         {
             "invoice": "14-05-26-0063",
+            "invoice_date": datetime(2026, 5, 7),
             "style": "RC2610OW001.",
-            "sales_price": 125.17,
-            "purchase_price": 113.82,
+            "order": "0901888496",
+            "buyer_unit_price": 125.17,
+            "factory_unit_price": 113.82,
             "quantity": 2977,
-            "merch": "Caroline",
-            "handover": datetime(2026, 5, 7),
+            "sales_amount_net": 422682.26,
+            "purchase_amount": 338842.14,
+            "handover_date": datetime(2026, 5, 7),
         },
         {
             "invoice": "14-05-26-0062",
+            "invoice_date": datetime(2026, 5, 7),
             "style": "RC2610OW000.",
-            "sales_price": 127.3,
-            "purchase_price": 115.6,
+            "order": "0901888497",
+            "buyer_unit_price": 127.3,
+            "factory_unit_price": 115.6,
             "quantity": 1804,
-            "merch": "Caroline",
-            "handover": datetime(2026, 5, 7),
+            "sales_amount_net": 260496.63,
+            "purchase_amount": 208542.4,
+            "handover_date": datetime(2026, 5, 7),
         },
     ]
-    rows: list[dict[str, object]] = []
-    for index in range(count):
-        source = base[index % len(base)].copy()
-        source["invoice"] = f"{source['invoice']}-{index + 1:03d}"
-        rows.append(source)
-    return rows
 
 
-def _write_work_sales_xls_fixture(path: str) -> None:
-    with open(path, "wb") as fp:
-        fp.write(base64.b64decode(WORK_SALES_XLS_FIXTURE))
+def _old_target_row() -> dict[str, object]:
+    return {
+        "invoice": "14-04-26-0001",
+        "style": "OLDSTYLE.",
+        "buyer_unit_price": 99.9,
+        "factory_unit_price": 88.8,
+        "quantity": 10,
+        "sales_amount_net": 1128.87,
+        "purchase_amount": 888.0,
+        "handover_date": datetime(2026, 4, 30),
+    }
 
 
 class TmsFinanceWorkSalesModuleTests(unittest.TestCase):
     def setUp(self) -> None:
         self.module = TmsFinanceWorkSalesModule()
 
-    def _create_iplix_workbook(
-        self,
-        path: str,
-        rows: list[dict[str, object]],
-        *,
-        mismatch_purchase: bool = False,
-    ) -> None:
+    def _create_bulk_sales_workbook(self, path: str, rows: list[dict[str, object]]) -> None:
+        workbook = openpyxl.Workbook()
+        ws = workbook.active
+        ws.title = "Sheet1"
+        ws.append(BULK_SALES_HEADERS)
+        for row in rows:
+            values = {header: "" for header in BULK_SALES_HEADERS}
+            values.update(
+                {
+                    "MONTH": "5",
+                    "YEAR": "2026",
+                    "SALES INVOICE NUMBER": row["invoice"],
+                    "SALES INVOICE DATE": row.get("invoice_date"),
+                    "*SALES INVOICE AMT (NET)": row["sales_amount_net"],
+                    "STYLE NUMBER": row["style"],
+                    "ORDER NUMBER": row["order"],
+                    "FACTORY  CURRENCY": "RMB",
+                    "FACTORY  UNIT PX": row["factory_unit_price"],
+                    "BUYER  CURRENCY": "RMB",
+                    "BUYER  UNIT PX": row["buyer_unit_price"],
+                    "SHIP QTY": row["quantity"],
+                    "PUR INVOICE AMOUNT": row["purchase_amount"],
+                    "HANDOVER DATE": row["handover_date"],
+                }
+            )
+            ws.append([values[header] for header in BULK_SALES_HEADERS])
+        workbook.save(path)
+
+    def _create_turnover_workbook(self, path: str, rows: list[dict[str, object]]) -> None:
         workbook = openpyxl.Workbook()
         ws = workbook.active
         ws.title = "Turnover Details"
         ws["A1"] = "Turnover Details MAY 2026"
-
+        ws["E2"] = "SALES"
+        ws["F2"] = "OTHER INCOME"
+        ws["I2"] = "TAX"
+        ws["J2"] = "AR"
         for column, header in enumerate(SALES_HEADERS, start=1):
             ws.cell(3, column).value = header
-        for offset, row in enumerate(rows, start=4):
-            ws.cell(offset, 1).value = row["style"]
-            ws.cell(offset, 3).value = row["sales_price"]
-            ws.cell(offset, 4).value = row["quantity"]
-            ws.cell(offset, 16).value = row["merch"]
-            ws.cell(offset, 17).value = row["handover"]
-            ws.cell(offset, 18).value = row["invoice"]
-        total_row = 4 + len(rows)
-        ws.cell(total_row, 4).value = f"=SUM(D4:D{total_row - 1})"
+        for row_index, row in enumerate(rows, start=4):
+            self._write_sales_template_row(ws, row_index, row)
+        sales_total_row = 4 + len(rows)
+        self._write_total_row(ws, sales_total_row, 4, sales_total_row - 1)
+        ws.cell(sales_total_row + 1, 9).value = f"=I{sales_total_row}"
 
-        purchase_header_row = total_row + 3
-        ws.cell(purchase_header_row - 2, 1).value = "Purchase Details MAY 2026"
+        purchase_title_row = sales_total_row + 4
+        purchase_header_row = sales_total_row + 6
+        ws.cell(purchase_title_row, 1).value = "Purchase Details MAY 2026"
+        ws.cell(purchase_title_row + 1, 5).value = "Purchase"
         for column, header in enumerate(PURCHASE_HEADERS, start=1):
             ws.cell(purchase_header_row, column).value = header
-        for offset, row in enumerate(rows, start=purchase_header_row + 1):
-            ws.cell(offset, 1).value = (
-                "MISMATCH."
-                if mismatch_purchase and offset == purchase_header_row + 1
-                else row["style"]
-            )
-            ws.cell(offset, 3).value = row["purchase_price"]
-            ws.cell(offset, 4).value = row["quantity"]
-            ws.cell(offset, 16).value = row["merch"]
-            ws.cell(offset, 17).value = row["handover"]
-            ws.cell(offset, 18).value = row["invoice"]
+        for row_index, row in enumerate(rows, start=purchase_header_row + 1):
+            self._write_purchase_template_row(ws, row_index, row)
         purchase_total_row = purchase_header_row + 1 + len(rows)
-        ws.cell(purchase_total_row, 4).value = (
-            f"=SUM(D{purchase_header_row + 1}:D{purchase_total_row - 1})"
-        )
-
+        self._write_total_row(ws, purchase_total_row, purchase_header_row + 1, purchase_total_row - 1)
         workbook.save(path)
 
-    def _create_reference_workbook(self, path: str, include_optional: bool = True) -> None:
-        workbook = openpyxl.Workbook()
-        ws = workbook.active
-        ws.title = "Sheet1"
-        headers = [
-            "STYLE NUMBER",
-            "*BUYER NAME",
-            "BILL TO",
-            "NAME OF FACTORY",
-        ]
-        if include_optional:
-            headers.extend(["SAS Price", "Promo Price", "Upcharge"])
-        ws.append(headers)
-        ws.append(
-            [
-                "RC2610OW001.",
-                "Adidas Originals",
-                "Adidas Sports (China) Co., Ltd.",
-                "DANDONG SLT GARMENT INDUSTRY CO LTD",
-                128.88,
-                2.5,
-                1.25,
-            ][: len(headers)]
-        )
-        workbook.save(path)
+    def _write_sales_template_row(self, ws, row_index: int, row: dict[str, object]) -> None:
+        ws.cell(row_index, 1).value = row["style"]
+        ws.cell(row_index, 3).value = row["buyer_unit_price"]
+        ws.cell(row_index, 4).value = row["quantity"]
+        ws.cell(row_index, 5).value = f"=ROUND(C{row_index}*D{row_index},2)"
+        ws.cell(row_index, 6).value = f"=ROUND(0.483581*D{row_index},2)"
+        ws.cell(row_index, 8).value = f"=ROUND(E{row_index}+F{row_index}+G{row_index},2)"
+        ws.cell(row_index, 9).value = f"=ROUND(H{row_index}*0.13,2)"
+        ws.cell(row_index, 10).value = f"=H{row_index}+I{row_index}"
+        ws.cell(row_index, 12).value = row["sales_amount_net"]
+        ws.cell(row_index, 14).value = f"=J{row_index}-L{row_index}"
+        ws.cell(row_index, 15).value = "Issued VAT inv."
+        ws.cell(row_index, 16).value = "Caroline"
+        ws.cell(row_index, 17).value = row["handover_date"]
+        ws.cell(row_index, 18).value = row["invoice"]
 
-    def test_process_creates_single_sheet_summary_with_reference_fields(self) -> None:
+    def _write_purchase_template_row(self, ws, row_index: int, row: dict[str, object]) -> None:
+        ws.cell(row_index, 1).value = row["style"]
+        ws.cell(row_index, 3).value = row["factory_unit_price"]
+        ws.cell(row_index, 4).value = row["quantity"]
+        ws.cell(row_index, 5).value = f"=ROUND(C{row_index}*D{row_index},2)"
+        ws.cell(row_index, 7).value = f"=ROUND((E{row_index})*0.13,2)"
+        ws.cell(row_index, 9).value = f"=E{row_index}+G{row_index}+F{row_index}"
+        ws.cell(row_index, 12).value = row["purchase_amount"]
+        ws.cell(row_index, 13).value = f"=E{row_index}-L{row_index}"
+        ws.cell(row_index, 14).value = "received VAT inv."
+        ws.cell(row_index, 16).value = "Caroline"
+        ws.cell(row_index, 17).value = row["handover_date"]
+        ws.cell(row_index, 18).value = row["invoice"]
+
+    def _write_total_row(self, ws, total_row: int, start_row: int, end_row: int) -> None:
+        for column in range(4, 15):
+            letter = openpyxl.utils.get_column_letter(column)
+            ws.cell(total_row, column).value = f"=SUM({letter}{start_row}:{letter}{end_row})"
+
+    def test_appends_bulk_sales_rows_to_turnover_details_sections(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            iplix_path = os.path.join(tmpdir, "iplix.xlsx")
-            reference_path = os.path.join(tmpdir, "reference.xlsx")
-            self._create_iplix_workbook(iplix_path, _sample_rows(2))
-            self._create_reference_workbook(reference_path)
+            bulk_path = os.path.join(tmpdir, "bulk sales.xlsx")
+            turnover_path = os.path.join(tmpdir, "turnover.xlsx")
+            self._create_bulk_sales_workbook(bulk_path, _bulk_rows())
+            self._create_turnover_workbook(turnover_path, [_old_target_row()])
 
             result = self.module.process_files(
-                iplix_path=iplix_path,
-                reference_path=reference_path,
+                bulk_sales_path=bulk_path,
+                turnover_path=turnover_path,
                 output_dir=tmpdir,
-                today=date(2026, 6, 9),
             )
 
             self.assertTrue(result["success"])
-            self.assertEqual(result["extracted_count"], 2)
-            self.assertEqual(result["matched_reference_count"], 1)
-            self.assertEqual(result["missing_reference_count"], 1)
-            self.assertEqual(result["month_label"], "2026年06月")
-            output_wb = openpyxl.load_workbook(result["output_path"])
+            self.assertEqual(result["source_row_count"], 2)
+            self.assertEqual(result["sales_appended_count"], 2)
+            self.assertEqual(result["purchase_appended_count"], 2)
+            self.assertEqual(result["duplicate_count"], 0)
+            output_wb = openpyxl.load_workbook(result["output_path"], data_only=False)
             try:
-                ws = output_wb["Work Sales Summary"]
-                headers = [ws.cell(4, column).value for column in range(1, 13)]
-                self.assertEqual(
-                    headers,
-                    [
-                        "Invoice No.",
-                        "Style Number",
-                        "Unit Price (Sales)",
-                        "Buyer",
-                        "Factory",
-                        "Unit Price (Purchase) / Customer Price",
-                        "Customer",
-                        "Merchandiser",
-                        "Handover Date",
-                        "SAS Price",
-                        "Promo Price",
-                        "Upcharge",
-                    ],
+                ws = output_wb["Turnover Details"]
+                self.assertNotIn("Work Sales Summary", output_wb.sheetnames)
+                self.assertEqual(ws.cell(5, 1).value, "RC2610OW001.")
+                self.assertEqual(ws.cell(5, 3).value, 125.17)
+                self.assertEqual(ws.cell(5, 4).value, 2977)
+                self.assertEqual(ws.cell(5, 12).value, 422682.26)
+                self.assertEqual(ws.cell(5, 15).value, "Issued VAT inv.")
+                self.assertEqual(ws.cell(5, 16).value, "Caroline")
+                self.assertEqual(ws.cell(5, 18).value, "14-05-26-0063")
+                self.assertEqual(ws.cell(5, 5).value, "=ROUND(C5*D5,2)")
+                self.assertEqual(ws.cell(7, 4).value, "=SUM(D4:D6)")
+                self.assertEqual(ws.cell(15, 1).value, "RC2610OW001.")
+                self.assertEqual(ws.cell(15, 3).value, 113.82)
+                self.assertEqual(ws.cell(15, 4).value, 2977)
+                self.assertEqual(ws.cell(15, 12).value, 338842.14)
+                self.assertEqual(ws.cell(15, 14).value, "received VAT inv.")
+                self.assertEqual(ws.cell(15, 16).value, "Caroline")
+                self.assertEqual(ws.cell(15, 18).value, "14-05-26-0063")
+                self.assertEqual(ws.cell(15, 5).value, "=ROUND(C15*D15,2)")
+                self.assertEqual(ws.cell(17, 4).value, "=SUM(D14:D16)")
+            finally:
+                output_wb.close()
+
+    def test_skips_rows_already_present_in_sales_and_purchase_sections(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bulk_path = os.path.join(tmpdir, "bulk sales.xlsx")
+            turnover_path = os.path.join(tmpdir, "turnover.xlsx")
+            self._create_bulk_sales_workbook(bulk_path, _bulk_rows())
+            self._create_turnover_workbook(turnover_path, _bulk_rows())
+
+            result = self.module.process_files(
+                bulk_sales_path=bulk_path,
+                turnover_path=turnover_path,
+                output_dir=tmpdir,
+            )
+
+            self.assertEqual(result["source_row_count"], 2)
+            self.assertEqual(result["sales_appended_count"], 0)
+            self.assertEqual(result["purchase_appended_count"], 0)
+            self.assertEqual(result["duplicate_count"], 2)
+            output_wb = openpyxl.load_workbook(result["output_path"], data_only=False)
+            try:
+                ws = output_wb["Turnover Details"]
+                self.assertEqual(ws.cell(6, 4).value, "=SUM(D4:D5)")
+                self.assertEqual(ws.cell(15, 4).value, "=SUM(D13:D14)")
+            finally:
+                output_wb.close()
+
+    def test_rejects_turnover_workbook_without_turnover_details_sheet(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bulk_path = os.path.join(tmpdir, "bulk sales.xlsx")
+            turnover_path = os.path.join(tmpdir, "turnover.xlsx")
+            self._create_bulk_sales_workbook(bulk_path, _bulk_rows())
+            workbook = openpyxl.Workbook()
+            workbook.active.title = "Other"
+            workbook.save(turnover_path)
+
+            with self.assertRaisesRegex(ValueError, "Turnover Details"):
+                self.module.process_files(
+                    bulk_sales_path=bulk_path,
+                    turnover_path=turnover_path,
+                    output_dir=tmpdir,
                 )
-                self.assertEqual(ws["A2"].value, "月份：2026年06月")
-                self.assertEqual(ws["A5"].value, "14-05-26-0063-001")
-                self.assertEqual(ws["B5"].value, "RC2610OW001.")
-                self.assertEqual(ws["C5"].value, 125.17)
-                self.assertEqual(ws["D5"].value, "Adidas Originals")
-                self.assertEqual(ws["E5"].value, "SLT")
-                self.assertEqual(ws["F5"].value, 113.82)
-                self.assertEqual(ws["G5"].value, "Adidas Sports (China) Co., Ltd.")
-                self.assertEqual(ws["H5"].value, "Caroline")
-                self.assertEqual(ws["J5"].value, 128.88)
-                self.assertEqual(ws["K5"].value, 2.5)
-                self.assertEqual(ws["L5"].value, 1.25)
-                self.assertIsNone(ws["D6"].value)
-                self.assertEqual(ws["C5"].number_format, "0.00")
-                self.assertEqual(ws["F5"].number_format, "0.00")
-            finally:
-                output_wb.close()
 
-    def test_records_purchase_mismatch_without_stopping(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            iplix_path = os.path.join(tmpdir, "iplix.xlsx")
-            reference_path = os.path.join(tmpdir, "reference.xlsx")
-            self._create_iplix_workbook(
-                iplix_path,
-                _sample_rows(2),
-                mismatch_purchase=True,
-            )
-            self._create_reference_workbook(reference_path, include_optional=False)
-
-            result = self.module.process_files(
-                iplix_path=iplix_path,
-                reference_path=reference_path,
-                output_dir=tmpdir,
-                today=date(2026, 6, 9),
-            )
-
-            self.assertEqual(result["extracted_count"], 2)
-            reasons = [item["reason"] for item in result["diagnostics"]]
-            self.assertTrue(any("Sales/Purchase 明细不一致" in reason for reason in reasons))
-            self.assertTrue(any("参考表缺少可选字段" in reason for reason in reasons))
-
-    def test_dynamic_rows_extracts_eighty_rows(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            iplix_path = os.path.join(tmpdir, "iplix.xlsx")
-            reference_path = os.path.join(tmpdir, "reference.xlsx")
-            self._create_iplix_workbook(iplix_path, _sample_rows(80))
-            self._create_reference_workbook(reference_path)
-
-            result = self.module.process_files(
-                iplix_path=iplix_path,
-                reference_path=reference_path,
-                output_dir=tmpdir,
-                today=date(2026, 6, 9),
-            )
-
-            self.assertEqual(result["extracted_count"], 80)
-            output_wb = openpyxl.load_workbook(result["output_path"])
-            try:
-                ws = output_wb["Work Sales Summary"]
-                self.assertEqual(ws.max_row, 84)
-                self.assertEqual(ws["A84"].value, "14-05-26-0062-080")
-            finally:
-                output_wb.close()
-
-    def test_process_reads_legacy_xls_iplix_workbook(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            iplix_path = os.path.join(tmpdir, "iplix.xls")
-            reference_path = os.path.join(tmpdir, "reference.xlsx")
-            _write_work_sales_xls_fixture(iplix_path)
-            self._create_reference_workbook(reference_path)
-
-            result = self.module.process_files(
-                iplix_path=iplix_path,
-                reference_path=reference_path,
-                output_dir=tmpdir,
-                today=date(2026, 6, 9),
-            )
-
-            self.assertEqual(result["extracted_count"], 1)
-            self.assertEqual(result["matched_reference_count"], 1)
-            output_wb = openpyxl.load_workbook(result["output_path"])
-            try:
-                ws = output_wb["Work Sales Summary"]
-                self.assertEqual(ws["A5"].value, "14-05-26-0063")
-                self.assertEqual(ws["B5"].value, "RC2610OW001.")
-                self.assertEqual(ws["C5"].value, 125.17)
-                self.assertEqual(ws["F5"].value, 113.82)
-            finally:
-                output_wb.close()
-
-    def test_process_without_optional_reference_keeps_work_sales_rows(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            iplix_path = os.path.join(tmpdir, "iplix.xlsx")
-            self._create_iplix_workbook(iplix_path, _sample_rows(2))
-
-            result = self.module.process_files(
-                iplix_path=iplix_path,
-                reference_path=None,
-                output_dir=tmpdir,
-                today=date(2026, 6, 9),
-            )
-
-            self.assertEqual(result["extracted_count"], 2)
-            self.assertEqual(result["matched_reference_count"], 0)
-            self.assertEqual(result["missing_reference_count"], 0)
-            self.assertEqual(result["source_summary"]["reference_rows"], 0)
-            output_wb = openpyxl.load_workbook(result["output_path"])
-            try:
-                ws = output_wb["Work Sales Summary"]
-                self.assertEqual(ws["A5"].value, "14-05-26-0063-001")
-                self.assertIsNone(ws["D5"].value)
-                self.assertIsNone(ws["E5"].value)
-                self.assertIsNone(ws["G5"].value)
-                self.assertEqual(ws["H5"].value, "Caroline")
-            finally:
-                output_wb.close()
-
-    def test_api_processes_upload_and_downloads_result(self) -> None:
+    def test_api_processes_bulk_sales_and_turnover_uploads(self) -> None:
         from api.tms_finance_work_sales_api import router
 
         app = FastAPI()
@@ -427,23 +332,23 @@ class TmsFinanceWorkSalesModuleTests(unittest.TestCase):
         client = TestClient(app)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            iplix_path = os.path.join(tmpdir, "iplix.xlsx")
-            reference_path = os.path.join(tmpdir, "reference.xlsx")
-            self._create_iplix_workbook(iplix_path, _sample_rows(2))
-            self._create_reference_workbook(reference_path)
+            bulk_path = os.path.join(tmpdir, "bulk sales.xlsx")
+            turnover_path = os.path.join(tmpdir, "turnover.xlsx")
+            self._create_bulk_sales_workbook(bulk_path, _bulk_rows())
+            self._create_turnover_workbook(turnover_path, [_old_target_row()])
 
-            with open(iplix_path, "rb") as iplix_file, open(reference_path, "rb") as reference_file:
+            with open(bulk_path, "rb") as bulk_file, open(turnover_path, "rb") as turnover_file:
                 response = client.post(
                     "/api/tms-finance/work-sales/process",
                     files={
-                        "iplix_file": (
-                            "iplix.xlsx",
-                            iplix_file,
+                        "bulk_sales_file": (
+                            "bulk sales.xlsx",
+                            bulk_file,
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         ),
-                        "reference_file": (
-                            "reference.xlsx",
-                            reference_file,
+                        "turnover_file": (
+                            "turnover.xlsx",
+                            turnover_file,
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         ),
                     },
@@ -451,8 +356,9 @@ class TmsFinanceWorkSalesModuleTests(unittest.TestCase):
 
             self.assertEqual(response.status_code, 200)
             payload = response.json()
-            self.assertEqual(payload["extracted_count"], 2)
-            self.assertEqual(payload["matched_reference_count"], 1)
+            self.assertEqual(payload["source_row_count"], 2)
+            self.assertEqual(payload["sales_appended_count"], 2)
+            self.assertEqual(payload["purchase_appended_count"], 2)
             self.assertIn("output_file", payload)
 
             download_response = client.get(
@@ -460,69 +366,7 @@ class TmsFinanceWorkSalesModuleTests(unittest.TestCase):
             )
             self.assertEqual(download_response.status_code, 200)
 
-    def test_api_processes_without_optional_reference_file(self) -> None:
-        from api.tms_finance_work_sales_api import router
-
-        app = FastAPI()
-        app.include_router(router, prefix="/api")
-        client = TestClient(app)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            iplix_path = os.path.join(tmpdir, "iplix.xlsx")
-            self._create_iplix_workbook(iplix_path, _sample_rows(2))
-
-            with open(iplix_path, "rb") as iplix_file:
-                response = client.post(
-                    "/api/tms-finance/work-sales/process",
-                    files={
-                        "iplix_file": (
-                            "iplix.xlsx",
-                            iplix_file,
-                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        ),
-                    },
-                )
-
-            self.assertEqual(response.status_code, 200)
-            payload = response.json()
-            self.assertEqual(payload["extracted_count"], 2)
-            self.assertEqual(payload["source_summary"]["reference_rows"], 0)
-            self.assertIn("output_file", payload)
-
-    def test_api_processes_legacy_xls_iplix_upload(self) -> None:
-        from api.tms_finance_work_sales_api import router
-
-        app = FastAPI()
-        app.include_router(router, prefix="/api")
-        client = TestClient(app)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            iplix_path = os.path.join(tmpdir, "iplix.xls")
-            reference_path = os.path.join(tmpdir, "reference.xlsx")
-            _write_work_sales_xls_fixture(iplix_path)
-            self._create_reference_workbook(reference_path)
-
-            with open(iplix_path, "rb") as iplix_file, open(reference_path, "rb") as reference_file:
-                response = client.post(
-                    "/api/tms-finance/work-sales/process",
-                    files={
-                        "iplix_file": (
-                            "iplix.xls",
-                            iplix_file,
-                            "application/vnd.ms-excel",
-                        ),
-                        "reference_file": (
-                            "reference.xlsx",
-                            reference_file,
-                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        ),
-                    },
-                )
-
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json()["extracted_count"], 1)
-
-    def test_api_rejects_invalid_extension(self) -> None:
+    def test_api_rejects_invalid_bulk_sales_extension(self) -> None:
         from api.tms_finance_work_sales_api import router
 
         app = FastAPI()
@@ -532,8 +376,8 @@ class TmsFinanceWorkSalesModuleTests(unittest.TestCase):
         response = client.post(
             "/api/tms-finance/work-sales/process",
             files={
-                "iplix_file": ("iplix.txt", b"bad", "text/plain"),
-                "reference_file": ("reference.xlsx", b"bad", "application/octet-stream"),
+                "bulk_sales_file": ("bulk.txt", b"bad", "text/plain"),
+                "turnover_file": ("turnover.xlsx", b"bad", "application/octet-stream"),
             },
         )
 

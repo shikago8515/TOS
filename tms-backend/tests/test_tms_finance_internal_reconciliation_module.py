@@ -277,7 +277,7 @@ class TmsFinanceInternalReconciliationModuleTests(unittest.TestCase):
         workbook.save(path)
         return path
 
-    def test_updates_tail_target_rows_from_multiple_sources_without_appending(self) -> None:
+    def test_appends_missing_rows_from_multiple_sources_without_overwriting_history(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             target_path = self._save_target_workbook(folder)
             bulk_path = self._save_bulk_workbook(folder)
@@ -287,7 +287,9 @@ class TmsFinanceInternalReconciliationModuleTests(unittest.TestCase):
 
             self.assertTrue(result["success"])
             self.assertEqual(result["updated_count"], 22)
-            self.assertEqual(result["appended_count"], 0)
+            self.assertEqual(result["appended_count"], 22)
+            self.assertEqual(result["skipped_count"], 0)
+            self.assertEqual(result["duplicate_count"], 0)
             self.assertEqual(result["source_row_count"], 22)
             self.assertEqual(result["target_row_count"], 207)
             self.assertEqual(result["source_summary"]["bulk_rows"], 8)
@@ -301,43 +303,133 @@ class TmsFinanceInternalReconciliationModuleTests(unittest.TestCase):
             output_wb = openpyxl.load_workbook(result["output_path"], data_only=False)
             self.assertIn("清 from 2407", output_wb.sheetnames)
             ws = output_wb["未清账"]
-            self.assertEqual(ws.max_row, 210)
+            self.assertEqual(ws.max_row, 232)
             self.assertEqual(ws.cell(186, 12).value, "HISTORY186")
-            self.assertEqual(ws.cell(187, 5).value, "Bulk")
-            self.assertEqual(ws.cell(187, 6).value, "万代")
-            self.assertEqual(ws.cell(187, 8).value, 10)
-            self.assertEqual(ws.cell(187, 9).value, 11.3)
-            self.assertEqual(ws.cell(187, 9).number_format, "0.00")
-            self.assertEqual(ws.cell(187, 10).value, 1118.23)
-            self.assertEqual(ws.cell(187, 10).number_format, "0.00")
-            self.assertEqual(ws.cell(187, 19).value, "CI-BULK-000")
-            self.assertEqual(ws.cell(187, 21).value, "#CI-BULK-000(purchase-187)")
-            self.assertEqual(ws.cell(187, 22).value, "#CI-BULK-000(sales-187)")
-            self.assertEqual(ws.cell(187, 1).value, "date1-187")
-            self.assertEqual(ws.cell(187, 2).value, "sales-187")
-            self.assertEqual(ws.cell(187, 3).value, "date2-187")
-            self.assertEqual(ws.cell(187, 4).value, "purchase-187")
-            self.assertEqual(ws.cell(188, 6).value, "万代")
-            self.assertEqual(ws.cell(189, 6).value, "新龙泰")
-            self.assertEqual(ws.cell(191, 6).value, "测试工厂")
-            self.assertEqual(ws.cell(194, 5).value, "Bulk")
-            self.assertEqual(ws.cell(194, 8).value, 120)
-            self.assertEqual(ws.cell(195, 5).value, "Sample")
-            self.assertEqual(ws.cell(195, 6).value, "新龙泰")
-            self.assertEqual(ws.cell(208, 8).value, 3)
-            self.assertEqual(ws.cell(208, 9).value, 376.29)
-            self.assertTrue(all(ws.cell(209, column).value in (None, "") for column in range(1, 23)))
-            self.assertEqual(ws.cell(210, 1).value, "Total")
-            self.assertEqual(ws.cell(210, 8).value, "历史合计")
+            self.assertEqual(ws.cell(187, 5).value, "KEEP")
+            self.assertEqual(ws.cell(187, 12).value, "HISTORY187")
+            self.assertEqual(ws.cell(208, 5).value, "KEEP")
+            self.assertEqual(ws.cell(208, 12).value, "HISTORY208")
+            self.assertEqual(ws.cell(208, 8).value, 1)
+            self.assertEqual(ws.cell(209, 5).value, "Bulk")
+            self.assertEqual(ws.cell(209, 6).value, "万代")
+            self.assertEqual(ws.cell(209, 8).value, 10)
+            self.assertEqual(ws.cell(209, 9).value, 11.3)
+            self.assertEqual(ws.cell(209, 9).number_format, "0.00")
+            self.assertEqual(ws.cell(209, 10).value, 1118.23)
+            self.assertEqual(ws.cell(209, 10).number_format, "0.00")
+            self.assertEqual(ws.cell(209, 19).value, "CI-BULK-000")
+            self.assertTrue(all(ws.cell(209, column).value in (None, "") for column in range(1, 5)))
+            self.assertTrue(all(ws.cell(209, column).value in (None, "") for column in (21, 22)))
+            self.assertEqual(ws.cell(210, 6).value, "万代")
+            self.assertEqual(ws.cell(211, 6).value, "新龙泰")
+            self.assertEqual(ws.cell(213, 6).value, "测试工厂")
+            self.assertEqual(ws.cell(216, 5).value, "Bulk")
+            self.assertEqual(ws.cell(216, 8).value, 120)
+            self.assertEqual(ws.cell(217, 5).value, "Sample")
+            self.assertEqual(ws.cell(217, 6).value, "新龙泰")
+            self.assertEqual(ws.cell(230, 8).value, 3)
+            self.assertEqual(ws.cell(230, 9).value, 376.29)
+            self.assertTrue(all(ws.cell(231, column).value in (None, "") for column in range(1, 23)))
+            self.assertEqual(ws.cell(232, 1).value, "Total")
+            self.assertEqual(ws.cell(232, 8).value, "历史合计")
             self.assertNotIn(
                 "SHOULD_IGNORE",
-                [ws.cell(row, 12).value for row in range(187, 209)],
+                [ws.cell(row, 12).value for row in range(209, 231)],
             )
             self.assertNotIn(
                 "AFTER_BLANK_BULK",
-                [ws.cell(row, 12).value for row in range(187, 209)],
+                [ws.cell(row, 12).value for row in range(209, 231)],
             )
             self.assertEqual(output_wb["清 from 2407"].cell(2, 12).value, "ARCHIVE")
+
+    def test_appends_rows_with_same_business_key_but_different_details(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            target_path = self._save_target_workbook(folder)
+            workbook = openpyxl.load_workbook(target_path)
+            ws = workbook["未清账"]
+            ws.cell(208, 5).value = "Bulk"
+            ws.cell(208, 12).value = "RC2610OW000"
+            ws.cell(208, 13).value = "0901888000"
+            ws.cell(208, 14).value = "KX1867"
+            workbook.save(target_path)
+            bulk_path = self._save_bulk_workbook(folder)
+
+            result = self.module.process_files([bulk_path], target_path, folder)
+
+            self.assertTrue(result["success"])
+            self.assertEqual(result["source_row_count"], 8)
+            self.assertEqual(result["updated_count"], 8)
+            self.assertEqual(result["appended_count"], 8)
+            self.assertEqual(result["skipped_count"], 0)
+            self.assertEqual(result["duplicate_count"], 0)
+            self.assertEqual(result["similar_count"], 1)
+            self.assertEqual(result["totals"]["quantity"], 400)
+
+            output_wb = openpyxl.load_workbook(result["output_path"], data_only=False)
+            ws = output_wb["未清账"]
+            self.assertEqual(ws.cell(208, 13).value, "0901888000")
+            self.assertEqual(ws.cell(209, 13).value, "0901888000")
+            self.assertEqual(ws.cell(216, 8).value, 120)
+            self.assertTrue(all(ws.cell(217, column).value in (None, "") for column in range(1, 23)))
+            self.assertEqual(ws.cell(218, 1).value, "Total")
+
+    def test_skips_rows_with_identical_full_fingerprint_in_target(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            target_path = self._save_target_workbook(folder)
+            workbook = openpyxl.load_workbook(target_path)
+            ws = workbook["未清账"]
+            ws.cell(208, 5).value = "Bulk"
+            ws.cell(208, 6).value = "万代"
+            ws.cell(208, 7).value = "adidas"
+            ws.cell(208, 8).value = 10
+            ws.cell(208, 9).value = 11.3
+            ws.cell(208, 10).value = 1118.23
+            ws.cell(208, 11).value = "女式梭织上衣"
+            ws.cell(208, 12).value = "RC2610OW000"
+            ws.cell(208, 13).value = "0901888000"
+            ws.cell(208, 14).value = "KX1867"
+            ws.cell(208, 15).value = "825057"
+            ws.cell(208, 16).value = "0305800000"
+            ws.cell(208, 17).value = "2026-05-07"
+            ws.cell(208, 18).value = "Caroline"
+            ws.cell(208, 19).value = "CI-BULK-000"
+            ws.cell(208, 20).value = 969.58
+            workbook.save(target_path)
+            bulk_path = self._save_bulk_workbook(folder)
+
+            result = self.module.process_files([bulk_path], target_path, folder)
+
+            self.assertTrue(result["success"])
+            self.assertEqual(result["source_row_count"], 8)
+            self.assertEqual(result["updated_count"], 7)
+            self.assertEqual(result["appended_count"], 7)
+            self.assertEqual(result["skipped_count"], 1)
+            self.assertEqual(result["duplicate_count"], 1)
+            self.assertEqual(result["similar_count"], 0)
+            self.assertEqual(result["totals"]["quantity"], 390)
+
+            output_wb = openpyxl.load_workbook(result["output_path"], data_only=False)
+            ws = output_wb["未清账"]
+            self.assertEqual(ws.cell(208, 13).value, "0901888000")
+            self.assertEqual(ws.cell(209, 13).value, "0901888001")
+            self.assertEqual(ws.cell(215, 8).value, 120)
+            self.assertTrue(all(ws.cell(216, column).value in (None, "") for column in range(1, 23)))
+            self.assertEqual(ws.cell(217, 1).value, "Total")
+
+    def test_skips_identical_rows_repeated_within_same_upload_batch(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            target_path = self._save_target_workbook(folder)
+            bulk_path = self._save_bulk_workbook(folder)
+
+            result = self.module.process_files([bulk_path, bulk_path], target_path, folder)
+
+            self.assertTrue(result["success"])
+            self.assertEqual(result["source_row_count"], 16)
+            self.assertEqual(result["updated_count"], 8)
+            self.assertEqual(result["appended_count"], 8)
+            self.assertEqual(result["skipped_count"], 8)
+            self.assertEqual(result["duplicate_count"], 8)
+            self.assertEqual(result["similar_count"], 0)
 
     def test_respects_exclude_helper_sheet_and_keeps_excluded_cells(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
@@ -351,15 +443,16 @@ class TmsFinanceInternalReconciliationModuleTests(unittest.TestCase):
             result = self.module.process_files([bulk_path], target_path, folder)
 
             self.assertEqual(result["updated_count"], 8)
+            self.assertEqual(result["appended_count"], 8)
             self.assertEqual(result["excluded_rows"], [203])
             self.assertEqual(result["excluded_columns"], [9, 22])
 
             output_wb = openpyxl.load_workbook(result["output_path"], data_only=False)
             ws = output_wb["未清账"]
-            self.assertEqual(ws.cell(200, 5).value, "Bulk")
-            self.assertEqual(ws.cell(200, 9).value, 1.11)
-            self.assertEqual(ws.cell(200, 10).value, 1118.23)
-            self.assertEqual(ws.cell(200, 22).value, "#FS200(sales-200)")
+            self.assertEqual(ws.cell(209, 5).value, "Bulk")
+            self.assertIsNone(ws.cell(209, 9).value)
+            self.assertEqual(ws.cell(209, 10).value, 1118.23)
+            self.assertIsNone(ws.cell(209, 22).value)
             self.assertEqual(ws.cell(203, 12).value, "HISTORY203")
             self.assertEqual(ws.cell(203, 5).value, "KEEP")
 
@@ -427,6 +520,9 @@ class TmsFinanceInternalReconciliationModuleTests(unittest.TestCase):
                 payload = response.json()
                 self.assertTrue(payload["success"])
                 self.assertEqual(payload["updated_count"], 22)
+                self.assertEqual(payload["appended_count"], 22)
+                self.assertEqual(payload["duplicate_count"], 0)
+                self.assertEqual(payload["similar_count"], 0)
                 self.assertEqual(payload["source_row_count"], 22)
                 self.assertTrue(payload["output_file"].endswith(".xlsx"))
 
@@ -464,6 +560,7 @@ class TmsFinanceInternalReconciliationModuleTests(unittest.TestCase):
                     )
                 self.assertEqual(legacy_response.status_code, 200)
                 self.assertEqual(legacy_response.json()["updated_count"], 22)
+                self.assertEqual(legacy_response.json()["appended_count"], 22)
 
                 bad_target_path = self._save_target_workbook(
                     folder,

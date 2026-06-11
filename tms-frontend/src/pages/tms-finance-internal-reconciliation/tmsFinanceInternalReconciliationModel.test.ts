@@ -3,11 +3,14 @@ import { describe, expect, it } from 'vitest'
 import { buildTmsFinanceInternalReconciliationSummary } from './tmsFinanceInternalReconciliationModel'
 
 describe('tmsFinanceInternalReconciliationModel', () => {
-  it('summarizes source rows, backfilled rows and exclusion diagnostics', () => {
+  it('summarizes source rows, appended rows and exclusion diagnostics', () => {
     const summary = buildTmsFinanceInternalReconciliationSummary({
       success: true,
       message: 'done',
-      updated_count: 22,
+      updated_count: 999,
+      appended_count: 22,
+      duplicate_count: 1,
+      similar_count: 3,
       source_row_count: 22,
       target_row_count: 207,
       excluded_rows: [203],
@@ -30,10 +33,12 @@ describe('tmsFinanceInternalReconciliationModel', () => {
     expect(summary).toContainEqual({ label: '来源提取行', value: '22' })
     expect(summary).toContainEqual({ label: 'Sample 行', value: '14' })
     expect(summary).toContainEqual({ label: 'Bulk 行', value: '8' })
-    expect(summary).toContainEqual({ label: '回填行', value: '22' })
+    expect(summary).toContainEqual({ label: '追加行', value: '22' })
+    expect(summary).toContainEqual({ label: '重复跳过', value: '1' })
+    expect(summary).toContainEqual({ label: '相似已追加', value: '3' })
     expect(summary).toContainEqual({ label: '目标处理行', value: '207' })
     expect(summary).toContainEqual({ label: '排除行', value: '203' })
     expect(summary).toContainEqual({ label: '排除列', value: '9, 22' })
-    expect(summary.map((item) => item.label)).not.toContain('新增行')
+    expect(summary.map((item) => item.label)).not.toContain('回填行')
   })
 })

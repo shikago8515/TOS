@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ElectronApi } from '../../types/electronApi'
+import { fallbackAppVersion } from '../../shared/version/appVersion'
 import { getAppVersionInfo, getUpdateStatusSnapshot } from './settingsApi'
 
 function stubWindow(electronAPI?: Partial<ElectronApi>): void {
@@ -47,7 +48,7 @@ describe('settingsApi', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
 
     await expect(getAppVersionInfo()).resolves.toEqual({
-      version: '0.9.8-beta.3.0',
+      version: fallbackAppVersion,
       isPackaged: false,
     })
   })
@@ -58,7 +59,7 @@ describe('settingsApi', () => {
 
     await expect(getUpdateStatusSnapshot()).resolves.toMatchObject({
       status: 'unsupported',
-      currentVersion: '0.9.8-beta.3.0',
+      currentVersion: fallbackAppVersion,
       isPackaged: false,
     })
   })

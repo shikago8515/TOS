@@ -132,6 +132,7 @@ async def process_internal_reconciliation(
             "appended_count": result.get("appended_count", 0),
             "skipped_count": result.get("skipped_count", 0),
             "duplicate_count": result.get("duplicate_count", 0),
+            "similar_count": result.get("similar_count", 0),
             "diagnostic_count": result["diagnostic_count"],
             "diagnostics": result["diagnostics"],
             "totals": result["totals"],
