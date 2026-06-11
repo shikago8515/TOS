@@ -1,5 +1,11 @@
 <template>
-  <section class="file-upload-box">
+  <section
+    class="file-upload-box"
+    @dragenter.stop.prevent="handleDragEnter"
+    @dragover.stop.prevent="handleDragOver"
+    @dragleave.stop.prevent="handleDragLeave"
+    @drop.stop.prevent="handleDrop"
+  >
     <div class="upload-label-row">
       <strong>{{ text(label) }}</strong>
       <span v-if="required" class="upload-badge">{{ text('必传') }}</span>
@@ -14,10 +20,6 @@
         'upload-dropzone--has-files': files.length > 0,
         'upload-dropzone--dragging': isDragging,
       }"
-      @dragenter.prevent="isDragging = true"
-      @dragover.prevent="isDragging = true"
-      @dragleave.prevent="isDragging = false"
-      @drop.prevent="handleDrop"
     >
       <input
         type="file"
@@ -59,6 +61,7 @@ import { filterAcceptedFiles } from '../files/fileAcceptance'
 import { formatFileSize } from '../files/fileGroups'
 import { useAppLanguage } from '../i18n/appLanguage'
 import AppIcon from './AppIcon.vue'
+import { getNextUploadFiles, hasDraggedFiles } from './fileUploadBoxModel'
 
 const props = withDefaults(
   defineProps<{
@@ -86,6 +89,7 @@ const emit = defineEmits<{
 const { text } = useAppLanguage()
 const isDragging = ref(false)
 const validationMessage = ref('')
+const dragDepth = ref(0)
 
 function handleInput(event: Event): void {
   const input = event.target as HTMLInputElement
@@ -94,7 +98,39 @@ function handleInput(event: Event): void {
   input.value = ''
 }
 
+function handleDragEnter(event: DragEvent): void {
+  if (!hasDraggedFiles(event.dataTransfer?.types)) {
+    return
+  }
+
+  dragDepth.value += 1
+  isDragging.value = true
+}
+
+function handleDragOver(event: DragEvent): void {
+  if (!hasDraggedFiles(event.dataTransfer?.types)) {
+    return
+  }
+
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'copy'
+  }
+  isDragging.value = true
+}
+
+function handleDragLeave(event: DragEvent): void {
+  if (!hasDraggedFiles(event.dataTransfer?.types)) {
+    return
+  }
+
+  dragDepth.value = Math.max(0, dragDepth.value - 1)
+  if (dragDepth.value === 0) {
+    isDragging.value = false
+  }
+}
+
 function handleDrop(event: DragEvent): void {
+  dragDepth.value = 0
   isDragging.value = false
   const nextFiles = Array.from(event.dataTransfer?.files ?? [])
   applySelectedFiles(nextFiles)
@@ -117,7 +153,7 @@ function applySelectedFiles(files: File[]): void {
     return
   }
 
-  emit('update:files', props.multiple ? accepted : accepted.slice(0, 1))
+  emit('update:files', getNextUploadFiles(props.files, accepted, props.multiple))
 }
 </script>
 

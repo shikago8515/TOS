@@ -94,8 +94,8 @@ const route = useRoute()
 const activeProcessId = ref<TmsFinanceProcessId>(resolveProcessIdFromRoute(route.name))
 const internalSourceFiles = ref<File[]>([])
 const reconciliationTargetFiles = ref<File[]>([])
-const iplixFiles = ref<File[]>([])
-const workSalesReferenceFiles = ref<File[]>([])
+const workSalesBulkSalesFiles = ref<File[]>([])
+const workSalesTurnoverFiles = ref<File[]>([])
 const processing = ref(false)
 const progress = ref(0)
 const message = ref('')
@@ -116,8 +116,8 @@ const uploadFields = computed(() =>
   buildTmsFinanceUploadFields(activeProcessId.value, {
     internalSourceFiles: internalSourceFiles.value,
     reconciliationTargetFiles: reconciliationTargetFiles.value,
-    iplixFiles: iplixFiles.value,
-    workSalesReferenceFiles: workSalesReferenceFiles.value,
+    workSalesBulkSalesFiles: workSalesBulkSalesFiles.value,
+    workSalesTurnoverFiles: workSalesTurnoverFiles.value,
   }),
 )
 
@@ -128,7 +128,7 @@ const readyGroupCount = computed(
 )
 const totalFiles = computed(() =>
   activeProcessId.value === 'work-sales'
-    ? iplixFiles.value.length + workSalesReferenceFiles.value.length
+    ? workSalesBulkSalesFiles.value.length + workSalesTurnoverFiles.value.length
     : internalSourceFiles.value.length + reconciliationTargetFiles.value.length,
 )
 const resultMetricValue = computed(() =>
@@ -217,13 +217,13 @@ function updateUploadFiles(fieldId: string, files: File[]): void {
     return
   }
 
-  if (fieldId === 'iplix') {
-    iplixFiles.value = files
+  if (fieldId === 'work-sales-bulk-sales') {
+    workSalesBulkSalesFiles.value = files
     return
   }
 
-  if (fieldId === 'work-sales-reference') {
-    workSalesReferenceFiles.value = files
+  if (fieldId === 'work-sales-turnover') {
+    workSalesTurnoverFiles.value = files
   }
 }
 
@@ -284,9 +284,16 @@ async function startInternalReconciliationProcess(): Promise<void> {
 }
 
 async function startWorkSalesProcess(): Promise<void> {
-  if (!iplixFiles.value[0]) {
+  if (!workSalesBulkSalesFiles.value[0]) {
     messageTone.value = 'warning'
-    message.value = '请先上传 iPlix 导出 Excel。'
+    message.value = '请先上传 BULK Sales 导出表。'
+    success.value = false
+    return
+  }
+
+  if (!workSalesTurnoverFiles.value[0]) {
+    messageTone.value = 'warning'
+    message.value = '请先上传 TURNOVER 目标表。'
     success.value = false
     return
   }
@@ -298,8 +305,8 @@ async function startWorkSalesProcess(): Promise<void> {
   try {
     const response = await processTmsFinanceWorkSalesFiles(
       {
-        iplixFile: iplixFiles.value[0],
-        referenceFile: workSalesReferenceFiles.value[0],
+        bulkSalesFile: workSalesBulkSalesFiles.value[0],
+        turnoverFile: workSalesTurnoverFiles.value[0],
       },
       (nextProgress) => {
         progress.value = nextProgress
@@ -362,8 +369,8 @@ async function downloadResult(): Promise<void> {
 
 function resetForm(): void {
   if (activeProcessId.value === 'work-sales') {
-    iplixFiles.value = []
-    workSalesReferenceFiles.value = []
+    workSalesBulkSalesFiles.value = []
+    workSalesTurnoverFiles.value = []
   } else {
     internalSourceFiles.value = []
     reconciliationTargetFiles.value = []

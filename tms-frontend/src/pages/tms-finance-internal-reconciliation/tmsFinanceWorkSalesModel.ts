@@ -2,35 +2,54 @@ import type { ProcessSummaryItem } from '../../shared/process/processHistory'
 import type { TmsFinanceWorkSalesResponse } from './tmsFinanceWorkSalesApi'
 
 export const tmsFinanceWorkSalesModuleId = 'excel-tms-finance-work-sales'
-export const tmsFinanceWorkSalesModuleName = 'Work Sales 数据提取'
+export const tmsFinanceWorkSalesModuleName = 'Work Sales 数据追加'
 
 export function buildTmsFinanceWorkSalesSummary(
   response: TmsFinanceWorkSalesResponse,
 ): ProcessSummaryItem[] {
+  const salesAppendedCount =
+    response.sales_appended_count
+    ?? response.source_summary?.sales_rows
+    ?? response.totals?.sales_appended_rows
+  const purchaseAppendedCount =
+    response.purchase_appended_count
+    ?? response.source_summary?.purchase_rows
+    ?? response.totals?.purchase_appended_rows
+  const totalAppendedCount =
+    typeof salesAppendedCount === 'number' && typeof purchaseAppendedCount === 'number'
+      ? salesAppendedCount + purchaseAppendedCount
+      : undefined
+
   return [
     {
-      label: '提取行',
-      value: String(response.extracted_count ?? '-'),
+      label: '源行',
+      value: String(
+        response.source_row_count
+          ?? response.extracted_count
+          ?? response.source_summary?.source_rows
+          ?? '-',
+      ),
     },
     {
-      label: '参考匹配',
-      value: String(response.matched_reference_count ?? '-'),
+      label: '追加行',
+      value: String(totalAppendedCount ?? '-'),
     },
     {
-      label: '参考缺失',
-      value: String(response.missing_reference_count ?? '-'),
+      label: 'Sales 追加',
+      value: String(salesAppendedCount ?? '-'),
     },
     {
-      label: '月份',
-      value: response.month_label ?? '-',
+      label: 'Purchase 追加',
+      value: String(purchaseAppendedCount ?? '-'),
     },
     {
-      label: 'Sales 单价合计',
-      value: formatAmount(response.totals?.sales_unit_price_total),
-    },
-    {
-      label: 'Purchase 单价合计',
-      value: formatAmount(response.totals?.purchase_unit_price_total),
+      label: '重复跳过',
+      value: String(
+        response.duplicate_count
+          ?? response.source_summary?.duplicate_rows
+          ?? response.totals?.duplicate_rows
+          ?? '-',
+      ),
     },
     {
       label: '诊断项',
@@ -46,8 +65,4 @@ export function buildTmsFinanceWorkSalesSummary(
             : '未生成',
     },
   ]
-}
-
-function formatAmount(value: number | undefined): string {
-  return typeof value === 'number' ? value.toFixed(2) : '-'
 }

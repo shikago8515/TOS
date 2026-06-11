@@ -4,19 +4,21 @@ import {
 } from '../../shared/api/backendClient'
 
 export interface TmsFinanceWorkSalesRequest {
-  iplixFile: File
-  referenceFile?: File
+  bulkSalesFile: File
+  turnoverFile: File
 }
 
 export interface TmsFinanceWorkSalesTotals {
-  sales_unit_price_total?: number
-  purchase_unit_price_total?: number
+  sales_appended_rows?: number
+  purchase_appended_rows?: number
+  duplicate_rows?: number
 }
 
 export interface TmsFinanceWorkSalesSourceSummary {
+  source_rows?: number
   sales_rows?: number
   purchase_rows?: number
-  reference_rows?: number
+  duplicate_rows?: number
 }
 
 export interface TmsFinanceWorkSalesResponse {
@@ -25,11 +27,12 @@ export interface TmsFinanceWorkSalesResponse {
   error?: string
   output_file?: string
   result_file?: string
+  source_row_count?: number
   extracted_count?: number
-  matched_reference_count?: number
-  missing_reference_count?: number
+  sales_appended_count?: number
+  purchase_appended_count?: number
+  duplicate_count?: number
   diagnostic_count?: number
-  month_label?: string
   totals?: TmsFinanceWorkSalesTotals
   source_summary?: TmsFinanceWorkSalesSourceSummary
   logs?: string[]
@@ -41,10 +44,8 @@ export async function processTmsFinanceWorkSalesFiles(
 ): Promise<TmsFinanceWorkSalesResponse> {
   const formData = new FormData()
 
-  formData.append('iplix_file', request.iplixFile)
-  if (request.referenceFile) {
-    formData.append('reference_file', request.referenceFile)
-  }
+  formData.append('bulk_sales_file', request.bulkSalesFile)
+  formData.append('turnover_file', request.turnoverFile)
 
   return postFormData<TmsFinanceWorkSalesResponse>({
     path: '/api/tms-finance/work-sales/process',

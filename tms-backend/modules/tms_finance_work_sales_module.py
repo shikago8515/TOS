@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-TMS 财务 - Work Sales 数据提取模块。
+TMS 财务 - Work Sales 数据追加模块。
 """
 
 from __future__ import annotations
 
 import os
 import re
+from copy import copy
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -15,814 +16,593 @@ from uuid import uuid4
 
 import openpyxl
 import xlrd
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.formula.translate import Translator
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 
-@dataclass
-class DetailColumns:
+RowFingerprint = Tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class BulkSalesColumns:
+    invoice: int
     style: int
-    unit_price: int
+    buyer_unit_price: int
+    factory_unit_price: int
     quantity: int
+    sales_amount_net: int
+    purchase_amount: int
+    handover_date: int
+
+
+@dataclass(frozen=True)
+class BulkSalesRow:
+    source_sheet: str
+    source_row: int
+    invoice: str
+    style: str
+    buyer_unit_price: Any
+    factory_unit_price: Any
+    quantity: Any
+    sales_amount_net: Any
+    purchase_amount: Any
+    handover_date: Any
+
+
+@dataclass(frozen=True)
+class TurnoverColumns:
+    style: int
+    unit_price_exclude_vat: int
+    quantity: int
+    total_system_include_vat: int
     merchandiser: int
     handover_date: int
     invoice: int
 
 
-@dataclass
-class DetailRow:
-    source_sheet: str
-    source_row: int
-    invoice: str
-    style: str
-    unit_price: Optional[float]
-    quantity: Any
-    merchandiser: str
-    handover_date: Any
-
-
-@dataclass
-class ReferenceColumns:
-    style: int
-    buyer: Optional[int]
-    customer: Optional[int]
-    factory: Optional[int]
-    sas_price: Optional[int]
-    promo_price: Optional[int]
-    upcharge: Optional[int]
-
-
-@dataclass
-class ReferenceRow:
-    source_sheet: str
-    source_row: int
-    style: str
-    buyer: str
-    customer: str
-    factory: str
-    sas_price: Any
-    promo_price: Any
-    upcharge: Any
-
-
-@dataclass
-class WorkSalesOutputRow:
-    invoice: str
-    style: str
-    sales_unit_price: Any
-    buyer: str
-    factory: str
-    purchase_unit_price: Any
-    customer: str
-    merchandiser: str
-    handover_date: Any
-    sas_price: Any
-    promo_price: Any
-    upcharge: Any
-    source_sheet: str
-    source_row: int
+@dataclass(frozen=True)
+class TurnoverSection:
+    name: str
+    header_row: int
+    data_start_row: int
+    subtotal_row: int
+    columns: TurnoverColumns
 
 
 class TmsFinanceWorkSalesModule:
-    """从 iPlix Turnover Details 提取 Work Sales 核对汇总。"""
+    """从 iPlex BULK Sales 导出表向 TURNOVER 的 Turnover Details 追加缺失行。"""
 
     DETAIL_SHEET_NAME = "Turnover Details"
-    OUTPUT_SHEET_NAME = "Work Sales Summary"
-    OUTPUT_HEADERS = [
-        "Invoice No.",
-        "Style Number",
-        "Unit Price (Sales)",
-        "Buyer",
-        "Factory",
-        "Unit Price (Purchase) / Customer Price",
-        "Customer",
-        "Merchandiser",
-        "Handover Date",
-        "SAS Price",
-        "Promo Price",
-        "Upcharge",
-    ]
-    VENDOR_ALIASES = {
-        "1L8006": "SLT",
-        "ELP008": "SLT",
-        "SLT": "SLT",
-        "DANDONGSLTGARMENTINDUSTRYCOLTD": "SLT",
-        "DANDONGXINLONGTAI": "SLT",
-        "丹东新龙太": "SLT",
-        "丹东新龙泰": "SLT",
-        "新龙太": "SLT",
-        "新龙泰": "SLT",
-    }
+    SALES_SECTION = "sales"
+    PURCHASE_SECTION = "purchase"
+    OUTPUT_PREFIX = "tms_finance_work_sales"
 
     def process_files(
         self,
-        iplix_path: str,
-        reference_path: Optional[str] = None,
+        bulk_sales_path: Optional[str] = None,
+        turnover_path: Optional[str] = None,
         output_dir: Optional[str] = None,
-        today: Optional[date] = None,
+        **legacy_kwargs: Any,
     ) -> Dict[str, Any]:
-        output_root = output_dir or os.path.dirname(os.path.abspath(iplix_path))
+        bulk_sales_path = bulk_sales_path or legacy_kwargs.get("iplix_path")
+        if not bulk_sales_path:
+            raise ValueError("请上传 BULK Sales 导出表")
+        if not turnover_path:
+            raise ValueError("请上传 TURNOVER 目标表")
+
+        output_root = output_dir or os.path.dirname(os.path.abspath(turnover_path))
         os.makedirs(output_root, exist_ok=True)
 
-        sales_rows, purchase_rows = self._extract_turnover_detail_rows(iplix_path)
-        if not sales_rows:
-            raise ValueError("iPlix Turnover Details 未读取到 Sales 明细")
+        source_rows = self._extract_bulk_sales_rows(bulk_sales_path)
+        if not source_rows:
+            raise ValueError("BULK Sales 导出表未读取到有效明细")
 
-        has_reference = bool(reference_path)
-        if has_reference:
-            reference_rows, reference_diagnostics = self._extract_reference_rows(reference_path)
-            reference_map, duplicate_reference_diagnostics = self._build_reference_map(reference_rows)
-        else:
-            reference_rows = []
-            reference_diagnostics = []
-            reference_map = {}
-            duplicate_reference_diagnostics = []
-        diagnostics: List[Dict[str, Any]] = [
-            *reference_diagnostics,
-            *duplicate_reference_diagnostics,
-        ]
-
-        output_rows: List[WorkSalesOutputRow] = []
-        matched_reference_count = 0
-        missing_reference_count = 0
-
-        for index, sales_row in enumerate(sales_rows):
-            purchase_row = purchase_rows[index] if index < len(purchase_rows) else None
-            row_diagnostics: List[str] = []
-            if purchase_row is None:
-                row_diagnostics.append("缺少对应 Purchase 明细")
-            elif not self._details_match(sales_row, purchase_row):
-                row_diagnostics.append("Sales/Purchase 明细不一致，已按原行序横向合并")
-
-            style_key = self._normalize_style_key(sales_row.style)
-            reference = reference_map.get(style_key) if has_reference else None
-            if has_reference:
-                if reference:
-                    matched_reference_count += 1
-                else:
-                    missing_reference_count += 1
-                    row_diagnostics.append("参考表未匹配到 Style，补充价格和文本字段留空")
-
-            factory = ""
-            if reference:
-                factory, factory_diagnostic = self._map_factory(reference.factory)
-                if factory_diagnostic:
-                    row_diagnostics.append(factory_diagnostic)
-
-            output_rows.append(
-                WorkSalesOutputRow(
-                    invoice=sales_row.invoice,
-                    style=sales_row.style,
-                    sales_unit_price=sales_row.unit_price,
-                    buyer=reference.buyer if reference else "",
-                    factory=factory,
-                    purchase_unit_price=purchase_row.unit_price if purchase_row else "",
-                    customer=reference.customer if reference else "",
-                    merchandiser=sales_row.merchandiser or (purchase_row.merchandiser if purchase_row else ""),
-                    handover_date=sales_row.handover_date,
-                    sas_price=reference.sas_price if reference else "",
-                    promo_price=reference.promo_price if reference else "",
-                    upcharge=reference.upcharge if reference else "",
-                    source_sheet=sales_row.source_sheet,
-                    source_row=sales_row.source_row,
-                )
-            )
-
-            for reason in row_diagnostics:
-                diagnostics.append(self._build_detail_diagnostic(sales_row, reason))
-
-        month_source = today or date.today()
-        month_label = f"{month_source.year}年{month_source.month:02d}月"
-        output_filename = f"tms_finance_work_sales_{uuid4().hex}.xlsx"
-        output_path = os.path.join(output_root, output_filename)
-        self._write_output_workbook(output_rows, month_label, output_path)
-
-        totals = self._calculate_totals(output_rows)
-        return {
-            "success": True,
-            "message": f"Work Sales 数据提取完成：提取 {len(output_rows)} 行。",
-            "output_path": output_path,
-            "output_file": output_filename,
-            "extracted_count": len(output_rows),
-            "matched_reference_count": matched_reference_count,
-            "missing_reference_count": missing_reference_count,
-            "diagnostic_count": len(diagnostics),
-            "diagnostics": diagnostics,
-            "month_label": month_label,
-            "totals": totals,
-            "source_summary": {
-                "sales_rows": len(sales_rows),
-                "purchase_rows": len(purchase_rows),
-                "reference_rows": len(reference_rows),
-            },
-            "logs": [
-                f"Sales 明细提取 {len(sales_rows)} 行",
-                f"Purchase 明细提取 {len(purchase_rows)} 行",
-                f"参考表读取 {len(reference_rows)} 行" if has_reference else "补充参考表未上传，参考字段留空",
-                f"生成 Work Sales 汇总 {len(output_rows)} 行",
-            ],
-        }
-
-    def _extract_turnover_detail_rows(
-        self,
-        workbook_path: str,
-    ) -> Tuple[List[DetailRow], List[DetailRow]]:
-        extension = os.path.splitext(workbook_path)[1].lower()
-        if extension == ".xls":
-            return self._extract_xls_turnover_detail_rows(workbook_path)
-        if extension not in {".xlsx", ".xlsm"}:
-            raise ValueError("iPlix 导出 Excel 仅支持 .xls / .xlsx / .xlsm")
-
-        workbook = openpyxl.load_workbook(workbook_path, data_only=True, read_only=True)
+        workbook = openpyxl.load_workbook(turnover_path, data_only=False)
         try:
             if self.DETAIL_SHEET_NAME not in workbook.sheetnames:
-                raise ValueError("iPlix 文件缺少 Turnover Details Sheet")
+                raise ValueError("TURNOVER 文件缺少 Turnover Details Sheet")
             ws = workbook[self.DETAIL_SHEET_NAME]
-            sales_header_row = self._find_sales_header_row(ws)
-            purchase_header_row = self._find_purchase_header_row(ws)
-            sales_columns = self._build_detail_columns(ws, sales_header_row)
-            purchase_columns = self._build_detail_columns(ws, purchase_header_row)
-            return (
-                self._read_detail_rows(ws, sales_header_row, sales_columns),
-                self._read_detail_rows(ws, purchase_header_row, purchase_columns),
-            )
+            sales_section = self._find_turnover_section(ws, self.SALES_SECTION)
+            purchase_section = self._find_turnover_section(ws, self.PURCHASE_SECTION)
+
+            existing_sales = self._build_existing_fingerprints(ws, sales_section)
+            existing_purchase = self._build_existing_fingerprints(ws, purchase_section)
+            seen_sales = set(existing_sales)
+            seen_purchase = set(existing_purchase)
+            sales_rows_to_append: List[BulkSalesRow] = []
+            purchase_rows_to_append: List[BulkSalesRow] = []
+            duplicate_count = 0
+
+            for row in source_rows:
+                sales_fingerprint = self._build_source_fingerprint(row, self.SALES_SECTION)
+                purchase_fingerprint = self._build_source_fingerprint(row, self.PURCHASE_SECTION)
+                sales_duplicate = sales_fingerprint in seen_sales
+                purchase_duplicate = purchase_fingerprint in seen_purchase
+                if sales_duplicate and purchase_duplicate:
+                    duplicate_count += 1
+                    continue
+                if not sales_duplicate:
+                    sales_rows_to_append.append(row)
+                    seen_sales.add(sales_fingerprint)
+                if not purchase_duplicate:
+                    purchase_rows_to_append.append(row)
+                    seen_purchase.add(purchase_fingerprint)
+
+            if sales_rows_to_append:
+                self._append_section_rows(ws, sales_section, sales_rows_to_append, self.SALES_SECTION)
+            sales_section = self._find_turnover_section(ws, self.SALES_SECTION)
+            purchase_section = self._find_turnover_section(ws, self.PURCHASE_SECTION)
+            if purchase_rows_to_append:
+                self._append_section_rows(ws, purchase_section, purchase_rows_to_append, self.PURCHASE_SECTION)
+
+            sales_section = self._find_turnover_section(ws, self.SALES_SECTION)
+            purchase_section = self._find_turnover_section(ws, self.PURCHASE_SECTION)
+            self._rewrite_subtotal_formulas(ws, sales_section)
+            self._rewrite_subtotal_formulas(ws, purchase_section)
+
+            output_filename = f"{self.OUTPUT_PREFIX}_{uuid4().hex}.xlsx"
+            output_path = os.path.join(output_root, output_filename)
+            workbook.save(output_path)
         finally:
             workbook.close()
 
-    def _extract_xls_turnover_detail_rows(
-        self,
-        workbook_path: str,
-    ) -> Tuple[List[DetailRow], List[DetailRow]]:
+        sales_appended_count = len(sales_rows_to_append)
+        purchase_appended_count = len(purchase_rows_to_append)
+        return {
+            "success": True,
+            "message": (
+                "Work Sales 数据追加完成："
+                f"Sales 追加 {sales_appended_count} 行，"
+                f"Purchase 追加 {purchase_appended_count} 行。"
+            ),
+            "output_path": output_path,
+            "output_file": output_filename,
+            "source_row_count": len(source_rows),
+            "extracted_count": len(source_rows),
+            "sales_appended_count": sales_appended_count,
+            "purchase_appended_count": purchase_appended_count,
+            "duplicate_count": duplicate_count,
+            "diagnostic_count": 0,
+            "diagnostics": [],
+            "totals": {
+                "sales_appended_count": sales_appended_count,
+                "purchase_appended_count": purchase_appended_count,
+            },
+            "source_summary": {
+                "source_rows": len(source_rows),
+                "sales_rows": sales_appended_count,
+                "purchase_rows": purchase_appended_count,
+                "duplicate_rows": duplicate_count,
+            },
+            "logs": [
+                f"BULK Sales 读取 {len(source_rows)} 行",
+                f"Sales 明细追加 {sales_appended_count} 行",
+                f"Purchase 明细追加 {purchase_appended_count} 行",
+                f"完全重复跳过 {duplicate_count} 行",
+            ],
+        }
+
+    def _extract_bulk_sales_rows(self, workbook_path: str) -> List[BulkSalesRow]:
+        extension = os.path.splitext(workbook_path)[1].lower()
+        if extension == ".xls":
+            return self._extract_xls_bulk_sales_rows(workbook_path)
+        if extension in {".xlsx", ".xlsm"}:
+            return self._extract_openpyxl_bulk_sales_rows(workbook_path)
+        raise ValueError("BULK Sales 导出表仅支持 .xls / .xlsx / .xlsm")
+
+    def _extract_openpyxl_bulk_sales_rows(self, workbook_path: str) -> List[BulkSalesRow]:
+        workbook = openpyxl.load_workbook(workbook_path, data_only=True, read_only=True)
+        try:
+            ws = workbook[workbook.sheetnames[0]]
+            header_map = self._build_header_map_from_reader(
+                ws.max_column,
+                lambda column: ws.cell(1, column).value,
+            )
+            columns = self._build_bulk_sales_columns(header_map)
+            rows: List[BulkSalesRow] = []
+            for row_index in range(2, ws.max_row + 1):
+                row = self._build_bulk_sales_row(
+                    ws.title,
+                    row_index,
+                    columns,
+                    lambda column, current_row=row_index: ws.cell(current_row, column).value,
+                )
+                if row is not None:
+                    rows.append(row)
+            return rows
+        finally:
+            workbook.close()
+
+    def _extract_xls_bulk_sales_rows(self, workbook_path: str) -> List[BulkSalesRow]:
         book = xlrd.open_workbook(workbook_path, on_demand=True)
         try:
-            if self.DETAIL_SHEET_NAME not in book.sheet_names():
-                raise ValueError("iPlix 文件缺少 Turnover Details Sheet")
-            sheet = book.sheet_by_name(self.DETAIL_SHEET_NAME)
-            read_cell = lambda row, column: sheet.cell_value(row - 1, column - 1)
-            sales_header_row = self._find_sales_header_row_from_reader(
-                sheet.nrows,
+            sheet = book.sheet_by_index(0)
+            header_map = self._build_header_map_from_reader(
                 sheet.ncols,
-                read_cell,
+                lambda column: sheet.cell_value(0, column - 1),
             )
-            purchase_header_row = self._find_purchase_header_row_from_reader(
-                sheet.nrows,
-                sheet.ncols,
-                read_cell,
-            )
-            sales_columns = self._build_detail_columns_from_reader(
-                sales_header_row,
-                sheet.ncols,
-                read_cell,
-            )
-            purchase_columns = self._build_detail_columns_from_reader(
-                purchase_header_row,
-                sheet.ncols,
-                read_cell,
-            )
-            return (
-                self._read_detail_rows_from_reader(
+            columns = self._build_bulk_sales_columns(header_map)
+            rows: List[BulkSalesRow] = []
+            for row_index in range(2, sheet.nrows + 1):
+                row = self._build_bulk_sales_row(
                     sheet.name,
-                    sheet.nrows,
-                    sheet.ncols,
-                    sales_header_row,
-                    sales_columns,
-                    read_cell,
-                ),
-                self._read_detail_rows_from_reader(
-                    sheet.name,
-                    sheet.nrows,
-                    sheet.ncols,
-                    purchase_header_row,
-                    purchase_columns,
-                    read_cell,
-                ),
-            )
+                    row_index,
+                    columns,
+                    lambda column, current_row=row_index: self._read_xls_cell(
+                        sheet,
+                        current_row,
+                        column,
+                        book.datemode,
+                    ),
+                )
+                if row is not None:
+                    rows.append(row)
+            return rows
         finally:
             book.release_resources()
 
-    def _find_sales_header_row(self, ws: Worksheet) -> int:
-        return self._find_sales_header_row_from_reader(
-            ws.max_row,
-            ws.max_column,
-            lambda row, column: ws.cell(row, column).value,
+    def _build_bulk_sales_columns(self, header_map: Dict[str, int]) -> BulkSalesColumns:
+        return BulkSalesColumns(
+            invoice=self._required_column(header_map, ["SALES INVOICE NUMBER", "INVOICE NUMBER"]),
+            style=self._required_column(header_map, ["STYLE NUMBER"]),
+            buyer_unit_price=self._required_column(header_map, ["BUYER UNIT PX", "BUYER  UNIT PX"]),
+            factory_unit_price=self._required_column(
+                header_map,
+                ["FACTORY UNIT PX", "FACTORY  UNIT PX"],
+            ),
+            quantity=self._required_column(header_map, ["SHIP QTY", "SHIP QUANTITY"]),
+            sales_amount_net=self._required_column(
+                header_map,
+                ["*SALES INVOICE AMT (NET)", "SALES INVOICE AMT (NET)"],
+            ),
+            purchase_amount=self._required_column(
+                header_map,
+                ["PUR INVOICE AMOUNT", "PURCHASE INVOICE AMOUNT"],
+            ),
+            handover_date=self._required_column(header_map, ["HANDOVER DATE"]),
         )
 
-    def _find_sales_header_row_from_reader(
+    def _build_bulk_sales_row(
         self,
-        max_row: int,
-        max_column: int,
-        read_cell: Callable[[int, int], Any],
-    ) -> int:
-        for row in range(1, max_row + 1):
-            headers = self._header_values_from_reader(row, max_column, read_cell)
+        sheet_name: str,
+        row_index: int,
+        columns: BulkSalesColumns,
+        read_cell: Callable[[int], Any],
+    ) -> Optional[BulkSalesRow]:
+        invoice = self._clean_text(read_cell(columns.invoice))
+        style = self._clean_text(read_cell(columns.style))
+        quantity = read_cell(columns.quantity)
+        if not (invoice or style or self._clean_text(quantity)):
+            return None
+        if not invoice or not style:
+            return None
+        return BulkSalesRow(
+            source_sheet=sheet_name,
+            source_row=row_index,
+            invoice=invoice,
+            style=style,
+            buyer_unit_price=self._money_or_blank(read_cell(columns.buyer_unit_price)),
+            factory_unit_price=self._money_or_blank(read_cell(columns.factory_unit_price)),
+            quantity=self._number_for_cell(quantity),
+            sales_amount_net=self._money_or_blank(read_cell(columns.sales_amount_net)),
+            purchase_amount=self._money_or_blank(read_cell(columns.purchase_amount)),
+            handover_date=read_cell(columns.handover_date),
+        )
+
+    def _find_turnover_section(self, ws: Worksheet, section_name: str) -> TurnoverSection:
+        header_row = (
+            self._find_sales_header_row(ws)
+            if section_name == self.SALES_SECTION
+            else self._find_purchase_header_row(ws)
+        )
+        columns = self._build_turnover_columns(ws, header_row, section_name)
+        data_start_row = header_row + 1
+        subtotal_row = self._find_subtotal_row(ws, data_start_row, columns)
+        return TurnoverSection(
+            name=section_name,
+            header_row=header_row,
+            data_start_row=data_start_row,
+            subtotal_row=subtotal_row,
+            columns=columns,
+        )
+
+    def _find_sales_header_row(self, ws: Worksheet) -> int:
+        for row in range(1, ws.max_row + 1):
+            headers = self._header_values(ws, row)
             if (
-                "STYLE NUMBER" in headers
-                and "SALES INVOICE NUMBER" in headers
-                and "PURCHASE AMOUNT" not in headers
+                "STYLENUMBER" in headers
+                and "SALESINVOICENUMBER" in headers
+                and "PURCHASEAMOUNT" not in headers
             ):
                 return row
         raise ValueError("Turnover Details 缺少 Sales 明细表头")
 
     def _find_purchase_header_row(self, ws: Worksheet) -> int:
-        return self._find_purchase_header_row_from_reader(
-            ws.max_row,
-            ws.max_column,
-            lambda row, column: ws.cell(row, column).value,
-        )
-
-    def _find_purchase_header_row_from_reader(
-        self,
-        max_row: int,
-        max_column: int,
-        read_cell: Callable[[int, int], Any],
-    ) -> int:
-        for row in range(1, max_row + 1):
-            headers = self._header_values_from_reader(row, max_column, read_cell)
-            if "STYLE NUMBER" in headers and "PURCHASE AMOUNT" in headers:
+        for row in range(1, ws.max_row + 1):
+            headers = self._header_values(ws, row)
+            if "STYLENUMBER" in headers and "PURCHASEAMOUNT" in headers:
                 return row
         raise ValueError("Turnover Details 缺少 Purchase 明细表头")
 
-    def _header_values(self, ws: Worksheet, row: int) -> set[str]:
-        return self._header_values_from_reader(
-            row,
-            ws.max_column,
-            lambda row_index, column: ws.cell(row_index, column).value,
-        )
-
-    def _header_values_from_reader(
+    def _build_turnover_columns(
         self,
-        row: int,
-        max_column: int,
-        read_cell: Callable[[int, int], Any],
-    ) -> set[str]:
-        return {
-            self._normalize_header(read_cell(row, column))
-            for column in range(1, max_column + 1)
-            if self._normalize_header(read_cell(row, column))
-        }
-
-    def _build_detail_columns(self, ws: Worksheet, header_row: int) -> DetailColumns:
-        return self._build_detail_columns_from_reader(
-            header_row,
-            ws.max_column,
-            lambda row, column: ws.cell(row, column).value,
-        )
-
-    def _build_detail_columns_from_reader(
-        self,
+        ws: Worksheet,
         header_row: int,
-        max_column: int,
-        read_cell: Callable[[int, int], Any],
-    ) -> DetailColumns:
-        header_map = {
-            self._normalize_header(read_cell(header_row, column)): column
-            for column in range(1, max_column + 1)
-            if self._normalize_header(read_cell(header_row, column))
-        }
-        return DetailColumns(
-            style=self._required_column(header_map, ["STYLE NUMBER", "WORKING STYLE NUMBER"]),
-            unit_price=self._required_column(
+        section_name: str,
+    ) -> TurnoverColumns:
+        header_map = self._build_header_map_from_reader(
+            ws.max_column,
+            lambda column: ws.cell(header_row, column).value,
+        )
+        amount_aliases = (
+            ["TOTAL AMOUNT IN IPLEX SYSTEM (INCLUDE VAT)"]
+            if section_name == self.SALES_SECTION
+            else ["TOTAL AMOUNT IN IPLEX SYSTEM (EXCLUDE VAT)"]
+        )
+        return TurnoverColumns(
+            style=self._required_column(header_map, ["STYLE NUMBER"]),
+            unit_price_exclude_vat=self._required_column(
                 header_map,
-                ["UNIT PRICE EXCLUDE VAT", "UNIT PRICE SALES", "UNIT PRICE"],
+                ["UNIT PRICE(EXCLUDE VAT)", "UNIT PRICE EXCLUDE VAT"],
             ),
             quantity=self._required_column(header_map, ["SHIP QUANTITY", "SHIP QTY"]),
+            total_system_include_vat=self._required_column(
+                header_map,
+                amount_aliases,
+            ),
             merchandiser=self._required_column(header_map, ["MERCH", "MERCHANDISER"]),
             handover_date=self._required_column(header_map, ["HANDOVER DATE"]),
             invoice=self._required_column(header_map, ["SALES INVOICE NUMBER", "INVOICE NUMBER"]),
         )
 
-    def _read_detail_rows(
+    def _find_subtotal_row(
         self,
         ws: Worksheet,
-        header_row: int,
-        columns: DetailColumns,
-    ) -> List[DetailRow]:
-        return self._read_detail_rows_from_reader(
-            ws.title,
-            ws.max_row,
-            ws.max_column,
-            header_row,
-            columns,
-            lambda row, column: ws.cell(row, column).value,
-        )
-
-    def _read_detail_rows_from_reader(
-        self,
-        sheet_name: str,
-        max_row: int,
-        max_column: int,
-        header_row: int,
-        columns: DetailColumns,
-        read_cell: Callable[[int, int], Any],
-    ) -> List[DetailRow]:
-        rows: List[DetailRow] = []
-        row_index = header_row + 1
-        while row_index <= max_row:
-            if self._is_detail_stop_row_from_reader(row_index, max_column, columns, read_cell):
-                break
-            style = self._clean_text(read_cell(row_index, columns.style))
-            invoice = self._clean_text(read_cell(row_index, columns.invoice))
-            if style or invoice:
-                rows.append(
-                    DetailRow(
-                        source_sheet=sheet_name,
-                        source_row=row_index,
-                        invoice=invoice,
-                        style=style,
-                        unit_price=self._money_or_none(read_cell(row_index, columns.unit_price)),
-                        quantity=read_cell(row_index, columns.quantity),
-                        merchandiser=self._clean_text(read_cell(row_index, columns.merchandiser)),
-                        handover_date=read_cell(row_index, columns.handover_date),
-                    )
-                )
-            row_index += 1
-        return rows
-
-    def _is_detail_stop_row(self, ws: Worksheet, row: int, columns: DetailColumns) -> bool:
-        return self._is_detail_stop_row_from_reader(
-            row,
-            ws.max_column,
-            columns,
-            lambda row_index, column: ws.cell(row_index, column).value,
-        )
-
-    def _is_detail_stop_row_from_reader(
-        self,
-        row: int,
-        max_column: int,
-        columns: DetailColumns,
-        read_cell: Callable[[int, int], Any],
-    ) -> bool:
-        values = [read_cell(row, column) for column in range(1, min(max_column, 18) + 1)]
-        if all(value in (None, "") for value in values):
-            return True
-        style = self._clean_text(read_cell(row, columns.style))
-        if style:
-            return False
-        return any(
-            self._clean_text(value).upper().startswith("=SUM(")
-            for value in values
-        )
-
-    def _extract_reference_rows(self, workbook_path: str) -> Tuple[List[ReferenceRow], List[Dict[str, Any]]]:
-        extension = os.path.splitext(workbook_path)[1].lower()
-        if extension == ".xls":
-            return self._extract_xls_reference_rows(workbook_path)
-        if extension in {".xlsx", ".xlsm"}:
-            return self._extract_openpyxl_reference_rows(workbook_path)
-        raise ValueError("补充参考表仅支持 .xls / .xlsx / .xlsm")
-
-    def _extract_openpyxl_reference_rows(
-        self,
-        workbook_path: str,
-    ) -> Tuple[List[ReferenceRow], List[Dict[str, Any]]]:
-        workbook = openpyxl.load_workbook(workbook_path, data_only=True, read_only=True)
-        rows: List[ReferenceRow] = []
-        diagnostics: List[Dict[str, Any]] = []
-        try:
-            for ws in workbook.worksheets:
-                if ws.sheet_state != "visible":
-                    continue
-                header_row = self._find_reference_header_row(
-                    ws.max_row,
-                    lambda row, column: ws.cell(row, column).value,
-                    ws.max_column,
-                )
-                if header_row is None:
-                    continue
-                columns, column_diagnostics = self._build_reference_columns(
-                    self._build_header_map(ws, header_row),
-                    ws.title,
-                )
-                diagnostics.extend(column_diagnostics)
-                row_index = header_row + 1
-                while row_index <= ws.max_row:
-                    if self._is_reference_blank_row(
-                        lambda column, row=row_index: ws.cell(row, column).value,
-                        ws.max_column,
-                    ):
-                        break
-                    row = self._build_reference_row(
-                        ws.title,
-                        row_index,
-                        columns,
-                        lambda column, row=row_index: ws.cell(row, column).value,
-                    )
-                    if row.style:
-                        rows.append(row)
-                    row_index += 1
-        finally:
-            workbook.close()
-        return rows, diagnostics
-
-    def _extract_xls_reference_rows(
-        self,
-        workbook_path: str,
-    ) -> Tuple[List[ReferenceRow], List[Dict[str, Any]]]:
-        book = xlrd.open_workbook(workbook_path, on_demand=True)
-        rows: List[ReferenceRow] = []
-        diagnostics: List[Dict[str, Any]] = []
-        try:
-            for sheet in book.sheets():
-                if getattr(sheet, "visibility", 0) != 0:
-                    continue
-                header_row = self._find_reference_header_row(
-                    sheet.nrows,
-                    lambda row, column: sheet.cell_value(row - 1, column - 1),
-                    sheet.ncols,
-                )
-                if header_row is None:
-                    continue
-                header_map = {
-                    self._normalize_header(sheet.cell_value(header_row - 1, column)): column + 1
-                    for column in range(sheet.ncols)
-                    if self._normalize_header(sheet.cell_value(header_row - 1, column))
-                }
-                columns, column_diagnostics = self._build_reference_columns(header_map, sheet.name)
-                diagnostics.extend(column_diagnostics)
-                row_index = header_row + 1
-                while row_index <= sheet.nrows:
-                    if self._is_reference_blank_row(
-                        lambda column, row=row_index: sheet.cell_value(row - 1, column - 1),
-                        sheet.ncols,
-                    ):
-                        break
-                    row = self._build_reference_row(
-                        sheet.name,
-                        row_index,
-                        columns,
-                        lambda column, row=row_index: sheet.cell_value(row - 1, column - 1),
-                    )
-                    if row.style:
-                        rows.append(row)
-                    row_index += 1
-        finally:
-            book.release_resources()
-        return rows, diagnostics
-
-    def _find_reference_header_row(
-        self,
-        max_row: int,
-        read_cell: Callable[[int, int], Any],
-        max_column: int,
-    ) -> Optional[int]:
-        for row in range(1, min(max_row, 20) + 1):
-            values = {
-                self._normalize_header(read_cell(row, column))
-                for column in range(1, max_column + 1)
-            }
-            if "STYLE NUMBER" in values or "WORKING STYLE NUMBER" in values:
+        data_start_row: int,
+        columns: TurnoverColumns,
+    ) -> int:
+        for row in range(data_start_row, ws.max_row + 1):
+            quantity_value = ws.cell(row, columns.quantity).value
+            style_value = self._clean_text(ws.cell(row, columns.style).value)
+            if isinstance(quantity_value, str) and quantity_value.upper().startswith("=SUM("):
                 return row
-        return None
+            if not style_value and self._row_has_sum_formula(ws, row):
+                return row
+        raise ValueError("Turnover Details 缺少明细小计行")
 
-    def _build_reference_columns(
+    def _append_section_rows(
         self,
-        header_map: Dict[str, int],
-        sheet_name: str,
-    ) -> Tuple[ReferenceColumns, List[Dict[str, Any]]]:
-        optional_fields = {
-            "SAS Price": ["SAS PRICE", "SAS"],
-            "Promo Price": ["PROMO PRICE", "PROMO"],
-            "Upcharge": ["UPCHARGE", "PROMO PRICE UPCHARGE", "PRICE UPCHARGE"],
-        }
-        diagnostics: List[Dict[str, Any]] = []
-        missing_optional = [
-            label
-            for label, aliases in optional_fields.items()
-            if self._optional_column(header_map, aliases) is None
-        ]
-        if missing_optional:
-            diagnostics.append(
-                {
-                    "source_sheet": sheet_name,
-                    "source_row": 0,
-                    "reason": f"参考表缺少可选字段：{', '.join(missing_optional)}，输出留空",
-                }
-            )
-        return (
-            ReferenceColumns(
-                style=self._required_column(header_map, ["STYLE NUMBER", "WORKING STYLE NUMBER"]),
-                buyer=self._optional_column(header_map, ["BUYER NAME", "BUYER"]),
-                customer=self._optional_column(header_map, ["BILL TO", "CUSTOMER", "CUSTOMER NAME"]),
-                factory=self._optional_column(
-                    header_map,
-                    ["NAME OF FACTORY", "FACTORY CODE", "FACTORY"],
-                ),
-                sas_price=self._optional_column(header_map, optional_fields["SAS Price"]),
-                promo_price=self._optional_column(header_map, optional_fields["Promo Price"]),
-                upcharge=self._optional_column(header_map, optional_fields["Upcharge"]),
-            ),
-            diagnostics,
-        )
-
-    def _build_reference_row(
-        self,
-        sheet_name: str,
-        row_index: int,
-        columns: ReferenceColumns,
-        read_cell: Callable[[int], Any],
-    ) -> ReferenceRow:
-        return ReferenceRow(
-            source_sheet=sheet_name,
-            source_row=row_index,
-            style=self._clean_text(read_cell(columns.style)),
-            buyer=self._clean_text(read_cell(columns.buyer)) if columns.buyer else "",
-            customer=self._clean_text(read_cell(columns.customer)) if columns.customer else "",
-            factory=self._clean_text(read_cell(columns.factory)) if columns.factory else "",
-            sas_price=self._money_or_blank(read_cell(columns.sas_price)) if columns.sas_price else "",
-            promo_price=self._money_or_blank(read_cell(columns.promo_price)) if columns.promo_price else "",
-            upcharge=self._money_or_blank(read_cell(columns.upcharge)) if columns.upcharge else "",
-        )
-
-    def _is_reference_blank_row(
-        self,
-        read_cell: Callable[[int], Any],
-        max_column: int,
-    ) -> bool:
-        return all(read_cell(column) in (None, "") for column in range(1, max_column + 1))
-
-    def _build_reference_map(
-        self,
-        rows: Iterable[ReferenceRow],
-    ) -> Tuple[Dict[str, ReferenceRow], List[Dict[str, Any]]]:
-        mapping: Dict[str, ReferenceRow] = {}
-        diagnostics: List[Dict[str, Any]] = []
-        for row in rows:
-            key = self._normalize_style_key(row.style)
-            if not key:
-                continue
-            if key in mapping:
-                diagnostics.append(
-                    {
-                        "source_sheet": row.source_sheet,
-                        "source_row": row.source_row,
-                        "style": row.style,
-                        "reason": "参考表 Style 重复，已保留首条匹配",
-                    }
-                )
-                continue
-            mapping[key] = row
-        return mapping, diagnostics
-
-    def _write_output_workbook(
-        self,
-        rows: List[WorkSalesOutputRow],
-        month_label: str,
-        output_path: str,
+        ws: Worksheet,
+        section: TurnoverSection,
+        rows: List[BulkSalesRow],
+        section_name: str,
     ) -> None:
-        workbook = Workbook()
-        ws = workbook.active
-        ws.title = self.OUTPUT_SHEET_NAME
+        insert_at = section.subtotal_row
+        count = len(rows)
+        template_row = max(section.data_start_row, insert_at - 1)
+        self._insert_rows_with_formula_translation(ws, insert_at, count)
+        for offset, item in enumerate(rows):
+            target_row = insert_at + offset
+            self._copy_template_row(ws, template_row, target_row)
+            if section_name == self.SALES_SECTION:
+                self._write_sales_row(ws, target_row, item, section.columns)
+            else:
+                self._write_purchase_row(ws, target_row, item, section.columns)
 
-        ws["A1"] = "Work Sales Summary"
-        ws["A2"] = f"月份：{month_label}"
-        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(self.OUTPUT_HEADERS))
-        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(self.OUTPUT_HEADERS))
+    def _write_sales_row(
+        self,
+        ws: Worksheet,
+        row_index: int,
+        item: BulkSalesRow,
+        columns: TurnoverColumns,
+    ) -> None:
+        ws.cell(row_index, columns.style).value = item.style
+        ws.cell(row_index, columns.unit_price_exclude_vat).value = item.buyer_unit_price
+        ws.cell(row_index, columns.quantity).value = item.quantity
+        ws.cell(row_index, columns.total_system_include_vat).value = item.sales_amount_net
+        ws.cell(row_index, columns.handover_date).value = item.handover_date
+        ws.cell(row_index, columns.invoice).value = item.invoice
 
-        for column, header in enumerate(self.OUTPUT_HEADERS, start=1):
-            ws.cell(4, column).value = header
+    def _write_purchase_row(
+        self,
+        ws: Worksheet,
+        row_index: int,
+        item: BulkSalesRow,
+        columns: TurnoverColumns,
+    ) -> None:
+        ws.cell(row_index, columns.style).value = item.style
+        ws.cell(row_index, columns.unit_price_exclude_vat).value = item.factory_unit_price
+        ws.cell(row_index, columns.quantity).value = item.quantity
+        ws.cell(row_index, columns.total_system_include_vat).value = item.purchase_amount
+        ws.cell(row_index, columns.handover_date).value = item.handover_date
+        ws.cell(row_index, columns.invoice).value = item.invoice
 
-        for row_index, item in enumerate(rows, start=5):
-            values = [
-                item.invoice,
-                item.style,
-                item.sales_unit_price,
-                item.buyer,
-                item.factory,
-                item.purchase_unit_price,
-                item.customer,
-                item.merchandiser,
-                item.handover_date,
-                item.sas_price,
-                item.promo_price,
-                item.upcharge,
-            ]
-            for column, value in enumerate(values, start=1):
-                ws.cell(row_index, column).value = value
+    def _build_existing_fingerprints(
+        self,
+        ws: Worksheet,
+        section: TurnoverSection,
+    ) -> set[RowFingerprint]:
+        fingerprints: set[RowFingerprint] = set()
+        for row in range(section.data_start_row, section.subtotal_row):
+            if not self._clean_text(ws.cell(row, section.columns.style).value):
+                continue
+            fingerprints.add(self._build_target_fingerprint(ws, row, section))
+        return fingerprints
 
-        self._style_output_sheet(ws, len(rows))
-        workbook.save(output_path)
+    def _build_target_fingerprint(
+        self,
+        ws: Worksheet,
+        row_index: int,
+        section: TurnoverSection,
+    ) -> RowFingerprint:
+        columns = section.columns
+        return (
+            section.name,
+            self._clean_text(ws.cell(row_index, columns.style).value),
+            self._normalize_money(ws.cell(row_index, columns.unit_price_exclude_vat).value),
+            self._normalize_quantity(ws.cell(row_index, columns.quantity).value),
+            self._normalize_money(ws.cell(row_index, columns.total_system_include_vat).value),
+            self._normalize_date_for_key(ws.cell(row_index, columns.handover_date).value),
+            self._clean_text(ws.cell(row_index, columns.invoice).value),
+        )
 
-    def _style_output_sheet(self, ws: Worksheet, row_count: int) -> None:
-        white_fill = PatternFill("solid", fgColor="FFFFFF")
-        header_fill = PatternFill("solid", fgColor="EAF7F3")
-        title_font = Font(bold=True, size=16, color="1F2937")
-        subtitle_font = Font(bold=True, size=11, color="475569")
-        header_font = Font(bold=True, color="1F2937")
-        thin_side = Side(style="thin", color="CBD5E1")
-        border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
-        max_row = max(4 + row_count, 4)
+    def _build_source_fingerprint(
+        self,
+        item: BulkSalesRow,
+        section_name: str,
+    ) -> RowFingerprint:
+        amount = (
+            item.sales_amount_net
+            if section_name == self.SALES_SECTION
+            else item.purchase_amount
+        )
+        unit_price = (
+            item.buyer_unit_price
+            if section_name == self.SALES_SECTION
+            else item.factory_unit_price
+        )
+        return (
+            section_name,
+            self._clean_text(item.style),
+            self._normalize_money(unit_price),
+            self._normalize_quantity(item.quantity),
+            self._normalize_money(amount),
+            self._normalize_date_for_key(item.handover_date),
+            self._clean_text(item.invoice),
+        )
 
-        for row in range(1, max_row + 1):
-            for column in range(1, len(self.OUTPUT_HEADERS) + 1):
-                cell = ws.cell(row, column)
-                cell.fill = white_fill
-                cell.alignment = Alignment(vertical="center")
+    def _insert_rows_with_formula_translation(
+        self,
+        ws: Worksheet,
+        insert_at: int,
+        amount: int,
+    ) -> None:
+        if amount <= 0:
+            return
+        formulas: List[Tuple[int, int, str]] = []
+        for row in range(insert_at, ws.max_row + 1):
+            for column in range(1, ws.max_column + 1):
+                value = ws.cell(row, column).value
+                if isinstance(value, str) and value.startswith("="):
+                    formulas.append((row, column, value))
+        ws.insert_rows(insert_at, amount)
+        for old_row, column, formula in formulas:
+            new_row = old_row + amount
+            origin = f"{get_column_letter(column)}{old_row}"
+            target = f"{get_column_letter(column)}{new_row}"
+            ws.cell(new_row, column).value = self._translate_formula(formula, origin, target)
 
-        ws["A1"].font = title_font
-        ws["A2"].font = subtitle_font
-        for column in range(1, len(self.OUTPUT_HEADERS) + 1):
-            cell = ws.cell(4, column)
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.border = border
-            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    def _copy_template_row(self, ws: Worksheet, template_row: int, target_row: int) -> None:
+        source_dimension = ws.row_dimensions[template_row]
+        target_dimension = ws.row_dimensions[target_row]
+        target_dimension.height = source_dimension.height
+        target_dimension.hidden = source_dimension.hidden
+        target_dimension.outlineLevel = source_dimension.outlineLevel
+        target_dimension.collapsed = source_dimension.collapsed
 
-        for row in range(5, max_row + 1):
-            for column in range(1, len(self.OUTPUT_HEADERS) + 1):
-                ws.cell(row, column).border = border
+        for column in range(1, ws.max_column + 1):
+            source_cell = ws.cell(template_row, column)
+            target_cell = ws.cell(target_row, column)
+            if source_cell.has_style:
+                target_cell.font = copy(source_cell.font)
+                target_cell.fill = copy(source_cell.fill)
+                target_cell.border = copy(source_cell.border)
+                target_cell.alignment = copy(source_cell.alignment)
+                target_cell.number_format = source_cell.number_format
+                target_cell.protection = copy(source_cell.protection)
+            value = source_cell.value
+            if isinstance(value, str) and value.startswith("="):
+                origin = f"{get_column_letter(column)}{template_row}"
+                target = f"{get_column_letter(column)}{target_row}"
+                value = self._translate_formula(value, origin, target)
+            target_cell.value = value
 
-        for column in (3, 6, 10, 11, 12):
-            for row in range(5, max_row + 1):
-                ws.cell(row, column).number_format = "0.00"
-        for row in range(5, max_row + 1):
-            ws.cell(row, 9).number_format = "yyyy-mm-dd"
+    def _rewrite_subtotal_formulas(self, ws: Worksheet, section: TurnoverSection) -> None:
+        data_end_row = max(section.data_start_row, section.subtotal_row - 1)
+        for column in range(4, 15):
+            letter = get_column_letter(column)
+            ws.cell(section.subtotal_row, column).value = (
+                f"=SUM({letter}{section.data_start_row}:{letter}{data_end_row})"
+            )
 
-        widths = [20, 18, 16, 22, 16, 26, 30, 16, 16, 14, 14, 14]
-        for column, width in enumerate(widths, start=1):
-            ws.column_dimensions[get_column_letter(column)].width = width
-        ws.row_dimensions[1].height = 24
-        ws.row_dimensions[4].height = 34
-        ws.freeze_panes = "A5"
-        ws.auto_filter.ref = f"A4:{get_column_letter(len(self.OUTPUT_HEADERS))}{max_row}"
+    def _translate_formula(self, formula: str, origin: str, target: str) -> str:
+        try:
+            return Translator(formula, origin=origin).translate_formula(target)
+        except Exception:
+            return formula
 
-    def _calculate_totals(self, rows: Iterable[WorkSalesOutputRow]) -> Dict[str, Any]:
-        sales_unit_price_total = Decimal("0")
-        purchase_unit_price_total = Decimal("0")
-        for row in rows:
-            sales_unit_price_total += self._decimal_or_zero(row.sales_unit_price)
-            purchase_unit_price_total += self._decimal_or_zero(row.purchase_unit_price)
+    def _row_has_sum_formula(self, ws: Worksheet, row: int) -> bool:
+        for column in range(1, ws.max_column + 1):
+            value = ws.cell(row, column).value
+            if isinstance(value, str) and value.upper().startswith("=SUM("):
+                return True
+        return False
+
+    def _header_values(self, ws: Worksheet, row: int) -> set[str]:
         return {
-            "sales_unit_price_total": self._money_for_response(sales_unit_price_total),
-            "purchase_unit_price_total": self._money_for_response(purchase_unit_price_total),
+            self._normalize_header(ws.cell(row, column).value)
+            for column in range(1, ws.max_column + 1)
+            if self._normalize_header(ws.cell(row, column).value)
         }
 
-    def _build_header_map(self, ws: Worksheet, header_row: int) -> Dict[str, int]:
-        mapping: Dict[str, int] = {}
-        for column in range(1, ws.max_column + 1):
-            header = self._normalize_header(ws.cell(header_row, column).value)
-            if header:
-                mapping[header] = column
-        return mapping
+    def _build_header_map_from_reader(
+        self,
+        max_column: int,
+        read_cell: Callable[[int], Any],
+    ) -> Dict[str, int]:
+        return {
+            self._normalize_header(read_cell(column)): column
+            for column in range(1, max_column + 1)
+            if self._normalize_header(read_cell(column))
+        }
 
     def _required_column(self, header_map: Dict[str, int], aliases: List[str]) -> int:
-        column = self._optional_column(header_map, aliases)
-        if column is None:
-            raise ValueError(f"缺少必需字段：{' / '.join(aliases)}")
-        return column
-
-    def _optional_column(self, header_map: Dict[str, int], aliases: List[str]) -> Optional[int]:
         for alias in aliases:
             normalized = self._normalize_header(alias)
             if normalized in header_map:
                 return header_map[normalized]
-        return None
-
-    def _details_match(self, sales_row: DetailRow, purchase_row: DetailRow) -> bool:
-        return (
-            self._normalize_style_key(sales_row.style) == self._normalize_style_key(purchase_row.style)
-            and sales_row.invoice == purchase_row.invoice
-            and self._normalize_date_for_key(sales_row.handover_date)
-            == self._normalize_date_for_key(purchase_row.handover_date)
-            and self._normalize_number_for_key(sales_row.quantity)
-            == self._normalize_number_for_key(purchase_row.quantity)
-        )
-
-    def _build_detail_diagnostic(self, row: DetailRow, reason: str) -> Dict[str, Any]:
-        return {
-            "source_sheet": row.source_sheet,
-            "source_row": row.source_row,
-            "style": row.style,
-            "invoice": row.invoice,
-            "reason": reason,
-        }
-
-    def _map_factory(self, value: Any) -> Tuple[str, str]:
-        text = self._clean_text(value)
-        if not text:
-            return "", ""
-        normalized = self._normalize_factory_key(text)
-        if normalized in self.VENDOR_ALIASES:
-            return self.VENDOR_ALIASES[normalized], ""
-        return text, f"未知工厂映射：{text}"
+        raise ValueError(f"缺少必需字段：{' / '.join(aliases)}")
 
     def _normalize_header(self, value: Any) -> str:
-        text = self._clean_text(value).upper().lstrip("*")
-        return re.sub(r"[^A-Z0-9]+", " ", text).strip()
+        return re.sub(r"[\s*]+", "", self._clean_text(value)).upper()
 
-    def _normalize_style_key(self, value: Any) -> str:
-        text = self._clean_text(value).upper()
-        while text.endswith("."):
-            text = text[:-1]
-        return text.strip()
+    def _read_xls_cell(
+        self,
+        sheet: xlrd.sheet.Sheet,
+        row: int,
+        column: int,
+        datemode: int,
+    ) -> Any:
+        cell = sheet.cell(row - 1, column - 1)
+        if cell.ctype == xlrd.XL_CELL_DATE:
+            return xlrd.xldate.xldate_as_datetime(cell.value, datemode)
+        return cell.value
 
-    def _normalize_factory_key(self, value: str) -> str:
-        text = value.strip().upper()
-        if text.isascii():
-            return re.sub(r"[^A-Z0-9]+", "", text)
-        return text
+    def _money_or_blank(self, value: Any) -> Any:
+        amount = self._parse_decimal(value)
+        return "" if amount is None else self._money_for_response(amount)
+
+    def _number_for_cell(self, value: Any) -> Any:
+        number = self._parse_decimal(value)
+        if number is None:
+            return value
+        if number == number.to_integral_value():
+            return int(number)
+        return float(number)
+
+    def _normalize_money(self, value: Any) -> str:
+        amount = self._parse_decimal(value)
+        return "" if amount is None else format(self._round_money(amount), ".2f")
+
+    def _normalize_quantity(self, value: Any) -> str:
+        number = self._parse_decimal(value)
+        if number is None:
+            return self._clean_text(value)
+        if number == number.to_integral_value():
+            return str(int(number))
+        normalized = format(number.normalize(), "f")
+        return normalized.rstrip("0").rstrip(".")
 
     def _normalize_date_for_key(self, value: Any) -> str:
         if isinstance(value, datetime):
@@ -830,31 +610,6 @@ class TmsFinanceWorkSalesModule:
         if isinstance(value, date):
             return value.isoformat()
         return self._clean_text(value)
-
-    def _normalize_number_for_key(self, value: Any) -> str:
-        number = self._parse_decimal(value)
-        if number is None:
-            return self._clean_text(value)
-        return str(number.normalize())
-
-    def _clean_text(self, value: Any) -> str:
-        if value is None:
-            return ""
-        if isinstance(value, float) and value.is_integer():
-            return str(int(value))
-        return str(value).strip()
-
-    def _money_or_none(self, value: Any) -> Optional[float]:
-        amount = self._parse_decimal(value)
-        if amount is None:
-            return None
-        return self._money_for_response(amount)
-
-    def _money_or_blank(self, value: Any) -> Any:
-        amount = self._parse_decimal(value)
-        if amount is None:
-            return ""
-        return self._money_for_response(amount)
 
     def _parse_decimal(self, value: Any) -> Optional[Decimal]:
         if value in (None, ""):
@@ -864,8 +619,15 @@ class TmsFinanceWorkSalesModule:
         except (InvalidOperation, AttributeError):
             return None
 
-    def _decimal_or_zero(self, value: Any) -> Decimal:
-        return self._parse_decimal(value) or Decimal("0")
+    def _round_money(self, value: Decimal) -> Decimal:
+        return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     def _money_for_response(self, value: Decimal) -> float:
-        return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        return float(self._round_money(value))
+
+    def _clean_text(self, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+        return str(value).replace("\u200b", "").replace("\ufeff", "").strip()

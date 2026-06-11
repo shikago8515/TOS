@@ -36,6 +36,7 @@ export interface TmsFinanceInternalReconciliationResponse {
   appended_count?: number
   skipped_count?: number
   duplicate_count?: number
+  similar_count?: number
   diagnostic_count?: number
   totals?: TmsFinanceInternalReconciliationTotals
   source_summary?: TmsFinanceInternalReconciliationSourceSummary

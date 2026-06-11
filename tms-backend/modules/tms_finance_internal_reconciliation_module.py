@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import os
 import re
+from copy import copy
 from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from uuid import uuid4
@@ -18,6 +20,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 
 BusinessKey = Tuple[str, str, str, str]
+RowFingerprint = Tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -59,7 +62,7 @@ class ExclusionConfig:
 
 
 class TmsFinanceInternalReconciliationModule:
-    """按来源行顺序回填内销对账单 `未清账` 尾部已有行。"""
+    """按来源行顺序向内销对账单 `未清账` 追加缺失行。"""
 
     TARGET_SHEET_NAME = "未清账"
     EXCLUSION_SHEET_NAME = "_Exclude_Rows_Cols"
@@ -131,6 +134,24 @@ class TmsFinanceInternalReconciliationModule:
         "purchase_display",
         "sales_display",
     ]
+    FINGERPRINT_FIELDS = [
+        "remark",
+        "vendor",
+        "customer",
+        "quantity",
+        "purchase_amount",
+        "sales_amount",
+        "description",
+        "style",
+        "order",
+        "article",
+        "customer_no",
+        "customer_order",
+        "delivery_date",
+        "mr",
+        "commercial_invoice",
+        "promo_fee",
+    ]
     MONEY_FIELDS = {"purchase_amount", "sales_amount", "promo_fee"}
     VENDOR_CODE_MAP = {
         "ELP008": "新龙泰",
@@ -184,26 +205,45 @@ class TmsFinanceInternalReconciliationModule:
 
         first_blank_row = self._find_first_empty_row(target_ws)
         target_row_count = max(first_blank_row - 2, 0)
-        candidate_rows = [
-            row
-            for row in range(2, first_blank_row)
-            if row not in exclusion_config.rows
-        ]
-        if len(candidate_rows) < len(source_rows):
-            raise ValueError(
-                f"目标表可回填行不足：来源 {len(source_rows)} 行，可回填 {len(candidate_rows)} 行"
-            )
+        existing_keys = self._build_existing_business_keys(target_ws, target_columns, first_blank_row)
+        existing_fingerprints = self._build_existing_row_fingerprints(
+            target_ws,
+            target_columns,
+            first_blank_row,
+        )
+        append_rows: List[ExtractedRow] = []
+        seen_keys = set(existing_keys)
+        seen_fingerprints = set(existing_fingerprints)
+        duplicate_count = 0
+        similar_count = 0
+        for item in source_rows:
+            fingerprint = self._build_source_row_fingerprint(item)
+            if fingerprint in seen_fingerprints:
+                duplicate_count += 1
+                continue
+            if item.key in seen_keys:
+                similar_count += 1
+            append_rows.append(item)
+            seen_keys.add(item.key)
+            seen_fingerprints.add(fingerprint)
 
-        write_rows = candidate_rows[-len(source_rows):] if source_rows else []
         totals = {
             "quantity": Decimal("0"),
             "purchase_amount": Decimal("0"),
             "sales_amount_with_tax": Decimal("0"),
         }
-        sample_count = 0
-        bulk_count = 0
+        sample_count = sum(1 for item in source_rows if item.values.get("remark") == "Sample")
+        bulk_count = sum(1 for item in source_rows if item.values.get("remark") == "Bulk")
 
-        for item, target_row in zip(source_rows, write_rows):
+        append_start_row = first_blank_row
+        appended_count = len(append_rows)
+        if appended_count:
+            self._ensure_append_space(target_ws, append_start_row, appended_count)
+            template_row = max(1, append_start_row - 1)
+
+        for offset, item in enumerate(append_rows):
+            target_row = append_start_row + offset
+            self._copy_row_format(target_ws, template_row, target_row)
             self._write_target_row(
                 target_ws,
                 target_row,
@@ -214,20 +254,16 @@ class TmsFinanceInternalReconciliationModule:
             totals["quantity"] += self._decimal_or_zero(item.values.get("quantity"))
             totals["purchase_amount"] += self._decimal_or_zero(item.values.get("purchase_amount"))
             totals["sales_amount_with_tax"] += self._decimal_or_zero(item.values.get("sales_amount"))
-            if item.values.get("remark") == "Sample":
-                sample_count += 1
-            elif item.values.get("remark") == "Bulk":
-                bulk_count += 1
 
         output_filename = f"tms_finance_internal_reconciliation_{uuid4().hex}.xlsx"
         output_path = os.path.join(output_root, output_filename)
         target_wb.save(output_path)
 
-        updated_count = len(write_rows)
+        updated_count = appended_count
         diagnostics = exclusion_config.diagnostics
         return {
             "success": True,
-            "message": f"内销对账表数据提取完成：回填 {updated_count} 行。",
+            "message": f"内销对账表数据提取完成：追加 {appended_count} 行。",
             "output_path": output_path,
             "output_file": output_filename,
             "updated_count": updated_count,
@@ -235,9 +271,10 @@ class TmsFinanceInternalReconciliationModule:
             "target_row_count": target_row_count,
             "excluded_rows": sorted(exclusion_config.rows),
             "excluded_columns": sorted(exclusion_config.columns),
-            "appended_count": 0,
-            "skipped_count": 0,
-            "duplicate_count": 0,
+            "appended_count": appended_count,
+            "skipped_count": duplicate_count,
+            "duplicate_count": duplicate_count,
+            "similar_count": similar_count,
             "diagnostic_count": len(diagnostics),
             "diagnostics": diagnostics,
             "totals": {
@@ -254,7 +291,9 @@ class TmsFinanceInternalReconciliationModule:
             "logs": [
                 f"来源文件 {len(source_path_list)} 个，提取 {len(source_rows)} 行",
                 f"目标首个全空行：{first_blank_row}",
-                f"回填 {updated_count} 行，未追加新行",
+                f"目标已有完整明细 {len(existing_fingerprints)} 行，跳过完全重复 {duplicate_count} 行",
+                f"相同业务键但明细不同 {similar_count} 行，已继续追加",
+                f"从第 {append_start_row} 行开始追加 {appended_count} 行",
             ],
         }
 
@@ -652,6 +691,99 @@ class TmsFinanceInternalReconciliationModule:
                 return row
         return ws.max_row + 1
 
+    def _build_existing_business_keys(
+        self,
+        ws: Worksheet,
+        target_columns: Dict[str, int],
+        first_blank_row: int,
+    ) -> set[BusinessKey]:
+        keys: set[BusinessKey] = set()
+        for row in range(2, first_blank_row):
+            key = self._build_target_business_key(ws, row, target_columns)
+            if key is not None:
+                keys.add(key)
+        return keys
+
+    def _build_existing_row_fingerprints(
+        self,
+        ws: Worksheet,
+        target_columns: Dict[str, int],
+        first_blank_row: int,
+    ) -> set[RowFingerprint]:
+        fingerprints: set[RowFingerprint] = set()
+        for row in range(2, first_blank_row):
+            if self._build_target_business_key(ws, row, target_columns) is None:
+                continue
+            values = self._build_target_fingerprint_values(ws, row, target_columns)
+            fingerprints.add(self._build_row_fingerprint(values))
+        return fingerprints
+
+    def _build_target_fingerprint_values(
+        self,
+        ws: Worksheet,
+        row: int,
+        target_columns: Dict[str, int],
+    ) -> Dict[str, Any]:
+        return {
+            field: ws.cell(row, target_columns[field]).value
+            for field in self.FINGERPRINT_FIELDS
+        }
+
+    def _build_source_row_fingerprint(self, item: ExtractedRow) -> RowFingerprint:
+        return self._build_row_fingerprint(item.values)
+
+    def _build_row_fingerprint(self, values: Dict[str, Any]) -> RowFingerprint:
+        return tuple(
+            self._normalize_fingerprint_value(field, values.get(field))
+            for field in self.FINGERPRINT_FIELDS
+        )
+
+    def _build_target_business_key(
+        self,
+        ws: Worksheet,
+        row: int,
+        target_columns: Dict[str, int],
+    ) -> Optional[BusinessKey]:
+        remark = self._normalize_remark(ws.cell(row, target_columns["remark"]).value)
+        style = self._normalize_style(ws.cell(row, target_columns["style"]).value)
+        order = self._normalize_order(ws.cell(row, target_columns["order"]).value)
+        article = self._clean_text(ws.cell(row, target_columns["article"]).value)
+        if not (remark and style and order and article):
+            return None
+        return remark, style, order, article
+
+    def _ensure_append_space(self, ws: Worksheet, append_start_row: int, append_count: int) -> None:
+        if append_count <= 0:
+            return
+        append_end_row = append_start_row + append_count - 1
+        for row in range(append_start_row, append_end_row + 1):
+            if not self._is_row_empty(ws, row):
+                ws.insert_rows(append_start_row, append_count)
+                return
+
+    def _copy_row_format(self, ws: Worksheet, source_row: int, target_row: int) -> None:
+        if source_row == target_row:
+            return
+
+        source_dimension = ws.row_dimensions[source_row]
+        target_dimension = ws.row_dimensions[target_row]
+        target_dimension.height = source_dimension.height
+        target_dimension.hidden = source_dimension.hidden
+        target_dimension.outlineLevel = source_dimension.outlineLevel
+        target_dimension.collapsed = source_dimension.collapsed
+
+        max_column = max(ws.max_column, len(self.TARGET_HEADERS))
+        for column in range(1, max_column + 1):
+            source_cell = ws.cell(source_row, column)
+            target_cell = ws.cell(target_row, column)
+            if source_cell.has_style:
+                target_cell.font = copy(source_cell.font)
+                target_cell.fill = copy(source_cell.fill)
+                target_cell.border = copy(source_cell.border)
+                target_cell.alignment = copy(source_cell.alignment)
+                target_cell.number_format = source_cell.number_format
+                target_cell.protection = copy(source_cell.protection)
+
     def _write_target_row(
         self,
         ws: Worksheet,
@@ -701,6 +833,47 @@ class TmsFinanceInternalReconciliationModule:
 
     def _normalize_vendor_key(self, value: str) -> str:
         return value.strip().upper() if value.isascii() else value.strip()
+
+    def _normalize_remark(self, value: Any) -> str:
+        text = self._clean_text(value)
+        upper_text = text.upper()
+        if upper_text == "SAMPLE":
+            return "Sample"
+        if upper_text == "BULK":
+            return "Bulk"
+        return text
+
+    def _normalize_fingerprint_value(self, field: str, value: Any) -> str:
+        if field == "remark":
+            return self._normalize_remark(value)
+        if field == "style":
+            return self._normalize_style(value)
+        if field == "order":
+            return self._normalize_order(value)
+        if field in self.MONEY_FIELDS:
+            amount = self._parse_decimal(value)
+            return "" if amount is None else format(self._round_money(amount), ".2f")
+        if field == "quantity":
+            return self._normalize_quantity_for_fingerprint(value)
+        if field == "delivery_date":
+            return self._normalize_date_for_fingerprint(value)
+        return self._clean_text(value)
+
+    def _normalize_quantity_for_fingerprint(self, value: Any) -> str:
+        number = self._parse_decimal(value)
+        if number is None:
+            return self._clean_text(value)
+        if number == number.to_integral_value():
+            return str(int(number))
+        normalized = format(number.normalize(), "f")
+        return normalized.rstrip("0").rstrip(".")
+
+    def _normalize_date_for_fingerprint(self, value: Any) -> str:
+        if isinstance(value, datetime):
+            return value.date().isoformat()
+        if isinstance(value, date):
+            return value.isoformat()
+        return self._clean_text(value)
 
     def _clean_placeholder(self, value: Any) -> str:
         text = self._clean_text(value)

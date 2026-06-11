@@ -23,8 +23,16 @@ export function buildTmsFinanceInternalReconciliationSummary(
       value: String(response.source_summary?.bulk_rows ?? response.source_summary?.book_rows ?? '-'),
     },
     {
-      label: '回填行',
-      value: String(response.updated_count ?? response.appended_count ?? '-'),
+      label: '追加行',
+      value: String(response.appended_count ?? response.updated_count ?? '-'),
+    },
+    {
+      label: '重复跳过',
+      value: String(response.duplicate_count ?? response.skipped_count ?? '-'),
+    },
+    {
+      label: '相似已追加',
+      value: String(response.similar_count ?? '-'),
     },
     {
       label: '目标处理行',
