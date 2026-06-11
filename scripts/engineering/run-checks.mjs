@@ -11,6 +11,12 @@ const npmShell = process.platform === 'win32'
 const pythonBin = process.env.PYTHON ?? 'python'
 
 const commandGroups = {
+  version: [
+    command('version:sync-test', '.', process.execPath, [
+      '--test',
+      'scripts/engineering/sync-version.test.mjs',
+    ]),
+  ],
   frontendFull: [
     command('frontend:typecheck', 'tms-frontend', npmBin, ['run', 'typecheck'], npmShell),
     command('frontend:test', 'tms-frontend', npmBin, ['run', 'test'], npmShell),
@@ -37,11 +43,13 @@ const commandGroups = {
 
 const sequences = {
   all: [
+    ...commandGroups.version,
     ...commandGroups.frontendFull,
     ...commandGroups.backendFull,
     ...commandGroups.electron,
   ],
   quick: [
+    ...commandGroups.version,
     ...commandGroups.frontendQuick,
     ...commandGroups.backendQuick,
     ...commandGroups.electron,

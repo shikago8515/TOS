@@ -32,6 +32,7 @@ const requiredUnpackedResourcePaths = [
   'resources/automation-apps/playwright-console/public/index.html',
   'resources/automation-apps/playwright-console/node_modules/statuses/index.js',
   'resources/backend/main.py',
+  'resources/backend/app_version.py',
   'resources/backend/api/.gitkeep',
   'resources/backend/modules/.gitkeep',
   'resources/backend/templates/sophia_tina_pivot_template.xlsx',
@@ -75,8 +76,10 @@ function touchManualDownloadArtifacts(distDir, version, content = 'manual downlo
 function touchRequiredUnpackedResources(appOutDir, version) {
   for (const relativePath of requiredUnpackedResourcePaths) {
     const content = relativePath.endsWith('main.py')
-      ? `app = FastAPI(version="${version}")\n`
-      : ''
+      ? 'app = FastAPI(version=APP_VERSION)\n'
+      : relativePath.endsWith('app_version.py')
+        ? `APP_VERSION = "${version}"\n`
+        : ''
     touch(path.join(appOutDir, relativePath), content)
   }
 }
@@ -310,6 +313,21 @@ test('reports backend version mismatches in packaged source', () => {
   })
 
   assert(issues.some((issue) => issue.includes('backend version mismatch')))
+})
+
+test('accepts backend version from shared app_version module', () => {
+  const root = makeTempDir()
+  const appOutDir = path.join(root, 'win-unpacked')
+  touchRequiredUnpackedResources(appOutDir, '0.9.6-beta.3')
+
+  const issues = collectReleasePackageIssues({
+    distDir: root,
+    appOutDir,
+    expectedVersion: '0.9.6-beta.3',
+    skipArtifacts: true,
+  })
+
+  assert.deepEqual(issues, [])
 })
 
 test('reports backend runtime older than packaged backend source', () => {

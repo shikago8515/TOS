@@ -3,8 +3,9 @@ import type {
   UpdateActionResult,
   UpdateStatus,
 } from '../../types/electronApi'
+import { getBackendBaseUrl } from '../../shared/api/backendClient'
+import { fallbackAppVersion } from '../../shared/version/appVersion'
 
-const fallbackVersion = '0.9.8-beta.0.5'
 const previewUpdateFeedUrl = 'https://github.com/shikago8515/TOS/releases/latest/download/'
 
 export function hasUpdateBridge(): boolean {
@@ -14,7 +15,7 @@ export function hasUpdateBridge(): boolean {
 export async function getAppVersionInfo(): Promise<AppVersionInfo> {
   if (!window.electronAPI?.getAppVersion) {
     return {
-      version: fallbackVersion,
+      version: await readBrowserAppVersion(),
       isPackaged: false,
     }
   }
@@ -66,19 +67,21 @@ export function subscribeUpdateStatus(callback: (status: UpdateStatus) => void):
   return window.electronAPI?.onUpdateStatus?.(callback) ?? (() => {})
 }
 
-function buildUnsupportedResult(): UpdateActionResult {
+async function buildUnsupportedResult(): Promise<UpdateActionResult> {
   return {
     success: false,
     error: '当前运行环境不支持应用更新',
-    status: buildUnsupportedStatus(),
+    status: await buildUnsupportedStatus(),
   }
 }
 
-function buildUnsupportedStatus(): UpdateStatus {
+async function buildUnsupportedStatus(): Promise<UpdateStatus> {
+  const currentVersion = await readBrowserAppVersion()
+
   // 浏览器预览时没有 Electron bridge，页面仍保留可渲染的版本状态。
   return {
     status: 'unsupported',
-    currentVersion: fallbackVersion,
+    currentVersion,
     isPackaged: false,
     feedUrl: previewUpdateFeedUrl,
     feedUrlSource: 'preview',
@@ -91,5 +94,23 @@ function buildUnsupportedStatus(): UpdateStatus {
     changelog: null,
     progress: null,
     error: '当前运行环境不支持应用更新',
+  }
+}
+
+async function readBrowserAppVersion(): Promise<string> {
+  try {
+    const backendBaseUrl = await getBackendBaseUrl()
+    const response = await fetch(`${backendBaseUrl}/`)
+
+    if (!response.ok) {
+      return fallbackAppVersion
+    }
+
+    const payload = await response.json() as { version?: unknown }
+    return typeof payload.version === 'string' && payload.version.trim()
+      ? payload.version.trim()
+      : fallbackAppVersion
+  } catch (_error) {
+    return fallbackAppVersion
   }
 }

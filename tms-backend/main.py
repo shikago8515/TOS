@@ -8,6 +8,7 @@ FastAPI Server
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app_version import APP_VERSION
 
 # 导入 API 路由
 from api.jessca_api import router as jessca_router
@@ -27,7 +28,7 @@ from api.tms_finance_work_sales_api import router as tms_finance_work_sales_rout
 app = FastAPI(
     title="TMS Backend API",
     description="TMS 报表自动化工具后端 API 服务",
-    version="0.9.8-beta.0.6"
+    version=APP_VERSION
 )
 
 # 添加 CORS 中间件
@@ -58,7 +59,7 @@ app.include_router(tms_finance_work_sales_router, prefix="/api")
 async def root():
     return {
         "message": "TMS Backend API is running",
-        "version": "0.9.8-beta.0.6",
+        "version": APP_VERSION,
         "docs": "/docs"
     }
 

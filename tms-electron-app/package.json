@@ -1,6 +1,6 @@
 {
   "name": "tms-integration-tool",
-  "version": "0.9.8-beta.0.6",
+  "version": "0.9.8-beta.3.0",
   "description": "TOS integration tool",
   "main": "main-simple.js",
   "scripts": {
@@ -170,6 +170,7 @@
         "from": "../tms-backend",
         "to": "backend",
         "filter": [
+          "app_version.py",
           "main.py",
           "requirements.txt",
           "api/**/*",

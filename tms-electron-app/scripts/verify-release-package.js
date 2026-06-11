@@ -30,6 +30,7 @@ const requiredUnpackedResources = [
   'resources/automation-apps/playwright-console/public/index.html',
   'resources/automation-apps/playwright-console/node_modules/statuses/index.js',
   'resources/backend/main.py',
+  'resources/backend/app_version.py',
   'resources/backend/api',
   'resources/backend/modules',
   'resources/backend/templates/sophia_tina_pivot_template.xlsx',
@@ -354,12 +355,18 @@ function collectBackendPackageIssues(appOutDir, expectedVersion) {
   )
 
   if (fileExists(backendMainPath)) {
-    const content = fs.readFileSync(backendMainPath, 'utf8')
-    const versions = [...content.matchAll(/version\s*[:=]\s*["']([^"']+)["']/g)]
-      .map((match) => match[1])
+    const backendVersionPaths = [
+      backendMainPath,
+      path.join(backendDir, 'app_version.py'),
+    ].filter(fileExists)
+    const versions = backendVersionPaths.flatMap((filePath) => {
+      const content = fs.readFileSync(filePath, 'utf8')
+      return [...content.matchAll(/version\s*[:=]\s*["']([^"']+)["']/gi)]
+        .map((match) => match[1])
+    })
 
     if (versions.length === 0) {
-      issues.push('resources/backend/main.py does not expose a backend version')
+      issues.push('resources/backend/app_version.py does not expose a backend version')
     }
 
     for (const version of versions) {

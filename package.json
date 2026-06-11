@@ -7,6 +7,9 @@
     "check:backend": "node scripts/engineering/run-checks.mjs backend",
     "check:electron": "node scripts/engineering/run-checks.mjs electron",
     "ci:install": "node scripts/engineering/install-ci-deps.mjs",
+    "test:version": "node --test scripts/engineering/sync-version.test.mjs",
+    "version:set": "node scripts/engineering/sync-version.mjs --set",
+    "version:bump": "node scripts/engineering/sync-version.mjs --bump",
     "dev:frontend": "npm --prefix tms-frontend run dev",
     "preview:frontend": "npm --prefix tms-frontend run preview",
     "dev:electron": "npm --prefix tms-electron-app run dev"

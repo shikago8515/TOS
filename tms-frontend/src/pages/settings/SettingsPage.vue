@@ -206,6 +206,7 @@ import type {
   UpdateStatusCode,
 } from '../../types/electronApi'
 import AppIcon from '../../shared/ui/AppIcon.vue'
+import { fallbackAppVersion } from '../../shared/version/appVersion'
 import {
   checkForUpdates,
   downloadUpdate,
@@ -222,7 +223,7 @@ type NoticeTone = 'info' | 'success' | 'warning' | 'error'
 type UpdateAction = '' | 'init' | 'check' | 'download' | 'install' | 'manual'
 
 const versionInfo = ref<AppVersionInfo>({
-  version: '0.9.8-beta.0.5',
+  version: fallbackAppVersion,
   isPackaged: false,
 })
 const status = ref<UpdateStatus | null>(null)
