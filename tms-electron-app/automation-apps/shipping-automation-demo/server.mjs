@@ -5,6 +5,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { createShipping2ReleasedBulkAutomation } from "./shipping2-released-bulk.mjs";
+import { createShipping2UnreleasedBulkAutomation } from "./shipping2-unreleased-bulk.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,6 +27,7 @@ const { chromium, firefox, webkit } = requireShared("playwright");
 const xlsx = requireShared("xlsx");
 
 const browserEngines = { chromium, firefox, webkit };
+const VISIBLE_CHROMIUM_WINDOW_ARGS = ["--start-maximized", "--window-position=0,0"];
 
 await ensureRuntimeFiles();
 const config = await loadConfig();
@@ -34,6 +36,18 @@ const {
   processShipping2ReleasedBulkWorksheet,
   formatReleasedBulkSaveDecisionMessage,
 } = createShipping2ReleasedBulkAutomation({
+  config,
+  log,
+  forceClickLocator,
+  xlsx,
+  assertWorkbookPayload,
+  resolveWorksheetName,
+});
+const {
+  extractShipping2UnreleasedBulkRowsFromWorkbookPayload,
+  processShipping2UnreleasedBulkWorksheet,
+  formatUnreleasedBulkSaveDecisionMessage,
+} = createShipping2UnreleasedBulkAutomation({
   config,
   log,
   forceClickLocator,
@@ -104,10 +118,11 @@ const server = http.createServer(async (req, res) => {
       const releasedBulkRows = bulkType === "released"
         ? extractShipping2ReleasedBulkRowsFromWorkbookPayload(body)
         : [];
-      const releasedBulkPoNumbers = releasedBulkRows.map((row) => row.poNo).filter(Boolean);
-      if (bulkType !== "released") {
-        assertWorkbookPayload(body);
-      }
+      const unreleasedBulkRows = bulkType === "unreleased"
+        ? extractShipping2UnreleasedBulkRowsFromWorkbookPayload(body)
+        : [];
+      const shipping2BulkRows = bulkType === "released" ? releasedBulkRows : unreleasedBulkRows;
+      const shipping2BulkPoNumbers = shipping2BulkRows.map((row) => row.poNo).filter(Boolean);
       const inputFileName = normalizeUploadFileName(body);
       const activeRun = registerActiveRun({
         action: `run-shipping2-${bulkType}-bulk`,
@@ -115,12 +130,13 @@ const server = http.createServer(async (req, res) => {
         bulkType,
         inputFileName,
         inputMode: "shipping2-bulk",
-        ...(bulkType === "released" ? { totalPoCount: releasedBulkPoNumbers.length } : {}),
+        totalPoCount: shipping2BulkPoNumbers.length,
       });
 
       try {
         const result = await runShipping2BulkFile(credentials, bulkType, inputFileName, activeRun.runId, {
           releasedBulkRows,
+          unreleasedBulkRows,
         });
         recordCompletedRun({
           runId: activeRun.runId,
@@ -132,6 +148,8 @@ const server = http.createServer(async (req, res) => {
           inputFileName,
           eventManagementOpened: result.eventManagementOpened,
           homeOpened: result.homeOpened,
+          shipping2BulkFilterApplied: result.shipping2BulkFilterApplied,
+          shipping2BulkPoCount: result.shipping2BulkPoCount,
           releasedBulkFilterApplied: result.releasedBulkFilterApplied,
           releasedBulkPoCount: result.releasedBulkPoCount,
         });
@@ -356,6 +374,25 @@ function buildHealthPayload() {
   };
 }
 
+function mergeBrowserArgs(currentArgs, requiredArgs) {
+  const args = Array.isArray(currentArgs) ? currentArgs : [];
+  const merged = [...args];
+  for (const arg of requiredArgs) {
+    if (!merged.includes(arg)) {
+      merged.push(arg);
+    }
+  }
+  return merged;
+}
+
+function buildVisibleBrowserLaunchOptions(baseOptions, browserName) {
+  const launchOptions = { ...(baseOptions || {}) };
+  if (!launchOptions.headless && String(browserName || "").toLowerCase() === "chromium") {
+    launchOptions.args = mergeBrowserArgs(launchOptions.args, VISIBLE_CHROMIUM_WINDOW_ARGS);
+  }
+  return launchOptions;
+}
+
 function buildCredentialsPayload() {
   return {
     ok: true,
@@ -463,6 +500,9 @@ async function runShipping2BulkFile(credentials, bulkType, inputFileName, runId,
     releasedBulkRows: Array.isArray(options?.releasedBulkRows)
       ? options.releasedBulkRows
       : [],
+    unreleasedBulkRows: Array.isArray(options?.unreleasedBulkRows)
+      ? options.unreleasedBulkRows
+      : [],
   });
 }
 
@@ -491,6 +531,7 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
     slowMo: config.slowMo,
     ...config.launchOptions,
   };
+  const browserLaunchOptions = buildVisibleBrowserLaunchOptions(launchOptions, config.browser);
 
   let browser = null;
   let context = null;
@@ -503,9 +544,9 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
   const idResults = [];
 
   try {
-    browser = await engine.launch(launchOptions);
+    browser = await engine.launch(browserLaunchOptions);
     context = await browser.newContext({
-      viewport: { width: 1600, height: 1200 },
+      viewport: null,
     });
     page = await context.newPage();
     lifecycle = trackBrowserLifecycle(page, context, browser);
@@ -650,6 +691,7 @@ async function runShippingWorkflow(credentials, runContext) {
     slowMo: config.slowMo,
     ...config.launchOptions,
   };
+  const browserLaunchOptions = buildVisibleBrowserLaunchOptions(launchOptions, config.browser);
 
   let browser = null;
   let context = null;
@@ -669,12 +711,20 @@ async function runShippingWorkflow(credentials, runContext) {
   const shipping2BulkLabel = shipping2BulkType === "unreleased"
     ? "Unreleased Bulk"
     : shipping2BulkType === "released"
-      ? "released Bulk"
+      ? "Released Bulk"
       : "";
   const isShipping2BulkRun = Boolean(shipping2BulkType);
   const releasedBulkRows = shipping2BulkType === "released" && Array.isArray(runContext?.releasedBulkRows)
     ? runContext.releasedBulkRows
     : [];
+  const unreleasedBulkRows = shipping2BulkType === "unreleased" && Array.isArray(runContext?.unreleasedBulkRows)
+    ? runContext.unreleasedBulkRows
+    : [];
+  const shipping2BulkRows = shipping2BulkType === "released"
+    ? releasedBulkRows
+    : shipping2BulkType === "unreleased"
+      ? unreleasedBulkRows
+      : [];
   const shouldOpenShipmentScan = targetPage === "shipment-scan";
   const shouldOpenEventManagement = targetPage === "event-management" || isShipping2BulkRun;
   const artifactPrefix = isShipping2BulkRun
@@ -687,11 +737,12 @@ async function runShippingWorkflow(credentials, runContext) {
   let createShipmentBatches = [];
   let createShipmentEquipmentIds = [];
   let releasedBulkResult = null;
+  let unreleasedBulkResult = null;
 
   try {
-    browser = await engine.launch(launchOptions);
+    browser = await engine.launch(browserLaunchOptions);
     context = await browser.newContext({
-      viewport: { width: 1600, height: 1200 },
+      viewport: null,
     });
     page = await context.newPage();
     lifecycle = trackBrowserLifecycle(page, context, browser);
@@ -720,6 +771,8 @@ async function runShippingWorkflow(credentials, runContext) {
         await openShipping2BulkWorksheet(page, shipping2BulkType);
         if (shipping2BulkType === "released") {
           releasedBulkResult = await processShipping2ReleasedBulkWorksheet(page, releasedBulkRows);
+        } else if (shipping2BulkType === "unreleased") {
+          unreleasedBulkResult = await processShipping2UnreleasedBulkWorksheet(page, unreleasedBulkRows);
         }
       }
     }
@@ -847,12 +900,20 @@ async function runShippingWorkflow(credentials, runContext) {
     const completedPoCount = poResults.filter((item) => item.ok).length;
     const failedCreateShipmentCount = createShipmentResults.filter((item) => !item.ok).length;
     const completedCreateShipmentCount = createShipmentResults.filter((item) => item.ok).length;
-    const failedReleasedBulkRowCount = Number(releasedBulkResult?.failedRowCount || 0);
-    const completedReleasedBulkRowCount = Number(releasedBulkResult?.updatedRowCount || 0);
+    const shipping2BulkResult = shipping2BulkType === "released"
+      ? releasedBulkResult
+      : shipping2BulkType === "unreleased"
+        ? unreleasedBulkResult
+        : null;
+    const failedShipping2BulkRowCount = Number(shipping2BulkResult?.failedRowCount || 0);
+    const completedShipping2BulkRowCount = Number(shipping2BulkResult?.updatedRowCount || 0);
+    const shipping2BulkSaveMessage = shipping2BulkType === "unreleased"
+      ? formatUnreleasedBulkSaveDecisionMessage(shipping2BulkResult?.saveResult)
+      : formatReleasedBulkSaveDecisionMessage(shipping2BulkResult?.saveResult);
 
     const result = {
       runId,
-      ok: failedPoCount === 0 && failedCreateShipmentCount === 0 && failedReleasedBulkRowCount === 0,
+      ok: failedPoCount === 0 && failedCreateShipmentCount === 0 && failedShipping2BulkRowCount === 0,
       loginSuccess: true,
       shipmentScanOpened: shouldOpenShipmentScan,
       eventManagementOpened: shouldOpenEventManagement,
@@ -865,13 +926,20 @@ async function runShippingWorkflow(credentials, runContext) {
       completedPoCount,
       failedPoCount,
       poResults,
-      releasedBulkFilterApplied: Boolean(releasedBulkResult?.filterApplied),
-      releasedBulkSaved: Boolean(releasedBulkResult?.saved),
-      releasedBulkSaveResult: releasedBulkResult?.saveResult || null,
-      releasedBulkPoCount: releasedBulkRows.length,
-      releasedBulkUpdatedRowCount: completedReleasedBulkRowCount,
-      releasedBulkFailedRowCount: failedReleasedBulkRowCount,
-      releasedBulkUpdateResults: releasedBulkResult?.rowResults || [],
+      shipping2BulkFilterApplied: Boolean(shipping2BulkResult?.filterApplied),
+      shipping2BulkSaved: Boolean(shipping2BulkResult?.saved),
+      shipping2BulkSaveResult: shipping2BulkResult?.saveResult || null,
+      shipping2BulkPoCount: shipping2BulkRows.length,
+      shipping2BulkUpdatedRowCount: completedShipping2BulkRowCount,
+      shipping2BulkFailedRowCount: failedShipping2BulkRowCount,
+      shipping2BulkUpdateResults: shipping2BulkResult?.rowResults || [],
+      releasedBulkFilterApplied: Boolean(shipping2BulkResult?.filterApplied),
+      releasedBulkSaved: Boolean(shipping2BulkResult?.saved),
+      releasedBulkSaveResult: shipping2BulkResult?.saveResult || null,
+      releasedBulkPoCount: shipping2BulkRows.length,
+      releasedBulkUpdatedRowCount: completedShipping2BulkRowCount,
+      releasedBulkFailedRowCount: failedShipping2BulkRowCount,
+      releasedBulkUpdateResults: shipping2BulkResult?.rowResults || [],
       uniqueChangeEquipmentIdCount: createShipmentEquipmentIds.length,
       completedCreateShipmentCount,
       failedCreateShipmentCount,
@@ -880,9 +948,9 @@ async function runShippingWorkflow(credentials, runContext) {
       message: shouldFillPoNumbers
         ? `Shipment Scan processed ${completedPoCount}/${poRows.length} PO rows and Create Shipment processed ${completedCreateShipmentCount}/${createShipmentEquipmentIds.length} unique equipment IDs.`
         : isShipping2BulkRun
-          ? releasedBulkResult
-            ? `Released Bulk filtered ${releasedBulkRows.length} PO numbers and updated ${completedReleasedBulkRowCount}/${releasedBulkRows.length} rows. ${formatReleasedBulkSaveDecisionMessage(releasedBulkResult.saveResult)}`
-            : `${shipping2BulkLabel} worksheet opened successfully.`
+          ? shipping2BulkResult
+            ? `${shipping2BulkLabel} 已筛选 ${shipping2BulkRows.length} 个 PO，并更新 ${completedShipping2BulkRowCount}/${shipping2BulkRows.length} 行。${shipping2BulkSaveMessage}`
+            : `${shipping2BulkLabel} 页面已成功打开。`
           : shouldOpenShipmentScan
           ? "Infor Nexus Shipment Scan opened successfully."
           : "Infor Nexus logged in successfully.",
@@ -906,7 +974,7 @@ async function runShippingWorkflow(credentials, runContext) {
       page,
       lifecycle,
       isShipping2BulkRun
-        ? `${shipping2BulkLabel} browser session became unavailable.`
+        ? `${shipping2BulkLabel} 浏览器会话已中断。`
         : shouldOpenShipmentScan
         ? "Shipment Scan automation browser session became unavailable."
         : "Infor Nexus login browser session became unavailable.",
@@ -935,23 +1003,46 @@ async function runShippingWorkflow(credentials, runContext) {
         poResults.filter((item) => !item.ok).length,
       ),
       poResults,
-      releasedBulkFilterApplied: Boolean(releasedBulkResult?.filterApplied),
-      releasedBulkSaved: Boolean(releasedBulkResult?.saved),
-      releasedBulkSaveResult: releasedBulkResult?.saveResult || null,
-      releasedBulkPoCount: releasedBulkRows.length,
-      releasedBulkUpdatedRowCount: Number(releasedBulkResult?.updatedRowCount || 0),
-      releasedBulkFailedRowCount: releasedBulkResult
-        ? Number(releasedBulkResult.failedRowCount || 0)
-        : shipping2BulkType === "released"
-          ? releasedBulkRows.length
+      shipping2BulkFilterApplied: Boolean(
+        (shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)?.filterApplied,
+      ),
+      shipping2BulkSaved: Boolean(
+        (shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)?.saved,
+      ),
+      shipping2BulkSaveResult: (shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)?.saveResult || null,
+      shipping2BulkPoCount: shipping2BulkRows.length,
+      shipping2BulkUpdatedRowCount: Number(
+        (shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)?.updatedRowCount || 0,
+      ),
+      shipping2BulkFailedRowCount: (shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)
+        ? Number((shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult).failedRowCount || 0)
+        : isShipping2BulkRun
+          ? shipping2BulkRows.length
           : 0,
-      releasedBulkUpdateResults: releasedBulkResult?.rowResults || [],
+      shipping2BulkUpdateResults: (shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)?.rowResults || [],
+      releasedBulkFilterApplied: Boolean(
+        (shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)?.filterApplied,
+      ),
+      releasedBulkSaved: Boolean(
+        (shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)?.saved,
+      ),
+      releasedBulkSaveResult: (shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)?.saveResult || null,
+      releasedBulkPoCount: shipping2BulkRows.length,
+      releasedBulkUpdatedRowCount: Number(
+        (shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)?.updatedRowCount || 0,
+      ),
+      releasedBulkFailedRowCount: (shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)
+        ? Number((shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult).failedRowCount || 0)
+        : isShipping2BulkRun
+          ? shipping2BulkRows.length
+          : 0,
+      releasedBulkUpdateResults: (shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)?.rowResults || [],
       uniqueChangeEquipmentIdCount: createShipmentEquipmentIds.length,
       completedCreateShipmentCount: createShipmentResults.filter((item) => item.ok).length,
       failedCreateShipmentCount: createShipmentResults.filter((item) => !item.ok).length,
       createShipmentResults,
       message: failureMessage || (isShipping2BulkRun
-        ? `${shipping2BulkLabel} automation failed.`
+        ? `${shipping2BulkLabel} 自动化执行失败。`
         : shouldOpenShipmentScan
           ? "Shipment Scan automation failed."
           : "Infor Nexus login automation failed."),
@@ -1004,6 +1095,7 @@ async function ensureLoggedIn(page, credentials) {
     await loginButton.click({ force: true, noWaitAfter: true });
     log("Submitted Infor Nexus login.", {
       elapsedMs: Date.now() - startedAt,
+      method: "playwright-fill-click",
     });
   }
 
@@ -1015,20 +1107,48 @@ async function ensureLoggedIn(page, credentials) {
 }
 
 async function waitForInforNexusLoggedIn(page, timeoutMs = config.navigationTimeoutMs) {
-  await waitForAny(page, [
-    () => page.locator("#navmenu__applications").first().waitFor({
-      state: "visible",
-      timeout: timeoutMs,
-    }),
-    () => page.locator("#navmenu__inprogresseventmanagement, #navmenu__inprogressmanifestsprintscanship").first().waitFor({
-      state: "attached",
-      timeout: timeoutMs,
-    }),
-    () => page.waitForURL((url) => (
-      /\/en\/trade\/?/.test(url.pathname)
-      && !/login/i.test(url.pathname)
-    ), { timeout: timeoutMs }),
-  ]);
+  const startedAt = Date.now();
+  let lastState = null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const state = await page.evaluate(() => {
+      const href = String(window.location.href || "");
+      const pathname = String(window.location.pathname || "");
+      const bodyText = String(document.body?.innerText || "");
+      return {
+        href,
+        pathname,
+        readyState: document.readyState,
+        isTradePage: /\/en\/trade\/?/i.test(pathname) && !/login/i.test(pathname),
+        hasApplicationText: /\bAPPLICATIONS\b/i.test(bodyText),
+        hasLoginForm: Boolean(document.querySelector('input[placeholder="Username"], input[name*="user" i]')),
+      };
+    }).catch(() => null);
+
+    const applicationsVisible = await page.locator("#navmenu__applications")
+      .first()
+      .isVisible({ timeout: 200 })
+      .catch(() => false);
+    const navigationAttached = await page.locator("#navmenu__inprogresseventmanagement, #navmenu__inprogressmanifestsprintscanship")
+      .first()
+      .count()
+      .then((count) => count > 0)
+      .catch(() => false);
+
+    lastState = {
+      ...(state || {}),
+      applicationsVisible,
+      navigationAttached,
+    };
+
+    if (applicationsVisible || navigationAttached || (state?.isTradePage && !state?.hasLoginForm)) {
+      return lastState;
+    }
+
+    await page.waitForTimeout(250);
+  }
+
+  throw new Error(`Infor Nexus 登录后在 ${timeoutMs}ms 内未进入业务主界面。最后状态：${JSON.stringify(lastState || {})}`);
 }
 
 function getInfornexusAutoAddSearchInput(page) {
@@ -1168,16 +1288,95 @@ async function countInfornexusAutoAddResultCells(page, id) {
 }
 
 async function openEventManagement(page) {
-  await clickLocator(page.locator("#navmenu__applications"), "Applications");
-  await clickLocator(
-    page.locator("#navmenu__inprogresseventmanagement"),
-    "Event Management",
-  );
-  await page.waitForURL(/\/en\/trade\/InProgressEventManagement/, {
-    timeout: config.navigationTimeoutMs,
-  });
-  await page.waitForTimeout(config.postLoginWaitMs);
-  log("Event Management page opened.");
+  const attempts = [
+    {
+      label: "applications-menu",
+      run: async () => {
+        const applications = page.locator("#navmenu__applications").first();
+        await applications.waitFor({
+          state: "visible",
+          timeout: Math.min(config.navigationTimeoutMs, 5000),
+        });
+        await forceClickLocator(applications, "Applications");
+        await page.waitForTimeout(150);
+
+        const eventManagement = page.locator("#navmenu__inprogresseventmanagement").first();
+        await eventManagement.waitFor({
+          state: "visible",
+          timeout: Math.min(config.navigationTimeoutMs, 5000),
+        });
+        await forceClickLocator(eventManagement, "Event Management");
+      },
+    },
+    {
+      label: "dom-id-fallback",
+      run: async () => {
+        const clicked = await page.evaluate(() => {
+          const clickById = (id) => {
+            const element = document.getElementById(id);
+            if (!(element instanceof HTMLElement)) {
+              return false;
+            }
+            const fireMouse = (type) => {
+              element.dispatchEvent(new MouseEvent(type, {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+              }));
+            };
+            ["mouseover", "mouseenter", "mousedown", "mouseup", "click"].forEach(fireMouse);
+            element.click?.();
+            return true;
+          };
+
+          if (!clickById("navmenu__applications")) {
+            return false;
+          }
+          return clickById("navmenu__inprogresseventmanagement");
+        });
+
+        if (!clicked) {
+          throw new Error("Applications/Event Management navigation items were not clickable by id.");
+        }
+      },
+    },
+    {
+      label: "direct-url-fallback",
+      run: async () => {
+        const targetUrl = new URL(
+          "/en/trade/InProgressEventManagement?nav=navmenu__inprogresseventmanagement",
+          page.url(),
+        ).toString();
+        await page.goto(targetUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: Math.min(config.navigationTimeoutMs, 15000),
+        });
+      },
+    },
+  ];
+
+  let lastError = null;
+  for (const attempt of attempts) {
+    try {
+      await attempt.run();
+      await waitForEventManagementPage(page, Math.min(config.navigationTimeoutMs, 12000));
+      await page.waitForTimeout(config.postLoginWaitMs);
+      log("Event Management page opened.", {
+        method: attempt.label,
+        finalUrl: safePageUrl(page),
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+      log("Event Management open attempt failed.", {
+        method: attempt.label,
+        error: error instanceof Error ? error.message : String(error),
+        currentUrl: safePageUrl(page),
+      });
+    }
+  }
+
+  throw lastError || new Error("Event Management page could not be opened.");
 }
 
 async function openShipping2BulkWorksheet(page, bulkType) {
@@ -1195,6 +1394,37 @@ async function openShipping2BulkWorksheet(page, bulkType) {
     bulkType,
     worksheetLabel,
   });
+}
+
+async function waitForEventManagementPage(page, timeoutMs = config.navigationTimeoutMs) {
+  const startedAt = Date.now();
+  let lastState = null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const state = await page.evaluate(() => {
+      const href = String(window.location.href || "");
+      const pathname = String(window.location.pathname || "");
+      const bodyText = String(document.body?.innerText || "");
+      return {
+        href,
+        pathname,
+        hasEventManagementUrl: /\/en\/trade\/InProgressEventManagement/i.test(href),
+        hasEventManagementText: /\bEvent Management\b/i.test(bodyText),
+        hasTrackingWorksheetLink: Boolean(
+          document.querySelector('td.listtablecell a[href*="TrackingWorksheet"]'),
+        ),
+      };
+    }).catch(() => null);
+
+    lastState = state;
+    if (state?.hasEventManagementUrl || (state?.hasEventManagementText && state?.hasTrackingWorksheetLink)) {
+      return state;
+    }
+
+    await page.waitForTimeout(200);
+  }
+
+  throw new Error(`Event Management page did not finish opening within ${timeoutMs}ms. Last state: ${JSON.stringify(lastState || {})}`);
 }
 
 async function waitForShipmentScanDialog(page, timeoutMs = config.navigationTimeoutMs) {
