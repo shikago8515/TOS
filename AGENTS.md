@@ -115,6 +115,12 @@
 10. `automation-apps/`、`automation-launcher/`、`browser-plugins/`、`external-apps/` 是独立运行边界。修改时先读对应 README、registry 和启动脚本。
 11. 不修改 `archive/legacy-packaging/`，除非任务明确是处理历史打包方案。
 
+## 服务器部署规则
+
+1. 服务器 `~/TOS` 目录式 Docker Compose 部署必须遵循 `docs/server-deployment-runbook.md`，不要把服务器当作 Git 仓库直接 `git pull`。
+2. 服务器部署默认只更新 `tos-backend` 和 `tos-frontend`，保留服务器侧 Dockerfile、`nginx.conf`、`docker-compose.tos.yml` 和 `authelia/`。
+3. 服务器部署不等于 Windows Electron 打包；只有发布桌面安装包、自动更新包或正式 Windows 客户端时，才运行 `npm run build:win`。
+
 ## 可用检查命令
 
 按改动范围选择最接近的真实命令。若命令不存在，明确说明未运行原因。优先使用仓库根目录工程入口；需要调试单个子项目时，再切到对应子项目目录运行原生命令。

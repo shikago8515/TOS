@@ -22,6 +22,7 @@ TOS 是一个 Windows x64 桌面工具，当前源码工作区由三部分组成
 - `tms-frontend/README.md`：前端源码工作区、命令、源码约定和页面清单。
 - `docs/frontend-engineering-standards.md`：前端重建工程规范和变更接收检查项。
 - `docs/engineering-entrypoints.md`：根目录工程入口、检查矩阵和命令边界。
+- `docs/server-deployment-runbook.md`：服务器 `~/TOS` 目录式 Docker Compose 更新、备份、验证和回滚流程。
 - `docs/frontend-tms-finance-parity.md`：TMS 财务页 parity 与复用边界说明。
 - `tms-backend/README.md`：后端运行、模块和测试说明。
 - `tms-electron-app/README.md`：Electron 运行、打包和发布说明。
