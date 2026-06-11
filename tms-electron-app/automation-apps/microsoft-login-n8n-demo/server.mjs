@@ -25,6 +25,7 @@ const { chromium, firefox, webkit } = requireShared("playwright");
 const xlsx = requireShared("xlsx");
 
 const browserEngines = { chromium, firefox, webkit };
+const VISIBLE_CHROMIUM_WINDOW_ARGS = ["--start-maximized", "--window-position=0,0"];
 await ensureRuntimeFiles();
 const config = await loadConfig();
 
@@ -535,6 +536,7 @@ async function runLogin(rows, options) {
     slowMo: options.slowMo,
     ...options.launchOptions,
   };
+  const browserLaunchOptions = buildVisibleBrowserLaunchOptions(launchOptions, options.browser);
 
   let browser;
   let context;
@@ -542,9 +544,9 @@ async function runLogin(rows, options) {
   let runFailed = false;
 
   try {
-    browser = await engine.launch(launchOptions);
+    browser = await engine.launch(browserLaunchOptions);
     context = await browser.newContext({
-      viewport: { width: 1440, height: 960 },
+      viewport: null,
     });
     page = await context.newPage();
     page.setDefaultTimeout(options.navigationTimeoutMs);
@@ -2762,6 +2764,25 @@ function buildHealthPayload() {
       hasStoredCredentials: Boolean(config.username && config.password),
     },
   };
+}
+
+function mergeBrowserArgs(currentArgs, requiredArgs) {
+  const args = Array.isArray(currentArgs) ? currentArgs : [];
+  const merged = [...args];
+  for (const arg of requiredArgs) {
+    if (!merged.includes(arg)) {
+      merged.push(arg);
+    }
+  }
+  return merged;
+}
+
+function buildVisibleBrowserLaunchOptions(baseOptions, browserName) {
+  const launchOptions = { ...(baseOptions || {}) };
+  if (!launchOptions.headless && String(browserName || "").toLowerCase() === "chromium") {
+    launchOptions.args = mergeBrowserArgs(launchOptions.args, VISIBLE_CHROMIUM_WINDOW_ARGS);
+  }
+  return launchOptions;
 }
 
 function log(message, meta) {

@@ -6,6 +6,18 @@ const { loadConfig } = require('../config');
 const SUPPORTED_RUN_MODES = new Set(['debug-ui', 'capture']);
 const KNOWN_RUN_MODES = new Set(['debug-ui', 'capture', 'hybrid', 'fast-api']);
 const AVAILABLE_RUN_MODES_MESSAGE = 'Available now: debug-ui, capture. Planned but disabled: hybrid, fast-api.';
+const VISIBLE_CHROMIUM_WINDOW_ARGS = ['--start-maximized', '--window-position=0,0'];
+
+function mergeBrowserArgs(currentArgs, requiredArgs) {
+  const args = Array.isArray(currentArgs) ? currentArgs : [];
+  const merged = [...args];
+  for (const arg of requiredArgs) {
+    if (!merged.includes(arg)) {
+      merged.push(arg);
+    }
+  }
+  return merged;
+}
 
 function normalizeRunMode(value) {
   const mode = String(value || '').trim().toLowerCase();
@@ -41,12 +53,14 @@ async function launchPage(browserConfig, targetUrl, logger) {
     slowMo: browserConfig.slowMo || 0,
     ...(browserConfig.launchOptions || {})
   };
+  if (!launchOptions.headless) {
+    launchOptions.args = mergeBrowserArgs(launchOptions.args, VISIBLE_CHROMIUM_WINDOW_ARGS);
+    launchOptions.viewport = null;
+  }
 
   const context = await chromium.launchPersistentContext(userDataDir, launchOptions);
 
   const page = context.pages()[0] || (await context.newPage());
-  
-  await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
   logger(`Opened ${targetUrl}`);
 
