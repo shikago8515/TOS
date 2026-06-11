@@ -1,6 +1,7 @@
 const UNRELEASED_BULK_EXCLUDED_UPDATE_HEADERS = new Set([
   "itemkey",
   "pono",
+  "workingno",
   "hashcode",
   "linehashcode",
   "mainitemid",
@@ -696,9 +697,11 @@ async function applyShipping2UnreleasedBulkPoFilter(page, poNumbers) {
   await clickUnreleasedBulkPoNoFilter(page);
   await fillUnreleasedBulkPoFilterTextarea(page, normalizedPoNumbers);
   await clickUnreleasedBulkQueryButton(page);
-  await waitForUnreleasedBulkFilteredRows(page, normalizedPoNumbers);
+  const filterResult = await waitForUnreleasedBulkFilteredRows(page, normalizedPoNumbers);
   log("Unreleased Bulk PO filter applied.", {
     poCount: normalizedPoNumbers.length,
+    foundCount: filterResult?.foundCount ?? 0,
+    missingPoNumbers: filterResult?.missingPoNumbers || [],
   });
 }
 
@@ -737,6 +740,15 @@ async function fillUnreleasedBulkPoFilterTextarea(page, poNumbers) {
     }
 
     const value = values.map((item) => String(item || "").trim()).filter(Boolean).join("\n");
+    const setNativeValue = (element, nextValue) => {
+      const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value");
+      if (descriptor?.set) {
+        descriptor.set.call(element, nextValue);
+      } else {
+        element.value = nextValue;
+      }
+      element.setAttribute("value", nextValue);
+    };
     textarea.focus();
     if (typeof window.worksheet?.changeActiveTextField === "function") {
       try {
@@ -745,12 +757,27 @@ async function fillUnreleasedBulkPoFilterTextarea(page, poNumbers) {
         // The inline focus handler is best-effort; the value assignment below is authoritative.
       }
     }
-    textarea.value = "";
+    if (typeof window.getWorksheet === "function") {
+      try {
+        window.getWorksheet()?.changeActiveTextField?.(textarea);
+      } catch {
+        // Best-effort only.
+      }
+    }
+    setNativeValue(textarea, "");
     textarea.dispatchEvent(new Event("input", { bubbles: true, cancelable: true }));
-    textarea.value = value;
+    setNativeValue(textarea, value);
+    textarea.dispatchEvent(new FocusEvent("focus", { bubbles: true, cancelable: true }));
     for (const type of ["input", "change", "keyup"]) {
       textarea.dispatchEvent(new Event(type, { bubbles: true, cancelable: true }));
     }
+    textarea.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Enter",
+      code: "Enter",
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    }));
 
     return {
       ok: true,
@@ -808,7 +835,7 @@ async function clickUnreleasedBulkQueryButton(page) {
 }
 
 async function clickUnreleasedBulkPoNoFilter(page) {
-  if (await isUnreleasedBulkFilterTextareaVisible(page, 300)) {
+  if (await isUnreleasedBulkFilterTextareaVisible(page, 80)) {
     return;
   }
 
@@ -817,6 +844,12 @@ async function clickUnreleasedBulkPoNoFilter(page) {
     .first();
   await poNoHeader.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
   await poNoHeader.scrollIntoViewIfNeeded().catch(() => {});
+
+  const domClicked = await dispatchUnreleasedBulkPoNoFilterClick(page, poNoHeader);
+  if (domClicked && await isUnreleasedBulkFilterTextareaVisible(page, 260)) {
+    log("Unreleased Bulk PO No filter opened.", { target: "dom-dispatch-fast" });
+    return;
+  }
 
   const clickTargets = [
     {
@@ -850,13 +883,23 @@ async function clickUnreleasedBulkPoNoFilter(page) {
     if (!clicked) {
       continue;
     }
-    if (await isUnreleasedBulkFilterTextareaVisible(page, 900)) {
+    if (await isUnreleasedBulkFilterTextareaVisible(page, 260)) {
       log("Unreleased Bulk PO No filter opened.", { target: target.label });
       return;
     }
   }
 
-  await poNoHeader.evaluate((header) => {
+  await dispatchUnreleasedBulkPoNoFilterClick(page, poNoHeader);
+  if (await isUnreleasedBulkFilterTextareaVisible(page, 450)) {
+    log("Unreleased Bulk PO No filter opened.", { target: "dom-dispatch" });
+    return;
+  }
+
+  throw new Error("Unreleased Bulk PO No filter input did not open after clicking the PO No header filter.");
+}
+
+async function dispatchUnreleasedBulkPoNoFilterClick(page, poNoHeader) {
+  return poNoHeader.evaluate((header) => {
     const target = header.querySelector(".ows-header-has-active-filter span")
       || header.querySelector(".ows-header-has-active-filter svg.ows-clickable-svg-icon")
       || header.querySelector(".ui_app_worksheet_HeaderCellFilterSwitch-layout span")
@@ -864,7 +907,7 @@ async function clickUnreleasedBulkPoNoFilter(page) {
       || header.querySelector(".ui_app_worksheet_HeaderCellFilterSwitch-layout")
       || header.querySelector("svg.ows-clickable-svg-icon");
     if (!target) {
-      return;
+      return false;
     }
     for (const type of ["mouseover", "mousedown", "mouseup", "click"]) {
       target.dispatchEvent(new MouseEvent(type, {
@@ -876,18 +919,13 @@ async function clickUnreleasedBulkPoNoFilter(page) {
     if (typeof target.click === "function") {
       target.click();
     }
-  });
-  if (await isUnreleasedBulkFilterTextareaVisible(page, 1200)) {
-    log("Unreleased Bulk PO No filter opened.", { target: "dom-dispatch" });
-    return;
-  }
-
-  throw new Error("Unreleased Bulk PO No filter input did not open after clicking the PO No header filter.");
+    return true;
+  }).catch(() => false);
 }
 
 async function clickUnreleasedBulkFilterTarget(page, locator, label) {
   const attached = await locator
-    .waitFor({ state: "attached", timeout: 1000 })
+    .waitFor({ state: "attached", timeout: 120 })
     .then(() => true)
     .catch(() => false);
   if (!attached) {
@@ -897,11 +935,11 @@ async function clickUnreleasedBulkFilterTarget(page, locator, label) {
   const box = await locator.boundingBox().catch(() => null);
   if (box) {
     await page.mouse.click(box.x + (box.width / 2), box.y + (box.height / 2));
-    await page.waitForTimeout(150);
+    await page.waitForTimeout(40);
     return true;
   }
   await forceClickLocator(locator, label);
-  await page.waitForTimeout(150);
+  await page.waitForTimeout(40);
   return true;
 }
 
@@ -926,10 +964,11 @@ async function isUnreleasedBulkFilterTextareaVisible(page, timeoutMs = 300) {
     .catch(() => false);
 }
 
-async function waitForUnreleasedBulkFilteredRows(page, poNumbers, timeoutMs = config.navigationTimeoutMs) {
+async function waitForUnreleasedBulkFilteredRows(page, poNumbers, timeoutMs = Math.min(Number(config.navigationTimeoutMs || 10000), 10000)) {
   const expectedPoNumbers = poNumbers.map((poNo) => String(poNo || "").trim()).filter(Boolean);
   const startedAt = Date.now();
   let lastFoundCount = 0;
+  let lastFoundPoNumbers = [];
 
   while (Date.now() - startedAt < timeoutMs) {
     const visiblePoNumbers = await page.evaluate((targets) => {
@@ -937,13 +976,30 @@ async function waitForUnreleasedBulkFilteredRows(page, poNumbers, timeoutMs = co
       return targets.filter((poNo) => text.includes(poNo));
     }, expectedPoNumbers).catch(() => []);
     lastFoundCount = Array.isArray(visiblePoNumbers) ? visiblePoNumbers.length : 0;
+    lastFoundPoNumbers = Array.isArray(visiblePoNumbers) ? visiblePoNumbers : [];
     if (lastFoundCount >= expectedPoNumbers.length) {
-      return;
+      return {
+        foundCount: lastFoundCount,
+        foundPoNumbers: lastFoundPoNumbers,
+        missingPoNumbers: [],
+      };
+    }
+    if (lastFoundCount > 0 && Date.now() - startedAt > 1200) {
+      await page.waitForTimeout(350);
+      return {
+        foundCount: lastFoundCount,
+        foundPoNumbers: lastFoundPoNumbers,
+        missingPoNumbers: expectedPoNumbers.filter((poNo) => !lastFoundPoNumbers.includes(poNo)),
+      };
     }
     await page.waitForTimeout(250);
   }
 
-  throw new Error(`Unreleased Bulk Query did not show all requested PO No values. Found ${lastFoundCount}/${expectedPoNumbers.length}.`);
+  return {
+    foundCount: lastFoundCount,
+    foundPoNumbers: lastFoundPoNumbers,
+    missingPoNumbers: expectedPoNumbers.filter((poNo) => !lastFoundPoNumbers.includes(poNo)),
+  };
 }
 
 async function updateShipping2UnreleasedBulkRows(page, unreleasedBulkRows) {
@@ -958,7 +1014,7 @@ async function updateShipping2UnreleasedBulkRows(page, unreleasedBulkRows) {
       if (plan.cells.length === 0) {
         throw new Error(`Unreleased Bulk row for PO No ${poNo} had no matched editable worksheet cells.`);
       }
-      const selectionResult = await selectUnreleasedBulkWorksheetRow(page, plan);
+      const selectionResult = await selectUnreleasedBulkWorksheetRowByPo(page, poNo);
       await page.waitForTimeout(250);
       plan = await markUnreleasedBulkRowEditTargets(page, row);
       if (Array.isArray(plan?.missingHeaders) && plan.missingHeaders.length > 0) {
@@ -992,7 +1048,11 @@ async function updateShipping2UnreleasedBulkRows(page, unreleasedBulkRows) {
             continue;
           }
           const cellLocator = page.locator(`[data-tos-unreleased-bulk-edit="${cell.token}"]`).first();
-          const editResult = await editUnreleasedBulkWorksheetCell(page, cellLocator, cell.value, cell.header);
+          const editResult = await editUnreleasedBulkWorksheetCell(page, cellLocator, cell.value, cell.header, {
+            poNo,
+            rowIndex: plan.rowIndex,
+            columnIndex: cell.columnIndex,
+          });
           cellResults.push({
             header: cell.header,
             ok: true,
@@ -1026,12 +1086,16 @@ async function updateShipping2UnreleasedBulkRows(page, unreleasedBulkRows) {
         verification,
       });
     } catch (error) {
+      const rawError = error instanceof Error ? error.message : String(error);
+      const friendlyError = /Unreleased Bulk row for PO No .* was not found in the worksheet grid/i.test(rawError)
+        ? `Unreleased Bulk 查询结果中未找到 PO ${poNo}，页面没有可勾选/可修改的行。`
+        : rawError;
       rowResults.push({
         poNo,
         ok: false,
         changedCellCount: 0,
-        failedCellCount: 0,
-        error: error instanceof Error ? error.message : String(error),
+        failedCellCount: 1,
+        error: friendlyError,
       });
     }
   }
@@ -1085,6 +1149,223 @@ async function verifyUnreleasedBulkRowValues(page, unreleasedBulkRow) {
     poNo,
     missingHeaders: [],
     cellResults,
+  };
+}
+
+async function selectUnreleasedBulkWorksheetRowByPo(page, poNo) {
+  const targetPoNo = String(poNo || "").trim();
+  if (!targetPoNo) {
+    throw new Error("Unreleased Bulk row is missing PO No.");
+  }
+
+  const result = await page.evaluate((targetPoNoInPage) => {
+    const cleanText = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
+    const normalizeHeader = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const visibleRect = (element) => {
+      if (!element) return null;
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      if (style.display === "none" || style.visibility === "hidden" || rect.width <= 0 || rect.height <= 0) {
+        return null;
+      }
+      return rect;
+    };
+    const headerLabel = (headerCell) => {
+      const fromTitle = cleanText(headerCell?.getAttribute?.("title") || "");
+      if (fromTitle) return fromTitle;
+      const headerText = headerCell?.querySelector?.(".ui_app_spreadsheet_HeaderText-layout");
+      return cleanText(headerText?.innerText || headerText?.textContent || headerCell?.innerText || headerCell?.textContent || "");
+    };
+    const elementCenterY = (element) => {
+      const rect = visibleRect(element)
+        || visibleRect(element?.closest?.(".ui_app_worksheet_WorksheetIndexCell-lineNumber"))
+        || visibleRect(element?.closest?.("span.checkbox"))
+        || visibleRect(element?.closest?.("label"));
+      if (!rect) return Number.NaN;
+      return rect.top + (rect.height / 2);
+    };
+
+    const headerCells = Array.from(document.querySelectorAll(".ui_app_spreadsheet_TitleHeaderCell-layout"));
+    const headerMap = new Map();
+    headerCells.forEach((cell, index) => {
+      const normalized = normalizeHeader(headerLabel(cell));
+      if (normalized && !headerMap.has(normalized)) {
+        headerMap.set(normalized, index);
+      }
+    });
+    const poColumnIndex = headerMap.get("pono");
+    if (poColumnIndex === undefined) {
+      return { ok: false, reason: "po-header-not-found" };
+    }
+
+    const dataRows = Array.from(document.querySelectorAll(".ui_app_spreadsheet_DataRow-layout"));
+    let matchedRow = null;
+    let matchedRowIndex = -1;
+    for (let rowIndex = 0; rowIndex < dataRows.length; rowIndex += 1) {
+      const row = dataRows[rowIndex];
+      const cells = Array.from(row.querySelectorAll(".ui_app_spreadsheet_DataCell-layout"));
+      const poCell = cells[poColumnIndex];
+      if (poCell && cleanText(poCell.textContent).includes(targetPoNoInPage)) {
+        matchedRow = row;
+        matchedRowIndex = rowIndex;
+        break;
+      }
+    }
+    if (!matchedRow) {
+      return { ok: false, reason: "row-not-found", poNo: targetPoNoInPage, dataRowCount: dataRows.length };
+    }
+
+    const rowRect = matchedRow.getBoundingClientRect();
+    const rowCenterY = rowRect.top + (rowRect.height / 2);
+    const candidates = Array.from(document.querySelectorAll(
+      '.ui_app_worksheet_WorksheetIndexCell-lineNumber input[type="checkbox"].cellfont.fieldEdit, input[type="checkbox"].cellfont.fieldEdit, span.checkbox input[type="checkbox"].fieldEdit',
+    )).filter((checkbox) => !checkbox.disabled);
+    const ranked = candidates
+      .map((item, index) => {
+        const centerY = elementCenterY(item);
+        return {
+          item,
+          index,
+          centerY,
+          distance: Number.isFinite(centerY) ? Math.abs(centerY - rowCenterY) : Number.POSITIVE_INFINITY,
+        };
+      })
+      .sort((left, right) => left.distance - right.distance);
+    const checkbox = ranked[0]?.item || candidates[matchedRowIndex] || null;
+
+    if (!checkbox) {
+      return {
+        ok: false,
+        reason: "checkbox-not-found",
+        poNo: targetPoNoInPage,
+        rowIndex: matchedRowIndex,
+        checkboxCount: candidates.length,
+      };
+    }
+
+    const checkboxShell = checkbox.closest("span.checkbox");
+    const label = checkboxShell?.querySelector?.("label");
+    const clickTarget = label
+      || checkboxShell
+      || checkbox
+      || checkbox.closest(".ui_app_worksheet_WorksheetIndexCell-lineNumber");
+    const token = `tos-unreleased-bulk-checkbox-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const clickToken = `tos-unreleased-bulk-checkbox-target-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    checkbox.setAttribute("data-tos-unreleased-bulk-row-checkbox", token);
+    clickTarget?.setAttribute?.("data-tos-unreleased-bulk-row-checkbox-target", clickToken);
+    return {
+      ok: true,
+      token,
+      clickToken,
+      poNo: targetPoNoInPage,
+      rowIndex: matchedRowIndex,
+      alreadyChecked: Boolean(checkbox.checked),
+      checkboxCount: candidates.length,
+      method: "po-row-line-number-checkbox",
+      lineNumberText: cleanText(clickTarget?.innerText || clickTarget?.textContent || ""),
+      distance: ranked[0]?.distance ?? null,
+    };
+  }, targetPoNo);
+
+  if (!result?.ok) {
+    throw new Error(`Unreleased Bulk row checkbox was not found for PO No ${targetPoNo}. ${JSON.stringify(result || {})}`);
+  }
+
+  const checkbox = page.locator(`[data-tos-unreleased-bulk-row-checkbox="${result.token}"]`).first();
+  if (!result.alreadyChecked) {
+    const clickTarget = page.locator(`[data-tos-unreleased-bulk-row-checkbox-target="${result.clickToken}"]`).first();
+    const clickLineCheckbox = typeof forceClickLocator === "function"
+      ? forceClickLocator(clickTarget, "Unreleased Bulk row line checkbox")
+      : clickTarget.click({ force: true });
+    await clickLineCheckbox.catch(async () => {
+      await clickTarget.click({ force: true }).catch(async () => {
+        await checkbox.click({ force: true });
+      });
+    });
+    await page.waitForTimeout(180);
+  }
+
+  let checkedAfterClick = await page.evaluate((token) => {
+    const checkboxElement = document.querySelector(`[data-tos-unreleased-bulk-row-checkbox="${token}"]`);
+    return Boolean(checkboxElement?.checked);
+  }, result.token).catch(() => false);
+
+  if (!checkedAfterClick && !result.alreadyChecked) {
+    checkedAfterClick = await page.evaluate(({ token, clickToken }) => {
+      const checkboxElement = document.querySelector(`[data-tos-unreleased-bulk-row-checkbox="${token}"]`);
+      const clickElement = document.querySelector(`[data-tos-unreleased-bulk-row-checkbox-target="${clickToken}"]`)
+        || checkboxElement?.closest?.("span.checkbox")
+        || checkboxElement;
+      const fireMouse = (element, type) => {
+        element?.dispatchEvent?.(new MouseEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+        }));
+      };
+      const fire = (element, type) => {
+        element?.dispatchEvent?.(new Event(type, {
+          bubbles: true,
+          cancelable: true,
+        }));
+      };
+
+      for (const type of ["mouseover", "mousedown", "mouseup", "click"]) {
+        fireMouse(clickElement, type);
+      }
+      if (checkboxElement && !checkboxElement.checked) {
+        checkboxElement.click?.();
+      }
+      if (checkboxElement && !checkboxElement.checked) {
+        checkboxElement.checked = true;
+      }
+      fire(checkboxElement, "input");
+      fire(checkboxElement, "change");
+      fire(checkboxElement, "blur");
+      return Boolean(checkboxElement?.checked);
+    }, {
+      token: result.token,
+      clickToken: result.clickToken,
+    }).catch(() => false);
+    await page.waitForTimeout(180);
+  }
+
+  if (!checkedAfterClick) {
+    await checkbox.check({ force: true }).catch(async () => {
+      if (typeof forceClickLocator === "function") {
+        await forceClickLocator(checkbox, "Unreleased Bulk row checkbox fallback");
+        return;
+      }
+      await checkbox.click({ force: true });
+    });
+    await page.waitForTimeout(180);
+  }
+
+  const checked = await page.waitForFunction((token) => {
+    const checkboxElement = document.querySelector(`[data-tos-unreleased-bulk-row-checkbox="${token}"]`);
+    return Boolean(checkboxElement?.checked);
+  }, result.token, {
+    timeout: 1500,
+    polling: 100,
+  }).then(() => true).catch(() => false);
+
+  if (!checked) {
+    throw new Error(`Unreleased Bulk row checkbox did not become checked for PO No ${targetPoNo}.`);
+  }
+
+  log("Selected Unreleased Bulk worksheet row.", {
+    poNo: targetPoNo,
+    rowIndex: result.rowIndex,
+    method: result.method,
+    lineNumberText: result.lineNumberText,
+  });
+
+  return {
+    ok: true,
+    poNo: targetPoNo,
+    method: result.method,
+    rowIndex: result.rowIndex,
+    alreadyChecked: Boolean(result.alreadyChecked),
   };
 }
 
@@ -1437,7 +1718,7 @@ function isUnreleasedBulkSupplierConfirmedHeader(header) {
   return normalizeHeaderName(header) === "supplierconfirmed";
 }
 
-async function editUnreleasedBulkBooleanCell(page, cellLocator, value, header) {
+async function editUnreleasedBulkBooleanCell(page, cellLocator, value, header, metadata = {}) {
   const target = await cellLocator.evaluate((cell, payload) => {
     const normalizedValue = String(payload?.value || "").replace(/\s+/g, " ").trim().toLowerCase();
     const targetBool = /^(yes|y|true|1|checked)$/i.test(normalizedValue)
@@ -1476,7 +1757,8 @@ async function editUnreleasedBulkBooleanCell(page, cellLocator, value, header) {
       cellToken,
       buttonToken,
       expected: targetBool ? "true" : "false",
-      alreadySelected: String(hiddenValue.value || "").toLowerCase() === (targetBool ? "true" : "false"),
+      alreadySelected: String(hiddenValue.value || "").toLowerCase() === (targetBool ? "true" : "false")
+        || button.classList.contains("is-selected"),
     };
   }, {
     value: String(value ?? ""),
@@ -1489,46 +1771,30 @@ async function editUnreleasedBulkBooleanCell(page, cellLocator, value, header) {
   if (!target.alreadySelected) {
     const buttonLocator = page.locator(`[data-tos-unreleased-bulk-boolean-button="${target.buttonToken}"]`).first();
     await forceClickLocator(buttonLocator, `Unreleased Bulk ${header} ${target.expected}`);
-    await page.waitForTimeout(120);
   }
 
-  const selected = await page.evaluate(({ cellToken, expected }) => {
+  const selected = await page.waitForFunction(({ cellToken, expected }) => {
     const cell = document.querySelector(`[data-tos-unreleased-bulk-boolean-cell="${cellToken}"]`);
     if (!cell) {
-      return { ok: false, reason: "cell-not-found-after-click" };
+      return false;
     }
     const expectedBool = expected === "true";
     const hiddenValue = cell.querySelector('input[type="hidden"][name="value"]');
     const trueButton = cell.querySelector(".true-toggle-button");
     const falseButton = cell.querySelector(".false-toggle-button");
     const selectedButton = expectedBool ? trueButton : falseButton;
-    const otherButton = expectedBool ? falseButton : trueButton;
-
-    if (String(hiddenValue?.value || "").toLowerCase() !== expected) {
-      if (hiddenValue) {
-        hiddenValue.value = expected;
-        hiddenValue.dispatchEvent(new Event("input", { bubbles: true }));
-        hiddenValue.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-      selectedButton?.classList.add("is-selected");
-      otherButton?.classList.remove("is-selected");
-      selectedButton?.dispatchEvent(new MouseEvent("click", {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-      }));
-    }
-
-    return {
-      ok: String(hiddenValue?.value || "").toLowerCase() === expected
-        || selectedButton?.classList.contains("is-selected"),
-      selectedValue: String(hiddenValue?.value || ""),
-      selectedClass: Boolean(selectedButton?.classList.contains("is-selected")),
-    };
+    return String(hiddenValue?.value || "").toLowerCase() === expected
+      || selectedButton?.classList.contains("is-selected");
   }, {
     cellToken: target.cellToken,
     expected: target.expected,
-  });
+  }, {
+    timeout: 1200,
+    polling: 100,
+  }).then(() => ({
+    ok: true,
+    method: target.alreadySelected ? "already-selected" : "click",
+  })).catch(() => applyUnreleasedBulkBooleanFallback(page, target, metadata));
 
   if (!selected?.ok) {
     throw new Error(`Unreleased Bulk boolean selection did not stick for "${String(header || "").trim()}": ${JSON.stringify(selected || {})}`);
@@ -1540,12 +1806,90 @@ async function editUnreleasedBulkBooleanCell(page, cellLocator, value, header) {
   };
 }
 
-async function editUnreleasedBulkWorksheetCell(page, cellLocator, value, header = "") {
+async function applyUnreleasedBulkBooleanFallback(page, target, metadata = {}) {
+  return page.evaluate(({ cellToken, expected, rowIndex, columnIndex }) => {
+    const dispatch = (element, eventName) => {
+      element?.dispatchEvent?.(new Event(eventName, {
+        bubbles: true,
+        cancelable: true,
+      }));
+    };
+    const setNativeValue = (element, value) => {
+      if (!element) {
+        return;
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value");
+      if (descriptor?.set) {
+        descriptor.set.call(element, value);
+      } else {
+        element.value = value;
+      }
+      element.setAttribute("value", value);
+      dispatch(element, "input");
+      dispatch(element, "change");
+      dispatch(element, "blur");
+    };
+
+    const resolveCellByPosition = () => {
+      if (!Number.isInteger(rowIndex) || !Number.isInteger(columnIndex) || rowIndex < 0 || columnIndex < 0) {
+        return null;
+      }
+      const row = Array.from(document.querySelectorAll(".ui_app_spreadsheet_DataRow-layout"))[rowIndex];
+      return Array.from(row?.querySelectorAll?.(".ui_app_spreadsheet_DataCell-layout") || [])[columnIndex] || null;
+    };
+
+    const cell = document.querySelector(`[data-tos-unreleased-bulk-boolean-cell="${cellToken}"]`)
+      || resolveCellByPosition();
+    if (!cell) {
+      return { ok: false, reason: "cell-not-found-after-click" };
+    }
+
+    const expectedBool = expected === "true";
+    const hiddenValue = cell.querySelector('input[type="hidden"][name="value"]');
+    const trueButton = cell.querySelector(".true-toggle-button");
+    const falseButton = cell.querySelector(".false-toggle-button");
+    const selectedButton = expectedBool ? trueButton : falseButton;
+    const otherButton = expectedBool ? falseButton : trueButton;
+
+    if (!selectedButton || !hiddenValue) {
+      return {
+        ok: false,
+        reason: "boolean-control-missing-after-click",
+        hasSelectedButton: Boolean(selectedButton),
+        hasHiddenValue: Boolean(hiddenValue),
+      };
+    }
+
+    setNativeValue(hiddenValue, expected);
+    selectedButton.classList.add("is-selected");
+    otherButton?.classList.remove("is-selected");
+    dispatch(selectedButton, "input");
+    dispatch(selectedButton, "change");
+    dispatch(cell, "input");
+    dispatch(cell, "change");
+    dispatch(cell, "blur");
+
+    return {
+      ok: String(hiddenValue.value || "").toLowerCase() === expected
+        || selectedButton.classList.contains("is-selected"),
+      method: "dom-fallback",
+      selectedValue: String(hiddenValue.value || ""),
+      selectedClass: Boolean(selectedButton.classList.contains("is-selected")),
+    };
+  }, {
+    cellToken: target.cellToken,
+    expected: target.expected,
+    rowIndex: Number(metadata?.rowIndex),
+    columnIndex: Number(metadata?.columnIndex),
+  });
+}
+
+async function editUnreleasedBulkWorksheetCell(page, cellLocator, value, header = "", metadata = {}) {
   const normalizedValue = String(value ?? "");
   await cellLocator.scrollIntoViewIfNeeded().catch(() => {});
 
   if (isUnreleasedBulkSupplierConfirmedHeader(header)) {
-    return editUnreleasedBulkBooleanCell(page, cellLocator, normalizedValue, header);
+    return editUnreleasedBulkBooleanCell(page, cellLocator, normalizedValue, header, metadata);
   }
 
   const dropdownTarget = await cellLocator.evaluate((cell, payload) => {
@@ -1577,11 +1921,21 @@ async function editUnreleasedBulkWorksheetCell(page, cellLocator, value, header 
       };
     }
 
+    const button = cell.querySelector('input[type="button"][value="\u25bc"], input[type="button"]');
     const cellToken = `tos-rb-dropdown-cell-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const selectToken = `tos-rb-dropdown-select-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const buttonToken = `tos-rb-dropdown-button-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     cell.setAttribute("data-tos-unreleased-bulk-dropdown-cell", cellToken);
+    select.setAttribute("data-tos-unreleased-bulk-dropdown-select", selectToken);
+    if (button) {
+      button.setAttribute("data-tos-unreleased-bulk-dropdown-button", buttonToken);
+    }
     return {
       ok: true,
       cellToken,
+      selectToken,
+      buttonToken,
+      hasButton: Boolean(button),
       optionValue: matchingOption.value,
       optionText: String(matchingOption.textContent || "").replace(/\s+/g, " ").trim(),
     };
@@ -1591,7 +1945,7 @@ async function editUnreleasedBulkWorksheetCell(page, cellLocator, value, header 
   });
 
   if (dropdownTarget?.ok) {
-    return editUnreleasedBulkDropdownCellWithMenu(page, dropdownTarget, normalizedValue, header);
+    return editUnreleasedBulkDropdownCellWithMenu(page, dropdownTarget, normalizedValue, header, metadata);
   }
 
   const inputResult = await cellLocator.evaluate((cell, payload) => {
@@ -1705,22 +2059,57 @@ async function editUnreleasedBulkWorksheetCell(page, cellLocator, value, header 
   throw new Error(`Unreleased Bulk worksheet cell "${String(header || "").trim()}" did not expose an editable control.`);
 }
 
-async function editUnreleasedBulkDropdownCellWithNativeSelect(page, dropdownTarget, value, header) {
-  const selected = await page.evaluate(({ cellToken, optionValue, optionText, nextValue }) => {
-    const normalize = (item) => String(item || "").replace(/\s+/g, " ").trim().toLowerCase();
+async function editUnreleasedBulkDropdownCellWithNativeSelect(page, dropdownTarget, value, header, metadata = {}) {
+  if (dropdownTarget?.hasButton) {
+    const button = page.locator(`[data-tos-unreleased-bulk-dropdown-button="${dropdownTarget.buttonToken}"]`).first();
+    if (typeof forceClickLocator === "function") {
+      await forceClickLocator(button, `Unreleased Bulk ${header} dropdown`);
+    } else {
+      await button.click({ force: true });
+    }
+    await page.waitForTimeout(120);
+  }
+
+  const selectLocator = page.locator(`[data-tos-unreleased-bulk-dropdown-select="${dropdownTarget.selectToken}"]`).first();
+  await selectLocator.selectOption({ value: dropdownTarget.optionValue }).catch(async () => {
+    await selectLocator.evaluate((element, optionValue) => {
+      element.value = optionValue;
+      element.dispatchEvent(new Event("input", { bubbles: true, cancelable: true }));
+      element.dispatchEvent(new Event("change", { bubbles: true, cancelable: true }));
+    }, dropdownTarget.optionValue);
+  });
+
+  const selected = await page.evaluate(({ cellToken, selectToken, optionValue, optionText, nextValue, rowIndex, columnIndex }) => {
+    const clean = (item) => String(item || "").replace(/\s+/g, " ").trim();
+    const normalize = (item) => clean(item).toLowerCase();
     const normalizeCompact = (item) => normalize(item).replace(/[^a-z0-9]/g, "");
     const fire = (element, type) => {
-      element.dispatchEvent(new Event(type, {
+      element?.dispatchEvent?.(new Event(type, {
         bubbles: true,
         cancelable: true,
       }));
     };
     const fireMouse = (element, type) => {
-      element.dispatchEvent(new MouseEvent(type, {
+      element?.dispatchEvent?.(new MouseEvent(type, {
         bubbles: true,
         cancelable: true,
         view: window,
       }));
+    };
+    const setNativeValue = (element, newValue) => {
+      if (!element) {
+        return;
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value");
+      if (descriptor?.set) {
+        descriptor.set.call(element, newValue);
+      } else {
+        element.value = newValue;
+      }
+      element.setAttribute("value", newValue);
+      fire(element, "input");
+      fire(element, "change");
+      fire(element, "blur");
     };
     const closeDropdownCell = (targetCell) => {
       Array.from(targetCell.querySelectorAll(".ui_app_worksheet_MilestoneDropdownDataCell-dropdownDiv"))
@@ -1729,28 +2118,22 @@ async function editUnreleasedBulkDropdownCellWithNativeSelect(page, dropdownTarg
           dropdownDiv.setAttribute("aria-hidden", "true");
         });
       Array.from(targetCell.querySelectorAll("select, input.typeText, input[type='button']"))
-        .forEach((element) => {
-          element.blur?.();
-        });
+        .forEach((element) => element.blur?.());
     };
 
-    const cell = document.querySelector(`[data-tos-unreleased-bulk-dropdown-cell="${cellToken}"]`);
-    if (!cell) {
-      return { ok: false, reason: "cell-not-found" };
-    }
-
-    const select = cell.querySelector("select");
-    if (!select) {
-      return { ok: false, reason: "select-not-found" };
-    }
-
-    const targetText = normalize(nextValue);
-    const targetCompact = normalizeCompact(nextValue);
-    const targetCode = targetText.match(/\b(\d{4})\b/)?.[1] || normalize(optionValue);
-    const expectedOptionValue = normalize(optionValue);
-    const expectedOptionText = normalize(optionText);
-    const options = Array.from(select.options);
-    const option = options.find((item) => {
+    const resolveCellByPosition = () => {
+      if (!Number.isInteger(rowIndex) || !Number.isInteger(columnIndex) || rowIndex < 0 || columnIndex < 0) {
+        return null;
+      }
+      const row = Array.from(document.querySelectorAll(".ui_app_spreadsheet_DataRow-layout"))[rowIndex];
+      return Array.from(row?.querySelectorAll?.(".ui_app_spreadsheet_DataCell-layout") || [])[columnIndex] || null;
+    };
+    const optionMatches = (item) => {
+      const targetText = normalize(nextValue);
+      const targetCompact = normalizeCompact(nextValue);
+      const targetCode = targetText.match(/\b(\d{4})\b/)?.[1] || normalize(optionValue);
+      const expectedOptionValue = normalize(optionValue);
+      const expectedOptionText = normalize(optionText);
       const valueText = normalize(item.value);
       const text = normalize(item.textContent);
       const compactText = normalizeCompact(item.textContent);
@@ -1762,7 +2145,44 @@ async function editUnreleasedBulkDropdownCellWithNativeSelect(page, dropdownTarg
         || (targetText && text.includes(targetText))
         || (targetCompact && compactText.includes(targetCompact))
         || (compactText && targetCompact.includes(compactText));
-    });
+    };
+
+    const cell = document.querySelector(`[data-tos-unreleased-bulk-dropdown-cell="${cellToken}"]`)
+      || resolveCellByPosition();
+    if (!cell) {
+      return { ok: false, reason: "cell-not-found" };
+    }
+    let select = cell.querySelector("select")
+      || document.querySelector(`[data-tos-unreleased-bulk-dropdown-select="${selectToken}"]`);
+    if (!select) {
+      select = Array.from(document.querySelectorAll(".ui_app_worksheet_MilestoneDropdownDataCell-dropdownDiv select, select"))
+        .find((item) => Array.from(item.options || []).some(optionMatches)) || null;
+    }
+    if (!select) {
+      const currentText = clean(cell.textContent || "");
+      const expectedCode = clean(nextValue).match(/\b(\d{4})\b/)?.[1] || clean(optionValue);
+      const currentMatches = Boolean(
+        (expectedCode && normalize(currentText).includes(normalize(expectedCode)))
+        || normalize(currentText).includes(normalize(optionText))
+        || normalize(currentText).includes(normalize(nextValue)),
+      );
+      return {
+        ok: currentMatches,
+        reason: currentMatches ? "display-text-already-matches" : "select-not-found",
+        selectedValue: clean(optionValue),
+        selectedText: clean(optionText || nextValue),
+        currentValue: "",
+        displayText: currentText,
+      };
+    }
+
+    const targetText = normalize(nextValue);
+    const targetCompact = normalizeCompact(nextValue);
+    const targetCode = targetText.match(/\b(\d{4})\b/)?.[1] || normalize(optionValue);
+    const expectedOptionValue = normalize(optionValue);
+    const expectedOptionText = normalize(optionText);
+    const options = Array.from(select.options);
+    const option = options.find(optionMatches);
 
     if (!option) {
       return {
@@ -1771,30 +2191,25 @@ async function editUnreleasedBulkDropdownCellWithNativeSelect(page, dropdownTarg
         optionCount: options.length,
         optionsPreview: options.slice(0, 10).map((item) => ({
           value: item.value,
-          text: String(item.textContent || "").replace(/\s+/g, " ").trim(),
+          text: clean(item.textContent || ""),
         })),
       };
     }
 
-    const selectedText = String(option.textContent || "").replace(/\s+/g, " ").trim();
-    const selectedValue = String(option.value || "").trim();
+    const selectedText = clean(option.textContent || "");
+    const selectedValue = clean(option.value || "");
     option.selected = true;
     select.value = selectedValue;
     select.selectedIndex = option.index;
 
     const hiddenInput = cell.querySelector('input[type="hidden"]');
     if (hiddenInput) {
-      hiddenInput.value = selectedValue;
-      fire(hiddenInput, "input");
-      fire(hiddenInput, "change");
+      setNativeValue(hiddenInput, selectedValue);
     }
 
-    const displayInput = cell.querySelector('input.typeText, input:not([type="hidden"]):not([type="button"])');
+    const displayInput = cell.querySelector('input.typeText, input:not([type="hidden"]):not([type="button"]):not([type="checkbox"]):not([type="radio"])');
     if (displayInput) {
-      displayInput.value = selectedText;
-      fire(displayInput, "input");
-      fire(displayInput, "change");
-      fire(displayInput, "blur");
+      setNativeValue(displayInput, selectedText);
     }
 
     fireMouse(select, "mousedown");
@@ -1805,8 +2220,8 @@ async function editUnreleasedBulkDropdownCellWithNativeSelect(page, dropdownTarg
     fire(select, "change");
     fire(select, "blur");
 
-    const displayText = String(displayInput?.value || cell.textContent || "").replace(/\s+/g, " ").trim();
-    const currentValue = String(select.value || hiddenInput?.value || "").trim();
+    const displayText = clean(displayInput?.value || cell.textContent || "");
+    const currentValue = clean(select.value || hiddenInput?.value || "");
     const expectedCode = normalize(selectedValue || selectedText).match(/\b(\d{4})\b/)?.[1] || normalize(selectedValue);
 
     closeDropdownCell(cell);
@@ -1823,24 +2238,27 @@ async function editUnreleasedBulkDropdownCellWithNativeSelect(page, dropdownTarg
     };
   }, {
     cellToken: dropdownTarget.cellToken,
+    selectToken: dropdownTarget.selectToken,
     optionValue: dropdownTarget.optionValue,
     optionText: dropdownTarget.optionText,
     nextValue: String(value ?? ""),
+    rowIndex: Number(metadata?.rowIndex),
+    columnIndex: Number(metadata?.columnIndex),
   });
 
   if (!selected?.ok) {
-    throw new Error(`Unreleased Bulk dropdown native select failed for "${String(header || "").trim()}": ${JSON.stringify(selected || {})}`);
+    throw new Error(`Unreleased Bulk dropdown select click failed for "${String(header || "").trim()}": ${JSON.stringify(selected || {})}`);
   }
 
   return {
-    method: "cell-native-select",
+    method: "cell-dropdown-select-click",
     selectedValue: selected.selectedValue,
     selectedText: selected.selectedText,
   };
 }
 
-async function editUnreleasedBulkDropdownCellWithMenu(page, dropdownTarget, value, header) {
-  return editUnreleasedBulkDropdownCellWithNativeSelect(page, dropdownTarget, value, header);
+async function editUnreleasedBulkDropdownCellWithMenu(page, dropdownTarget, value, header, metadata = {}) {
+  return editUnreleasedBulkDropdownCellWithNativeSelect(page, dropdownTarget, value, header, metadata);
 }
 
 async function closeUnreleasedBulkOpenDropdowns(page) {
