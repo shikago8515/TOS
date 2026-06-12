@@ -125,6 +125,60 @@
       </main>
     </section>
 
+    <transition name="release-notice-fade">
+      <div
+        v-if="releaseNotice.visible && releaseNotice.releaseNotes"
+        class="release-notice-backdrop"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="release-notice-title"
+        @click="dismissReleaseNotice"
+      >
+        <section class="release-notice-card" @click.stop>
+          <header class="release-notice-head">
+            <div class="release-notice-mark">
+              <AppIcon name="sparkles" />
+            </div>
+            <div class="release-notice-title-block">
+              <p class="release-notice-kicker">{{ releaseNoticeVersionLabel }}</p>
+              <h2 id="release-notice-title">{{ releaseNoticeTitle }}</h2>
+            </div>
+            <button
+              class="release-notice-close"
+              type="button"
+              :aria-label="releaseNoticeCloseLabel"
+              @click="dismissReleaseNotice"
+            >
+              ×
+            </button>
+          </header>
+
+          <div class="release-notice-groups">
+            <section
+              v-for="group in releaseNoticeGroups"
+              :key="group.key"
+              class="release-notice-group"
+              :class="`release-notice-group--${group.key}`"
+            >
+              <div class="release-notice-group-title">
+                <AppIcon :name="group.icon" />
+                <strong>{{ group.title }}</strong>
+              </div>
+              <ul>
+                <li v-for="item in group.items" :key="item">{{ text(item) }}</li>
+              </ul>
+            </section>
+          </div>
+
+          <footer class="release-notice-actions">
+            <button class="release-notice-primary" type="button" @click="dismissReleaseNotice">
+              {{ releaseNoticeConfirmLabel }}
+            </button>
+          </footer>
+        </section>
+      </div>
+    </transition>
+
     <transition name="toast-slide">
       <div v-if="toast.visible" class="toast-overlay" @click="toast.visible = false">
         <div class="toast-card" :class="`toast-${toast.type}`">
@@ -157,6 +211,11 @@ import {
 } from '../domain/moduleCatalog'
 import { useAppLanguage } from '../shared/i18n/appLanguage'
 import AppIcon from '../shared/ui/AppIcon.vue'
+import {
+  buildReleaseNoticeStateFromStorage,
+  markReleaseNoticeSeen,
+  type ReleaseNoticeState,
+} from '../shared/version/releaseNotice'
 
 interface SidebarCategory {
   id: string
@@ -177,7 +236,7 @@ const isSidebarHidden = ref(false)
 const isMobile = ref(false)
 const expandedNavGroups = ref<Set<TosModuleGroup>>(new Set(['jessica', 'sophia', 'jane', 'eric', 'it', 'finance-excel']))
 const expandedCategories = ref<Set<string>>(new Set())
-const { isEnglish, t } = useAppLanguage()
+const { isEnglish, t, text } = useAppLanguage()
 
 interface ToastState {
   visible: boolean
@@ -190,10 +249,38 @@ interface ToastState {
 const toast = ref<ToastState>({ visible: false, type: 'info', icon: 'info', title: '', message: '' })
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
+const releaseNotice = ref<ReleaseNoticeState>({ visible: false, releaseNotes: null })
+
+const releaseNoticeTitle = computed(() => (isEnglish.value ? "What's New" : '本次更新内容'))
+const releaseNoticeCloseLabel = computed(() => (isEnglish.value ? 'Close release notes' : '关闭更新提示'))
+const releaseNoticeConfirmLabel = computed(() => (isEnglish.value ? 'Got it' : '我知道了'))
+const releaseNoticeVersionLabel = computed(() => {
+  const version = releaseNotice.value.releaseNotes?.version?.trim().replace(/^v/i, '')
+  return version ? `V${version}` : ''
+})
+
+const releaseNoticeGroups = computed(() => {
+  const notes = releaseNotice.value.releaseNotes
+  if (!notes) {
+    return []
+  }
+
+  return [
+    { key: 'added', title: text('新增'), icon: 'sparkles', items: notes.added },
+    { key: 'improved', title: text('优化'), icon: 'activity', items: notes.improved },
+    { key: 'fixed', title: text('修复'), icon: 'check-circle', items: notes.fixed },
+  ].filter((group) => group.items.length > 0)
+})
+
 function showToast(type: ToastState['type'], icon: string, title: string, message: string): void {
   if (toastTimer) clearTimeout(toastTimer)
   toast.value = { visible: true, type, icon, title, message }
   toastTimer = setTimeout(() => { toast.value.visible = false }, 4000)
+}
+
+function dismissReleaseNotice(): void {
+  markReleaseNoticeSeen(window.localStorage)
+  releaseNotice.value = { visible: false, releaseNotes: null }
 }
 
 const sidebarGroups = computed<SidebarGroup[]>(() =>
@@ -356,6 +443,7 @@ const handleResize = () => {
 
 onMounted(() => {
   handleResize()
+  releaseNotice.value = buildReleaseNoticeStateFromStorage()
   window.addEventListener('resize', handleResize)
 })
 
@@ -992,6 +1080,219 @@ watch(
 }
 
 /* Toast */
+.release-notice-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.38);
+  backdrop-filter: blur(6px);
+}
+
+.release-notice-card {
+  width: min(640px, 100%);
+  max-height: min(760px, calc(100vh - 40px));
+  overflow-y: auto;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow:
+    0 26px 80px rgba(15, 23, 42, 0.22),
+    0 8px 24px rgba(15, 23, 42, 0.12);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.release-notice-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 24px 18px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.release-notice-mark {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  color: #fff;
+  background: linear-gradient(135deg, #0d9488, #2563eb);
+  box-shadow: 0 12px 24px rgba(13, 148, 136, 0.22);
+  font-size: 20px;
+}
+
+.release-notice-title-block {
+  min-width: 0;
+}
+
+.release-notice-kicker {
+  margin: 0 0 4px;
+  color: #0d9488;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.release-notice-title-block h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.release-notice-close {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.release-notice-close:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.release-notice-groups {
+  display: grid;
+  gap: 14px;
+  padding: 20px 24px 8px;
+}
+
+.release-notice-group {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.release-notice-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.release-notice-group-title .app-icon {
+  color: #0d9488;
+  font-size: 16px;
+}
+
+.release-notice-group--improved .release-notice-group-title .app-icon {
+  color: #2563eb;
+}
+
+.release-notice-group--fixed .release-notice-group-title .app-icon {
+  color: #ea580c;
+}
+
+.release-notice-group ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0 0 0 18px;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.release-notice-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 18px 24px 24px;
+}
+
+.release-notice-primary {
+  min-width: 104px;
+  height: 38px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #0d9488, #0f766e);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(13, 148, 136, 0.24);
+}
+
+.release-notice-primary:hover {
+  background: linear-gradient(135deg, #0f766e, #115e59);
+}
+
+.release-notice-fade-enter-active,
+.release-notice-fade-leave-active {
+  transition: opacity 0.22s ease;
+}
+
+.release-notice-fade-enter-active .release-notice-card,
+.release-notice-fade-leave-active .release-notice-card {
+  transition: transform 0.22s ease, opacity 0.22s ease;
+}
+
+.release-notice-fade-enter-from,
+.release-notice-fade-leave-to {
+  opacity: 0;
+}
+
+.release-notice-fade-enter-from .release-notice-card,
+.release-notice-fade-leave-to .release-notice-card {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+}
+
+@media (max-width: 640px) {
+  .release-notice-backdrop {
+    align-items: flex-end;
+    padding: 12px;
+  }
+
+  .release-notice-card {
+    max-height: calc(100vh - 24px);
+    border-radius: 14px;
+  }
+
+  .release-notice-head {
+    padding: 18px 18px 14px;
+    gap: 12px;
+  }
+
+  .release-notice-mark {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+  }
+
+  .release-notice-title-block h2 {
+    font-size: 19px;
+  }
+
+  .release-notice-groups {
+    padding: 16px 18px 6px;
+  }
+
+  .release-notice-actions {
+    padding: 16px 18px 18px;
+  }
+
+  .release-notice-primary {
+    width: 100%;
+  }
+}
+
 .toast-overlay {
   position: fixed;
   top: 20px;

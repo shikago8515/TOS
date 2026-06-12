@@ -507,6 +507,16 @@ const staticTextTranslations: Record<string, string> = {
     'Fixed Eric Size_Check still outputting Status and non-formula differences.',
   '修复 Jane 成品表分组小计中 PO QTY 横向求和导致总数不正确的问题。':
     'Fixed Jane finished goods group subtotals summing PO QTY horizontally.',
+  'TMS 财务追加结果统计，显示追加行、重复跳过、相似已追加、Sales/Purchase 追加数量。':
+    'TMS Finance append results now show appended rows, skipped duplicates, similar appended rows, and Sales/Purchase appended counts.',
+  '内销对账表从“回填已有行”调整为向未清账追加缺失行，避免覆盖已有数据。':
+    'Internal reconciliation now appends missing rows to the open-item sheet instead of backfilling existing rows, avoiding accidental overwrites.',
+  'Work Sales 调整为“BULK Sales 导出表 + TURNOVER 目标表”的追加流程。':
+    'Work Sales now uses a BULK Sales export plus a TURNOVER target workbook for the append workflow.',
+  '文件上传支持拖拽追加多文件，拖拽状态更稳定。':
+    'File upload now supports drag-and-drop appending for multiple files with more stable drag state handling.',
+  '修复 TMS 财务追加时重复识别、格式复制、公式平移和小计范围更新不稳定的问题。':
+    'Fixed unstable duplicate detection, format copying, formula translation, and subtotal range updates in TMS Finance append processing.',
 }
 
 export function setAppLanguage(language: AppLanguage): void {
