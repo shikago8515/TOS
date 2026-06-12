@@ -199,7 +199,7 @@ class JaneModuleWorkbookTests(unittest.TestCase):
 
         self.assertEqual(["欧美单"], data_categories)
 
-    def test_process_reports_sorts_workbook_by_article_country_working(self) -> None:
+    def test_process_reports_preserves_source_working_and_article_order(self) -> None:
         rows = [
             self._tms_row("WN-B", "ART-2", "SOUTH AFRICA", "1003", 103, 10, 30),
             self._tms_row("WN-C", "ART-1", "CANADA", "1002", 102, 10, 20),
@@ -216,18 +216,18 @@ class JaneModuleWorkbookTests(unittest.TestCase):
             if current_working and row[2]:
                 summary_rows.append((current_working, row[2]))
 
-        self.assertEqual(["Summary", "WN-A", "WN-C", "WN-B"], wb.sheetnames)
+        self.assertEqual(["Summary", "WN-B", "WN-C", "WN-A"], wb.sheetnames)
         self.assertEqual(
             [
-                ("WN-A", "ART-1"),
-                ("WN-C", "ART-1"),
-                ("WN-B", "ART-1"),
                 ("WN-B", "ART-2"),
+                ("WN-B", "ART-1"),
+                ("WN-C", "ART-1"),
+                ("WN-A", "ART-1"),
             ],
             summary_rows,
         )
 
-    def test_working_filter_keeps_filtered_rows_sorted(self) -> None:
+    def test_working_filter_preserves_filtered_source_order(self) -> None:
         rows = [
             self._tms_row("WN-B", "ART-2", "SOUTH AFRICA", "1003", 103, 10, 30),
             self._tms_row("WN-C", "ART-1", "CANADA", "1002", 102, 10, 20),
@@ -236,7 +236,7 @@ class JaneModuleWorkbookTests(unittest.TestCase):
 
         wb = self._process_rows(rows, working_filters=["WN-B", "WN-A"])
 
-        self.assertEqual(["Summary", "WN-A", "WN-B"], wb.sheetnames)
+        self.assertEqual(["Summary", "WN-B", "WN-A"], wb.sheetnames)
 
 
 if __name__ == "__main__":

@@ -347,40 +347,11 @@ class JaneModule:
         df: pd.DataFrame,
         logs: Optional[List[str]] = None
     ) -> pd.DataFrame:
-        """按 Article、国家、Working 的业务顺序排序，保证生成表和 Summary 顺序一致。"""
+        """保留 Copy of TMS 原表顺序，保证业务已排序结果不被后端重排。"""
 
-        sorted_df = df.copy()
-        country_col = self._find_column(sorted_df, ['Country/Region', 'DESTINATION', 'Destination'])
-        sort_article_col = '_Jane_SORT_ARTICLE'
-        sort_country_col = '_Jane_SORT_COUNTRY'
-        sort_working_col = '_Jane_SORT_WORKING'
-        sort_index_col = '_Jane_SORT_INDEX'
-        helper_cols = [sort_article_col, sort_country_col, sort_working_col, sort_index_col]
-
-        sorted_df[sort_article_col] = sorted_df['Article Number'].apply(
-            lambda value: self._normalize_text(value).upper()
-        )
-        if country_col is None:
-            sorted_df[sort_country_col] = ''
-            if logs is not None:
-                logs.append("  ⚠️ TMS 未找到 Country/Region 或 Destination 列，国家排序按空值处理")
-        else:
-            sorted_df[sort_country_col] = sorted_df[country_col].apply(
-                lambda value: self._normalize_text(value).upper()
-            )
-        sorted_df[sort_working_col] = sorted_df['Working Number'].apply(
-            lambda value: self._normalize_text(value).upper()
-        )
-        sorted_df[sort_index_col] = range(len(sorted_df))
-
-        sorted_df = sorted_df.sort_values(
-            by=helper_cols,
-            kind='mergesort',
-            na_position='last',
-        )
         if logs is not None:
-            logs.append("  已按 Article Number → Country/Region/Destination → Working Number 排序")
-        return sorted_df.drop(columns=helper_cols).reset_index(drop=True)
+            logs.append("  已保留 Copy of TMS 原表顺序生成")
+        return df.copy().reset_index(drop=True)
 
     def get_category(self, destination: Any, region: Any) -> str:
         """根据国家/地区与 REGION 返回统计单别。"""
