@@ -22,7 +22,7 @@ class MemoryStorage implements StorageLike {
   }
 }
 
-const currentVersion = '0.9.8-beta.3.1'
+const currentVersion = fallbackAppVersion
 
 function createNotes(overrides: Partial<ReleaseNotes> = {}): ReleaseNotes {
   return {
