@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const defaultRepoRoot = resolve(scriptDir, '..', '..')
 const versionPattern = /^\d+\.\d+\.\d+-beta\.\d+(?:\.\d+)*$/
+const releaseDatePattern = /^\d{4}-\d{2}-\d{2}$/
 
 export function validateAppVersion(version) {
   if (!versionPattern.test(version)) {
@@ -20,8 +21,13 @@ export function bumpVersion(version) {
   })
 }
 
-export async function syncVersion({ repoRoot = defaultRepoRoot, nextVersion }) {
+export async function syncVersion({
+  repoRoot = defaultRepoRoot,
+  nextVersion,
+  releaseDate = currentShanghaiDate(),
+}) {
   const version = validateAppVersion(nextVersion)
+  validateReleaseDate(releaseDate)
   const root = resolve(repoRoot)
 
   await writeText(
@@ -48,6 +54,10 @@ export async function syncVersion({ repoRoot = defaultRepoRoot, nextVersion }) {
       '',
     ].join('\n'),
   )
+  await updateJson(root, 'tms-frontend/src/shared/version/releaseNotes.json', (data) => {
+    data.version = version
+    data.date = releaseDate
+  })
 
   await updateJson(root, 'tms-electron-app/package.json', (data) => {
     data.version = version
@@ -60,6 +70,24 @@ export async function syncVersion({ repoRoot = defaultRepoRoot, nextVersion }) {
   })
 
   return version
+}
+
+function validateReleaseDate(releaseDate) {
+  if (!releaseDatePattern.test(releaseDate)) {
+    throw new Error(`Invalid release date "${releaseDate}"; expected format YYYY-MM-DD`)
+  }
+  return releaseDate
+}
+
+function currentShanghaiDate() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${values.year}-${values.month}-${values.day}`
 }
 
 async function readCurrentVersion(repoRoot = defaultRepoRoot) {

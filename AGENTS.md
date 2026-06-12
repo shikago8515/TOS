@@ -20,6 +20,7 @@
 - Electron 打包默认使用 `tms-frontend/dist`；`TOS_FRONTEND_SOURCE=recovered` 只用于紧急回退。
 - 仓库根目录 `package.json` 提供工程入口 scripts，用于编排前端、后端和 Electron 子项目的现有检查命令。
 - GitCode 远端检查位于 `.gitcode/workflows/tos-check.yml`，默认对 `main`、`codex/**` 分支 push 和面向 `main` 的合并请求运行完整 `npm run check`。
+- 完整 TOS-AI 工作流位于 `docs/tos-ai-workflow.md`，覆盖 GitCode 同步、分支开发、自动版本、更新内容、CI、服务器发布和回滚。
 
 ## 默认探索边界
 
@@ -120,6 +121,8 @@
 1. 服务器 `~/TOS` 目录式 Docker Compose 部署必须遵循 `docs/server-deployment-runbook.md`，不要把服务器当作 Git 仓库直接 `git pull`。
 2. 服务器部署默认只更新 `tos-backend` 和 `tos-frontend`，保留服务器侧 Dockerfile、`nginx.conf`、`docker-compose.tos.yml` 和 `authelia/`。
 3. 服务器部署不等于 Windows Electron 打包；只有发布桌面安装包、自动更新包或正式 Windows 客户端时，才运行 `npm run build:win`。
+4. 服务器发布包必须从 GitCode CI 已通过的 clean commit 生成，使用 `npm run server:package`，并上传到 `/home/obito_li/TOS/.deploy_uploads/`。
+5. 截图或服务器中如存在 `_deploy_uploads`、`_source_uploads`，视为历史目录；新流程不写入这些目录。
 
 ## 可用检查命令
 
@@ -133,11 +136,15 @@ npm run check:frontend
 npm run check:backend
 npm run check:electron
 npm run check
+npm run server:package:dry-run
+npm run server:package
 ```
 
-`npm run check:quick` 运行前端 typecheck/test、后端 unittest 和 Electron script tests；`npm run check` 运行完整前端、后端和 Electron 脚本检查。根目录入口不运行 `npm run pack`、`npm run build:win` 或发布清单写入命令。
+`npm run check:quick` 运行工程脚本测试、前端 typecheck/test、后端 unittest 和 Electron script tests；`npm run check` 运行工程脚本测试、完整前端、完整后端和 Electron 脚本检查。根目录入口不运行 `npm run pack`、`npm run build:win` 或发布清单写入命令。
 
 GitCode CI 在 runner 内下载 Node.js 22.11.0，通过 `npm run ci:install` 安装依赖，并用 `PYTHON=python3 npm run check` 做远端完整检查。修改 `.gitcode/workflows/tos-check.yml` 时不得顺手加入 `pack`、`build:win`、发布清单写入、上传或正式发布步骤。
+
+用户可见改动默认由 AI 自动运行 `npm run version:bump` 并维护 `tms-frontend/src/shared/version/releaseNotes.json`。纯文档、纯测试、纯注释和不影响产品行为的内部脚本整理默认不递增产品版本；用户明确指定版本时使用 `npm run version:set -- <version>`。
 
 ### 前端
 
@@ -184,10 +191,11 @@ node scripts/verify-release-package.js
 ## Git 规则
 
 1. 默认从 `gitcode/main` 更新主线，除非用户明确要求使用 `origin/main`。
-2. 新功能或项目规则改动使用 `codex/` 前缀分支，例如 `codex/update-tos-agents-rules`。
-3. 提交信息使用 `类型: 描述`，例如 `docs: 添加 TOS AI 协作规则`。
-4. 每次提交只包含一个功能或一个明确规则改动。
-5. 未经用户明确要求，不执行 `git add`、`commit`、`pull`、`merge`、`rebase`、`reset`、`force push`、删除分支或发布操作。
+2. 新任务先执行 `git fetch gitcode main --prune`，再从最新 `gitcode/main` 创建 `codex/<topic>` 分支；继续已有分支时，在工作区 clean 的前提下 `git rebase gitcode/main`。
+3. 新功能或项目规则改动使用 `codex/` 前缀分支，例如 `codex/update-tos-agents-rules`。
+4. 提交信息使用 `类型: 描述`，例如 `docs: 添加 TOS AI 协作规则`。
+5. 每次提交只包含一个功能或一个明确规则改动。
+6. 未经用户明确要求，不执行 `git add`、`commit`、`pull`、`merge`、`rebase`、`reset`、`force push`、删除分支或发布操作。
 
 ## Token 用量治理
 

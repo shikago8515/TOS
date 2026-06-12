@@ -21,12 +21,13 @@ test('rejects unsupported version formats', () => {
   )
 })
 
-test('syncs product version to runtime version files and Electron manifests', async () => {
+test('syncs product version to runtime version files, release notes, and Electron manifests', async () => {
   const root = await createFixture()
 
   await syncVersion({
     repoRoot: root,
     nextVersion: '0.9.8-beta.3.0',
+    releaseDate: '2026-06-12',
   })
 
   assert.equal(
@@ -41,6 +42,14 @@ test('syncs product version to runtime version files and Electron manifests', as
     await readFile(join(root, 'tms-frontend', 'src', 'shared', 'version', 'appVersion.ts'), 'utf8'),
     /fallbackAppVersion = '0\.9\.8-beta\.3\.0'/,
   )
+  const releaseNotes = JSON.parse(
+    await readFile(join(root, 'tms-frontend', 'src', 'shared', 'version', 'releaseNotes.json'), 'utf8'),
+  )
+  assert.equal(releaseNotes.version, '0.9.8-beta.3.0')
+  assert.equal(releaseNotes.date, '2026-06-12')
+  assert.deepEqual(releaseNotes.added, ['existing added'])
+  assert.deepEqual(releaseNotes.improved, ['existing improved'])
+  assert.deepEqual(releaseNotes.fixed, ['existing fixed'])
 
   const electronPackage = JSON.parse(
     await readFile(join(root, 'tms-electron-app', 'package.json'), 'utf8'),
@@ -65,6 +74,16 @@ async function createFixture() {
   await writeFile(
     join(root, 'tms-frontend', 'src', 'shared', 'version', 'appVersion.ts'),
     "export const fallbackAppVersion = '0.9.8-beta.0.6'\n",
+  )
+  await writeFile(
+    join(root, 'tms-frontend', 'src', 'shared', 'version', 'releaseNotes.json'),
+    `${JSON.stringify({
+      version: '0.9.8-beta.0.6',
+      date: '2026-06-01',
+      added: ['existing added'],
+      improved: ['existing improved'],
+      fixed: ['existing fixed'],
+    }, null, 2)}\n`,
   )
   await writeFile(
     join(root, 'tms-electron-app', 'package.json'),

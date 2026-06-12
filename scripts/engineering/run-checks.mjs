@@ -16,6 +16,10 @@ const commandGroups = {
       '--test',
       'scripts/engineering/sync-version.test.mjs',
     ]),
+    command('server:package-test', '.', process.execPath, [
+      '--test',
+      'scripts/engineering/package-server-update.test.mjs',
+    ]),
   ],
   frontendFull: [
     command('frontend:typecheck', 'tms-frontend', npmBin, ['run', 'typecheck'], npmShell),

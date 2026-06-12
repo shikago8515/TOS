@@ -8,8 +8,11 @@
     "check:electron": "node scripts/engineering/run-checks.mjs electron",
     "ci:install": "node scripts/engineering/install-ci-deps.mjs",
     "test:version": "node --test scripts/engineering/sync-version.test.mjs",
+    "test:server-package": "node --test scripts/engineering/package-server-update.test.mjs",
     "version:set": "node scripts/engineering/sync-version.mjs --set",
     "version:bump": "node scripts/engineering/sync-version.mjs --bump",
+    "server:package": "node scripts/engineering/package-server-update.mjs",
+    "server:package:dry-run": "node scripts/engineering/package-server-update.mjs --dry-run",
     "dev:frontend": "npm --prefix tms-frontend run dev",
     "preview:frontend": "npm --prefix tms-frontend run preview",
     "dev:electron": "npm --prefix tms-electron-app run dev"

@@ -22,6 +22,7 @@ TOS 是一个 Windows x64 桌面工具，当前源码工作区由三部分组成
 - `tms-frontend/README.md`：前端源码工作区、命令、源码约定和页面清单。
 - `docs/frontend-engineering-standards.md`：前端重建工程规范和变更接收检查项。
 - `docs/engineering-entrypoints.md`：根目录工程入口、检查矩阵和命令边界。
+- `docs/tos-ai-workflow.md`：TOS-AI 从 GitCode 同步、分支开发、版本、CI 到服务器发布的完整工作流。
 - `docs/server-deployment-runbook.md`：服务器 `~/TOS` 目录式 Docker Compose 更新、备份、验证和回滚流程。
 - `docs/frontend-tms-finance-parity.md`：TMS 财务页 parity 与复用边界说明。
 - `tms-backend/README.md`：后端运行、模块和测试说明。
@@ -37,9 +38,18 @@ npm run check:frontend
 npm run check:backend
 npm run check:electron
 npm run check
+npm run server:package:dry-run
 ```
 
-`npm run check:quick` 运行前端 typecheck/test、后端 unittest 和 Electron script tests；`npm run check` 运行完整前端、后端和 Electron 脚本检查。
+`npm run check:quick` 运行工程脚本测试、前端 typecheck/test、后端 unittest 和 Electron script tests；`npm run check` 运行工程脚本测试、完整前端、完整后端和 Electron 脚本检查。
+
+服务器发布包生成使用：
+
+```powershell
+npm run server:package
+```
+
+正式服务器发布前必须先推送 GitCode 并确认 CI 通过；服务器目录不是 Git 仓库，不在服务器执行 `git pull`。
 
 GitCode CI 使用同一套根目录入口：在 runner 内下载 Node.js 22.11.0，先运行 `npm run ci:install` 安装依赖，再运行 `PYTHON=python3 npm run check`。该远端检查不触发 `npm run pack`、`npm run build:win` 或发布清单写入命令。
 
@@ -70,6 +80,7 @@ npm run build:win
 ## 开发规则摘要
 
 - 开发任务先读取项目级 `AGENTS.md`，再按当前源码和 `package.json` scripts 核实。
+- 完整工作流以 `docs/tos-ai-workflow.md` 为准；新任务从最新 `gitcode/main` 创建 `codex/<topic>` 分支。
 - 搜索默认排除 `node_modules`、`dist`、`build`、恢复基线、归档目录和运行数据目录。
 - 前端新增或调整页面时同步 `src/domain/moduleCatalog.ts`、`src/app/routeCatalog.ts`、`src/app/router.ts`。
 - 后端保持 `api/{module}_api.py` + `modules/{module}_module.py` 边界，上传和下载文件名必须做 basename、扩展名和目录边界校验。

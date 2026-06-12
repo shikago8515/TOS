@@ -6,12 +6,15 @@
 
 | 命令 | 覆盖范围 | 会运行 |
 | --- | --- | --- |
-| `npm run check:quick` | 快速检查 | 前端 `typecheck`、前端 `test`、后端 `unittest`、Electron script tests |
+| `npm run check:quick` | 快速检查 | 工程脚本测试、前端 `typecheck`、前端 `test`、后端 `unittest`、Electron script tests |
 | `npm run check:frontend` | 前端完整检查 | `npm run typecheck`、`npm run test`、`npm run build` |
 | `npm run check:backend` | 后端完整检查 | `python -m unittest discover tests/ -v`、`python -m compileall .` |
 | `npm run check:electron` | Electron 脚本测试 | 自动发现 `tms-electron-app/scripts/*.test.js` 并运行 `node --test` |
-| `npm run check` | 完整工程检查 | 前端完整检查、后端完整检查、Electron 脚本测试 |
+| `npm run check` | 完整工程检查 | 工程脚本测试、前端完整检查、后端完整检查、Electron 脚本测试 |
 | `npm run ci:install` | GitCode CI 依赖安装 | 根目录、前端、Electron、Playwright console 的 `npm ci`，以及后端 `pip install -r requirements.txt` |
+| `npm run test:server-package` | 服务器包脚本测试 | `node --test scripts/engineering/package-server-update.test.mjs` |
+| `npm run server:package:dry-run` | 服务器包计划检查 | 校验版本、更新内容和包清单，不生成正式包 |
+| `npm run server:package` | 服务器更新包生成 | 校验 clean worktree，构建服务器前端，生成 `release/server/tos-server-update-*.tar.gz` |
 
 ## 开发入口
 
@@ -25,6 +28,7 @@
 
 - 根目录入口不运行 `npm run pack`、`npm run build:win`、`verify:renderer-package`、`verify:release-package`、`write:update-changelog` 或 `write:manual-downloads`。
 - 发布、打包、更新清单和安装包校验仍按 `tms-electron-app/README.md` 与 `AGENTS.md` 的发布敏感规则单独执行。
+- `server:package` 只生成服务器 Docker Compose 部署用更新包，不生成 Windows Electron 安装包，也不上传服务器。
 - 子项目原生命令仍然可用；根目录入口只是日常开发检查的统一编排层。
 
 ## GitCode 远端检查
