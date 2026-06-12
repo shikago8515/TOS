@@ -17,6 +17,7 @@ export interface TosModuleDefinition {
   path: string
   routeName: string
   title: string
+  titleEn: string
   navLabel: string
   navLabelEn: string
   group: TosModuleGroup
@@ -48,8 +49,8 @@ export const tosNavGroups = [
   { id: 'sophia', label: 'Sophia', labelEn: 'Sophia' },
   { id: 'jane', label: 'Jane', labelEn: 'Jane' },
   { id: 'eric', label: 'Eric', labelEn: 'Eric' },
-  { id: 'it', label: 'IT', labelEn: 'IT' },
-  { id: 'finance-excel', label: '财务 / Excel', labelEn: 'Finance / Excel' },
+  { id: 'it', label: 'Jason', labelEn: 'Jason' },
+  { id: 'finance-excel', label: 'Lucia', labelEn: 'Lucia' },
   { id: 'general-tools', label: '通用工具', labelEn: 'General Tools' },
 ] as const satisfies readonly TosNavGroupDefinition[]
 
@@ -81,6 +82,7 @@ export const tosModules = [
     path: '/',
     routeName: 'home',
     title: '首页',
+    titleEn: 'Home',
     navLabel: '首页',
     navLabelEn: 'Home',
     group: 'home',
@@ -95,6 +97,7 @@ export const tosModules = [
     path: '/jessca',
     routeName: 'jessca',
     title: 'Jessica / 对账核对',
+    titleEn: 'Jessica / Reconciliation',
     navLabel: '对账核对',
     navLabelEn: 'Reconciliation',
     group: 'jessica',
@@ -109,6 +112,7 @@ export const tosModules = [
     path: '/sophia-tina',
     routeName: 'sophia-tina',
     title: 'Sophia / 报表合并',
+    titleEn: 'Sophia / Report Merge',
     navLabel: '报表合并',
     navLabelEn: 'Report Merge',
     group: 'sophia',
@@ -123,6 +127,7 @@ export const tosModules = [
     path: '/jane',
     routeName: 'jane',
     title: 'Jane / 成品表生成',
+    titleEn: 'Jane / Finished Goods Sheet',
     navLabel: '成品表生成',
     navLabelEn: 'Finished Goods Sheet',
     group: 'jane',
@@ -137,6 +142,7 @@ export const tosModules = [
     path: '/jane-bom-summary',
     routeName: 'jane-bom-summary',
     title: 'Jane / BOM 汇总',
+    titleEn: 'Jane / BOM Summary',
     navLabel: 'BOM 汇总',
     navLabelEn: 'BOM Summary',
     group: 'jane',
@@ -151,6 +157,7 @@ export const tosModules = [
     path: '/jane-bom-compare',
     routeName: 'jane-bom-compare',
     title: 'Jane / BOM 核对',
+    titleEn: 'Jane / BOM Compare',
     navLabel: 'BOM 核对',
     navLabelEn: 'BOM Compare',
     group: 'jane',
@@ -165,6 +172,7 @@ export const tosModules = [
     path: '/jane-outbound-compare',
     routeName: 'jane-outbound-compare',
     title: 'Jane / OUTBOUND 核对',
+    titleEn: 'Jane / OUTBOUND Compare',
     navLabel: 'OUTBOUND 核对',
     navLabelEn: 'OUTBOUND Compare',
     group: 'jane',
@@ -179,6 +187,7 @@ export const tosModules = [
     path: '/eric',
     routeName: 'eric',
     title: 'Eric / 数据处理',
+    titleEn: 'Eric / Data Processing',
     navLabel: '数据处理',
     navLabelEn: 'Data Processing',
     group: 'eric',
@@ -192,7 +201,8 @@ export const tosModules = [
     id: 'it-invoice-pdf-reorder',
     path: '/it-invoice-pdf-reorder',
     routeName: 'it-invoice-pdf-reorder',
-    title: 'IT / 发票 PDF 重排序',
+    title: 'Jason / 发票 PDF 重排序',
+    titleEn: 'Jason / Invoice PDF Reorder',
     navLabel: '发票 PDF 重排序',
     navLabelEn: 'Invoice PDF Reorder',
     group: 'it',
@@ -207,6 +217,7 @@ export const tosModules = [
     path: '/tms-finance-internal-reconciliation',
     routeName: 'tms-finance-internal-reconciliation',
     title: '内销对账表数据提取',
+    titleEn: 'Internal Reconciliation Data Extraction',
     navLabel: '内销对账表数据提取',
     navLabelEn: 'Internal Reconciliation',
     group: 'finance-excel',
@@ -221,6 +232,7 @@ export const tosModules = [
     path: '/tms-finance-work-sales',
     routeName: 'tms-finance-work-sales',
     title: 'Work Sales 数据追加',
+    titleEn: 'Work Sales Data Append',
     navLabel: 'Work Sales 数据追加',
     navLabelEn: 'Work Sales Append',
     group: 'finance-excel',
@@ -235,6 +247,7 @@ export const tosModules = [
     path: '/browser-plugins',
     routeName: 'browser-plugins',
     title: '浏览器插件',
+    titleEn: 'Browser Plugins',
     navLabel: '浏览器插件',
     navLabelEn: 'Browser Plugins',
     group: 'general-tools',
@@ -249,6 +262,7 @@ export const tosModules = [
     path: '/infornexus',
     routeName: 'infornexus',
     title: 'Infornexus',
+    titleEn: 'Infornexus',
     navLabel: 'Infornexus',
     navLabelEn: 'Infornexus',
     group: 'general-tools',
@@ -263,6 +277,7 @@ export const tosModules = [
     path: '/jane-sap',
     routeName: 'jane-sap',
     title: 'Jane / SAP',
+    titleEn: 'Jane / SAP',
     navLabel: 'SAP',
     navLabelEn: 'SAP',
     group: 'jane',
@@ -277,6 +292,7 @@ export const tosModules = [
     path: '/eric-infornexus',
     routeName: 'eric-infornexus',
     title: 'Eric / Infornexus',
+    titleEn: 'Eric / Infornexus',
     navLabel: 'Infornexus',
     navLabelEn: 'Infornexus',
     group: 'eric',
@@ -291,6 +307,7 @@ export const tosModules = [
     path: '/adidas-materials',
     routeName: 'adidas-materials',
     title: 'adidas 材料',
+    titleEn: 'adidas Materials',
     navLabel: 'adidas 材料',
     navLabelEn: 'adidas Materials',
     group: 'general-tools',
@@ -305,6 +322,7 @@ export const tosModules = [
     path: '/module-a',
     routeName: 'module-a',
     title: '模块 A',
+    titleEn: 'Module A',
     navLabel: '模块 A',
     navLabelEn: 'Module A',
     group: 'general-tools',
@@ -319,6 +337,7 @@ export const tosModules = [
     path: '/module-b',
     routeName: 'module-b',
     title: '模块 B',
+    titleEn: 'Module B',
     navLabel: '模块 B',
     navLabelEn: 'Module B',
     group: 'general-tools',
@@ -333,13 +352,14 @@ export const tosModules = [
     path: '/settings',
     routeName: 'settings',
     title: '系统设置',
+    titleEn: 'Settings',
     navLabel: '系统设置',
     navLabelEn: 'Settings',
     group: 'general-tools',
     category: 'system',
     stage: 'production',
-    description: '查看版本、检查更新并安装新版 TOS',
-    descriptionEn: 'View version, check for updates, and install a newer TOS',
+    description: '查看版本信息、运行环境和界面语言',
+    descriptionEn: 'View version information, run mode, and language settings',
     order: 110,
   },
 ] as const satisfies readonly TosModuleDefinition[]
@@ -368,4 +388,11 @@ export function getModuleById(id: TosModuleId): TosModuleDefinition {
   }
 
   return module
+}
+
+export function getLocalizedModuleTitle(
+  module: TosModuleDefinition,
+  language: 'zh-CN' | 'en-US',
+): string {
+  return language === 'en-US' ? module.titleEn : module.title
 }

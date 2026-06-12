@@ -2,12 +2,12 @@
   <div class="web-automation-panel">
     <div v-if="apps.length" class="table-content">
       <div class="table-head">
-        <div class="head-cell head-cell--index">序号</div>
-        <div class="head-cell head-cell--app">控制台信息</div>
-        <div class="head-cell">供应方</div>
-        <div class="head-cell">地址</div>
-        <div class="head-cell">状态</div>
-        <div class="head-cell head-cell--action">操作</div>
+        <div class="head-cell head-cell--index">{{ text('序号') }}</div>
+        <div class="head-cell head-cell--app">{{ text('控制台信息') }}</div>
+        <div class="head-cell">{{ text('供应方') }}</div>
+        <div class="head-cell">{{ text('地址') }}</div>
+        <div class="head-cell">{{ text('状态') }}</div>
+        <div class="head-cell head-cell--action">{{ text('操作') }}</div>
       </div>
 
       <article
@@ -23,9 +23,9 @@
           <div class="app-info-cell">
             <div class="app-icon">WA</div>
             <div class="app-text">
-              <span class="app-name">{{ app.name }}</span>
-              <span class="app-meta">{{ app.category || '网页自动化' }} · {{ app.version || '-' }}</span>
-              <small class="app-desc">{{ app.description }}</small>
+              <span class="app-name">{{ text(app.name) }}</span>
+              <span class="app-meta">{{ text(app.category || '网页自动化') }} · {{ app.version || '-' }}</span>
+              <small class="app-desc">{{ text(app.description || '') }}</small>
             </div>
           </div>
         </div>
@@ -35,24 +35,24 @@
         <div class="row-cell">
           <div class="text-stack">
             <strong>{{ app.url }}</strong>
-            <small>端口 {{ app.port || '-' }}</small>
+            <small>{{ text('端口') }} {{ app.port || '-' }}</small>
           </div>
         </div>
         <div class="row-cell">
           <span class="status-tag" :class="statusClass(getAutomationAppStatusTone(app))">
-            {{ getAutomationAppStatusLabel(app) }}
+            {{ text(getAutomationAppStatusLabel(app)) }}
           </span>
         </div>
         <div class="row-cell row-cell--action">
           <div class="action-buttons">
-            <button class="action-btn" type="button" @click="$emit('select', app.id)">查看</button>
+            <button class="action-btn" type="button" @click="$emit('select', app.id)">{{ text('查看') }}</button>
             <button
               class="action-btn launch-btn"
               type="button"
               :disabled="!app.available || launching || activeAppId !== app.id"
               @click="$emit('start')"
             >
-              启动
+              {{ text('启动') }}
             </button>
           </div>
         </div>
@@ -61,54 +61,54 @@
 
     <div v-else class="empty-state">
       <div class="empty-icon">WA</div>
-      <p>暂无已注册的网页自动化应用</p>
-      <span>请先确认桌面端控制台模块已正常注册并暴露给当前前端。</span>
+      <p>{{ text('暂无已注册的网页自动化应用') }}</p>
+      <span>{{ text('请先确认桌面端控制台模块已正常注册并暴露给当前前端。') }}</span>
     </div>
 
     <div class="workspace-panel">
       <div class="workspace-header">
         <div>
-          <h4>{{ activeApp?.name || '当前未选择控制台' }}</h4>
+          <h4>{{ activeApp ? text(activeApp.name) : text('当前未选择控制台') }}</h4>
           <p>
-            {{ activeApp?.description || '从上方列表选择一个控制台后，这里会显示地址、状态和嵌入预览。' }}
+            {{ activeApp ? text(activeApp.description || '') : text('从上方列表选择一个控制台后，这里会显示地址、状态和嵌入预览。') }}
           </p>
         </div>
         <div v-if="activeApp" class="workspace-actions">
           <button class="action-btn" type="button" :disabled="!activeApp.running" @click="$emit('open')">
-            外部打开
+            {{ text('外部打开') }}
           </button>
           <button class="action-btn" type="button" :disabled="!activeApp.running" @click="$emit('stop')">
-            停止
+            {{ text('停止') }}
           </button>
         </div>
       </div>
 
       <div v-if="activeApp" class="workspace-meta">
         <article class="meta-card">
-          <span>当前地址</span>
+          <span>{{ text('当前地址') }}</span>
           <strong>{{ activeApp.url }}</strong>
         </article>
         <article class="meta-card">
-          <span>当前状态</span>
-          <strong>{{ getAutomationAppStatusLabel(activeApp) }}</strong>
+          <span>{{ text('当前状态') }}</span>
+          <strong>{{ text(getAutomationAppStatusLabel(activeApp)) }}</strong>
         </article>
         <article class="meta-card">
-          <span>供应方</span>
+          <span>{{ text('供应方') }}</span>
           <strong>{{ activeApp.provider || 'Playwright' }}</strong>
         </article>
         <article class="meta-card">
-          <span>版本 / 端口</span>
+          <span>{{ text('版本 / 端口') }}</span>
           <strong>{{ activeApp.version || '-' }} / {{ activeApp.port || '-' }}</strong>
         </article>
       </div>
 
       <div v-if="activeApp?.running && consoleUrl" class="console-frame-wrap">
-        <iframe class="console-frame" :src="consoleUrl" title="网页自动化控制台" />
+        <iframe class="console-frame" :src="consoleUrl" :title="text('网页自动化控制台')" />
       </div>
 
       <div v-else class="preview-empty">
-        <strong>控制台尚未启动</strong>
-        <span>启动后会在这里嵌入控制台页面，便于你直接验证真实流程。</span>
+        <strong>{{ text('控制台尚未启动') }}</strong>
+        <span>{{ text('启动后会在这里嵌入控制台页面，便于你直接验证真实流程。') }}</span>
       </div>
     </div>
 
@@ -122,6 +122,9 @@ import {
   getAutomationAppStatusTone,
   type AutomationAppStatusTone,
 } from '../webAutomationModel'
+import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+
+const { text } = useAppLanguage()
 
 defineEmits<{
   (e: 'select', appId: string): void

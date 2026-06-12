@@ -48,8 +48,8 @@ const translations = {
     'en-US': 'Version and Updates',
   },
   'app.settings.description': {
-    'zh-CN': '当前安装版可从配置的更新源检查新版本，下载完成后会退出并安装新版。',
-    'en-US': 'The installed app can check the configured update source and install the new version after download.',
+    'zh-CN': '查看当前版本、运行环境和界面语言；桌面客户端会额外显示安装包更新能力。',
+    'en-US': 'View the current version, run mode, and language; the desktop client also shows installer update controls.',
   },
   'app.settings.currentVersion': {
     'zh-CN': '当前版本',
@@ -175,6 +175,10 @@ const translations = {
 
 export type TranslationKey = keyof typeof translations
 
+function normalizeStaticText(value: string): string {
+  return value.replace(/\s+/g, '').replace(/[，。、。]/g, '')
+}
+
 const staticTextTranslations: Record<string, string> = {
   首页: 'Home',
   'jessica - 对账核对': 'jessica - Reconciliation',
@@ -187,9 +191,22 @@ const staticTextTranslations: Record<string, string> = {
   Eric数据处理: 'Eric Data Processing',
   系统设置: 'Settings',
   应用: 'Application',
+  运行模式: 'Run Mode',
   文件准备: 'File Preparation',
   文件预检查: 'File Precheck',
   必传: 'Required',
+  已选文件: 'Selected Files',
+  已就绪: 'Ready',
+  组文件: 'file groups',
+  当前共: 'total',
+  个文件: 'files',
+  组必传: 'required groups',
+  组可选: 'optional groups',
+  开始合并: 'Start Merge',
+  '合并中...': 'Merging...',
+  开始追加: 'Start Append',
+  追加行: 'Appended Rows',
+  结果指标: 'Result Metrics',
   '支持 .xls / .xlsx': 'Supports .xls / .xlsx',
   '支持 .xlsx': 'Supports .xlsx',
   '支持 .xlsx / .xlsm': 'Supports .xlsx / .xlsm',
@@ -281,8 +298,309 @@ const staticTextTranslations: Record<string, string> = {
   解析YTIC: 'Parse YTIC',
   '解析 YTIC': 'Parse YTIC',
   自动核对: 'Auto Reconcile',
+  核对进度: 'Reconciliation Progress',
+  'SAP BTP 自动化流程': 'SAP BTP Automation Flow',
   诊断包: 'Diagnostics Package',
   'Excel 处理': 'Excel Processing',
+  浏览器插件管理: 'Browser Plugin Management',
+  浏览器预览模式: 'Browser Preview Mode',
+  桌面Electron环境: 'Desktop Electron Environment',
+  '桌面 Electron 环境': 'Desktop Electron Environment',
+  搜索插件或站点: 'Search plugins or sites',
+  刷新: 'Refresh',
+  '刷新中...': 'Refreshing...',
+  插件总数: 'Total Plugins',
+  可启动: 'Launch Ready',
+  预览模式: 'Preview Mode',
+  '当前为预览模式：可查看插件信息，启动需在桌面 Electron 环境中使用。':
+    'Preview mode: plugin information is visible, but launching requires the desktop Electron environment.',
+  'Infornexus 自动搜索并添加': 'Infornexus Auto Search and Add',
+  Chrome扩展: 'Chrome Extension',
+  'Chrome 扩展': 'Chrome Extension',
+  业务网页: 'Business Web Page',
+  预览配置: 'Preview Config',
+  真实执行: 'Live Execution',
+  '在 Infornexus 页面读取 XLS/XLSX 的指定 ID，并自动执行搜索、勾选和添加操作。':
+    'Read specified IDs from XLS/XLSX on Infornexus, then automatically search, select, and add them.',
+  插件缺失: 'Plugin Missing',
+  可执行: 'Executable',
+  浏览器未就绪: 'Browser Not Ready',
+  启动: 'Launch',
+  启动中: 'Launching',
+  站点: 'Site',
+  暂无浏览器插件: 'No browser plugins',
+  请确认桌面端插件注册结果或切换到具备浏览器桥接能力的环境:
+    'Check the desktop plugin registry, or switch to an environment with browser bridge support.',
+  '请确认桌面端插件注册结果，或切换到具备浏览器桥接能力的环境。':
+    'Check the desktop plugin registry, or switch to an environment with browser bridge support.',
+  未读取到插件注册表请检查桌面端插件清单: 'No plugin registry was found. Check the desktop plugin manifest.',
+  '未读取到插件注册表，请检查桌面端插件清单。': 'No plugin registry was found. Check the desktop plugin manifest.',
+  浏览器: 'Browser',
+  已启动插件已加载到目标环境: 'started. The plugin has been loaded into the target environment.',
+  '已启动，插件已加载到目标环境。': 'started. The plugin has been loaded into the target environment.',
+  启动浏览器插件失败: 'Failed to launch browser plugin',
+  打开目标站点失败: 'Failed to open target site',
+  功能受限: 'Limited Feature',
+  '导出诊断包功能需要在桌面客户端中使用，当前浏览器预览环境不支持。':
+    'Exporting diagnostics requires the desktop client and is not supported in the current browser preview environment.',
+  当前运行环境不支持启动浏览器插件: 'The current runtime does not support launching browser plugins',
+  当前运行环境不支持打开外部网页: 'The current runtime does not support opening external pages',
+  读取浏览器插件失败: 'Failed to load browser plugins',
+  序号: 'No.',
+  插件信息: 'Plugin',
+  目标站点: 'Target Site',
+  执行模式: 'Mode',
+  状态: 'Status',
+  操作: 'Actions',
+  暂无可展示的浏览器插件: 'No browser plugins to display',
+  请先确认桌面端插件注册结果或切换到具备浏览器桥接能力的运行环境:
+    'Check the desktop plugin registry, or switch to an environment with browser bridge support.',
+  '请先确认桌面端插件注册结果，或切换到具备浏览器桥接能力的运行环境。':
+    'Check the desktop plugin registry, or switch to an environment with browser bridge support.',
+  释放文件: 'Release files',
+  文件上传: 'File Upload',
+  处理进度: 'Progress',
+  网页自动化: 'Web Automation',
+  选择自动化入口上传Excel并启动本地浏览器执行:
+    'Choose an automation entry, upload Excel, and launch the local browser.',
+  '选择自动化入口，上传 Excel 并启动本地浏览器执行':
+    'Choose an automation entry, upload Excel, and launch the local browser.',
+  搜索入口: 'Search entries',
+  搜索入口名称或标签: 'Search entry name or tag',
+  可用: 'Available',
+  即将上线: 'Coming Soon',
+  暂不可用: 'Unavailable',
+  进入场景: 'Open Scenario',
+  详情: 'Details',
+  没有匹配的自动化入口: 'No matching automation entries',
+  请调整搜索条件或联系管理员添加新的自动化场景:
+    'Adjust the search terms, or contact an administrator to add a new automation scenario.',
+  '请调整搜索条件，或联系管理员添加新的自动化场景。':
+    'Adjust the search terms, or contact an administrator to add a new automation scenario.',
+  没有匹配的入口: 'No matching entries',
+  请调整搜索条件: 'Adjust the search terms',
+  shipping自动化: 'Shipping Automation',
+  'shipping 2 自动化': 'Shipping 2 Automation',
+  'n8n + Excel 驱动可见浏览器': 'n8n + Excel drives a visible browser',
+  '上传 Excel 后由 n8n webhook 回调本机执行器，启动 Playwright 可见浏览器完成 Microsoft Login 与 SAP BTP 操作。':
+    'After Excel upload, the n8n webhook calls the local executor and starts a visible Playwright browser for Microsoft Login and SAP BTP.',
+  'Infor Nexus 运输业务自动化': 'Infor Nexus shipping automation',
+  '进入 https://network.infornexus.com，后续承接本地直连浏览器自动化链路。':
+    'Open https://network.infornexus.com, then continue through the local direct browser automation flow.',
+  'Infor Nexus 登录与页面预备流程': 'Infor Nexus login and page preparation flow',
+  '先登录 Infor Nexus 并进入站点，后续页面操作会继续在这个独立场景里扩展。':
+    'Log in to Infor Nexus and enter the site first; later page actions will expand in this dedicated scenario.',
+  'Excel 第二列 ID 自动执行': 'Auto-run IDs from the second Excel column',
+  '上传 Excel 后启动可视浏览器，读取第二列 10 位 ID 并在 Infor Nexus 自动搜索、勾选和添加。':
+    'Upload Excel, launch a visible browser, read 10-digit IDs from the second column, then search, select, and add them in Infor Nexus.',
+  Infornexus数据同步: 'Infornexus Data Sync',
+  'Infornexus 数据同步': 'Infornexus Data Sync',
+  跨平台数据自动同步: 'Cross-platform automatic data sync',
+  定时抓取Infornexus数据并同步至本地支持增量同步:
+    'Fetch Infornexus data on a schedule and sync it locally with incremental sync support.',
+  '定时抓取 Infornexus 数据并同步至本地，支持增量同步。':
+    'Fetch Infornexus data on a schedule and sync it locally with incremental sync support.',
+  邮件报表机器人: 'Email Report Bot',
+  自动抓取页面生成报表并发送: 'Automatically capture pages, generate reports, and send them',
+  自动生成汇总报表并通过邮件分发: 'Generate summary reports and distribute them by email.',
+  '自动生成汇总报表并通过邮件分发。': 'Generate summary reports and distribute them by email.',
+  智能表单填充: 'Smart Form Fill',
+  AI辅助表单识别与填写: 'AI-assisted form recognition and filling',
+  'AI 辅助表单识别与填写': 'AI-assisted form recognition and filling',
+  智能识别表单结构匹配Excel列完成批量填充:
+    'Recognize form structure and match Excel columns for batch filling.',
+  '智能识别表单结构，匹配 Excel 列完成批量填充。':
+    'Recognize form structure and match Excel columns for batch filling.',
+  自动化场景: 'Automation Scenario',
+  网页自动化场景: 'Web Automation Scenario',
+  未找到入口: 'Entry Not Found',
+  当前入口不存在请返回列表重新选择: 'This entry does not exist. Return to the list and choose again.',
+  '当前入口不存在，请返回列表重新选择。': 'This entry does not exist. Return to the list and choose again.',
+  入口不存在: 'Entry does not exist',
+  请返回网页自动化入口列表重新选择: 'Return to the web automation entry list and choose again.',
+  '请返回网页自动化入口列表重新选择。': 'Return to the web automation entry list and choose again.',
+  返回: 'Back',
+  执行器: 'Executor',
+  执行器控制: 'Executor Control',
+  启动执行器: 'Start Executor',
+  启动中点点点: 'Starting...',
+  '启动中...': 'Starting...',
+  停止: 'Stop',
+  刷新状态: 'Refresh Status',
+  刷新中: 'Refreshing',
+  操作流程: 'Workflow',
+  执行器健康信息: 'Executor Health',
+  执行器就绪: 'Executor Ready',
+  等待执行器: 'Waiting for Executor',
+  搜索并添加InfornexusID: 'Search and Add Infornexus IDs',
+  '搜索并添加 Infornexus ID': 'Search and Add Infornexus IDs',
+  登录并打开ShipmentScan: 'Log In and Open Shipment Scan',
+  '登录并打开 Shipment Scan': 'Log In and Open Shipment Scan',
+  '本机执行器会读取 Excel 第二列 ID，登录 Infor Nexus 后自动搜索、勾选和添加。':
+    'The local executor reads IDs from the second Excel column, logs in to Infor Nexus, then searches, selects, and adds them automatically.',
+  '本机执行器会登录 Infor Nexus，并自动进入 Shipment Scan 弹窗。':
+    'The local executor logs in to Infor Nexus and opens the Shipment Scan dialog automatically.',
+  '请把 10 位 ID 放在第二列': 'Place 10-digit IDs in the second column',
+  '请包含 PO No 列': 'Include the PO No column',
+  上传Excel并执行自动搜索添加: 'Upload Excel and Run Auto Search/Add',
+  '上传 Excel 并执行自动搜索添加': 'Upload Excel and Run Auto Search/Add',
+  上传Excel并执行Shipping: 'Upload Excel and Run Shipping',
+  '上传 Excel 并执行 Shipping': 'Upload Excel and Run Shipping',
+  输入账号密码: 'Enter Username and Password',
+  使用当前页面填写InforNexus登录凭据: 'Enter Infor Nexus login credentials on this page.',
+  '使用当前页面填写 Infor Nexus 登录凭据。': 'Enter Infor Nexus login credentials on this page.',
+  启动本地执行器: 'Start Local Executor',
+  网页端和EXE都会走同一套本机启动器: 'The web app and EXE use the same local launcher.',
+  '网页端和 EXE 都会走同一套本机启动器。': 'The web app and EXE use the same local launcher.',
+  打开ShipmentScan: 'Open Shipment Scan',
+  '打开 Shipment Scan': 'Open Shipment Scan',
+  '依次进入 Applications、Print-Scan-Ship、Shipment Scan。':
+    'Open Applications, Print-Scan-Ship, then Shipment Scan.',
+  后续接入Excel: 'Add Excel Flow Later',
+  '后续接入 Excel': 'Add Excel Flow Later',
+  这一页后续继续承接Shipping的上传执行链路:
+    'This page will continue to host the Shipping upload and execution flow.',
+  '这一页后续继续承接 Shipping 的上传执行链路。':
+    'This page will continue to host the Shipping upload and execution flow.',
+  上传Excel文件: 'Upload Excel File',
+  '上传 Excel 文件': 'Upload Excel File',
+  '读取第一张表第二列，从第二行开始提取 10 位 ID。':
+    'Read the second column of the first sheet and extract 10-digit IDs starting from row 2.',
+  '由 3003 执行器启动可视浏览器并登录 Infor Nexus。':
+    'Use the 3003 executor to launch a visible browser and log in to Infor Nexus.',
+  自动搜索添加: 'Auto Search and Add',
+  按Excel顺序逐个搜索勾选并点击添加: 'Search, select, and add each item in Excel order.',
+  '按 Excel 顺序逐个搜索、勾选并点击添加。': 'Search, select, and add each item in Excel order.',
+  查看结果: 'View Result',
+  完成数量和失败明细会在页面下方返回: 'Completion counts and failure details appear below.',
+  '完成数量和失败明细会在页面下方返回。': 'Completion counts and failure details appear below.',
+  选择包含数据的xlsx或xls文件: 'Choose an .xlsx or .xls file containing data.',
+  '选择包含数据的 .xlsx 或 .xls 文件。': 'Choose an .xlsx or .xls file containing data.',
+  本地直连执行推荐: 'Local Direct Execution (Recommended)',
+  '本地直连执行（推荐）': 'Local Direct Execution (Recommended)',
+  前端直接把Excel发给本机执行器不经过n8n:
+    'The frontend sends Excel directly to the local executor without n8n.',
+  '前端直接把 Excel 发给本机执行器，不经过 n8n。':
+    'The frontend sends Excel directly to the local executor without n8n.',
+  发送至n8n保留: 'Send to n8n (Reserved)',
+  '发送至 n8n（保留）': 'Send to n8n (Reserved)',
+  如需编排通知审批数据库联动可继续走n8n链路:
+    'Use the n8n path when orchestration, notifications, approvals, or database integration are needed.',
+  '如需编排、通知、审批、数据库联动，可继续走 n8n 链路。':
+    'Use the n8n path when orchestration, notifications, approvals, or database integration are needed.',
+  在下方状态区查看执行结果: 'View execution results in the status area below.',
+  '在下方状态区查看执行结果。': 'View execution results in the status area below.',
+  本机已保存凭据: 'Stored local credentials',
+  '本机已保存凭据。': 'Local credentials are saved.',
+  本机未保存凭据首次执行前请填写账号密码并保存:
+    'No local credentials are saved. Enter and save the username and password before the first run.',
+  '本机未保存凭据。首次执行前请填写账号密码并保存。':
+    'No local credentials are saved. Enter and save the username and password before the first run.',
+  保存中: 'Saving',
+  保存本机凭据: 'Save Local Credentials',
+  清除中: 'Clearing',
+  清除本机凭据: 'Clear Local Credentials',
+  Excel文件: 'Excel File',
+  'Excel 文件': 'Excel File',
+  点击或拖入Excel文件: 'Click or drop an Excel file',
+  '点击或拖入 Excel 文件': 'Click or drop an Excel file',
+  释放以上传文件: 'Release to upload',
+  执行中点点点: 'Running...',
+  '执行中...': 'Running...',
+  结果Excel: 'Result Excel',
+  '结果 Excel': 'Result Excel',
+  失败明细: 'Failure Details',
+  运行中: 'Running',
+  缺失: 'Missing',
+  就绪: 'Ready',
+  未连通: 'Disconnected',
+  未连接: 'Disconnected',
+  未启动: 'Not Started',
+  待命: 'Idle',
+  未就绪: 'Not Ready',
+  执行中: 'Running',
+  发送中: 'Sending',
+  未完成: 'Incomplete',
+  异常: 'Error',
+  网络错误: 'Network error',
+  等待文件上传并发送: 'Waiting for file upload and send.',
+  '等待文件上传并发送。': 'Waiting for file upload and send.',
+  '等待上传 Excel，并执行 Shipping 自动化。': 'Waiting for Excel upload and Shipping automation.',
+  '等待上传 Excel，并执行 Infornexus 自动搜索添加。':
+    'Waiting for Excel upload and Infornexus auto search/add.',
+  '等待上传 Excel 并启动 Microsoft Login 自动化。':
+    'Waiting for Excel upload and Microsoft Login automation.',
+  '本机执行器尚未就绪，请先启动执行器后再试。':
+    'The local executor is not ready. Start the executor and try again.',
+  '正在上传 Excel，并登录 Infor Nexus 输入 PO No...':
+    'Uploading Excel and logging in to Infor Nexus to enter PO No...',
+  '正在上传 Excel，并启动 Infornexus 自动搜索添加...':
+    'Uploading Excel and starting Infornexus auto search/add...',
+  '正在将 Excel 直接发送给本机执行器并启动浏览器自动化...':
+    'Sending Excel directly to the local executor and starting browser automation...',
+  '正在上传文件到 n8n 并启动 Microsoft Login 自动化...':
+    'Uploading the file to n8n and starting Microsoft Login automation...',
+  'Shipping 自动化已触发，但未确认全部 PO No 输入完成。':
+    'Shipping automation was triggered, but not all PO No entries were confirmed complete.',
+  'Infornexus 自动搜索添加已触发，但未确认全部 ID 完成。':
+    'Infornexus auto search/add was triggered, but not all IDs were confirmed complete.',
+  '本地执行已触发，但未确认成功。': 'Local execution was triggered, but success was not confirmed.',
+  '登录未完成，请查看原始响应了解详情。': 'Login is incomplete. Check the raw response for details.',
+  运行: 'running',
+  个任务: 'tasks',
+  控制台信息: 'Console',
+  供应方: 'Provider',
+  地址: 'Address',
+  查看: 'View',
+  端口: 'Port',
+  暂无已注册的网页自动化应用: 'No registered web automation apps',
+  请先确认桌面端控制台模块已正常注册并暴露给当前前端:
+    'Confirm the desktop console module is registered and exposed to the current frontend.',
+  '请先确认桌面端控制台模块已正常注册并暴露给当前前端。':
+    'Confirm the desktop console module is registered and exposed to the current frontend.',
+  当前未选择控制台: 'No console selected',
+  从上方列表选择一个控制台后这里会显示地址状态和嵌入预览:
+    'Select a console above to show its address, status, and embedded preview here.',
+  '从上方列表选择一个控制台后，这里会显示地址、状态和嵌入预览。':
+    'Select a console above to show its address, status, and embedded preview here.',
+  外部打开: 'Open External',
+  当前地址: 'Current Address',
+  当前状态: 'Current Status',
+  '版本 / 端口': 'Version / Port',
+  网页自动化控制台: 'Web Automation Console',
+  控制台尚未启动: 'Console Not Started',
+  启动后会在这里嵌入控制台页面便于你直接验证真实流程:
+    'After startup, the console page will be embedded here so the real flow can be verified directly.',
+  '启动后会在这里嵌入控制台页面，便于你直接验证真实流程。':
+    'After startup, the console page will be embedded here so the real flow can be verified directly.',
+  请选择EricInfornexus页面重新选择场景: 'Return to the Eric - Infornexus page and choose a scenario again.',
+  '请返回 Eric - Infornexus 页面重新选择场景。': 'Return to the Eric - Infornexus page and choose a scenario again.',
+  选择Bulk类型: 'Select Bulk Type',
+  '选择 Bulk 类型': 'Select Bulk Type',
+  'Unreleased Bulk 和 released Bulk 会进入不同的浏览器自动化逻辑。':
+    'Unreleased Bulk and released Bulk use different browser automation flows.',
+  上传Excel: 'Upload Excel',
+  '上传 Excel': 'Upload Excel',
+  每个区域独立选择自己的xlsx或xls文件: 'Choose a separate .xlsx or .xls file for each area.',
+  '每个区域独立选择自己的 .xlsx 或 .xls 文件。': 'Choose a separate .xlsx or .xls file for each area.',
+  进入对应Bulk页面: 'Open the Matching Bulk Page',
+  '进入对应 Bulk 页面': 'Open the Matching Bulk Page',
+  '登录后进入 Event Management，并按区域点击 Released Bulk 或 Unreleased Bulk。':
+    'After login, open Event Management and click Released Bulk or Unreleased Bulk by area.',
+  并行执行: 'Parallel Execution',
+  多个自动化任务可以同时运行不会互相占用同一个执行锁:
+    'Multiple automation tasks can run at the same time without sharing one execution lock.',
+  '多个自动化任务可以同时运行，不会互相占用同一个执行锁。':
+    'Multiple automation tasks can run at the same time without sharing one execution lock.',
+  Excel输入与启动: 'Excel Input and Launch',
+  'Excel 输入与启动': 'Excel Input and Launch',
+  选择Excel文件: 'Choose Excel File',
+  '选择 Excel 文件': 'Choose Excel File',
+  '支持 .xlsx / .xls': 'Supports .xlsx / .xls',
+  等待选择Excel文件: 'Waiting for Excel file selection.',
+  '等待选择 Excel 文件。': 'Waiting for Excel file selection.',
+  执行器未就绪请先启动执行器: 'The executor is not ready. Start it first.',
+  '执行器未就绪，请先启动执行器。': 'The executor is not ready. Start it first.',
   'Excel数据处理整合工具 - Eric': 'Excel Data Processing Tool - Eric',
   '核对流程 v0.2.0-alpha.1': 'Reconciliation Flow v0.2.0-alpha.1',
   '将 Pack Size breakdown 生成的 Final_Data 作为过渡明细，并自动解析 YTIC check 完成最终数量核对。':
@@ -341,13 +659,18 @@ const staticTextTranslations: Record<string, string> = {
     'Upload Copy of TMS and country.xlsx to generate the standard finished goods sheet.',
   '上传 Copy of TMS 和 country.xlsx 后自动生成标准成品表。':
     'Upload Copy of TMS and country.xlsx to generate the standard finished goods sheet.',
+  'Copy of TMS + 国家区域统计 → 标准成品表':
+    'Copy of TMS + Country/Region Statistics -> Standard Finished Goods Sheet',
   '上传 1 个客户原始文件。': 'Upload one Copy of TMS file.',
   '上传 1 个 Copy of TMS 文件。': 'Upload one Copy of TMS file.',
+  上传国家区域统计文件: 'Upload the country/region statistics file',
+  '上传国家/区域统计文件': 'Upload the country/region statistics file',
   '上传用于国家/区域单别统计的 country.xlsx。':
     'Upload country.xlsx for country/region order statistics.',
   'Working Number 筛选（可选）': 'Working Number Filter (optional)',
   多个WorkingNumber用英文逗号分隔: 'Separate multiple Working Numbers with commas',
   '多个 Working Number 用英文逗号分隔': 'Separate multiple Working Numbers with commas',
+  多个值用英文逗号分隔: 'Separate multiple values with commas',
   客户文件生成标准成品表: 'Generate standard finished goods sheet from Copy of TMS',
   'Copy of TMS 生成标准成品表': 'Generate standard finished goods sheet from Copy of TMS',
   '只上传 1 个，支持 .xls / .xlsx': 'Upload exactly 1 file, supports .xls / .xlsx',
@@ -357,6 +680,9 @@ const staticTextTranslations: Record<string, string> = {
   '输出标准成品表和对应统计结果。': 'Exports the standard finished goods sheet and statistics.',
   '上传多个 BOM 文件和 Pack.xlsx，按 Working # + Season 匹配 Pack，并生成 MAIN COMPONENT 汇总表。':
     'Upload multiple BOM files and Pack.xlsx, match Pack by Working # + Season, and generate the MAIN COMPONENT summary.',
+  BOM汇总: 'BOM Summary',
+  '多 BOM 文件 + Pack 映射 → MAIN COMPONENT 汇总':
+    'Multiple BOM Files + Pack Mapping -> MAIN COMPONENT Summary',
   '上传一个或多个 BOM 文件，支持 .xlsx / .xlsm。': 'Upload one or more BOM files. Supports .xlsx / .xlsm.',
   '上传包含 Pack、Season、Working Number 的 Pack 文件。':
     'Upload a Pack file containing Pack, Season, and Working Number.',
@@ -371,10 +697,16 @@ const staticTextTranslations: Record<string, string> = {
     'Upload T1 PRODUCTION.xlsx and BOM files, compare MAIN COMPONENT materials by Style ID + Recording Facility ID, and mark differences in red.',
   '上传 T1 PRODUCTION.xlsx 和 BOM汇总.xlsx，按 Style ID + Recording Facility ID 核对面料并标红差异。':
     'Upload T1 PRODUCTION.xlsx and BOM Summary.xlsx, compare materials by Style ID + Recording Facility ID, and mark differences in red.',
+  BOM核对: 'BOM Compare',
+  'T1 PRODUCTION × BOM汇总 → 面料差异核对':
+    'T1 PRODUCTION x BOM Summary -> Material Difference Check',
   '上传 1 个 T1 PRODUCTION.xlsx，输出会保留原表样式并标红差异。':
     'Upload one T1 PRODUCTION.xlsx. The output keeps the original sheet styling and marks differences in red.',
+  输出会保留原表样式并标红差异:
+    'The output keeps the original sheet styling and marks differences in red',
   '上传 1 个 Jane - BOM汇总 生成的 BOM汇总.xlsx。':
     'Upload one BOM Summary.xlsx generated by Jane BOM Summary.',
+  'BOM汇总 生成的汇总文件': 'Summary file generated by BOM Summary',
   'T1 PRODUCTION 与 BOM 面料核对': 'T1 PRODUCTION and BOM Material Check',
   'T1 PRODUCTION 与 BOM汇总 面料核对': 'T1 PRODUCTION and BOM Summary Material Check',
   '只上传 1 个，支持 .xlsx / .xlsm': 'Upload exactly 1 file, supports .xlsx / .xlsm',
@@ -390,12 +722,16 @@ const staticTextTranslations: Record<string, string> = {
     'Upload T1 OUTBOUND.xlsx and Copy of TMS, then compare quantity, PODD, and Working Number by Style/PO/Line/Factory.',
   '上传 T1 OUTBOUND.xlsx 和 Copy of TMS 报表，按 Style/PO/Line/Factory 核对数量、PODD 和 Working Number。':
     'Upload T1 OUTBOUND.xlsx and Copy of TMS, then compare quantity, PODD, and Working Number by Style/PO/Line/Factory.',
+  OUTBOUND核对: 'OUTBOUND Compare',
+  'T1 OUTBOUND × TMS 报表 → 出库差异核对':
+    'T1 OUTBOUND x TMS Report -> Outbound Difference Check',
   '上传 1 个 T1 OUTBOUND.xlsx，输出会保留原表样式并标红差异。':
     'Upload one T1 OUTBOUND.xlsx. The output keeps the original sheet styling and marks differences in red.',
   '上传 1 个包含 Result Set 的 TMS Released Order 报表。':
     'Upload one Copy of TMS report containing Result Set.',
   '上传 1 个包含 Result Set 的 Copy of TMS 报表。':
     'Upload one Copy of TMS report containing Result Set.',
+  '包含 Result Set 的 TMS 报表': 'TMS report containing Result Set',
   'T1 OUTBOUND 与 TMS 出库核对': 'T1 OUTBOUND and TMS Outbound Check',
   '只上传 1 个，需包含 Result Set': 'Upload exactly 1 file. Must contain Result Set.',
   '按 Style Number + PO Number + Line Number + Recording Facility ID 匹配 TMS。':
@@ -446,6 +782,7 @@ const staticTextTranslations: Record<string, string> = {
   打包配置: 'Package config',
   未读取: 'Not read',
   安装版: 'Installed',
+  '服务器 / 浏览器': 'Server / Browser',
   开发预览: 'Development / Preview',
   '开发/预览': 'Development / Preview',
   '检查中...': 'Checking...',
@@ -517,7 +854,138 @@ const staticTextTranslations: Record<string, string> = {
     'File upload now supports drag-and-drop appending for multiple files with more stable drag state handling.',
   '修复 TMS 财务追加时重复识别、格式复制、公式平移和小计范围更新不稳定的问题。':
     'Fixed unstable duplicate detection, format copying, formula translation, and subtotal range updates in TMS Finance append processing.',
+  '服务器/浏览器模式下的系统设置页改为只展示版本、运行环境和语言。':
+    'In server/browser mode, Settings now shows only version, runtime, and language.',
+  '英文模式面包屑改为使用完整页面标题，避免只显示左侧导航短名。':
+    'English breadcrumbs now use full page titles instead of sidebar short labels.',
+  'Jane、TMS Finance、Infornexus、adidas Materials 等页面补齐英文业务文案。':
+    'Added English business copy for Jane, TMS Finance, Infornexus, adidas Materials, and related pages.',
+  '修复浏览器/服务器模式仍显示桌面安装包更新入口和诊断包按钮的问题。':
+    'Fixed browser/server mode still showing desktop installer update controls and the diagnostics package button.',
+  TMS财务表格数据处理: 'TMS Finance Spreadsheet Processing',
+  'Sample/Bulk 来源文件 → 内销对账大表尾部追加':
+    'Sample/Bulk Source Files -> Append to Internal Reconciliation Workbook',
+  'BULK Sales 导出表 → TURNOVER Turnover Details 尾部追加':
+    'BULK Sales Export -> Append to TURNOVER Turnover Details',
+  追加进度: 'Append Progress',
+  '追加中...': 'Appending...',
+  'BULK Sales 导出表': 'BULK Sales Export',
+  '上传从 iPlex 导出的 bulk sales 表，系统会读取对应列追加到 TURNOVER':
+    'Upload the bulk sales export from iPlex; the system reads matching columns and appends them to TURNOVER.',
+  'TURNOVER 目标表': 'TURNOVER Target Workbook',
+  '上传要追加 Turnover Details 明细的 TURNOVER 工作簿':
+    'Upload the TURNOVER workbook that will receive Turnover Details rows.',
+  'Sample/Bulk 来源文件': 'Sample/Bulk Source Files',
+  可一次上传多个合并Sample合并BULK工作簿按上传顺序追加缺失行:
+    'Upload multiple merged Sample and merged BULK workbooks; missing rows are appended in upload order.',
+  '可一次上传多个合并Sample、合并BULK工作簿，按上传顺序追加缺失行':
+    'Upload multiple merged Sample and merged BULK workbooks; missing rows are appended in upload order.',
+  内销对账单: 'Internal Reconciliation Workbook',
+  上传要追加缺失数据的内销对账大表:
+    'Upload the internal reconciliation workbook that will receive missing rows.',
+  '请先按预检查提示补齐文件。': 'Complete the file precheck before processing.',
+  '请先上传 Sample/Bulk 来源文件和内销对账单。':
+    'Upload the Sample/Bulk source files and internal reconciliation workbook first.',
+  '请先上传 BULK Sales 导出表。': 'Upload the BULK Sales export first.',
+  '请先上传 TURNOVER 目标表。': 'Upload the TURNOVER target workbook first.',
+  内销对账表数据提取: 'Internal Reconciliation Data Extraction',
+  WorkSales数据追加: 'Work Sales Data Append',
+  'Work Sales 数据追加': 'Work Sales Data Append',
+  来源提取行: 'Extracted Source Rows',
+  'Sample 行': 'Sample Rows',
+  'Bulk 行': 'Bulk Rows',
+  重复跳过: 'Skipped Duplicates',
+  相似已追加: 'Similar Rows Already Appended',
+  目标处理行: 'Processed Target Rows',
+  排除行: 'Excluded Rows',
+  排除列: 'Excluded Columns',
+  'QTY 合计': 'QTY Total',
+  'Purchase 合计': 'Purchase Total',
+  'Sales 含税合计': 'Sales Total With Tax',
+  诊断项: 'Diagnostics',
+  源行: 'Source Rows',
+  'Sales 追加': 'Sales Appended',
+  'Purchase 追加': 'Purchase Appended',
+  Infornexus子应用: 'Infornexus Sub-Application',
+  'Infornexus 子应用': 'Infornexus Sub-Application',
+  当前运行环境不支持外部子应用管理:
+    'The current runtime does not support external sub-application management',
+  当前运行环境不支持启动外部子应用:
+    'The current runtime does not support launching external sub-applications',
+  外部Electron子应用: 'External Electron Sub-Application',
+  '外部 Electron 子应用': 'External Electron Sub-Application',
+  启动应用: 'Launch App',
+  模块详情: 'Module Details',
+  基本信息: 'Basic Information',
+  模块ID: 'Module ID',
+  '模块 ID': 'Module ID',
+  模块名称: 'Module Name',
+  接入方式: 'Integration Mode',
+  部署信息: 'Deployment Information',
+  入口文件: 'Entry File',
+  运行状态: 'Run Status',
+  备注: 'Notes',
+  部署时请保留完整运行时目录: 'Keep the complete runtime directory when deploying',
+  Electron子应用: 'Electron Sub-Application',
+  'Electron 子应用': 'Electron Sub-Application',
+  '已检测到 Infornexus 外部应用。': 'Infornexus external app detected.',
+  '未找到 Infornexus 整包，请确认 external-apps/infornexus 目录完整。':
+    'Infornexus package was not found. Confirm external-apps/infornexus is complete.',
+  读取状态失败: 'Failed to read status',
+  'Infornexus 已启动。': 'Infornexus launched.',
+  启动失败: 'Launch failed',
+  整包缺失: 'Package Missing',
+  模块信息: 'Module Information',
+  运行方式: 'Run Mode',
+  当前按外部Electron子应用方式接入: 'Currently integrated as an external Electron sub-application',
+  '当前按外部 Electron 子应用方式接入。':
+    'Currently integrated as an external Electron sub-application.',
+  网页数据爬取: 'Web Data Collection',
+  'adidas 材料数据收集器': 'adidas Materials Data Collector',
+  '通过外部浏览器登录后自动监听 Materials 接口，批量采集并本地落盘。':
+    'After login in an external browser, automatically listen to Materials API responses, collect in batches, and save locally.',
+  打开外部浏览器: 'Open External Browser',
+  操作提示: 'Operation Tips',
+  运行流程: 'Workflow',
+  采集方式: 'Collection Method',
+  浏览器监听: 'Browser Listener',
+  '外部 Edge/Chrome 登录后监听 Materials 接口响应':
+    'Listen to Materials API responses after login in external Edge/Chrome',
+  保存策略: 'Save Strategy',
+  自动落盘: 'Auto Save',
+  '默认每 2000 条保存 JSON 与 CSV 双格式': 'By default, save both JSON and CSV every 2,000 records',
+  恢复能力: 'Recovery',
+  断点续传: 'Resume Support',
+  '本地保存去重 ID 与待保存批次，支持恢复':
+    'Deduplicated IDs and pending batches are saved locally for recovery',
+  '采集器运行在外部浏览器窗口中，不会在主应用里直接请求 adidas 页面。':
+    'The collector runs in an external browser window and does not request adidas pages directly from the main app.',
+  '登录入口、账号权限和 Materials 列表页路径都按业务实际操作为准。':
+    'The login entry, account permissions, and Materials list path follow the actual business workflow.',
+  '采集结束前先保存当前批次，避免剩余数据只在内存里。':
+    'Save the current batch before ending collection so remaining data is not only kept in memory.',
+  '打开外部 Edge/Chrome，在右侧"网页地址"输入登录入口并前往':
+    'Open external Edge/Chrome, enter the login URL in the Web Address field on the right, and navigate.',
+  '在外部浏览器里完成账号登录，并按正常路径进入 Materials 列表页':
+    'Complete account login in the external browser, then navigate to the Materials list through the normal path.',
+  '进入 Materials 列表页，确认右上角显示"接口捕获：已启用"':
+    'On the Materials list page, confirm the top-right indicator shows "API Capture: Enabled".',
+  '点击"获取当前页"或"开始自动翻页"':
+    'Click "Get Current Page" or "Start Auto Pagination".',
+  '结束前点击"保存当前批次"，避免剩余数据未落盘':
+    'Before ending, click "Save Current Batch" so remaining data is written to disk.',
+  '打开 adidas 外部浏览器失败': 'Failed to open the adidas external browser',
+  'adidas 外部浏览器已在运行': 'The adidas external browser is already running',
+  'adidas 外部浏览器已打开': 'The adidas external browser has opened',
+  '本机后台启动器版本过旧，缺少 adidas 网页端启动接口。请重启或更新后台启动器后再试。':
+    'The local backend launcher is outdated and lacks the adidas web launcher API. Restart or update the backend launcher and try again.',
+  '无法一键启动本机后台启动器。请确认已安装新版 TOS，且浏览器允许打开 tos://automation/launcher/start。':
+    'Unable to start the local backend launcher automatically. Confirm the latest TOS is installed and the browser allows tos://automation/launcher/start.',
 }
+
+const normalizedStaticTextTranslations: Record<string, string> = Object.fromEntries(
+  Object.entries(staticTextTranslations).map(([key, value]) => [normalizeStaticText(key), value]),
+)
 
 export function setAppLanguage(language: AppLanguage): void {
   currentLanguage.value = language
@@ -532,8 +1000,7 @@ export function translateStaticText(value: string, language = currentLanguage.va
     return value
   }
 
-  const normalized = value.replace(/\s+/g, '').replace(/[，。]/g, '')
-  const directTranslation = staticTextTranslations[value] ?? staticTextTranslations[normalized]
+  const directTranslation = staticTextTranslations[value] ?? normalizedStaticTextTranslations[normalizeStaticText(value)]
   if (directTranslation) {
     return directTranslation
   }
@@ -556,6 +1023,86 @@ export function translateStaticText(value: string, language = currentLanguage.va
   const extraFilesMatch = value.match(/^\+(\d+) 个文件$/)
   if (extraFilesMatch) {
     return `+${extraFilesMatch[1]} files`
+  }
+
+  const requiredGroupBadgeMatch = value.match(/^(\d+) 组必传$/)
+  if (requiredGroupBadgeMatch) {
+    return `${requiredGroupBadgeMatch[1]} required groups`
+  }
+
+  const optionalGroupBadgeMatch = value.match(/^(\d+) 组可选$/)
+  if (optionalGroupBadgeMatch) {
+    return `${optionalGroupBadgeMatch[1]} optional groups`
+  }
+
+  const mixedGroupBadgeMatch = value.match(/^(\d+) 组必传 \+ (\d+) 组可选$/)
+  if (mixedGroupBadgeMatch) {
+    return `${mixedGroupBadgeMatch[1]} required groups + ${mixedGroupBadgeMatch[2]} optional groups`
+  }
+
+  const rejectedFilesMatch = value.match(/^不支持的文件格式：(.+)$/)
+  if (rejectedFilesMatch) {
+    return `Unsupported file format: ${rejectedFilesMatch[1]}`
+  }
+
+  const selectedLaunchMatch = value.match(/^(.+) 已选择，等待启动。$/)
+  if (selectedLaunchMatch) {
+    return `${selectedLaunchMatch[1]} selected. Waiting to launch.`
+  }
+
+  const bulkLaunchMatch = value.match(/^(.+) 正在启动\.\.\.$/)
+  if (bulkLaunchMatch) {
+    return `${bulkLaunchMatch[1]} is launching...`
+  }
+
+  const bulkStartedMatch = value.match(/^(.+) 已启动。$/)
+  if (bulkStartedMatch) {
+    return `${bulkStartedMatch[1]} started.`
+  }
+
+  const localHttpFailureMatch = value.match(/^本地执行失败，HTTP (\d+)。$/)
+  if (localHttpFailureMatch) {
+    return `Local execution failed, HTTP ${localHttpFailureMatch[1]}.`
+  }
+
+  const requestHttpFailureMatch = value.match(/^请求失败，HTTP (\d+)。$/)
+  if (requestHttpFailureMatch) {
+    return `Request failed, HTTP ${requestHttpFailureMatch[1]}.`
+  }
+
+  const launcherHttpFailureMatch = value.match(/^本机启动器请求失败，HTTP (\d+)$/)
+  if (launcherHttpFailureMatch) {
+    return `Local launcher request failed, HTTP ${launcherHttpFailureMatch[1]}`
+  }
+
+  const shippingCompleteMatch = value.match(/^Shipping 自动化完成。已输入 (.+) 个 PO No。$/)
+  if (shippingCompleteMatch) {
+    return `Shipping automation completed. Entered ${shippingCompleteMatch[1]} PO No.`
+  }
+
+  const infornexusCompleteMatch = value.match(/^Infornexus 自动搜索添加完成。已处理 (.+) 个 ID。$/)
+  if (infornexusCompleteMatch) {
+    return `Infornexus auto search/add completed. Processed ${infornexusCompleteMatch[1]} IDs.`
+  }
+
+  const directCompleteMatch = value.match(/^本地直连执行成功。已处理 (.+) 行数据。$/)
+  if (directCompleteMatch) {
+    return `Local direct execution completed. Processed ${directCompleteMatch[1]} rows.`
+  }
+
+  const loginCompleteMatch = value.match(/^登录成功。已处理 (.+) 行数据。$/)
+  if (loginCompleteMatch) {
+    return `Login succeeded. Processed ${loginCompleteMatch[1]} rows.`
+  }
+
+  const localExceptionMatch = value.match(/^本地执行异常：(.+)$/)
+  if (localExceptionMatch) {
+    return `Local execution error: ${translateStaticText(localExceptionMatch[1], language)}`
+  }
+
+  const sendExceptionMatch = value.match(/^发送异常：(.+)$/)
+  if (sendExceptionMatch) {
+    return `Send error: ${translateStaticText(sendExceptionMatch[1], language)}`
   }
 
   const labeledValueMatch = value.match(/^([^:：]+)([:：]\s*)(.+)$/)

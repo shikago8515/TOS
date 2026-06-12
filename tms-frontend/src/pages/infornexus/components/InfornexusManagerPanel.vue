@@ -2,12 +2,12 @@
   <div class="infornexus-panel">
     <div class="table-content">
       <div class="table-head">
-        <div class="head-cell head-cell--index">序号</div>
-        <div class="head-cell head-cell--module">模块信息</div>
-        <div class="head-cell">运行方式</div>
-        <div class="head-cell">入口文件</div>
-        <div class="head-cell">状态</div>
-        <div class="head-cell head-cell--action">操作</div>
+        <div class="head-cell head-cell--index">{{ text('序号') }}</div>
+        <div class="head-cell head-cell--module">{{ text('模块信息') }}</div>
+        <div class="head-cell">{{ text('运行方式') }}</div>
+        <div class="head-cell">{{ text('入口文件') }}</div>
+        <div class="head-cell">{{ text('状态') }}</div>
+        <div class="head-cell head-cell--action">{{ text('操作') }}</div>
       </div>
 
       <article class="table-row">
@@ -19,29 +19,29 @@
             <div class="module-icon">IF</div>
             <div class="module-text">
               <span class="module-name">{{ moduleInfo?.name || 'Infornexus' }}</span>
-              <span class="module-meta">模块 ID：{{ moduleInfo?.id || 'infornexus' }}</span>
-              <small class="module-desc">当前按外部 Electron 子应用方式接入。</small>
+              <span class="module-meta">{{ text('模块 ID') }}: {{ moduleInfo?.id || 'infornexus' }}</span>
+              <small class="module-desc">{{ text('当前按外部 Electron 子应用方式接入。') }}</small>
             </div>
           </div>
         </div>
         <div class="row-cell">
-          <span class="cell-text">外部 Electron 子应用</span>
+          <span class="cell-text">{{ text('外部 Electron 子应用') }}</span>
         </div>
         <div class="row-cell">
           <div class="text-stack">
             <strong>{{ entryPath }}</strong>
-            <small>部署时请保留完整运行时目录</small>
+            <small>{{ text('部署时请保留完整运行时目录') }}</small>
           </div>
         </div>
         <div class="row-cell">
           <span class="status-tag" :class="statusClass(statusTone)">
-            {{ statusLabel }}
+            {{ text(statusLabel) }}
           </span>
         </div>
         <div class="row-cell row-cell--action">
           <div class="action-buttons">
             <button class="action-btn launch-btn" type="button" :disabled="!canLaunch" @click="$emit('launch')">
-              启动
+              {{ text('启动') }}
             </button>
           </div>
         </div>
@@ -53,6 +53,7 @@
 
 <script setup lang="ts">
 import type { ExternalModuleInfo } from '../../../types/electronApi'
+import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 import type { InfornexusNoticeTone } from '../infornexusModel'
 
 defineEmits<{
@@ -66,6 +67,8 @@ defineProps<{
   statusTone: InfornexusNoticeTone
   canLaunch: boolean
 }>()
+
+const { text } = useAppLanguage()
 
 function statusClass(tone: InfornexusNoticeTone): string {
   if (tone === 'success') return 'status-tag--success'

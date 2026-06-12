@@ -2,12 +2,12 @@
   <div class="browser-plugins-panel">
     <div v-if="plugins.length" class="table-content">
       <div class="table-head">
-        <div class="head-cell head-cell--index">序号</div>
-        <div class="head-cell head-cell--plugin">插件信息</div>
-        <div class="head-cell">目标站点</div>
-        <div class="head-cell">执行模式</div>
-        <div class="head-cell">状态</div>
-        <div class="head-cell head-cell--action">操作</div>
+        <div class="head-cell head-cell--index">{{ text('序号') }}</div>
+        <div class="head-cell head-cell--plugin">{{ text('插件信息') }}</div>
+        <div class="head-cell">{{ text('目标站点') }}</div>
+        <div class="head-cell">{{ text('执行模式') }}</div>
+        <div class="head-cell">{{ text('状态') }}</div>
+        <div class="head-cell head-cell--action">{{ text('操作') }}</div>
       </div>
 
       <article v-for="(plugin, index) in plugins" :key="plugin.id" class="table-row">
@@ -18,11 +18,11 @@
           <div class="plugin-info-cell">
             <div class="plugin-icon">BP</div>
             <div class="plugin-text">
-              <span class="plugin-name">{{ plugin.name }}</span>
+              <span class="plugin-name">{{ text(plugin.name) }}</span>
               <span class="plugin-meta">
-                {{ plugin.provider || '业务网页' }} · {{ plugin.category || '-' }}
+                {{ text(plugin.provider || '业务网页') }} · {{ plugin.category ? text(plugin.category) : '-' }}
               </span>
-              <small class="plugin-desc">{{ plugin.description }}</small>
+              <small class="plugin-desc">{{ text(plugin.description || '') }}</small>
             </div>
           </div>
         </div>
@@ -34,12 +34,12 @@
         </div>
         <div class="row-cell">
           <span class="mode-tag" :class="{ 'mode-tag--preview': plugin.previewOnly }">
-            {{ plugin.previewOnly ? '预览配置' : '真实执行' }}
+            {{ plugin.previewOnly ? text('预览配置') : text('真实执行') }}
           </span>
         </div>
         <div class="row-cell">
           <span class="status-tag" :class="statusClass(getBrowserPluginStatusTone(plugin))">
-            {{ getBrowserPluginStatusLabel(plugin) }}
+            {{ text(getBrowserPluginStatusLabel(plugin)) }}
           </span>
         </div>
         <div class="row-cell row-cell--action">
@@ -55,7 +55,7 @@
               "
               @click="$emit('launch', plugin.id)"
             >
-              {{ launchingId === plugin.id ? '启动中' : '启动' }}
+              {{ launchingId === plugin.id ? text('启动中') : text('启动') }}
             </button>
             <button
               class="action-btn"
@@ -63,7 +63,7 @@
               :disabled="!plugin.targetUrl"
               @click="$emit('open-target', plugin.targetUrl)"
             >
-              站点
+              {{ text('站点') }}
             </button>
           </div>
         </div>
@@ -72,8 +72,8 @@
 
     <div v-else class="empty-state">
       <div class="empty-icon">PL</div>
-      <p>暂无可展示的浏览器插件</p>
-      <span>请先确认桌面端插件注册结果，或切换到具备浏览器桥接能力的运行环境。</span>
+      <p>{{ text('暂无可展示的浏览器插件') }}</p>
+      <span>{{ text('请先确认桌面端插件注册结果，或切换到具备浏览器桥接能力的运行环境。') }}</span>
     </div>
 
   </div>
@@ -86,6 +86,9 @@ import {
   getBrowserPluginStatusTone,
   type BrowserPluginStatusTone,
 } from '../browserPluginsModel'
+import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+
+const { text } = useAppLanguage()
 
 defineEmits<{
   (e: 'launch', pluginId: string): void

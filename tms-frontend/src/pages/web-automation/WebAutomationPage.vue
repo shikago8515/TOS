@@ -57,18 +57,18 @@
             <AppIcon :name="entry.status === 'online' ? 'window' : entry.status === 'soon' ? 'clock' : 'package'" />
           </div>
           <div class="wa-card__info">
-            <strong>{{ entry.title }}</strong>
-            <span>{{ entry.subtitle }}</span>
+            <strong>{{ text(entry.title) }}</strong>
+            <span>{{ text(entry.subtitle) }}</span>
           </div>
           <span class="wa-card__status" :class="`wa-tag--${getEntryStatusTone(entry.status)}`">
-            {{ getEntryStatusLabel(entry.status) }}
+            {{ text(getEntryStatusLabel(entry.status)) }}
           </span>
         </div>
 
-        <p class="wa-card__desc">{{ entry.description }}</p>
+        <p class="wa-card__desc">{{ text(entry.description) }}</p>
 
         <div class="wa-card__tags">
-          <span v-for="tag in entry.tags" :key="tag" class="wa-chip">{{ tag }}</span>
+          <span v-for="tag in entry.tags" :key="tag" class="wa-chip">{{ text(tag) }}</span>
         </div>
 
         <div class="wa-card__actions">

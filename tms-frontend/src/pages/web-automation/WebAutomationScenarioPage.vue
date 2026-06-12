@@ -18,8 +18,8 @@
         <AppIcon name="bot" />
       </div>
       <div class="ws-hero__text">
-        <h1>{{ entry?.title || text('未找到入口') }}</h1>
-        <p>{{ entry?.subtitle || text('当前入口不存在，请返回列表重新选择。') }}</p>
+        <h1>{{ entry ? text(entry.title) : text('未找到入口') }}</h1>
+        <p>{{ entry ? text(entry.subtitle) : text('当前入口不存在，请返回列表重新选择。') }}</p>
       </div>
     </header>
 
@@ -29,7 +29,7 @@
         <div class="ws-alert__icon">
           <AppIcon :name="messageTone === 'success' ? 'check-circle' : messageTone === 'error' ? 'alert-circle' : 'info'" />
         </div>
-        <span class="ws-alert__text">{{ message }}</span>
+        <span class="ws-alert__text">{{ text(message) }}</span>
       </div>
     </transition>
 
@@ -287,8 +287,8 @@
             <transition name="ws-msg">
               <div v-if="lastResult || sending" class="ws-inline-status" :class="inlineStatusClass">
                 <AppIcon :name="statusIconName" class="ws-inline-status__icon" />
-                <span class="ws-inline-status__text">{{ statusText }}</span>
-                <span class="ws-badge ws-badge--sm" :class="statusBadgeClass">{{ statusLabel }}</span>
+                <span class="ws-inline-status__text">{{ text(statusText) }}</span>
+                <span class="ws-badge ws-badge--sm" :class="statusBadgeClass">{{ text(statusLabel) }}</span>
               </div>
             </transition>
             <div v-if="isShippingScenario && shippingArtifactLinks?.resultExcelUrl" class="ws-inline-downloads">
@@ -466,8 +466,8 @@
             <transition name="ws-msg">
               <div v-if="lastResult || sending" class="ws-inline-status" :class="inlineStatusClass">
                 <AppIcon :name="statusIconName" class="ws-inline-status__icon" />
-                <span class="ws-inline-status__text">{{ statusText }}</span>
-                <span class="ws-badge ws-badge--sm" :class="statusBadgeClass">{{ statusLabel }}</span>
+                <span class="ws-inline-status__text">{{ text(statusText) }}</span>
+                <span class="ws-badge ws-badge--sm" :class="statusBadgeClass">{{ text(statusLabel) }}</span>
               </div>
             </transition>
           </div>
@@ -619,17 +619,17 @@ const directScenarioRunLabel = computed(() =>
 const healthRaw = computed(() => executorHealth.value ? JSON.stringify(executorHealth.value, null, 2) : '{}')
 const executorStatusLabel = computed(() => {
   if (activeApp.value) {
-    const label = getAutomationAppStatusLabel(activeApp.value)
+    const label = text(getAutomationAppStatusLabel(activeApp.value))
     if (executorHealth.value?.ok) {
       const activeRunCount = Number(executorHealth.value.activeRunCount || 0)
-      return activeRunCount > 0 ? `${label} / 运行 ${activeRunCount} 个任务` : `${label} / 就绪`
+      return activeRunCount > 0 ? `${label} / ${text('运行')} ${activeRunCount} ${text('个任务')}` : `${label} / ${text('就绪')}`
     }
     if (activeApp.value.running) {
-      return `${label} / 未连通`
+      return `${label} / ${text('未连通')}`
     }
     return label
   }
-  return executorHealth.value?.ok ? '就绪' : '未启动'
+  return executorHealth.value?.ok ? text('就绪') : text('未启动')
 })
 const statusBadgeClass = computed(() => {
   if (sending.value) return 'ws-badge--wait'
@@ -658,10 +658,10 @@ const activePassword = computed(() => isInfornexusDirectScenario.value ? shippin
 const credentialStatusText = computed(() => {
   if (hasStoredCredentials.value) {
     return savedCredentialUsername.value
-      ? `本机已保存凭据：${savedCredentialUsername.value}`
-      : '本机已保存凭据。'
+      ? `${text('本机已保存凭据')}: ${savedCredentialUsername.value}`
+      : text('本机已保存凭据。')
   }
-  return '本机未保存凭据。首次执行前请填写账号密码并保存。'
+  return text('本机未保存凭据。首次执行前请填写账号密码并保存。')
 })
 const canRunShippingAutomation = computed(() => canRunWithCredentials({
   username: shippingUsername.value,

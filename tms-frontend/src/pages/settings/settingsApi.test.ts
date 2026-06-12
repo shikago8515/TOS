@@ -53,14 +53,22 @@ describe('settingsApi', () => {
     })
   })
 
-  it('builds unsupported update status from the same fallback version', async () => {
+  it('builds browser/server update status without desktop update source or error', async () => {
     stubWindow()
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
 
-    await expect(getUpdateStatusSnapshot()).resolves.toMatchObject({
+    const status = await getUpdateStatusSnapshot()
+
+    expect(status).toMatchObject({
       status: 'unsupported',
       currentVersion: fallbackAppVersion,
       isPackaged: false,
+      feedUrl: '',
+      feedUrlSource: 'none',
+      error: '',
     })
+    expect(status.updateAvailable).toBe(false)
+    expect(status.updateInfo).toBeNull()
+    expect(status.manualDownload).toBeNull()
   })
 })

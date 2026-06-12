@@ -67,15 +67,15 @@
             <AppIcon name="browser" />
           </div>
           <div class="plugin-card__info">
-            <strong>{{ plugin.name }}</strong>
-            <span>{{ plugin.provider || text('业务网页') }} · {{ plugin.category || '-' }}</span>
+            <strong>{{ text(plugin.name) }}</strong>
+            <span>{{ text(plugin.provider || '业务网页') }} · {{ plugin.category ? text(plugin.category) : '-' }}</span>
           </div>
           <span class="plugin-card__status" :class="`tag--${getBrowserPluginStatusTone(plugin)}`">
-            {{ getBrowserPluginStatusLabel(plugin) }}
+            {{ text(getBrowserPluginStatusLabel(plugin)) }}
           </span>
         </div>
 
-        <p v-if="plugin.description" class="plugin-card__desc">{{ plugin.description }}</p>
+        <p v-if="plugin.description" class="plugin-card__desc">{{ text(plugin.description) }}</p>
 
         <div class="plugin-card__meta">
           <div class="meta-item">
@@ -182,7 +182,7 @@ async function refreshPlugins(): Promise<void> {
     }
   } catch (e) {
     messageTone.value = 'error'
-    message.value = readErrorMessage(e, '读取浏览器插件失败')
+    message.value = readErrorMessage(e, text('读取浏览器插件失败'))
   } finally { loading.value = false }
 }
 
@@ -202,7 +202,7 @@ async function startPlugin(pluginId: string): Promise<void> {
       message.value = `${result.browser || text('浏览器')} ${text('已启动，插件已加载到目标环境。')}`
     } else {
       messageTone.value = 'error'
-      message.value = result.error || text('启动浏览器插件失败')
+      message.value = result.error ? text(result.error) : text('启动浏览器插件失败')
     }
   } catch (e) {
     const err = readErrorMessage(e, text('启动浏览器插件失败'))
@@ -220,7 +220,7 @@ async function openTarget(url?: string): Promise<void> {
     const result = await openBrowserPluginTarget(url)
     if (!result.success) {
       messageTone.value = 'error'
-      message.value = result.error || text('打开目标站点失败')
+      message.value = result.error ? text(result.error) : text('打开目标站点失败')
     }
   } catch (e) {
     messageTone.value = 'error'
@@ -229,7 +229,7 @@ async function openTarget(url?: string): Promise<void> {
 }
 
 function readErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
+  return error instanceof Error && error.message ? text(error.message) : fallback
 }
 </script>
 

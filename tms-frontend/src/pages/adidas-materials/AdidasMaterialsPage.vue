@@ -83,7 +83,7 @@
         >
           <div class="am-note__dot" />
           <AppIcon :name="note.icon" class="am-note__icon" />
-          <p class="am-note__text">{{ note.text }}</p>
+          <p class="am-note__text">{{ text(note.text) }}</p>
         </div>
       </div>
     </section>
@@ -106,7 +106,7 @@
             <div class="am-step__pulse" />
           </div>
           <div v-if="i < adidasMaterialsWorkflowSteps.length - 1" class="am-step__line" />
-          <p class="am-step__text">{{ step.text }}</p>
+          <p class="am-step__text">{{ text(step.text) }}</p>
         </article>
       </div>
     </section>
@@ -138,6 +138,9 @@ const { text } = useAppLanguage()
 const capabilities = computed(() =>
   adidasMaterialsCapabilities.map((cap, i) => ({
     ...cap,
+    label: text(cap.label),
+    value: text(cap.value),
+    desc: text(cap.desc),
     icon: ['browser', 'database', 'shield-check'][i],
     tone: ['teal', 'blue', 'green'][i],
   })),
@@ -162,13 +165,13 @@ async function openCollector(): Promise<void> {
 
     if (result.success) {
       messageTone.value = 'success'
-      message.value = readLaunchSuccessMessage(result.alreadyOpen)
+      message.value = text(readLaunchSuccessMessage(result.alreadyOpen))
     } else {
       messageTone.value = 'error'
-      message.value = result.error || '打开 adidas 外部浏览器失败'
+      message.value = result.error ? text(result.error) : text('打开 adidas 外部浏览器失败')
     }
   } catch (error) {
-    const errorMessage = readErrorMessage(error, '打开 adidas 外部浏览器失败')
+    const errorMessage = readErrorMessage(error, text('打开 adidas 外部浏览器失败'))
     await recordAdidasMaterialsEvent('launch-exception', { error: errorMessage })
     messageTone.value = 'error'
     message.value = errorMessage
@@ -178,7 +181,7 @@ async function openCollector(): Promise<void> {
 }
 
 function readErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) return error.message
+  if (error instanceof Error && error.message) return text(error.message)
   return fallback
 }
 </script>

@@ -16,15 +16,15 @@
         <AppIcon name="bot" />
       </div>
       <div class="s2-hero__text">
-        <h1>{{ entry?.title || text('未找到入口') }}</h1>
-        <p>{{ entry?.subtitle || text('当前入口不存在，请返回列表重新选择。') }}</p>
+        <h1>{{ entry ? text(entry.title) : text('未找到入口') }}</h1>
+        <p>{{ entry ? text(entry.subtitle) : text('当前入口不存在，请返回列表重新选择。') }}</p>
       </div>
     </header>
 
     <transition name="s2-msg">
       <div v-if="message" class="s2-alert" :class="`s2-alert--${messageTone}`">
         <AppIcon :name="messageIconName" />
-        <span>{{ message }}</span>
+        <span>{{ text(message) }}</span>
       </div>
     </transition>
 
@@ -133,7 +133,7 @@
                   <AppIcon name="upload" />
                 </div>
                 <div>
-                  <strong>{{ bulk.label }}</strong>
+                  <strong>{{ text(bulk.label) }}</strong>
                   <p>{{ text('Excel 输入与启动') }}</p>
                 </div>
               </div>
@@ -193,7 +193,7 @@
 
               <div class="s2-bulk-status" :class="`s2-bulk-status--${bulk.tone}`">
                 <AppIcon :name="bulkStatusIcon(bulk)" />
-                <span>{{ bulk.statusText }}</span>
+                <span>{{ text(bulk.statusText) }}</span>
               </div>
 
               <div v-if="bulk.result" class="s2-bulk-result">
@@ -304,17 +304,17 @@ const healthRaw = computed(() => (
 
 const executorStatusLabel = computed(() => {
   if (activeApp.value) {
-    const label = getAutomationAppStatusLabel(activeApp.value)
+    const label = text(getAutomationAppStatusLabel(activeApp.value))
     if (executorHealth.value?.ok) {
       const activeRunCount = Number(executorHealth.value.activeRunCount || 0)
-      return activeRunCount > 0 ? `${label} / 运行 ${activeRunCount} 个任务` : `${label} / 就绪`
+      return activeRunCount > 0 ? `${label} / ${text('运行')} ${activeRunCount} ${text('个任务')}` : `${label} / ${text('就绪')}`
     }
     if (activeApp.value.running) {
-      return `${label} / 未连接`
+      return `${label} / ${text('未连接')}`
     }
     return label
   }
-  return executorHealth.value?.ok ? '就绪' : '未启动'
+  return executorHealth.value?.ok ? text('就绪') : text('未启动')
 })
 
 const canLaunchActiveApp = computed(() => Boolean(entry?.appId) && !launching.value)

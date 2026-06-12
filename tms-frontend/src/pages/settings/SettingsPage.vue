@@ -12,11 +12,12 @@
         </div>
       </div>
       <div class="st-hero__right">
-        <span class="st-status-pill" :class="`st-status-pill--${statusTone}`">
+        <span v-if="hasDesktopUpdateSupport" class="st-status-pill" :class="`st-status-pill--${statusTone}`">
           <span class="st-status-dot" />
           {{ statusLabel }}
         </span>
         <button
+          v-if="hasDesktopUpdateSupport"
           class="st-btn st-btn--outline st-btn--sm"
           type="button"
           :disabled="isActionLocked"
@@ -65,7 +66,7 @@
       </div>
     </div>
 
-    <div class="st-feed-row">
+    <div v-if="hasDesktopUpdateSupport" class="st-feed-row">
       <div class="st-feed-row__icon">
         <AppIcon name="link" />
       </div>
@@ -80,7 +81,7 @@
 
     <!-- ===== Alert ===== -->
     <transition name="st-alert">
-      <div v-if="noticeText" class="st-alert" :class="`st-alert--${noticeTone}`">
+      <div v-if="hasDesktopUpdateSupport && noticeText" class="st-alert" :class="`st-alert--${noticeTone}`">
         <div class="st-alert__icon">
           <AppIcon :name="noticeTone === 'success' ? 'check-circle' : noticeTone === 'error' ? 'alert-circle' : 'activity'" />
         </div>
@@ -91,7 +92,7 @@
 
     <!-- ===== Download Progress ===== -->
     <transition name="st-alert">
-      <section v-if="status?.downloading || status?.progress" class="st-download">
+      <section v-if="hasDesktopUpdateSupport && (status?.downloading || status?.progress)" class="st-download">
         <div class="st-download__head">
           <AppIcon name="download-cloud" />
           <span class="st-download__label">{{ text('下载进度') }}</span>
@@ -105,7 +106,7 @@
     </transition>
 
     <!-- ===== Changelog ===== -->
-    <section class="st-changelog">
+    <section v-if="hasDesktopUpdateSupport" class="st-changelog">
       <div class="st-section-head">
         <AppIcon name="refresh-cw" />
         <h3>{{ text('更新日志') }}</h3>
@@ -148,7 +149,7 @@
 
     <!-- ===== Manual Download ===== -->
     <transition name="st-alert">
-      <section v-if="manualDownload" class="st-manual">
+      <section v-if="hasDesktopUpdateSupport && manualDownload" class="st-manual">
         <div class="st-manual__info">
           <div class="st-manual__icon">
             <AppIcon name="package" />
@@ -171,7 +172,7 @@
     </transition>
 
     <!-- ===== Actions ===== -->
-    <footer class="st-actions">
+    <footer v-if="hasDesktopUpdateSupport && (canDownload || canInstall)" class="st-actions">
       <button
         v-if="canDownload"
         class="st-btn st-btn--primary"
@@ -237,6 +238,7 @@ const currentLangLabel = computed(() => languageOptions.value.find(o => o.value 
 function selectLang(val: 'zh-CN' | 'en-US') { currentLanguage.value = val; langOpen.value = false }
 function closeLang() { langOpen.value = false }
 
+const hasDesktopUpdateSupport = computed(() => hasUpdateBridge())
 
 const statusLabels: Record<UpdateStatusCode, string> = {
   idle: '待检查',
@@ -289,7 +291,7 @@ const statusLabel = computed(() => text(statusLabels[status.value?.status || 'id
 const statusTone = computed(() => statusTones[status.value?.status || 'idle'])
 const runModeLabel = computed(() => {
   const isPackaged = status.value?.isPackaged ?? versionInfo.value.isPackaged
-  return isPackaged ? text('安装版') : text('浏览器')
+  return isPackaged ? text('安装版') : text('服务器 / 浏览器')
 })
 const feedUrl = computed(() => status.value?.feedUrl || '')
 const feedUrlText = computed(() => feedUrl.value || '-')
@@ -346,32 +348,38 @@ const isActionLocked = computed(() =>
   Boolean(activeAction.value || status.value?.checking || status.value?.downloading),
 )
 
-const versionItems = computed(() => [
-  {
+const versionItems = computed(() => {
+  const items = [{
     key: 'current',
     icon: 'check-circle',
     label: t('app.settings.currentVersion'),
     value: formatDisplayVersion(currentVersion.value),
     tone: 'teal',
     mono: false,
-  },
-  {
-    key: 'latest',
-    icon: 'sparkles',
-    label: t('app.settings.latestVersion'),
-    value: latestVersion.value,
-    tone: 'blue',
-    mono: false,
-  },
-  {
+  }]
+
+  if (hasDesktopUpdateSupport.value) {
+    items.push({
+      key: 'latest',
+      icon: 'sparkles',
+      label: t('app.settings.latestVersion'),
+      value: latestVersion.value,
+      tone: 'blue',
+      mono: false,
+    })
+  }
+
+  items.push({
     key: 'mode',
     icon: 'monitor-code',
     label: t('app.settings.runMode'),
     value: runModeLabel.value,
     tone: 'slate',
     mono: false,
-  },
-])
+  })
+
+  return items
+})
 
 onMounted(() => {
   unsubscribeUpdateStatus = subscribeUpdateStatus((nextStatus) => {
@@ -397,11 +405,6 @@ async function loadSettings(): Promise<void> {
     ])
     versionInfo.value = nextVersionInfo
     status.value = nextStatus
-
-    if (!hasUpdateBridge()) {
-      messageTone.value = 'warning'
-      message.value = '当前浏览器预览环境不支持应用更新'
-    }
   } catch (error) {
     messageTone.value = 'error'
     message.value = readErrorMessage(error, '读取应用更新状态失败')

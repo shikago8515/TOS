@@ -14,7 +14,7 @@
       <div class="hero-right">
         <span class="status-pill" :class="`status-pill--${statusTone}`">
           <span class="status-dot" />
-          {{ statusLabel }}
+          {{ localizedStatusLabel }}
         </span>
         <button class="hero-btn" type="button" :disabled="loading" @click="refreshModule">
           <AppIcon name="refresh-cw" />
@@ -90,7 +90,7 @@
             <div class="detail-item">
               <dt>{{ text('运行状态') }}</dt>
               <dd>
-                <span class="inline-tag" :class="`inline-tag--${statusTone}`">{{ statusLabel }}</span>
+                <span class="inline-tag" :class="`inline-tag--${statusTone}`">{{ localizedStatusLabel }}</span>
               </dd>
             </div>
             <div class="detail-item">
@@ -130,6 +130,7 @@ const messageTone = ref<InfornexusNoticeTone>('info')
 const { text } = useAppLanguage()
 
 const statusLabel = computed(() => getInfornexusStatusLabel(moduleInfo.value))
+const localizedStatusLabel = computed(() => text(statusLabel.value))
 const statusTone = computed(() => getInfornexusStatusTone(moduleInfo.value))
 const entryPath = computed(
   () => moduleInfo.value?.executablePath || moduleInfo.value?.path || expectedInfornexusEntry,
@@ -143,7 +144,7 @@ const infoCards = computed(() => [
     key: 'status',
     icon: 'activity',
     label: text('当前状态'),
-    value: statusLabel.value,
+    value: localizedStatusLabel.value,
     tone: moduleInfo.value?.available ? 'green' : 'orange',
   },
   {
@@ -194,7 +195,7 @@ async function launchModule(): Promise<void> {
       message.value = text('Infornexus 已启动。')
     } else {
       messageTone.value = 'error'
-      message.value = result.error || text('启动失败')
+      message.value = result.error ? text(result.error) : text('启动失败')
     }
   } catch (e) {
     const err = readErrorMessage(e, text('启动失败'))
@@ -205,7 +206,7 @@ async function launchModule(): Promise<void> {
 }
 
 function readErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
+  return error instanceof Error && error.message ? text(error.message) : fallback
 }
 </script>
 

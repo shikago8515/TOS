@@ -6,8 +6,6 @@ import type {
 import { getBackendBaseUrl } from '../../shared/api/backendClient'
 import { fallbackAppVersion } from '../../shared/version/appVersion'
 
-const previewUpdateFeedUrl = 'https://github.com/shikago8515/TOS/releases/latest/download/'
-
 export function hasUpdateBridge(): boolean {
   return Boolean(window.electronAPI?.getUpdateStatus)
 }
@@ -78,13 +76,13 @@ async function buildUnsupportedResult(): Promise<UpdateActionResult> {
 async function buildUnsupportedStatus(): Promise<UpdateStatus> {
   const currentVersion = await readBrowserAppVersion()
 
-  // 浏览器预览时没有 Electron bridge，页面仍保留可渲染的版本状态。
+  // 服务器/浏览器模式没有 Electron bridge，仅保留版本快照，不暴露桌面更新源。
   return {
     status: 'unsupported',
     currentVersion,
     isPackaged: false,
-    feedUrl: previewUpdateFeedUrl,
-    feedUrlSource: 'preview',
+    feedUrl: '',
+    feedUrlSource: 'none',
     updateAvailable: false,
     checking: false,
     downloading: false,
@@ -93,7 +91,7 @@ async function buildUnsupportedStatus(): Promise<UpdateStatus> {
     manualDownload: null,
     changelog: null,
     progress: null,
-    error: '当前运行环境不支持应用更新',
+    error: '',
   }
 }
 

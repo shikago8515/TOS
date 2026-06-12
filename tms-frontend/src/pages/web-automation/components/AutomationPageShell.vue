@@ -54,19 +54,19 @@
             <AppIcon :name="getCardIcon(entry)" />
           </div>
           <div class="ap-card__head">
-            <div class="ap-card__title">{{ entry.title }}</div>
-            <div class="ap-card__sub">{{ entry.subtitle }}</div>
+            <div class="ap-card__title">{{ text(entry.title) }}</div>
+            <div class="ap-card__sub">{{ text(entry.subtitle) }}</div>
           </div>
           <span class="ap-card__tag" :class="`ap-card__tag--${entry.status}`">
-            {{ getEntryStatusLabel(entry.status) }}
+            {{ text(getEntryStatusLabel(entry.status)) }}
           </span>
         </div>
 
-        <p class="ap-card__desc">{{ entry.description }}</p>
+        <p class="ap-card__desc">{{ text(entry.description) }}</p>
 
         <div class="ap-card__tags">
           <span v-for="tag in entry.tags" :key="tag" class="ap-chip">
-            {{ tag }}
+            {{ text(tag) }}
           </span>
         </div>
 

@@ -89,7 +89,7 @@
           <div class="breadcrumb">
             <span class="breadcrumb-home">
               <AppIcon name="radar" class="breadcrumb-home-icon" />
-              <span>首页</span>
+              <span>{{ text('首页') }}</span>
             </span>
             <span class="breadcrumb-separator">/</span>
             <span class="breadcrumb-item current">{{ pageTitle }}</span>
@@ -103,6 +103,7 @@
           </div>
 
           <button
+            v-if="canExportDiagnostics"
             class="topbar-action"
             type="button"
             :title="t('app.diagnostics.export')"
@@ -201,6 +202,7 @@ import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 
 import {
+  getLocalizedModuleTitle,
   getModulesByGroup,
   tosNavGroups,
   tosModuleCategoryLabels,
@@ -216,6 +218,7 @@ import {
   markReleaseNoticeSeen,
   type ReleaseNoticeState,
 } from '../shared/version/releaseNotice'
+import { hasDesktopDiagnosticsSupport } from './appShellRuntime'
 
 interface SidebarCategory {
   id: string
@@ -315,11 +318,11 @@ const pageTitle = computed(() => {
     .find((module) => isModuleActive(module))
 
   if (activeModule) {
-    return isEnglish.value ? activeModule.navLabelEn : activeModule.title
+    return getLocalizedModuleTitle(activeModule, isEnglish.value ? 'en-US' : 'zh-CN')
   }
 
   const title = route.meta.title
-  return typeof title === 'string' ? title : '首页'
+  return typeof title === 'string' ? text(title) : text('首页')
 })
 
 const sidebarToggleLabel = computed(() =>
@@ -327,6 +330,7 @@ const sidebarToggleLabel = computed(() =>
 )
 
 const diagnosticsShortLabel = computed(() => (isEnglish.value ? 'Diag' : '诊断'))
+const canExportDiagnostics = computed(() => hasDesktopDiagnosticsSupport())
 
 const displayDate = computed(() => {
   const today = new Date()
@@ -427,11 +431,17 @@ function getModuleIcon(module: TosModuleDefinition): string {
 }
 
 async function exportDiagnostics(): Promise<void> {
-  if (!window.electronAPI) {
-    showToast('warning', 'alert-circle', '功能受限', '导出诊断包功能需要在桌面客户端中使用，当前浏览器预览环境不支持。')
+  const exportDiagnosticsPackage = window.electronAPI?.exportDiagnosticsPackage
+  if (!exportDiagnosticsPackage) {
+    showToast(
+      'warning',
+      'alert-circle',
+      text('功能受限'),
+      text('导出诊断包功能需要在桌面客户端中使用，当前浏览器预览环境不支持。'),
+    )
     return
   }
-  await window.electronAPI.exportDiagnosticsPackage()
+  await exportDiagnosticsPackage()
 }
 
 const handleResize = () => {
