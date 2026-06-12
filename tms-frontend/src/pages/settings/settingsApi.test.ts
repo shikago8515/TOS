@@ -40,7 +40,7 @@ describe('settingsApi', () => {
       version: '0.9.8-beta.3.0',
       isPackaged: false,
     })
-    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/')
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:8000/')
   })
 
   it('uses the synchronized fallback version when backend version cannot be read', async () => {

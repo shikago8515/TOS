@@ -100,8 +100,13 @@ class SophiaTinaModule:
     OOXML_MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
     OOXML_REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
     OOXML_MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+    OOXML_X14_NS = "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"
     OOXML_X14AC_NS = "http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac"
+    OOXML_X15_NS = "http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"
+    OOXML_X15AC_NS = "http://schemas.microsoft.com/office/spreadsheetml/2010/11/ac"
     OOXML_XML_NS = "http://www.w3.org/XML/1998/namespace"
+    OPC_CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
+    OPC_RELATIONSHIPS_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
     PIVOT_TEMPLATE_PATH = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "templates", PIVOT_TEMPLATE_FILENAME)
     )
@@ -586,16 +591,14 @@ class SophiaTinaModule:
         return 36
 
     def _updated_table_xml(self, xml_bytes: bytes, table_ref: str) -> bytes:
-        self._register_ooxml_namespaces()
         root = ElementTree.fromstring(xml_bytes)
         root.set("ref", table_ref)
         auto_filter = root.find(f"{{{self.OOXML_MAIN_NS}}}autoFilter")
         if auto_filter is not None:
             auto_filter.set("ref", table_ref)
-        return self._serialize_xml(root)
+        return self._serialize_spreadsheet_xml(root)
 
     def _updated_pivot_cache_xml(self, xml_bytes: bytes, table_ref: str) -> bytes:
-        self._register_ooxml_namespaces()
         root = ElementTree.fromstring(xml_bytes)
         root.set("refreshOnLoad", "1")
         root.set("enableRefresh", "1")
@@ -604,7 +607,7 @@ class SophiaTinaModule:
         if source is not None:
             source.set("sheet", "Result")
             source.set("ref", table_ref)
-        return self._serialize_xml(root)
+        return self._serialize_spreadsheet_xml(root)
 
     def _empty_pivot_cache_records_xml(self) -> bytes:
         return (
@@ -613,37 +616,84 @@ class SophiaTinaModule:
         ).encode("utf-8")
 
     def _updated_workbook_xml(self, xml_bytes: bytes) -> bytes:
-        self._register_ooxml_namespaces()
         root = ElementTree.fromstring(xml_bytes)
         calc_pr = root.find(f"{{{self.OOXML_MAIN_NS}}}calcPr")
         if calc_pr is None:
             calc_pr = ElementTree.SubElement(root, f"{{{self.OOXML_MAIN_NS}}}calcPr")
         calc_pr.set("fullCalcOnLoad", "1")
         calc_pr.set("forceFullCalc", "1")
-        return self._serialize_xml(root)
+        return self._serialize_workbook_xml(root)
 
-    @staticmethod
-    def _without_calc_chain_relationship(xml_bytes: bytes) -> bytes:
+    @classmethod
+    def _without_calc_chain_relationship(cls, xml_bytes: bytes) -> bytes:
         root = ElementTree.fromstring(xml_bytes)
         for relationship in list(root):
             if relationship.attrib.get("Type", "").endswith("/calcChain"):
                 root.remove(relationship)
-        return SophiaTinaModule._serialize_xml(root)
+        return cls._serialize_package_relationships_xml(root)
 
-    @staticmethod
-    def _without_calc_chain_content_type(xml_bytes: bytes) -> bytes:
+    @classmethod
+    def _without_calc_chain_content_type(cls, xml_bytes: bytes) -> bytes:
         root = ElementTree.fromstring(xml_bytes)
         for child in list(root):
             if child.attrib.get("PartName") == "/xl/calcChain.xml":
                 root.remove(child)
-        return SophiaTinaModule._serialize_xml(root)
+        return cls._serialize_content_types_xml(root)
 
     @classmethod
-    def _register_ooxml_namespaces(cls) -> None:
+    def _register_spreadsheet_namespaces(cls) -> None:
         ElementTree.register_namespace("", cls.OOXML_MAIN_NS)
         ElementTree.register_namespace("r", cls.OOXML_REL_NS)
         ElementTree.register_namespace("mc", cls.OOXML_MC_NS)
+        ElementTree.register_namespace("x14", cls.OOXML_X14_NS)
         ElementTree.register_namespace("x14ac", cls.OOXML_X14AC_NS)
+        ElementTree.register_namespace("x15", cls.OOXML_X15_NS)
+        ElementTree.register_namespace("x15ac", cls.OOXML_X15AC_NS)
+
+    @classmethod
+    def _serialize_spreadsheet_xml(cls, root: ElementTree.Element) -> bytes:
+        cls._register_spreadsheet_namespaces()
+        return cls._serialize_xml(root)
+
+    @classmethod
+    def _serialize_workbook_xml(cls, root: ElementTree.Element) -> bytes:
+        cls._register_spreadsheet_namespaces()
+        cls._ensure_markup_compat_namespace_declarations(root)
+        return cls._serialize_xml(root)
+
+    @classmethod
+    def _serialize_content_types_xml(cls, root: ElementTree.Element) -> bytes:
+        ElementTree.register_namespace("", cls.OPC_CONTENT_TYPES_NS)
+        return cls._serialize_xml(root)
+
+    @classmethod
+    def _serialize_package_relationships_xml(cls, root: ElementTree.Element) -> bytes:
+        ElementTree.register_namespace("", cls.OPC_RELATIONSHIPS_NS)
+        return cls._serialize_xml(root)
+
+    @classmethod
+    def _ensure_markup_compat_namespace_declarations(cls, root: ElementTree.Element) -> None:
+        prefix_namespaces = {
+            "x14": cls.OOXML_X14_NS,
+            "x14ac": cls.OOXML_X14AC_NS,
+            "x15": cls.OOXML_X15_NS,
+            "x15ac": cls.OOXML_X15AC_NS,
+        }
+        compatibility_attrs = {"Ignorable", "Requires"}
+
+        required_prefixes: Set[str] = set()
+        for element in root.iter():
+            for attr_name, attr_value in element.attrib.items():
+                local_name = attr_name.rsplit("}", 1)[-1] if attr_name.startswith("{") else attr_name
+                if local_name not in compatibility_attrs:
+                    continue
+                for token in attr_value.split():
+                    required_prefixes.add(token.split(":", 1)[0])
+
+        for prefix in sorted(required_prefixes):
+            namespace_uri = prefix_namespaces.get(prefix)
+            if namespace_uri:
+                root.set(f"xmlns:{prefix}", namespace_uri)
 
     @staticmethod
     def _serialize_xml(root: ElementTree.Element) -> bytes:

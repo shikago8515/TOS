@@ -39,6 +39,12 @@ describe('backendClient', () => {
     ).resolves.toBe('http://127.0.0.1:8000/api/jane/download/result.xlsx')
   })
 
+  it('uses the IPv4 loopback backend URL in browser mode', async () => {
+    stubWindow()
+
+    await expect(getBackendBaseUrl()).resolves.toBe('http://127.0.0.1:8000')
+  })
+
   it('returns fallback text for non-Error failures', () => {
     expect(readErrorMessage('network failed', 'fallback message')).toBe(
       'fallback message',
