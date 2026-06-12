@@ -32,6 +32,7 @@ uploads/
 runs/
 logs/
 run-artifacts/
+结果excel/
 .local-launcher-data/
 playwright-user-data/
 backend-data/

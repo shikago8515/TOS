@@ -48,4 +48,10 @@ describe('moduleCatalog', () => {
       expect(getLocalizedModuleTitle(module, 'en-US')).toBe(module.titleEn)
     }
   })
+
+  it('does not keep hidden placeholder modules in the catalog', () => {
+    const stages: string[] = tosModules.map((module) => module.stage)
+
+    expect(stages).not.toContain('placeholder')
+  })
 })
