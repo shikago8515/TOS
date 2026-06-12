@@ -406,6 +406,7 @@ function getGroupIcon(groupId: TosModuleGroup): string {
     eric: 'terminal',
     it: 'file-search',
     'finance-excel': 'database',
+    'pdf-data-compare': 'file-search',
     'general-tools': 'layers',
   }
   return map[groupId] || 'layers'
@@ -421,6 +422,7 @@ function getModuleIcon(module: TosModuleDefinition): string {
     'jane-outbound-compare': 'sliders',
     'eric': 'terminal',
     'it-invoice-pdf-reorder': 'file-search',
+    'draft-packing-compare': 'file-search',
     'browser-plugins': 'puzzle',
     'infornexus': 'globe',
     'jane-sap': 'server',

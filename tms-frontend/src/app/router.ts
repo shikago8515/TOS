@@ -4,6 +4,7 @@ import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-rou
 import { tosRouteDefinitions, tosRouteRedirects } from './routeCatalog'
 import AdidasMaterialsPage from '../pages/adidas-materials/AdidasMaterialsPage.vue'
 import BrowserPluginsPage from '../pages/browser-plugins/BrowserPluginsPage.vue'
+import DraftPackingComparePage from '../pages/draft-packing-compare/DraftPackingComparePage.vue'
 import EricPage from '../pages/eric/EricPage.vue'
 import EricInfornexusPage from '../pages/eric-infornexus/EricInfornexusPage.vue'
 import HomePage from '../pages/home/HomePage.vue'
@@ -31,6 +32,7 @@ const routeComponents: Partial<Record<string, Component>> = {
   'jane-outbound-compare': JaneOutboundComparePage,
   eric: EricPage,
   'it-invoice-pdf-reorder': ItInvoicePdfReorderPage,
+  'draft-packing-compare': DraftPackingComparePage,
   'tms-finance-internal-reconciliation': TmsFinanceInternalReconciliationPage,
   'tms-finance-work-sales': TmsFinanceInternalReconciliationPage,
   'jane-sap': JaneSapPage,

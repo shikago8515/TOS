@@ -10,6 +10,7 @@ export type TosModuleGroup =
   | 'eric'
   | 'it'
   | 'finance-excel'
+  | 'pdf-data-compare'
   | 'general-tools'
 
 export interface TosModuleDefinition {
@@ -51,6 +52,7 @@ export const tosNavGroups = [
   { id: 'eric', label: 'Eric', labelEn: 'Eric' },
   { id: 'it', label: 'Jason', labelEn: 'Jason' },
   { id: 'finance-excel', label: 'Lucia', labelEn: 'Lucia' },
+  { id: 'pdf-data-compare', label: 'PDF数据获取核对', labelEn: 'PDF Data Compare' },
   { id: 'general-tools', label: '通用工具', labelEn: 'General Tools' },
 ] as const satisfies readonly TosNavGroupDefinition[]
 
@@ -211,6 +213,21 @@ export const tosModules = [
     description: '按发票 PO 顺序重排 PO PDF，并生成汇总页',
     descriptionEn: 'Reorder PO PDF by invoice PO sequence and generate a summary page',
     order: 55,
+  },
+  {
+    id: 'draft-packing-compare',
+    path: '/draft-packing-compare',
+    routeName: 'draft-packing-compare',
+    title: 'Draft & Packing List 核对',
+    titleEn: 'Draft & Packing List Compare',
+    navLabel: 'Draft & Packing List 核对',
+    navLabelEn: 'Draft & Packing Compare',
+    group: 'pdf-data-compare',
+    category: 'pdf',
+    stage: 'validation',
+    description: '提取 Draft Form E 与 Packing List PDF 字段并生成上下对比 Excel',
+    descriptionEn: 'Extract and compare Draft Form E and Packing List PDF fields',
+    order: 10,
   },
   {
     id: 'tms-finance-internal-reconciliation',
