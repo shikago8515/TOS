@@ -110,6 +110,11 @@ def _workbook_calc_pr(path: str) -> dict[str, str]:
     return calc_pr.attrib if calc_pr is not None else {}
 
 
+def _zip_entry_text(path: str, entry: str) -> str:
+    with zipfile.ZipFile(path) as archive:
+        return archive.read(entry).decode("utf-8")
+
+
 class SophiaTinaTemplatePathTests(unittest.TestCase):
     def test_pivot_template_path_can_be_overridden_for_runtime_packaging(self):
         original_override = os.environ.get("TOS_SOPHIA_TINA_TEMPLATE_PATH")
@@ -617,6 +622,27 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
             self.assertFalse(_workbook_zip_entries(result["output_path"], "xl/calcChain.xml"))
             self.assertEqual(_workbook_calc_pr(result["output_path"]).get("fullCalcOnLoad"), "1")
             self.assertEqual(_workbook_calc_pr(result["output_path"]).get("forceFullCalc"), "1")
+
+            content_types_xml = _zip_entry_text(result["output_path"], "[Content_Types].xml")
+            self.assertIn(
+                '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
+                content_types_xml,
+            )
+            self.assertNotIn("<ns0:Types", content_types_xml)
+
+            workbook_rels_xml = _zip_entry_text(result["output_path"], "xl/_rels/workbook.xml.rels")
+            self.assertIn(
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+                workbook_rels_xml,
+            )
+            self.assertNotIn("<ns0:Relationships", workbook_rels_xml)
+
+            workbook_xml = _zip_entry_text(result["output_path"], "xl/workbook.xml")
+            self.assertIn('mc:Ignorable="x15"', workbook_xml)
+            self.assertIn(
+                'xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"',
+                workbook_xml,
+            )
 
 
 if __name__ == "__main__":
