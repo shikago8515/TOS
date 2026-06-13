@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <section class="it-invoice-page">
     <header class="page-header">
       <div class="brand">
@@ -435,17 +435,17 @@ import {
 } from '../../shared/api/backendClient'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import {
-  buildItInvoicePdfDownloadUrl,
-  extractItInvoiceNumbers,
-  previewItInvoice,
-  previewItPo,
-  processItInvoicePdfReorder,
-  type ItInvoiceEntry,
-  type ItInvoiceExtractFile,
-  type ItInvoiceExtractSearchType,
-  type ItInvoiceProcessResponse,
-  type ItInvoiceSummary,
-} from './itInvoicePdfReorderApi'
+  buildJasonPdfReorderDownloadUrl,
+  extractJasonPdfReorderNumbers,
+  previewJasonPdfReorderInvoice,
+  previewJasonPdfReorderPo,
+  processJasonPdfReorder,
+  type JasonPdfReorderEntry,
+  type JasonPdfReorderExtractFile,
+  type JasonPdfReorderExtractSearchType,
+  type JasonPdfReorderProcessResponse,
+  type JasonPdfReorderSummary,
+} from './jasonPdfReorderApi'
 import {
   buildInvoiceCsv,
   buildLocalExtractionGroup,
@@ -455,7 +455,7 @@ import {
   invoicePoText,
   parsePoList,
   buildExtractionRegex,
-} from './itInvoicePdfReorderModel'
+} from './jasonPdfReorderModel'
 
 type NoticeTone = 'info' | 'success' | 'warning' | 'error'
 type BusyAction =
@@ -496,7 +496,7 @@ const NoticeMessage = defineComponent({
   },
 })
 
-const extractTypeOptions: Array<{ label: string; value: ItInvoiceExtractSearchType }> = [
+const extractTypeOptions: Array<{ label: string; value: JasonPdfReorderExtractSearchType }> = [
   { label: '开头匹配', value: 'startsWith' },
   { label: '包含', value: 'contains' },
   { label: '精确', value: 'exact' },
@@ -511,19 +511,19 @@ const invoiceInputKey = ref(0)
 const poInputKey = ref(0)
 const extractInputKey = ref(0)
 const draggingTarget = ref<'invoice' | 'po' | 'extract' | null>(null)
-const invoiceEntries = ref<ItInvoiceEntry[]>([])
-const invoiceSummary = ref<ItInvoiceSummary | null>(null)
+const invoiceEntries = ref<JasonPdfReorderEntry[]>([])
+const invoiceSummary = ref<JasonPdfReorderSummary | null>(null)
 const poPages = ref<Map<string, number[]>>(new Map())
-const extractGroups = ref<ItInvoiceExtractFile[]>([])
+const extractGroups = ref<JasonPdfReorderExtractFile[]>([])
 const extractNumbers = ref<string[]>([])
 const extractPattern = ref('090|45')
-const extractSearchType = ref<ItInvoiceExtractSearchType>('startsWith')
+const extractSearchType = ref<JasonPdfReorderExtractSearchType>('startsWith')
 const pasteText = ref('')
 const poOrderText = ref('')
 const printCurrentOnly = ref(true)
 const printNextPage = ref(true)
 const includeNotFound = ref(false)
-const latestResult = ref<ItInvoiceProcessResponse | null>(null)
+const latestResult = ref<JasonPdfReorderProcessResponse | null>(null)
 const downloadHref = ref('')
 const resultStatusText = ref('准备好后点击下方按钮生成重排 PDF')
 const resultStatusTone = ref<'idle' | 'success' | 'error'>('idle')
@@ -606,7 +606,7 @@ async function previewInvoiceFile(): Promise<void> {
   addLog(`[前端] 开始提取发票：${invoiceFile.value.name}`)
 
   try {
-    const response = await previewItInvoice(invoiceFile.value)
+    const response = await previewJasonPdfReorderInvoice(invoiceFile.value)
     addBackendLogs(response.logs)
     invoiceEntries.value = response.entries || []
     invoiceSummary.value = response.summary || null
@@ -633,7 +633,7 @@ async function previewPoFile(): Promise<void> {
   addLog(`[前端] 开始识别 PO PDF：${poFile.value.name}`)
 
   try {
-    const response = await previewItPo(poFile.value)
+    const response = await previewJasonPdfReorderPo(poFile.value)
     addBackendLogs(response.logs)
     poPages.value = new Map((response.poPages || []).map((item) => [item.po, item.pages || []]))
     setNotice(poMessage, `已识别 ${response.poCount || 0} 个 PO，共 ${response.pageCount || 0} 页`, 'success')
@@ -658,7 +658,7 @@ async function extractFromPdfFiles(): Promise<void> {
   addLog(`[前端] 开始自定义数字提取，文件数：${extractFiles.value.length}`)
 
   try {
-    const response = await extractItInvoiceNumbers({
+    const response = await extractJasonPdfReorderNumbers({
       files: extractFiles.value,
       pattern: extractPattern.value.trim(),
       searchType: extractSearchType.value,
@@ -725,7 +725,7 @@ function applyExtractionRule(): void {
   }
 }
 
-function setExtractPreset(pattern: string, type: ItInvoiceExtractSearchType): void {
+function setExtractPreset(pattern: string, type: JasonPdfReorderExtractSearchType): void {
   extractPattern.value = pattern
   extractSearchType.value = type
   applyExtractionRule()
@@ -745,7 +745,7 @@ async function generatePdf(): Promise<void> {
   addLog('[前端] 开始生成重排 PDF')
 
   try {
-    const response = await processItInvoicePdfReorder({
+    const response = await processJasonPdfReorder({
       invoiceFile: invoiceFile.value,
       poFile: poFile.value,
       poOrderText: poOrderText.value,
@@ -779,7 +779,7 @@ async function generateSinglePo(po: string): Promise<void> {
   setNotice(poMessage, `正在生成单个 PO：${po}`, 'info')
 
   try {
-    const response = await processItInvoicePdfReorder({
+    const response = await processJasonPdfReorder({
       invoiceFile: invoiceFile.value,
       poFile: poFile.value,
       poOrderText: po,
@@ -797,12 +797,12 @@ async function generateSinglePo(po: string): Promise<void> {
   }
 }
 
-async function applyProcessResult(response: ItInvoiceProcessResponse): Promise<void> {
+async function applyProcessResult(response: JasonPdfReorderProcessResponse): Promise<void> {
   addBackendLogs(response.logs)
   latestResult.value = response
   invoiceEntries.value = response.entries || invoiceEntries.value
   invoiceSummary.value = response.summary || invoiceSummary.value
-  downloadHref.value = await buildItInvoicePdfDownloadUrl(response.downloadUrl)
+  downloadHref.value = await buildJasonPdfReorderDownloadUrl(response.downloadUrl)
 }
 
 function openResultPdf(): void {

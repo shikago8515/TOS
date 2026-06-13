@@ -254,7 +254,7 @@ const route = useRoute()
 const router = useRouter()
 const isSidebarHidden = ref(false)
 const isMobile = ref(false)
-const expandedNavGroups = ref<Set<TosModuleGroup>>(new Set(['jessica', 'sophia', 'jane', 'eric', 'it', 'finance-excel']))
+const expandedNavGroups = ref<Set<TosModuleGroup>>(new Set(['jessica', 'sophia', 'jane', 'eric', 'jason', 'finance-excel']))
 const expandedCategories = ref<Set<string>>(new Set())
 const { isEnglish, t, text } = useAppLanguage()
 const utilityMenuRef = ref<HTMLElement | null>(null)
@@ -451,7 +451,7 @@ function getGroupIcon(groupId: TosModuleGroup): string {
     sophia: 'files',
     jane: 'grid',
     eric: 'terminal',
-    it: 'file-search',
+    jason: 'file-search',
     'finance-excel': 'database',
     'pdf-data-compare': 'file-search',
     'general-tools': 'layers',
@@ -468,7 +468,7 @@ function getModuleIcon(module: TosModuleDefinition): string {
     'jane-bom-compare': 'sliders',
     'jane-outbound-compare': 'sliders',
     'eric': 'terminal',
-    'it-invoice-pdf-reorder': 'file-search',
+    'jason-pdf-reorder': 'file-search',
     'draft-packing-compare': 'file-search',
     'browser-plugins': 'puzzle',
     'web-automation': 'workflow',

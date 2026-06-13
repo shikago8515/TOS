@@ -11,7 +11,7 @@ const excelModules = [
   ...getModulesByGroup('sophia'),
   ...getModulesByGroup('jane'),
   ...getModulesByGroup('eric'),
-  ...getModulesByGroup('it'),
+  ...getModulesByGroup('jason'),
   ...getModulesByGroup('finance-excel'),
 ]
 const collectorModules = getModulesByGroup('general-tools')
@@ -51,6 +51,7 @@ export const homeShortcutModuleIds = [
   'jane-bom-compare',
   'jane-outbound-compare',
   'eric',
+  'jason-pdf-reorder',
   'browser-plugins',
   'web-automation',
   'infornexus',

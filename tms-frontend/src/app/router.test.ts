@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
+import JasonPdfReorderPage from '../pages/jason-pdf-reorder/JasonPdfReorderPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
 import WebAutomationPage from '../pages/web-automation/WebAutomationPage.vue'
 
@@ -34,6 +35,22 @@ beforeAll(() => {
 })
 
 describe('router', () => {
+  it('routes the Jason PDF reorder canonical path to its real page component', async () => {
+    const { router } = await import('./router')
+    const route = router.getRoutes().find((entry) => entry.path === '/jason/pdf-reorder')
+
+    expect(route?.name).toBe('jason-pdf-reorder')
+    expect(route?.components?.default).toBe(JasonPdfReorderPage)
+    expect(route?.components?.default).not.toBe(RoutePlaceholder)
+  })
+
+  it('redirects the legacy invoice PDF reorder route to the Jason canonical path', async () => {
+    const { router } = await import('./router')
+    const route = router.getRoutes().find((entry) => entry.path === '/it-invoice-pdf-reorder')
+
+    expect(route?.redirect).toBe('/jason/pdf-reorder')
+  })
+
   it('routes the web automation hub to its real page component', async () => {
     const { router } = await import('./router')
     const route = router.getRoutes().find((entry) => entry.path === '/web-automation')

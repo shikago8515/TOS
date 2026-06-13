@@ -1,17 +1,17 @@
-import type {
-  ItInvoiceEntry,
-  ItInvoiceExtractFile,
-  ItInvoiceExtractSearchType,
-  ItInvoiceSummary,
-} from './itInvoicePdfReorderApi'
+﻿import type {
+  JasonPdfReorderEntry,
+  JasonPdfReorderExtractFile,
+  JasonPdfReorderExtractSearchType,
+  JasonPdfReorderSummary,
+} from './jasonPdfReorderApi'
 
-export interface ItInvoiceMatchRowsInput {
+export interface JasonPdfReorderMatchRowsInput {
   poOrderText: string
-  invoiceEntries: ItInvoiceEntry[]
+  invoiceEntries: JasonPdfReorderEntry[]
   poPages: Map<string, number[]>
 }
 
-export interface ItInvoiceMatchRow {
+export interface JasonPdfReorderMatchRow {
   po: string
   pages: number[]
   articleNo?: string
@@ -35,13 +35,13 @@ export function parsePoList(text: string): string[] {
   return list
 }
 
-export function invoicePoText(entries: ItInvoiceEntry[]): string {
+export function invoicePoText(entries: JasonPdfReorderEntry[]): string {
   return entries.map((entry) => entry.po).filter(Boolean).join('\n')
 }
 
 export function buildExtractionRegex(
   pattern: string,
-  type: ItInvoiceExtractSearchType,
+  type: JasonPdfReorderExtractSearchType,
 ): RegExp {
   const cleaned = pattern.trim()
 
@@ -93,9 +93,9 @@ export function buildLocalExtractionGroup(
   fileName: string,
   text: string,
   pattern: string,
-  searchType: ItInvoiceExtractSearchType,
+  searchType: JasonPdfReorderExtractSearchType,
   existingNumbers: string[],
-): { group: ItInvoiceExtractFile; numbers: string[] } {
+): { group: JasonPdfReorderExtractFile; numbers: string[] } {
   const regex = buildExtractionRegex(pattern, searchType)
   const seen = new Set(existingNumbers)
   const numbers: string[] = []
@@ -120,7 +120,7 @@ export function buildMatchRows({
   poOrderText,
   invoiceEntries,
   poPages,
-}: ItInvoiceMatchRowsInput): ItInvoiceMatchRow[] {
+}: JasonPdfReorderMatchRowsInput): JasonPdfReorderMatchRow[] {
   const invoiceMap = new Map(invoiceEntries.map((entry) => [entry.po, entry]))
 
   return parsePoList(poOrderText).map((po) => {
@@ -145,7 +145,7 @@ export function formatValue(value: unknown): string {
   return value === null || value === undefined || value === '' ? '-' : String(value)
 }
 
-export function buildInvoiceCsv(entries: ItInvoiceEntry[]): string {
+export function buildInvoiceCsv(entries: JasonPdfReorderEntry[]): string {
   const header = [
     '序号',
     'PO号',
@@ -175,8 +175,8 @@ export function buildInvoiceCsv(entries: ItInvoiceEntry[]): string {
 }
 
 export function buildPrintSummaryHtml(
-  entries: ItInvoiceEntry[],
-  summary: ItInvoiceSummary,
+  entries: JasonPdfReorderEntry[],
+  summary: JasonPdfReorderSummary,
   poPages: Map<string, number[]>,
   includeNotFound: boolean,
 ): string {
