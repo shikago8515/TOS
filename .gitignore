@@ -32,6 +32,7 @@ uploads/
 runs/
 logs/
 run-artifacts/
+tms-backend/it_invoice_pdf_reorder/runtime/jobs/
 结果excel/
 .local-launcher-data/
 playwright-user-data/
@@ -48,6 +49,10 @@ temp-*.py
 *.local.json
 *.secret.local.json
 .shared/
+tms-backend/config/settings.yaml
+tms-backend/config/settings.*.yaml
+tms-backend/config/credential.key
+!tms-backend/config/settings.example.yaml
 
 # Editors and OS files
 .vscode/

@@ -23,58 +23,50 @@ const executors = [
 ]
 
 for (const executor of executors) {
-  test(`${executor.name} stores credentials locally without exposing passwords`, async () => {
+  test(`${executor.name} rejects local credential storage`, async () => {
     await withExecutor(executor, async ({ baseUrl, dataDir, token }) => {
       const initialCredentials = await requestJson(baseUrl, 'GET', '/api/credentials')
-      assert.equal(initialCredentials.ok, true)
+      assert.equal(initialCredentials.statusCode, 410)
+      assert.equal(initialCredentials.ok, false)
       assert.equal(initialCredentials.hasStoredCredentials, false)
       assert.equal(initialCredentials.username, '')
       assert.equal(Object.hasOwn(initialCredentials, 'password'), false)
-
-      const missingToken = await requestJson(baseUrl, 'PUT', '/api/credentials', {
-        username: 'blocked-user',
-        password: 'blocked-password',
-      })
-      assert.equal(missingToken.statusCode, 401)
-
-      const wrongToken = await requestJson(baseUrl, 'DELETE', '/api/credentials', undefined, 'wrong-token')
-      assert.equal(wrongToken.statusCode, 401)
 
       const saved = await requestJson(baseUrl, 'PUT', '/api/credentials', {
         username: 'saved-user',
         password: 'saved-password',
       }, token)
-      assert.equal(saved.ok, true)
-      assert.equal(saved.hasStoredCredentials, true)
-      assert.equal(saved.username, 'saved-user')
+      assert.equal(saved.statusCode, 410)
+      assert.equal(saved.ok, false)
+      assert.equal(saved.hasStoredCredentials, false)
+      assert.equal(saved.username, '')
       assert.equal(Object.hasOwn(saved, 'password'), false)
 
-      const storedSecret = JSON.parse(fs.readFileSync(path.join(dataDir, 'executor.secret.local.json'), 'utf8'))
-      assert.equal(storedSecret.username, 'saved-user')
-      assert.equal(storedSecret.password, 'saved-password')
-
       const afterSave = await requestJson(baseUrl, 'GET', '/api/credentials')
-      assert.equal(afterSave.ok, true)
-      assert.equal(afterSave.hasStoredCredentials, true)
-      assert.equal(afterSave.username, 'saved-user')
+      assert.equal(afterSave.statusCode, 410)
+      assert.equal(afterSave.ok, false)
+      assert.equal(afterSave.hasStoredCredentials, false)
+      assert.equal(afterSave.username, '')
       assert.equal(Object.hasOwn(afterSave, 'password'), false)
 
       const health = await requestJson(baseUrl, 'GET', '/api/health')
-      assert.equal(health.config.hasStoredCredentials, true)
+      assert.equal(health.config.credentialsSource, 'tos-backend-database')
+      assert.equal(Object.hasOwn(health.config, 'hasStoredCredentials'), false)
+      assert.equal(JSON.stringify(health).includes('saved-user'), false)
       assert.equal(JSON.stringify(health).includes('saved-password'), false)
+      assert.equal(JSON.stringify(health).includes('executor.secret.local.json'), false)
+      assert.equal(fs.existsSync(path.join(dataDir, 'executor.secret.local.json')), false)
 
       const cleared = await requestJson(baseUrl, 'DELETE', '/api/credentials', undefined, token)
-      assert.equal(cleared.ok, true)
+      assert.equal(cleared.statusCode, 410)
+      assert.equal(cleared.ok, false)
       assert.equal(cleared.hasStoredCredentials, false)
       assert.equal(cleared.username, '')
       assert.equal(Object.hasOwn(cleared, 'password'), false)
 
-      const clearedSecret = JSON.parse(fs.readFileSync(path.join(dataDir, 'executor.secret.local.json'), 'utf8'))
-      assert.equal(clearedSecret.username, '')
-      assert.equal(clearedSecret.password, '')
-
       const afterClear = await requestJson(baseUrl, 'GET', '/api/credentials')
-      assert.equal(afterClear.ok, true)
+      assert.equal(afterClear.statusCode, 410)
+      assert.equal(afterClear.ok, false)
       assert.equal(afterClear.hasStoredCredentials, false)
       assert.equal(afterClear.username, '')
       assert.equal(Object.hasOwn(afterClear, 'password'), false)
@@ -84,10 +76,6 @@ for (const executor of executors) {
 
 async function withExecutor(executor, callback) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tos-executor-credentials-'))
-  fs.writeFileSync(path.join(dataDir, 'executor.secret.local.json'), JSON.stringify({
-    username: '',
-    password: '',
-  }, null, 2))
   const port = await getFreePort()
   const child = spawn(process.execPath, ['server.mjs'], {
     cwd: executor.appDir,

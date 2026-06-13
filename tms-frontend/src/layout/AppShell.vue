@@ -102,18 +102,35 @@
             <span>{{ displayDate }}</span>
           </div>
 
-          <button
-            v-if="canExportDiagnostics"
-            class="topbar-action"
-            type="button"
-            :title="t('app.diagnostics.export')"
-            :aria-label="t('app.diagnostics.export')"
-            @click="exportDiagnostics"
-          >
-            <AppIcon name="activity" class="action-icon" />
-            <span class="action-label action-label--full">{{ t('app.diagnostics.export') }}</span>
-            <span class="action-label action-label--short">{{ diagnosticsShortLabel }}</span>
-          </button>
+          <div ref="utilityMenuRef" class="topbar-menu">
+            <button
+              class="topbar-menu-btn"
+              type="button"
+              :aria-expanded="utilityMenuOpen"
+              aria-haspopup="menu"
+              @click="toggleUtilityMenu"
+            >
+              <span class="topbar-menu-icon">
+                <AppIcon name="settings" class="action-icon" />
+              </span>
+              <span class="topbar-menu-label">{{ text('系统') }}</span>
+              <AppIcon name="chevron-down" class="topbar-menu-chevron" />
+            </button>
+
+            <transition name="utility-menu-fade">
+              <div v-if="utilityMenuOpen" class="utility-menu" role="menu">
+                <button class="utility-menu-item" type="button" role="menuitem" @click="openSettingsPage">
+                  <span class="utility-menu-icon">
+                    <AppIcon name="settings" />
+                  </span>
+                  <span>
+                    <strong>{{ text('系统设置') }}</strong>
+                    <small>{{ text('语言、版本更新与自动化助手') }}</small>
+                  </span>
+                </button>
+              </div>
+            </transition>
+          </div>
         </div>
       </header>
 
@@ -150,7 +167,7 @@
               :aria-label="releaseNoticeCloseLabel"
               @click="dismissReleaseNotice"
             >
-              ×
+              <AppIcon name="stop-circle" />
             </button>
           </header>
 
@@ -189,7 +206,7 @@
             <p class="toast-message">{{ toast.message }}</p>
           </div>
           <button class="toast-close" type="button" @click.stop="toast.visible = false">
-            ×
+            <AppIcon name="stop-circle" />
           </button>
         </div>
       </div>
@@ -199,7 +216,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
-import { RouterLink, RouterView, useRoute } from 'vue-router'
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 
 import {
   getLocalizedModuleTitle,
@@ -218,7 +235,6 @@ import {
   markReleaseNoticeSeen,
   type ReleaseNoticeState,
 } from '../shared/version/releaseNotice'
-import { hasDesktopDiagnosticsSupport } from './appShellRuntime'
 
 interface SidebarCategory {
   id: string
@@ -235,11 +251,14 @@ interface SidebarGroup extends TosNavGroupDefinition {
 }
 
 const route = useRoute()
+const router = useRouter()
 const isSidebarHidden = ref(false)
 const isMobile = ref(false)
 const expandedNavGroups = ref<Set<TosModuleGroup>>(new Set(['jessica', 'sophia', 'jane', 'eric', 'it', 'finance-excel']))
 const expandedCategories = ref<Set<string>>(new Set())
 const { isEnglish, t, text } = useAppLanguage()
+const utilityMenuRef = ref<HTMLElement | null>(null)
+const utilityMenuOpen = ref(false)
 
 interface ToastState {
   visible: boolean
@@ -329,9 +348,6 @@ const sidebarToggleLabel = computed(() =>
   isSidebarHidden.value ? t('app.sidebar.show') : t('app.sidebar.hide'),
 )
 
-const diagnosticsShortLabel = computed(() => (isEnglish.value ? 'Diag' : '诊断'))
-const canExportDiagnostics = computed(() => hasDesktopDiagnosticsSupport())
-
 const displayDate = computed(() => {
   const today = new Date()
   const weekdays = isEnglish.value
@@ -344,6 +360,9 @@ const displayDate = computed(() => {
 })
 
 function shouldShowInSidebar(module: TosModuleDefinition): boolean {
+  if (module.id === 'settings') {
+    return false
+  }
   return module.stage !== 'placeholder'
 }
 
@@ -387,6 +406,34 @@ function getCategoryLabel(cat: TosModuleCategory): string {
 
 function toggleSidebar(): void {
   isSidebarHidden.value = !isSidebarHidden.value
+}
+
+function toggleUtilityMenu(): void {
+  utilityMenuOpen.value = !utilityMenuOpen.value
+}
+
+function closeUtilityMenu(): void {
+  utilityMenuOpen.value = false
+}
+
+function openSettingsPage(): void {
+  closeUtilityMenu()
+  void router.push('/settings')
+}
+
+function handleTopbarDocumentClick(event: MouseEvent): void {
+  if (!utilityMenuOpen.value) return
+  const target = event.target
+  if (target instanceof Node && utilityMenuRef.value?.contains(target)) {
+    return
+  }
+  closeUtilityMenu()
+}
+
+function handleTopbarKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    closeUtilityMenu()
+  }
 }
 
 function getGroupLabel(group: TosNavGroupDefinition): string {
@@ -455,10 +502,14 @@ onMounted(() => {
   handleResize()
   releaseNotice.value = buildReleaseNoticeStateFromStorage()
   window.addEventListener('resize', handleResize)
+  document.addEventListener('click', handleTopbarDocumentClick)
+  document.addEventListener('keydown', handleTopbarKeydown)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
+  document.removeEventListener('click', handleTopbarDocumentClick)
+  document.removeEventListener('keydown', handleTopbarKeydown)
 })
 
 watch(
@@ -491,7 +542,7 @@ watch(
 <style scoped>
 .app-layout {
   --sidebar-width: 232px;
-  --topbar-height: 68px;
+  --topbar-height: 78px;
   height: 100vh;
   width: 100%;
   overflow: hidden;
@@ -783,24 +834,25 @@ watch(
 
 .topbar {
   height: var(--topbar-height);
-  margin: 10px 10px 0;
-  border-radius: var(--soft-radius, 16px);
-  background: var(--soft-surface, #ffffff);
-  border: none;
+  margin: 0 10px;
+  border-radius: 0 0 var(--soft-radius, 16px) var(--soft-radius, 16px);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(219, 231, 229, 0.78);
+  border-top: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 0 16px 0 12px;
   flex-shrink: 0;
-  box-shadow: var(--soft-shadow, 6px 6px 14px rgba(166,180,200,0.35), -6px -6px 14px rgba(255,255,255,0.85));
+  box-shadow: 0 10px 26px rgba(15, 78, 73, 0.08);
   position: relative;
   z-index: 10;
   transition: box-shadow 0.35s ease;
 }
 
 .topbar:hover {
-  box-shadow: var(--soft-shadow-hover, 8px 8px 20px rgba(166,180,200,0.4), -8px -8px 20px rgba(255,255,255,0.9));
+  box-shadow: 0 12px 30px rgba(15, 78, 73, 0.1);
 }
 
 .topbar-left {
@@ -955,6 +1007,156 @@ watch(
   transform: translateY(0);
 }
 
+.topbar-menu {
+  position: relative;
+}
+
+.topbar-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 10px 0 8px;
+  border: 1px solid #dbe7e5;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1e293b;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.07);
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.topbar-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #ecfeff;
+  color: #0d9488;
+}
+
+.topbar-menu-btn:hover {
+  border-color: #99f6e4;
+  color: #0f766e;
+  box-shadow: 0 10px 22px rgba(15, 118, 110, 0.14);
+  transform: translateY(-1px);
+}
+
+.topbar-menu-btn[aria-expanded="true"] {
+  border-color: #5eead4;
+  color: #0f766e;
+  box-shadow: 0 12px 24px rgba(15, 118, 110, 0.16);
+}
+
+.topbar-menu-chevron {
+  font-size: 12px;
+  color: #64748b;
+  transition: transform 0.2s ease;
+}
+
+.topbar-menu-btn[aria-expanded="true"] .topbar-menu-chevron {
+  transform: rotate(180deg);
+}
+
+.utility-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: 226px;
+  padding: 6px;
+  border: 1px solid #d8e6e3;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow:
+    0 18px 38px rgba(15, 23, 42, 0.13),
+    0 3px 10px rgba(15, 23, 42, 0.06);
+}
+
+.utility-menu-item {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 50px;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #1f2937;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.utility-menu-item:hover:not(:disabled) {
+  background: #eefdf8;
+  color: #0f766e;
+}
+
+.utility-menu-item:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.utility-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: #ecfeff;
+  color: #0d9488;
+  font-size: 15px;
+}
+
+.utility-menu-item strong,
+.utility-menu-item small {
+  display: block;
+}
+
+.utility-menu-item strong {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.utility-menu-item small {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.utility-spin {
+  animation: utility-spin 0.85s linear infinite;
+}
+
+.utility-menu-fade-enter-active,
+.utility-menu-fade-leave-active {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.utility-menu-fade-enter-from,
+.utility-menu-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+@keyframes utility-spin {
+  to { transform: rotate(360deg); }
+}
+
 .content-shell {
   flex: 1;
   min-height: 0;
@@ -1045,7 +1247,8 @@ watch(
     font-size: 12px;
   }
 
-  .topbar-action {
+  .topbar-action,
+  .topbar-menu-btn {
     height: 36px;
     padding: 0 12px;
     gap: 5px;
@@ -1059,6 +1262,14 @@ watch(
 
   .action-label--short {
     display: inline;
+  }
+
+  .topbar-menu-label {
+    display: none;
+  }
+
+  .utility-menu {
+    width: min(278px, calc(100vw - 24px));
   }
 
   .content-shell {
@@ -1084,7 +1295,8 @@ watch(
     padding: 0 8px;
   }
 
-  .topbar-action {
+  .topbar-action,
+  .topbar-menu-btn {
     padding: 0 10px;
   }
 }
@@ -1156,6 +1368,9 @@ watch(
 }
 
 .release-notice-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 34px;
   height: 34px;
   border: 0;
@@ -1163,7 +1378,7 @@ watch(
   background: #f1f5f9;
   color: #64748b;
   cursor: pointer;
-  font-size: 22px;
+  font-size: 16px;
   line-height: 1;
   transition: background 0.2s ease, color 0.2s ease;
 }
@@ -1398,6 +1613,12 @@ watch(
 .toast-close:hover {
   background: #f5f7fa;
   color: #303133;
+}
+
+.release-notice-close .app-icon,
+.toast-close .app-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .toast-slide-enter-active {

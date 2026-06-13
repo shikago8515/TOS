@@ -1,2480 +1,391 @@
 <template>
-  <section class="ws-page">
-    <!-- Top Bar -->
-    <div class="ws-top">
-      <button class="ws-back" type="button" @click="goBack">
-        <AppIcon name="arrow-left" />
-        <span>{{ text('返回') }}</span>
-      </button>
-      <span v-if="entry" class="ws-badge ws-badge--scene">
-        <AppIcon name="bot" />
-        {{ text('自动化场景') }}
-      </span>
-    </div>
-
-    <!-- Hero -->
-    <header class="ws-hero">
-      <div class="ws-hero__icon">
-        <AppIcon name="bot" />
-      </div>
-      <div class="ws-hero__text">
-        <h1>{{ entry ? text(entry.title) : text('未找到入口') }}</h1>
-        <p>{{ entry ? text(entry.subtitle) : text('当前入口不存在，请返回列表重新选择。') }}</p>
+  <div class="pg" :class="pageScenarioClass">
+    <header class="pg-top">
+      <button class="pg-back" @click="goBack"><AppIcon name="arrow-left" /><span>{{ text('返回') }}</span></button>
+      <div class="pg-top__right">
+        <span class="pg-dot" :class="executorHealth?.ok ? 'pg-dot--on' : 'pg-dot--off'" />
+        <span class="pg-top__st">{{ executorHealth?.ok ? text('执行器就绪') : text('执行器未连接') }}</span>
       </div>
     </header>
 
-    <!-- Alert -->
-    <transition name="ws-msg">
-      <div v-if="message" class="ws-alert" :class="`ws-alert--${messageTone}`">
-        <div class="ws-alert__icon">
-          <AppIcon :name="messageTone === 'success' ? 'check-circle' : messageTone === 'error' ? 'alert-circle' : 'info'" />
-        </div>
-        <span class="ws-alert__text">{{ text(message) }}</span>
+    <transition name="pg-fade">
+      <div v-if="message" class="pg-alert" :class="`pg-alert--${messageTone}`">
+        <AppIcon :name="messageTone === 'success' ? 'check-circle' : messageTone === 'error' ? 'alert-circle' : 'info'" />
+        <span>{{ text(message) }}</span>
+        <button class="pg-alert__x" @click="message = ''"><AppIcon name="stop-circle" /></button>
       </div>
     </transition>
 
-    <!-- Empty State -->
-    <div v-if="!entry" class="ws-empty">
-      <div class="ws-empty__icon">
-        <AppIcon name="alert-circle" />
-      </div>
+    <div v-if="!entry" class="pg-empty">
+      <AppIcon name="alert-circle" class="pg-empty__icon" />
       <strong>{{ text('入口不存在') }}</strong>
-      <span>{{ text('请返回网页自动化入口列表重新选择。') }}</span>
+      <button class="pg-back" @click="goBack"><AppIcon name="arrow-left" />{{ text('返回') }}</button>
     </div>
 
     <template v-else>
-      <!-- Status Strip -->
-      <div class="ws-strip">
-        <div class="ws-strip__item">
-          <div class="ws-strip__icon ws-strip__icon--blue">
-            <AppIcon name="monitor-code" />
-          </div>
-          <div class="ws-strip__body">
-            <span class="ws-strip__label">{{ text('运行模式') }}</span>
-            <strong>{{ electronSupported ? 'Electron' : text('浏览器') }}</strong>
-          </div>
-          <span class="ws-dot" :class="electronSupported ? 'is-green' : 'is-slate'" />
-        </div>
-        <div class="ws-strip__item">
-          <div class="ws-strip__icon ws-strip__icon--teal">
-            <AppIcon name="server" />
-          </div>
-          <div class="ws-strip__body">
-            <span class="ws-strip__label">{{ text('执行器') }}</span>
-            <strong>{{ executorStatusLabel }}</strong>
-          </div>
-          <span class="ws-dot" :class="executorHealth?.ok ? 'is-green' : 'is-slate'" />
-        </div>
+      <div class="pg-hero">
+        <div class="pg-hero__icon"><AppIcon :name="heroIcon" /></div>
+        <div class="pg-hero__text"><h1>{{ text(entry.title) }}</h1><p>{{ text(entry.subtitle) }}</p></div>
       </div>
 
-      <!-- Main Layout -->
-      <div class="ws-main">
-        <!-- Left Sidebar -->
-        <aside class="ws-side">
-          <!-- Executor Control -->
-          <div class="ws-panel">
-            <div class="ws-panel__bar" />
-            <div class="ws-panel__head">
-              <AppIcon name="server" />
-              <strong>{{ text('执行器控制') }}</strong>
-            </div>
-            <div class="ws-actions">
-              <button
-                class="ws-btn ws-btn--primary"
-                :disabled="!canLaunchActiveApp"
-                @click="startActiveApp(false)"
-              >
-                <AppIcon name="play-circle" />
-                {{ launching ? text('启动中...') : text('启动执行器') }}
-              </button>
-              <button
-                class="ws-btn ws-btn--danger"
-                :disabled="!canStopActiveApp"
-                @click="stopActiveApp"
-              >
-                <AppIcon name="stop-circle" />
-                {{ text('停止') }}
-              </button>
-              <button
-                class="ws-btn"
-                :disabled="refreshing"
-                @click="refreshExecutorState(false)"
-              >
-                <AppIcon name="refresh-cw" :class="{ 'ws-spin': refreshing }" />
-                {{ refreshing ? text('刷新中') : text('刷新状态') }}
-              </button>
+      <div class="pg-main">
+        <!-- ===== LEFT SIDEBAR ===== -->
+        <aside class="pg-side">
+          <div class="pg-card">
+            <div class="pg-card__hd"><AppIcon name="server" class="pg-card__hd-ic" /><span>{{ text('执行器控制') }}</span></div>
+            <div class="pg-card__bd pg-acts">
+              <button class="pg-btn pg-btn--pri" :disabled="!canLaunchActiveApp" @click="startActiveApp(false)"><AppIcon name="play-circle" />{{ launching ? text('启动中...') : text('启动执行器') }}</button>
+              <button class="pg-btn pg-btn--danger" :disabled="!canStopActiveApp" @click="stopActiveApp"><AppIcon name="stop-circle" />{{ text('停止') }}</button>
+              <button class="pg-btn" :disabled="refreshing" @click="refreshExecutorState(false)"><AppIcon name="refresh-cw" :class="{ 'pg-spin': refreshing }" />{{ text('刷新状态') }}</button>
             </div>
           </div>
 
-          <!-- Steps -->
-          <div class="ws-panel">
-            <div class="ws-panel__bar" />
-            <div class="ws-panel__head">
-              <AppIcon name="workflow" />
-              <strong>{{ text('操作流程') }}</strong>
-            </div>
-            <div class="ws-steps">
+          <div class="pg-card">
+            <div class="pg-card__hd"><AppIcon name="workflow" class="pg-card__hd-ic" /><span>{{ text('操作流程') }}</span></div>
+            <div class="pg-card__bd pg-steps">
               <template v-if="isShippingScenario">
-                <div v-for="(step, i) in shippingSteps" :key="i" class="ws-step">
-                  <span class="ws-step__num">{{ i + 1 }}</span>
-                  <div>
-                    <strong>{{ text(step.title) }}</strong>
-                    <p>{{ text(step.desc) }}</p>
-                  </div>
-                </div>
+                <div v-for="(s,i) in shippingSteps" :key="i" class="pg-step"><b class="pg-step__n">{{ i+1 }}</b><div><em>{{ text(s.title) }}</em><small>{{ text(s.desc) }}</small></div></div>
               </template>
               <template v-else-if="isInfornexusAutoAddScenario">
-                <div v-for="(step, i) in infornexusAutoAddSteps" :key="i" class="ws-step">
-                  <span class="ws-step__num">{{ i + 1 }}</span>
-                  <div>
-                    <strong>{{ text(step.title) }}</strong>
-                    <p>{{ text(step.desc) }}</p>
-                  </div>
-                </div>
+                <div v-for="(s,i) in infornexusAutoAddSteps" :key="i" class="pg-step"><b class="pg-step__n">{{ i+1 }}</b><div><em>{{ text(s.title) }}</em><small>{{ text(s.desc) }}</small></div></div>
               </template>
               <template v-else>
-                <div v-for="(step, i) in defaultSteps" :key="i" class="ws-step">
-                  <span class="ws-step__num">{{ i + 1 }}</span>
-                  <div>
-                    <strong>{{ text(step.title) }}</strong>
-                    <p>{{ text(step.desc) }}</p>
-                  </div>
-                </div>
+                <div v-for="(s,i) in defaultSteps" :key="i" class="pg-step"><b class="pg-step__n">{{ i+1 }}</b><div><em>{{ text(s.title) }}</em><small>{{ text(s.desc) }}</small></div></div>
               </template>
             </div>
           </div>
 
-          <!-- Health Info -->
-          <details class="ws-health">
-            <summary>
-              <AppIcon name="terminal" />
-              <span>{{ text('执行器健康信息') }}</span>
-              <AppIcon name="chevron-down" class="ws-chevron" />
-            </summary>
-            <pre>{{ healthRaw }}</pre>
+          <details class="pg-card pg-detail">
+            <summary class="pg-detail__sum"><AppIcon name="terminal" /><span>{{ text('执行器健康信息') }}</span><AppIcon name="chevron-down" class="pg-chev" /></summary>
+            <pre class="pg-detail__pre">{{ healthRaw }}</pre>
           </details>
         </aside>
 
-        <!-- Right Stage -->
-        <section class="ws-stage">
-          <!-- Infor Nexus Direct Scenarios -->
-          <div v-if="isInfornexusDirectScenario" class="ws-card">
-            <div class="ws-card__bar" />
-            <div class="ws-card__head">
-              <div class="ws-card__head-icon ws-card__head-icon--teal">
-                <AppIcon :name="isInfornexusAutoAddScenario ? 'globe-search' : 'play-circle'" />
+        <!-- ===== RIGHT STAGE ===== -->
+        <section class="pg-stage">
+          <transition name="pg-fade">
+            <div v-if="showLocalHelperPrompt" class="pg-banner">
+              <AppIcon name="monitor-code" class="pg-banner__ic" />
+              <div class="pg-banner__bd"><strong>{{ text('未检测到本机自动化助手') }}</strong><p>{{ text('请先启动 TOS 自动化助手，然后重新检测。') }}</p></div>
+              <div class="pg-banner__btns">
+                <button class="pg-btn pg-btn--pri" @click="downloadAutomationHelper"><AppIcon name="download" />{{ text('下载助手') }}</button>
+                <button class="pg-btn" @click="bootLocalHelper"><AppIcon name="play-circle" />{{ text('启动助手') }}</button>
+                <button class="pg-btn" :disabled="refreshing" @click="refreshExecutorState(false)"><AppIcon name="refresh-cw" />{{ text('重新检测') }}</button>
               </div>
-              <div class="ws-card__head-text">
-                <strong>{{ text(directScenarioTitle) }}</strong>
-                <p>{{ text(directScenarioDescription) }}</p>
-              </div>
-              <span v-if="executorHealth?.ok" class="ws-badge ws-badge--ready">{{ text('执行器就绪') }}</span>
-              <span v-else class="ws-badge ws-badge--wait">{{ text('等待执行器') }}</span>
+            </div>
+          </transition>
+
+          <!-- ===== INFORNEXUS DIRECT ===== -->
+          <div v-if="isInfornexusDirectScenario" class="pg-card pg-card--accent">
+            <div class="pg-card__hd pg-card__hd--lg">
+              <AppIcon :name="isInfornexusAutoAddScenario ? 'globe-search' : 'play-circle'" class="pg-card__hd-ic" />
+              <span>{{ text(directScenarioTitle) }}</span>
+              <span v-if="executorHealth?.ok" class="pg-chip pg-chip--ok">{{ text('就绪') }}</span>
+              <span v-else class="pg-chip pg-chip--warn">{{ text('等待执行器') }}</span>
             </div>
 
-            <div class="ws-credential-note" :class="{ 'ws-credential-note--ready': hasStoredCredentials }">
-              <AppIcon :name="hasStoredCredentials ? 'check-circle' : 'alert-circle'" />
-              <span>{{ credentialStatusText }}</span>
-            </div>
+            <div v-if="hasStoredCredentials" class="pg-note pg-note--ok"><AppIcon name="check-circle" />{{ credentialStatusText }}</div>
 
-            <div class="ws-field ws-field-grid">
-              <div>
-                <label>{{ text('User ID') }}</label>
-                <input
-                  v-model.trim="shippingUsername"
-                  type="text"
-                  class="ws-input"
-                  :placeholder="text('请输入 User ID')"
-                  autocomplete="username"
-                />
+            <div class="pg-card__bd">
+              <div class="pg-grid-2">
+                <label class="pg-field"><span>{{ text('User ID') }}</span><input v-model.trim="shippingUsername" type="text" class="pg-inp" :placeholder="text('请输入 User ID')" autocomplete="username" /></label>
+                <label class="pg-field"><span>{{ text('Password') }}</span><span class="pg-inp-wrap"><input v-model="shippingPassword" :type="showShippingPassword ? 'text' : 'password'" class="pg-inp" placeholder="Enter password" autocomplete="current-password" /><button class="pg-inp__btn" @click="showShippingPassword = !showShippingPassword"><AppIcon name="eye" /></button></span></label>
               </div>
-              <div>
-                <label>{{ text('Password') }}</label>
-                <div class="ws-input-row">
-                  <input
-                    v-model="shippingPassword"
-                    :type="showShippingPassword ? 'text' : 'password'"
-                    class="ws-input"
-                    placeholder="Enter password"
-                    autocomplete="current-password"
-                  />
-                  <button class="ws-btn-sm" type="button" @click="showShippingPassword = !showShippingPassword">
-                    <AppIcon :name="showShippingPassword ? 'eye' : 'eye'" />
-                  </button>
-                </div>
+              <div class="pg-row">
+                <button class="pg-btn pg-btn--pri" :disabled="credentialSaving || !shippingUsername || !shippingPassword" @click="saveCurrentCredentials"><AppIcon name="shield-check" />{{ credentialSaving ? text('保存中') : text('保存登录账号密码') }}</button>
+                <button class="pg-btn" :disabled="credentialClearing || !hasStoredCredentials" @click="clearCurrentCredentials"><AppIcon name="stop-circle" />{{ text('清除') }}</button>
+                <button class="pg-btn" :disabled="templateLoading || !primaryTemplate" @click="downloadPrimaryTemplate"><AppIcon name="download" />{{ templateButtonLabel }}</button>
               </div>
             </div>
 
-            <div class="ws-credential-actions">
-              <button
-                class="ws-btn-sm ws-btn-sm--primary"
-                type="button"
-                :disabled="credentialSaving || !shippingUsername || !shippingPassword"
-                @click="saveCurrentCredentials"
-              >
-                <AppIcon name="shield-check" />
-                {{ credentialSaving ? text('保存中') : text('保存本机凭据') }}
-              </button>
-              <button
-                class="ws-btn-sm"
-                type="button"
-                :disabled="credentialClearing || !hasStoredCredentials"
-                @click="clearCurrentCredentials"
-              >
-                <AppIcon name="stop-circle" />
-                {{ credentialClearing ? text('清除中') : text('清除本机凭据') }}
-              </button>
-            </div>
-
-            <div class="ws-field">
-              <label>{{ text('Excel 文件') }}</label>
-              <div
-                class="ws-dropzone"
-                :class="{ 'ws-dropzone--active': selectedFile, 'ws-dropzone--drag': isDragging }"
-                role="button"
-                tabindex="0"
-                @click="openFilePicker"
-                @keydown.enter.prevent="openFilePicker"
-                @keydown.space.prevent="openFilePicker"
-                @dragover.prevent="isDragging = true"
-                @dragleave.prevent="isDragging = false"
-                @drop.prevent="handleDrop"
-              >
-                <input
-                  ref="fileInput"
-                  type="file"
-                  accept=".xlsx,.xls"
-                  @click.stop
-                  @change="handleFileSelect"
-                />
+            <div class="pg-card__bd">
+              <label class="pg-field"><span>{{ text('Excel 文件') }}</span></label>
+              <div class="pg-drop" :class="{ 'pg-drop--on': selectedFile, 'pg-drop--over': isDragging }" @click="openFilePicker" @dragover.prevent="isDragging=true" @dragleave.prevent="isDragging=false" @drop.prevent="handleDrop">
+                <input ref="fileInput" type="file" accept=".xlsx,.xls" @click.stop @change="handleFileSelect" />
                 <template v-if="selectedFile">
-                  <div class="ws-dropzone__icon ws-dropzone__icon--done">
-                    <AppIcon name="check-circle" />
-                  </div>
-                  <strong>{{ selectedFile.name }}</strong>
-                  <small>{{ formatSize(selectedFile.size) }}</small>
-                  <button class="ws-dropzone__clear" type="button" @click.stop="clearFile">
-                    <AppIcon name="stop-circle" />
-                    {{ text('清除') }}
-                  </button>
+                  <AppIcon name="check-circle" class="pg-drop__ok" /><b>{{ selectedFile.name }}</b><small>{{ formatSize(selectedFile.size) }}</small>
+                  <button class="pg-drop__x" @click.stop="clearFile"><AppIcon name="stop-circle" /></button>
                 </template>
                 <template v-else>
-                  <div class="ws-dropzone__icon">
-                    <AppIcon name="upload" />
-                  </div>
-                  <strong>{{ text('点击或拖入 Excel 文件') }}</strong>
-                  <small>{{ text(directScenarioExcelHint) }}</small>
+                  <AppIcon name="upload" class="pg-drop__ic" /><b>{{ text('点击或拖入 Excel 文件') }}</b><small>{{ text(directScenarioExcelHint) }}</small>
                 </template>
-                <div v-if="isDragging" class="ws-dropzone__overlay">
-                  <AppIcon name="download" />
-                  <span>{{ text('释放以上传文件') }}</span>
-                </div>
+                <div v-if="isDragging" class="pg-drop__overlay">{{ text('释放以上传文件') }}</div>
               </div>
             </div>
 
-            <div class="ws-card__actions">
-              <button
-                class="ws-btn-lg"
-                :disabled="!canRunShippingAutomation"
-                @click="runInfornexusDirectWithExcel"
-              >
-                <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'ws-spin': sending }" />
-                {{ sending ? text('执行中...') : text(directScenarioRunLabel) }}
+            <div class="pg-card__ft">
+              <button class="pg-btn pg-btn--pri pg-btn--xl" :disabled="!canRunShippingAutomation" @click="runInfornexusDirectWithExcel">
+                <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'pg-spin': sending }" />{{ sending ? text('执行中...') : text(directScenarioRunLabel) }}
               </button>
             </div>
 
-            <!-- Inline Status -->
-            <transition name="ws-msg">
-              <div v-if="lastResult || sending" class="ws-inline-status" :class="inlineStatusClass">
-                <AppIcon :name="statusIconName" class="ws-inline-status__icon" />
-                <span class="ws-inline-status__text">{{ text(statusText) }}</span>
-                <span class="ws-badge ws-badge--sm" :class="statusBadgeClass">{{ text(statusLabel) }}</span>
-              </div>
+            <transition name="pg-fade">
+              <div v-if="lastResult || sending" class="pg-status" :class="inlineStatusClass"><AppIcon :name="statusIconName" />{{ text(statusText) }}</div>
             </transition>
-            <div v-if="isShippingScenario && shippingArtifactLinks?.resultExcelUrl" class="ws-inline-downloads">
-              <button
-                class="ws-btn-sm ws-btn-sm--primary"
-                type="button"
-                @click="downloadShippingArtifact(shippingArtifactLinks.resultExcelUrl, 'shipping-last-result.xlsx')"
-              >
-                <AppIcon name="download" />
-                {{ text('结果 Excel') }}
-              </button>
-              <button
-                v-if="shippingArtifactLinks.failedPoExcelUrl && shippingArtifactLinks.failedRowCount > 0"
-                class="ws-btn-sm"
-                type="button"
-                @click="downloadShippingArtifact(shippingArtifactLinks.failedPoExcelUrl, 'shipping-last-failed-po-rows.xlsx')"
-              >
-                <AppIcon name="download" />
-                {{ text('失败明细') }}
-              </button>
+
+            <div v-if="isShippingScenario && shippingArtifactLinks?.resultExcelUrl" class="pg-card__ft pg-row">
+              <button class="pg-btn pg-btn--pri" @click="downloadShippingArtifact(shippingArtifactLinks.resultExcelUrl, 'shipping-last-result.xlsx')"><AppIcon name="download" />{{ text('结果 Excel') }}</button>
+              <button v-if="shippingArtifactLinks.failedPoExcelUrl && shippingArtifactLinks.failedRowCount > 0" class="pg-btn" @click="downloadShippingArtifact(shippingArtifactLinks.failedPoExcelUrl, 'shipping-last-failed-po-rows.xlsx')"><AppIcon name="download" />{{ text('失败明细') }}</button>
             </div>
           </div>
 
-          <!-- Microsoft / Default Scenario -->
-          <div v-else class="ws-card">
-            <div class="ws-card__bar" />
-            <div class="ws-card__head">
-              <div class="ws-card__head-icon ws-card__head-icon--blue">
-                <AppIcon name="upload" />
-              </div>
-              <div class="ws-card__head-text">
-                <strong>{{ text('上传文件并执行') }}</strong>
-                <p>{{ text('支持本地直连执行器和 n8n 编排两条链路。') }}</p>
-              </div>
-              <span v-if="executorHealth?.ok" class="ws-badge ws-badge--ready">{{ text('执行器就绪') }}</span>
-              <span v-else class="ws-badge ws-badge--wait">{{ text('等待执行器') }}</span>
+          <!-- ===== MICROSOFT / DEFAULT ===== -->
+          <div v-else class="pg-card pg-card--accent">
+            <div class="pg-card__hd pg-card__hd--lg">
+              <AppIcon name="upload" class="pg-card__hd-ic" />
+              <span>{{ text('上传文件并执行') }}</span>
+              <span v-if="executorHealth?.ok" class="pg-chip pg-chip--ok">{{ text('就绪') }}</span>
+              <span v-else class="pg-chip pg-chip--warn">{{ text('等待执行器') }}</span>
             </div>
 
-            <div v-if="isMicrosoftScenario" class="ws-credential-note" :class="{ 'ws-credential-note--ready': hasStoredCredentials }">
-              <AppIcon :name="hasStoredCredentials ? 'check-circle' : 'alert-circle'" />
-              <span>{{ credentialStatusText }}</span>
-            </div>
+            <div v-if="isMicrosoftScenario && hasStoredCredentials" class="pg-note pg-note--ok"><AppIcon name="check-circle" />{{ credentialStatusText }}</div>
 
-            <div v-if="isMicrosoftScenario" class="ws-field ws-field-grid">
-              <div>
-                <label>{{ text('Microsoft 账号') }}</label>
-                <input
-                  v-model.trim="microsoftUsername"
-                  type="text"
-                  class="ws-input"
-                  :placeholder="text('请输入 Microsoft 账号')"
-                  autocomplete="username"
-                />
+            <div v-if="isMicrosoftScenario" class="pg-card__bd">
+              <div class="pg-grid-2">
+                <label class="pg-field"><span>{{ text('Microsoft 账号') }}</span><input v-model.trim="microsoftUsername" type="text" class="pg-inp" :placeholder="text('请输入 Microsoft 账号')" autocomplete="username" /></label>
+                <label class="pg-field"><span>{{ text('Microsoft 密码') }}</span><span class="pg-inp-wrap"><input v-model="microsoftPassword" :type="showMicrosoftPassword ? 'text' : 'password'" class="pg-inp" placeholder="Enter password" autocomplete="current-password" /><button class="pg-inp__btn" @click="showMicrosoftPassword = !showMicrosoftPassword"><AppIcon name="eye" /></button></span></label>
               </div>
-              <div>
-                <label>{{ text('Microsoft 密码') }}</label>
-                <div class="ws-input-row">
-                  <input
-                    v-model="microsoftPassword"
-                    :type="showMicrosoftPassword ? 'text' : 'password'"
-                    class="ws-input"
-                    placeholder="Enter password"
-                    autocomplete="current-password"
-                  />
-                  <button class="ws-btn-sm" type="button" @click="showMicrosoftPassword = !showMicrosoftPassword">
-                    <AppIcon name="eye" />
-                  </button>
-                </div>
+              <div class="pg-row">
+                <button class="pg-btn pg-btn--pri" :disabled="credentialSaving || !microsoftUsername || !microsoftPassword" @click="saveCurrentCredentials"><AppIcon name="shield-check" />{{ credentialSaving ? text('保存中') : text('保存登录账号密码') }}</button>
+                <button class="pg-btn" :disabled="credentialClearing || !hasStoredCredentials" @click="clearCurrentCredentials"><AppIcon name="stop-circle" />{{ text('清除') }}</button>
+                <button class="pg-btn" :disabled="templateLoading || !primaryTemplate" @click="downloadPrimaryTemplate"><AppIcon name="download" />{{ templateButtonLabel }}</button>
               </div>
             </div>
 
-            <div v-if="isMicrosoftScenario" class="ws-credential-actions">
-              <button
-                class="ws-btn-sm ws-btn-sm--primary"
-                type="button"
-                :disabled="credentialSaving || !microsoftUsername || !microsoftPassword"
-                @click="saveCurrentCredentials"
-              >
-                <AppIcon name="shield-check" />
-                {{ credentialSaving ? text('保存中') : text('保存本机凭据') }}
-              </button>
-              <button
-                class="ws-btn-sm"
-                type="button"
-                :disabled="credentialClearing || !hasStoredCredentials"
-                @click="clearCurrentCredentials"
-              >
-                <AppIcon name="stop-circle" />
-                {{ credentialClearing ? text('清除中') : text('清除本机凭据') }}
-              </button>
-            </div>
-
-            <div class="ws-field">
-              <label>{{ text('Webhook 地址') }}</label>
-              <div class="ws-input-row">
-                <input
-                  v-model="webhookUrl"
-                  type="text"
-                  class="ws-input"
-                  :placeholder="text('请输入 n8n webhook 地址')"
-                />
-                <button class="ws-btn-sm" type="button" @click="resetWebhookUrl">
-                  <AppIcon name="refresh-cw" />
-                  {{ text('重置') }}
-                </button>
-              </div>
-            </div>
-
-            <div class="ws-field">
-              <label>{{ text('Excel 文件') }}</label>
-              <div
-                class="ws-dropzone"
-                :class="{ 'ws-dropzone--active': selectedFile, 'ws-dropzone--drag': isDragging }"
-                role="button"
-                tabindex="0"
-                @click="openFilePicker"
-                @keydown.enter.prevent="openFilePicker"
-                @keydown.space.prevent="openFilePicker"
-                @dragover.prevent="isDragging = true"
-                @dragleave.prevent="isDragging = false"
-                @drop.prevent="handleDrop"
-              >
-                <input
-                  ref="fileInput"
-                  type="file"
-                  accept=".xlsx,.xls"
-                  @click.stop
-                  @change="handleFileSelect"
-                />
+            <div class="pg-card__bd">
+              <label class="pg-field"><span>{{ text('Excel 文件') }}</span></label>
+              <div class="pg-drop" :class="{ 'pg-drop--on': selectedFile, 'pg-drop--over': isDragging }" @click="openFilePicker" @dragover.prevent="isDragging=true" @dragleave.prevent="isDragging=false" @drop.prevent="handleDrop">
+                <input ref="fileInput" type="file" accept=".xlsx,.xls" @click.stop @change="handleFileSelect" />
                 <template v-if="selectedFile">
-                  <div class="ws-dropzone__icon ws-dropzone__icon--done">
-                    <AppIcon name="check-circle" />
-                  </div>
-                  <strong>{{ selectedFile.name }}</strong>
-                  <small>{{ formatSize(selectedFile.size) }}</small>
-                  <button class="ws-dropzone__clear" type="button" @click.stop="clearFile">
-                    <AppIcon name="stop-circle" />
-                    {{ text('清除') }}
-                  </button>
+                  <AppIcon name="check-circle" class="pg-drop__ok" /><b>{{ selectedFile.name }}</b><small>{{ formatSize(selectedFile.size) }}</small>
+                  <button class="pg-drop__x" @click.stop="clearFile"><AppIcon name="stop-circle" /></button>
                 </template>
                 <template v-else>
-                  <div class="ws-dropzone__icon">
-                    <AppIcon name="upload" />
-                  </div>
-                  <strong>{{ text('点击或拖入 Excel 文件') }}</strong>
-                  <small>{{ text('支持 .xlsx / .xls 格式') }}</small>
+                  <AppIcon name="upload" class="pg-drop__ic" /><b>{{ text('点击或拖入 Excel 文件') }}</b><small>{{ text('支持 .xlsx / .xls 格式') }}</small>
                 </template>
-                <div v-if="isDragging" class="ws-dropzone__overlay">
-                  <AppIcon name="download" />
-                  <span>{{ text('释放以上传文件') }}</span>
-                </div>
+                <div v-if="isDragging" class="pg-drop__overlay">{{ text('释放以上传文件') }}</div>
               </div>
             </div>
 
-            <div class="ws-card__actions">
-              <button
-                class="ws-btn-lg"
-                :disabled="!canRunDirectExecutor"
-                @click="sendDirectToExecutor"
-              >
-                <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'ws-spin': sending }" />
-                {{ sending ? text('执行中...') : text('本地直连执行（不经过 n8n）') }}
-              </button>
-              <button
-                class="ws-btn-lg ws-btn-lg--secondary"
-                :disabled="!selectedFile || sending || !webhookUrl"
-                @click="sendToWebhook"
-              >
-                <AppIcon name="send" />
-                {{ sending ? text('发送中...') : text('发送至 n8n 编排执行') }}
+            <div class="pg-card__ft">
+              <button class="pg-btn pg-btn--pri pg-btn--xl" :disabled="!canRunDirectExecutor" @click="sendDirectToExecutor">
+                <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'pg-spin': sending }" />{{ sending ? text('执行中...') : text('本地直连执行') }}
               </button>
             </div>
 
-            <!-- Inline Status -->
-            <transition name="ws-msg">
-              <div v-if="lastResult || sending" class="ws-inline-status" :class="inlineStatusClass">
-                <AppIcon :name="statusIconName" class="ws-inline-status__icon" />
-                <span class="ws-inline-status__text">{{ text(statusText) }}</span>
-                <span class="ws-badge ws-badge--sm" :class="statusBadgeClass">{{ text(statusLabel) }}</span>
-              </div>
+            <transition name="pg-fade">
+              <div v-if="lastResult || sending" class="pg-status" :class="inlineStatusClass"><AppIcon :name="statusIconName" />{{ text(statusText) }}</div>
             </transition>
           </div>
 
-          <!-- Raw Response -->
-          <details v-if="lastRawResponse" class="ws-raw">
-            <summary>
-              <AppIcon name="code" />
-              <span>{{ text('原始响应') }}</span>
-              <AppIcon name="chevron-down" class="ws-chevron" />
-            </summary>
-            <pre>{{ lastRawResponse }}</pre>
+          <details v-if="lastRawResponse" class="pg-card pg-detail">
+            <summary class="pg-detail__sum"><AppIcon name="code" /><span>{{ text('原始响应') }}</span><AppIcon name="chevron-down" class="pg-chev" /></summary>
+            <pre class="pg-detail__pre">{{ lastRawResponse }}</pre>
           </details>
         </section>
       </div>
     </template>
-  </section>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-
-import AppIcon from '../../shared/ui/AppIcon.vue'
-import type { AutomationAppInfo } from '../../types/electronApi'
-import type { ExecutorCredentials, LocalExecutorHealth } from './webAutomationApi'
-import {
-  clearExecutorCredentials,
-  fetchExecutorCredentials,
-  fetchAutomationApps,
-  hasElectronAutomationSupport,
-  launchAutomationConsole,
-  primeLocalAutomationLauncherBoot,
-  probeLocalAutomationLauncherHealth,
-  probeLocalExecutorHealth,
-  recordWebAutomationEvent,
-  saveExecutorCredentials,
-  stopAutomationConsole,
-} from './webAutomationApi'
-import {
-  buildExecutorCredentialsPayload,
-  canRunWithCredentials,
-} from './webAutomationCredentials'
-import {
-  getAutomationAppStatusLabel,
-  getWebAutomationEntry,
-  type WebAutomationEntry,
-  type WebAutomationNoticeTone,
-} from './webAutomationModel'
+import { computed, onMounted, ref } from 'vue'; import { useRoute, useRouter } from 'vue-router'; import AppIcon from '../../shared/ui/AppIcon.vue'
+import type { AutomationAppInfo } from '../../types/electronApi'; import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from './webAutomationApi'
+import { buildAutomationTemplateDownloadUrl, clearExecutorCredentials, createAutomationRunRecord, fetchAutomationTemplates, fetchExecutorCredentials, openAutomationHelperDownload, fetchAutomationApps, finishAutomationRunRecord, hasElectronAutomationSupport, launchAutomationConsole, primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth, recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole } from './webAutomationApi'
+import { canRunWithCredentials } from './webAutomationCredentials'
+import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from './webAutomationModel'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 
-const route = useRoute()
-const router = useRouter()
-const { text } = useAppLanguage()
-
-const defaultShippingUsername = 'user3@@tmsfashion'
-const defaultShippingPassword = ''
-const defaultMicrosoftUsername = ''
-const defaultMicrosoftPassword = ''
-
+const route = useRoute(); const router = useRouter(); const { text } = useAppLanguage()
+const DSU = ''; const DSP = ''; const DMU = ''; const DMP = ''
 const electronSupported = hasElectronAutomationSupport()
-const activeApp = ref<AutomationAppInfo | null>(null)
-const executorHealth = ref<LocalExecutorHealth | null>(null)
-const executorCredentials = ref<ExecutorCredentials | null>(null)
-const launcherReachable = ref(false)
-const launching = ref(false)
-const refreshing = ref(false)
-const credentialSaving = ref(false)
-const credentialClearing = ref(false)
-const sending = ref(false)
-const message = ref('')
-const messageTone = ref<WebAutomationNoticeTone>('info')
-const isDragging = ref(false)
-const fileInput = ref<HTMLInputElement | null>(null)
+const activeApp = ref<AutomationAppInfo | null>(null); const executorHealth = ref<LocalExecutorHealth | null>(null); const executorCredentials = ref<ExecutorCredentials | null>(null); const automationTemplates = ref<AutomationTemplate[]>([])
+const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false); const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false); const sending = ref(false)
+const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info'); const isDragging = ref(false); const fileInput = ref<HTMLInputElement | null>(null)
+const selectedFile = ref<File | null>(null); const webhookUrl = ref('http://127.0.0.1:5678/webhook/microsoft-login-excel-demo')
+const shippingUsername = ref(DSU); const shippingPassword = ref(DSP); const showShippingPassword = ref(true)
+const microsoftUsername = ref(DMU); const microsoftPassword = ref(DMP); const showMicrosoftPassword = ref(true)
+const statusText = ref(''); const statusLabel = ref('待命'); const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
+type SAL = { resultExcelUrl: string; resultJsonUrl?: string; failedPoExcelUrl?: string; failedPoJsonUrl?: string; failedRowCount: number }
+const shippingArtifactLinks = ref<SAL | null>(null)
 
-const selectedFile = ref<File | null>(null)
-const webhookUrl = ref('http://127.0.0.1:5678/webhook/microsoft-login-excel-demo')
-const shippingUsername = ref(defaultShippingUsername)
-const shippingPassword = ref(defaultShippingPassword)
-const showShippingPassword = ref(false)
-const microsoftUsername = ref(defaultMicrosoftUsername)
-const microsoftPassword = ref(defaultMicrosoftPassword)
-const showMicrosoftPassword = ref(false)
-const statusText = ref('等待文件上传并发送。')
-const statusLabel = ref('待命')
-const lastResult = ref<{ ok: boolean; message?: string } | null>(null)
-const lastRawResponse = ref('')
-type ShippingArtifactLinks = {
-  resultExcelUrl: string
-  resultJsonUrl?: string
-  failedPoExcelUrl?: string
-  failedPoJsonUrl?: string
-  failedRowCount: number
-}
-const shippingArtifactLinks = ref<ShippingArtifactLinks | null>(null)
-
-const shippingSteps = [
-  { title: '输入账号密码', desc: '使用当前页面填写 Infor Nexus 登录凭据。' },
-  { title: '启动本地执行器', desc: '网页端和 EXE 都会走同一套本机启动器。' },
-  { title: '打开 Shipment Scan', desc: '依次进入 Applications、Print-Scan-Ship、Shipment Scan。' },
-  { title: '后续接入 Excel', desc: '这一页后续继续承接 Shipping 的上传执行链路。' },
-]
-
-const infornexusAutoAddSteps = [
-  { title: '上传 Excel 文件', desc: '读取第一张表第二列，从第二行开始提取 10 位 ID。' },
-  { title: '启动本地执行器', desc: '由 3003 执行器启动可视浏览器并登录 Infor Nexus。' },
-  { title: '自动搜索添加', desc: '按 Excel 顺序逐个搜索、勾选并点击添加。' },
-  { title: '查看结果', desc: '完成数量和失败明细会在页面下方返回。' },
-]
-
-const defaultSteps = [
-  { title: '上传 Excel 文件', desc: '选择包含数据的 .xlsx 或 .xls 文件。' },
-  { title: '本地直连执行（推荐）', desc: '前端直接把 Excel 发给本机执行器，不经过 n8n。' },
-  { title: '发送至 n8n（保留）', desc: '如需编排、通知、审批、数据库联动，可继续走 n8n 链路。' },
-  { title: '查看结果', desc: '在下方状态区查看执行结果。' },
-]
+const shippingSteps = [{ title: '输入账号密码', desc: '使用 Infor Nexus 登录账号密码。' },{ title: '启动本地执行器', desc: '网页端和 EXE 同套启动器。' },{ title: '打开 Shipment Scan', desc: '进入 Applications > Print-Scan-Ship > Shipment Scan。' },{ title: '上传 Excel 执行', desc: '上传 PO No Excel 执行批量录入。' }]
+const infornexusAutoAddSteps = [{ title: '上传 Excel 文件', desc: '读取第二列 10 位 ID。' },{ title: '启动执行器', desc: '启动可见浏览器登录 Infor Nexus。' },{ title: '自动搜索添加', desc: '按 Excel 顺序逐个搜索、勾选并添加。' },{ title: '查看结果', desc: '完成数量和失败明细在下方返回。' }]
+const defaultSteps = [{ title: '上传 Excel 文件', desc: '选择 .xlsx 或 .xls 文件。' },{ title: '本地直连执行', desc: 'Excel 直发本机执行器。' },{ title: '查看结果', desc: '在下方状态区查看执行结果。' }]
 
 const entry = computed(() => getWebAutomationEntry(String(route.params.scenarioId || '')))
 const isShippingScenario = computed(() => entry.value?.id === 'shipping-automation')
 const isInfornexusAutoAddScenario = computed(() => entry.value?.id === 'infornexus-auto-add')
 const isInfornexusDirectScenario = computed(() => isShippingScenario.value || isInfornexusAutoAddScenario.value)
 const isMicrosoftScenario = computed(() => entry.value?.id === 'microsoft-login-n8n')
-const directExecutorRunUrl = computed(() => {
-  const baseUrl = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, '')
-  return baseUrl ? `${baseUrl}/api/run-login-file` : ''
-})
-const shippingExecutorRunUrl = computed(() => {
-  const baseUrl = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, '')
-  return baseUrl ? `${baseUrl}/api/run-shipping-file` : ''
-})
-const infornexusAutoAddExecutorRunUrl = computed(() => {
-  const baseUrl = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, '')
-  return baseUrl ? `${baseUrl}/api/run-infornexus-auto-add-file` : ''
-})
-const directScenarioTitle = computed(() =>
-  isInfornexusAutoAddScenario.value ? '搜索并添加 Infornexus ID' : '登录并打开 Shipment Scan',
-)
-const directScenarioDescription = computed(() =>
-  isInfornexusAutoAddScenario.value
-    ? '本机执行器会读取 Excel 第二列 ID，登录 Infor Nexus 后自动搜索、勾选和添加。'
-    : '本机执行器会登录 Infor Nexus，并自动进入 Shipment Scan 弹窗。',
-)
-const directScenarioExcelHint = computed(() =>
-  isInfornexusAutoAddScenario.value ? '请把 10 位 ID 放在第二列' : '请包含 PO No 列',
-)
-const directScenarioRunLabel = computed(() =>
-  isInfornexusAutoAddScenario.value ? '上传 Excel 并执行自动搜索添加' : '上传 Excel 并执行 Shipping',
-)
+const pageScenarioClass = computed(() => { if (isMicrosoftScenario.value) return 'pg--ms'; if (isShippingScenario.value) return 'pg--ship'; if (isInfornexusAutoAddScenario.value) return 'pg--inf'; return 'pg--def' })
+const heroIcon = computed(() => { if (isMicrosoftScenario.value) return 'zap'; if (isShippingScenario.value) return 'package'; if (isInfornexusAutoAddScenario.value) return 'globe-search'; return 'bot' })
+const directExecutorRunUrl = computed(() => { const b = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-login-file` : '' })
+const shippingExecutorRunUrl = computed(() => { const b = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-shipping-file` : '' })
+const infornexusAutoAddExecutorRunUrl = computed(() => { const b = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-infornexus-auto-add-file` : '' })
+const directScenarioTitle = computed(() => isInfornexusAutoAddScenario.value ? 'Infornexus 自动搜索添加' : '登录并打开 Shipment Scan')
+const directScenarioExcelHint = computed(() => isInfornexusAutoAddScenario.value ? '请把 10 位 ID 放在第二列' : '请包含 PO No 列')
+const directScenarioRunLabel = computed(() => isInfornexusAutoAddScenario.value ? '上传 Excel 并执行' : '上传 Excel 并执行 Shipping')
 const healthRaw = computed(() => executorHealth.value ? JSON.stringify(executorHealth.value, null, 2) : '{}')
-const executorStatusLabel = computed(() => {
-  if (activeApp.value) {
-    const label = text(getAutomationAppStatusLabel(activeApp.value))
-    if (executorHealth.value?.ok) {
-      const activeRunCount = Number(executorHealth.value.activeRunCount || 0)
-      return activeRunCount > 0 ? `${label} / ${text('运行')} ${activeRunCount} ${text('个任务')}` : `${label} / ${text('就绪')}`
-    }
-    if (activeApp.value.running) {
-      return `${label} / ${text('未连通')}`
-    }
-    return label
-  }
-  return executorHealth.value?.ok ? text('就绪') : text('未启动')
-})
-const statusBadgeClass = computed(() => {
-  if (sending.value) return 'ws-badge--wait'
-  if (lastResult.value?.ok) return 'ws-badge--ready'
-  if (lastResult.value && !lastResult.value.ok) return 'ws-badge--err'
-  return ''
-})
-const inlineStatusClass = computed(() => {
-  if (sending.value) return 'ws-inline-status--info'
-  if (lastResult.value?.ok) return 'ws-inline-status--ok'
-  if (lastResult.value && !lastResult.value.ok) return 'ws-inline-status--err'
-  return ''
-})
-const statusIconName = computed(() => {
-  if (sending.value) return 'loader'
-  if (lastResult.value?.ok) return 'check-circle'
-  if (lastResult.value && !lastResult.value.ok) return 'alert-circle'
-  return 'activity'
-})
+const executorStatusLabel = computed(() => { if (activeApp.value) { const l = text(getAutomationAppStatusLabel(activeApp.value)); if (executorHealth.value?.ok) { const c = Number(executorHealth.value.activeRunCount || 0); return c > 0 ? `${l} / ${c} ${text('个任务')}` : `${l} / ${text('就绪')}` }; if (activeApp.value.running) return `${l} / ${text('未连通')}`; return l }; return executorHealth.value?.ok ? text('就绪') : text('未启动') })
+const inlineStatusClass = computed(() => { if (sending.value) return 'pg-status--info'; if (lastResult.value?.ok) return 'pg-status--ok'; if (lastResult.value && !lastResult.value.ok) return 'pg-status--err'; return '' })
+const statusIconName = computed(() => { if (sending.value) return 'loader'; if (lastResult.value?.ok) return 'check-circle'; if (lastResult.value && !lastResult.value.ok) return 'alert-circle'; return 'activity' })
 const canLaunchActiveApp = computed(() => Boolean(entry.value?.appId) && !launching.value)
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
+const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
 const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
 const savedCredentialUsername = computed(() => executorCredentials.value?.username || '')
+const primaryTemplate = computed(() => automationTemplates.value[0] || null)
+const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
 const activeUsername = computed(() => isInfornexusDirectScenario.value ? shippingUsername.value : microsoftUsername.value)
 const activePassword = computed(() => isInfornexusDirectScenario.value ? shippingPassword.value : microsoftPassword.value)
-const credentialStatusText = computed(() => {
-  if (hasStoredCredentials.value) {
-    return savedCredentialUsername.value
-      ? `${text('本机已保存凭据')}: ${savedCredentialUsername.value}`
-      : text('本机已保存凭据。')
-  }
-  return text('本机未保存凭据。首次执行前请填写账号密码并保存。')
-})
-const canRunShippingAutomation = computed(() => canRunWithCredentials({
-  username: shippingUsername.value,
-  password: shippingPassword.value,
-  hasStoredCredentials: hasStoredCredentials.value,
-  hasSelectedFile: Boolean(selectedFile.value),
-  sending: sending.value,
-}))
-const canRunDirectExecutor = computed(() => {
-  if (!isMicrosoftScenario.value) {
-    return Boolean(selectedFile.value) && !sending.value
-  }
+const loginSiteName = computed(() => isMicrosoftScenario.value ? 'Microsoft / SAP BTP' : 'Infor Nexus')
+const credentialStatusText = computed(() => { const sn = loginSiteName.value; return hasStoredCredentials.value ? `${text('已保存')} ${sn} ${text('登录账号')}: ${savedCredentialUsername.value}` : `${text('未保存')} ${sn} ${text('登录账号密码')}` })
+const canRunShippingAutomation = computed(() => canRunWithCredentials({ username: shippingUsername.value, password: shippingPassword.value, hasStoredCredentials: hasStoredCredentials.value, hasSelectedFile: Boolean(selectedFile.value), sending: sending.value }))
+const canRunDirectExecutor = computed(() => { if (!isMicrosoftScenario.value) return Boolean(selectedFile.value) && !sending.value; return canRunWithCredentials({ username: microsoftUsername.value, password: microsoftPassword.value, hasStoredCredentials: hasStoredCredentials.value, hasSelectedFile: Boolean(selectedFile.value), sending: sending.value }) })
 
-  return canRunWithCredentials({
-    username: microsoftUsername.value,
-    password: microsoftPassword.value,
-    hasStoredCredentials: hasStoredCredentials.value,
-    hasSelectedFile: Boolean(selectedFile.value),
-    sending: sending.value,
-  })
-})
-
-onMounted(() => {
-  void initializeScenario()
-})
-
+onMounted(() => { void initializeScenario() })
 async function initializeScenario(): Promise<void> {
-  resetWebhookUrl()
-  if (isShippingScenario.value) {
-    shippingUsername.value = shippingUsername.value || defaultShippingUsername
-    shippingPassword.value = shippingPassword.value || defaultShippingPassword
-    statusLabel.value = '待命'
-    statusText.value = '等待上传 Excel，并执行 Shipping 自动化。'
-  } else if (isInfornexusAutoAddScenario.value) {
-    shippingUsername.value = shippingUsername.value || defaultShippingUsername
-    shippingPassword.value = shippingPassword.value || defaultShippingPassword
-    statusLabel.value = '待命'
-    statusText.value = '等待上传 Excel，并执行 Infornexus 自动搜索添加。'
-  } else if (isMicrosoftScenario.value) {
-    microsoftUsername.value = microsoftUsername.value || defaultMicrosoftUsername
-    microsoftPassword.value = microsoftPassword.value || defaultMicrosoftPassword
-    statusLabel.value = '待命'
-    statusText.value = '等待上传 Excel 并启动 Microsoft Login 自动化。'
-  }
-
-  await refreshExecutorState(true)
-  if (electronSupported && activeApp.value?.available && !activeApp.value.running) {
-    await startActiveApp(true)
-  }
+  if (isShippingScenario.value) { shippingUsername.value = shippingUsername.value || DSU; shippingPassword.value = shippingPassword.value || DSP; statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行 Shipping。' }
+  else if (isInfornexusAutoAddScenario.value) { shippingUsername.value = shippingUsername.value || DSU; shippingPassword.value = shippingPassword.value || DSP; statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行 Infornexus 自动搜索添加。' }
+  else if (isMicrosoftScenario.value) { microsoftUsername.value = microsoftUsername.value || DMU; microsoftPassword.value = microsoftPassword.value || DMP; statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行。' }
+  await refreshAutomationTemplates(); await refreshExecutorCredentials(); await refreshExecutorState(true)
+  if (electronSupported && activeApp.value?.available && !activeApp.value.running) await startActiveApp(true)
 }
-
-async function refreshExecutorState(silent: boolean): Promise<void> {
-  if (!entry.value || refreshing.value) return
-
-  refreshing.value = true
-  const fallbackApp = createFallbackAutomationApp(entry.value)
-
-  try {
-    launcherReachable.value = electronSupported
-      ? true
-      : await probeLocalAutomationLauncherHealth()
-
-    if (electronSupported) {
-      try {
-        const apps = await fetchAutomationApps()
-        activeApp.value = apps.find((app) => app.id === entry.value?.appId) ?? fallbackApp
-      } catch {
-        activeApp.value = fallbackApp
-      }
-    } else {
-      activeApp.value = fallbackApp
-    }
-
-    executorHealth.value = await probeLocalExecutorHealth(entry.value.executorBaseUrl)
-    await refreshExecutorCredentials()
-    if (activeApp.value) {
-      activeApp.value = { ...activeApp.value, running: true }
-    }
-
-    if (!silent) {
-      messageTone.value = 'success'
-      message.value = text('状态已刷新。')
-    }
-  } catch {
-    executorHealth.value = null
-    executorCredentials.value = null
-    launcherReachable.value = false
-    activeApp.value = activeApp.value || fallbackApp
-    if (!silent) {
-      messageTone.value = 'warning'
-      message.value = text('执行器未就绪，请先启动。')
-    }
-  } finally {
-    refreshing.value = false
-  }
-}
-
-async function refreshExecutorCredentials(): Promise<void> {
-  if (!entry.value || !entry.value.executorBaseUrl) return
-
-  try {
-    executorCredentials.value = await fetchExecutorCredentials(entry.value.executorBaseUrl)
-    const username = executorCredentials.value.username || ''
-    if (username && !shippingUsername.value && isInfornexusDirectScenario.value) {
-      shippingUsername.value = username
-    }
-    if (username && !microsoftUsername.value && isMicrosoftScenario.value) {
-      microsoftUsername.value = username
-    }
-  } catch {
-    executorCredentials.value = null
-  }
-}
-
-async function saveCurrentCredentials(): Promise<void> {
-  if (!entry.value || credentialSaving.value) return
-
-  const username = activeUsername.value.trim()
-  const password = activePassword.value
-  if (!username || !password) {
-    messageTone.value = 'warning'
-    message.value = text('请先填写账号和密码。')
-    return
-  }
-
-  credentialSaving.value = true
-  try {
-    executorCredentials.value = await saveExecutorCredentials(
-      entry.value.executorBaseUrl,
-      entry.value.localExecutorToken,
-      username,
-      password,
-    )
-    if (isInfornexusDirectScenario.value) {
-      shippingUsername.value = executorCredentials.value.username || username
-      shippingPassword.value = ''
-    } else if (isMicrosoftScenario.value) {
-      microsoftUsername.value = executorCredentials.value.username || username
-      microsoftPassword.value = ''
-    }
-    messageTone.value = 'success'
-    message.value = text('本机凭据已保存。')
-  } catch (error) {
-    messageTone.value = 'error'
-    message.value = readErrorMessage(error, text('保存本机凭据失败。'))
-  } finally {
-    credentialSaving.value = false
-  }
-}
-
-async function clearCurrentCredentials(): Promise<void> {
-  if (!entry.value || credentialClearing.value) return
-
-  credentialClearing.value = true
-  try {
-    executorCredentials.value = await clearExecutorCredentials(
-      entry.value.executorBaseUrl,
-      entry.value.localExecutorToken,
-    )
-    messageTone.value = 'info'
-    message.value = text('本机凭据已清除。')
-  } catch (error) {
-    messageTone.value = 'error'
-    message.value = readErrorMessage(error, text('清除本机凭据失败。'))
-  } finally {
-    credentialClearing.value = false
-  }
-}
-
-async function startActiveApp(silent: boolean): Promise<void> {
-  if (!entry.value || launching.value) return
-
-  if (!electronSupported && !launcherReachable.value) {
-    primeLocalAutomationLauncherBoot()
-  }
-
-  launching.value = true
-  try {
-    const result = await launchAutomationConsole(entry.value.appId)
-    if (!result.success) {
-      throw new Error(result.error || '启动失败')
-    }
-
-    await refreshExecutorState(true)
-    if (!silent) {
-      messageTone.value = 'success'
-      message.value = result.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。')
-    }
-  } catch (error) {
-    const errMsg = readErrorMessage(error, text('启动失败'))
-    await recordWebAutomationEvent('launch-exception', {
-      appId: entry.value.appId,
-      entryId: entry.value.id,
-      error: errMsg,
-    })
-    if (!silent) {
-      messageTone.value = 'error'
-      message.value = errMsg
-    }
-  } finally {
-    launching.value = false
-  }
-}
-
-async function stopActiveApp(): Promise<void> {
-  if (!entry.value) return
-
-  try {
-    const result = await stopAutomationConsole(entry.value.appId)
-    if (!result.success) {
-      throw new Error(result.error || '停止失败')
-    }
-
-    executorHealth.value = null
-    if (activeApp.value) {
-      activeApp.value = { ...activeApp.value, running: false }
-    }
-    await refreshExecutorState(true).catch(() => {})
-    messageTone.value = 'info'
-    message.value = text('执行器已停止。')
-  } catch (error) {
-    messageTone.value = 'error'
-    message.value = readErrorMessage(error, text('停止失败'))
-  }
-}
-
-function handleFileSelect(event: Event): void {
-  const input = event.target as HTMLInputElement
-  const files = input.files
-  if (files && files.length > 0) {
-    selectedFile.value = files[0]
-  }
-}
-
-function handleDrop(event: DragEvent): void {
-  isDragging.value = false
-  const files = event.dataTransfer?.files
-  if (files && files.length > 0) {
-    selectedFile.value = files[0]
-  }
-}
-
-function openFilePicker(): void {
-  fileInput.value?.click()
-}
-
-function clearFile(): void {
-  selectedFile.value = null
-  if (fileInput.value) {
-    fileInput.value.value = ''
-  }
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function resetWebhookUrl(): void {
-  webhookUrl.value = entry.value?.webhookUrl || 'http://127.0.0.1:5678/webhook/microsoft-login-excel-demo'
-}
-
-async function runInfornexusDirectWithExcel(): Promise<void> {
-  if (isInfornexusAutoAddScenario.value) {
-    await runInfornexusAutoAddWithExcel()
-    return
-  }
-
-  await runShippingWithExcel()
-}
-
-async function runShippingWithExcel(): Promise<void> {
-  if (!entry.value || sending.value || !isShippingScenario.value || !selectedFile.value) return
-
-  const executorReady = await ensureExecutorReady()
-  if (!executorReady) {
-    statusLabel.value = '未就绪'
-    statusText.value = '本机执行器尚未就绪，请先启动执行器后再试。'
-    lastResult.value = { ok: false, message: 'Executor is not ready.' }
-    messageTone.value = 'warning'
-    message.value = text('本机执行器未就绪，请先启动。')
-    return
-  }
-
-  const file = selectedFile.value
-  sending.value = true
-  statusLabel.value = '执行中'
-  statusText.value = '正在上传 Excel，并登录 Infor Nexus 输入 PO No...'
-  lastResult.value = null
-  shippingArtifactLinks.value = null
-  lastRawResponse.value = ''
-  message.value = ''
-
-  try {
-    const fileBase64 = await fileToBase64(file)
-    const response = await fetch(shippingExecutorRunUrl.value, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Executor-Token': entry.value.localExecutorToken,
-      },
-      body: JSON.stringify({
-        fileName: file.name,
-        fileBase64,
-        token: entry.value.localExecutorToken,
-        ...buildExecutorCredentialsPayload({
-          username: shippingUsername.value,
-          password: shippingPassword.value,
-          hasStoredCredentials: hasStoredCredentials.value,
-        }),
-      }),
-    })
-
-    const rawText = await response.text()
-    lastRawResponse.value = rawText
-    const json = safeParseJson(rawText)
-    updateShippingArtifactLinks(json)
-
-    if (!response.ok) {
-      statusLabel.value = '失败'
-      statusText.value = json?.message || `本地执行失败，HTTP ${response.status}。`
-      lastResult.value = { ok: false, message: json?.message || `HTTP ${response.status}` }
-      messageTone.value = 'error'
-      message.value = text('Shipment Scan 自动化执行失败，请查看原始响应。')
-      return
-    }
-
-    if (json?.ok && json?.shipmentScanOpened) {
-      statusLabel.value = '成功'
-      statusText.value = `Shipping 自动化完成。已输入 ${json.completedPoCount ?? 0}/${json.totalPoCount ?? '?'} 个 PO No。`
-      lastResult.value = { ok: true, message: json.message }
-      messageTone.value = 'success'
-      message.value = text('Shipping 自动化执行完成。')
-      return
-    }
-
-    statusLabel.value = '未完成'
-    statusText.value = json?.message || 'Shipping 自动化已触发，但未确认全部 PO No 输入完成。'
-    lastResult.value = { ok: false, message: json?.message }
-    messageTone.value = 'warning'
-    message.value = text('自动化已触发，但结果未确认成功。')
-  } catch (error) {
-    statusLabel.value = '异常'
-    statusText.value = `本地执行异常：${readErrorMessage(error, '网络错误')}`
-    lastResult.value = { ok: false }
-    messageTone.value = 'error'
-    message.value = text('本地执行异常，请确认执行器已启动且端口可访问。')
-  } finally {
-    sending.value = false
-    await refreshExecutorState(true).catch(() => {})
-  }
-}
-
-async function runInfornexusAutoAddWithExcel(): Promise<void> {
-  if (!entry.value || sending.value || !isInfornexusAutoAddScenario.value || !selectedFile.value) return
-
-  const executorReady = await ensureExecutorReady()
-  if (!executorReady) {
-    statusLabel.value = '未就绪'
-    statusText.value = '本机执行器尚未就绪，请先启动执行器后再试。'
-    lastResult.value = { ok: false, message: 'Executor is not ready.' }
-    messageTone.value = 'warning'
-    message.value = text('本机执行器未就绪，请先启动。')
-    return
-  }
-
-  const file = selectedFile.value
-  sending.value = true
-  statusLabel.value = '执行中'
-  statusText.value = '正在上传 Excel，并启动 Infornexus 自动搜索添加...'
-  lastResult.value = null
-  shippingArtifactLinks.value = null
-  lastRawResponse.value = ''
-  message.value = ''
-
-  try {
-    const fileBase64 = await fileToBase64(file)
-    const response = await fetch(infornexusAutoAddExecutorRunUrl.value, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Executor-Token': entry.value.localExecutorToken,
-      },
-      body: JSON.stringify({
-        fileName: file.name,
-        fileBase64,
-        token: entry.value.localExecutorToken,
-        ...buildExecutorCredentialsPayload({
-          username: shippingUsername.value,
-          password: shippingPassword.value,
-          hasStoredCredentials: hasStoredCredentials.value,
-        }),
-      }),
-    })
-
-    const rawText = await response.text()
-    lastRawResponse.value = rawText
-    const json = safeParseJson(rawText)
-
-    if (!response.ok) {
-      statusLabel.value = '失败'
-      statusText.value = json?.message || `本地执行失败，HTTP ${response.status}。`
-      lastResult.value = { ok: false, message: json?.message || `HTTP ${response.status}` }
-      messageTone.value = 'error'
-      message.value = text('Infornexus 自动搜索添加执行失败，请查看原始响应。')
-      return
-    }
-
-    if (json?.ok) {
-      statusLabel.value = '成功'
-      statusText.value = `Infornexus 自动搜索添加完成。已处理 ${json.completedIdCount ?? 0}/${json.totalIdCount ?? '?'} 个 ID。`
-      lastResult.value = { ok: true, message: json.message }
-      messageTone.value = 'success'
-      message.value = text('Infornexus 自动搜索添加执行完成。')
-      return
-    }
-
-    statusLabel.value = '未完成'
-    statusText.value = json?.message || 'Infornexus 自动搜索添加已触发，但未确认全部 ID 完成。'
-    lastResult.value = { ok: false, message: json?.message }
-    messageTone.value = 'warning'
-    message.value = text('自动化已触发，但结果未确认成功。')
-  } catch (error) {
-    statusLabel.value = '异常'
-    statusText.value = `本地执行异常：${readErrorMessage(error, '网络错误')}`
-    lastResult.value = { ok: false }
-    messageTone.value = 'error'
-    message.value = text('本地执行异常，请确认执行器已启动且端口可访问。')
-  } finally {
-    sending.value = false
-    await refreshExecutorState(true).catch(() => {})
-  }
-}
-
-async function sendDirectToExecutor(): Promise<void> {
-  if (!selectedFile.value || sending.value || !entry.value) return
-
-  const executorReady = await ensureExecutorReady()
-  if (!executorReady) {
-    statusLabel.value = '未就绪'
-    statusText.value = '本机执行器尚未就绪，请先启动执行器后再试。'
-    lastResult.value = { ok: false, message: 'Executor is not ready.' }
-    messageTone.value = 'warning'
-    message.value = text('本机执行器未就绪，请先启动。')
-    return
-  }
-
-  sending.value = true
-  statusLabel.value = '执行中'
-  statusText.value = '正在将 Excel 直接发送给本机执行器并启动浏览器自动化...'
-  lastResult.value = null
-  lastRawResponse.value = ''
-  message.value = ''
-
-  try {
-    const fileBase64 = await fileToBase64(selectedFile.value)
-    const response = await fetch(directExecutorRunUrl.value, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Executor-Token': entry.value.localExecutorToken,
-      },
-      body: JSON.stringify({
-        fileName: selectedFile.value.name,
-        fileBase64,
-        token: entry.value.localExecutorToken,
-        ...(isMicrosoftScenario.value
-          ? buildExecutorCredentialsPayload({
-            username: microsoftUsername.value,
-            password: microsoftPassword.value,
-            hasStoredCredentials: hasStoredCredentials.value,
-          })
-          : {}),
-      }),
-    })
-
-    const rawText = await response.text()
-    lastRawResponse.value = rawText
-    const json = safeParseJson(rawText)
-
-    if (!response.ok) {
-      statusLabel.value = '失败'
-      statusText.value = json?.message || `本地执行失败，HTTP ${response.status}。`
-      lastResult.value = { ok: false, message: json?.message || `HTTP ${response.status}` }
-      messageTone.value = 'error'
-      message.value = text('本地执行器返回失败，请查看原始响应。')
-      return
-    }
-
-    if (!json) {
-      throw new Error('执行器返回了无法解析的响应。')
-    }
-
-    if (json.loginSuccess) {
-      statusLabel.value = '成功'
-      statusText.value = `本地直连执行成功。已处理 ${json.uploadedRowCount ?? '?'} 行数据。`
-      lastResult.value = { ok: true, message: json.message }
-      messageTone.value = 'success'
-      message.value = text('本地直连执行完成。')
-    } else {
-      statusLabel.value = '未完成'
-      statusText.value = json.message || '本地执行已触发，但未确认成功。'
-      lastResult.value = { ok: false, message: json.message }
-      messageTone.value = 'warning'
-      message.value = text('本地执行已触发，但结果未确认成功。')
-    }
-  } catch (error) {
-    statusLabel.value = '异常'
-    statusText.value = `本地执行异常：${readErrorMessage(error, '网络错误')}`
-    lastResult.value = { ok: false }
-    messageTone.value = 'error'
-    message.value = text('本地执行异常，请确认执行器已启动且端口可访问。')
-  } finally {
-    sending.value = false
-    await refreshExecutorState(true).catch(() => {})
-  }
-}
-
-async function sendToWebhook(): Promise<void> {
-  if (!selectedFile.value || !webhookUrl.value || sending.value) return
-
-  const executorReady = await ensureExecutorReady()
-  if (!executorReady) {
-    statusLabel.value = '未就绪'
-    statusText.value = '本机执行器尚未就绪，请先启动执行器后再试。'
-    lastResult.value = { ok: false, message: 'Executor is not ready.' }
-    messageTone.value = 'warning'
-    message.value = text('本机执行器未就绪，请先启动。')
-    return
-  }
-
-  sending.value = true
-  statusLabel.value = '发送中'
-  statusText.value = '正在上传文件到 n8n 并启动 Microsoft Login 自动化...'
-  lastResult.value = null
-  lastRawResponse.value = ''
-  message.value = ''
-
-  const formData = new FormData()
-  formData.append('file', selectedFile.value)
-  if (isMicrosoftScenario.value) {
-    formData.append('username', microsoftUsername.value)
-    formData.append('password', microsoftPassword.value)
-  }
-
-  try {
-    const response = await fetch(webhookUrl.value, {
-      method: 'POST',
-      body: formData,
-    })
-
-    const rawText = await response.text()
-    lastRawResponse.value = rawText
-    const json = safeParseJson(rawText)
-
-    if (!response.ok) {
-      statusLabel.value = '失败'
-      statusText.value = `请求失败，HTTP ${response.status}。`
-      lastResult.value = { ok: false, message: `HTTP ${response.status}` }
-      messageTone.value = 'error'
-      message.value = text('发送失败，请检查 webhook 地址是否可访问。')
-      return
-    }
-
-    if (json?.loginSuccess) {
-      statusLabel.value = '成功'
-      statusText.value = `登录成功。已处理 ${json.uploadedRowCount ?? '?'} 行数据。`
-      lastResult.value = { ok: true, message: json.message }
-      messageTone.value = 'success'
-      message.value = text('自动化执行完成，登录成功。')
-    } else {
-      statusLabel.value = '未完成'
-      statusText.value = json?.message || '登录未完成，请查看原始响应了解详情。'
-      lastResult.value = { ok: false, message: json?.message }
-      messageTone.value = 'warning'
-      message.value = text('自动化已执行但登录未确认成功。')
-    }
-  } catch (error) {
-    statusLabel.value = '异常'
-    statusText.value = `发送异常：${readErrorMessage(error, '网络错误')}`
-    lastResult.value = { ok: false }
-    messageTone.value = 'error'
-    message.value = text('发送异常，请确认 n8n 和执行器均已启动。')
-  } finally {
-    sending.value = false
-    await refreshExecutorState(true).catch(() => {})
-  }
-}
-
-async function ensureExecutorReady(): Promise<boolean> {
-  if (executorHealth.value?.ok) {
-    return true
-  }
-
-  await startActiveApp(true)
-  await refreshExecutorState(true).catch(() => {})
-  return Boolean(executorHealth.value?.ok)
-}
-
-async function fileToBase64(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer()
-  return arrayBufferToBase64(buffer)
-}
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer)
-  const chunkSize = 0x8000
-  let binary = ''
-
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    const chunk = bytes.subarray(index, index + chunkSize)
-    binary += String.fromCharCode(...chunk)
-  }
-
-  return window.btoa(binary)
-}
-
-function safeParseJson(rawText: string): Record<string, any> | null {
-  try {
-    return rawText ? JSON.parse(rawText) : null
-  } catch {
-    return null
-  }
-}
-
-function updateShippingArtifactLinks(payload: Record<string, any> | null): void {
-  if (!isShippingScenario.value) {
-    shippingArtifactLinks.value = null
-    return
-  }
-
-  const downloadUrls = payload?.artifacts?.downloadUrls
-  const resultExcelUrl = buildShippingArtifactUrl(downloadUrls?.resultExcelUrl)
-  if (!resultExcelUrl) {
-    shippingArtifactLinks.value = null
-    return
-  }
-
-  shippingArtifactLinks.value = {
-    resultExcelUrl,
-    resultJsonUrl: buildShippingArtifactUrl(downloadUrls?.resultJsonUrl) || undefined,
-    failedPoExcelUrl: buildShippingArtifactUrl(downloadUrls?.failedPoExcelUrl) || undefined,
-    failedPoJsonUrl: buildShippingArtifactUrl(downloadUrls?.failedPoJsonUrl) || undefined,
-    failedRowCount: Number(payload?.artifacts?.failedRowCount ?? 0),
-  }
-}
-
-function buildShippingArtifactUrl(relativePath: string): string {
-  const normalizedPath = String(relativePath || '').trim()
-  if (!normalizedPath) {
-    return ''
-  }
-
-  if (/^https?:\/\//i.test(normalizedPath)) {
-    return normalizedPath
-  }
-
-  const baseUrl = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, '')
-  return baseUrl ? `${baseUrl}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}` : ''
-}
-
-function downloadShippingArtifact(url: string | undefined, fallbackName: string): void {
-  if (!url) return
-
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = fallbackName
-  anchor.rel = 'noopener'
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
-}
-
-function createFallbackAutomationApp(currentEntry: WebAutomationEntry): AutomationAppInfo {
-  return {
-    id: currentEntry.appId,
-    name: currentEntry.title,
-    description: currentEntry.description,
-    provider: 'Playwright',
-    category: '网页自动化',
-    version: '',
-    available: true,
-    running: false,
-    port: Number(new URL(currentEntry.executorBaseUrl).port || 0),
-    url: currentEntry.executorBaseUrl,
-  }
-}
-
-function goBack(): void {
-  if (window.history.length > 1) {
-    router.back()
-  } else {
-    void router.push('/')
-  }
-}
-
-function readErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
-}
+async function refreshExecutorState(silent: boolean): Promise<void> { if (!entry.value || refreshing.value) return; refreshing.value = true; const fb = createFallback(entry.value); try { launcherReachable.value = electronSupported ? true : await probeLocalAutomationLauncherHealth(); if (electronSupported) { try { const apps = await fetchAutomationApps(); activeApp.value = apps.find((a) => a.id === entry.value?.appId) ?? fb } catch { activeApp.value = fb } } else { activeApp.value = fb }; if (!electronSupported && !launcherReachable.value) { executorHealth.value = null; activeApp.value = fb; if (!silent) { messageTone.value = 'warning'; message.value = text('未检测到本机自动化助手。') }; return }; executorHealth.value = await probeLocalExecutorHealth(entry.value.executorBaseUrl); await refreshExecutorCredentials(); if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }; if (!silent) { messageTone.value = 'success'; message.value = text('状态已刷新。') } } catch { executorHealth.value = null; activeApp.value = activeApp.value || fb; if (!silent) { messageTone.value = 'warning'; message.value = launcherReachable.value ? text('本机自动化助手已连接，执行器尚未启动。') : text('执行器未就绪。') } } finally { refreshing.value = false } }
+async function refreshExecutorCredentials(): Promise<void> { if (!entry.value) return; try { executorCredentials.value = await fetchExecutorCredentials(entry.value.id); const u = executorCredentials.value.username || ''; if (u && isInfornexusDirectScenario.value) shippingUsername.value = u; if (u && isMicrosoftScenario.value) microsoftUsername.value = u; if (executorCredentials.value.hasStoredCredentials) await fillStored() } catch { executorCredentials.value = null } }
+async function fillStored(): Promise<void> { if (!entry.value) return; const r = await resolveAutomationCredentials(entry.value.id); if (isInfornexusDirectScenario.value) { shippingUsername.value = r.username; shippingPassword.value = r.password } else if (isMicrosoftScenario.value) { microsoftUsername.value = r.username; microsoftPassword.value = r.password } }
+async function refreshAutomationTemplates(): Promise<void> { if (!entry.value) return; templateLoading.value = true; try { automationTemplates.value = await fetchAutomationTemplates(entry.value.id) } catch { automationTemplates.value = [] } finally { templateLoading.value = false } }
+async function downloadPrimaryTemplate(): Promise<void> { const t = primaryTemplate.value; if (!t) return; try { const u = await buildAutomationTemplateDownloadUrl(t); const a = document.createElement('a'); a.href = u; a.download = t.originalFilename || `${t.templateKey || 'template'}.xlsx`; a.rel = 'noopener'; document.body.append(a); a.click(); a.remove() } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('下载失败。')) } }
+function downloadAutomationHelper(): void { void openAutomationHelperDownload() }
+function bootLocalHelper(): void { primeLocalAutomationLauncherBoot(); messageTone.value = 'info'; message.value = text('已尝试启动本机自动化助手。'); window.setTimeout(() => { void refreshExecutorState(true) }, 1200) }
+async function saveCurrentCredentials(): Promise<void> { if (!entry.value || credentialSaving.value) return; const u = activeUsername.value.trim(); const p = activePassword.value; if (!u || !p) { messageTone.value = 'warning'; message.value = text('请先填写账号和密码。'); return }; credentialSaving.value = true; try { executorCredentials.value = await saveExecutorCredentials(entry.value.id, u, p); await refreshExecutorCredentials(); if (isInfornexusDirectScenario.value) { shippingUsername.value = executorCredentials.value.username || u; shippingPassword.value = p } else if (isMicrosoftScenario.value) { microsoftUsername.value = executorCredentials.value.username || u; microsoftPassword.value = p }; messageTone.value = 'success'; message.value = text('已保存。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('保存失败。')) } finally { credentialSaving.value = false } }
+async function clearCurrentCredentials(): Promise<void> { if (!entry.value || credentialClearing.value) return; credentialClearing.value = true; try { executorCredentials.value = await clearExecutorCredentials(entry.value.id); messageTone.value = 'info'; message.value = text('已清除。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('清除失败。')) } finally { credentialClearing.value = false } }
+async function startActiveApp(silent: boolean): Promise<void> { if (!entry.value || launching.value) return; if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot(); launching.value = true; try { const r = await launchAutomationConsole(entry.value.appId); if (!r.success) throw new Error(r.error || '启动失败'); await refreshExecutorState(true); if (!silent) { messageTone.value = 'success'; message.value = r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') } } catch (e) { const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.value.appId, entryId: entry.value.id, error: m }); if (!silent) { messageTone.value = 'error'; message.value = m } } finally { launching.value = false } }
+async function stopActiveApp(): Promise<void> { if (!entry.value) return; try { const r = await stopAutomationConsole(entry.value.appId); if (!r.success) throw new Error(r.error || '停止失败'); executorHealth.value = null; if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }; await refreshExecutorState(true).catch(() => {}); messageTone.value = 'info'; message.value = text('执行器已停止。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('停止失败')) } }
+function handleFileSelect(e: Event): void { const f = (e.target as HTMLInputElement).files; if (f && f.length > 0) selectedFile.value = f[0] }
+function handleDrop(e: DragEvent): void { isDragging.value = false; const f = e.dataTransfer?.files; if (f && f.length > 0) selectedFile.value = f[0] }
+function openFilePicker(): void { fileInput.value?.click() }
+function clearFile(): void { selectedFile.value = null; if (fileInput.value) fileInput.value.value = '' }
+function formatSize(b: number): string { if (b < 1024) return `${b} B`; if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`; return `${(b / (1024 * 1024)).toFixed(1)} MB` }
+function resetWebhookUrl(): void { webhookUrl.value = entry.value?.webhookUrl || 'http://127.0.0.1:5678/webhook/microsoft-login-excel-demo' }
+async function resolveRunCredentialsPayload(uv: string, pv: string): Promise<Record<string, string>> { if (!entry.value) return {}; const u = uv.trim(); const tp = pv; if (tp.trim()) { if (!u) throw new Error('请填写账号密码。'); executorCredentials.value = await saveExecutorCredentials(entry.value.id, u, tp); await refreshExecutorCredentials(); applyCredUser(executorCredentials.value.username || u); return { username: u, password: tp } }; const r = await resolveAutomationCredentials(entry.value.id); applyCredUser(r.username); if (isInfornexusDirectScenario.value) shippingPassword.value = r.password; else if (isMicrosoftScenario.value) microsoftPassword.value = r.password; return { username: r.username, password: r.password } }
+function applyCredUser(u: string): void { if (!u) return; if (isInfornexusDirectScenario.value) shippingUsername.value = u; else if (isMicrosoftScenario.value) microsoftUsername.value = u }
+async function createBackendRunRecord(f: File): Promise<AutomationRunRecord | null> { if (!entry.value) return null; return createAutomationRunRecord(entry.value.id, f, entry.value.title) }
+async function finishBackendRunRecord(r: AutomationRunRecord | null, ok: boolean, msg: string, p: Record<string, any> | null): Promise<void> { if (!r?.runId) return; await finishAutomationRunRecord(r.runId, ok ? 'success' : 'failed', msg || (ok ? 'completed' : 'failed'), p, collectResultFiles(p)) }
+function collectResultFiles(p: Record<string, any> | null): AutomationRunFileInput[] { const u = p?.artifacts?.downloadUrls; if (!u || typeof u !== 'object') return []; return [bfi(u.resultExcelUrl, 'result_excel', 'shipping-last-result.xlsx'), bfi(u.resultJsonUrl, 'result_json', 'shipping-last-result.json'), bfi(u.failedPoExcelUrl, 'failed_rows_excel', 'shipping-last-failed-po-rows.xlsx'), bfi(u.failedPoJsonUrl, 'failed_rows_json', 'shipping-last-failed-po-rows.json')].filter((x): x is AutomationRunFileInput => Boolean(x)) }
+function bfi(rp: string, fr: string, fn: string): AutomationRunFileInput | null { const u = buildShippingArtifactUrl(rp); if (!u) return null; return { url: u, fileRole: fr, fileName: fn } }
+async function runInfornexusDirectWithExcel(): Promise<void> { if (isInfornexusAutoAddScenario.value) { await runInfornexusAutoAdd(); return }; await runShipping() }
+async function runShipping(): Promise<void> { if (!entry.value || sending.value || !isShippingScenario.value || !selectedFile.value) return; if (!(await ensureReady())) { setNotReady(); return }; const file = selectedFile.value; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload(shippingUsername.value, shippingPassword.value); const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.value.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: entry.value.localExecutorToken, ...cp }) }); const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); updateShippingArtifactLinks(j); await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { statusLabel.value = '失败'; statusText.value = j?.message || `HTTP ${res.status}`; lastResult.value = { ok: false, message: j?.message || `HTTP ${res.status}` }; messageTone.value = 'error'; message.value = text('执行失败。'); return }; if (j?.ok && j?.shipmentScanOpened) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedPoCount ?? 0}/${j.totalPoCount ?? '?'} 个 PO。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }; statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。') } catch (e) { statusLabel.value = '异常'; statusText.value = readErrorMessage(e, '网络错误'); lastResult.value = { ok: false }; messageTone.value = 'error'; message.value = text('执行异常。') } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
+async function runInfornexusAutoAdd(): Promise<void> { if (!entry.value || sending.value || !isInfornexusAutoAddScenario.value || !selectedFile.value) return; if (!(await ensureReady())) { setNotReady(); return }; const file = selectedFile.value; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload(shippingUsername.value, shippingPassword.value); const res = await fetch(infornexusAutoAddExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.value.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: entry.value.localExecutorToken, ...cp }) }); const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { statusLabel.value = '失败'; statusText.value = j?.message || `HTTP ${res.status}`; lastResult.value = { ok: false, message: j?.message || `HTTP ${res.status}` }; messageTone.value = 'error'; message.value = text('执行失败。'); return }; if (j?.ok) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedIdCount ?? 0}/${j.totalIdCount ?? '?'} 个 ID。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }; statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。') } catch (e) { statusLabel.value = '异常'; statusText.value = readErrorMessage(e, '网络错误'); lastResult.value = { ok: false }; messageTone.value = 'error'; message.value = text('执行异常。') } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
+async function sendDirectToExecutor(): Promise<void> { if (!selectedFile.value || sending.value || !entry.value) return; if (!(await ensureReady())) { setNotReady(); return }; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在执行...'; lastResult.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = await createBackendRunRecord(selectedFile.value); const fb64 = await fileToBase64(selectedFile.value); const cp = isMicrosoftScenario.value ? await resolveRunCredentialsPayload(microsoftUsername.value, microsoftPassword.value) : {}; const res = await fetch(directExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.value.localExecutorToken }, body: JSON.stringify({ fileName: selectedFile.value.name, fileBase64: fb64, token: entry.value.localExecutorToken, ...cp }) }); const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { statusLabel.value = '失败'; statusText.value = j?.message || `HTTP ${res.status}`; lastResult.value = { ok: false, message: j?.message || `HTTP ${res.status}` }; messageTone.value = 'error'; message.value = text('执行失败。'); return }; if (!j) throw new Error('无法解析响应。'); if (j.loginSuccess) { statusLabel.value = '成功'; statusText.value = `已处理 ${j.uploadedRowCount ?? '?'} 行。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。') } else { statusLabel.value = '未完成'; statusText.value = j.message || '未确认成功。'; lastResult.value = { ok: false, message: j.message }; messageTone.value = 'warning'; message.value = text('已触发，未确认。') } } catch (e) { statusLabel.value = '异常'; statusText.value = readErrorMessage(e, '网络错误'); lastResult.value = { ok: false }; messageTone.value = 'error'; message.value = text('执行异常。') } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
+function setNotReady(): void { statusLabel.value = '未就绪'; statusText.value = '本机执行器尚未就绪。'; lastResult.value = { ok: false, message: 'Executor is not ready.' }; messageTone.value = 'warning'; message.value = text('本机执行器未就绪。') }
+async function ensureReady(): Promise<boolean> { if (executorHealth.value?.ok) return true; await startActiveApp(true); await refreshExecutorState(true).catch(() => {}); return Boolean(executorHealth.value?.ok) }
+async function fileToBase64(f: File): Promise<string> { const b = await f.arrayBuffer(); return arrayBufferToBase64(b) }
+function arrayBufferToBase64(b: ArrayBuffer): string { const bytes = new Uint8Array(b); const cs = 0x8000; let bin = ''; for (let i = 0; i < bytes.length; i += cs) { const chunk = bytes.subarray(i, i + cs); bin += String.fromCharCode(...chunk) }; return window.btoa(bin) }
+function safeParseJson(r: string): Record<string, any> | null { try { return r ? JSON.parse(r) : null } catch { return null } }
+function updateShippingArtifactLinks(p: Record<string, any> | null): void { if (!isShippingScenario.value) { shippingArtifactLinks.value = null; return }; const u = p?.artifacts?.downloadUrls; const re = buildShippingArtifactUrl(u?.resultExcelUrl); if (!re) { shippingArtifactLinks.value = null; return }; shippingArtifactLinks.value = { resultExcelUrl: re, resultJsonUrl: buildShippingArtifactUrl(u?.resultJsonUrl) || undefined, failedPoExcelUrl: buildShippingArtifactUrl(u?.failedPoExcelUrl) || undefined, failedPoJsonUrl: buildShippingArtifactUrl(u?.failedPoJsonUrl) || undefined, failedRowCount: Number(p?.artifacts?.failedRowCount ?? 0) } }
+function buildShippingArtifactUrl(rp: string): string { const np = String(rp || '').trim(); if (!np) return ''; if (/^https?:\/\//i.test(np)) return np; const bu = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, ''); return bu ? `${bu}${np.startsWith('/') ? np : `/${np}`}` : '' }
+function downloadShippingArtifact(u: string | undefined, fn: string): void { if (!u) return; const a = document.createElement('a'); a.href = u; a.download = fn; a.rel = 'noopener'; document.body.append(a); a.click(); a.remove() }
+function createFallback(e: WebAutomationEntry): AutomationAppInfo { return { id: e.appId, name: e.title, description: e.description, provider: 'Playwright', category: '网页自动化', version: '', available: true, running: false, port: Number(new URL(e.executorBaseUrl).port || 0), url: e.executorBaseUrl } }
+function goBack(): void { if (window.history.length > 1) router.back(); else void router.push('/') }
+function readErrorMessage(e: unknown, fb: string): string { return e instanceof Error && e.message ? e.message : fb }
 </script>
 
 <style scoped lang="scss">
-/* ================================================================
-   Web Automation Scenario Page — Refined Design
-   Palette: teal #0d9488, green #059669, blue #2563eb, amber #d97706
-   No purple. Clean, elegant, minimal animations.
-   ================================================================ */
+.pg { --a: #2563eb; --a2: #eff6ff; --red: #dc2626; --br: #e5e7eb; --mu: #64748b; --ink: #111827; --r: 8px; display: flex; flex-direction: column; gap: 14px; padding: 18px 22px; min-height: 100%; background: #f6f7f9; color: var(--ink); font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif; }
+.pg--ms { --a: #0d9488; --a2: #f0fdfa; } .pg--ship { --a: #0ea5e9; --a2: #f0f9ff; } .pg--inf { --a: #059669; --a2: #ecfdf5; }
+.pg-main { display: grid; grid-template-columns: 250px minmax(0,1fr); gap: 14px; align-items: start; }
+.pg-side, .pg-stage { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 
-.ws-page {
-  --teal: #0d9488;
-  --teal-soft: #f0fdfa;
-  --teal-border: #99f6e4;
-  --green: #059669;
-  --amber: #d97706;
-  --red: #dc2626;
-  --blue: #2563eb;
-  --border: #e2e8f0;
-  --muted: #64748b;
-  --ink: #0f172a;
-  --radius: 14px;
-
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 14px;
-  min-height: 100%;
-  background:
-    radial-gradient(ellipse 55% 35% at 50% 0%, rgba(13, 148, 136, 0.04), transparent 55%),
-    #f6f9fc;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+/* Card */
+.pg-card { background: #fff; border: 1px solid var(--br); border-radius: var(--r); box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  &--accent { border-left: 3px solid var(--a); }
+  &__hd { display: flex; align-items: center; gap: 8px; padding: 12px 15px; font-size: 13px; font-weight: 700; border-bottom: 1px solid #f3f4f6; &--lg { padding: 14px 16px; font-size: 14px; } }
+  &__hd-ic { font-size: 15px; color: var(--a); flex-shrink: 0; }
+  &__bd { padding: 12px 15px; display: flex; flex-direction: column; gap: 10px; & + & { padding-top: 0; } }
+  &__ft { padding: 0 15px 14px; display: flex; flex-direction: column; gap: 8px; }
 }
 
-/* ===== Top Bar ===== */
-.ws-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+/* Top */
+.pg-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; &__right { display: flex; align-items: center; gap: 6px; } &__st { font-size: 12px; color: var(--mu); font-weight: 500; } }
+.pg-back { display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 10px; border: 1px solid var(--br); border-radius: 6px; background: #fff; color: #4b5563; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: background .15s; :deep(.app-icon) { font-size: 14px; } &:hover { background: #f9fafb; } }
+.pg-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; &--on { background: #10b981; } &--off { background: #d1d5db; } }
+
+/* Hero */
+.pg-hero { display: flex; align-items: center; gap: 12px; padding: 18px 20px; background: #fff; border: 1px solid var(--br); border-radius: var(--r); box-shadow: 0 1px 2px rgba(0,0,0,.04); animation: pg-in .4s ease both;
+  &__icon { width: 40px; height: 40px; border-radius: 8px; background: var(--a2); color: var(--a); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  &__text { min-width: 0; h1 { margin: 0; font-size: 16px; font-weight: 700; } p { margin: 2px 0 0; font-size: 12.5px; color: var(--mu); } }
 }
 
-.ws-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 36px;
-  padding: 0 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #fff;
-  color: #475569;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.25s ease;
-
-  :deep(.app-icon) { font-size: 15px; }
-
-  &:hover {
-    border-color: var(--teal-border);
-    color: var(--teal);
-    background: var(--teal-soft);
-  }
+/* Alert */
+.pg-alert { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 6px; font-size: 13px; border: 1px solid; font-weight: 500; :deep(.app-icon) { font-size: 15px; flex-shrink: 0; }
+  &--info { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; } &--success { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; } &--warning { background: #fffbeb; color: #b45309; border-color: #fde68a; } &--error { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+  &__x { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-left: auto; border: none; border-radius: 4px; background: rgba(0,0,0,.05); color: var(--mu); cursor: pointer; :deep(.app-icon) { font-size: 12px; } &:hover { background: rgba(0,0,0,.1); } }
 }
+.pg-fade-enter-active { transition: all .25s ease; } .pg-fade-leave-active { transition: all .15s ease; } .pg-fade-enter-from, .pg-fade-leave-to { opacity: 0; transform: translateY(-6px); }
 
-.ws-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-
-  :deep(.app-icon) { font-size: 13px; }
-
-  &--scene,
-  &--ready {
-    background: #ecfdf5;
-    color: var(--green);
-    border: 1px solid #a7f3d0;
-  }
-
-  &--wait {
-    background: #fff7ed;
-    color: var(--amber);
-    border: 1px solid #fed7aa;
-  }
-
-  &--err {
-    background: #fef2f2;
-    color: var(--red);
-    border: 1px solid #fecaca;
-  }
-}
-
-/* ===== Hero ===== */
-.ws-hero {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 18px;
-  background: rgba(255, 255, 255, 0.78);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(226, 232, 240, 0.7);
-  border-radius: 14px;
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.02),
-    0 8px 24px rgba(0, 0, 0, 0.03);
-  animation: ws-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-  flex-shrink: 0;
-}
-
-.ws-hero__icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #2dd4bf, var(--teal));
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.2);
-}
-
-.ws-hero__text {
-  min-width: 0;
-
-  h1 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 800;
-    color: var(--ink);
-    letter-spacing: -0.2px;
-    line-height: 1.3;
-  }
-
-  p {
-    margin: 1px 0 0;
-    font-size: 12px;
-    color: var(--muted);
-    line-height: 1.4;
-  }
-}
-
-/* ===== Alert ===== */
-.ws-alert {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  border: 1px solid;
-  flex-shrink: 0;
-}
-
-.ws-alert__icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  color: #fff;
-  flex-shrink: 0;
-}
-
-.ws-alert__text {
-  flex: 1;
-  min-width: 0;
-}
-
-.ws-alert--info {
-  background: var(--teal-soft);
-  color: #0f766e;
-  border-color: #ccfbf1;
-  .ws-alert__icon { background: linear-gradient(135deg, #2dd4bf, var(--teal)); }
-}
-
-.ws-alert--success {
-  background: #f0fdf4;
-  color: #15803d;
-  border-color: #bbf7d0;
-  .ws-alert__icon { background: linear-gradient(135deg, #34d399, var(--green)); }
-}
-
-.ws-alert--warning {
-  background: #fffbeb;
-  color: #b45309;
-  border-color: #fde68a;
-  .ws-alert__icon { background: linear-gradient(135deg, #fbbf24, var(--amber)); }
-}
-
-.ws-alert--error {
-  background: #fef2f2;
-  color: #b91c1c;
-  border-color: #fecaca;
-  .ws-alert__icon { background: linear-gradient(135deg, #f87171, var(--red)); }
-}
-
-.ws-msg-enter-active { transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
-.ws-msg-leave-active { transition: all 0.25s ease-in; }
-.ws-msg-enter-from { opacity: 0; transform: translateY(-10px); }
-.ws-msg-leave-to { opacity: 0; transform: translateY(-8px); }
-
-/* ===== Empty ===== */
-.ws-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 56px 20px;
-  text-align: center;
-  animation: ws-slideUp 0.5s ease both;
-}
-
-.ws-empty__icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, #94a3b8, #64748b);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-}
-
-.ws-empty strong {
-  font-size: 16px;
-  color: var(--ink);
-}
-
-.ws-empty span {
-  font-size: 13px;
-  color: var(--muted);
-  max-width: 320px;
-}
-
-/* ===== Status Strip ===== */
-.ws-strip {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  animation: ws-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.06s both;
-  flex-shrink: 0;
-}
-
-.ws-strip__item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-}
-
-.ws-strip__icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  color: #fff;
-  flex-shrink: 0;
-
-  &--teal {
-    background: linear-gradient(135deg, #2dd4bf, var(--teal));
-    box-shadow: 0 3px 8px rgba(13, 148, 136, 0.2);
-  }
-
-  &--blue {
-    background: linear-gradient(135deg, #60a5fa, var(--blue));
-    box-shadow: 0 3px 8px rgba(37, 99, 235, 0.18);
-  }
-}
-
-.ws-strip__body {
-  flex: 1;
-  min-width: 0;
-}
-
-.ws-strip__label {
-  display: block;
-  font-size: 11px;
-  color: #94a3b8;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-
-.ws-strip__body strong {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.ws-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-
-  &.is-green { background: #10b981; }
-  &.is-blue { background: #0ea5e9; }
-  &.is-slate { background: #94a3b8; }
-}
-
-/* ===== Main Layout ===== */
-.ws-main {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  gap: 10px;
-  animation: ws-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
-}
-
-.ws-side,
-.ws-stage {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* ===== Panels (Left Sidebar) ===== */
-.ws-panel {
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-  position: relative;
-  overflow: hidden;
-  transition: all 0.25s ease;
-
-  &:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
-  }
-}
-
-.ws-panel__bar {
-  height: 2px;
-  background: linear-gradient(90deg, var(--teal), #2dd4bf);
-  opacity: 0.6;
-}
-
-.ws-panel__head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px 0;
-
-  :deep(.app-icon) {
-    font-size: 14px;
-    color: var(--teal);
-  }
-
-  strong {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--ink);
-  }
-}
-
-.ws-actions,
-.ws-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 8px 12px 10px;
-}
+/* Empty */
+.pg-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 60px 20px; text-align: center; animation: pg-in .4s ease both; &__icon { font-size: 36px; color: #d1d5db; } strong { font-size: 16px; } }
 
 /* Buttons */
-.ws-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  width: 100%;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
-  color: #475569;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-
-  :deep(.app-icon) { font-size: 13px; }
-
-  &:hover:not(:disabled) {
-    border-color: var(--teal-border);
-    color: var(--teal);
-    background: var(--teal-soft);
-    transform: translateY(-1px);
-  }
-
-  &:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-  }
+.pg-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 32px; padding: 0 11px; border: 1px solid var(--br); border-radius: 6px; background: #fff; color: #4b5563; font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s ease; white-space: nowrap; :deep(.app-icon) { font-size: 13px; flex-shrink: 0; } &:hover:not(:disabled) { background: #f9fafb; border-color: #d1d5db; } &:disabled { opacity: .45; cursor: not-allowed; }
+  &--pri { background: var(--a); color: #fff; border-color: var(--a); &:hover:not(:disabled) { filter: brightness(1.08); } }
+  &--danger { color: var(--red); border-color: #fecaca; &:hover:not(:disabled) { background: #fef2f2; } }
+  &--xl { height: 38px; padding: 0 18px; font-size: 13px; :deep(.app-icon) { font-size: 14px; } }
 }
-
-.ws-btn--primary {
-  background: linear-gradient(135deg, var(--teal), #0f766e);
-  color: #fff;
-  border-color: transparent;
-  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.2);
-
-  &:hover:not(:disabled) {
-    background: linear-gradient(135deg, #14b8a6, var(--teal));
-    box-shadow: 0 4px 14px rgba(13, 148, 136, 0.3);
-    transform: translateY(-2px);
-    color: #fff;
-  }
-}
-
-.ws-btn--danger {
-  color: var(--red);
-  border-color: #fecaca;
-
-  &:hover:not(:disabled) {
-    background: #fef2f2;
-    border-color: #f87171;
-  }
-}
-
-.ws-btn-sm {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
-  flex-shrink: 0;
-  cursor: pointer;
-  transition: all 0.25s ease;
-
-  :deep(.app-icon) { font-size: 13px; }
-
-  &:hover {
-    border-color: var(--teal-border);
-    color: var(--teal);
-    background: var(--teal-soft);
-  }
-}
+.pg-acts { display: flex; flex-direction: column; gap: 5px; }
+.pg-row { display: flex; flex-wrap: wrap; gap: 7px; }
+.pg-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 /* Steps */
-.ws-step {
-  display: flex;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  background: #f8fafc;
-  border: 1px solid #f1f5f9;
+.pg-steps { display: flex; flex-direction: column; gap: 2px; }
+.pg-step { display: flex; gap: 10px; padding: 9px 10px; border-radius: 6px; transition: background .15s; &:hover { background: #f9fafb; }
+  b { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 5px; background: var(--a2); color: var(--a); font-size: 10px; font-weight: 800; flex-shrink: 0; }
+  div { min-width: 0; } em { display: block; font-size: 12px; font-style: normal; font-weight: 600; color: var(--ink); } small { display: block; font-size: 11px; color: var(--mu); line-height: 1.4; margin-top: 1px; }
 }
 
-.ws-step__num {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #2dd4bf, var(--teal));
-  color: #fff;
-  font-size: 10px;
-  font-weight: 800;
-  flex-shrink: 0;
+/* Detail / Health */
+.pg-detail { overflow: hidden; &__sum { display: flex; align-items: center; gap: 7px; padding: 10px 14px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--mu); list-style: none; transition: color .15s; &::-webkit-details-marker { display: none; } &:hover { color: var(--ink); } :deep(.app-icon) { font-size: 14px; } span { flex: 1; } }
+  &__pre { margin: 0; max-height: 200px; overflow: auto; padding: 12px 14px; border-top: 1px solid #f3f4f6; background: #1e293b; color: #67e8f9; font-size: 11.5px; font-family: 'Cascadia Code','SF Mono',Consolas,monospace; white-space: pre-wrap; word-break: break-word; }
+}
+.pg-chev { transition: transform .2s; details[open] & { transform: rotate(180deg); } }
+.pg-spin { animation: pg-spin .8s linear infinite; }
+
+/* Banner */
+.pg-banner { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 14px 16px; background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--r);
+  &__ic { font-size: 22px; color: #d97706; flex-shrink: 0; } &__bd strong { display: block; font-size: 13px; color: var(--ink); } &__bd p { margin: 2px 0 0; font-size: 12px; color: #92400e; } &__btns { display: flex; flex-wrap: wrap; gap: 6px; }
 }
 
-.ws-step strong {
-  display: block;
-  margin-bottom: 1px;
-  font-size: 12px;
-  color: var(--ink);
-  line-height: 1.3;
+/* Chip / Note */
+.pg-chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; flex-shrink: 0; margin-left: auto; :deep(.app-icon) { font-size: 11px; }
+  &--ok { background: #ecfdf5; color: #059669; } &--warn { background: #fffbeb; color: #d97706; }
+}
+.pg-note { display: flex; align-items: flex-start; gap: 7px; margin: 0 15px; padding: 9px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; border: 1px solid; :deep(.app-icon) { font-size: 14px; flex-shrink: 0; margin-top: 1px; } &--ok { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; } }
+
+/* Fields */
+.pg-field { display: flex; flex-direction: column; gap: 4px; > span { font-size: 12px; font-weight: 600; color: var(--ink); } }
+.pg-inp-wrap { display: flex; gap: 5px; }
+.pg-inp { flex: 1; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid var(--br); border-radius: 6px; background: #f9fafb; color: var(--ink); font-size: 12.5px; transition: border-color .15s, box-shadow .15s; &::placeholder { color: #9ca3af; } &:focus { outline: none; border-color: var(--a); box-shadow: 0 0 0 2px rgba(37,99,235,.08); background: #fff; }
+  &__btn { display: inline-flex; align-items: center; justify-content: center; width: 34px; flex-shrink: 0; border: 1px solid var(--br); border-radius: 6px; background: #fff; color: var(--mu); cursor: pointer; transition: all .15s; :deep(.app-icon) { font-size: 13px; } &:hover { border-color: var(--a); color: var(--a); background: var(--a2); } }
 }
 
-.ws-step p {
-  margin: 0;
-  font-size: 11px;
-  color: var(--muted);
-  line-height: 1.4;
+/* Dropzone */
+.pg-drop { position: relative; display: flex; align-items: center; gap: 10px; min-height: 62px; padding: 12px 14px; border: 2px dashed #d1d5db; border-radius: 7px; background: #fafbfc; cursor: pointer; transition: all .2s ease; user-select: none; input { display: none; } &:hover { border-color: #9ca3af; }
+  &--on { border-color: #86efac; border-style: solid; background: #f0fdf4; } &--over { border-color: var(--a); background: var(--a2); transform: scale(1.01); }
+  b { font-size: 12.5px; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } small { font-size: 11px; color: #9ca3af; }
+  &__ic { font-size: 20px; color: #9ca3af; flex-shrink: 0; } &__ok { font-size: 17px; color: #10b981; flex-shrink: 0; }
+  &__x { margin-left: auto; display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: 1px solid var(--br); border-radius: 4px; background: #fff; color: var(--mu); cursor: pointer; flex-shrink: 0; transition: all .15s; :deep(.app-icon) { font-size: 13px; } &:hover { border-color: var(--red); color: var(--red); background: #fef2f2; } }
+  &__overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.88); border-radius: 7px; font-size: 13px; font-weight: 700; color: var(--a); }
 }
 
-/* Health */
-.ws-health {
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-  overflow: hidden;
-
-  summary {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 12px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--muted);
-    transition: color 0.2s;
-
-    &:hover { color: var(--ink); }
-
-    :deep(.app-icon) { font-size: 15px; color: var(--teal); }
-
-    span { flex: 1; }
-  }
-
-  pre {
-    margin: 0;
-    max-height: 220px;
-    overflow: auto;
-    padding: 14px 16px;
-    border-top: 1px solid #f1f5f9;
-    background: #0f172a;
-    color: #a5f3fc;
-    font-size: 12px;
-    font-family: 'Cascadia Code', 'SF Mono', Consolas, monospace;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
+/* Status */
+.pg-status { display: flex; align-items: center; gap: 7px; margin: 0 15px 12px; padding: 9px 13px; border-radius: 6px; font-size: 12.5px; border: 1px solid; font-weight: 500; :deep(.app-icon) { font-size: 14px; flex-shrink: 0; }
+  &--info { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; } &--ok { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; } &--err { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
 }
 
-.ws-chevron {
-  transition: transform 0.25s ease;
-  font-size: 14px !important;
-
-  details[open] & {
-    transform: rotate(180deg);
-  }
-}
-
-.ws-spin {
-  animation: ws-spin 1s linear infinite;
-}
-
-/* ===== Cards (Right Stage) ===== */
-.ws-card {
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-  position: relative;
-  overflow: hidden;
-  transition: all 0.25s ease;
-
-  &:hover {
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
-  }
-}
-
-.ws-card__bar {
-  height: 2px;
-  background: linear-gradient(90deg, var(--teal), #2dd4bf, #99f6e4);
-  background-size: 200% 100%;
-  animation: ws-shimmer 4s linear infinite;
-  opacity: 0.7;
-}
-
-.ws-card--status .ws-card__bar {
-  background: linear-gradient(90deg, var(--teal), #2dd4bf);
-  animation: none;
-  opacity: 0.5;
-}
-
-.ws-card__head {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 16px 0;
-}
-
-.ws-card__head-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 15px;
-  color: #fff;
-  flex-shrink: 0;
-  transition: transform 0.3s ease;
-
-  .ws-card:hover & {
-    transform: scale(1.06);
-  }
-
-  &--teal {
-    background: linear-gradient(135deg, #2dd4bf, var(--teal));
-    box-shadow: 0 3px 10px rgba(13, 148, 136, 0.2);
-  }
-
-  &--blue {
-    background: linear-gradient(135deg, #60a5fa, var(--blue));
-    box-shadow: 0 3px 10px rgba(37, 99, 235, 0.18);
-  }
-
-  &--green {
-    background: linear-gradient(135deg, #34d399, var(--green));
-    box-shadow: 0 3px 10px rgba(5, 150, 105, 0.18);
-  }
-
-  &--red {
-    background: linear-gradient(135deg, #f87171, var(--red));
-    box-shadow: 0 3px 10px rgba(220, 38, 38, 0.18);
-  }
-
-  &--slate {
-    background: linear-gradient(135deg, #94a3b8, #64748b);
-    box-shadow: 0 3px 10px rgba(100, 116, 139, 0.15);
-  }
-}
-
-.ws-card__head-text {
-  flex: 1;
-  min-width: 0;
-
-  strong {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--ink);
-  }
-
-  p {
-    margin: 1px 0 0;
-    font-size: 12px;
-    color: var(--muted);
-  }
-}
-
-.ws-card__actions {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 16px 12px;
-}
-
-/* Large Buttons */
-.ws-btn-lg {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  height: 38px;
-  padding: 0 16px;
-  border: none;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--teal), #0f766e);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.2);
-  transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-
-  :deep(.app-icon) { font-size: 15px; }
-
-  &:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(13, 148, 136, 0.35);
-  }
-
-  &:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-    box-shadow: none;
-  }
-}
-
-.ws-btn-lg--secondary {
-  background: linear-gradient(135deg, #e0f2fe, #bae6fd);
-  color: var(--ink);
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.1);
-
-  &:hover:not(:disabled) {
-    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.18);
-  }
-}
-
-/* ===== Fields ===== */
-.ws-field {
-  padding: 8px 16px 0;
-}
-
-.ws-field label {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.ws-field-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.ws-credential-note {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 10px 16px 0;
-  padding: 8px 10px;
-  border: 1px solid #fed7aa;
-  border-radius: 8px;
-  background: #fff7ed;
-  color: #9a3412;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
-
-  :deep(.app-icon) {
-    font-size: 14px;
-    flex-shrink: 0;
-  }
-}
-
-.ws-credential-note--ready {
-  border-color: #bbf7d0;
-  background: #f0fdf4;
-  color: #15803d;
-}
-
-.ws-credential-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px 16px 0;
-}
-
-.ws-input-row {
-  display: flex;
-  gap: 8px;
-}
-
-.ws-input {
-  flex: 1;
-  min-width: 0;
-  height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f8fafc;
-  color: var(--ink);
-  font-size: 12px;
-  transition: all 0.25s ease;
-
-  &::placeholder {
-    color: #94a3b8;
-  }
-
-  &:hover {
-    border-color: #cbd5e1;
-  }
-
-  &:focus {
-    outline: none;
-    border-color: var(--teal);
-    box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1);
-    background: #fff;
-  }
-}
-
-.ws-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid #ccfbf1;
-  border-radius: 8px;
-  background: var(--teal-soft);
-  color: #0f766e;
-  font-size: 11px;
-  line-height: 1.5;
-
-  :deep(.app-icon) {
-    font-size: 13px;
-    flex-shrink: 0;
-    margin-top: 1px;
-    color: var(--teal);
-  }
-}
-
-/* ===== Dropzone ===== */
-.ws-dropzone {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 80px;
-  padding: 12px;
-  border: 2px dashed #cbd5e1;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #fafcff, #f8fafc);
-  cursor: pointer;
-  transition: all 0.3s ease;
-
-  input {
-    display: none;
-  }
-
-  &:hover {
-    border-color: #94a3b8;
-    background: linear-gradient(135deg, #f8fafc, #f1f5f9);
-  }
-
-  &--active {
-    border-color: #86efac;
-    border-style: solid;
-    background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
-    flex-direction: row;
-    justify-content: flex-start;
-    gap: 10px;
-    min-height: auto;
-    padding: 8px 12px;
-  }
-
-  &--drag {
-    border-color: var(--teal);
-    border-style: solid;
-    background: var(--teal-soft);
-    transform: scale(1.01);
-    box-shadow: 0 4px 16px rgba(13, 148, 136, 0.15);
-  }
-}
-
-.ws-dropzone strong {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #334155;
-}
-
-.ws-dropzone small {
-  margin-top: 2px;
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-.ws-dropzone__icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #2dd4bf, var(--teal));
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  transition: transform 0.3s ease;
-
-  .ws-dropzone:hover & {
-    transform: scale(1.08);
-  }
-
-  .ws-dropzone--drag & {
-    transform: scale(1.12);
-  }
-}
-
-.ws-dropzone__icon--done {
-  background: linear-gradient(135deg, #34d399, var(--green));
-  border-radius: 50%;
-  width: 28px;
-  height: 28px;
-  font-size: 14px;
-}
-
-.ws-dropzone__clear {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 3px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: #fff;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-
-  :deep(.app-icon) { font-size: 12px; }
-
-  &:hover {
-    border-color: var(--red);
-    color: var(--red);
-    background: #fef2f2;
-  }
-}
-
-.ws-dropzone__overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: rgba(240, 253, 250, 0.92);
-  border-radius: 14px;
-  backdrop-filter: blur(4px);
-  z-index: 2;
-
-  :deep(.app-icon) {
-    font-size: 32px;
-    color: var(--teal);
-    animation: ws-float 1.5s ease-in-out infinite;
-  }
-
-  span {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--teal);
-  }
-}
-
-/* ===== Status ===== */
-.ws-status-text {
-  padding: 2px 16px 10px;
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.5;
-  white-space: pre-wrap;
-}
-
-.ws-status-text--ok {
-  color: var(--green);
-}
-
-.ws-status-text--err {
-  color: var(--red);
-}
-
-/* Inline Status */
-.ws-inline-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  margin: 0 16px 10px;
-  border-radius: 8px;
-  font-size: 12px;
-  border: 1px solid;
-}
-
-.ws-inline-status__icon {
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.ws-inline-status__text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ws-inline-status--info {
-  background: var(--teal-soft);
-  border-color: #ccfbf1;
-  color: #0f766e;
-  .ws-inline-status__icon { color: var(--teal); }
-}
-
-.ws-inline-status--ok {
-  background: #f0fdf4;
-  border-color: #bbf7d0;
-  color: #15803d;
-  .ws-inline-status__icon { color: var(--green); }
-}
-
-.ws-inline-status--err {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #b91c1c;
-  .ws-inline-status__icon { color: var(--red); }
-}
-
-.ws-inline-downloads {
-  display: flex;
-  gap: 6px;
-  padding: 0 16px 10px;
-}
-
-.ws-badge--sm {
-  padding: 2px 8px;
-  font-size: 10px;
-}
-
-.ws-btn-sm--primary {
-  background: linear-gradient(135deg, var(--teal), #0f766e);
-  color: #fff;
-  border-color: transparent;
-}
-
-.ws-result-downloads {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 16px 12px;
-}
-
-/* ===== Raw Response ===== */
-.ws-raw {
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-  overflow: hidden;
-
-  summary {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 16px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--muted);
-    transition: color 0.2s;
-
-    &:hover { color: var(--ink); }
-
-    :deep(.app-icon) { font-size: 15px; color: var(--teal); }
-
-    span { flex: 1; }
-  }
-
-  pre {
-    margin: 0;
-    max-height: 220px;
-    overflow: auto;
-    padding: 14px 16px;
-    border-top: 1px solid #f1f5f9;
-    background: #0f172a;
-    color: #a5f3fc;
-    font-size: 12px;
-    font-family: 'Cascadia Code', 'SF Mono', Consolas, monospace;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-}
-
-/* ===== Animations ===== */
-@keyframes ws-slideUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes ws-shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-@keyframes ws-float {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-6px); }
-}
-
-@keyframes ws-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-
-/* ===== Responsive ===== */
-@media (max-width: 1100px) {
-  .ws-main {
-    grid-template-columns: 1fr;
-  }
-
-  .ws-field-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 680px) {
-  .ws-page { padding: 14px; }
-
-  .ws-strip {
-    grid-template-columns: 1fr;
-  }
-
-  .ws-top {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
+@keyframes pg-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pg-spin { to { transform: rotate(360deg); } }
+@media (max-width: 1100px) { .pg-main { grid-template-columns: 1fr; } .pg-grid-2 { grid-template-columns: 1fr; } .pg-banner { grid-template-columns: 1fr; &__btns .pg-btn { width: 100%; } } }
+@media (max-width: 680px) { .pg { padding: 12px; } }
 </style>

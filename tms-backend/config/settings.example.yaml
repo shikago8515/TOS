@@ -1,0 +1,39 @@
+app:
+  env: "local"
+
+database:
+  mysql:
+    host: "127.0.0.1"
+    port: 3306
+    database: "tos"
+    username: "root"
+    password: ""
+    charset: "utf8mb4"
+
+storage:
+  minio:
+    endpoint: "127.0.0.1:9000"
+    access_key: "minioadmin"
+    secret_key: "minioadmin"
+    secure: false
+    buckets:
+      templates: "tos-templates"
+      run_files: "tos-run-files"
+      results: "tos-results"
+      downloads: "tos-downloads"
+
+downloads:
+  automation_helper:
+    bucket: "tos-downloads"
+    object_key: "automation-helper/TOS-Automation-Helper-Setup.exe"
+    filename: "TOS-Automation-Helper-Setup.exe"
+    content_type: "application/vnd.microsoft.portable-executable"
+    payload_object_key: "automation-helper/TOS-Automation-Helper-Payload.zip"
+    payload_filename: "TOS-Automation-Helper-Payload.zip"
+    payload_content_type: "application/zip"
+    payload_versioned_prefix: "automation-helper/payloads"
+
+security:
+  # Leave blank for local development. The backend will create
+  # config/credential.key and use it to encrypt automation passwords.
+  credential_key: ""

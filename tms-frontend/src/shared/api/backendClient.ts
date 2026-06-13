@@ -4,6 +4,12 @@ export interface UploadRequestOptions {
   onProgress?: (percentage: number) => void
 }
 
+export interface JsonRequestOptions {
+  method?: string
+  path: string
+  body?: unknown
+}
+
 let backendStartPromise: Promise<string | undefined> | null = null
 
 export async function getBackendBaseUrl(): Promise<string> {
@@ -89,6 +95,35 @@ export async function postFormData<TResponse>({
 export async function buildBackendDownloadUrl(path: string): Promise<string> {
   const baseUrl = await getBackendBaseUrl()
   return `${baseUrl}${path}`
+}
+
+export async function requestBackendJson<TResponse>({
+  method = 'GET',
+  path,
+  body,
+}: JsonRequestOptions): Promise<TResponse> {
+  const baseUrl = await getBackendBaseUrl()
+  const headers: Record<string, string> = {}
+  let requestBody: string | undefined
+
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json'
+    requestBody = JSON.stringify(body)
+  }
+
+  const response = await fetch(`${baseUrl}${path}`, {
+    method,
+    headers,
+    body: requestBody,
+  })
+  const text = await response.text()
+  const data = text ? JSON.parse(text) as TResponse : {} as TResponse
+
+  if (!response.ok) {
+    throw new Error(readResponseMessage(data) || `HTTP ${response.status}`)
+  }
+
+  return data
 }
 
 export function readErrorMessage(error: unknown, fallback: string): string {

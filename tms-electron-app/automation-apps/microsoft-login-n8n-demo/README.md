@@ -10,8 +10,6 @@ Files:
   n8n workflow template.
 - `executor.config.json`
   Non-secret runtime config for the Windows login executor.
-- `executor.secret.local.json`
-  Local credentials file used by the executor.
 - `server.mjs`
   Windows-visible Playwright login executor.
 - `start-ms-login-executor.ps1`
@@ -38,6 +36,7 @@ Flow:
 
 Notes:
 
+- Credentials are managed by the TOS backend database. The executor receives credentials per run and does not read or write `executor.secret.local.json`.
 - If n8n also runs directly on the same Windows host, keep the HTTP Request node pointed at `http://127.0.0.1:3002/run-login`.
 - If n8n runs inside Docker, change that node to `http://host.docker.internal:3002/run-login`.
 

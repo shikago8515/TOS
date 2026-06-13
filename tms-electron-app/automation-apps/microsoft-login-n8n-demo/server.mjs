@@ -1,6 +1,6 @@
 import http from "node:http";
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -12,9 +12,7 @@ const runtimeDataRoot = process.env.TMS_PLAYWRIGHT_DATA_DIR
   ? path.resolve(process.env.TMS_PLAYWRIGHT_DATA_DIR)
   : appRoot;
 const bundledConfigPath = path.join(appRoot, "executor.config.json");
-const bundledSecretPath = path.join(appRoot, "executor.secret.local.json");
 const runtimeConfigPath = path.join(runtimeDataRoot, "executor.config.local.json");
-const runtimeSecretPath = path.join(runtimeDataRoot, "executor.secret.local.json");
 const artifactsDir = path.join(runtimeDataRoot, "run-artifacts");
 const uploadPagePath = path.join(appRoot, "demo-upload.html");
 
@@ -54,23 +52,17 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && (requestPath === "/credentials" || requestPath === "/api/credentials")) {
-      sendJson(res, 200, buildCredentialsPayload());
+      sendJson(res, 410, buildCredentialsPayload());
       return;
     }
 
     if (req.method === "PUT" && (requestPath === "/credentials" || requestPath === "/api/credentials")) {
-      const body = await readJsonBody(req);
-      authorize(req, body);
-      const result = await saveCredentials(body);
-      sendJson(res, 200, result);
+      sendJson(res, 410, buildCredentialsPayload());
       return;
     }
 
     if (req.method === "DELETE" && (requestPath === "/credentials" || requestPath === "/api/credentials")) {
-      const body = await readJsonBody(req);
-      authorize(req, body);
-      const result = await clearCredentials();
-      sendJson(res, 200, result);
+      sendJson(res, 410, buildCredentialsPayload());
       return;
     }
 
@@ -182,8 +174,6 @@ process.on("SIGTERM", shutdown);
 async function loadConfig() {
   const base = await readJsonIfExists(bundledConfigPath, {});
   const override = await readJsonIfExists(runtimeConfigPath, {});
-  const secretPath = existsSync(runtimeSecretPath) ? runtimeSecretPath : bundledSecretPath;
-  const secret = await readJsonIfExists(secretPath, {});
   const merged = {
     ...base,
     ...override,
@@ -198,8 +188,6 @@ async function loadConfig() {
     port: Number(process.env.TMS_PLAYWRIGHT_PORT || merged.port || 3002),
     token: String(merged.token || ""),
     loginUrl: String(merged.loginUrl || ""),
-    username: String(secret.username || ""),
-    password: String(secret.password || ""),
     browser: String(merged.browser || "chromium"),
     headless: Boolean(merged.headless),
     slowMo: Number(merged.slowMo ?? 120),
@@ -270,37 +258,11 @@ async function persistRunArtifacts(result, rows) {
 
 function buildCredentialsPayload() {
   return {
-    ok: true,
-    hasStoredCredentials: Boolean(config.username && config.password),
-    username: config.username || "",
+    ok: false,
+    hasStoredCredentials: false,
+    username: "",
+    message: "Executor credential storage has moved to the TOS backend database.",
   };
-}
-
-async function saveCredentials(body) {
-  const username = String(body?.username || body?.userId || "").trim();
-  const password = String(body?.password || "");
-  if (!username || !password) {
-    const error = new Error("Username and password are required.");
-    error.statusCode = 400;
-    throw error;
-  }
-
-  await writeCredentialsFile({ username, password });
-  config.username = username;
-  config.password = password;
-  return buildCredentialsPayload();
-}
-
-async function clearCredentials() {
-  await writeCredentialsFile({ username: "", password: "" });
-  config.username = "";
-  config.password = "";
-  return buildCredentialsPayload();
-}
-
-async function writeCredentialsFile(secret) {
-  await mkdir(runtimeDataRoot, { recursive: true });
-  await writeFile(runtimeSecretPath, `${JSON.stringify(secret, null, 2)}\n`, "utf8");
 }
 
 function extractFailedRowsForManualFollowUp(result, rows) {
@@ -506,11 +468,19 @@ function normalizeCredentialValue(value, fallback) {
 }
 
 function normalizeRunOptions(body) {
+  const username = normalizeCredentialValue(body?.username, "");
+  const password = normalizeCredentialValue(body?.password, "");
+  if (!username || !password) {
+    const error = new Error("请提供当前网站登录账号密码。");
+    error.statusCode = 400;
+    throw error;
+  }
+
   return {
     browser: String(body?.browser || config.browser),
     loginUrl: String(body?.loginUrl || config.loginUrl),
-    username: normalizeCredentialValue(body?.username, config.username),
-    password: normalizeCredentialValue(body?.password, config.password),
+    username,
+    password,
     headless: toBoolean(body?.headless, config.headless),
     slowMo: toNumber(body?.slowMo, config.slowMo),
     navigationTimeoutMs: toNumber(body?.navigationTimeoutMs, config.navigationTimeoutMs),
@@ -2729,10 +2699,6 @@ function previewUrl(url) {
 
 async function ensureRuntimeFiles() {
   await mkdir(runtimeDataRoot, { recursive: true });
-
-  if (!existsSync(runtimeSecretPath) && existsSync(bundledSecretPath)) {
-    await copyFile(bundledSecretPath, runtimeSecretPath).catch(() => {});
-  }
 }
 
 async function readJsonIfExists(filePath, fallback) {
@@ -2751,7 +2717,6 @@ function buildHealthPayload() {
     lastRun,
     dataDir: runtimeDataRoot,
     runtimeConfigPath,
-    runtimeSecretPath,
     config: {
       host: config.host,
       port: config.port,
@@ -2760,8 +2725,7 @@ function buildHealthPayload() {
       slowMo: config.slowMo,
       staySignedInAction: config.staySignedInAction,
       loginUrlPreview: previewUrl(config.loginUrl),
-      username: config.username,
-      hasStoredCredentials: Boolean(config.username && config.password),
+      credentialsSource: "tos-backend-database",
     },
   };
 }
