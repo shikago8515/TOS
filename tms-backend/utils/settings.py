@@ -121,7 +121,7 @@ def mask_sensitive_values(value: Any) -> Any:
 
 def is_sensitive_key(key: str) -> bool:
     lowered = key.lower()
-    return any(token in lowered for token in ("password", "secret", "token", "access_key"))
+    return any(token in lowered for token in ("password", "secret", "token", "access_key", "credential_key"))
 
 
 def mask_secret(value: Any) -> str:

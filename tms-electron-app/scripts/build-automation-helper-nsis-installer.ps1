@@ -1,7 +1,7 @@
 param(
   [string]$NodeExe = (Get-Command node.exe).Source,
   [string]$MakeNsis = "C:\Program Files (x86)\NSIS\Bin\makensis.exe",
-  [string]$PayloadUrl = "http://ai.tomwell.net/api/system/config/automation-helper/payload/{sha256}"
+  [string]$PayloadUrl = "https://ai.tomwell.net:56130/tos/automation-helper/payload/{sha256}"
 )
 
 $ErrorActionPreference = "Stop"
@@ -231,6 +231,7 @@ Require-Path $VerifierExePath "automation helper payload verifier exe"
 
 @'
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Security.Cryptography;
@@ -280,10 +281,109 @@ internal static class Program
             Directory.CreateDirectory(directory);
         }
 
+        if (TryDownloadWithCurl(url, outputPath))
+        {
+            return;
+        }
+
+        DownloadWithHttpWebRequest(url, outputPath);
+    }
+
+    private static bool TryDownloadWithCurl(string url, string outputPath)
+    {
+        string curlPath = FindCurlPath();
+        if (string.IsNullOrEmpty(curlPath))
+        {
+            Console.Error.WriteLine("curl.exe was not found; falling back to .NET downloader.");
+            return false;
+        }
+
+        try
+        {
+            if (File.Exists(outputPath))
+            {
+                File.Delete(outputPath);
+            }
+
+            ProcessStartInfo info = new ProcessStartInfo();
+            info.FileName = curlPath;
+            info.Arguments =
+                "--fail --location --silent --show-error --connect-timeout 20 --max-time 240 " +
+                "--retry 2 --retry-delay 1 --output " + QuoteArgument(outputPath) + " " + QuoteArgument(url);
+            info.UseShellExecute = false;
+            info.CreateNoWindow = true;
+            info.RedirectStandardOutput = true;
+            info.RedirectStandardError = true;
+
+            using (Process process = Process.Start(info))
+            {
+                if (process == null)
+                {
+                    Console.Error.WriteLine("curl.exe did not start; falling back to .NET downloader.");
+                    return false;
+                }
+
+                string stdout = process.StandardOutput.ReadToEnd();
+                string stderr = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+                if (!string.IsNullOrWhiteSpace(stdout))
+                {
+                    Console.WriteLine(stdout.Trim());
+                }
+                if (!string.IsNullOrWhiteSpace(stderr))
+                {
+                    Console.Error.WriteLine(stderr.Trim());
+                }
+                if (process.ExitCode == 0 && File.Exists(outputPath) && new FileInfo(outputPath).Length > 0)
+                {
+                    Console.WriteLine("Payload downloaded with curl.exe.");
+                    return true;
+                }
+
+                throw new InvalidOperationException("Payload download failed with curl.exe exit code " + process.ExitCode + ".");
+            }
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            Console.Error.WriteLine("curl.exe download failed: " + ex.Message + "; falling back to .NET downloader.");
+        }
+
+        try
+        {
+            if (File.Exists(outputPath))
+            {
+                File.Delete(outputPath);
+            }
+        }
+        catch
+        {
+        }
+        return false;
+    }
+
+    private static string FindCurlPath()
+    {
+        string systemCurl = Path.Combine(Environment.SystemDirectory, "curl.exe");
+        if (File.Exists(systemCurl))
+        {
+            return systemCurl;
+        }
+        return "curl.exe";
+    }
+
+    private static string QuoteArgument(string value)
+    {
+        return "\"" + (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+    }
+
+    private static void DownloadWithHttpWebRequest(string url, string outputPath)
+    {
         HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
         request.UserAgent = "TOS-Automation-Helper-Setup/1.0";
-        request.Timeout = 300000;
-        request.ReadWriteTimeout = 300000;
+        request.AllowAutoRedirect = true;
+        request.KeepAlive = false;
+        request.Timeout = 180000;
+        request.ReadWriteTimeout = 180000;
 
         using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
         {
