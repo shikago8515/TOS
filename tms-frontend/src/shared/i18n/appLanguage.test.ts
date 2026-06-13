@@ -182,4 +182,46 @@ describe('appLanguage', () => {
       expect(translated).not.toMatch(/[\u4e00-\u9fff]/)
     }
   })
+
+  it('translates settings, system menu, and release update page text in English mode', () => {
+    const phrases = [
+      '系统',
+      '版本更新记录',
+      '查看每次更新影响的页面和内容',
+      '语言、版本更新与自动化助手',
+      '更新管理中心',
+      '检查、下载与安装桌面客户端更新',
+      '下载中',
+      '检查更新',
+      '下载更新',
+      '安装中...',
+      '安装并重启',
+      '免安装版',
+      '桌面客户端更新',
+      '当前运行在服务器 / 浏览器环境，桌面客户端会显示自动更新能力。',
+      '自动化助手安装包',
+      '新用户安装后即可在浏览器页面启动本机自动化助手。',
+      '下载安装包',
+      '版本与环境',
+      '已打开自动化助手安装包下载。',
+      '自动化助手安装包下载失败',
+      '探索我们每一次的演进：功能迭代、页面优化与系统修复。',
+      '刷新记录',
+      '总计记录数',
+      '涉及页面',
+      '最新版本',
+      '暂无相关记录',
+      '当前筛选条件下没有找到版本更新日志。',
+      '本次更新带来了一些性能提升与细节优化。',
+      '全局通用',
+      '获取版本记录失败，请检查网络后重试。',
+    ]
+
+    for (const phrase of phrases) {
+      const translated = translateStaticText(phrase, 'en-US')
+
+      expect(translated).not.toBe(phrase)
+      expect(translated).not.toMatch(/[\u4e00-\u9fff]/)
+    }
+  })
 })

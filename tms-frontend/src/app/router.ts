@@ -17,6 +17,7 @@ import JanePage from '../pages/jane/JanePage.vue'
 import JaneSapPage from '../pages/jane-sap/JaneSapPage.vue'
 import JesscaPage from '../pages/jessca/JesscaPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
+import ReleaseUpdatesPage from '../pages/release-updates/ReleaseUpdatesPage.vue'
 import SettingsPage from '../pages/settings/SettingsPage.vue'
 import ShippingAutomation2Page from '../pages/shipping-automation-2/ShippingAutomation2Page.vue'
 import SophiaTinaPage from '../pages/sophia-tina/SophiaTinaPage.vue'
@@ -82,7 +83,18 @@ const scenarioRoutes: RouteRecordRaw[] = [
   },
 ]
 
+const utilityRoutes: RouteRecordRaw[] = [
+  {
+    path: '/release-updates',
+    name: 'release-updates',
+    component: ReleaseUpdatesPage,
+    meta: {
+      title: '版本更新记录',
+    },
+  },
+]
+
 export const router = createRouter({
   history: createWebHashHistory(),
-  routes: [...redirectRoutes, ...scenarioRoutes, ...moduleRoutes],
+  routes: [...redirectRoutes, ...scenarioRoutes, ...utilityRoutes, ...moduleRoutes],
 })

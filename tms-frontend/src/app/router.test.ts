@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
+import ReleaseUpdatesPage from '../pages/release-updates/ReleaseUpdatesPage.vue'
 import WebAutomationPage from '../pages/web-automation/WebAutomationPage.vue'
 
 beforeAll(() => {
@@ -40,6 +41,15 @@ describe('router', () => {
 
     expect(route?.name).toBe('web-automation')
     expect(route?.components?.default).toBe(WebAutomationPage)
+    expect(route?.components?.default).not.toBe(RoutePlaceholder)
+  })
+
+  it('routes release updates to its standalone page component', async () => {
+    const { router } = await import('./router')
+    const route = router.getRoutes().find((entry) => entry.path === '/release-updates')
+
+    expect(route?.name).toBe('release-updates')
+    expect(route?.components?.default).toBe(ReleaseUpdatesPage)
     expect(route?.components?.default).not.toBe(RoutePlaceholder)
   })
 })

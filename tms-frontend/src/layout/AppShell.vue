@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="app-layout" :class="{ 'sidebar-hidden': isSidebarHidden }">
     <aside class="side-nav" :class="{ 'is-open': !isSidebarHidden }">
       <div class="brand">
@@ -119,6 +119,15 @@
 
             <transition name="utility-menu-fade">
               <div v-if="utilityMenuOpen" class="utility-menu" role="menu">
+                <button class="utility-menu-item" type="button" role="menuitem" @click="openReleaseUpdatesPage">
+                  <span class="utility-menu-icon">
+                    <AppIcon name="clock" />
+                  </span>
+                  <span>
+                    <strong>{{ text('版本更新记录') }}</strong>
+                    <small>{{ text('查看每次更新影响的页面和内容') }}</small>
+                  </span>
+                </button>
                 <button class="utility-menu-item" type="button" role="menuitem" @click="openSettingsPage">
                   <span class="utility-menu-icon">
                     <AppIcon name="settings" />
@@ -215,331 +224,40 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
-import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
-
-import {
-  getLocalizedModuleTitle,
-  getModulesByGroup,
-  tosNavGroups,
-  tosModuleCategoryLabels,
-  type TosModuleCategory,
-  type TosModuleDefinition,
-  type TosModuleGroup,
-  type TosNavGroupDefinition,
-} from '../domain/moduleCatalog'
-import { useAppLanguage } from '../shared/i18n/appLanguage'
+import { RouterLink, RouterView } from 'vue-router'
 import AppIcon from '../shared/ui/AppIcon.vue'
-import {
-  buildReleaseNoticeStateFromStorage,
-  markReleaseNoticeSeen,
-  type ReleaseNoticeState,
-} from '../shared/version/releaseNotice'
-
-interface SidebarCategory {
-  id: string
-  cat: TosModuleCategory
-  modules: TosModuleDefinition[]
-}
-
-interface SidebarGroup extends TosNavGroupDefinition {
-  categories: SidebarCategory[]
-  hasSingleCategory: boolean
-  displayLabel: string
-  isCollapsible: boolean
-  showLabel: boolean
-}
-
-const route = useRoute()
-const router = useRouter()
-const isSidebarHidden = ref(false)
-const isMobile = ref(false)
-const expandedNavGroups = ref<Set<TosModuleGroup>>(new Set(['jessica', 'sophia', 'jane', 'eric', 'it', 'finance-excel']))
-const expandedCategories = ref<Set<string>>(new Set())
-const { isEnglish, t, text } = useAppLanguage()
-const utilityMenuRef = ref<HTMLElement | null>(null)
-const utilityMenuOpen = ref(false)
-
-interface ToastState {
-  visible: boolean
-  type: 'warning' | 'error' | 'info'
-  icon: string
-  title: string
-  message: string
-}
-
-const toast = ref<ToastState>({ visible: false, type: 'info', icon: 'info', title: '', message: '' })
-let toastTimer: ReturnType<typeof setTimeout> | null = null
-
-const releaseNotice = ref<ReleaseNoticeState>({ visible: false, releaseNotes: null })
-
-const releaseNoticeTitle = computed(() => (isEnglish.value ? "What's New" : '本次更新内容'))
-const releaseNoticeCloseLabel = computed(() => (isEnglish.value ? 'Close release notes' : '关闭更新提示'))
-const releaseNoticeConfirmLabel = computed(() => (isEnglish.value ? 'Got it' : '我知道了'))
-const releaseNoticeVersionLabel = computed(() => {
-  const version = releaseNotice.value.releaseNotes?.version?.trim().replace(/^v/i, '')
-  return version ? `V${version}` : ''
-})
-
-const releaseNoticeGroups = computed(() => {
-  const notes = releaseNotice.value.releaseNotes
-  if (!notes) {
-    return []
-  }
-
-  return [
-    { key: 'added', title: text('新增'), icon: 'sparkles', items: notes.added },
-    { key: 'improved', title: text('优化'), icon: 'activity', items: notes.improved },
-    { key: 'fixed', title: text('修复'), icon: 'check-circle', items: notes.fixed },
-  ].filter((group) => group.items.length > 0)
-})
-
-function showToast(type: ToastState['type'], icon: string, title: string, message: string): void {
-  if (toastTimer) clearTimeout(toastTimer)
-  toast.value = { visible: true, type, icon, title, message }
-  toastTimer = setTimeout(() => { toast.value.visible = false }, 4000)
-}
-
-function dismissReleaseNotice(): void {
-  markReleaseNoticeSeen(window.localStorage)
-  releaseNotice.value = { visible: false, releaseNotes: null }
-}
-
-const sidebarGroups = computed<SidebarGroup[]>(() =>
-  tosNavGroups
-    .map((group) => {
-      const modules = getModulesByGroup(group.id).filter(shouldShowInSidebar)
-      const catMap = new Map<TosModuleCategory, TosModuleDefinition[]>()
-      for (const mod of modules) {
-        const list = catMap.get(mod.category)
-        if (list) { list.push(mod) } else { catMap.set(mod.category, [mod]) }
-      }
-      const categories: SidebarCategory[] = []
-      for (const [cat, catModules] of catMap) {
-        categories.push({ id: `${group.id}:${cat}`, cat, modules: catModules })
-      }
-
-      return {
-        ...group,
-        categories,
-        hasSingleCategory: categories.length <= 1,
-        displayLabel: getGroupLabel(group),
-        isCollapsible: group.id !== 'home',
-        showLabel: group.id !== 'home',
-      }
-    })
-    .filter((group) => group.categories.length > 0),
-)
-
-const pageTitle = computed(() => {
-  const activeModule = tosNavGroups
-    .flatMap((group) => getModulesByGroup(group.id))
-    .find((module) => isModuleActive(module))
-
-  if (activeModule) {
-    return getLocalizedModuleTitle(activeModule, isEnglish.value ? 'en-US' : 'zh-CN')
-  }
-
-  const title = route.meta.title
-  return typeof title === 'string' ? text(title) : text('首页')
-})
-
-const sidebarToggleLabel = computed(() =>
-  isSidebarHidden.value ? t('app.sidebar.show') : t('app.sidebar.hide'),
-)
-
-const displayDate = computed(() => {
-  const today = new Date()
-  const weekdays = isEnglish.value
-    ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    : ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-  const month = `${today.getMonth() + 1}`.padStart(2, '0')
-  const day = `${today.getDate()}`.padStart(2, '0')
-
-  return `${month}/${day}${weekdays[today.getDay()]}`
-})
-
-function shouldShowInSidebar(module: TosModuleDefinition): boolean {
-  if (module.id === 'settings') {
-    return false
-  }
-  return module.stage !== 'placeholder'
-}
-
-function isModuleActive(module: TosModuleDefinition): boolean {
-  return route.name === module.routeName
-}
-
-function isNavGroupCollapsible(groupId: TosModuleGroup): boolean {
-  return groupId !== 'home'
-}
-
-function isNavGroupExpanded(groupId: TosModuleGroup): boolean {
-  return !isNavGroupCollapsible(groupId) || expandedNavGroups.value.has(groupId)
-}
-
-function toggleNavGroup(groupId: TosModuleGroup): void {
-  if (!isNavGroupCollapsible(groupId)) {
-    return
-  }
-
-  const nextExpanded = new Set(expandedNavGroups.value)
-
-  if (nextExpanded.has(groupId)) {
-    nextExpanded.delete(groupId)
-  } else {
-    nextExpanded.add(groupId)
-  }
-
-  expandedNavGroups.value = nextExpanded
-}
-
-function toggleCategory(catId: string): void {
-  const next = new Set(expandedCategories.value)
-  if (next.has(catId)) { next.delete(catId) } else { next.add(catId) }
-  expandedCategories.value = next
-}
-
-function getCategoryLabel(cat: TosModuleCategory): string {
-  return isEnglish.value ? tosModuleCategoryLabels[cat].labelEn : tosModuleCategoryLabels[cat].label
-}
-
-function toggleSidebar(): void {
-  isSidebarHidden.value = !isSidebarHidden.value
-}
-
-function toggleUtilityMenu(): void {
-  utilityMenuOpen.value = !utilityMenuOpen.value
-}
-
-function closeUtilityMenu(): void {
-  utilityMenuOpen.value = false
-}
-
-function openSettingsPage(): void {
-  closeUtilityMenu()
-  void router.push('/settings')
-}
-
-function handleTopbarDocumentClick(event: MouseEvent): void {
-  if (!utilityMenuOpen.value) return
-  const target = event.target
-  if (target instanceof Node && utilityMenuRef.value?.contains(target)) {
-    return
-  }
-  closeUtilityMenu()
-}
-
-function handleTopbarKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') {
-    closeUtilityMenu()
-  }
-}
-
-function getGroupLabel(group: TosNavGroupDefinition): string {
-  return isEnglish.value ? group.labelEn : group.label
-}
-
-function getModuleNavLabel(module: TosModuleDefinition): string {
-  return isEnglish.value ? module.navLabelEn : module.navLabel
-}
-
-function getGroupIcon(groupId: TosModuleGroup): string {
-  const map: Record<TosModuleGroup, string> = {
-    home: 'radar',
-    jessica: 'check-circle',
-    sophia: 'files',
-    jane: 'grid',
-    eric: 'terminal',
-    it: 'file-search',
-    'finance-excel': 'database',
-    'pdf-data-compare': 'file-search',
-    'general-tools': 'layers',
-  }
-  return map[groupId] || 'layers'
-}
-
-function getModuleIcon(module: TosModuleDefinition): string {
-  const customIcons: Record<string, string> = {
-    'jessca': 'check-circle',
-    'sophia-tina': 'files',
-    'jane': 'grid',
-    'jane-bom-summary': 'bar-chart',
-    'jane-bom-compare': 'sliders',
-    'jane-outbound-compare': 'sliders',
-    'eric': 'terminal',
-    'it-invoice-pdf-reorder': 'file-search',
-    'draft-packing-compare': 'file-search',
-    'browser-plugins': 'puzzle',
-    'web-automation': 'workflow',
-    'infornexus': 'globe',
-    'jane-sap': 'server',
-    'eric-infornexus': 'globe',
-    'adidas-materials': 'package',
-  }
-  return customIcons[module.id] || getGroupIcon(module.group)
-}
-
-async function exportDiagnostics(): Promise<void> {
-  const exportDiagnosticsPackage = window.electronAPI?.exportDiagnosticsPackage
-  if (!exportDiagnosticsPackage) {
-    showToast(
-      'warning',
-      'alert-circle',
-      text('功能受限'),
-      text('导出诊断包功能需要在桌面客户端中使用，当前浏览器预览环境不支持。'),
-    )
-    return
-  }
-  await exportDiagnosticsPackage()
-}
-
-const handleResize = () => {
-  isMobile.value = window.innerWidth <= 992
-  if (isMobile.value) {
-    isSidebarHidden.value = true
-  }
-}
-
-onMounted(() => {
-  handleResize()
-  releaseNotice.value = buildReleaseNoticeStateFromStorage()
-  window.addEventListener('resize', handleResize)
-  document.addEventListener('click', handleTopbarDocumentClick)
-  document.addEventListener('keydown', handleTopbarKeydown)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', handleResize)
-  document.removeEventListener('click', handleTopbarDocumentClick)
-  document.removeEventListener('keydown', handleTopbarKeydown)
-})
-
-watch(
-  () => route.name,
-  () => {
-    const activeModules = tosNavGroups
-      .flatMap((group) => getModulesByGroup(group.id))
-      .filter((module) => isModuleActive(module))
-
-    if (activeModules.length === 0) {
-      return
-    }
-
-    const activeGroups = activeModules.map((module) => module.group)
-    expandedNavGroups.value = new Set([...expandedNavGroups.value, ...activeGroups])
-
-    const activeCatIds = activeModules
-      .filter((mod) => mod.category)
-      .map((mod) => `${mod.group}:${mod.category}`)
-    expandedCategories.value = new Set([...expandedCategories.value, ...activeCatIds])
-
-    if (isMobile.value) {
-      isSidebarHidden.value = true
-    }
-  },
-  { immediate: true },
-)
+import { useAppShellModel } from './useAppShellModel'
+const {
+  dismissReleaseNotice,
+  displayDate,
+  expandedCategories,
+  getCategoryLabel,
+  getModuleIcon,
+  getModuleNavLabel,
+  isMobile,
+  isModuleActive,
+  isNavGroupExpanded,
+  isSidebarHidden,
+  openReleaseUpdatesPage,
+  openSettingsPage,
+  pageTitle,
+  releaseNotice,
+  releaseNoticeCloseLabel,
+  releaseNoticeConfirmLabel,
+  releaseNoticeGroups,
+  releaseNoticeTitle,
+  releaseNoticeVersionLabel,
+  sidebarGroups,
+  sidebarToggleLabel,
+  text,
+  toast,
+  toggleCategory,
+  toggleNavGroup,
+  toggleSidebar,
+  toggleUtilityMenu,
+  utilityMenuOpen,
+  utilityMenuRef,
+} = useAppShellModel()
 </script>
 
 <style scoped>
@@ -548,7 +266,6 @@ watch(
   --topbar-height: 78px;
   height: 100vh;
   width: 100%;
-  overflow: hidden;
   position: relative;
   background: var(--soft-bg, #f0f4f8);
 }
@@ -829,6 +546,8 @@ watch(
   display: flex;
   flex-direction: column;
   transition: margin-left 0.34s ease;
+  position: relative;
+  z-index: 1;
 }
 
 .sidebar-hidden .main-panel {
@@ -850,7 +569,7 @@ watch(
   flex-shrink: 0;
   box-shadow: 0 10px 26px rgba(15, 78, 73, 0.08);
   position: relative;
-  z-index: 10;
+  z-index: 300;
   transition: box-shadow 0.35s ease;
 }
 
@@ -1073,8 +792,8 @@ watch(
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 50;
-  width: 226px;
+  z-index: 320;
+  width: 258px;
   padding: 6px;
   border: 1px solid #d8e6e3;
   border-radius: 12px;
@@ -1640,5 +1359,500 @@ watch(
 .toast-slide-leave-to {
   opacity: 0;
   transform: translateX(20px) scale(0.98);
+}
+
+/* Shell visual system: teal / slate workstation */
+.app-layout {
+  --sidebar-width: 260px;
+  --topbar-height: 64px;
+  --color-primary: #0f766e;
+  --color-primary-strong: #0d9488;
+  --color-primary-soft: #f0fdfa;
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1f5f9;
+  --color-text: #1e293b;
+  --color-muted: #64748b;
+  --color-border: #e2e8f0;
+  --shadow-focus: 0 4px 12px rgba(15, 118, 110, 0.1);
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  height: 100vh;
+  background:
+    linear-gradient(#eef2f7 1px, transparent 1px),
+    linear-gradient(90deg, #eef2f7 1px, transparent 1px),
+    var(--color-bg);
+  background-size: 120px 120px;
+  transition: grid-template-columns 0.34s var(--ease-spring);
+}
+
+.app-layout.sidebar-hidden {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.side-nav {
+  position: relative;
+  inset: auto;
+  width: auto;
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: none;
+  transform: none;
+  transition: opacity 0.24s ease, border-color 0.24s ease;
+  z-index: 40;
+}
+
+.sidebar-hidden .side-nav {
+  transform: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.brand {
+  height: var(--topbar-height);
+  padding: 0 20px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--color-primary);
+  box-shadow: none;
+  transition: transform 0.22s var(--ease-spring), background 0.22s ease;
+}
+
+.brand-mark:hover {
+  background: var(--color-primary-strong);
+  box-shadow: none;
+  transform: translateY(-1px);
+}
+
+.brand-logo {
+  width: 20px;
+  height: 20px;
+}
+
+.brand-text h1 {
+  font-size: 18px;
+  letter-spacing: 0;
+  color: var(--color-text);
+}
+
+.brand-text p {
+  margin-top: 2px;
+  font-size: 11px;
+  letter-spacing: 0;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.nav-scroll {
+  padding: 8px 0;
+}
+
+.menu {
+  gap: 2px;
+  padding: 8px 10px 20px;
+}
+
+.menu-group-title,
+.menu-group-title--button {
+  min-height: 30px;
+  padding: 10px 12px 5px;
+  color: #94a3b8;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.menu-group-title--button:hover {
+  color: var(--color-primary);
+  background: transparent;
+}
+
+.menu-group-label {
+  letter-spacing: 0;
+}
+
+.menu-group-items {
+  margin-bottom: 3px;
+}
+
+.menu-category-title,
+.menu-item {
+  min-height: 38px;
+  height: 38px;
+  margin: 3px 6px;
+  padding: 0 12px;
+  border-radius: 10px;
+  color: var(--color-muted);
+  background: transparent;
+  box-shadow: none;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s var(--ease-spring);
+}
+
+.menu-category-title:hover,
+.menu-item:hover {
+  background: var(--color-surface-muted);
+  color: var(--color-primary);
+  box-shadow: none;
+}
+
+.menu-item.is-active {
+  padding-left: 12px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-weight: 700;
+  box-shadow: var(--shadow-focus);
+}
+
+.menu-item::before,
+.menu-item:hover::before,
+.menu-item.is-active::before {
+  opacity: 0;
+  transform: translateY(-50%) scaleY(0);
+}
+
+.menu-icon,
+.menu-item:hover .menu-icon,
+.menu-item.is-active .menu-icon {
+  color: currentColor;
+  filter: none;
+  transform: none;
+}
+
+.child-item {
+  height: 36px;
+  min-height: 36px;
+  margin-left: 18px;
+  padding-left: 12px;
+}
+
+.main-panel {
+  min-width: 0;
+  height: 100vh;
+  margin-left: 0;
+  transition: none;
+}
+
+.sidebar-hidden .main-panel {
+  margin-left: 0;
+}
+
+.topbar {
+  height: var(--topbar-height);
+  margin: 0;
+  padding: 0 24px;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: none;
+  backdrop-filter: blur(10px);
+  overflow: visible;
+  transition: border-color 0.22s ease, background 0.22s ease;
+}
+
+.topbar:hover {
+  box-shadow: none;
+}
+
+.topbar-left {
+  gap: 14px;
+}
+
+.menu-btn,
+.topbar-pill,
+.topbar-menu-btn {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  box-shadow: none;
+}
+
+.menu-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+}
+
+.menu-btn:hover,
+.topbar-menu-btn:hover,
+.topbar-menu-btn[aria-expanded="true"] {
+  border-color: #99f6e4;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-focus);
+  transform: translateY(-1px);
+}
+
+.menu-btn:active,
+.topbar-menu-btn:active,
+.menu-item:active,
+.menu-category-title:active,
+.utility-menu-item:active {
+  transform: scale(0.98);
+}
+
+.breadcrumb {
+  color: var(--color-muted);
+}
+
+.breadcrumb-home {
+  color: #94a3b8;
+}
+
+.breadcrumb-home-icon,
+.pill-icon {
+  color: var(--color-primary-strong);
+}
+
+.breadcrumb-item.current {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.topbar-pill {
+  height: 36px;
+  border-radius: 999px;
+  color: var(--color-muted);
+}
+
+.topbar-right {
+  position: relative;
+  z-index: 640;
+}
+
+.topbar-menu {
+  position: relative;
+  z-index: 620;
+}
+
+.topbar-menu-btn {
+  height: 40px;
+  padding: 0 12px 0 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  min-width: 104px;
+  justify-content: center;
+}
+
+.topbar-menu-icon {
+  width: 28px;
+  height: 28px;
+  background: #ecfeff;
+  color: var(--color-primary);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.topbar-menu-btn:hover .topbar-menu-icon,
+.topbar-menu-btn[aria-expanded="true"] .topbar-menu-icon {
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+.topbar-menu-chevron {
+  color: var(--color-muted);
+}
+
+.utility-menu {
+  top: calc(100% + 14px);
+  right: -2px;
+  z-index: 760;
+  width: 304px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(240, 253, 250, 0.72), rgba(255, 255, 255, 0.98) 34%),
+    #ffffff;
+  box-shadow:
+    0 24px 60px rgba(15, 23, 42, 0.15),
+    0 2px 8px rgba(15, 118, 110, 0.08);
+  transform-origin: calc(100% - 48px) 0;
+}
+
+.utility-menu::before {
+  content: '';
+  position: absolute;
+  top: -7px;
+  right: 38px;
+  width: 12px;
+  height: 12px;
+  border-top: 1px solid var(--color-border);
+  border-left: 1px solid var(--color-border);
+  background: #f7fffd;
+  transform: rotate(45deg);
+}
+
+.utility-menu-item {
+  grid-template-columns: 40px 1fr;
+  gap: 12px;
+  min-height: 62px;
+  padding: 10px;
+  border-radius: 12px;
+  color: var(--color-text);
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s var(--ease-spring);
+}
+
+.utility-menu-item + .utility-menu-item {
+  margin-top: 4px;
+}
+
+.utility-menu-item:hover:not(:disabled) {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  transform: translateX(2px);
+}
+
+.utility-menu-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #ecfeff;
+  color: var(--color-primary);
+}
+
+.utility-menu-item:hover:not(:disabled) .utility-menu-icon {
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+.utility-menu-item strong {
+  font-size: 14px;
+  line-height: 1.25;
+  color: currentColor;
+}
+
+.utility-menu-item small {
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.utility-menu-fade-enter-active,
+.utility-menu-fade-leave-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.22s var(--ease-spring);
+}
+
+.utility-menu-fade-enter-from,
+.utility-menu-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.98);
+}
+
+.content-shell {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 24px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.content-shell:hover {
+  box-shadow: none;
+}
+
+.content-shell::-webkit-scrollbar {
+  width: 8px;
+}
+
+.content-shell::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
+.page-slide-enter-active,
+.page-slide-leave-active {
+  transition:
+    opacity 0.24s var(--ease-spring),
+    transform 0.24s var(--ease-spring);
+}
+
+.page-slide-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.page-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+@media (max-width: 992px) {
+  .app-layout,
+  .app-layout.sidebar-hidden {
+    grid-template-columns: 1fr;
+  }
+
+  .side-nav {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(82vw, var(--sidebar-width));
+    transform: translateX(-105%);
+    opacity: 1;
+    pointer-events: auto;
+    transition: transform 0.28s var(--ease-spring);
+  }
+
+  .side-nav.is-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-hidden .side-nav {
+    transform: translateX(-105%);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .topbar {
+    height: 60px;
+    padding: 0 12px;
+  }
+
+  .topbar-pill {
+    display: none;
+  }
+
+  .content-shell {
+    padding: 12px;
+  }
+
+  .topbar-menu-btn {
+    min-width: 42px;
+    padding: 0 8px;
+  }
+
+  .utility-menu {
+    right: 0;
+    width: min(304px, calc(100vw - 24px));
+  }
+
+  .utility-menu::before {
+    right: 18px;
+  }
 }
 </style>

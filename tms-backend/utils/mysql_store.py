@@ -350,6 +350,108 @@ def insert_automation_run_file(file_record: dict[str, Any]) -> dict[str, Any]:
     return row or {}
 
 
+def list_release_update_records(limit: int = 100) -> list[dict[str, Any]]:
+    ensure_schema()
+    safe_limit = max(1, min(int(limit or 100), 300))
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, record_key, version, release_date, category, page_name,
+                       page_path, title, description, created_by, created_at, updated_at
+                FROM release_update_records
+                ORDER BY release_date DESC, id DESC
+                LIMIT %s
+                """,
+                (safe_limit,),
+            )
+            rows = cursor.fetchall()
+    return rows or []
+
+
+def get_release_update_record(record_key: str) -> dict[str, Any] | None:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, record_key, version, release_date, category, page_name,
+                       page_path, title, description, created_by, created_at, updated_at
+                FROM release_update_records
+                WHERE record_key = %s
+                LIMIT 1
+                """,
+                (record_key,),
+            )
+            row = cursor.fetchone()
+    return row
+
+
+def insert_release_update_record_once(record: dict[str, Any]) -> dict[str, Any]:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO release_update_records
+                  (record_key, version, release_date, category, page_name,
+                   page_path, title, description, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE record_key = record_key
+                """,
+                (
+                    record["record_key"],
+                    record["version"],
+                    record.get("release_date"),
+                    record.get("category", "improved"),
+                    record["page_name"],
+                    record.get("page_path", ""),
+                    record["title"],
+                    record.get("description", ""),
+                    record.get("created_by", "system"),
+                ),
+            )
+        connection.commit()
+    return get_release_update_record(record["record_key"]) or {}
+
+
+def upsert_release_update_record(record: dict[str, Any]) -> dict[str, Any]:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO release_update_records
+                  (record_key, version, release_date, category, page_name,
+                   page_path, title, description, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                  version = VALUES(version),
+                  release_date = VALUES(release_date),
+                  category = VALUES(category),
+                  page_name = VALUES(page_name),
+                  page_path = VALUES(page_path),
+                  title = VALUES(title),
+                  description = VALUES(description),
+                  created_by = VALUES(created_by),
+                  updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    record["record_key"],
+                    record["version"],
+                    record.get("release_date"),
+                    record.get("category", "improved"),
+                    record["page_name"],
+                    record.get("page_path", ""),
+                    record["title"],
+                    record.get("description", ""),
+                    record.get("created_by", "manual"),
+                ),
+            )
+        connection.commit()
+    return get_release_update_record(record["record_key"]) or {}
+
+
 def _create_database_if_needed() -> None:
     config = get_mysql_config()
     with mysql_connection(database=None) as connection:
@@ -436,6 +538,25 @@ SCHEMA_DDL = [
       sha256 CHAR(64) NOT NULL DEFAULT '',
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       KEY idx_automation_run_files_run_id (run_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS release_update_records (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      record_key VARCHAR(160) NOT NULL,
+      version VARCHAR(64) NOT NULL,
+      release_date DATE NULL,
+      category VARCHAR(32) NOT NULL DEFAULT 'improved',
+      page_name VARCHAR(255) NOT NULL,
+      page_path VARCHAR(255) NOT NULL DEFAULT '',
+      title VARCHAR(255) NOT NULL,
+      description TEXT NULL,
+      created_by VARCHAR(96) NOT NULL DEFAULT 'system',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_release_update_record_key (record_key),
+      KEY idx_release_update_records_release (release_date, id),
+      KEY idx_release_update_records_page (page_path)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     """,
 ]
