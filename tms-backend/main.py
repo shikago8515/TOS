@@ -18,6 +18,7 @@ from api.jane_bom_compare_api import router as jane_bom_compare_router
 from api.jane_bom_summary_api import router as jane_bom_summary_router
 from api.jane_outbound_compare_api import router as jane_outbound_compare_router
 from api.eric_api import router as eric_router
+from api.it_invoice_pdf_reorder_api import compat_router as it_invoice_pdf_reorder_compat_router
 from api.it_invoice_pdf_reorder_api import legacy_router as it_invoice_pdf_reorder_legacy_router
 from api.it_invoice_pdf_reorder_api import router as it_invoice_pdf_reorder_router
 from api.automation_storage_api import router as automation_storage_router
@@ -53,6 +54,7 @@ app.include_router(jane_bom_compare_router, prefix="/api")
 app.include_router(jane_outbound_compare_router, prefix="/api")
 app.include_router(eric_router, prefix="/api")
 app.include_router(it_invoice_pdf_reorder_router, prefix="/api")
+app.include_router(it_invoice_pdf_reorder_compat_router, prefix="/api")
 app.include_router(it_invoice_pdf_reorder_legacy_router, prefix="/api")
 app.include_router(automation_storage_router, prefix="/api")
 app.include_router(system_config_router, prefix="/api")

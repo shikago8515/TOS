@@ -34,15 +34,6 @@ function listFrontendSources(directory) {
   })
 }
 
-function normalizeFrontendApiPath(rawPath, filePath) {
-  if (filePath.includes(`${path.sep}it-invoice-pdf-reorder${path.sep}`)) {
-    return rawPath.startsWith('/api/it-invoice-pdf-reorder/')
-      ? rawPath
-      : `/api/it-invoice-pdf-reorder${rawPath.slice('/api'.length)}`
-  }
-  return rawPath
-}
-
 function extractFrontendFastApiPaths(source, filePath) {
   const paths = new Set()
   const literalPatterns = [
@@ -55,7 +46,7 @@ function extractFrontendFastApiPaths(source, filePath) {
     for (const match of source.matchAll(pattern)) {
       const routePath = match[1]
       if (routePath.startsWith('/api/')) {
-        paths.add(normalizeFrontendApiPath(routePath, filePath))
+        paths.add(routePath)
       }
     }
   }
@@ -66,7 +57,7 @@ function extractFrontendFastApiPaths(source, filePath) {
       .replace(/\$\{encodeURIComponent\(jobId\)\}/g, '{job_id}')
       .replace(/\$\{encodeURIComponent\(job_id\)\}/g, '{job_id}')
     if (routePath.startsWith('/api/')) {
-      paths.add(normalizeFrontendApiPath(routePath, filePath))
+      paths.add(routePath)
     }
   }
 

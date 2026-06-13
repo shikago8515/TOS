@@ -1,17 +1,17 @@
-import {
+﻿import {
   buildBackendDownloadUrl,
   postFormData,
 } from '../../shared/api/backendClient'
 
-export const IT_INVOICE_PDF_REORDER_API_PREFIX = '/api/it-invoice-pdf-reorder'
+export const JASON_PDF_REORDER_API_PREFIX = '/api/jason/pdf-reorder'
 
-export type ItInvoiceExtractSearchType =
+export type JasonPdfReorderExtractSearchType =
   | 'startsWith'
   | 'contains'
   | 'exact'
   | 'regex'
 
-export interface ItInvoiceEntry {
+export interface JasonPdfReorderEntry {
   index: number
   po: string
   invoicePages?: number[]
@@ -31,7 +31,7 @@ export interface ItInvoiceEntry {
   status?: 'found' | 'missing' | string
 }
 
-export interface ItInvoiceSummary {
+export interface JasonPdfReorderSummary {
   invoicePoCount?: number
   outputPoCount?: number
   missingPoNumbers?: string[]
@@ -47,48 +47,48 @@ export interface ItInvoiceSummary {
   invoiceTotals?: Record<string, string | null>
 }
 
-export interface ItInvoicePreviewResponse {
-  entries: ItInvoiceEntry[]
-  summary: ItInvoiceSummary
+export interface JasonPdfReorderPreviewResponse {
+  entries: JasonPdfReorderEntry[]
+  summary: JasonPdfReorderSummary
   logs?: string[]
 }
 
-export interface ItPoPageGroup {
+export interface JasonPdfReorderPoPageGroup {
   po: string
   pages: number[]
 }
 
-export interface ItPoPreviewResponse {
-  poPages: ItPoPageGroup[]
+export interface JasonPdfReorderPoPreviewResponse {
+  poPages: JasonPdfReorderPoPageGroup[]
   poCount: number
   pageCount: number
   logs?: string[]
 }
 
-export interface ItInvoiceExtractPage {
+export interface JasonPdfReorderExtractPage {
   pageNum: number
   numbers: string[]
 }
 
-export interface ItInvoiceExtractFile {
+export interface JasonPdfReorderExtractFile {
   fileName: string
-  pages: ItInvoiceExtractPage[]
+  pages: JasonPdfReorderExtractPage[]
 }
 
-export interface ItInvoiceExtractResponse {
-  files: ItInvoiceExtractFile[]
+export interface JasonPdfReorderExtractResponse {
+  files: JasonPdfReorderExtractFile[]
   numbers: string[]
   count: number
   logs?: string[]
 }
 
-export interface ItInvoiceExtractRequest {
+export interface JasonPdfReorderExtractRequest {
   files: File[]
   pattern: string
-  searchType: ItInvoiceExtractSearchType
+  searchType: JasonPdfReorderExtractSearchType
 }
 
-export interface ItInvoiceProcessRequest {
+export interface JasonPdfReorderProcessRequest {
   invoiceFile: File
   poFile: File
   poOrderText?: string
@@ -97,40 +97,40 @@ export interface ItInvoiceProcessRequest {
   includeNotFound: boolean
 }
 
-export interface ItInvoiceProcessResponse {
+export interface JasonPdfReorderProcessResponse {
   jobId: string
   fileName: string
   downloadUrl: string
-  summary: ItInvoiceSummary
-  entries: ItInvoiceEntry[]
+  summary: JasonPdfReorderSummary
+  entries: JasonPdfReorderEntry[]
   logs?: string[]
 }
 
-export function previewItInvoice(
+export function previewJasonPdfReorderInvoice(
   invoiceFile: File,
-): Promise<ItInvoicePreviewResponse> {
+): Promise<JasonPdfReorderPreviewResponse> {
   const formData = new FormData()
   formData.append('invoice_pdf', invoiceFile)
 
-  return postFormData<ItInvoicePreviewResponse>({
-    path: `${IT_INVOICE_PDF_REORDER_API_PREFIX}/preview-invoice`,
+  return postFormData<JasonPdfReorderPreviewResponse>({
+    path: `${JASON_PDF_REORDER_API_PREFIX}/preview-invoice`,
     formData,
   })
 }
 
-export function previewItPo(poFile: File): Promise<ItPoPreviewResponse> {
+export function previewJasonPdfReorderPo(poFile: File): Promise<JasonPdfReorderPoPreviewResponse> {
   const formData = new FormData()
   formData.append('po_pdf', poFile)
 
-  return postFormData<ItPoPreviewResponse>({
-    path: `${IT_INVOICE_PDF_REORDER_API_PREFIX}/preview-po`,
+  return postFormData<JasonPdfReorderPoPreviewResponse>({
+    path: `${JASON_PDF_REORDER_API_PREFIX}/preview-po`,
     formData,
   })
 }
 
-export function extractItInvoiceNumbers(
-  request: ItInvoiceExtractRequest,
-): Promise<ItInvoiceExtractResponse> {
+export function extractJasonPdfReorderNumbers(
+  request: JasonPdfReorderExtractRequest,
+): Promise<JasonPdfReorderExtractResponse> {
   const formData = new FormData()
 
   request.files.forEach((file) => {
@@ -139,15 +139,15 @@ export function extractItInvoiceNumbers(
   formData.append('pattern', request.pattern)
   formData.append('search_type', request.searchType)
 
-  return postFormData<ItInvoiceExtractResponse>({
-    path: `${IT_INVOICE_PDF_REORDER_API_PREFIX}/extract-numbers`,
+  return postFormData<JasonPdfReorderExtractResponse>({
+    path: `${JASON_PDF_REORDER_API_PREFIX}/extract-numbers`,
     formData,
   })
 }
 
-export function processItInvoicePdfReorder(
-  request: ItInvoiceProcessRequest,
-): Promise<ItInvoiceProcessResponse> {
+export function processJasonPdfReorder(
+  request: JasonPdfReorderProcessRequest,
+): Promise<JasonPdfReorderProcessResponse> {
   const formData = new FormData()
 
   formData.append('invoice_pdf', request.invoiceFile)
@@ -157,12 +157,12 @@ export function processItInvoicePdfReorder(
   formData.append('print_next_page', String(request.printNextPage))
   formData.append('include_not_found', String(request.includeNotFound))
 
-  return postFormData<ItInvoiceProcessResponse>({
-    path: `${IT_INVOICE_PDF_REORDER_API_PREFIX}/process`,
+  return postFormData<JasonPdfReorderProcessResponse>({
+    path: `${JASON_PDF_REORDER_API_PREFIX}/process`,
     formData,
   })
 }
 
-export function buildItInvoicePdfDownloadUrl(path: string): Promise<string> {
+export function buildJasonPdfReorderDownloadUrl(path: string): Promise<string> {
   return buildBackendDownloadUrl(path)
 }

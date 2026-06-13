@@ -9,7 +9,7 @@ import {
 
 describe('moduleCatalog', () => {
   it.each([
-    ['it', 'Jason'],
+    ['jason', 'Jason'],
     ['finance-excel', 'Lucia'],
   ])('labels the %s group as %s in the sidebar', (groupId, expectedLabel) => {
     const group = tosNavGroups.find((entry) => entry.id === groupId)
@@ -19,14 +19,25 @@ describe('moduleCatalog', () => {
   })
 
   it('uses Jason as the invoice PDF reorder page title prefix', () => {
-    const invoiceModule = tosModules.find((entry) => entry.id === 'it-invoice-pdf-reorder')
+    const invoiceModule = tosModules.find((entry) => entry.id === 'jason-pdf-reorder')
 
     expect(invoiceModule?.title.startsWith('Jason / ')).toBe(true)
     expect(invoiceModule?.title.startsWith('IT / ')).toBe(false)
   })
 
+  it('exposes Jason PDF reorder through the canonical route', () => {
+    const invoiceModule = getModuleById('jason-pdf-reorder')
+
+    expect(invoiceModule).toMatchObject({
+      group: 'jason',
+      path: '/jason/pdf-reorder',
+      routeName: 'jason-pdf-reorder',
+      navLabel: '发票 PDF 重排序',
+    })
+  })
+
   it('uses full module titles for page breadcrumbs in both languages', () => {
-    const invoiceModule = getModuleById('it-invoice-pdf-reorder')
+    const invoiceModule = getModuleById('jason-pdf-reorder')
     const internalReconciliationModule = getModuleById('tms-finance-internal-reconciliation')
     const workSalesModule = getModuleById('tms-finance-work-sales')
 

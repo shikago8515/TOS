@@ -8,7 +8,7 @@ export type TosModuleGroup =
   | 'sophia'
   | 'jane'
   | 'eric'
-  | 'it'
+  | 'jason'
   | 'finance-excel'
   | 'pdf-data-compare'
   | 'general-tools'
@@ -50,7 +50,7 @@ export const tosNavGroups = [
   { id: 'sophia', label: 'Sophia', labelEn: 'Sophia' },
   { id: 'jane', label: 'Jane', labelEn: 'Jane' },
   { id: 'eric', label: 'Eric', labelEn: 'Eric' },
-  { id: 'it', label: 'Jason', labelEn: 'Jason' },
+  { id: 'jason', label: 'Jason', labelEn: 'Jason' },
   { id: 'finance-excel', label: 'Lucia', labelEn: 'Lucia' },
   { id: 'pdf-data-compare', label: 'PDF数据获取核对', labelEn: 'PDF Data Compare' },
   { id: 'general-tools', label: '通用工具', labelEn: 'General Tools' },
@@ -200,14 +200,14 @@ export const tosModules = [
     order: 50,
   },
   {
-    id: 'it-invoice-pdf-reorder',
-    path: '/it-invoice-pdf-reorder',
-    routeName: 'it-invoice-pdf-reorder',
+    id: 'jason-pdf-reorder',
+    path: '/jason/pdf-reorder',
+    routeName: 'jason-pdf-reorder',
     title: 'Jason / 发票 PDF 重排序',
     titleEn: 'Jason / Invoice PDF Reorder',
     navLabel: '发票 PDF 重排序',
     navLabelEn: 'Invoice PDF Reorder',
-    group: 'it',
+    group: 'jason',
     category: 'pdf',
     stage: 'production',
     description: '按发票 PO 顺序重排 PO PDF，并生成汇总页',
@@ -368,7 +368,9 @@ export const tosModules = [
 
 export type TosModuleId = (typeof tosModules)[number]['id']
 
-export const routeRedirects = [] as const
+export const routeRedirects = [
+  { from: '/it-invoice-pdf-reorder', to: '/jason/pdf-reorder' },
+] as const
 
 export function getModulesByGroup(group: TosModuleGroup): TosModuleDefinition[] {
   return tosModules
