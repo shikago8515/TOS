@@ -19,7 +19,9 @@ const BACKEND_PORT = 8000;
 const BACKEND_PORT_CANDIDATES = [8000, 8001, 8002, 8003, 8004, 8005];
 const REQUIRED_BACKEND_OPENAPI_PATHS = [
   '/api/it-invoice-pdf-reorder/preview-invoice',
-  '/api/it-invoice-pdf-reorder/preview-po'
+  '/api/it-invoice-pdf-reorder/preview-po',
+  '/api/draft-packing-compare/process',
+  '/api/draft-packing-compare/download/{filename}'
 ];
 let activeBackendPort = BACKEND_PORT;
 let activeBackendUrl = buildBackendUrl(BACKEND_PORT);
