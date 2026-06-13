@@ -1,15 +1,14 @@
 {
-  "version": "0.9.8-beta.3.6",
+  "version": "0.9.8-beta.3.7",
   "date": "2026-06-13",
   "added": [
-    "新增工程化收口路线图，明确前端源码化、后端 schema、安全硬化和发布验收的后续边界。"
+    "IT Invoice PDF Reorder 已迁移为正式 Vue 页面，保留发票提取、PO 页码识别、号码提取、重排生成和摘要打印流程。"
   ],
   "improved": [
-    "接入网页自动化主入口，侧边栏和首页快捷入口会打开真实 Vue 页面，不再落到开发中占位页。",
-    "新增桌面端后端 API 契约清单，启动时会按应用版本和 OpenAPI 路由校验后端兼容性。",
-    "当 8000 端口被旧后端占用时，桌面端会旁路启动当前版本后端并返回实际服务地址。"
+    "IT Invoice PDF Reorder 前端请求已抽出 typed API/client，页面组件不再直接执行 raw HTML 脚本。",
+    "新增源码守卫测试，防止该页面重新引入 raw HTML、Shadow DOM 包装或 new Function 执行路径。"
   ],
   "fixed": [
-    "优化 FastAPI 接口缺失时的前端提示，避免只显示 Not Found。"
+    "删除 IT Invoice PDF Reorder 页面级 original-index.html 残留，降低后续维护误用风险。"
   ]
 }
