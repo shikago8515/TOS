@@ -37,7 +37,7 @@ export function useAppShellModel() {
   const router = useRouter()
   const isSidebarHidden = ref(false)
   const isMobile = ref(false)
-  const expandedNavGroups = ref<Set<TosModuleGroup>>(new Set(['jessica', 'sophia', 'jane', 'eric', 'it', 'finance-excel']))
+  const expandedNavGroups = ref<Set<TosModuleGroup>>(new Set(['jessica', 'sophia', 'jane', 'eric', 'jason', 'finance-excel']))
   const expandedCategories = ref<Set<string>>(new Set())
   const { isEnglish, t, text } = useAppLanguage()
   const utilityMenuRef = ref<HTMLElement | null>(null)
@@ -239,7 +239,7 @@ export function useAppShellModel() {
       sophia: 'files',
       jane: 'grid',
       eric: 'terminal',
-      it: 'file-search',
+      jason: 'file-search',
       'finance-excel': 'database',
       'pdf-data-compare': 'file-search',
       'general-tools': 'layers',
@@ -256,7 +256,7 @@ export function useAppShellModel() {
       'jane-bom-compare': 'sliders',
       'jane-outbound-compare': 'sliders',
       'eric': 'terminal',
-      'it-invoice-pdf-reorder': 'file-search',
+      'jason-pdf-reorder': 'file-search',
       'draft-packing-compare': 'file-search',
       'browser-plugins': 'puzzle',
       'web-automation': 'workflow',

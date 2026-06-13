@@ -9,9 +9,16 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
+from api.jason_pdf_reorder_schemas import (
+    JasonPdfReorderExtractResponse,
+    JasonPdfReorderHealthResponse,
+    JasonPdfReorderPoPreviewResponse,
+    JasonPdfReorderPreviewResponse,
+    JasonPdfReorderProcessResponse,
+)
 from modules.it_invoice_pdf_reorder_module import (
     build_reordered_pdf,
     extract_pdf_pages_text,
@@ -21,8 +28,9 @@ from modules.it_invoice_pdf_reorder_module import (
 )
 
 
-router = APIRouter(prefix="/it-invoice-pdf-reorder", tags=["IT Invoice PDF Reorder"])
-legacy_router = APIRouter(tags=["IT Invoice PDF Reorder Legacy"])
+router = APIRouter(prefix="/jason/pdf-reorder", tags=["Jason PDF Reorder"])
+compat_router = APIRouter(prefix="/it-invoice-pdf-reorder", tags=["Jason PDF Reorder Legacy Prefix"])
+legacy_router = APIRouter(tags=["Jason PDF Reorder Legacy"])
 logger = logging.getLogger(__name__)
 
 DATA_ROOT = Path(
@@ -34,13 +42,15 @@ PREVIEWS_DIR = RUNTIME_DIR / "previews"
 EXTRACTS_DIR = RUNTIME_DIR / "extracts"
 
 
-@router.get("/health")
+@router.get("/health", response_model=JasonPdfReorderHealthResponse)
+@compat_router.get("/health", response_model=JasonPdfReorderHealthResponse)
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.post("/preview-invoice")
-@legacy_router.post("/preview-invoice")
+@router.post("/preview-invoice", response_model=JasonPdfReorderPreviewResponse)
+@compat_router.post("/preview-invoice", response_model=JasonPdfReorderPreviewResponse)
+@legacy_router.post("/preview-invoice", response_model=JasonPdfReorderPreviewResponse)
 async def preview_invoice(invoice_pdf: UploadFile = File(...)) -> dict[str, Any]:
     ensure_pdf(invoice_pdf, "发票PDF")
     logs = [f"收到发票PDF：{invoice_pdf.filename or 'invoice.pdf'}"]
@@ -75,8 +85,9 @@ async def preview_invoice(invoice_pdf: UploadFile = File(...)) -> dict[str, Any]
         shutil.rmtree(preview_dir, ignore_errors=True)
 
 
-@router.post("/preview-po")
-@legacy_router.post("/preview-po")
+@router.post("/preview-po", response_model=JasonPdfReorderPoPreviewResponse)
+@compat_router.post("/preview-po", response_model=JasonPdfReorderPoPreviewResponse)
+@legacy_router.post("/preview-po", response_model=JasonPdfReorderPoPreviewResponse)
 async def preview_po(po_pdf: UploadFile = File(...)) -> dict[str, Any]:
     ensure_pdf(po_pdf, "PO PDF")
     logs = [f"收到PO PDF：{po_pdf.filename or 'po.pdf'}"]
@@ -106,8 +117,9 @@ async def preview_po(po_pdf: UploadFile = File(...)) -> dict[str, Any]:
         shutil.rmtree(preview_dir, ignore_errors=True)
 
 
-@router.post("/extract-numbers")
-@legacy_router.post("/extract-numbers")
+@router.post("/extract-numbers", response_model=JasonPdfReorderExtractResponse)
+@compat_router.post("/extract-numbers", response_model=JasonPdfReorderExtractResponse)
+@legacy_router.post("/extract-numbers", response_model=JasonPdfReorderExtractResponse)
 async def extract_numbers(
     files: list[UploadFile] | None = File(None),
     pattern: str = Form("090|45"),
@@ -166,9 +178,11 @@ async def extract_numbers(
         shutil.rmtree(extract_dir, ignore_errors=True)
 
 
-@router.post("/process")
-@legacy_router.post("/process")
+@router.post("/process", response_model=JasonPdfReorderProcessResponse)
+@compat_router.post("/process", response_model=JasonPdfReorderProcessResponse)
+@legacy_router.post("/process", response_model=JasonPdfReorderProcessResponse)
 async def process_pdfs(
+    request: Request,
     invoice_pdf: UploadFile = File(...),
     po_pdf: UploadFile = File(...),
     po_order_text: str | None = Form(None),
@@ -220,7 +234,7 @@ async def process_pdfs(
     return {
         "jobId": job_id,
         "fileName": output_path.name,
-        "downloadUrl": f"/api/it-invoice-pdf-reorder/download/{job_id}",
+        "downloadUrl": f"{download_prefix_for_request(request)}/download/{job_id}",
         "summary": build_summary(result),
         "entries": [entry_to_payload(idx, entry, result.po_pages) for idx, entry in enumerate(result.invoice_entries, 1)],
         "logs": logs,
@@ -228,6 +242,7 @@ async def process_pdfs(
 
 
 @router.get("/download/{job_id}")
+@compat_router.get("/download/{job_id}")
 def download_result(job_id: str) -> FileResponse:
     if not job_id or not all(ch in "0123456789abcdef" for ch in job_id.lower()):
         raise HTTPException(status_code=404, detail="结果不存在")
@@ -241,6 +256,12 @@ def download_result(job_id: str) -> FileResponse:
         media_type="application/pdf",
         filename=output_path.name,
     )
+
+
+def download_prefix_for_request(request: Request) -> str:
+    if request.url.path.startswith("/api/jason/pdf-reorder/"):
+        return "/api/jason/pdf-reorder"
+    return "/api/it-invoice-pdf-reorder"
 
 
 def ensure_pdf(upload: UploadFile, label: str) -> None:

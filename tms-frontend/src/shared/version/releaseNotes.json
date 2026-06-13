@@ -1,14 +1,14 @@
 {
-  "version": "0.9.8-beta.3.7",
+  "version": "0.9.8-beta.3.8",
   "date": "2026-06-13",
   "added": [
-    "IT Invoice PDF Reorder 已迁移为正式 Vue 页面，保留发票提取、PO 页码识别、号码提取、重排生成和摘要打印流程。"
+    "Jason / 发票 PDF 重排序新增 canonical 前端入口 #/jason/pdf-reorder 和后端 API /api/jason/pdf-reorder/*。"
   ],
   "improved": [
-    "IT Invoice PDF Reorder 前端请求已抽出 typed API/client，页面组件不再直接执行 raw HTML 脚本。",
-    "新增源码守卫测试，防止该页面重新引入 raw HTML、Shadow DOM 包装或 new Function 执行路径。"
+    "Jason 模块前端目录、路由、API client 和测试命名已统一到 Jason PDF Reorder。",
+    "Jason 后端 API 已补充 Pydantic response models，并在 OpenAPI 中暴露具体响应 schema。"
   ],
   "fixed": [
-    "删除 IT Invoice PDF Reorder 页面级 original-index.html 残留，降低后续维护误用风险。"
+    "旧 #/it-invoice-pdf-reorder、/api/it-invoice-pdf-reorder/* 和 legacy /api/* 路径继续兼容，避免历史链接和发布包调用失效。"
   ]
 }
