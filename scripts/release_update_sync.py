@@ -107,7 +107,11 @@ def infer_page(files: list[str]) -> tuple[str, str]:
             "/release-updates",
             ("src/pages/release-updates/", "release_updates_api.py", "release_update_sync.py", ".githooks/"),
         ),
-        ("IT-发票PDF重排序", "/it-invoice-pdf-reorder", ("it-invoice-pdf-reorder", "it_invoice_pdf_reorder")),
+        (
+            "Jason / 发票 PDF 重排序",
+            "/jason/pdf-reorder",
+            ("src/pages/jason-pdf-reorder/", "it_invoice_pdf_reorder", "jason_pdf_reorder"),
+        ),
         ("浏览器自动化", "/web-automation", ("src/pages/web-automation/", "automation-apps/")),
         ("TMS 财务 / Excel", "/tms-finance", ("tms-finance", "tmsFinance")),
         ("后端服务", "/api", ("tms-backend/",)),

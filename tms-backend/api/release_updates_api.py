@@ -80,7 +80,7 @@ DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
         "release_date": "2026-06-13",
         "category": "improved",
         "page_name": "Jason / 发票 PDF 重排序",
-        "page_path": "/it-invoice-pdf-reorder",
+        "page_path": "/jason/pdf-reorder",
         "title": "调整 PO 重排汇总页金额字段",
         "description": "生成 PDF 的汇总页改用 Shas Vas Price，并增加 Merchandise Amount、Total Adjustment、Total Taxes、Order Total 汇总列。",
         "created_by": "system",
