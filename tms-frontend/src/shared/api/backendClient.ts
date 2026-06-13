@@ -10,6 +10,13 @@ export interface JsonRequestOptions {
   body?: unknown
 }
 
+export interface ResponseMessageContext {
+  status?: number
+  path?: string
+}
+
+const backendApiNotFoundMessage = '当前后端版本缺少此接口，请重启 TOS 或等待后端切换完成'
+
 let backendStartPromise: Promise<string | undefined> | null = null
 
 export async function getBackendBaseUrl(): Promise<string> {
@@ -77,7 +84,7 @@ export async function postFormData<TResponse>({
         if (request.status >= 200 && request.status < 300) {
           resolve(data)
         } else {
-          reject(new Error(readResponseMessage(data) || `HTTP ${request.status}`))
+          reject(new Error(readResponseMessage(data, { status: request.status, path }) || `HTTP ${request.status}`))
         }
       } catch (error) {
         reject(error)
@@ -120,7 +127,7 @@ export async function requestBackendJson<TResponse>({
   const data = text ? JSON.parse(text) as TResponse : {} as TResponse
 
   if (!response.ok) {
-    throw new Error(readResponseMessage(data) || `HTTP ${response.status}`)
+    throw new Error(readResponseMessage(data, { status: response.status, path }) || `HTTP ${response.status}`)
   }
 
   return data
@@ -134,7 +141,14 @@ export function readErrorMessage(error: unknown, fallback: string): string {
   return fallback
 }
 
-export function readResponseMessage(data: unknown): string | undefined {
+export function readResponseMessage(
+  data: unknown,
+  context: ResponseMessageContext = {},
+): string | undefined {
+  if (isApiNotFound(data, context)) {
+    return backendApiNotFoundMessage
+  }
+
   if (data && typeof data === 'object' && 'message' in data) {
     const message = (data as { message?: unknown }).message
     if (typeof message === 'string') {
@@ -158,6 +172,18 @@ export function readResponseMessage(data: unknown): string | undefined {
   }
 
   return undefined
+}
+
+function isApiNotFound(data: unknown, context: ResponseMessageContext): boolean {
+  if (context.status !== 404 || !context.path?.startsWith('/api/')) {
+    return false
+  }
+
+  if (!data || typeof data !== 'object' || !('detail' in data)) {
+    return false
+  }
+
+  return (data as { detail?: unknown }).detail === 'Not Found'
 }
 
 function formatValidationDetail(entry: unknown): string | undefined {

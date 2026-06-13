@@ -63,4 +63,13 @@ describe('backendClient', () => {
       }),
     ).toBe('缺少必传字段 price_files')
   })
+
+  it('turns FastAPI API 404 into an actionable backend compatibility message', () => {
+    expect(
+      readResponseMessage(
+        { detail: 'Not Found' },
+        { status: 404, path: '/api/draft-packing-compare/process' },
+      ),
+    ).toBe('当前后端版本缺少此接口，请重启 TOS 或等待后端切换完成')
+  })
 })

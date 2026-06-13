@@ -7,6 +7,12 @@ const os = require('os');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const { registerAdidasMaterialsCollector } = require('./adidas-materials-main');
+const {
+  describeBackendCompatibilityFailure,
+  evaluateBackendCompatibility,
+  requiredBackendOpenapiPaths,
+  selectBackendPortCandidates
+} = require('./backend-compatibility');
 
 let mainWindow;
 let backendProcess = null;
@@ -17,10 +23,7 @@ let protocolQueueBusy = false;
 const BACKEND_HOST = '127.0.0.1';
 const BACKEND_PORT = 8000;
 const BACKEND_PORT_CANDIDATES = [8000, 8001, 8002, 8003, 8004, 8005];
-const REQUIRED_BACKEND_OPENAPI_PATHS = [
-  '/api/it-invoice-pdf-reorder/preview-invoice',
-  '/api/it-invoice-pdf-reorder/preview-po'
-];
+const REQUIRED_BACKEND_OPENAPI_PATHS = requiredBackendOpenapiPaths;
 let activeBackendPort = BACKEND_PORT;
 let activeBackendUrl = buildBackendUrl(BACKEND_PORT);
 const APP_DISPLAY_NAME = 'TOS'/*12345678*/;
@@ -1445,22 +1448,17 @@ async function requestBackendHealth(port = activeBackendPort, timeoutMs = 1500) 
 }
 
 async function requestBackendCompatibility(port = activeBackendPort, timeoutMs = 2500) {
-  if (!await requestBackendHealth(port, timeoutMs)) {
-    return { healthy: false, compatible: false };
-  }
+  const healthOk = await requestBackendHealth(port, timeoutMs);
+  const openapi = healthOk
+    ? await requestBackendJson(port, '/openapi.json', timeoutMs)
+    : null;
 
-  const openapi = await requestBackendJson(port, '/openapi.json', timeoutMs);
-  const paths = openapi && typeof openapi === 'object' && openapi.paths && typeof openapi.paths === 'object'
-    ? openapi.paths
-    : {};
-  const missingPaths = REQUIRED_BACKEND_OPENAPI_PATHS.filter((routePath) => !Object.prototype.hasOwnProperty.call(paths, routePath));
-
-  return {
-    healthy: true,
-    compatible: missingPaths.length === 0,
-    version: openapi && openapi.info && openapi.info.version,
-    missingPaths
-  };
+  return evaluateBackendCompatibility({
+    healthOk,
+    openapi,
+    expectedVersion: app.getVersion(),
+    requiredPaths: REQUIRED_BACKEND_OPENAPI_PATHS
+  });
 }
 
 async function waitForBackend(port, timeoutMs = 15000) {
@@ -1540,7 +1538,15 @@ async function spawnBundledBackend(executablePath, logStream, port) {
 
 async function startBackendServer() {
   if (backendProcess && !backendProcess.killed) {
-    return { success: true, alreadyRunning: true, url: activeBackendUrl, port: activeBackendPort };
+    return {
+      success: true,
+      alreadyRunning: true,
+      url: activeBackendUrl,
+      port: activeBackendPort,
+      expectedVersion: app.getVersion(),
+      missingPaths: [],
+      versionMismatch: false
+    };
   }
 
   const defaultReadiness = await requestBackendCompatibility(BACKEND_PORT);
@@ -1552,7 +1558,10 @@ async function startBackendServer() {
       alreadyRunning: true,
       url: activeBackendUrl,
       port: activeBackendPort,
-      version: defaultReadiness.version
+      version: defaultReadiness.version,
+      expectedVersion: defaultReadiness.expectedVersion,
+      missingPaths: defaultReadiness.missingPaths,
+      versionMismatch: defaultReadiness.versionMismatch
     };
   }
 
@@ -1567,17 +1576,13 @@ async function startBackendServer() {
 
   const errors = [];
   if (defaultReadiness.healthy && !defaultReadiness.compatible) {
-    errors.push(
-      `${buildBackendUrl(BACKEND_PORT)} is an older incompatible backend`
-      + (defaultReadiness.version ? ` (${defaultReadiness.version})` : '')
-      + (defaultReadiness.missingPaths && defaultReadiness.missingPaths.length
-        ? ` missing ${defaultReadiness.missingPaths.join(', ')}`
-        : '')
-    );
+    errors.push(describeBackendCompatibilityFailure(buildBackendUrl(BACKEND_PORT), defaultReadiness));
   }
-  const candidatePorts = defaultReadiness.healthy && !defaultReadiness.compatible
-    ? BACKEND_PORT_CANDIDATES.filter((port) => port !== BACKEND_PORT)
-    : BACKEND_PORT_CANDIDATES;
+  const candidatePorts = selectBackendPortCandidates({
+    defaultReadiness,
+    portCandidates: BACKEND_PORT_CANDIDATES,
+    defaultPort: BACKEND_PORT
+  });
 
   if (bundledBackendExecutable) {
     for (const port of candidatePorts) {
@@ -1585,10 +1590,20 @@ async function startBackendServer() {
         const child = await spawnBundledBackend(bundledBackendExecutable, logStream, port);
         const isReady = await waitForBackend(port);
         if (isReady) {
+          const readiness = await requestBackendCompatibility(port);
           backendProcess = child;
           activeBackendPort = port;
           activeBackendUrl = buildBackendUrl(port);
-          return { success: true, url: activeBackendUrl, port, command: bundledBackendExecutable };
+          return {
+            success: true,
+            url: activeBackendUrl,
+            port,
+            command: bundledBackendExecutable,
+            version: readiness.version,
+            expectedVersion: readiness.expectedVersion,
+            missingPaths: readiness.missingPaths,
+            versionMismatch: readiness.versionMismatch
+          };
         }
         child.kill();
         errors.push(`${bundledBackendExecutable} on ${buildBackendUrl(port)}: backend did not become ready`);
@@ -1622,10 +1637,20 @@ async function startBackendServer() {
         const child = await spawnBackendWith(candidate, backendDir, logStream, port);
         const isReady = await waitForBackend(port);
         if (isReady) {
+          const readiness = await requestBackendCompatibility(port);
           backendProcess = child;
           activeBackendPort = port;
           activeBackendUrl = buildBackendUrl(port);
-          return { success: true, url: activeBackendUrl, port, command: candidate.command };
+          return {
+            success: true,
+            url: activeBackendUrl,
+            port,
+            command: candidate.command,
+            version: readiness.version,
+            expectedVersion: readiness.expectedVersion,
+            missingPaths: readiness.missingPaths,
+            versionMismatch: readiness.versionMismatch
+          };
         }
         child.kill();
         errors.push(`${candidate.command} on ${buildBackendUrl(port)}: backend did not become ready`);

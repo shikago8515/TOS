@@ -7,8 +7,12 @@ export interface ElectronActionResult {
   alreadyOpen?: boolean
   alreadyRunning?: boolean
   browser?: string
+  expectedVersion?: string
+  missingPaths?: string[]
   port?: number
   profileDir?: string
+  version?: string
+  versionMismatch?: boolean
 }
 
 export interface ExternalModuleInfo {
