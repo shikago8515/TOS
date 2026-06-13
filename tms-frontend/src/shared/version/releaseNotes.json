@@ -1,14 +1,12 @@
 {
-  "version": "0.9.8-beta.3.4",
+  "version": "0.9.8-beta.3.5",
   "date": "2026-06-13",
-  "added": [
-    "新增 PDF数据获取核对 分组和 Draft & Packing List 核对模块，可上传 Draft Form E 与 Packing List PDF 并生成上下对比 Excel。",
-    "新增后端 Draft/Packing 字段提取、严格 HS/HTS 核对、问题明细 Sheet 和缺失字段反馈信息。"
-  ],
+  "added": [],
   "improved": [
-    "Packing List 表格型 PDF 解析改用 pdfplumber，提高 PO、Working Number、Article Number、Market PO、Quantity、Cartons 等字段定位稳定性。"
+    "新增桌面端后端 API 契约清单，启动时会按应用版本和 OpenAPI 路由校验后端兼容性。",
+    "当 8000 端口被旧后端占用时，桌面端会旁路启动当前版本后端并返回实际服务地址。"
   ],
   "fixed": [
-    "修复桌面端复用旧后端时 Draft & Packing List 核对接口返回 Not Found 的问题，启动时会校验新增处理和下载接口。"
+    "优化 FastAPI 接口缺失时的前端提示，避免只显示 Not Found。"
   ]
 }

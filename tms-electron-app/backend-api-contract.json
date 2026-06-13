@@ -1,0 +1,30 @@
+{
+  "requiredOpenapiPaths": [
+    "/api/draft-packing-compare/download/{filename}",
+    "/api/draft-packing-compare/process",
+    "/api/eric/download/{filename}",
+    "/api/eric/process",
+    "/api/eric/reconcile",
+    "/api/it-invoice-pdf-reorder/download/{job_id}",
+    "/api/it-invoice-pdf-reorder/extract-numbers",
+    "/api/it-invoice-pdf-reorder/preview-invoice",
+    "/api/it-invoice-pdf-reorder/preview-po",
+    "/api/it-invoice-pdf-reorder/process",
+    "/api/jane-bom-compare/download/{filename}",
+    "/api/jane-bom-compare/process",
+    "/api/jane-bom-summary/download/{filename}",
+    "/api/jane-bom-summary/process",
+    "/api/jane-outbound-compare/download/{filename}",
+    "/api/jane-outbound-compare/process",
+    "/api/jane/download/{filename}",
+    "/api/jane/process",
+    "/api/jessca/download/{filename}",
+    "/api/jessca/process",
+    "/api/sophia-tina/download/{filename}",
+    "/api/sophia-tina/process",
+    "/api/tms-finance/internal-reconciliation/download/{filename}",
+    "/api/tms-finance/internal-reconciliation/process",
+    "/api/tms-finance/work-sales/download/{filename}",
+    "/api/tms-finance/work-sales/process"
+  ]
+}
