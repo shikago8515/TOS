@@ -471,6 +471,7 @@ function getModuleIcon(module: TosModuleDefinition): string {
     'it-invoice-pdf-reorder': 'file-search',
     'draft-packing-compare': 'file-search',
     'browser-plugins': 'puzzle',
+    'web-automation': 'workflow',
     'infornexus': 'globe',
     'jane-sap': 'server',
     'eric-infornexus': 'globe',

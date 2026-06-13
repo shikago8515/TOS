@@ -22,6 +22,7 @@ TOS 是一个 Windows x64 桌面工具，当前源码工作区由三部分组成
 - `tms-frontend/README.md`：前端源码工作区、命令、源码约定和页面清单。
 - `docs/frontend-engineering-standards.md`：前端重建工程规范和变更接收检查项。
 - `docs/engineering-entrypoints.md`：根目录工程入口、检查矩阵和命令边界。
+- `docs/engineering-closure-roadmap.md`：未完全工程化部分的优先级、边界和验收标准。
 - `docs/tos-ai-workflow.md`：TOS-AI 从 GitCode 同步、分支开发、版本、CI 到服务器发布的完整工作流。
 - `docs/server-deployment-runbook.md`：服务器 `~/TOS` 目录式 Docker Compose 更新、备份、验证和回滚流程。
 - `docs/frontend-tms-finance-parity.md`：TMS 财务页 parity 与复用边界说明。
@@ -88,6 +89,6 @@ npm run build:win
 
 ## 后续重点
 
-1. 继续按恢复基线补齐仍处于 `validation` 或 `placeholder` 的前端模块。
+1. 按 `docs/engineering-closure-roadmap.md` 继续收口仍处于 `validation` 的前端模块和工程治理项。
 2. 为前后端接口补充更完整的契约测试和响应 schema。
 3. 按发布敏感规则单独收紧 Electron 外部 URL 打开策略。
