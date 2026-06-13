@@ -102,7 +102,11 @@ def build_record(commit: dict[str, str], version: str, event: str) -> dict[str, 
 def infer_page(files: list[str]) -> tuple[str, str]:
     rules = [
         ("系统设置", "/settings", ("src/pages/settings/", "src/layout/AppShell.vue", "src/layout/useAppShellModel.ts")),
-        ("版本更新记录", "/release-updates", ("src/pages/release-updates/", "release_updates_api.py")),
+        (
+            "版本更新记录",
+            "/release-updates",
+            ("src/pages/release-updates/", "release_updates_api.py", "release_update_sync.py", ".githooks/"),
+        ),
         ("IT-发票PDF重排序", "/it-invoice-pdf-reorder", ("it-invoice-pdf-reorder", "it_invoice_pdf_reorder")),
         ("浏览器自动化", "/web-automation", ("src/pages/web-automation/", "automation-apps/")),
         ("TMS 财务 / Excel", "/tms-finance", ("tms-finance", "tmsFinance")),

@@ -360,7 +360,7 @@ def list_release_update_records(limit: int = 100) -> list[dict[str, Any]]:
                 SELECT id, record_key, version, release_date, category, page_name,
                        page_path, title, description, created_by, created_at, updated_at
                 FROM release_update_records
-                ORDER BY release_date DESC, id DESC
+                ORDER BY release_date DESC, updated_at DESC, id DESC
                 LIMIT %s
                 """,
                 (safe_limit,),
