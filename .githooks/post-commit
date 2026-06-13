@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+
+python scripts/release_update_sync.py --commit HEAD --event commit --quiet >/dev/null 2>&1 || true

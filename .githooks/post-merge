@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+
+if git rev-parse --verify ORIG_HEAD >/dev/null 2>&1; then
+  python scripts/release_update_sync.py --range "$(git rev-parse ORIG_HEAD)..HEAD" --event merge --quiet >/dev/null 2>&1 || true
+else
+  python scripts/release_update_sync.py --commit HEAD --event merge --quiet >/dev/null 2>&1 || true
+fi
