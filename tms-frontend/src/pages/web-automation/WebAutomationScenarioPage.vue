@@ -100,7 +100,7 @@
 
             <div class="pg-card__bd">
               <label class="pg-field"><span>{{ text('Excel 文件') }}</span></label>
-              <div class="pg-drop" :class="{ 'pg-drop--on': selectedFile, 'pg-drop--over': isDragging }" @click="openFilePicker" @dragover.prevent="isDragging=true" @dragleave.prevent="isDragging=false" @drop.prevent="handleDrop">
+              <div class="pg-drop" :class="{ 'pg-drop--on': selectedFile, 'pg-drop--over': isDragging }" @click="openFilePicker" @dragenter.prevent="handleDragEnter" @dragover.prevent="handleDragOver" @dragleave.prevent="handleDragLeave" @drop.prevent="handleDrop">
                 <input ref="fileInput" type="file" accept=".xlsx,.xls" @click.stop @change="handleFileSelect" />
                 <template v-if="selectedFile">
                   <AppIcon name="check-circle" class="pg-drop__ok" /><b>{{ selectedFile.name }}</b><small>{{ formatSize(selectedFile.size) }}</small>
@@ -154,7 +154,7 @@
 
             <div class="pg-card__bd">
               <label class="pg-field"><span>{{ text('Excel 文件') }}</span></label>
-              <div class="pg-drop" :class="{ 'pg-drop--on': selectedFile, 'pg-drop--over': isDragging }" @click="openFilePicker" @dragover.prevent="isDragging=true" @dragleave.prevent="isDragging=false" @drop.prevent="handleDrop">
+              <div class="pg-drop" :class="{ 'pg-drop--on': selectedFile, 'pg-drop--over': isDragging }" @click="openFilePicker" @dragenter.prevent="handleDragEnter" @dragover.prevent="handleDragOver" @dragleave.prevent="handleDragLeave" @drop.prevent="handleDrop">
                 <input ref="fileInput" type="file" accept=".xlsx,.xls" @click.stop @change="handleFileSelect" />
                 <template v-if="selectedFile">
                   <AppIcon name="check-circle" class="pg-drop__ok" /><b>{{ selectedFile.name }}</b><small>{{ formatSize(selectedFile.size) }}</small>
@@ -201,7 +201,7 @@ const DSU = ''; const DSP = ''; const DMU = ''; const DMP = ''
 const electronSupported = hasElectronAutomationSupport()
 const activeApp = ref<AutomationAppInfo | null>(null); const executorHealth = ref<LocalExecutorHealth | null>(null); const executorCredentials = ref<ExecutorCredentials | null>(null); const automationTemplates = ref<AutomationTemplate[]>([])
 const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false); const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false); const sending = ref(false)
-const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info'); const isDragging = ref(false); const fileInput = ref<HTMLInputElement | null>(null)
+const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info'); const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null); const webhookUrl = ref('http://127.0.0.1:5678/webhook/microsoft-login-excel-demo')
 const shippingUsername = ref(DSU); const shippingPassword = ref(DSP); const showShippingPassword = ref(true)
 const microsoftUsername = ref(DMU); const microsoftPassword = ref(DMP); const showMicrosoftPassword = ref(true)
@@ -263,10 +263,19 @@ async function saveCurrentCredentials(): Promise<void> { if (!entry.value || cre
 async function clearCurrentCredentials(): Promise<void> { if (!entry.value || credentialClearing.value) return; credentialClearing.value = true; try { executorCredentials.value = await clearExecutorCredentials(entry.value.id); messageTone.value = 'info'; message.value = text('已清除。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('清除失败。')) } finally { credentialClearing.value = false } }
 async function startActiveApp(silent: boolean): Promise<void> { if (!entry.value || launching.value) return; if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot(); launching.value = true; try { const r = await launchAutomationConsole(entry.value.appId); if (!r.success) throw new Error(r.error || '启动失败'); await refreshExecutorState(true); if (!silent) { messageTone.value = 'success'; message.value = r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') } } catch (e) { const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.value.appId, entryId: entry.value.id, error: m }); if (!silent) { messageTone.value = 'error'; message.value = m } } finally { launching.value = false } }
 async function stopActiveApp(): Promise<void> { if (!entry.value) return; try { const r = await stopAutomationConsole(entry.value.appId); if (!r.success) throw new Error(r.error || '停止失败'); executorHealth.value = null; if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }; await refreshExecutorState(true).catch(() => {}); messageTone.value = 'info'; message.value = text('执行器已停止。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('停止失败')) } }
-function handleFileSelect(e: Event): void { const f = (e.target as HTMLInputElement).files; if (f && f.length > 0) selectedFile.value = f[0] }
-function handleDrop(e: DragEvent): void { isDragging.value = false; const f = e.dataTransfer?.files; if (f && f.length > 0) selectedFile.value = f[0] }
+function handleFileSelect(e: Event): void { const f = getExcelFile((e.target as HTMLInputElement).files); if (f) setSelectedFile(f) }
+function handleDragEnter(e: DragEvent): void { if (!hasDraggedFiles(e) || isInternalDragMove(e)) return; dragDepth.value += 1; isDragging.value = true }
+function handleDragOver(e: DragEvent): void { if (!hasDraggedFiles(e)) return; if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; isDragging.value = true }
+function handleDragLeave(e: DragEvent): void { if (isInternalDragMove(e)) return; dragDepth.value = Math.max(0, dragDepth.value - 1); if (dragDepth.value === 0) isDragging.value = false }
+function handleDrop(e: DragEvent): void { resetDragging(); const f = getExcelFile(e.dataTransfer?.files); if (f) setSelectedFile(f) }
 function openFilePicker(): void { fileInput.value?.click() }
-function clearFile(): void { selectedFile.value = null; if (fileInput.value) fileInput.value.value = '' }
+function clearFile(): void { selectedFile.value = null; resetDragging(); if (fileInput.value) fileInput.value.value = '' }
+function setSelectedFile(file: File): void { if (!isExcelFile(file)) { messageTone.value = 'warning'; message.value = text('请上传 .xlsx 或 .xls 文件。'); return }; selectedFile.value = file; message.value = '' }
+function getExcelFile(files: FileList | null | undefined): File | null { const list = files ? Array.from(files) : []; const f = list.find(isExcelFile) || null; if (!f && list.length > 0) { messageTone.value = 'warning'; message.value = text('请上传 .xlsx 或 .xls 文件。') }; return f }
+function isExcelFile(file: File): boolean { return /\.(xlsx|xls)$/i.test(file.name) }
+function hasDraggedFiles(e: DragEvent): boolean { return Array.from(e.dataTransfer?.types || []).includes('Files') }
+function isInternalDragMove(e: DragEvent): boolean { const current = e.currentTarget; const related = e.relatedTarget; return current instanceof Node && related instanceof Node && current.contains(related) }
+function resetDragging(): void { dragDepth.value = 0; isDragging.value = false }
 function formatSize(b: number): string { if (b < 1024) return `${b} B`; if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`; return `${(b / (1024 * 1024)).toFixed(1)} MB` }
 function resetWebhookUrl(): void { webhookUrl.value = entry.value?.webhookUrl || 'http://127.0.0.1:5678/webhook/microsoft-login-excel-demo' }
 async function resolveRunCredentialsPayload(uv: string, pv: string): Promise<Record<string, string>> { if (!entry.value) return {}; const u = uv.trim(); const tp = pv; if (tp.trim()) { if (!u) throw new Error('请填写账号密码。'); executorCredentials.value = await saveExecutorCredentials(entry.value.id, u, tp); await refreshExecutorCredentials(); applyCredUser(executorCredentials.value.username || u); return { username: u, password: tp } }; const r = await resolveAutomationCredentials(entry.value.id); applyCredUser(r.username); if (isInfornexusDirectScenario.value) shippingPassword.value = r.password; else if (isMicrosoftScenario.value) microsoftPassword.value = r.password; return { username: r.username, password: r.password } }
@@ -376,7 +385,7 @@ function readErrorMessage(e: unknown, fb: string): string { return e instanceof 
   b { font-size: 12.5px; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } small { font-size: 11px; color: #9ca3af; }
   &__ic { font-size: 20px; color: #9ca3af; flex-shrink: 0; } &__ok { font-size: 17px; color: #10b981; flex-shrink: 0; }
   &__x { margin-left: auto; display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: 1px solid var(--br); border-radius: 4px; background: #fff; color: var(--mu); cursor: pointer; flex-shrink: 0; transition: all .15s; :deep(.app-icon) { font-size: 13px; } &:hover { border-color: var(--red); color: var(--red); background: #fef2f2; } }
-  &__overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.88); border-radius: 7px; font-size: 13px; font-weight: 700; color: var(--a); }
+  &__overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.88); border-radius: 7px; font-size: 13px; font-weight: 700; color: var(--a); pointer-events: none; }
 }
 
 /* Status */

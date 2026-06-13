@@ -195,7 +195,7 @@
               <!-- Upload -->
               <div class="s2-bulk__section">
                 <div class="s2-drop" :class="{ 's2-drop--on': bulk.file, 's2-drop--over': bulk.dragging }"
-                  @click="openBulkFilePicker(bulk.id)" @dragover.prevent="setBulkDragging(bulk.id, true)" @dragleave.prevent="setBulkDragging(bulk.id, false)" @drop.prevent="handleBulkDrop(bulk.id, $event)">
+                  @click="openBulkFilePicker(bulk.id)" @dragenter.prevent="handleBulkDragEnter(bulk.id, $event)" @dragover.prevent="handleBulkDragOver(bulk.id, $event)" @dragleave.prevent="handleBulkDragLeave(bulk.id, $event)" @drop.prevent="handleBulkDrop(bulk.id, $event)">
                   <input :ref="(el) => setBulkFileInputRef(bulk.id, el)" type="file" accept=".xlsx,.xls" @click.stop @change="handleBulkFileSelect(bulk.id, $event)" />
                   <template v-if="bulk.file">
                     <AppIcon name="check-circle" class="s2-drop__ok" />
@@ -258,7 +258,7 @@ import { shippingAutomation2EntryId, shippingAutomation2Steps } from '../shippin
 type BulkId = 'unreleased' | 'released'
 type BulkTone = 'idle' | 'info' | 'success' | 'error'
 interface BulkResult { ok: boolean; runId?: string; message?: string; finalUrl?: string; generatedAt?: string }
-interface BulkState { id: BulkId; label: string; file: File | null; dragging: boolean; running: boolean; tone: BulkTone; statusText: string; result: BulkResult | null }
+interface BulkState { id: BulkId; label: string; file: File | null; dragging: boolean; dragDepth: number; running: boolean; tone: BulkTone; statusText: string; result: BulkResult | null }
 
 const router = useRouter(); const { text } = useAppLanguage()
 const entry = getWebAutomationEntry(shippingAutomation2EntryId)
@@ -272,8 +272,8 @@ const shippingUsername = ref(''); const shippingPassword = ref(''); const showPa
 const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info')
 const bulkFileInputs = new Map<BulkId, HTMLInputElement>()
 const bulkAreas = ref<BulkState[]>([
-  { id: 'unreleased', label: 'Unreleased Bulk', file: null, dragging: false, running: false, tone: 'idle', statusText: '等待选择 Excel 文件。', result: null },
-  { id: 'released', label: 'released Bulk', file: null, dragging: false, running: false, tone: 'idle', statusText: '等待选择 Excel 文件。', result: null },
+  { id: 'unreleased', label: 'Unreleased Bulk', file: null, dragging: false, dragDepth: 0, running: false, tone: 'idle', statusText: '等待选择 Excel 文件。', result: null },
+  { id: 'released', label: 'released Bulk', file: null, dragging: false, dragDepth: 0, running: false, tone: 'idle', statusText: '等待选择 Excel 文件。', result: null },
 ])
 
 const healthRaw = computed(() => executorHealth.value ? JSON.stringify(executorHealth.value, null, 2) : '{}')
@@ -316,11 +316,19 @@ async function ensureExecutorReady(): Promise<boolean> { if (executorHealth.valu
 function setBulkFileInputRef(id: BulkId, el: unknown): void { if (el instanceof HTMLInputElement) bulkFileInputs.set(id, el) }
 function getBulk(id: BulkId): BulkState | undefined { return bulkAreas.value.find((b) => b.id === id) }
 function openBulkFilePicker(id: BulkId): void { bulkFileInputs.get(id)?.click() }
-function handleBulkFileSelect(id: BulkId, e: Event): void { const f = (e.target as HTMLInputElement).files?.[0]; if (f) setBulkFile(id, f) }
-function handleBulkDrop(id: BulkId, e: DragEvent): void { setBulkDragging(id, false); const f = e.dataTransfer?.files?.[0]; if (f) setBulkFile(id, f) }
-function setBulkFile(id: BulkId, file: File): void { const b = getBulk(id); if (!b) return; b.file = file; b.result = null; b.tone = 'info'; b.statusText = `${file.name} 已选择，等待启动。` }
+function handleBulkFileSelect(id: BulkId, e: Event): void { const f = getBulkExcelFile((e.target as HTMLInputElement).files); if (f) setBulkFile(id, f) }
+function handleBulkDragEnter(id: BulkId, e: DragEvent): void { if (!hasDraggedFiles(e) || isInternalDragMove(e)) return; const b = getBulk(id); if (!b) return; b.dragDepth += 1; b.dragging = true }
+function handleBulkDragOver(id: BulkId, e: DragEvent): void { if (!hasDraggedFiles(e)) return; if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; setBulkDragging(id, true) }
+function handleBulkDragLeave(id: BulkId, e: DragEvent): void { if (isInternalDragMove(e)) return; const b = getBulk(id); if (!b) return; b.dragDepth = Math.max(0, b.dragDepth - 1); if (b.dragDepth === 0) b.dragging = false }
+function handleBulkDrop(id: BulkId, e: DragEvent): void { resetBulkDragging(id); const f = getBulkExcelFile(e.dataTransfer?.files); if (f) setBulkFile(id, f) }
+function setBulkFile(id: BulkId, file: File): void { if (!isExcelFile(file)) { messageTone.value = 'warning'; message.value = text('请上传 .xlsx 或 .xls 文件。'); return }; const b = getBulk(id); if (!b) return; b.file = file; b.result = null; b.tone = 'info'; b.statusText = `${file.name} 已选择，等待启动。`; message.value = '' }
 function setBulkDragging(id: BulkId, v: boolean): void { const b = getBulk(id); if (b) b.dragging = v }
-function clearBulkFile(id: BulkId): void { const b = getBulk(id); if (!b) return; b.file = null; b.dragging = false; b.running = false; b.result = null; b.tone = 'idle'; b.statusText = '等待选择 Excel 文件。'; const inp = bulkFileInputs.get(id); if (inp) inp.value = '' }
+function resetBulkDragging(id: BulkId): void { const b = getBulk(id); if (!b) return; b.dragDepth = 0; b.dragging = false }
+function clearBulkFile(id: BulkId): void { const b = getBulk(id); if (!b) return; b.file = null; resetBulkDragging(id); b.running = false; b.result = null; b.tone = 'idle'; b.statusText = '等待选择 Excel 文件。'; const inp = bulkFileInputs.get(id); if (inp) inp.value = '' }
+function getBulkExcelFile(files: FileList | null | undefined): File | null { const list = files ? Array.from(files) : []; const f = list.find(isExcelFile) || null; if (!f && list.length > 0) { messageTone.value = 'warning'; message.value = text('请上传 .xlsx 或 .xls 文件。') }; return f }
+function isExcelFile(file: File): boolean { return /\.(xlsx|xls)$/i.test(file.name) }
+function hasDraggedFiles(e: DragEvent): boolean { return Array.from(e.dataTransfer?.types || []).includes('Files') }
+function isInternalDragMove(e: DragEvent): boolean { const current = e.currentTarget; const related = e.relatedTarget; return current instanceof Node && related instanceof Node && current.contains(related) }
 async function createBulkRunRecord(b: BulkState): Promise<AutomationRunRecord | null> { if (!entry || !b.file) return null; return createAutomationRunRecord(entry.id, b.file, `${entry.title} ${b.label}`) }
 async function finishBulkRunRecord(rr: AutomationRunRecord | null, ok: boolean, msg: string, p: BulkResult | null): Promise<void> { if (!rr?.runId) return; await finishAutomationRunRecord(rr.runId, ok ? 'success' : 'failed', msg || (ok ? 'completed' : 'failed'), p) }
 
@@ -496,7 +504,7 @@ function goBack(): void { void router.push('/eric-infornexus') }
     :deep(.app-icon) { font-size: 13px; }
     &:hover { border-color: var(--red); color: var(--red); background: #fef2f2; }
   }
-  &__overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.88); border-radius: 7px; font-size: 13px; font-weight: 700; color: var(--a); }
+  &__overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.88); border-radius: 7px; font-size: 13px; font-weight: 700; color: var(--a); pointer-events: none; }
 }
 
 /* ===== BULK CARDS ===== */
