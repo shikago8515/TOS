@@ -21,6 +21,7 @@ import SettingsPage from '../pages/settings/SettingsPage.vue'
 import ShippingAutomation2Page from '../pages/shipping-automation-2/ShippingAutomation2Page.vue'
 import SophiaTinaPage from '../pages/sophia-tina/SophiaTinaPage.vue'
 import TmsFinanceInternalReconciliationPage from '../pages/tms-finance-internal-reconciliation/TmsFinanceInternalReconciliationPage.vue'
+import WebAutomationPage from '../pages/web-automation/WebAutomationPage.vue'
 import WebAutomationScenarioPage from '../pages/web-automation/WebAutomationScenarioPage.vue'
 
 const routeComponents: Partial<Record<string, Component>> = {
@@ -39,6 +40,7 @@ const routeComponents: Partial<Record<string, Component>> = {
   'eric-infornexus': EricInfornexusPage,
   'sophia-tina': SophiaTinaPage,
   'browser-plugins': BrowserPluginsPage,
+  'web-automation': WebAutomationPage,
   infornexus: InfornexusPage,
   'adidas-materials': AdidasMaterialsPage,
   settings: SettingsPage,

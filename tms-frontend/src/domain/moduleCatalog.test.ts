@@ -54,4 +54,16 @@ describe('moduleCatalog', () => {
 
     expect(stages).not.toContain('placeholder')
   })
+
+  it('exposes the web automation hub as a visible validation module', () => {
+    const webAutomationModule = tosModules.find((module) => module.id === 'web-automation')
+
+    expect(webAutomationModule).toMatchObject({
+      path: '/web-automation',
+      routeName: 'web-automation',
+      group: 'general-tools',
+      category: 'browser-automation',
+      stage: 'validation',
+    })
+  })
 })
