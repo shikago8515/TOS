@@ -89,6 +89,12 @@ export async function createServerPackage({
     gitDirty: resolvedGitInfo.dirty,
     backendUrl,
     archiveName,
+    releaseUpdateRecord: buildReleaseUpdateRecord({
+      version: releaseMetadata.version,
+      releaseNotes: releaseMetadata.releaseNotes,
+      gitInfo: resolvedGitInfo,
+      now,
+    }),
     archivePath: dryRun ? null : archivePath,
     stagingRoot: null,
     includedPaths: [...deployablePaths],
@@ -182,12 +188,14 @@ async function assertPathExists(absolutePath, relativePath) {
 }
 
 async function readGitInfo(repoRoot) {
-  const [remote, branch, commit, shortSha, statusOutput] = await Promise.all([
+  const [remote, branch, commit, shortSha, statusOutput, subject, author] = await Promise.all([
     readGitValue(repoRoot, ['remote', 'get-url', 'gitcode']).catch(() => ''),
     readGitValue(repoRoot, ['branch', '--show-current']),
     readGitValue(repoRoot, ['rev-parse', 'HEAD']),
     readGitValue(repoRoot, ['rev-parse', '--short', 'HEAD']),
     readGitValue(repoRoot, ['status', '--porcelain']),
+    readGitValue(repoRoot, ['show', '-s', '--format=%s', 'HEAD']).catch(() => ''),
+    readGitValue(repoRoot, ['show', '-s', '--format=%an', 'HEAD']).catch(() => ''),
   ])
 
   return {
@@ -196,6 +204,8 @@ async function readGitInfo(repoRoot) {
     commit,
     shortSha,
     dirty: statusOutput.trim().length > 0,
+    subject,
+    author,
   }
 }
 
@@ -269,6 +279,60 @@ function formatShanghaiTimestamp(date) {
   }).formatToParts(date)
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
   return `${values.year}${values.month}${values.day}${values.hour}${values.minute}${values.second}`
+}
+
+function formatShanghaiDate(date) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${values.year}-${values.month}-${values.day}`
+}
+
+function buildReleaseUpdateRecord({ version, releaseNotes, gitInfo, now }) {
+  const subject = String(gitInfo.subject || '').trim()
+  const title = subject || `Server deploy ${version}`
+  const releaseDate = normalizeReleaseDate(releaseNotes.date) || formatShanghaiDate(now)
+
+  return {
+    recordKey: `git-${gitInfo.commit}`,
+    version,
+    releaseDate,
+    category: 'improved',
+    pageName: '服务器部署',
+    pagePath: '/release-updates',
+    title: title.slice(0, 255),
+    description: subject
+      ? buildReleaseUpdateDescription({ version, releaseNotes, gitInfo, subject })
+      : `由服务器部署自动记录：${version} (${gitInfo.shortSha})。`,
+    createdBy: `git:${String(gitInfo.author || 'deploy').trim() || 'deploy'}`,
+  }
+}
+
+function normalizeReleaseDate(value) {
+  const date = String(value || '').trim()
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : ''
+}
+
+function buildReleaseUpdateDescription({ version, releaseNotes, gitInfo, subject }) {
+  const notes = summarizeReleaseNotes(releaseNotes)
+  const noteText = notes ? `更新内容：${notes}` : `版本：${version}`
+  return `由服务器部署自动记录：${subject}。${noteText}。Commit: ${gitInfo.shortSha}。`
+}
+
+function summarizeReleaseNotes(releaseNotes) {
+  return ['added', 'improved', 'fixed']
+    .flatMap((key) => {
+      const items = releaseNotes[key]
+      return Array.isArray(items) ? items : []
+    })
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .join('；')
 }
 
 function hasReleaseNotesContent(releaseNotes) {

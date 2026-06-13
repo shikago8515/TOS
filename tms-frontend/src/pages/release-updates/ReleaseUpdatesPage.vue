@@ -136,6 +136,7 @@ type FilterValue = 'all' | 'added' | 'improved' | 'fixed'
 
 const { text } = useAppLanguage()
 const records = ref<ReleaseUpdateRecord[]>([])
+const runtimeVersion = ref('')
 const loading = ref(false)
 const errorMessage = ref('')
 const activeFilter = ref<FilterValue>('all')
@@ -160,7 +161,7 @@ const affectedPageCount = computed(() => {
 })
 
 const latestVersionLabel = computed(() => {
-  const version = records.value[0]?.version
+  const version = runtimeVersion.value || records.value[0]?.version
   return version ? `V${cleanVersion(version)}` : '-'
 })
 
@@ -172,7 +173,9 @@ async function loadRecords(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
-    records.value = await fetchReleaseUpdates(160)
+    const payload = await fetchReleaseUpdates(160)
+    runtimeVersion.value = payload.version
+    records.value = payload.records
   } catch (error) {
     errorMessage.value = readErrorMessage(error, text('获取版本记录失败，请检查网络后重试。'))
   } finally {

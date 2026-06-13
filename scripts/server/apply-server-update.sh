@@ -52,6 +52,38 @@ sudo docker compose -f docker-compose.tos.yml ps
 curl -fsS http://127.0.0.1:18000/
 curl -fsSI http://127.0.0.1:18080/
 
+sync_release_update_record() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "Warning: python3 not found; skipped release update record sync" >&2
+    return 0
+  fi
+
+  local payload
+  if ! payload="$(python3 - "$MANIFEST" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    manifest = json.load(handle)
+
+record = manifest.get("releaseUpdateRecord")
+if not isinstance(record, dict) or not record.get("recordKey"):
+    raise SystemExit(2)
+
+print(json.dumps(record, ensure_ascii=False))
+PY
+)"; then
+    echo "Warning: failed to sync release update record" >&2
+    return 0
+  fi
+
+  if ! curl -fsS -X POST http://127.0.0.1:18000/api/release-updates -H 'Content-Type: application/json' --data-binary "$payload" >/dev/null; then
+    echo "Warning: failed to sync release update record" >&2
+  fi
+}
+
+sync_release_update_record
+
 if [ -n "${PKG:-}" ] && [ -f "$PKG" ]; then
   mv "$PKG" ".deploy_uploads/applied/"
 fi

@@ -1,14 +1,14 @@
 {
-  "version": "0.9.8-beta.3.8",
+  "version": "0.9.8-beta.3.9",
   "date": "2026-06-13",
   "added": [
-    "Jason / 发票 PDF 重排序新增 canonical 前端入口 #/jason/pdf-reorder 和后端 API /api/jason/pdf-reorder/*。"
+    "服务器部署包现在会携带本次部署的版本更新记录，并在服务重启验证通过后自动同步到后端记录接口。"
   ],
   "improved": [
-    "Jason 模块前端目录、路由、API client 和测试命名已统一到 Jason PDF Reorder。",
-    "Jason 后端 API 已补充 Pydantic response models，并在 OpenAPI 中暴露具体响应 schema。"
+    "版本更新记录页的“最新版本”改为优先显示后端运行版本，避免数据库历史记录未同步时误显示旧版本。",
+    "服务器部署 manifest 新增 releaseUpdateRecord 字段，便于追踪本次部署版本、commit 和更新内容。"
   ],
   "fixed": [
-    "旧 #/it-invoice-pdf-reorder、/api/it-invoice-pdf-reorder/* 和 legacy /api/* 路径继续兼容，避免历史链接和发布包调用失效。"
+    "修复服务器已更新到新版本后，版本更新记录页仍可能显示上一版本的问题。"
   ]
 }

@@ -24,10 +24,15 @@ export interface ReleaseUpdatesResponse {
   total: number
 }
 
-export async function fetchReleaseUpdates(limit = 120): Promise<ReleaseUpdateRecord[]> {
+export async function fetchReleaseUpdates(limit = 120): Promise<ReleaseUpdatesResponse> {
   const safeLimit = Math.max(1, Math.min(limit, 300))
   const payload = await requestBackendJson<ReleaseUpdatesResponse>({
     path: `/api/release-updates?limit=${safeLimit}`,
   })
-  return Array.isArray(payload.records) ? payload.records : []
+  return {
+    ok: Boolean(payload.ok),
+    version: String(payload.version || ''),
+    records: Array.isArray(payload.records) ? payload.records : [],
+    total: Number(payload.total || 0),
+  }
 }

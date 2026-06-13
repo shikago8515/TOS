@@ -33,6 +33,12 @@ test('builds deterministic server archive names', () => {
   )
 })
 
+test('server apply script posts release update records after deploy verification', async () => {
+  const deployScript = await readFile(new URL('../server/apply-server-update.sh', import.meta.url), 'utf8')
+  assert.match(deployScript, /api\/release-updates/)
+  assert.match(deployScript, /releaseUpdateRecord/)
+})
+
 test('rejects release notes that are not synced to the app version', async () => {
   const root = await createFixture({
     appVersion: '0.9.8-beta.3.3',
@@ -97,6 +103,17 @@ test('creates a server update archive with manifest and only deployable paths', 
   assert.equal(manifest.gitDirty, false)
   assert.equal(manifest.backendUrl, '/tos')
   assert(manifest.includedPaths.includes('tms-frontend/dist'))
+  assert.deepEqual(manifest.releaseUpdateRecord, {
+    recordKey: `git-${gitInfo.commit}`,
+    version: '0.9.8-beta.3.3',
+    releaseDate: '2026-06-12',
+    category: 'improved',
+    pageName: '服务器部署',
+    pagePath: '/release-updates',
+    title: 'Server deploy 0.9.8-beta.3.3',
+    description: '由服务器部署自动记录：0.9.8-beta.3.3 (4e1c3e5)。',
+    createdBy: 'git:deploy',
+  })
   assert.equal(Object.hasOwn(manifest, 'archivePath'), false)
 })
 
