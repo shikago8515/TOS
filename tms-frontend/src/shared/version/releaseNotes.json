@@ -1,14 +1,12 @@
 {
-  "version": "0.9.8-beta.3.2",
+  "version": "0.9.8-beta.3.3",
   "date": "2026-06-12",
   "added": [
-    "服务器/浏览器模式下的系统设置页改为只展示版本、运行环境和语言。"
+    "新增 PDF数据获取核对 分组和 Draft & Packing List 核对模块，可上传 Draft Form E 与 Packing List PDF 并生成上下对比 Excel。",
+    "新增后端 Draft/Packing 字段提取、严格 HS/HTS 核对、问题明细 Sheet 和缺失字段反馈信息。"
   ],
   "improved": [
-    "英文模式面包屑改为使用完整页面标题，避免只显示左侧导航短名。",
-    "Jane、TMS Finance、Infornexus、adidas Materials 等页面补齐英文业务文案。"
+    "Packing List 表格型 PDF 解析改用 pdfplumber，提高 PO、Working Number、Article Number、Market PO、Quantity、Cartons 等字段定位稳定性。"
   ],
-  "fixed": [
-    "修复浏览器/服务器模式仍显示桌面安装包更新入口和诊断包按钮的问题。"
-  ]
+  "fixed": []
 }
