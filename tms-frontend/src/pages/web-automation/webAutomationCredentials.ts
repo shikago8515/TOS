@@ -20,24 +20,3 @@ export function canRunWithCredentials(state: ExecutorRunCredentialState): boolea
 
   return state.hasStoredCredentials
 }
-
-export function buildExecutorCredentialsPayload(
-  state: ExecutorCredentialInput,
-): Record<string, string> {
-  const password = state.password.trim()
-  if (password) {
-    return {
-      username: state.username.trim(),
-      password,
-    }
-  }
-
-  if (state.hasStoredCredentials) {
-    return {}
-  }
-
-  return {
-    username: state.username.trim(),
-    password: '',
-  }
-}

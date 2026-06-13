@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  buildExecutorCredentialsPayload,
   canRunWithCredentials,
 } from './webAutomationCredentials'
 
@@ -25,23 +24,13 @@ describe('webAutomationCredentials', () => {
       sending: false,
     })).toBe(false)
   })
-
-  it('omits username and password from payload when stored credentials should be used', () => {
-    expect(buildExecutorCredentialsPayload({
-      username: 'saved-user',
-      password: '',
-      hasStoredCredentials: true,
-    })).toEqual({})
-  })
-
-  it('includes typed credentials when the user enters a password', () => {
-    expect(buildExecutorCredentialsPayload({
+  it('allows execution with newly typed credentials before they are saved', () => {
+    expect(canRunWithCredentials({
       username: 'typed-user',
       password: 'typed-password',
-      hasStoredCredentials: true,
-    })).toEqual({
-      username: 'typed-user',
-      password: 'typed-password',
-    })
+      hasStoredCredentials: false,
+      hasSelectedFile: true,
+      sending: false,
+    })).toBe(true)
   })
 })

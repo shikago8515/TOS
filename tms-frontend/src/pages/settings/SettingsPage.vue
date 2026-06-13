@@ -79,6 +79,27 @@
       </div>
     </div>
 
+    <section class="st-manual">
+      <div class="st-manual__info">
+        <div class="st-manual__icon">
+          <AppIcon name="monitor-code" />
+        </div>
+        <div>
+          <strong>{{ text('自动化助手安装包') }}</strong>
+          <p>{{ text('新用户安装后即可在浏览器页面启动本机自动化助手。') }}</p>
+        </div>
+      </div>
+      <button
+        class="st-btn st-btn--primary"
+        type="button"
+        :disabled="helperDownloading"
+        @click="handleHelperDownload"
+      >
+        <AppIcon name="download" />
+        {{ helperDownloading ? text('打开中...') : text('下载安装包') }}
+      </button>
+    </section>
+
     <!-- ===== Alert ===== -->
     <transition name="st-alert">
       <div v-if="hasDesktopUpdateSupport && noticeText" class="st-alert" :class="`st-alert--${noticeTone}`">
@@ -219,6 +240,7 @@ import {
   subscribeUpdateStatus,
 } from './settingsApi'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
+import { openAutomationHelperDownload } from '../web-automation/webAutomationApi'
 
 type NoticeTone = 'info' | 'success' | 'warning' | 'error'
 type UpdateAction = '' | 'init' | 'check' | 'download' | 'install' | 'manual'
@@ -231,6 +253,7 @@ const status = ref<UpdateStatus | null>(null)
 const activeAction = ref<UpdateAction>('')
 const message = ref('')
 const messageTone = ref<NoticeTone>('info')
+const helperDownloading = ref(false)
 let unsubscribeUpdateStatus: (() => void) | undefined
 const { currentLanguage, languageOptions, t, text } = useAppLanguage()
 const langOpen = ref(false)
@@ -427,6 +450,22 @@ async function handleInstall(): Promise<void> {
 
 async function handleManualDownload(): Promise<void> {
   await runUpdateAction('manual', openManualDownload)
+}
+
+async function handleHelperDownload(): Promise<void> {
+  helperDownloading.value = true
+  message.value = ''
+
+  try {
+    await openAutomationHelperDownload()
+    messageTone.value = 'info'
+    message.value = '已打开自动化助手安装包下载。'
+  } catch (error) {
+    messageTone.value = 'error'
+    message.value = readErrorMessage(error, '自动化助手安装包下载失败')
+  } finally {
+    helperDownloading.value = false
+  }
 }
 
 async function runUpdateAction(

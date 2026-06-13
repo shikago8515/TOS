@@ -3,10 +3,16 @@ import type {
   DiagnosticEvent,
   ElectronActionResult,
 } from '../../types/electronApi'
+import {
+  buildBackendDownloadUrl,
+  postFormData,
+  requestBackendJson,
+} from '../../shared/api/backendClient'
 
 const moduleName = 'web-automation'
 const launcherBaseUrl = 'http://127.0.0.1:3210'
 const launcherProtocolUrl = 'tos://automation/launcher/start'
+const defaultAutomationHelperDownloadPath = '/api/system/config/automation-helper/download'
 
 export interface LocalExecutorHealth {
   ok: boolean
@@ -26,6 +32,44 @@ export interface ExecutorCredentials {
   ok: boolean
   hasStoredCredentials: boolean
   username: string
+  automationId?: string
+  accountKey?: string
+}
+
+export interface ResolvedAutomationCredentials {
+  ok: boolean
+  automationId: string
+  accountKey: string
+  username: string
+  password: string
+}
+
+export interface AutomationTemplate {
+  id: number
+  moduleId: string
+  templateKey: string
+  displayName: string
+  originalFilename: string
+  contentType: string
+  fileSize: number
+  sha256: string
+  downloadPath: string
+}
+
+export interface AutomationRunRecord {
+  runId: string
+  automationId: string
+  moduleId: string
+  runName: string
+  status: string
+  message: string
+}
+
+export interface AutomationRunFileInput {
+  url: string
+  fileName: string
+  fileRole: string
+  contentType?: string
 }
 
 export function hasElectronAutomationSupport(): boolean {
@@ -37,6 +81,31 @@ export function primeLocalAutomationLauncherBoot(): void {
     return
   }
   triggerAutomationProtocol(launcherProtocolUrl)
+}
+
+export function getAutomationHelperDownloadUrl(): string {
+  const configuredUrl = import.meta.env.VITE_AUTOMATION_HELPER_DOWNLOAD_URL
+  return typeof configuredUrl === 'string' && configuredUrl.trim()
+    ? configuredUrl.trim()
+    : defaultAutomationHelperDownloadPath
+}
+
+export async function resolveAutomationHelperDownloadUrl(): Promise<string> {
+  const configuredUrl = getAutomationHelperDownloadUrl()
+  return configuredUrl.startsWith('/api/')
+    ? buildBackendDownloadUrl(configuredUrl)
+    : configuredUrl
+}
+
+export async function openAutomationHelperDownload(): Promise<void> {
+  const downloadUrl = await resolveAutomationHelperDownloadUrl()
+  const anchor = document.createElement('a')
+  anchor.href = downloadUrl
+  anchor.rel = 'noopener'
+  anchor.download = ''
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
 }
 
 export async function fetchAutomationApps(): Promise<AutomationAppInfo[]> {
@@ -129,27 +198,92 @@ export async function probeLocalExecutorHealth(baseUrl: string): Promise<LocalEx
     : new Error('Local executor did not respond.')
 }
 
-export async function fetchExecutorCredentials(baseUrl: string): Promise<ExecutorCredentials> {
-  return requestExecutorJson<ExecutorCredentials>('GET', baseUrl, '/api/credentials')
+export async function fetchExecutorCredentials(automationId: string): Promise<ExecutorCredentials> {
+  return requestBackendJson<ExecutorCredentials>({
+    path: `/api/automation/credentials/${encodeURIComponent(automationId)}`,
+  })
 }
 
 export async function saveExecutorCredentials(
-  baseUrl: string,
-  token: string,
+  automationId: string,
   username: string,
   password: string,
 ): Promise<ExecutorCredentials> {
-  return requestExecutorJson<ExecutorCredentials>('PUT', baseUrl, '/api/credentials', {
-    username,
-    password,
-  }, token)
+  return requestBackendJson<ExecutorCredentials>({
+    method: 'PUT',
+    path: `/api/automation/credentials/${encodeURIComponent(automationId)}`,
+    body: {
+      username,
+      password,
+    },
+  })
 }
 
 export async function clearExecutorCredentials(
-  baseUrl: string,
-  token: string,
+  automationId: string,
 ): Promise<ExecutorCredentials> {
-  return requestExecutorJson<ExecutorCredentials>('DELETE', baseUrl, '/api/credentials', {}, token)
+  return requestBackendJson<ExecutorCredentials>({
+    method: 'DELETE',
+    path: `/api/automation/credentials/${encodeURIComponent(automationId)}`,
+  })
+}
+
+export async function resolveAutomationCredentials(
+  automationId: string,
+): Promise<ResolvedAutomationCredentials> {
+  return requestBackendJson<ResolvedAutomationCredentials>({
+    method: 'POST',
+    path: `/api/automation/credentials/${encodeURIComponent(automationId)}/resolve`,
+  })
+}
+
+export async function fetchAutomationTemplates(moduleId: string): Promise<AutomationTemplate[]> {
+  const payload = await requestBackendJson<{ templates?: AutomationTemplate[] }>({
+    path: `/api/automation/templates?moduleId=${encodeURIComponent(moduleId)}`,
+  })
+  return Array.isArray(payload.templates) ? payload.templates : []
+}
+
+export async function buildAutomationTemplateDownloadUrl(template: AutomationTemplate): Promise<string> {
+  return buildBackendDownloadUrl(template.downloadPath)
+}
+
+export async function createAutomationRunRecord(
+  automationId: string,
+  sourceFile: File,
+  runName = '',
+): Promise<AutomationRunRecord | null> {
+  const formData = new FormData()
+  formData.append('automation_id', automationId)
+  formData.append('module_id', automationId)
+  formData.append('run_name', runName || automationId)
+  formData.append('message', 'started')
+  formData.append('source_file', sourceFile)
+
+  const payload = await postFormData<{ run?: AutomationRunRecord }>({
+    path: '/api/automation/runs',
+    formData,
+  })
+  return payload.run || null
+}
+
+export async function finishAutomationRunRecord(
+  runId: string,
+  status: string,
+  message: string,
+  result: unknown,
+  resultFiles: AutomationRunFileInput[] = [],
+): Promise<void> {
+  await requestBackendJson({
+    method: 'PATCH',
+    path: `/api/automation/runs/${encodeURIComponent(runId)}`,
+    body: {
+      status,
+      message,
+      result,
+      resultFiles,
+    },
+  })
 }
 
 export async function probeLocalAutomationLauncherHealth(): Promise<boolean> {

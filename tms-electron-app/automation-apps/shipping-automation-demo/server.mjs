@@ -14,9 +14,7 @@ const runtimeDataRoot = process.env.TMS_PLAYWRIGHT_DATA_DIR
   ? path.resolve(process.env.TMS_PLAYWRIGHT_DATA_DIR)
   : appRoot;
 const bundledConfigPath = path.join(appRoot, "executor.config.json");
-const bundledSecretPath = path.join(appRoot, "executor.secret.local.json");
 const runtimeConfigPath = path.join(runtimeDataRoot, "executor.config.local.json");
-const runtimeSecretPath = path.join(runtimeDataRoot, "executor.secret.local.json");
 const artifactsDir = path.join(runtimeDataRoot, "run-artifacts");
 const PREPARE_NEXT_PO_DIALOG_TIMEOUT_MS = 3000;
 
@@ -77,23 +75,17 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && (requestPath === "/credentials" || requestPath === "/api/credentials")) {
-      sendJson(res, 200, buildCredentialsPayload());
+      sendJson(res, 410, buildCredentialsPayload());
       return;
     }
 
     if (req.method === "PUT" && (requestPath === "/credentials" || requestPath === "/api/credentials")) {
-      const body = await readJsonBody(req);
-      authorize(req, body);
-      const result = await saveCredentials(body);
-      sendJson(res, 200, result);
+      sendJson(res, 410, buildCredentialsPayload());
       return;
     }
 
     if (req.method === "DELETE" && (requestPath === "/credentials" || requestPath === "/api/credentials")) {
-      const body = await readJsonBody(req);
-      authorize(req, body);
-      const result = await clearCredentials();
-      sendJson(res, 200, result);
+      sendJson(res, 410, buildCredentialsPayload());
       return;
     }
 
@@ -315,8 +307,6 @@ async function ensureRuntimeFiles() {
 async function loadConfig() {
   const base = await readJsonIfExists(bundledConfigPath, {});
   const override = await readJsonIfExists(runtimeConfigPath, {});
-  const secretPath = existsSync(runtimeSecretPath) ? runtimeSecretPath : bundledSecretPath;
-  const secret = await readJsonIfExists(secretPath, {});
   const merged = {
     ...base,
     ...override,
@@ -331,8 +321,6 @@ async function loadConfig() {
     port: Number(process.env.TMS_PLAYWRIGHT_PORT || merged.port || 3003),
     token: String(merged.token || ""),
     loginUrl: String(merged.loginUrl || "https://network.infornexus.com"),
-    username: String(secret.username || ""),
-    password: String(secret.password || ""),
     browser: String(merged.browser || "chromium"),
     headless: Boolean(merged.headless),
     slowMo: Number(merged.slowMo ?? 40),
@@ -358,7 +346,6 @@ function buildHealthPayload() {
     recentRuns,
     dataDir: runtimeDataRoot,
     runtimeConfigPath,
-    runtimeSecretPath,
     config: {
       loginUrl: config.loginUrl,
       browser: config.browser,
@@ -369,7 +356,7 @@ function buildHealthPayload() {
       keepBrowserOpenOnSuccessMs: config.keepBrowserOpenOnSuccessMs,
       keepBrowserOpenOnErrorMs: config.keepBrowserOpenOnErrorMs,
       launchOptions: config.launchOptions,
-      hasStoredCredentials: Boolean(config.username && config.password),
+      credentialsSource: "tos-backend-database",
     },
   };
 }
@@ -395,44 +382,18 @@ function buildVisibleBrowserLaunchOptions(baseOptions, browserName) {
 
 function buildCredentialsPayload() {
   return {
-    ok: true,
-    hasStoredCredentials: Boolean(config.username && config.password),
-    username: config.username || "",
+    ok: false,
+    hasStoredCredentials: false,
+    username: "",
+    message: "Executor credential storage has moved to the TOS backend database.",
   };
 }
 
-async function saveCredentials(body) {
+function resolveCredentials(body) {
   const username = String(body?.username || body?.userId || "").trim();
   const password = String(body?.password || "");
   if (!username || !password) {
-    const error = new Error("Username and password are required.");
-    error.statusCode = 400;
-    throw error;
-  }
-
-  await writeCredentialsFile({ username, password });
-  config.username = username;
-  config.password = password;
-  return buildCredentialsPayload();
-}
-
-async function clearCredentials() {
-  await writeCredentialsFile({ username: "", password: "" });
-  config.username = "";
-  config.password = "";
-  return buildCredentialsPayload();
-}
-
-async function writeCredentialsFile(secret) {
-  await mkdir(runtimeDataRoot, { recursive: true });
-  await writeFile(runtimeSecretPath, `${JSON.stringify(secret, null, 2)}\n`, "utf8");
-}
-
-function resolveCredentials(body) {
-  const username = String(body?.username || body?.userId || config.username || "").trim();
-  const password = String(body?.password || config.password || "");
-  if (!username || !password) {
-    const error = new Error("Username and password are required.");
+    const error = new Error("请提供 Infor Nexus 登录账号密码。");
     error.statusCode = 400;
     throw error;
   }

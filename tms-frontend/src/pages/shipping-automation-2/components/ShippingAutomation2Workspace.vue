@@ -1,1242 +1,537 @@
 <template>
-  <section class="s2-page">
-    <div class="s2-top">
-      <button class="s2-back" type="button" @click="goBack">
+  <div class="s2">
+    <!-- === TOP BAR === -->
+    <header class="s2-top">
+      <button class="s2-back" @click="goBack">
         <AppIcon name="arrow-left" />
         <span>{{ text('返回') }}</span>
       </button>
-      <span class="s2-badge s2-badge--scene">
-        <AppIcon name="bot" />
-        {{ text('自动化场景') }}
-      </span>
-    </div>
-
-    <header class="s2-hero">
-      <div class="s2-hero__icon">
-        <AppIcon name="bot" />
-      </div>
-      <div class="s2-hero__text">
-        <h1>{{ entry ? text(entry.title) : text('未找到入口') }}</h1>
-        <p>{{ entry ? text(entry.subtitle) : text('当前入口不存在，请返回列表重新选择。') }}</p>
+      <div class="s2-top__right">
+        <span class="s2-dot" :class="executorHealth?.ok ? 's2-dot--on' : 's2-dot--off'" />
+        <span class="s2-top__status">{{ executorHealth?.ok ? text('执行器就绪') : text('执行器未连接') }}</span>
       </div>
     </header>
 
-    <transition name="s2-msg">
+    <!-- === ALERT === -->
+    <transition name="s2-alert-anim">
       <div v-if="message" class="s2-alert" :class="`s2-alert--${messageTone}`">
         <AppIcon :name="messageIconName" />
         <span>{{ text(message) }}</span>
+        <button class="s2-alert__close" @click="message = ''"><AppIcon name="stop-circle" /></button>
       </div>
     </transition>
 
+    <!-- === EMPTY === -->
     <div v-if="!entry" class="s2-empty">
-      <div class="s2-empty__icon">
-        <AppIcon name="alert-circle" />
-      </div>
+      <AppIcon name="alert-circle" class="s2-empty__icon" />
       <strong>{{ text('入口不存在') }}</strong>
       <span>{{ text('请返回 Eric - Infornexus 页面重新选择场景。') }}</span>
+      <button class="s2-back" @click="goBack"><AppIcon name="arrow-left" />{{ text('返回') }}</button>
     </div>
 
     <template v-else>
-      <div class="s2-strip">
-        <div class="s2-strip__item">
-          <div class="s2-strip__icon s2-strip__icon--blue">
-            <AppIcon name="monitor-code" />
-          </div>
-          <div class="s2-strip__body">
-            <span class="s2-strip__label">{{ text('运行模式') }}</span>
-            <strong>{{ electronSupported ? 'Electron' : text('浏览器') }}</strong>
-          </div>
-          <span class="s2-dot" :class="electronSupported ? 'is-green' : 'is-slate'" />
+      <!-- === HERO === -->
+      <div class="s2-hero">
+        <div class="s2-hero__icon">
+          <AppIcon name="package" />
         </div>
-
-        <div class="s2-strip__item">
-          <div class="s2-strip__icon s2-strip__icon--teal">
-            <AppIcon name="server" />
-          </div>
-          <div class="s2-strip__body">
-            <span class="s2-strip__label">{{ text('执行器') }}</span>
-            <strong>{{ executorStatusLabel }}</strong>
-          </div>
-          <span class="s2-dot" :class="executorHealth?.ok ? 'is-green' : 'is-slate'" />
+        <div class="s2-hero__text">
+          <h1>{{ text(entry.title) }}</h1>
+          <p>{{ text(entry.subtitle) }}</p>
         </div>
       </div>
 
+      <!-- === MAIN === -->
       <div class="s2-main">
+        <!-- LEFT SIDEBAR -->
         <aside class="s2-side">
-          <div class="s2-panel">
-            <div class="s2-panel__bar" />
-            <div class="s2-panel__head">
-              <AppIcon name="server" />
-              <strong>{{ text('执行器控制') }}</strong>
+          <!-- Executor Control -->
+          <div class="s2-card">
+            <div class="s2-card__hd">
+              <AppIcon name="server" class="s2-card__hd-icon" />
+              <span>{{ text('执行器控制') }}</span>
             </div>
-            <div class="s2-actions-row">
-              <button
-                class="s2-btn s2-btn--primary"
-                :disabled="!canLaunchActiveApp"
-                @click="startActiveApp(false)"
-              >
-                <AppIcon name="play-circle" />
-                {{ launching ? text('启动中...') : text('启动执行器') }}
+            <div class="s2-card__bd s2-actions">
+              <button class="s2-btn s2-btn--pri" :disabled="!canLaunchActiveApp" @click="startActiveApp(false)">
+                <AppIcon name="play-circle" />{{ launching ? text('启动中...') : text('启动执行器') }}
               </button>
-              <button
-                class="s2-btn s2-btn--danger"
-                :disabled="!canStopActiveApp"
-                @click="stopActiveApp"
-              >
-                <AppIcon name="stop-circle" />
-                {{ text('停止') }}
+              <button class="s2-btn s2-btn--danger" :disabled="!canStopActiveApp" @click="stopActiveApp">
+                <AppIcon name="stop-circle" />{{ text('停止') }}
               </button>
               <button class="s2-btn" :disabled="refreshing" @click="refreshExecutorState(false)">
-                <AppIcon name="refresh-cw" :class="{ 's2-spin': refreshing }" />
-                {{ refreshing ? text('刷新中...') : text('刷新状态') }}
+                <AppIcon name="refresh-cw" :class="{ 's2-spin': refreshing }" />{{ text('刷新状态') }}
               </button>
             </div>
           </div>
 
-          <div class="s2-panel">
-            <div class="s2-panel__bar" />
-            <div class="s2-panel__head">
-              <AppIcon name="workflow" />
-              <strong>{{ text('操作流程') }}</strong>
+          <!-- Credentials -->
+          <div class="s2-card">
+            <div class="s2-card__hd">
+              <AppIcon name="shield-check" class="s2-card__hd-icon" />
+              <span>Infor Nexus {{ text('登录账号密码') }}</span>
             </div>
-            <div class="s2-steps">
-              <div v-for="(step, index) in shippingAutomation2Steps" :key="step.title" class="s2-step">
-                <span class="s2-step__num">{{ index + 1 }}</span>
-                <div>
-                  <strong>{{ text(step.title) }}</strong>
-                  <p>{{ text(step.desc) }}</p>
-                </div>
+            <div class="s2-card__bd">
+              <div v-if="hasStoredCredentials" class="s2-note s2-note--ok">
+                <AppIcon name="check-circle" />{{ credentialStatusText }}
+              </div>
+              <label class="s2-field">
+                <span>User ID</span>
+                <input v-model.trim="shippingUsername" class="s2-inp" type="text" autocomplete="username" />
+              </label>
+              <label class="s2-field">
+                <span>Password</span>
+                <span class="s2-inp-wrap">
+                  <input v-model="shippingPassword" :type="showPassword ? 'text' : 'password'" class="s2-inp" autocomplete="current-password" />
+                  <button class="s2-inp__btn" @click="showPassword = !showPassword"><AppIcon name="eye" /></button>
+                </span>
+              </label>
+              <div class="s2-row">
+                <button class="s2-btn s2-btn--pri" :disabled="credentialSaving || !shippingUsername || !shippingPassword" @click="saveCurrentCredentials">
+                  <AppIcon name="shield-check" />{{ credentialSaving ? text('保存中...') : text('保存') }}
+                </button>
+                <button class="s2-btn" :disabled="credentialClearing || !hasStoredCredentials" @click="clearCurrentCredentials">
+                  <AppIcon name="stop-circle" />{{ text('清除') }}
+                </button>
               </div>
             </div>
           </div>
 
-          <details class="s2-details">
-            <summary>
-              <AppIcon name="terminal" />
-              <span>{{ text('执行器健康信息') }}</span>
-              <AppIcon name="chevron-down" class="s2-chevron" />
+          <!-- Steps -->
+          <div class="s2-card">
+            <div class="s2-card__hd">
+              <AppIcon name="workflow" class="s2-card__hd-icon" />
+              <span>{{ text('操作流程') }}</span>
+            </div>
+            <div class="s2-card__bd s2-steps">
+              <div v-for="(step, i) in shippingAutomation2Steps" :key="step.title" class="s2-step" :style="{ animationDelay: `${i * 60}ms` }">
+                <b class="s2-step__n">{{ i + 1 }}</b>
+                <div><em>{{ text(step.title) }}</em><small>{{ text(step.desc) }}</small></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Health -->
+          <details class="s2-card s2-detail">
+            <summary class="s2-detail__sum">
+              <AppIcon name="terminal" /><span>{{ text('执行器健康信息') }}</span><AppIcon name="chevron-down" class="s2-chev" />
             </summary>
-            <pre>{{ healthRaw }}</pre>
+            <pre class="s2-detail__pre">{{ healthRaw }}</pre>
           </details>
         </aside>
 
+        <!-- RIGHT STAGE -->
         <section class="s2-stage">
+          <!-- Helper -->
+          <transition name="s2-alert-anim">
+            <div v-if="showLocalHelperPrompt" class="s2-banner">
+              <AppIcon name="monitor-code" class="s2-banner__icon" />
+              <div>
+                <strong>{{ text('未检测到本机自动化助手') }}</strong>
+                <p>{{ text('请先启动 TOS 自动化助手，然后重新检测。') }}</p>
+              </div>
+              <div class="s2-banner__btns">
+                <button class="s2-btn s2-btn--pri" @click="downloadAutomationHelper"><AppIcon name="download" />{{ text('下载助手') }}</button>
+                <button class="s2-btn" @click="bootLocalHelper"><AppIcon name="play-circle" />{{ text('启动助手') }}</button>
+                <button class="s2-btn" :disabled="refreshing" @click="refreshExecutorState(false)"><AppIcon name="refresh-cw" />{{ text('重新检测') }}</button>
+              </div>
+            </div>
+          </transition>
+
+          <!-- Credentials -->
+          <div class="s2-card s2-card--accent s2-credentials-main">
+            <div class="s2-card__hd s2-card__hd--lg">
+              <AppIcon name="shield-check" class="s2-card__hd-icon" />
+              <span>Infor Nexus {{ text('登录账号密码') }}</span>
+              <span v-if="hasStoredCredentials" class="s2-chip s2-chip--ok">
+                <AppIcon name="check-circle" />{{ text('已保存') }}
+              </span>
+            </div>
+            <div v-if="hasStoredCredentials" class="s2-note s2-note--ok">
+              <AppIcon name="check-circle" />{{ credentialStatusText }}
+            </div>
+            <div class="s2-card__bd">
+              <div class="s2-grid-2">
+                <label class="s2-field">
+                  <span>User ID</span>
+                  <input v-model.trim="shippingUsername" class="s2-inp" type="text" autocomplete="username" />
+                </label>
+                <label class="s2-field">
+                  <span>Password</span>
+                  <span class="s2-inp-wrap">
+                    <input v-model="shippingPassword" :type="showPassword ? 'text' : 'password'" class="s2-inp" autocomplete="current-password" />
+                    <button class="s2-inp__btn" type="button" @click="showPassword = !showPassword"><AppIcon name="eye" /></button>
+                  </span>
+                </label>
+              </div>
+              <div class="s2-row">
+                <button class="s2-btn s2-btn--pri" :disabled="credentialSaving || !shippingUsername || !shippingPassword" @click="saveCurrentCredentials">
+                  <AppIcon name="shield-check" />{{ credentialSaving ? text('保存中...') : text('保存') }}
+                </button>
+                <button class="s2-btn" :disabled="credentialClearing || !hasStoredCredentials" @click="clearCurrentCredentials">
+                  <AppIcon name="stop-circle" />{{ text('清除') }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== DUAL BULK GRID ===== -->
           <div class="s2-bulk-grid">
-            <article
-              v-for="bulk in bulkAreas"
-              :key="bulk.id"
-              class="s2-bulk-card"
-              :class="`s2-bulk-card--${bulk.id}`"
-            >
-              <div class="s2-bulk-card__head">
-                <div class="s2-bulk-card__icon">
-                  <AppIcon name="upload" />
-                </div>
-                <div>
-                  <strong>{{ text(bulk.label) }}</strong>
-                  <p>{{ text('Excel 输入与启动') }}</p>
+            <article v-for="bulk in bulkAreas" :key="bulk.id" class="s2-bulk" :class="`s2-bulk--${bulk.id}`">
+              <!-- Head -->
+              <div class="s2-bulk__hd">
+                <AppIcon :name="bulk.id === 'unreleased' ? 'upload' : 'package'" class="s2-bulk__hd-icon" />
+                <strong>{{ text(bulk.label) }}</strong>
+                <span v-if="bulk.result?.ok" class="s2-chip s2-chip--ok"><AppIcon name="check-circle" />{{ text('已完成') }}</span>
+                <span v-else-if="bulk.running" class="s2-chip s2-chip--busy"><AppIcon name="loader" class="s2-spin" />{{ text('运行中') }}</span>
+              </div>
+
+              <!-- Template -->
+              <div class="s2-bulk__section">
+                <button class="s2-btn" :disabled="templateLoading || !bulkTemplate(bulk.id)" @click="downloadBulkTemplate(bulk.id)">
+                  <AppIcon name="download" />{{ bulkTemplate(bulk.id) ? text('下载模板') : text('暂无模板') }}
+                </button>
+              </div>
+
+              <!-- Upload -->
+              <div class="s2-bulk__section">
+                <div class="s2-drop" :class="{ 's2-drop--on': bulk.file, 's2-drop--over': bulk.dragging }"
+                  @click="openBulkFilePicker(bulk.id)" @dragover.prevent="setBulkDragging(bulk.id, true)" @dragleave.prevent="setBulkDragging(bulk.id, false)" @drop.prevent="handleBulkDrop(bulk.id, $event)">
+                  <input :ref="(el) => setBulkFileInputRef(bulk.id, el)" type="file" accept=".xlsx,.xls" @click.stop @change="handleBulkFileSelect(bulk.id, $event)" />
+                  <template v-if="bulk.file">
+                    <AppIcon name="check-circle" class="s2-drop__ok" />
+                    <b>{{ bulk.file.name }}</b>
+                    <small>{{ formatSize(bulk.file.size) }}</small>
+                    <button class="s2-drop__x" @click.stop="clearBulkFile(bulk.id)"><AppIcon name="stop-circle" /></button>
+                  </template>
+                  <template v-else>
+                    <AppIcon name="upload" class="s2-drop__ic" />
+                    <b>{{ text('选择 Excel 文件') }}</b>
+                    <small>.xlsx / .xls</small>
+                  </template>
+                  <div v-if="bulk.dragging" class="s2-drop__overlay">{{ text('释放以上传') }}</div>
                 </div>
               </div>
 
-              <div
-                class="s2-bulk-dropzone"
-                :class="{
-                  's2-bulk-dropzone--active': bulk.file,
-                  's2-bulk-dropzone--drag': bulk.dragging,
-                }"
-                role="button"
-                tabindex="0"
-                @click="openBulkFilePicker(bulk.id)"
-                @keydown.enter.prevent="openBulkFilePicker(bulk.id)"
-                @keydown.space.prevent="openBulkFilePicker(bulk.id)"
-                @dragover.prevent="setBulkDragging(bulk.id, true)"
-                @dragleave.prevent="setBulkDragging(bulk.id, false)"
-                @drop.prevent="handleBulkDrop(bulk.id, $event)"
-              >
-                <input
-                  :ref="(el) => setBulkFileInputRef(bulk.id, el)"
-                  type="file"
-                  accept=".xlsx,.xls"
-                  @click.stop
-                  @change="handleBulkFileSelect(bulk.id, $event)"
-                />
-                <template v-if="bulk.file">
-                  <div class="s2-bulk-dropzone__icon s2-bulk-dropzone__icon--done">
-                    <AppIcon name="check-circle" />
-                  </div>
-                  <strong>{{ bulk.file.name }}</strong>
-                  <small>{{ formatSize(bulk.file.size) }}</small>
-                  <button class="s2-bulk-clear" type="button" @click.stop="clearBulkFile(bulk.id)">
-                    <AppIcon name="stop-circle" />
-                    {{ text('清除') }}
-                  </button>
-                </template>
-                <template v-else>
-                  <div class="s2-bulk-dropzone__icon">
-                    <AppIcon name="upload" />
-                  </div>
-                  <strong>{{ text('选择 Excel 文件') }}</strong>
-                  <small>{{ text('支持 .xlsx / .xls') }}</small>
-                </template>
-              </div>
-
-              <div class="s2-bulk-actions">
-                <button
-                  class="s2-btn-lg"
-                  :disabled="bulk.running || !bulk.file"
-                  @click="startBulkAutomation(bulk.id)"
-                >
+              <!-- Execute -->
+              <div class="s2-bulk__section">
+                <button class="s2-btn s2-btn--pri s2-btn--xl" :disabled="bulk.running || !bulk.file" @click="startBulkAutomation(bulk.id)">
                   <AppIcon :name="bulk.running ? 'loader' : 'play-circle'" :class="{ 's2-spin': bulk.running }" />
                   {{ bulk.running ? text('启动中...') : text('启动') }}
                 </button>
               </div>
 
-              <div class="s2-bulk-status" :class="`s2-bulk-status--${bulk.tone}`">
-                <AppIcon :name="bulkStatusIcon(bulk)" />
-                <span>{{ text(bulk.statusText) }}</span>
+              <!-- Status -->
+              <div class="s2-bulk__status" :class="`s2-bulk__status--${bulk.tone}`">
+                <AppIcon :name="bulkStatusIcon(bulk)" />{{ text(bulk.statusText) }}
               </div>
 
-              <div v-if="bulk.result" class="s2-bulk-result">
-                <span>{{ text('Run ID') }}</span>
-                <strong>{{ bulk.result.runId }}</strong>
+              <!-- Result -->
+              <div v-if="bulk.result" class="s2-bulk__result">
+                <span>Run ID</span>
+                <code>{{ bulk.result.runId }}</code>
               </div>
             </article>
           </div>
         </section>
       </div>
     </template>
-  </section>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-
 import AppIcon from '../../../shared/ui/AppIcon.vue'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 import type { AutomationAppInfo } from '../../../types/electronApi'
-import type { LocalExecutorHealth } from '../../web-automation/webAutomationApi'
+import type { AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {
-  fetchAutomationApps,
-  hasElectronAutomationSupport,
-  launchAutomationConsole,
-  primeLocalAutomationLauncherBoot,
-  probeLocalAutomationLauncherHealth,
-  probeLocalExecutorHealth,
-  recordWebAutomationEvent,
-  stopAutomationConsole,
+  buildAutomationTemplateDownloadUrl, clearExecutorCredentials, createAutomationRunRecord,
+  fetchAutomationApps, fetchAutomationTemplates, fetchExecutorCredentials, finishAutomationRunRecord,
+  hasElectronAutomationSupport, launchAutomationConsole, openAutomationHelperDownload,
+  primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
+  recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
-import {
-  getAutomationAppStatusLabel,
-  getWebAutomationEntry,
-  type WebAutomationEntry,
-  type WebAutomationNoticeTone,
-} from '../../web-automation/webAutomationModel'
-import {
-  defaultShippingAutomation2Password,
-  defaultShippingAutomation2Username,
-  shippingAutomation2EntryId,
-  shippingAutomation2Steps,
-} from '../shippingAutomation2Model'
+import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
+import { shippingAutomation2EntryId, shippingAutomation2Steps } from '../shippingAutomation2Model'
 
-type BulkAreaId = 'unreleased' | 'released'
-type BulkAreaTone = 'idle' | 'info' | 'success' | 'error'
+type BulkId = 'unreleased' | 'released'
+type BulkTone = 'idle' | 'info' | 'success' | 'error'
+interface BulkResult { ok: boolean; runId?: string; message?: string; finalUrl?: string; generatedAt?: string }
+interface BulkState { id: BulkId; label: string; file: File | null; dragging: boolean; running: boolean; tone: BulkTone; statusText: string; result: BulkResult | null }
 
-interface BulkRunResult {
-  ok: boolean
-  runId?: string
-  message?: string
-  finalUrl?: string
-  generatedAt?: string
-}
-
-interface BulkAreaState {
-  id: BulkAreaId
-  label: string
-  file: File | null
-  dragging: boolean
-  running: boolean
-  tone: BulkAreaTone
-  statusText: string
-  result: BulkRunResult | null
-}
-
-const router = useRouter()
-const { text } = useAppLanguage()
-
+const router = useRouter(); const { text } = useAppLanguage()
 const entry = getWebAutomationEntry(shippingAutomation2EntryId)
 const electronSupported = hasElectronAutomationSupport()
 
-const activeApp = ref<AutomationAppInfo | null>(null)
-const executorHealth = ref<LocalExecutorHealth | null>(null)
-const launcherReachable = ref(false)
-const launching = ref(false)
-const refreshing = ref(false)
-const message = ref('')
-const messageTone = ref<WebAutomationNoticeTone>('info')
-const bulkFileInputs = new Map<BulkAreaId, HTMLInputElement>()
-const bulkAreas = ref<BulkAreaState[]>([
-  {
-    id: 'unreleased',
-    label: 'Unreleased Bulk',
-    file: null,
-    dragging: false,
-    running: false,
-    tone: 'idle',
-    statusText: '等待选择 Excel 文件。',
-    result: null,
-  },
-  {
-    id: 'released',
-    label: 'released Bulk',
-    file: null,
-    dragging: false,
-    running: false,
-    tone: 'idle',
-    statusText: '等待选择 Excel 文件。',
-    result: null,
-  },
+const activeApp = ref<AutomationAppInfo | null>(null); const executorHealth = ref<LocalExecutorHealth | null>(null)
+const executorCredentials = ref<ExecutorCredentials | null>(null); const automationTemplates = ref<AutomationTemplate[]>([])
+const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false)
+const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false)
+const shippingUsername = ref(''); const shippingPassword = ref(''); const showPassword = ref(true)
+const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info')
+const bulkFileInputs = new Map<BulkId, HTMLInputElement>()
+const bulkAreas = ref<BulkState[]>([
+  { id: 'unreleased', label: 'Unreleased Bulk', file: null, dragging: false, running: false, tone: 'idle', statusText: '等待选择 Excel 文件。', result: null },
+  { id: 'released', label: 'released Bulk', file: null, dragging: false, running: false, tone: 'idle', statusText: '等待选择 Excel 文件。', result: null },
 ])
 
-const healthRaw = computed(() => (
-  executorHealth.value ? JSON.stringify(executorHealth.value, null, 2) : '{}'
-))
-
+const healthRaw = computed(() => executorHealth.value ? JSON.stringify(executorHealth.value, null, 2) : '{}')
 const executorStatusLabel = computed(() => {
-  if (activeApp.value) {
-    const label = text(getAutomationAppStatusLabel(activeApp.value))
-    if (executorHealth.value?.ok) {
-      const activeRunCount = Number(executorHealth.value.activeRunCount || 0)
-      return activeRunCount > 0 ? `${label} / ${text('运行')} ${activeRunCount} ${text('个任务')}` : `${label} / ${text('就绪')}`
-    }
-    if (activeApp.value.running) {
-      return `${label} / ${text('未连接')}`
-    }
-    return label
-  }
-  return executorHealth.value?.ok ? text('就绪') : text('未启动')
+  if (activeApp.value) { const l = text(getAutomationAppStatusLabel(activeApp.value)); if (executorHealth.value?.ok) { const c = Number(executorHealth.value.activeRunCount || 0); return c > 0 ? `${l} / ${text('运行')} ${c} ${text('个任务')}` : `${l} / ${text('就绪')}` }; if (activeApp.value.running) return `${l} / ${text('未连接')}`; return l }; return executorHealth.value?.ok ? text('就绪') : text('未启动')
 })
-
 const canLaunchActiveApp = computed(() => Boolean(entry?.appId) && !launching.value)
-const canStopActiveApp = computed(
-  () => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value,
-)
+const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
+const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
+const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
+const savedCredentialUsername = computed(() => executorCredentials.value?.username || '')
+const credentialStatusText = computed(() => { if (hasStoredCredentials.value) { return savedCredentialUsername.value ? `已保存：${savedCredentialUsername.value}` : '已保存 Infor Nexus 登录账号密码。' }; return '未保存 Infor Nexus 登录账号密码。' })
+const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
 
-const messageIconName = computed(() => {
-  if (messageTone.value === 'success') return 'check-circle'
-  if (messageTone.value === 'error') return 'alert-circle'
-  if (messageTone.value === 'warning') return 'info'
-  return 'activity'
-})
+onMounted(() => { void initializeScenario() })
 
-onMounted(() => {
-  void initializeScenario()
-})
-
-async function initializeScenario(): Promise<void> {
-  await refreshExecutorState(true)
-}
+async function initializeScenario(): Promise<void> { await refreshAutomationTemplates(); await refreshExecutorCredentials(); await refreshExecutorState(true) }
 
 async function refreshExecutorState(silent: boolean): Promise<void> {
-  if (!entry || refreshing.value) return
-
-  refreshing.value = true
-  const fallbackApp = createFallbackAutomationApp(entry)
-
-  try {
-    launcherReachable.value = electronSupported
-      ? true
-      : await probeLocalAutomationLauncherHealth()
-
-    if (electronSupported) {
-      try {
-        const apps = await fetchAutomationApps()
-        activeApp.value = apps.find((app) => app.id === entry.appId) ?? fallbackApp
-      } catch {
-        activeApp.value = fallbackApp
-      }
-    } else {
-      activeApp.value = fallbackApp
-    }
-
-    executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl)
-    if (activeApp.value) {
-      activeApp.value = { ...activeApp.value, running: true }
-    }
-
-    if (!silent) {
-      messageTone.value = 'success'
-      message.value = text('状态已刷新。')
-    }
-  } catch {
-    executorHealth.value = null
-    launcherReachable.value = false
-    activeApp.value = activeApp.value || fallbackApp
-    if (!silent) {
-      messageTone.value = 'warning'
-      message.value = text('执行器未就绪，请先启动。')
-    }
-  } finally {
-    refreshing.value = false
-  }
+  if (!entry || refreshing.value) return; refreshing.value = true; const fb = createFallbackAutomationApp(entry)
+  try { launcherReachable.value = electronSupported ? true : await probeLocalAutomationLauncherHealth(); if (electronSupported) { try { const a = await fetchAutomationApps(); activeApp.value = a.find((x) => x.id === entry.appId) ?? fb } catch { activeApp.value = fb } } else { activeApp.value = fb }; if (!electronSupported && !launcherReachable.value) { executorHealth.value = null; activeApp.value = fb; if (!silent) { messageTone.value = 'warning'; message.value = text('未检测到本机自动化助手。') }; return }; executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl); if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }; if (!silent) { messageTone.value = 'success'; message.value = text('状态已刷新。') } } catch { executorHealth.value = null; activeApp.value = activeApp.value || fb; if (!silent) { messageTone.value = 'warning'; message.value = launcherReachable.value ? text('本机自动化助手已连接，执行器尚未启动。') : text('执行器未就绪。') } } finally { refreshing.value = false }
 }
 
-async function startActiveApp(silent: boolean): Promise<void> {
-  if (!entry || launching.value) return
+async function refreshExecutorCredentials(): Promise<void> { if (!entry) return; try { executorCredentials.value = await fetchExecutorCredentials(entry.id); if (executorCredentials.value.username) shippingUsername.value = executorCredentials.value.username; if (executorCredentials.value.hasStoredCredentials) { const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = r.username; shippingPassword.value = r.password } } catch { executorCredentials.value = null } }
+async function refreshAutomationTemplates(): Promise<void> { if (!entry) return; templateLoading.value = true; try { automationTemplates.value = await fetchAutomationTemplates(entry.id) } catch { automationTemplates.value = [] } finally { templateLoading.value = false } }
 
-  if (!electronSupported && !launcherReachable.value) {
-    primeLocalAutomationLauncherBoot()
-  }
+async function saveCurrentCredentials(): Promise<void> { if (!entry || credentialSaving.value) return; const u = shippingUsername.value.trim(); const p = shippingPassword.value; if (!u || !p) { messageTone.value = 'warning'; message.value = '请先填写账号和密码。'; return }; credentialSaving.value = true; try { executorCredentials.value = await saveExecutorCredentials(entry.id, u, p); await refreshExecutorCredentials(); shippingPassword.value = p; messageTone.value = 'success'; message.value = 'Infor Nexus 登录账号密码已保存。' } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, '保存失败。') } finally { credentialSaving.value = false } }
+async function clearCurrentCredentials(): Promise<void> { if (!entry || credentialClearing.value) return; credentialClearing.value = true; try { executorCredentials.value = await clearExecutorCredentials(entry.id); shippingPassword.value = ''; messageTone.value = 'info'; message.value = '已清除。' } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, '清除失败。') } finally { credentialClearing.value = false } }
 
-  launching.value = true
-  try {
-    const result = await launchAutomationConsole(entry.appId)
-    if (!result.success) {
-      throw new Error(result.error || '启动失败')
-    }
+async function resolveRunCredentialsPayload(): Promise<Record<string, string>> { if (!entry) return {}; const u = shippingUsername.value.trim(); const tp = shippingPassword.value; if (tp.trim()) { if (!u) throw new Error('请填写 Infor Nexus 登录账号密码。'); executorCredentials.value = await saveExecutorCredentials(entry.id, u, tp); await refreshExecutorCredentials(); return { username: u, password: tp } }; const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = r.username; shippingPassword.value = r.password; return { username: r.username, password: r.password } }
+function bulkTemplate(id: BulkId): AutomationTemplate | null { return automationTemplates.value.find((t) => t.templateKey === id) || automationTemplates.value.find((t) => t.templateKey === 'default') || automationTemplates.value[0] || null }
+async function downloadBulkTemplate(id: BulkId): Promise<void> { const t = bulkTemplate(id); if (!t) return; try { const u = await buildAutomationTemplateDownloadUrl(t); const a = document.createElement('a'); a.href = u; a.download = t.originalFilename || `${t.templateKey || 'template'}.xlsx`; a.rel = 'noopener'; document.body.append(a); a.click(); a.remove() } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, '下载模板失败。') } }
+function downloadAutomationHelper(): void { void openAutomationHelperDownload() }
+function bootLocalHelper(): void { primeLocalAutomationLauncherBoot(); messageTone.value = 'info'; message.value = text('已尝试启动本机自动化助手。'); window.setTimeout(() => { void refreshExecutorState(true) }, 1200) }
 
-    await refreshExecutorState(true)
-    if (!silent) {
-      messageTone.value = 'success'
-      message.value = result.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。')
-    }
-  } catch (error) {
-    const errMsg = readErrorMessage(error, text('启动失败'))
-    await recordWebAutomationEvent('launch-exception', {
-      appId: entry.appId,
-      entryId: entry.id,
-      error: errMsg,
-    })
-    if (!silent) {
-      messageTone.value = 'error'
-      message.value = errMsg
-    }
-  } finally {
-    launching.value = false
-  }
+async function startActiveApp(silent: boolean): Promise<void> { if (!entry || launching.value) return; if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot(); launching.value = true; try { const r = await launchAutomationConsole(entry.appId); if (!r.success) throw new Error(r.error || '启动失败'); await refreshExecutorState(true); if (!silent) { messageTone.value = 'success'; message.value = r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') } } catch (e) { const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.appId, entryId: entry.id, error: m }); if (!silent) { messageTone.value = 'error'; message.value = m } } finally { launching.value = false } }
+async function stopActiveApp(): Promise<void> { if (!entry) return; try { const r = await stopAutomationConsole(entry.appId); if (!r.success) throw new Error(r.error || '停止失败'); executorHealth.value = null; if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }; await refreshExecutorState(true).catch(() => {}); messageTone.value = 'info'; message.value = text('执行器已停止。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('停止失败')) } }
+async function ensureExecutorReady(): Promise<boolean> { if (executorHealth.value?.ok) return true; await startActiveApp(true); await refreshExecutorState(true).catch(() => {}); return Boolean(executorHealth.value?.ok) }
+
+function setBulkFileInputRef(id: BulkId, el: unknown): void { if (el instanceof HTMLInputElement) bulkFileInputs.set(id, el) }
+function getBulk(id: BulkId): BulkState | undefined { return bulkAreas.value.find((b) => b.id === id) }
+function openBulkFilePicker(id: BulkId): void { bulkFileInputs.get(id)?.click() }
+function handleBulkFileSelect(id: BulkId, e: Event): void { const f = (e.target as HTMLInputElement).files?.[0]; if (f) setBulkFile(id, f) }
+function handleBulkDrop(id: BulkId, e: DragEvent): void { setBulkDragging(id, false); const f = e.dataTransfer?.files?.[0]; if (f) setBulkFile(id, f) }
+function setBulkFile(id: BulkId, file: File): void { const b = getBulk(id); if (!b) return; b.file = file; b.result = null; b.tone = 'info'; b.statusText = `${file.name} 已选择，等待启动。` }
+function setBulkDragging(id: BulkId, v: boolean): void { const b = getBulk(id); if (b) b.dragging = v }
+function clearBulkFile(id: BulkId): void { const b = getBulk(id); if (!b) return; b.file = null; b.dragging = false; b.running = false; b.result = null; b.tone = 'idle'; b.statusText = '等待选择 Excel 文件。'; const inp = bulkFileInputs.get(id); if (inp) inp.value = '' }
+async function createBulkRunRecord(b: BulkState): Promise<AutomationRunRecord | null> { if (!entry || !b.file) return null; return createAutomationRunRecord(entry.id, b.file, `${entry.title} ${b.label}`) }
+async function finishBulkRunRecord(rr: AutomationRunRecord | null, ok: boolean, msg: string, p: BulkResult | null): Promise<void> { if (!rr?.runId) return; await finishAutomationRunRecord(rr.runId, ok ? 'success' : 'failed', msg || (ok ? 'completed' : 'failed'), p) }
+
+async function startBulkAutomation(id: BulkId): Promise<void> {
+  const b = getBulk(id); if (!entry || !b || !b.file || b.running) return
+  b.running = true; b.tone = 'info'; b.result = null; b.statusText = `${b.label} 正在启动...`
+  try { if (!(await ensureExecutorReady())) { b.tone = 'error'; b.statusText = '执行器未就绪。'; return }; const rr = await createBulkRunRecord(b); const fb64 = await fileToBase64(b.file); const cp = await resolveRunCredentialsPayload(); const res = await fetch(getBulkUrl(id), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.localExecutorToken }, body: JSON.stringify({ token: entry.localExecutorToken, ...cp, bulkType: id, fileName: b.file.name, fileBase64: fb64 }) }); const raw = await res.text(); const j = safeParseJson<BulkResult>(raw); await finishBulkRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok || !j?.ok) throw new Error(j?.message || `HTTP ${res.status}`); b.result = j; b.tone = 'success'; b.statusText = j.message || `${b.label} 已启动。`; messageTone.value = 'success'; message.value = b.statusText } catch (e) { b.tone = 'error'; b.statusText = readErrorMessage(e, '启动失败'); messageTone.value = 'error'; message.value = b.statusText } finally { b.running = false; await refreshExecutorState(true).catch(() => {}) }
 }
 
-async function stopActiveApp(): Promise<void> {
-  if (!entry) return
-
-  try {
-    const result = await stopAutomationConsole(entry.appId)
-    if (!result.success) {
-      throw new Error(result.error || '停止失败')
-    }
-
-    executorHealth.value = null
-    if (activeApp.value) {
-      activeApp.value = { ...activeApp.value, running: false }
-    }
-    await refreshExecutorState(true).catch(() => {})
-    messageTone.value = 'info'
-    message.value = text('执行器已停止。')
-  } catch (error) {
-    messageTone.value = 'error'
-    message.value = readErrorMessage(error, text('停止失败'))
-  }
-}
-
-async function ensureExecutorReady(): Promise<boolean> {
-  if (executorHealth.value?.ok) {
-    return true
-  }
-
-  await startActiveApp(true)
-  await refreshExecutorState(true).catch(() => {})
-  return Boolean(executorHealth.value?.ok)
-}
-
-function setBulkFileInputRef(id: BulkAreaId, el: unknown): void {
-  if (el instanceof HTMLInputElement) {
-    bulkFileInputs.set(id, el)
-  }
-}
-
-function getBulkArea(id: BulkAreaId): BulkAreaState | undefined {
-  return bulkAreas.value.find((bulk) => bulk.id === id)
-}
-
-function openBulkFilePicker(id: BulkAreaId): void {
-  bulkFileInputs.get(id)?.click()
-}
-
-function handleBulkFileSelect(id: BulkAreaId, event: Event): void {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  setBulkFile(id, file)
-}
-
-function handleBulkDrop(id: BulkAreaId, event: DragEvent): void {
-  setBulkDragging(id, false)
-  const file = event.dataTransfer?.files?.[0]
-  if (!file) return
-  setBulkFile(id, file)
-}
-
-function setBulkFile(id: BulkAreaId, file: File): void {
-  const bulk = getBulkArea(id)
-  if (!bulk) return
-  bulk.file = file
-  bulk.result = null
-  bulk.tone = 'info'
-  bulk.statusText = `${file.name} 已选择，等待启动。`
-}
-
-function setBulkDragging(id: BulkAreaId, dragging: boolean): void {
-  const bulk = getBulkArea(id)
-  if (!bulk) return
-  bulk.dragging = dragging
-}
-
-function clearBulkFile(id: BulkAreaId): void {
-  const bulk = getBulkArea(id)
-  if (!bulk) return
-  bulk.file = null
-  bulk.dragging = false
-  bulk.running = false
-  bulk.result = null
-  bulk.tone = 'idle'
-  bulk.statusText = '等待选择 Excel 文件。'
-  const input = bulkFileInputs.get(id)
-  if (input) {
-    input.value = ''
-  }
-}
-
-async function startBulkAutomation(id: BulkAreaId): Promise<void> {
-  const bulk = getBulkArea(id)
-  if (!entry || !bulk || !bulk.file || bulk.running) return
-
-  bulk.running = true
-  bulk.tone = 'info'
-  bulk.result = null
-  bulk.statusText = `${bulk.label} 正在启动...`
-
-  try {
-    const executorReady = await ensureExecutorReady()
-    if (!executorReady) {
-      bulk.tone = 'error'
-      bulk.statusText = '执行器未就绪，请先启动执行器。'
-      return
-    }
-
-    const fileBase64 = await fileToBase64(bulk.file)
-    const response = await fetch(getBulkExecutorUrl(id), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Executor-Token': entry.localExecutorToken,
-      },
-      body: JSON.stringify({
-        token: entry.localExecutorToken,
-        username: defaultShippingAutomation2Username,
-        password: defaultShippingAutomation2Password,
-        bulkType: id,
-        fileName: bulk.file.name,
-        fileBase64,
-      }),
-    })
-    const rawText = await response.text()
-    const json = safeParseJson<BulkRunResult>(rawText)
-
-    if (!response.ok || !json?.ok) {
-      throw new Error(json?.message || `HTTP ${response.status}`)
-    }
-
-    bulk.result = json
-    bulk.tone = 'success'
-    bulk.statusText = json.message || `${bulk.label} 已启动。`
-    messageTone.value = 'success'
-    message.value = bulk.statusText
-  } catch (error) {
-    bulk.tone = 'error'
-    bulk.statusText = readErrorMessage(error, '启动失败')
-    messageTone.value = 'error'
-    message.value = bulk.statusText
-  } finally {
-    bulk.running = false
-    await refreshExecutorState(true).catch(() => {})
-  }
-}
-
-function getBulkExecutorUrl(id: BulkAreaId): string {
-  const baseUrl = String(entry?.executorBaseUrl || '').replace(/\/+$/, '')
-  return baseUrl ? `${baseUrl}/api/run-shipping2-${id}-bulk` : ''
-}
-
-async function fileToBase64(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer()
-  const bytes = new Uint8Array(buffer)
-  let binary = ''
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte)
-  }
-  return window.btoa(binary)
-}
-
-function bulkStatusIcon(bulk: BulkAreaState): string {
-  if (bulk.running) return 'loader'
-  if (bulk.tone === 'success') return 'check-circle'
-  if (bulk.tone === 'error') return 'alert-circle'
-  return 'activity'
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function createFallbackAutomationApp(targetEntry: WebAutomationEntry): AutomationAppInfo {
-  return {
-    id: targetEntry.appId,
-    name: targetEntry.title,
-    description: targetEntry.description,
-    provider: 'Playwright',
-    category: 'Web Automation',
-    version: 'local',
-    available: true,
-    running: false,
-    url: targetEntry.executorBaseUrl,
-  }
-}
-
-function safeParseJson<T>(rawText: string): T | null {
-  try {
-    return rawText ? JSON.parse(rawText) as T : null
-  } catch {
-    return null
-  }
-}
-
-function readErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
-}
-
-function goBack(): void {
-  void router.push('/eric-infornexus')
-}
+function getBulkUrl(id: BulkId): string { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-shipping2-${id}-bulk` : '' }
+async function fileToBase64(f: File): Promise<string> { const bytes = new Uint8Array(await f.arrayBuffer()); let bin = ''; for (const b of bytes) bin += String.fromCharCode(b); return window.btoa(bin) }
+function bulkStatusIcon(b: BulkState): string { if (b.running) return 'loader'; if (b.tone === 'success') return 'check-circle'; if (b.tone === 'error') return 'alert-circle'; return 'activity' }
+function formatSize(b: number): string { if (b < 1024) return `${b} B`; if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`; return `${(b / (1024 * 1024)).toFixed(1)} MB` }
+function createFallbackAutomationApp(t: WebAutomationEntry): AutomationAppInfo { return { id: t.appId, name: t.title, description: t.description, provider: 'Playwright', category: 'Web Automation', version: 'local', available: true, running: false, url: t.executorBaseUrl } }
+function safeParseJson<T>(raw: string): T | null { try { return raw ? JSON.parse(raw) as T : null } catch { return null } }
+function readErrorMessage(e: unknown, fb: string): string { return e instanceof Error && e.message ? e.message : fb }
+function goBack(): void { void router.push('/eric-infornexus') }
 </script>
 
-<style scoped>
-@keyframes s2-spin {
-  to { transform: rotate(360deg); }
-}
-
-.s2-page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-height: 100%;
-  padding: 16px 18px 20px;
-  background: #f8fafc;
-}
-
-.s2-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.s2-back,
-.s2-btn,
-.s2-btn-lg,
-.s2-bulk-clear {
-  border: 1px solid #dbe3ef;
-  background: #ffffff;
-  color: #334155;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.s2-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  padding: 0 14px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.s2-back:hover,
-.s2-btn:hover:not(:disabled),
-.s2-btn-lg:hover:not(:disabled),
-.s2-bulk-clear:hover {
-  border-color: #93c5fd;
-  background: #eff6ff;
-}
-
-.s2-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.s2-badge--scene {
-  background: #eff6ff;
-  color: #2563eb;
-}
-
-.s2-hero {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 18px 20px;
-  border: 1px solid #dbe3ef;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
-}
-
-.s2-hero__icon,
-.s2-strip__icon,
-.s2-bulk-card__icon,
-.s2-bulk-dropzone__icon,
-.s2-empty__icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.s2-hero__icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #2563eb, #0ea5e9);
-  color: #ffffff;
-  font-size: 20px;
-}
-
-.s2-hero__text {
-  min-width: 0;
-}
-
-.s2-hero__text h1 {
-  margin: 0;
-  color: #0f172a;
-  font-size: 20px;
-  font-weight: 800;
-}
-
-.s2-hero__text p {
-  margin: 4px 0 0;
-  color: #64748b;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.s2-alert {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid transparent;
-}
-
-.s2-alert--info {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  color: #1d4ed8;
-}
-
-.s2-alert--success {
-  background: #ecfdf5;
-  border-color: #bbf7d0;
-  color: #047857;
-}
-
-.s2-alert--warning {
-  background: #fff7ed;
-  border-color: #fed7aa;
-  color: #c2410c;
-}
-
-.s2-alert--error {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #b91c1c;
-}
-
-.s2-strip {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.s2-strip__item,
-.s2-panel,
-.s2-bulk-card,
-.s2-details,
-.s2-empty {
-  border: 1px solid #dbe3ef;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
-}
-
-.s2-strip__item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-}
-
-.s2-strip__icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  color: #ffffff;
-  font-size: 18px;
-}
-
-.s2-strip__icon--blue {
-  background: linear-gradient(135deg, #2563eb, #0ea5e9);
-}
-
-.s2-strip__icon--teal {
-  background: linear-gradient(135deg, #0f766e, #14b8a6);
-}
-
-.s2-strip__body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.s2-strip__label {
-  color: #64748b;
-  font-size: 12px;
-}
-
-.s2-strip__body strong {
-  color: #0f172a;
-  font-size: 14px;
-  word-break: break-word;
-}
-
-.s2-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-.s2-dot.is-green {
-  background: #10b981;
-}
-
-.s2-dot.is-slate {
-  background: #94a3b8;
-}
-
-.s2-main {
-  display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-
-.s2-side,
-.s2-stage {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-}
-
-.s2-panel,
-.s2-bulk-card {
-  position: relative;
-  overflow: hidden;
-}
-
-.s2-panel__bar {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  background: linear-gradient(180deg, #2563eb, #14b8a6);
-}
-
-.s2-panel__head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 16px 18px 0 22px;
-}
-
-.s2-panel__head strong {
-  color: #0f172a;
-  font-size: 15px;
-}
-
-.s2-actions-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 16px 18px 18px 22px;
-}
-
-.s2-btn,
-.s2-btn-lg {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border-radius: 10px;
-  font-weight: 700;
-}
-
-.s2-btn {
-  min-height: 36px;
-  padding: 0 14px;
-  font-size: 13px;
-}
-
-.s2-btn-lg {
-  min-height: 44px;
-  width: 100%;
-  padding: 0 16px;
-  border-color: #bfdbfe;
-  color: #1d4ed8;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.s2-btn--primary {
-  border-color: #bfdbfe;
-  color: #1d4ed8;
-}
-
-.s2-btn--danger {
-  border-color: #fecaca;
-  color: #dc2626;
-}
-
-.s2-btn:disabled,
-.s2-btn-lg:disabled {
-  opacity: 0.56;
-  cursor: not-allowed;
-}
-
-.s2-spin {
-  animation: s2-spin 0.9s linear infinite;
-}
-
-.s2-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 16px 18px 18px 22px;
-}
-
-.s2-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.s2-step__num {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  background: #dbeafe;
-  color: #2563eb;
-  font-size: 12px;
-  font-weight: 800;
-  flex-shrink: 0;
-}
-
-.s2-step strong {
-  display: block;
-  color: #0f172a;
-  font-size: 13px;
-}
-
-.s2-step p {
-  margin: 4px 0 0;
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-.s2-bulk-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.s2-bulk-card__head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 18px 12px;
-}
-
-.s2-bulk-card__head strong {
-  display: block;
-  color: #0f172a;
-  font-size: 15px;
-}
-
-.s2-bulk-card__head p {
-  margin: 4px 0 0;
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.s2-bulk-card__icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  background: #dbeafe;
-  color: #2563eb;
-  font-size: 17px;
-}
-
-.s2-bulk-card--released .s2-bulk-card__icon {
-  background: #ccfbf1;
-  color: #0f766e;
-}
-
-.s2-bulk-dropzone {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 150px;
-  margin: 0 18px;
-  padding: 18px;
-  border: 1px dashed #cbd5e1;
-  border-radius: 12px;
-  background: #f8fafc;
-  color: #475569;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.s2-bulk-dropzone input {
-  display: none;
-}
-
-.s2-bulk-dropzone:hover,
-.s2-bulk-dropzone--drag {
-  border-color: #60a5fa;
-  background: #eff6ff;
-}
-
-.s2-bulk-dropzone--active {
-  border-color: #86efac;
-  background: #f0fdf4;
-}
-
-.s2-bulk-dropzone__icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  background: #e0f2fe;
-  color: #0284c7;
-  font-size: 18px;
-}
-
-.s2-bulk-dropzone__icon--done {
-  background: #dcfce7;
-  color: #16a34a;
-}
-
-.s2-bulk-dropzone strong {
-  max-width: 100%;
-  color: #0f172a;
-  font-size: 13px;
-  word-break: break-word;
-}
-
-.s2-bulk-dropzone small {
-  color: #64748b;
-  font-size: 12px;
-}
-
-.s2-bulk-clear {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 30px;
-  margin-top: 4px;
-  padding: 0 10px;
-  border-color: #bbf7d0;
-  border-radius: 10px;
-  color: #15803d;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.s2-bulk-actions {
-  padding: 14px 18px 12px;
-}
-
-.s2-bulk-status,
-.s2-bulk-result {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 18px 18px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.s2-bulk-status--idle {
-  background: #f8fafc;
-  color: #475569;
-}
-
-.s2-bulk-status--info {
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-
-.s2-bulk-status--success {
-  background: #ecfdf5;
-  color: #047857;
-}
-
-.s2-bulk-status--error {
-  background: #fef2f2;
-  color: #b91c1c;
-}
-
-.s2-bulk-result {
-  flex-direction: column;
-  align-items: flex-start;
-  margin-top: -6px;
-  background: #f8fafc;
-  color: #475569;
-}
-
-.s2-bulk-result strong {
-  max-width: 100%;
-  color: #0f172a;
-  word-break: break-word;
-}
-
-.s2-details summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 16px;
-  list-style: none;
-  cursor: pointer;
-  color: #334155;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.s2-details summary::-webkit-details-marker {
-  display: none;
-}
-
-.s2-chevron {
-  margin-left: auto;
-}
-
-.s2-details pre {
-  margin: 0;
-  padding: 0 16px 16px;
-  color: #0f172a;
-  font-size: 12px;
-  line-height: 1.7;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.s2-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 36px 20px;
-  text-align: center;
-}
-
-.s2-empty__icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, #f97316, #ef4444);
-  color: #ffffff;
-  font-size: 20px;
-}
-
-.s2-empty strong {
-  color: #0f172a;
-  font-size: 16px;
-}
-
-.s2-empty span {
-  color: #64748b;
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.s2-msg-enter-active,
-.s2-msg-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-.s2-msg-enter-from,
-.s2-msg-leave-to {
-  opacity: 0;
-  transform: translateY(-4px);
-}
-
-@media (max-width: 1120px) {
-  .s2-main,
-  .s2-bulk-grid {
-    grid-template-columns: 1fr;
+<style scoped lang="scss">
+/* ================================================================
+   Shipping 2 — Same design system as scenario page.
+   Ocean blue accent. Core feature: dual bulk cards.
+   ================================================================ */
+
+.s2 {
+  --a: #0ea5e9; --a2: #f0f9ff; --red: #dc2626; --br: #e5e7eb; --mu: #64748b; --ink: #111827;
+  --r: 8px; --sh: 0 1px 2px rgba(0,0,0,.04);
+  display: flex; flex-direction: column; gap: 14px; padding: 18px 22px; min-height: 100%;
+  background: #f6f7f9; color: var(--ink);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+}
+
+/* ---- Layout ---- */
+.s2-main { display: grid; grid-template-columns: 250px minmax(0,1fr); gap: 14px; align-items: start; }
+.s2-side, .s2-stage { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+/* ---- Card ---- */
+.s2-card { background: #fff; border: 1px solid var(--br); border-radius: var(--r); box-shadow: var(--sh); }
+.s2-card--accent { border-left: 3px solid var(--a); }
+.s2-card__hd { display: flex; align-items: center; gap: 8px; padding: 12px 15px; font-size: 13px; font-weight: 700; border-bottom: 1px solid #f3f4f6; }
+.s2-card__hd--lg { padding: 14px 16px; font-size: 14px; }
+.s2-card__hd-icon { font-size: 15px; color: var(--a); flex-shrink: 0; }
+.s2-card__bd { padding: 12px 15px; display: flex; flex-direction: column; gap: 10px; }
+.s2-side > .s2-card:nth-of-type(2) { display: none; }
+
+/* ---- Top Bar ---- */
+.s2-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.s2-top__right { display: flex; align-items: center; gap: 6px; }
+.s2-top__status { font-size: 12px; color: var(--mu); font-weight: 500; }
+.s2-back { display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 10px; border: 1px solid var(--br); border-radius: 6px; background: #fff; color: #4b5563; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: background .15s;
+  :deep(.app-icon) { font-size: 14px; }
+  &:hover { background: #f9fafb; }
+}
+.s2-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  &--on  { background: #10b981; }
+  &--off { background: #d1d5db; }
+}
+
+/* ---- Hero ---- */
+.s2-hero { display: flex; align-items: center; gap: 12px; padding: 18px 20px; background: #fff; border: 1px solid var(--br); border-radius: var(--r); box-shadow: var(--sh); animation: s2-in .4s ease both; }
+.s2-hero__icon { width: 40px; height: 40px; border-radius: 8px; background: var(--a2); color: var(--a); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.s2-hero__text { min-width: 0; h1 { margin: 0; font-size: 16px; font-weight: 700; } p { margin: 2px 0 0; font-size: 12.5px; color: var(--mu); } }
+
+/* ---- Alert ---- */
+.s2-alert { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 6px; font-size: 13px; border: 1px solid; font-weight: 500;
+  :deep(.app-icon) { font-size: 15px; flex-shrink: 0; }
+  &--info    { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+  &--success { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+  &--warning { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+  &--error   { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+  &__close { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-left: auto; border: none; border-radius: 4px; background: rgba(0,0,0,.05); color: var(--mu); cursor: pointer;
+    :deep(.app-icon) { font-size: 12px; }
+    &:hover { background: rgba(0,0,0,.1); }
+  }
+}
+.s2-alert-anim-enter-active { transition: all .25s ease; }
+.s2-alert-anim-leave-active { transition: all .15s ease; }
+.s2-alert-anim-enter-from, .s2-alert-anim-leave-to { opacity: 0; transform: translateY(-6px); }
+
+/* ---- Empty ---- */
+.s2-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 60px 20px; text-align: center; animation: s2-in .4s ease both;
+  &__icon { font-size: 36px; color: #d1d5db; }
+  strong { font-size: 16px; }
+  span { font-size: 13px; color: var(--mu); }
+}
+
+/* ---- Buttons ---- */
+.s2-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 32px; padding: 0 11px; border: 1px solid var(--br); border-radius: 6px; background: #fff; color: #4b5563; font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s ease; white-space: nowrap;
+  :deep(.app-icon) { font-size: 13px; flex-shrink: 0; }
+  &:hover:not(:disabled) { background: #f9fafb; border-color: #d1d5db; }
+  &:disabled { opacity: .45; cursor: not-allowed; }
+  &--pri { background: var(--a); color: #fff; border-color: var(--a);
+    &:hover:not(:disabled) { filter: brightness(1.08); }
+  }
+  &--danger { color: var(--red); border-color: #fecaca;
+    &:hover:not(:disabled) { background: #fef2f2; }
+  }
+  &--xl { height: 38px; padding: 0 18px; width: 100%; font-size: 13px; :deep(.app-icon) { font-size: 14px; } }
+}
+
+.s2-actions { display: flex; flex-direction: column; gap: 5px; }
+.s2-row { display: flex; flex-wrap: wrap; gap: 7px; }
+.s2-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.s2-credentials-main .s2-note { margin: 0 15px; }
+
+/* ---- Steps ---- */
+.s2-steps { display: flex; flex-direction: column; gap: 2px; }
+.s2-step { display: flex; gap: 10px; padding: 9px 10px; border-radius: 6px; transition: background .15s; animation: s2-in .35s ease both;
+  &:hover { background: #f9fafb; }
+  b { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 5px; background: var(--a2); color: var(--a); font-size: 10px; font-weight: 800; flex-shrink: 0; }
+  div { min-width: 0; }
+  em { display: block; font-size: 12px; font-style: normal; font-weight: 600; color: var(--ink); }
+  small { display: block; font-size: 11px; color: var(--mu); line-height: 1.4; margin-top: 1px; }
+}
+
+/* ---- Detail ---- */
+.s2-detail { overflow: hidden; }
+.s2-detail__sum { display: flex; align-items: center; gap: 7px; padding: 10px 14px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--mu); list-style: none; transition: color .15s;
+  &::-webkit-details-marker { display: none; }
+  &:hover { color: var(--ink); }
+  :deep(.app-icon) { font-size: 14px; }
+  span { flex: 1; }
+}
+.s2-detail__pre { margin: 0; max-height: 200px; overflow: auto; padding: 12px 14px; border-top: 1px solid #f3f4f6; background: #1e293b; color: #67e8f9; font-size: 11.5px; font-family: 'Cascadia Code','SF Mono',Consolas,monospace; white-space: pre-wrap; word-break: break-word; }
+.s2-chev { transition: transform .2s; details[open] & { transform: rotate(180deg); } }
+.s2-spin { animation: s2-spin .8s linear infinite; }
+
+/* ---- Banner ---- */
+.s2-banner { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 14px 16px; background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--r);
+  &__icon { font-size: 22px; color: #d97706; flex-shrink: 0; }
+  strong { display: block; font-size: 13px; color: var(--ink); }
+  p { margin: 2px 0 0; font-size: 12px; color: #92400e; }
+  &__btns { display: flex; flex-wrap: wrap; gap: 6px; }
+}
+
+/* ---- Note / Chip ---- */
+.s2-note { display: flex; align-items: flex-start; gap: 7px; padding: 9px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; border: 1px solid;
+  :deep(.app-icon) { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+  &--ok { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+}
+.s2-chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; flex-shrink: 0; margin-left: auto;
+  :deep(.app-icon) { font-size: 11px; }
+  &--ok   { background: #ecfdf5; color: #059669; }
+  &--busy { background: #fffbeb; color: #d97706; }
+}
+
+/* ---- Fields ---- */
+.s2-field { display: flex; flex-direction: column; gap: 4px;
+  > span { font-size: 12px; font-weight: 600; color: var(--ink); }
+}
+.s2-inp-wrap { display: flex; gap: 5px; }
+.s2-inp { flex: 1; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid var(--br); border-radius: 6px; background: #f9fafb; color: var(--ink); font-size: 12.5px; transition: border-color .15s, box-shadow .15s;
+  &::placeholder { color: #9ca3af; }
+  &:focus { outline: none; border-color: var(--a); box-shadow: 0 0 0 2px rgba(14,165,233,.08); background: #fff; }
+  &__btn { display: inline-flex; align-items: center; justify-content: center; width: 34px; flex-shrink: 0; border: 1px solid var(--br); border-radius: 6px; background: #fff; color: var(--mu); cursor: pointer; transition: all .15s;
+    :deep(.app-icon) { font-size: 13px; }
+    &:hover { border-color: var(--a); color: var(--a); background: var(--a2); }
   }
 }
 
-@media (max-width: 760px) {
-  .s2-page {
-    padding: 12px;
+/* ---- Dropzone ---- */
+.s2-drop { position: relative; display: flex; align-items: center; gap: 10px; min-height: 62px; padding: 12px 14px; border: 2px dashed #d1d5db; border-radius: 7px; background: #fafbfc; cursor: pointer; transition: all .2s ease; user-select: none;
+  input { display: none; }
+  &:hover { border-color: #9ca3af; }
+  &--on { border-color: #86efac; border-style: solid; background: #f0fdf4; }
+  &--over { border-color: var(--a); background: var(--a2); transform: scale(1.01); }
+  b { font-size: 12.5px; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  small { font-size: 11px; color: #9ca3af; }
+  &__ic { font-size: 20px; color: #9ca3af; flex-shrink: 0; }
+  &__ok { font-size: 17px; color: #10b981; flex-shrink: 0; }
+  &__x { margin-left: auto; display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: 1px solid var(--br); border-radius: 4px; background: #fff; color: var(--mu); cursor: pointer; flex-shrink: 0; transition: all .15s;
+    :deep(.app-icon) { font-size: 13px; }
+    &:hover { border-color: var(--red); color: var(--red); background: #fef2f2; }
   }
-
-  .s2-top {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .s2-strip {
-    grid-template-columns: 1fr;
-  }
-
-  .s2-panel__head {
-    flex-wrap: wrap;
-  }
+  &__overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.88); border-radius: 7px; font-size: 13px; font-weight: 700; color: var(--a); }
 }
+
+/* ===== BULK CARDS ===== */
+.s2-bulk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.s2-bulk { background: #fff; border: 1px solid var(--br); border-radius: var(--r); box-shadow: var(--sh); display: flex; flex-direction: column;
+  &--unreleased { border-left: 3px solid var(--a); }
+  &--released   { border-left: 3px solid #059669; }
+}
+.s2-bulk__hd { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid #f3f4f6; }
+.s2-bulk__hd-icon { font-size: 16px; flex-shrink: 0;
+  .s2-bulk--unreleased & { color: var(--a); }
+  .s2-bulk--released   & { color: #059669; }
+}
+.s2-bulk__hd strong { font-size: 14px; font-weight: 700; }
+.s2-bulk__section { padding: 12px 15px 0; }
+
+.s2-bulk__status { display: flex; align-items: center; gap: 7px; margin: 10px 15px 0; padding: 9px 13px; border-radius: 6px; font-size: 12.5px; border: 1px solid; font-weight: 500;
+  :deep(.app-icon) { font-size: 14px; flex-shrink: 0; }
+  &--idle    { background: #f9fafb; border-color: #e5e7eb; color: #6b7280; }
+  &--info    { background: #f0f9ff; border-color: #bae6fd; color: #0369a1; }
+  &--success { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+  &--error   { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+}
+
+.s2-bulk__result { margin: 8px 15px 14px; padding: 11px 13px; border-radius: 6px; background: #f9fafb; border: 1px solid #f3f4f6; display: flex; flex-direction: column; gap: 3px;
+  span { font-size: 10.5px; font-weight: 600; color: var(--mu); text-transform: uppercase; letter-spacing: .4px; }
+  code { font-size: 11.5px; font-family: 'Cascadia Code','SF Mono',Consolas,monospace; color: var(--ink); word-break: break-word; }
+}
+
+/* ---- Animations ---- */
+@keyframes s2-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes s2-spin { to { transform: rotate(360deg); } }
+
+/* ---- Responsive ---- */
+@media (max-width: 1120px) { .s2-main, .s2-bulk-grid, .s2-grid-2 { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .s2 { padding: 12px; } .s2-banner { grid-template-columns: 1fr; &__btns { .s2-btn { width: 100%; } } } }
 </style>

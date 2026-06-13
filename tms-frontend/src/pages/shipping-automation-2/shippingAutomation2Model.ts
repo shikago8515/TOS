@@ -1,8 +1,5 @@
 export const shippingAutomation2EntryId = 'shipping-automation-2'
 
-export const defaultShippingAutomation2Username = 'user3@@tmsfashion'
-export const defaultShippingAutomation2Password = 'tmsbjLILY20260202'
-
 export const shippingAutomation2Steps = [
   {
     title: '选择 Bulk 类型',
