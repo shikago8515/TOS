@@ -1,5 +1,35 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.14-improved-draft-packing-separator-row",
+    "version": "0.9.8-beta.3.14",
+    "releaseDate": "2026-06-15",
+    "category": "improved",
+    "pageName": "Draft & Packing List 核对",
+    "pagePath": "/draft-packing-compare",
+    "title": "优化对比结果分隔行样式",
+    "description": "优化 Draft & Packing List 核对结果分隔行样式，组间空白行改用浅色填充，避免误判为空白问题行。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.13-fixed-draft-packing-feedback-label",
+    "version": "0.9.8-beta.3.13",
+    "releaseDate": "2026-06-15",
+    "category": "fixed",
+    "pageName": "Draft & Packing List 核对",
+    "pagePath": "/draft-packing-compare",
+    "title": "简化字段缺失反馈状态",
+    "description": "修正 Draft & Packing List 核对结果中字段缺失状态，只显示“需反馈”，不再附带 Nydia。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.12-improved-process-history-scroll",
+    "version": "0.9.8-beta.3.12",
+    "releaseDate": "2026-06-15",
+    "category": "improved",
+    "pageName": "处理记录",
+    "pagePath": "/jane",
+    "title": "处理记录改为内部滚动",
+    "description": "优化处理记录面板为内部滚动，避免长记录撑高页面。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.11-fixed-draft-packing-description-cleanup",
     "version": "0.9.8-beta.3.11",
     "releaseDate": "2026-06-15",

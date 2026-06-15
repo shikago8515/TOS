@@ -21,6 +21,9 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
 
         self.assertEqual(len(keys), len(set(keys)))
         self.assertGreater(len(records), 2)
+        self.assertIn("0.9.8-beta.3.14", versions)
+        self.assertIn("0.9.8-beta.3.13", versions)
+        self.assertIn("0.9.8-beta.3.12", versions)
         self.assertIn("0.9.8-beta.3.11", versions)
         self.assertIn("0.9.8-beta.3.10", versions)
         self.assertIn("0.9.8-beta.3.9", versions)
@@ -41,6 +44,9 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
         self.assertEqual(upsert_record.call_count, len(release_updates_api.DEFAULT_RELEASE_UPDATE_RECORDS))
         record_keys = [call.args[0]["record_key"] for call in upsert_record.call_args_list]
         self.assertIn("2026-06-13-release-update-records-page", record_keys)
+        self.assertIn("builtin-0.9.8-beta.3.14-improved-draft-packing-separator-row", record_keys)
+        self.assertIn("builtin-0.9.8-beta.3.13-fixed-draft-packing-feedback-label", record_keys)
+        self.assertIn("builtin-0.9.8-beta.3.12-improved-process-history-scroll", record_keys)
         self.assertIn("builtin-0.9.8-beta.3.11-fixed-draft-packing-description-cleanup", record_keys)
 
     def test_frontend_release_history_matches_backend_defaults(self) -> None:

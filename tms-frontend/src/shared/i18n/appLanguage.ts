@@ -859,6 +859,12 @@ const staticTextTranslations: Record<string, string> = {
     'Fixed Draft & Packing List results including PDF disclaimer text and page numbers in Goods Description.',
   '修复版本更新记录页在浏览器模式且后端未启动时显示 Failed to fetch 的问题，改为展示本地版本说明。':
     'Fixed the Version Update Log showing Failed to fetch in browser mode when the backend is not running; it now shows local release notes.',
+  '优化处理记录面板为内部滚动，避免长记录撑高页面。':
+    'Optimized the processing history panel with internal scrolling to prevent long records from stretching the page.',
+  '修正 Draft & Packing List 核对结果中字段缺失状态，只显示“需反馈”，不再附带 Nydia。':
+    'Fixed the Draft & Packing List missing-field status to show only "Feedback required" without appending Nydia.',
+  '优化 Draft & Packing List 核对结果分隔行样式，组间空白行改用浅色填充，避免误判为空白问题行。':
+    'Optimized the Draft & Packing List result separator rows with a light fill so blank group dividers are not mistaken for issue rows.',
   '请先配置正式更新地址，再下载免安装版。': 'Configure the update source before downloading the no-install version.',
   '更新源暂未提供免安装版下载。': 'The update source has not provided a no-install download.',
   '更新源暂未提供 changelog.json': 'The update source has not provided changelog.json',

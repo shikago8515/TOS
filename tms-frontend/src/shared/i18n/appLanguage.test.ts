@@ -221,6 +221,9 @@ describe('appLanguage', () => {
       '版本更新记录页本地 fallback 支持展示内置历史版本记录。',
       '修复 Draft & Packing List 核对结果中 Goods Description 误带入 PDF 免责声明和页码的问题。',
       '修复版本更新记录页在浏览器模式且后端未启动时显示 Failed to fetch 的问题，改为展示本地版本说明。',
+      '优化处理记录面板为内部滚动，避免长记录撑高页面。',
+      '修正 Draft & Packing List 核对结果中字段缺失状态，只显示“需反馈”，不再附带 Nydia。',
+      '优化 Draft & Packing List 核对结果分隔行样式，组间空白行改用浅色填充，避免误判为空白问题行。',
     ]
 
     for (const phrase of phrases) {

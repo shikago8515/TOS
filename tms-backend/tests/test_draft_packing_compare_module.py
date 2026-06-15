@@ -263,6 +263,13 @@ class DraftPackingCompareModuleTests(unittest.TestCase):
         self.assertIn("HS Code / HTS Code", result.groups[0].issue_detail)
         self.assertIn("Goods Description", result.groups[0].issue_detail)
 
+    def test_missing_field_status_uses_generic_feedback_label(self):
+        records = self.module.parse_packing_pages([PACKING_PAGE])
+
+        result = self.module.build_comparison_result([], records[1:2])
+
+        self.assertEqual(result.groups[0].status, "需反馈")
+
     def test_process_extracted_data_writes_two_row_excel_with_issue_sheet_and_fills(self):
         draft_records = self.module.parse_draft_text(DIRECT_AND_ATTACHMENT_DRAFT_TEXT)
         packing_records = self.module.parse_packing_pages([PACKING_PAGE])
@@ -302,10 +309,33 @@ class DraftPackingCompareModuleTests(unittest.TestCase):
             self.assertEqual(ws["I2"].value, "620432")
             self.assertEqual(ws["I3"].value, "62043290")
             self.assertEqual(ws["J2"].value, "需核对")
+            self.assertEqual(ws.max_row, 3)
             self.assertEqual(self._fill_rgb(ws["I2"]), "FFFFC7CE")
             self.assertEqual(self._fill_rgb(ws["I3"]), "FFFFC7CE")
             self.assertGreaterEqual(issues.max_row, 2)
             self.assertIn("HS Code / HTS Code", [issues.cell(row=row, column=4).value for row in range(2, issues.max_row + 1)])
+
+    def test_process_extracted_data_uses_filled_blank_separator_rows(self):
+        draft_records = self.module.parse_draft_text(DIRECT_AND_ATTACHMENT_DRAFT_TEXT)
+        packing_records = self.module.parse_packing_pages([PACKING_PAGE])
+
+        with tempfile.TemporaryDirectory() as folder:
+            result = self.module.process_extracted_data(draft_records, packing_records, folder)
+
+            workbook = openpyxl.load_workbook(result["output_path"])
+            ws = workbook["Draft vs Packing"]
+
+            self.assertEqual(ws.max_row, 1 + result["group_count"] * 2 + result["group_count"] - 1)
+            separator_rows = [4 + group_index * 3 for group_index in range(result["group_count"] - 1)]
+
+            for row_index in separator_rows:
+                values = [ws.cell(row=row_index, column=column_index).value for column_index in range(1, len(self.module.HEADERS) + 1)]
+                self.assertTrue(all(value in (None, "") for value in values))
+                fills = [self._fill_rgb(ws.cell(row=row_index, column=column_index)) for column_index in range(1, len(self.module.HEADERS) + 1)]
+                self.assertTrue(all(fill == "FFEFF6FF" for fill in fills))
+
+            self.assertEqual(self._fill_rgb(ws["H4"]), "FFEFF6FF")
+            self.assertNotEqual(self._fill_rgb(ws["H4"]), "FFFFC7CE")
 
 
 if __name__ == "__main__":

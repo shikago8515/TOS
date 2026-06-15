@@ -137,6 +137,7 @@ class DraftPackingCompareModule:
     RED_FILL = PatternFill("solid", fgColor="FFFFC7CE")
     YELLOW_FILL = PatternFill("solid", fgColor="FFFFF2CC")
     HEADER_FILL = PatternFill("solid", fgColor="FFD9EAF7")
+    SEPARATOR_FILL = PatternFill("solid", fgColor="FFEFF6FF")
 
     def parse_draft_pdf(self, pdf_path: str | os.PathLike[str]) -> list[ExtractedRecord]:
         with pdfplumber.open(pdf_path) as pdf:
@@ -577,7 +578,7 @@ class DraftPackingCompareModule:
         if not issues:
             return "一致"
         if any(issue.issue_type == "字段缺失或定位困难" for issue in issues):
-            return "需反馈Nydia"
+            return "需反馈"
         return "需核对"
 
     def _write_workbook(self, comparison: ComparisonResult, output_path: Path) -> None:
@@ -591,13 +592,14 @@ class DraftPackingCompareModule:
         self._style_header(ws)
         self._style_header(issues_ws)
 
-        for group in comparison.groups:
+        for index, group in enumerate(comparison.groups):
             draft_row = ws.max_row + 1
             ws.append(self._row_values(group.draft, "Draft", group))
             packing_row = ws.max_row + 1
             ws.append(self._row_values(group.packing, "Packing List", group))
             self._apply_issue_fills(ws, group, draft_row, packing_row)
-            ws.append([])
+            if index < len(comparison.groups) - 1:
+                self._append_separator_row(ws)
 
         for issue in comparison.issues:
             issues_ws.append(
@@ -672,6 +674,12 @@ class DraftPackingCompareModule:
             else:
                 ws.cell(row=draft_row, column=column).fill = fill
                 ws.cell(row=packing_row, column=column).fill = fill
+
+    def _append_separator_row(self, ws) -> None:
+        separator_row = ws.max_row + 1
+        ws.append([None] * len(self.HEADERS))
+        for column_index in range(1, len(self.HEADERS) + 1):
+            ws.cell(row=separator_row, column=column_index).fill = self.SEPARATOR_FILL
 
     def _style_header(self, ws) -> None:
         for cell in ws[1]:

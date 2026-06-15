@@ -187,6 +187,28 @@ button:disabled {
 .history-list {
   display: grid;
   gap: 0;
+  max-height: clamp(320px, calc(100vh - 360px), 520px);
+  min-height: 0;
+  padding-right: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.history-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+.history-list::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .history-row {
@@ -358,5 +380,11 @@ time {
 
 .empty-history p {
   margin: 0;
+}
+
+@media (max-width: 768px) {
+  .history-list {
+    max-height: 360px;
+  }
 }
 </style>

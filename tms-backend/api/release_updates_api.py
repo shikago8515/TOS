@@ -53,6 +53,36 @@ def _default_record(
 
 DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
     _default_record(
+        "builtin-0.9.8-beta.3.14-improved-draft-packing-separator-row",
+        "0.9.8-beta.3.14",
+        "2026-06-15",
+        "improved",
+        "Draft & Packing List 核对",
+        "/draft-packing-compare",
+        "优化对比结果分隔行样式",
+        "优化 Draft & Packing List 核对结果分隔行样式，组间空白行改用浅色填充，避免误判为空白问题行。",
+    ),
+    _default_record(
+        "builtin-0.9.8-beta.3.13-fixed-draft-packing-feedback-label",
+        "0.9.8-beta.3.13",
+        "2026-06-15",
+        "fixed",
+        "Draft & Packing List 核对",
+        "/draft-packing-compare",
+        "简化字段缺失反馈状态",
+        "修正 Draft & Packing List 核对结果中字段缺失状态，只显示“需反馈”，不再附带 Nydia。",
+    ),
+    _default_record(
+        "builtin-0.9.8-beta.3.12-improved-process-history-scroll",
+        "0.9.8-beta.3.12",
+        "2026-06-15",
+        "improved",
+        "处理记录",
+        "/jane",
+        "处理记录改为内部滚动",
+        "优化处理记录面板为内部滚动，避免长记录撑高页面。",
+    ),
+    _default_record(
         "builtin-0.9.8-beta.3.11-fixed-draft-packing-description-cleanup",
         "0.9.8-beta.3.11",
         "2026-06-15",
