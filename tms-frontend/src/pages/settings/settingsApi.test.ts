@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ElectronApi } from '../../types/electronApi'
 import { fallbackAppVersion } from '../../shared/version/appVersion'
-import { getAppVersionInfo, getUpdateStatusSnapshot } from './settingsApi'
+import { getAppVersionInfo, getBackendRuntimeVersion, getUpdateStatusSnapshot } from './settingsApi'
 
 function stubWindow(electronAPI?: Partial<ElectronApi>): void {
   vi.stubGlobal('window', { electronAPI })
@@ -70,5 +70,24 @@ describe('settingsApi', () => {
     expect(status.updateAvailable).toBe(false)
     expect(status.updateInfo).toBeNull()
     expect(status.manualDownload).toBeNull()
+  })
+
+  it('getBackendRuntimeVersion always fetches from backend regardless of Electron bridge', async () => {
+    stubWindow()
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ version: '0.9.8-beta.3.15' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(getBackendRuntimeVersion()).resolves.toBe('0.9.8-beta.3.15')
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:8000/')
+  })
+
+  it('getBackendRuntimeVersion falls back to fallbackAppVersion on error', async () => {
+    stubWindow()
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
+
+    await expect(getBackendRuntimeVersion()).resolves.toBe(fallbackAppVersion)
   })
 })

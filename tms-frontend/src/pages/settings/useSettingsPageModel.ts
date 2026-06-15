@@ -10,6 +10,7 @@ import { fallbackAppVersion } from '../../shared/version/appVersion'
 import {
   checkForUpdates,
   downloadUpdate,
+  getBackendRuntimeVersion,
   getAppVersionInfo,
   getUpdateStatusSnapshot,
   hasUpdateBridge,
@@ -29,6 +30,7 @@ export function useSettingsPageModel() {
     version: fallbackAppVersion,
     isPackaged: false,
   })
+  const backendVersion = ref('')
   const status = ref<UpdateStatus | null>(null)
   const activeAction = ref<UpdateAction>('')
   const message = ref('')
@@ -74,7 +76,9 @@ export function useSettingsPageModel() {
     none: '未读取',
   }
   
-  const currentVersion = computed(() => status.value?.currentVersion || versionInfo.value.version)
+  const currentVersion = computed(
+    () => backendVersion.value || status.value?.currentVersion || versionInfo.value.version,
+  )
   const latestVersion = computed(() => {
     const current = currentVersion.value
     const remote = status.value?.updateInfo?.version
@@ -197,12 +201,14 @@ export function useSettingsPageModel() {
     message.value = ''
   
     try {
-      const [nextVersionInfo, nextStatus] = await Promise.all([
+      const [nextVersionInfo, nextStatus, runtimeVersion] = await Promise.all([
         getAppVersionInfo(),
         getUpdateStatusSnapshot(),
+        getBackendRuntimeVersion(),
       ])
       versionInfo.value = nextVersionInfo
       status.value = nextStatus
+      backendVersion.value = runtimeVersion
     } catch (error) {
       messageTone.value = 'error'
       message.value = readErrorMessage(error, '读取应用更新状态失败')

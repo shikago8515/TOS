@@ -23,6 +23,28 @@ export async function getAppVersionInfo(): Promise<AppVersionInfo> {
   return window.electronAPI.getAppVersion()
 }
 
+/**
+ * 始终从后端运行时获取版本号，保证与版本更新页面显示一致。
+ * 不依赖 Electron bridge，避免打包版本与后端运行时版本不同步。
+ */
+export async function getBackendRuntimeVersion(): Promise<string> {
+  try {
+    const backendBaseUrl = await getBackendBaseUrl()
+    const response = await fetch(`${backendBaseUrl}/`)
+
+    if (!response.ok) {
+      return fallbackAppVersion
+    }
+
+    const payload = await response.json() as { version?: unknown }
+    return typeof payload.version === 'string' && payload.version.trim()
+      ? payload.version.trim()
+      : fallbackAppVersion
+  } catch (_error) {
+    return fallbackAppVersion
+  }
+}
+
 export async function getUpdateStatusSnapshot(): Promise<UpdateStatus> {
   if (!window.electronAPI?.getUpdateStatus) {
     return buildUnsupportedStatus()
