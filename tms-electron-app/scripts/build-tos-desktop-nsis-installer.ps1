@@ -39,6 +39,22 @@ function Assert-Under([string]$Path, [string]$Root) {
   }
 }
 
+function ConvertFrom-Utf8Base64([string]$Value) {
+  return [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($Value))
+}
+
+$AppDisplayName = ConvertFrom-Utf8Base64 "VE9TIOahjOmdoueJiA=="
+$FinishRunText = ConvertFrom-Utf8Base64 "5ZCv5YqoIFRPUw=="
+$StopDetail = ConvertFrom-Utf8Base64 "5q2j5Zyo5YGc5q2i5pen54mIIFRPUyDov5vnqIsuLi4="
+$DownloadDetail = ConvertFrom-Utf8Base64 "5q2j5Zyo5LiL6L29IFRPUyDmoYzpnaLniYjmlofku7YuLi4="
+$DownloadFailedMessage = ConvertFrom-Utf8Base64 "VE9TIOahjOmdoueJiOaWh+S7tuS4i+i9veWksei0peOAgumAgOWHuuS7o+egge+8mg=="
+$ExtractDetail = ConvertFrom-Utf8Base64 "5q2j5Zyo6Kej5Y6LIFRPUyDmoYzpnaLniYjmlofku7YuLi4="
+$ExtractFailedMessage = ConvertFrom-Utf8Base64 "VE9TIOahjOmdoueJiOaWh+S7tuino+WOi+Wksei0peOAgumAgOWHuuS7o+egge+8mg=="
+$InstallDetail = ConvertFrom-Utf8Base64 "5q2j5Zyo5a6J6KOFIFRPUyDmoYzpnaLniYjmlofku7YuLi4="
+$CopyFailedMessage = ConvertFrom-Utf8Base64 "VE9TIOahjOmdoueJiOaWh+S7tuWkjeWItuWksei0peOAgumAgOWHuuS7o+egge+8mg=="
+$IncompleteMessage = ConvertFrom-Utf8Base64 "VE9TIOahjOmdoueJiOWuieijheS4jeWujOaVtO+8jOivt+mHjeaWsOi/kOihjOWuieijheWMheOAgg=="
+$UninstallSectionName = ConvertFrom-Utf8Base64 "5Y246L29"
+
 Require-Path $MakeNsis "NSIS compiler"
 Require-Path $Csc "C# compiler"
 Require-Path $SourceAppDir "TOS win-unpacked app"
@@ -354,7 +370,7 @@ ShowInstDetails show
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
 
-Name "TOS Desktop"
+Name "$AppDisplayName"
 OutFile "$installerPathForNsis"
 InstallDir "`$LOCALAPPDATA\TOS"
 InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSDesktop" "InstallLocation"
@@ -365,13 +381,13 @@ BrandingText "TOS"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_RUN "`$INSTDIR\TOS.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "Start TOS"
+!define MUI_FINISHPAGE_RUN_TEXT "$FinishRunText"
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
-!insertmacro MUI_LANGUAGE "English"
+!insertmacro MUI_LANGUAGE "SimpChinese"
 
-Section "TOS Desktop" SecMain
+Section "$AppDisplayName" SecMain
   SetShellVarContext current
   InitPluginsDir
   StrCpy `$1 "`$TEMP\TOS-Desktop-Setup.log"
@@ -382,28 +398,28 @@ Section "TOS Desktop" SecMain
   File /oname=TOS-Desktop-Extract.exe "$extractorForNsis"
   File /oname=TOS-Desktop-Cleanup.exe "$cleanupForNsis"
 
-  DetailPrint "Stopping old TOS processes..."
+  DetailPrint "$StopDetail"
   nsExec::ExecToLog 'cmd /c ""`$PLUGINSDIR\TOS-Desktop-Cleanup.exe" "`$INSTDIR" >> "`$1" 2>&1"'
 
-  DetailPrint "Downloading TOS desktop payload..."
+  DetailPrint "$DownloadDetail"
   nsExec::ExecToLog 'cmd /c ""`$PLUGINSDIR\TOS-Desktop-Download.exe" "$payloadUrlForNsis" "`$PLUGINSDIR\TOS-Desktop-Payload.zip" "$PayloadSha256" >> "`$1" 2>&1"'
   Pop `$0
   `${If} `$0 != 0
-    MessageBox MB_ICONSTOP "TOS payload download failed. Exit code: `$0"
+    MessageBox MB_ICONSTOP "$DownloadFailedMessage`$0"
     Abort
   `${EndIf}
 
-  DetailPrint "Extracting TOS desktop files..."
+  DetailPrint "$ExtractDetail"
   RMDir /r "`$2"
   CreateDirectory "`$2"
   nsExec::ExecToLog 'cmd /c ""`$PLUGINSDIR\TOS-Desktop-Extract.exe" "`$PLUGINSDIR\TOS-Desktop-Payload.zip" "`$2" >> "`$1" 2>&1"'
   Pop `$0
   `${If} `$0 != 0
-    MessageBox MB_ICONSTOP "TOS payload extraction failed. Exit code: `$0"
+    MessageBox MB_ICONSTOP "$ExtractFailedMessage`$0"
     Abort
   `${EndIf}
 
-  DetailPrint "Installing TOS desktop files..."
+  DetailPrint "$InstallDetail"
   CreateDirectory "`$INSTDIR"
   RMDir /r "`$INSTDIR\locales"
   RMDir /r "`$INSTDIR\resources"
@@ -412,7 +428,7 @@ Section "TOS Desktop" SecMain
   nsExec::ExecToLog 'cmd /c robocopy "`$2" "`$INSTDIR" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >> "`$1" 2>&1'
   Pop `$0
   `${If} `$0 > 7
-    MessageBox MB_ICONSTOP "TOS file copy failed. Exit code: `$0"
+    MessageBox MB_ICONSTOP "$CopyFailedMessage`$0"
     Abort
   `${EndIf}
 
@@ -423,12 +439,12 @@ Section "TOS Desktop" SecMain
   Goto install_complete
 
   install_incomplete:
-    MessageBox MB_ICONSTOP "TOS installation is incomplete. Please run the installer again."
+    MessageBox MB_ICONSTOP "$IncompleteMessage"
     Abort
 
   install_complete:
   SetOutPath "`$INSTDIR"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSDesktop" "DisplayName" "TOS Desktop"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSDesktop" "DisplayName" "$AppDisplayName"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSDesktop" "Publisher" "TOS"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSDesktop" "InstallLocation" "`$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSDesktop" "UninstallString" '"`$INSTDIR\Uninstall.exe"'
@@ -442,7 +458,7 @@ Section "TOS Desktop" SecMain
   WriteUninstaller "`$INSTDIR\Uninstall.exe"
 SectionEnd
 
-Section "Uninstall"
+Section "$UninstallSectionName"
   SetShellVarContext current
   nsExec::ExecToLog 'cmd /c ""`$INSTDIR\TOS-Desktop-Cleanup.exe" "`$INSTDIR"'
   Delete "`$DESKTOP\TOS.lnk"
