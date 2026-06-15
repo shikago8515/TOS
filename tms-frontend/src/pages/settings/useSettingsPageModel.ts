@@ -15,6 +15,7 @@ import {
   hasUpdateBridge,
   installUpdate,
   openManualDownload,
+  openTosDesktopDownload,
   subscribeUpdateStatus,
 } from './settingsApi'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
@@ -32,6 +33,7 @@ export function useSettingsPageModel() {
   const activeAction = ref<UpdateAction>('')
   const message = ref('')
   const messageTone = ref<NoticeTone>('info')
+  const desktopInstallerDownloading = ref(false)
   const helperDownloading = ref(false)
   let unsubscribeUpdateStatus: (() => void) | undefined
   const { t, text } = useAppLanguage()
@@ -224,6 +226,22 @@ export function useSettingsPageModel() {
   async function handleManualDownload(): Promise<void> {
     await runUpdateAction('manual', openManualDownload)
   }
+
+  async function handleDesktopInstallerDownload(): Promise<void> {
+    desktopInstallerDownloading.value = true
+    message.value = ''
+
+    try {
+      await openTosDesktopDownload()
+      messageTone.value = 'info'
+      message.value = '已打开 TOS 应用安装包下载。'
+    } catch (error) {
+      messageTone.value = 'error'
+      message.value = readErrorMessage(error, 'TOS 应用安装包下载失败')
+    } finally {
+      desktopInstallerDownloading.value = false
+    }
+  }
   
   async function handleHelperDownload(): Promise<void> {
     helperDownloading.value = true
@@ -391,11 +409,14 @@ export function useSettingsPageModel() {
     canDownload,
     canInstall,
     changelogGroups,
+    currentVersion,
+    desktopInstallerDownloading,
     downloadDetail,
     emptyChangelogText,
     feedUrlSourceLabel,
     feedUrlText,
     handleCheck,
+    handleDesktopInstallerDownload,
     handleDownload,
     handleHelperDownload,
     handleInstall,
@@ -404,6 +425,7 @@ export function useSettingsPageModel() {
     hasDesktopUpdateSupport,
     helperDownloading,
     isActionLocked,
+    latestVersion,
     manualDownload,
     manualDownloadDetail,
     message,
@@ -411,6 +433,7 @@ export function useSettingsPageModel() {
     noticeTone,
     progressPercent,
     releaseNoteItems,
+    runModeLabel,
     status,
     statusLabel,
     statusTone,

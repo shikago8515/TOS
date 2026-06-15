@@ -3,8 +3,10 @@ import type {
   UpdateActionResult,
   UpdateStatus,
 } from '../../types/electronApi'
-import { getBackendBaseUrl } from '../../shared/api/backendClient'
+import { buildBackendDownloadUrl, getBackendBaseUrl } from '../../shared/api/backendClient'
 import { fallbackAppVersion } from '../../shared/version/appVersion'
+
+const defaultTosDesktopDownloadPath = 'https://ai.tomwell.net:56130/tos/tos-desktop/download'
 
 export function hasUpdateBridge(): boolean {
   return Boolean(window.electronAPI?.getUpdateStatus)
@@ -63,6 +65,31 @@ export async function openManualDownload(): Promise<UpdateActionResult> {
 
 export function subscribeUpdateStatus(callback: (status: UpdateStatus) => void): () => void {
   return window.electronAPI?.onUpdateStatus?.(callback) ?? (() => {})
+}
+
+export function getTosDesktopDownloadUrl(): string {
+  const configuredUrl = import.meta.env.VITE_TOS_DESKTOP_DOWNLOAD_URL
+  return typeof configuredUrl === 'string' && configuredUrl.trim()
+    ? configuredUrl.trim()
+    : defaultTosDesktopDownloadPath
+}
+
+export async function resolveTosDesktopDownloadUrl(): Promise<string> {
+  const configuredUrl = getTosDesktopDownloadUrl()
+  return configuredUrl.startsWith('/api/')
+    ? buildBackendDownloadUrl(configuredUrl)
+    : configuredUrl
+}
+
+export async function openTosDesktopDownload(): Promise<void> {
+  const downloadUrl = await resolveTosDesktopDownloadUrl()
+  const anchor = document.createElement('a')
+  anchor.href = downloadUrl
+  anchor.rel = 'noopener'
+  anchor.download = ''
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
 }
 
 async function buildUnsupportedResult(): Promise<UpdateActionResult> {

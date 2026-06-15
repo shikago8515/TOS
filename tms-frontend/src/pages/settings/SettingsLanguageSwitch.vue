@@ -71,16 +71,16 @@ function closeOnOutsideClick(event: MouseEvent): void {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 38px;
+  height: 36px;
   padding: 0 14px;
   color: #1e293b;
   font-size: 13px;
-  font-weight: 600;
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid #dbe7e5;
-  border-radius: 10px;
+  font-weight: 700;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
   cursor: pointer;
-  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease, color 0.22s ease;
   user-select: none;
 
   > :deep(.app-icon) {
@@ -91,7 +91,9 @@ function closeOnOutsideClick(event: MouseEvent): void {
 
   &:hover {
     border-color: #99f6e4;
-    box-shadow: 0 6px 16px rgba(13, 148, 136, 0.08);
+    background: #f0fdfa;
+    color: #0f766e;
+    box-shadow: 0 4px 12px rgba(15, 118, 110, 0.1);
   }
 }
 
@@ -112,19 +114,18 @@ function closeOnOutsideClick(event: MouseEvent): void {
 
 .st-lang-dropdown {
   position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
+  top: calc(100% + 8px);
   right: 0;
-  width: 100%;
+  min-width: 140px;
   padding: 6px;
   z-index: 30;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid #dbe7e5;
-  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
   box-shadow:
-    0 10px 25px -5px rgba(0, 0, 0, 0.1),
-    0 1px 4px rgba(0, 0, 0, 0.04);
+    0 18px 38px rgba(15, 23, 42, 0.13),
+    0 3px 10px rgba(15, 23, 42, 0.06);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -142,9 +143,9 @@ function closeOnOutsideClick(event: MouseEvent): void {
   font-size: 13px;
   font-weight: 600;
   color: #475569;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
+  transition: background 0.18s ease, color 0.18s ease;
 
   &:hover,
   &--active {
@@ -160,16 +161,16 @@ function closeOnOutsideClick(event: MouseEvent): void {
 }
 
 .st-dropdown-enter-active {
-  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .st-dropdown-leave-active {
-  transition: opacity 0.15s ease-in, transform 0.15s ease-in;
+  transition: opacity 0.15s ease-in, transform 0.18s ease-in;
 }
 
 .st-dropdown-enter-from {
   opacity: 0;
-  transform: translateY(-6px) scale(0.98);
+  transform: translateY(-8px) scale(0.98);
 }
 
 .st-dropdown-leave-to {

@@ -21,6 +21,14 @@ HELPER_PAYLOAD_DEFAULT_OBJECT_KEY = "automation-helper/TOS-Automation-Helper-Pay
 HELPER_PAYLOAD_DEFAULT_FILENAME = "TOS-Automation-Helper-Payload.zip"
 HELPER_PAYLOAD_CONTENT_TYPE = "application/zip"
 HELPER_PAYLOAD_VERSIONED_PREFIX = "automation-helper/payloads"
+TOS_DESKTOP_DEFAULT_BUCKET_KEY = "downloads"
+TOS_DESKTOP_DEFAULT_OBJECT_KEY = "tos-desktop/TOS-Desktop-Setup.exe"
+TOS_DESKTOP_DEFAULT_FILENAME = "TOS-Desktop-Setup.exe"
+TOS_DESKTOP_CONTENT_TYPE = "application/vnd.microsoft.portable-executable"
+TOS_DESKTOP_PAYLOAD_DEFAULT_OBJECT_KEY = "tos-desktop/TOS-Desktop-Payload.zip"
+TOS_DESKTOP_PAYLOAD_DEFAULT_FILENAME = "TOS-Desktop-Payload.zip"
+TOS_DESKTOP_PAYLOAD_CONTENT_TYPE = "application/zip"
+TOS_DESKTOP_PAYLOAD_VERSIONED_PREFIX = "tos-desktop/payloads"
 
 
 @router.get("/summary")
@@ -137,6 +145,118 @@ async def automation_helper_versioned_payload_download(
         response.stream(64 * 1024),
         media_type=str(
             helper_config.get("payload_content_type") or HELPER_PAYLOAD_CONTENT_TYPE
+        ),
+        headers=headers,
+        background=BackgroundTask(response.close),
+    )
+
+
+@router.get("/tos-desktop/download")
+async def tos_desktop_download() -> StreamingResponse:
+    desktop_config = (
+        get_settings()
+        .get("downloads", {})
+        .get("tos_desktop", {})
+    )
+    bucket = str(desktop_config.get("bucket") or get_minio_bucket(TOS_DESKTOP_DEFAULT_BUCKET_KEY))
+    object_key = str(desktop_config.get("object_key") or TOS_DESKTOP_DEFAULT_OBJECT_KEY)
+    filename = str(desktop_config.get("filename") or TOS_DESKTOP_DEFAULT_FILENAME)
+
+    try:
+        response = get_object_response(bucket, object_key)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="TOS 应用安装包未上传，请先生成并上传到 MinIO。",
+        ) from exc
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "no-store",
+    }
+    return StreamingResponse(
+        response.stream(64 * 1024),
+        media_type=str(desktop_config.get("content_type") or TOS_DESKTOP_CONTENT_TYPE),
+        headers=headers,
+        background=BackgroundTask(response.close),
+    )
+
+
+@router.get("/tos-desktop/payload")
+async def tos_desktop_payload_download() -> StreamingResponse:
+    desktop_config = (
+        get_settings()
+        .get("downloads", {})
+        .get("tos_desktop", {})
+    )
+    bucket = str(desktop_config.get("bucket") or get_minio_bucket(TOS_DESKTOP_DEFAULT_BUCKET_KEY))
+    object_key = str(
+        desktop_config.get("payload_object_key") or TOS_DESKTOP_PAYLOAD_DEFAULT_OBJECT_KEY
+    )
+    filename = str(
+        desktop_config.get("payload_filename") or TOS_DESKTOP_PAYLOAD_DEFAULT_FILENAME
+    )
+
+    try:
+        response = get_object_response(bucket, object_key)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="TOS 应用 payload 未上传，请先生成并上传到 MinIO。",
+        ) from exc
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "no-store",
+    }
+    return StreamingResponse(
+        response.stream(64 * 1024),
+        media_type=str(
+            desktop_config.get("payload_content_type") or TOS_DESKTOP_PAYLOAD_CONTENT_TYPE
+        ),
+        headers=headers,
+        background=BackgroundTask(response.close),
+    )
+
+
+@router.get("/tos-desktop/payload/{payload_sha256}")
+async def tos_desktop_versioned_payload_download(
+    payload_sha256: str,
+) -> StreamingResponse:
+    normalized_sha = payload_sha256.strip().lower()
+    if not re.fullmatch(r"[a-f0-9]{64}", normalized_sha):
+        raise HTTPException(status_code=400, detail="Invalid payload sha256.")
+
+    desktop_config = (
+        get_settings()
+        .get("downloads", {})
+        .get("tos_desktop", {})
+    )
+    bucket = str(desktop_config.get("bucket") or get_minio_bucket(TOS_DESKTOP_DEFAULT_BUCKET_KEY))
+    versioned_prefix = str(
+        desktop_config.get("payload_versioned_prefix") or TOS_DESKTOP_PAYLOAD_VERSIONED_PREFIX
+    ).strip("/")
+    filename = str(
+        desktop_config.get("payload_filename") or TOS_DESKTOP_PAYLOAD_DEFAULT_FILENAME
+    )
+    object_key = f"{versioned_prefix}/{normalized_sha}/{filename}"
+
+    try:
+        response = get_object_response(bucket, object_key)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"TOS 应用 payload 版本不存在：{normalized_sha}",
+        ) from exc
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "no-store",
+    }
+    return StreamingResponse(
+        response.stream(64 * 1024),
+        media_type=str(
+            desktop_config.get("payload_content_type") or TOS_DESKTOP_PAYLOAD_CONTENT_TYPE
         ),
         headers=headers,
         background=BackgroundTask(response.close),

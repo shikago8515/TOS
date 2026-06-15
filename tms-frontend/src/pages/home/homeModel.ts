@@ -1,8 +1,10 @@
 import {
   getModuleById,
   getModulesByGroup,
+  tosModules,
   type TosModuleDefinition,
   type TosModuleId,
+  type TosModuleStage,
 } from '../../domain/moduleCatalog'
 import type { TranslationKey } from '../../shared/i18n/appLanguage'
 
@@ -15,34 +17,63 @@ const excelModules = [
   ...getModulesByGroup('finance-excel'),
 ]
 const collectorModules = getModulesByGroup('general-tools')
-const automationModules: TosModuleDefinition[] = []
 
+/* ── Dynamic counts from full module catalog ── */
+const productionModules = tosModules.filter(
+  (m) => m.stage === 'production' && m.id !== 'home' && m.id !== 'settings',
+)
+const validationModules = tosModules.filter(
+  (m) => m.stage === 'validation',
+)
+const allFunctionalModules = tosModules.filter(
+  (m) => m.id !== 'home' && m.id !== 'settings',
+)
+
+/* ── Metric tiles (4 cards) ── */
 export const homeMetricTiles = [
   {
-    labelKey: 'app.home.metricExcel',
-    value: excelModules.length,
-    detailKey: 'app.home.metricExcelDetail',
-    tone: 'blue',
+    key: 'excel',
+    label: 'Excel 处理',
+    value: String(excelModules.length),
+    detail: '杰西卡 / 索菲 / 简 / 埃里克 / 杰森 / 露西亚',
+    icon: 'database',
+    tone: 'green' as const,
+    delta: '+2',
+    deltaLabel: '较昨日',
   },
   {
-    labelKey: 'app.home.metricCollector',
-    value: collectorModules.length,
-    detailKey: 'app.home.metricCollectorDetail',
-    tone: 'green',
+    key: 'production',
+    label: '正式模块',
+    value: String(productionModules.length),
+    detail: '所有已上线模块',
+    icon: 'globe-search',
+    tone: 'green' as const,
+    delta: undefined,
+    deltaLabel: undefined,
   },
   {
-    labelKey: 'app.home.metricTesting',
-    value: automationModules.length,
-    detailKey: null,
-    tone: 'amber',
+    key: 'validation',
+    label: '测试模块',
+    value: String(validationModules.length),
+    detail: '浏览器插件 / 网页自动化 / ...',
+    icon: 'workflow',
+    tone: 'orange' as const,
+    delta: undefined,
+    deltaLabel: undefined,
   },
-] as const satisfies readonly {
-  labelKey: TranslationKey
-  value: number
-  detailKey: TranslationKey | null
-  tone: 'blue' | 'green' | 'amber'
-}[]
+  {
+    key: 'health',
+    label: '系统健康度',
+    value: '100%',
+    detail: '所有服务运行正常',
+    icon: 'shield-check',
+    tone: 'blue' as const,
+    delta: undefined,
+    deltaLabel: undefined,
+  },
+] as const
 
+/* ── Module shortcut IDs (12 modules) ── */
 export const homeShortcutModuleIds = [
   'jessca',
   'sophia-tina',
@@ -60,34 +91,92 @@ export const homeShortcutModuleIds = [
 
 export const homeShortcutModules = homeShortcutModuleIds.map(getModuleById)
 
+/* ── Module cards for the 4×3 grid ── */
+export interface HomeModuleCard {
+  module: TosModuleDefinition
+  iconName: string
+  iconTone: 'green' | 'blue' | 'orange'
+  stageLabel: string
+  stageDot: 'green' | 'blue'
+}
+
+export const homeModuleCards: HomeModuleCard[] = allFunctionalModules.map((mod) => {
+  let iconTone: 'green' | 'blue' | 'orange' = 'green'
+  if (mod.stage === 'validation') {
+    iconTone = 'blue'
+  }
+  if (mod.category === 'pdf') {
+    iconTone = 'orange'
+  }
+
+  const stageLabel = mod.stage === 'validation' ? '测试阶段' : '正式模块'
+  const stageDot: 'green' | 'blue' = mod.stage === 'validation' ? 'blue' : 'green'
+
+  const iconMap: Record<string, string> = {
+    jessca: 'check-circle',
+    'sophia-tina': 'files',
+    jane: 'package',
+    'jane-bom-summary': 'layers',
+    'jane-bom-compare': 'sliders',
+    'jane-outbound-compare': 'check-circle',
+    'jane-sap': 'monitor-code',
+    eric: 'database',
+    'eric-infornexus': 'globe',
+    'jason-pdf-reorder': 'file-search',
+    'draft-packing-compare': 'files',
+    'tms-finance-internal-reconciliation': 'bar-chart',
+    'tms-finance-work-sales': 'trending-up',
+    'browser-plugins': 'puzzle',
+    'web-automation': 'workflow',
+    infornexus: 'external-link',
+    'adidas-materials': 'globe-search',
+  }
+
+  return {
+    module: mod,
+    iconName: iconMap[mod.id] || 'puzzle',
+    iconTone,
+    stageLabel,
+    stageDot,
+  }
+})
+
+/* ── Service status items (运行概况) ── */
 export const serviceStatusItems = [
   {
-    labelKey: 'app.home.serviceBackend',
-    descriptionKey: 'app.home.serviceBackendDesc',
-    statusKey: 'app.home.serviceBackendStatus',
-    tone: 'online',
+    key: 'backend',
+    title: 'Python 后端',
+    subtitle: '本地业务服务',
+    status: '运行中',
+    tone: 'online' as const,
   },
   {
-    labelKey: 'app.home.serviceDiagnostics',
-    descriptionKey: 'app.home.serviceDiagnosticsDesc',
-    statusKey: 'app.home.serviceDiagnosticsStatus',
-    tone: 'ready',
+    key: 'diagnostics',
+    title: '诊断日志',
+    subtitle: '当前会话与模块运行记录',
+    status: '可导出',
+    tone: 'ready' as const,
   },
   {
-    labelKey: 'app.home.serviceAutomation',
-    descriptionKey: 'app.home.serviceAutomationDesc',
-    statusKey: 'app.home.serviceAutomationStatus',
-    tone: 'working',
+    key: 'automation',
+    title: '浏览器自动化',
+    subtitle: '浏览器插件 / 网页自动化',
+    status: '业务验证中',
+    tone: 'working' as const,
   },
   {
-    labelKey: 'app.home.serviceFiles',
-    descriptionKey: 'app.home.serviceFilesDesc',
-    statusKey: 'app.home.serviceFilesStatus',
-    tone: 'ready',
+    key: 'files',
+    title: '文件准备',
+    subtitle: 'Excel 模块默认模板准备',
+    status: 'jessica - 对账核对',
+    tone: 'online' as const,
   },
-] as const satisfies readonly {
-  labelKey: TranslationKey
-  descriptionKey: TranslationKey
-  statusKey: TranslationKey
-  tone: 'online' | 'ready' | 'working'
-}[]
+]
+
+/* ── Quick actions (快捷操作) ── */
+export const homeQuickActions = [
+  { icon: 'plus', label: '新建任务', tone: 'green' as const, path: '/jessca' },
+  { icon: 'bar-chart', label: '任务监控', tone: 'blue' as const, path: '/web-automation' },
+  { icon: 'file-search', label: '日志查看', tone: 'purple' as const, path: '/browser-plugins' },
+  { icon: 'settings', label: '系统设置', tone: 'slate' as const, path: '/settings' },
+]

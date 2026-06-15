@@ -40,8 +40,8 @@ export function useAppShellModel() {
   const expandedNavGroups = ref<Set<TosModuleGroup>>(new Set(['jessica', 'sophia', 'jane', 'eric', 'jason', 'finance-excel']))
   const expandedCategories = ref<Set<string>>(new Set())
   const { isEnglish, t, text } = useAppLanguage()
-  const utilityMenuRef = ref<HTMLElement | null>(null)
-  const utilityMenuOpen = ref(false)
+  const profileMenuRef = ref<HTMLElement | null>(null)
+  const profileMenuOpen = ref(false)
   
   interface ToastState {
     visible: boolean
@@ -77,6 +77,10 @@ export function useAppShellModel() {
     ].filter((group) => group.items.length > 0)
   })
   
+  const hasUnseenReleaseNotes = computed(() => {
+    return releaseNotice.value.visible && releaseNotice.value.releaseNotes !== null
+  })
+
   function showToast(type: ToastState['type'], icon: string, title: string, message: string): void {
     if (toastTimer) clearTimeout(toastTimer)
     toast.value = { visible: true, type, icon, title, message }
@@ -191,36 +195,36 @@ export function useAppShellModel() {
     isSidebarHidden.value = !isSidebarHidden.value
   }
   
-  function toggleUtilityMenu(): void {
-    utilityMenuOpen.value = !utilityMenuOpen.value
+  function toggleProfileMenu(): void {
+    profileMenuOpen.value = !profileMenuOpen.value
   }
-  
-  function closeUtilityMenu(): void {
-    utilityMenuOpen.value = false
+
+  function closeProfileMenu(): void {
+    profileMenuOpen.value = false
   }
-  
+
   function openSettingsPage(): void {
-    closeUtilityMenu()
+    closeProfileMenu()
     void router.push('/settings')
   }
-  
+
   function openReleaseUpdatesPage(): void {
-    closeUtilityMenu()
+    closeProfileMenu()
     void router.push('/release-updates')
   }
-  
+
   function handleTopbarDocumentClick(event: MouseEvent): void {
-    if (!utilityMenuOpen.value) return
+    if (!profileMenuOpen.value) return
     const target = event.target
-    if (target instanceof Node && utilityMenuRef.value?.contains(target)) {
+    if (target instanceof Node && profileMenuRef.value?.contains(target)) {
       return
     }
-    closeUtilityMenu()
+    closeProfileMenu()
   }
-  
+
   function handleTopbarKeydown(event: KeyboardEvent): void {
     if (event.key === 'Escape') {
-      closeUtilityMenu()
+      closeProfileMenu()
     }
   }
   
@@ -336,6 +340,7 @@ export function useAppShellModel() {
     getCategoryLabel,
     getModuleIcon,
     getModuleNavLabel,
+    hasUnseenReleaseNotes,
     isMobile,
     isModuleActive,
     isNavGroupExpanded,
@@ -356,8 +361,8 @@ export function useAppShellModel() {
     toggleCategory,
     toggleNavGroup,
     toggleSidebar,
-    toggleUtilityMenu,
-    utilityMenuOpen,
-    utilityMenuRef,
+    toggleProfileMenu,
+    profileMenuOpen,
+    profileMenuRef,
   }
 }

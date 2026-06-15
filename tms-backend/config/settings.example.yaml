@@ -32,6 +32,15 @@ downloads:
     payload_filename: "TOS-Automation-Helper-Payload.zip"
     payload_content_type: "application/zip"
     payload_versioned_prefix: "automation-helper/payloads"
+  tos_desktop:
+    bucket: "tos-downloads"
+    object_key: "tos-desktop/TOS-Desktop-Setup.exe"
+    filename: "TOS-Desktop-Setup.exe"
+    content_type: "application/vnd.microsoft.portable-executable"
+    payload_object_key: "tos-desktop/TOS-Desktop-Payload.zip"
+    payload_filename: "TOS-Desktop-Payload.zip"
+    payload_content_type: "application/zip"
+    payload_versioned_prefix: "tos-desktop/payloads"
 
 security:
   # Leave blank for local development. The backend will create

@@ -102,34 +102,39 @@
             <span>{{ displayDate }}</span>
           </div>
 
-          <div ref="utilityMenuRef" class="topbar-menu">
+          <button
+            class="topbar-icon-btn topbar-bell"
+            type="button"
+            :title="text('版本更新记录')"
+            @click="openReleaseUpdatesPage"
+          >
+            <AppIcon name="bell" />
+            <span v-if="hasUnseenReleaseNotes" class="topbar-bell__badge">!</span>
+          </button>
+
+          <div ref="profileMenuRef" class="topbar-profile-wrap">
             <button
-              class="topbar-menu-btn"
+              class="topbar-profile"
               type="button"
-              :aria-expanded="utilityMenuOpen"
-              aria-haspopup="menu"
-              @click="toggleUtilityMenu"
+              :aria-expanded="profileMenuOpen"
+              @click="toggleProfileMenu"
             >
-              <span class="topbar-menu-icon">
-                <AppIcon name="settings" class="action-icon" />
+              <span class="topbar-profile__avatar">
+                <AppIcon name="user" />
               </span>
-              <span class="topbar-menu-label">{{ text('系统') }}</span>
-              <AppIcon name="chevron-down" class="topbar-menu-chevron" />
+              <span class="topbar-profile__name">{{ text('系统管理员') }}</span>
+              <AppIcon name="chevron-down" class="topbar-profile__chevron" />
             </button>
 
-            <transition name="utility-menu-fade">
-              <div v-if="utilityMenuOpen" class="utility-menu" role="menu">
-                <button class="utility-menu-item" type="button" role="menuitem" @click="openReleaseUpdatesPage">
-                  <span class="utility-menu-icon">
-                    <AppIcon name="clock" />
-                  </span>
-                  <span>
-                    <strong>{{ text('版本更新记录') }}</strong>
-                    <small>{{ text('查看每次更新影响的页面和内容') }}</small>
-                  </span>
-                </button>
-                <button class="utility-menu-item" type="button" role="menuitem" @click="openSettingsPage">
-                  <span class="utility-menu-icon">
+            <transition name="profile-menu-fade">
+              <div v-if="profileMenuOpen" class="profile-menu" role="menu">
+                <button
+                  class="profile-menu-item"
+                  type="button"
+                  role="menuitem"
+                  @click="openSettingsPage"
+                >
+                  <span class="profile-menu-icon">
                     <AppIcon name="settings" />
                   </span>
                   <span>
@@ -234,6 +239,7 @@ const {
   getCategoryLabel,
   getModuleIcon,
   getModuleNavLabel,
+  hasUnseenReleaseNotes,
   isMobile,
   isModuleActive,
   isNavGroupExpanded,
@@ -254,9 +260,9 @@ const {
   toggleCategory,
   toggleNavGroup,
   toggleSidebar,
-  toggleUtilityMenu,
-  utilityMenuOpen,
-  utilityMenuRef,
+  toggleProfileMenu,
+  profileMenuOpen,
+  profileMenuRef,
 } = useAppShellModel()
 </script>
 
@@ -1574,7 +1580,7 @@ const {
 
 .menu-btn,
 .topbar-pill,
-.topbar-menu-btn {
+.topbar-icon-btn {
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-muted);
@@ -1588,8 +1594,7 @@ const {
 }
 
 .menu-btn:hover,
-.topbar-menu-btn:hover,
-.topbar-menu-btn[aria-expanded="true"] {
+.topbar-icon-btn:hover {
   border-color: #99f6e4;
   background: var(--color-primary-soft);
   color: var(--color-primary);
@@ -1598,10 +1603,9 @@ const {
 }
 
 .menu-btn:active,
-.topbar-menu-btn:active,
+.topbar-icon-btn:active,
 .menu-item:active,
-.menu-category-title:active,
-.utility-menu-item:active {
+.menu-category-title:active {
   transform: scale(0.98);
 }
 
@@ -1630,132 +1634,179 @@ const {
 }
 
 .topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   position: relative;
   z-index: 640;
 }
 
-.topbar-menu {
-  position: relative;
-  z-index: 620;
-}
-
-.topbar-menu-btn {
-  height: 40px;
-  padding: 0 12px 0 8px;
-  border-radius: 999px;
-  font-weight: 700;
-  min-width: 104px;
+.topbar-icon-btn {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-}
-
-.topbar-menu-icon {
-  width: 28px;
-  height: 28px;
-  background: #ecfeff;
-  color: var(--color-primary);
-  transition: background 0.2s ease, color 0.2s ease;
-}
-
-.topbar-menu-btn:hover .topbar-menu-icon,
-.topbar-menu-btn[aria-expanded="true"] .topbar-menu-icon {
-  background: var(--color-primary);
-  color: #ffffff;
-}
-
-.topbar-menu-chevron {
-  color: var(--color-muted);
-}
-
-.utility-menu {
-  top: calc(100% + 14px);
-  right: -2px;
-  z-index: 760;
-  width: 304px;
-  padding: 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 16px;
-  background:
-    linear-gradient(180deg, rgba(240, 253, 250, 0.72), rgba(255, 255, 255, 0.98) 34%),
-    #ffffff;
-  box-shadow:
-    0 24px 60px rgba(15, 23, 42, 0.15),
-    0 2px 8px rgba(15, 118, 110, 0.08);
-  transform-origin: calc(100% - 48px) 0;
-}
-
-.utility-menu::before {
-  content: '';
-  position: absolute;
-  top: -7px;
-  right: 38px;
-  width: 12px;
-  height: 12px;
-  border-top: 1px solid var(--color-border);
-  border-left: 1px solid var(--color-border);
-  background: #f7fffd;
-  transform: rotate(45deg);
-}
-
-.utility-menu-item {
-  grid-template-columns: 40px 1fr;
-  gap: 12px;
-  min-height: 62px;
-  padding: 10px;
-  border-radius: 12px;
-  color: var(--color-text);
-  transition:
-    background 0.18s ease,
-    color 0.18s ease,
-    transform 0.18s var(--ease-spring);
-}
-
-.utility-menu-item + .utility-menu-item {
-  margin-top: 4px;
-}
-
-.utility-menu-item:hover:not(:disabled) {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
-  transform: translateX(2px);
-}
-
-.utility-menu-icon {
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background: #ecfeff;
+  font-size: 17px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.topbar-profile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.topbar-profile:hover {
+  border-color: #99f6e4;
+  background: var(--color-primary-soft);
+  box-shadow: var(--shadow-focus);
+}
+
+.topbar-profile__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.topbar-profile__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.topbar-profile__chevron {
+  font-size: 12px;
+  color: var(--color-muted);
+  flex-shrink: 0;
+}
+
+.topbar-bell {
+  position: relative;
+}
+
+.topbar-bell__badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #ffffff;
+  pointer-events: none;
+}
+
+.topbar-profile-wrap {
+  position: relative;
+}
+
+.profile-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 320;
+  width: 260px;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+  box-shadow:
+    0 18px 38px rgba(15, 23, 42, 0.13),
+    0 3px 10px rgba(15, 23, 42, 0.06);
+}
+
+.profile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+  font: inherit;
+}
+
+.profile-menu-item:hover {
+  background: var(--color-primary-soft);
   color: var(--color-primary);
 }
 
-.utility-menu-item:hover:not(:disabled) .utility-menu-icon {
-  background: var(--color-primary);
-  color: #ffffff;
+.profile-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--color-surface-muted);
+  color: var(--color-primary-strong);
+  font-size: 16px;
+  flex-shrink: 0;
 }
 
-.utility-menu-item strong {
-  font-size: 14px;
-  line-height: 1.25;
-  color: currentColor;
+.profile-menu-item strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
 }
 
-.utility-menu-item small {
-  margin-top: 4px;
+.profile-menu-item small {
+  display: block;
+  margin-top: 2px;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 11.5px;
   line-height: 1.35;
 }
 
-.utility-menu-fade-enter-active,
-.utility-menu-fade-leave-active {
-  transition:
-    opacity 0.18s ease,
-    transform 0.22s var(--ease-spring);
+.profile-menu-fade-enter-active,
+.profile-menu-fade-leave-active {
+  transition: opacity 0.16s ease, transform 0.16s ease;
 }
 
-.utility-menu-fade-enter-from,
-.utility-menu-fade-leave-to {
+.profile-menu-fade-enter-from,
+.profile-menu-fade-leave-to {
   opacity: 0;
-  transform: translateY(-8px) scale(0.98);
+  transform: translateY(-4px);
 }
 
 .content-shell {
@@ -1841,18 +1892,12 @@ const {
     padding: 12px;
   }
 
-  .topbar-menu-btn {
-    min-width: 42px;
-    padding: 0 8px;
+  .topbar-profile__info {
+    display: none;
   }
 
-  .utility-menu {
-    right: 0;
-    width: min(304px, calc(100vw - 24px));
-  }
-
-  .utility-menu::before {
-    right: 18px;
+  .topbar-profile {
+    padding: 4px;
   }
 }
 </style>
