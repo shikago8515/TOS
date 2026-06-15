@@ -21,8 +21,8 @@ export const webAutomationEntries: WebAutomationEntry[] = [
   {
     id: 'microsoft-login-n8n',
     title: 'Microsoft Login / SAP BTP',
-    subtitle: 'n8n + Excel 驱动可见浏览器',
-    description: '上传 Excel 后由 n8n webhook 回调本机执行器，启动 Playwright 可见浏览器完成 Microsoft Login 与 SAP BTP 操作。',
+    subtitle: 'SAP BTP 自动登录',
+    description: '上传 Excel 后自动完成 Microsoft 登录与 SAP BTP 平台操作。',
     appId: 'microsoft-login-n8n-demo',
     executorBaseUrl: 'http://127.0.0.1:3002',
     localExecutorToken: 'local-ms-login-5f1d3d6d4bda4b2db7d54c8ce8c71e91',
