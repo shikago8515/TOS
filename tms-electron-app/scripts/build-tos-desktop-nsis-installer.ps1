@@ -104,7 +104,6 @@ foreach ($pattern in $runtimeFiles) {
 
 $DownloaderSourcePath = Join-Path $OutputRoot "TOS-Desktop-Download.cs"
 $DownloaderExePath = Join-Path $OutputRoot "TOS-Desktop-Download.exe"
-$ExtractorScriptPath = Join-Path $OutputRoot "TOS-Desktop-Extract.ps1"
 $CleanupSourcePath = Join-Path $OutputRoot "TOS-Desktop-Cleanup.cs"
 $CleanupExePath = Join-Path $OutputRoot "TOS-Desktop-Cleanup.exe"
 
@@ -206,26 +205,6 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 @'
-param(
-  [Parameter(Mandatory = $true)]
-  [string]$ZipPath,
-  [Parameter(Mandatory = $true)]
-  [string]$TargetDir
-)
-
-$ErrorActionPreference = "Stop"
-$resolvedZip = [System.IO.Path]::GetFullPath($ZipPath)
-$resolvedTarget = [System.IO.Path]::GetFullPath($TargetDir)
-
-if (-not (Test-Path -LiteralPath $resolvedZip -PathType Leaf)) {
-  throw "Payload zip not found: $resolvedZip"
-}
-
-New-Item -ItemType Directory -Path $resolvedTarget -Force | Out-Null
-Expand-Archive -LiteralPath $resolvedZip -DestinationPath $resolvedTarget -Force
-'@ | Set-Content -Path $ExtractorScriptPath -Encoding ASCII
-
-@'
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -311,7 +290,6 @@ $resolvedPayloadUrl = $PayloadUrl.Replace("{sha256}", $PayloadSha256)
 $payloadUrlForNsis = $resolvedPayloadUrl.Replace('"', '%22')
 $installerPathForNsis = $InstallerPath.Replace("\", "\\")
 $downloaderForNsis = $DownloaderExePath.Replace("\", "\\")
-$extractorForNsis = $ExtractorScriptPath.Replace("\", "\\")
 $cleanupForNsis = $CleanupExePath.Replace("\", "\\")
 
 @"
@@ -346,13 +324,12 @@ Section "$AppDisplayName" SecMain
   SetShellVarContext current
   InitPluginsDir
   StrCpy `$1 "`$TEMP\TOS-Desktop-Setup.log"
-  StrCpy `$3 "`$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+  StrCpy `$3 "`$WINDIR\Sysnative\tar.exe"
   IfFileExists "`$3" +2 0
-    StrCpy `$3 "`$WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
+    StrCpy `$3 "`$WINDIR\System32\tar.exe"
   Delete "`$1"
   SetOutPath "`$PLUGINSDIR"
   File /oname=TOS-Desktop-Download.exe "$downloaderForNsis"
-  File /oname=TOS-Desktop-Extract.ps1 "$extractorForNsis"
   File /oname=TOS-Desktop-Cleanup.exe "$cleanupForNsis"
 
   DetailPrint "$StopDetail"
@@ -372,7 +349,7 @@ Section "$AppDisplayName" SecMain
   RMDir /r "`$INSTDIR\resources"
   Delete "`$INSTDIR\TOS.exe"
   Delete "`$INSTDIR\electron.exe"
-  nsExec::ExecToLog 'cmd /c ""`$3" -NoProfile -ExecutionPolicy Bypass -File "`$PLUGINSDIR\TOS-Desktop-Extract.ps1" "`$PLUGINSDIR\TOS-Desktop-Payload.zip" "`$INSTDIR" >> "`$1" 2>&1"'
+  nsExec::ExecToLog 'cmd /c ""`$3" -xf "`$PLUGINSDIR\TOS-Desktop-Payload.zip" -C "`$INSTDIR" >> "`$1" 2>&1"'
   Pop `$0
   `${If} `$0 != 0
     MessageBox MB_ICONSTOP "$ExtractFailedMessage`$0"
