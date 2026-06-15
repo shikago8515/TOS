@@ -104,8 +104,7 @@ foreach ($pattern in $runtimeFiles) {
 
 $DownloaderSourcePath = Join-Path $OutputRoot "TOS-Desktop-Download.cs"
 $DownloaderExePath = Join-Path $OutputRoot "TOS-Desktop-Download.exe"
-$ExtractorSourcePath = Join-Path $OutputRoot "TOS-Desktop-Extract.cs"
-$ExtractorExePath = Join-Path $OutputRoot "TOS-Desktop-Extract.exe"
+$ExtractorScriptPath = Join-Path $OutputRoot "TOS-Desktop-Extract.ps1"
 $CleanupSourcePath = Join-Path $OutputRoot "TOS-Desktop-Cleanup.cs"
 $CleanupExePath = Join-Path $OutputRoot "TOS-Desktop-Cleanup.exe"
 
@@ -207,68 +206,24 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 @'
-using System;
-using System.IO;
-using System.IO.Compression;
+param(
+  [Parameter(Mandatory = $true)]
+  [string]$ZipPath,
+  [Parameter(Mandatory = $true)]
+  [string]$TargetDir
+)
 
-internal static class Program
-{
-    private static int Main(string[] args)
-    {
-        if (args.Length < 2)
-        {
-            Console.Error.WriteLine("Usage: extractor <zip-file> <target-dir>");
-            return 2;
-        }
+$ErrorActionPreference = "Stop"
+$resolvedZip = [System.IO.Path]::GetFullPath($ZipPath)
+$resolvedTarget = [System.IO.Path]::GetFullPath($TargetDir)
 
-        try
-        {
-            string zipPath = Path.GetFullPath(args[0]);
-            string targetDir = Path.GetFullPath(args[1]);
-            Directory.CreateDirectory(targetDir);
-            ExtractZip(zipPath, targetDir);
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine(ex.Message);
-            return 1;
-        }
-    }
-
-    private static void ExtractZip(string zipPath, string targetDir)
-    {
-        string normalizedTarget = targetDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        using (ZipArchive archive = ZipFile.OpenRead(zipPath))
-        {
-            foreach (ZipArchiveEntry entry in archive.Entries)
-            {
-                string destinationPath = Path.GetFullPath(Path.Combine(targetDir, entry.FullName));
-                if (!destinationPath.StartsWith(normalizedTarget, StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new InvalidOperationException("Unsafe zip entry: " + entry.FullName);
-                }
-                if (entry.FullName.EndsWith("/", StringComparison.Ordinal) || entry.FullName.EndsWith("\\", StringComparison.Ordinal))
-                {
-                    Directory.CreateDirectory(destinationPath);
-                    continue;
-                }
-                string directory = Path.GetDirectoryName(destinationPath);
-                if (!string.IsNullOrEmpty(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-                entry.ExtractToFile(destinationPath, true);
-            }
-        }
-    }
+if (-not (Test-Path -LiteralPath $resolvedZip -PathType Leaf)) {
+  throw "Payload zip not found: $resolvedZip"
 }
-'@ | Set-Content -Path $ExtractorSourcePath -Encoding ASCII
 
-& $Csc /nologo /target:exe /platform:anycpu /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll /out:$ExtractorExePath $ExtractorSourcePath
-if ($LASTEXITCODE -ne 0) {
-  throw "C# payload extractor build failed with exit code $LASTEXITCODE"
-}
+New-Item -ItemType Directory -Path $resolvedTarget -Force | Out-Null
+Expand-Archive -LiteralPath $resolvedZip -DestinationPath $resolvedTarget -Force
+'@ | Set-Content -Path $ExtractorScriptPath -Encoding ASCII
 
 @'
 using System;
@@ -356,7 +311,7 @@ $resolvedPayloadUrl = $PayloadUrl.Replace("{sha256}", $PayloadSha256)
 $payloadUrlForNsis = $resolvedPayloadUrl.Replace('"', '%22')
 $installerPathForNsis = $InstallerPath.Replace("\", "\\")
 $downloaderForNsis = $DownloaderExePath.Replace("\", "\\")
-$extractorForNsis = $ExtractorExePath.Replace("\", "\\")
+$extractorForNsis = $ExtractorScriptPath.Replace("\", "\\")
 $cleanupForNsis = $CleanupExePath.Replace("\", "\\")
 
 @"
@@ -391,11 +346,10 @@ Section "$AppDisplayName" SecMain
   SetShellVarContext current
   InitPluginsDir
   StrCpy `$1 "`$TEMP\TOS-Desktop-Setup.log"
-  StrCpy `$2 "`$TEMP\TOS-Desktop-Stage"
   Delete "`$1"
   SetOutPath "`$PLUGINSDIR"
   File /oname=TOS-Desktop-Download.exe "$downloaderForNsis"
-  File /oname=TOS-Desktop-Extract.exe "$extractorForNsis"
+  File /oname=TOS-Desktop-Extract.ps1 "$extractorForNsis"
   File /oname=TOS-Desktop-Cleanup.exe "$cleanupForNsis"
 
   DetailPrint "$StopDetail"
@@ -409,26 +363,16 @@ Section "$AppDisplayName" SecMain
     Abort
   `${EndIf}
 
-  DetailPrint "$ExtractDetail"
-  RMDir /r "`$2"
-  CreateDirectory "`$2"
-  nsExec::ExecToLog 'cmd /c ""`$PLUGINSDIR\TOS-Desktop-Extract.exe" "`$PLUGINSDIR\TOS-Desktop-Payload.zip" "`$2" >> "`$1" 2>&1"'
-  Pop `$0
-  `${If} `$0 != 0
-    MessageBox MB_ICONSTOP "$ExtractFailedMessage`$0"
-    Abort
-  `${EndIf}
-
   DetailPrint "$InstallDetail"
   CreateDirectory "`$INSTDIR"
   RMDir /r "`$INSTDIR\locales"
   RMDir /r "`$INSTDIR\resources"
   Delete "`$INSTDIR\TOS.exe"
   Delete "`$INSTDIR\electron.exe"
-  nsExec::ExecToLog 'cmd /c robocopy "`$2" "`$INSTDIR" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >> "`$1" 2>&1'
+  nsExec::ExecToLog 'cmd /c powershell.exe -NoProfile -ExecutionPolicy Bypass -File "`$PLUGINSDIR\TOS-Desktop-Extract.ps1" "`$PLUGINSDIR\TOS-Desktop-Payload.zip" "`$INSTDIR" >> "`$1" 2>&1'
   Pop `$0
-  `${If} `$0 > 7
-    MessageBox MB_ICONSTOP "$CopyFailedMessage`$0"
+  `${If} `$0 != 0
+    MessageBox MB_ICONSTOP "$ExtractFailedMessage`$0"
     Abort
   `${EndIf}
 
