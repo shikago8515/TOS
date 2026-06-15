@@ -346,6 +346,9 @@ Section "$AppDisplayName" SecMain
   SetShellVarContext current
   InitPluginsDir
   StrCpy `$1 "`$TEMP\TOS-Desktop-Setup.log"
+  StrCpy `$3 "`$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+  IfFileExists "`$3" +2 0
+    StrCpy `$3 "`$WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
   Delete "`$1"
   SetOutPath "`$PLUGINSDIR"
   File /oname=TOS-Desktop-Download.exe "$downloaderForNsis"
@@ -369,7 +372,7 @@ Section "$AppDisplayName" SecMain
   RMDir /r "`$INSTDIR\resources"
   Delete "`$INSTDIR\TOS.exe"
   Delete "`$INSTDIR\electron.exe"
-  nsExec::ExecToLog 'cmd /c powershell.exe -NoProfile -ExecutionPolicy Bypass -File "`$PLUGINSDIR\TOS-Desktop-Extract.ps1" "`$PLUGINSDIR\TOS-Desktop-Payload.zip" "`$INSTDIR" >> "`$1" 2>&1'
+  nsExec::ExecToLog 'cmd /c ""`$3" -NoProfile -ExecutionPolicy Bypass -File "`$PLUGINSDIR\TOS-Desktop-Extract.ps1" "`$PLUGINSDIR\TOS-Desktop-Payload.zip" "`$INSTDIR" >> "`$1" 2>&1"'
   Pop `$0
   `${If} `$0 != 0
     MessageBox MB_ICONSTOP "$ExtractFailedMessage`$0"
