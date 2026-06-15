@@ -96,9 +96,9 @@ describe('releaseNotice', () => {
 
   it('keeps bundled release notes scoped to the current version changes', () => {
     expect(releaseNotes.added).toEqual([])
-    expect(releaseNotes.improved).toEqual([
-      '优化 Draft & Packing List 核对结果分隔行样式，组间空白行改用浅色填充，避免误判为空白问题行。',
+    expect(releaseNotes.improved).toEqual([])
+    expect(releaseNotes.fixed).toEqual([
+      '修复版本更新记录按数据库更新时间排序时旧版本可能排在最新版上方的问题，改为按版本号倒序展示。',
     ])
-    expect(releaseNotes.fixed).toEqual([])
   })
 })
