@@ -53,6 +53,16 @@ def _default_record(
 
 DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
     _default_record(
+        "builtin-0.9.8-beta.3.15-fixed-release-updates-version-sort",
+        "0.9.8-beta.3.15",
+        "2026-06-15",
+        "fixed",
+        "版本更新记录",
+        "/release-updates",
+        "修复版本更新记录排序",
+        "修复版本更新记录按数据库更新时间排序时旧版本可能排在最新版上方的问题，改为按版本号倒序展示。",
+    ),
+    _default_record(
         "builtin-0.9.8-beta.3.14-improved-draft-packing-separator-row",
         "0.9.8-beta.3.14",
         "2026-06-15",

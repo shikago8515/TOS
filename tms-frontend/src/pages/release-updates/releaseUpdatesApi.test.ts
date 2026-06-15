@@ -62,7 +62,7 @@ describe('releaseUpdatesApi', () => {
     expect(payload.records.length).toBeGreaterThan(2)
     expect(payload.records[0]).toMatchObject({
       version: fallbackAppVersion,
-      pagePath: '/draft-packing-compare',
+      pagePath: '/release-updates',
     })
     expect(payload.records.map((record) => record.version)).toEqual(
       expect.arrayContaining([

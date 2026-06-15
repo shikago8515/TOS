@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 from contextlib import contextmanager
 from datetime import datetime
@@ -360,13 +361,32 @@ def list_release_update_records(limit: int = 100) -> list[dict[str, Any]]:
                 SELECT id, record_key, version, release_date, category, page_name,
                        page_path, title, description, created_by, created_at, updated_at
                 FROM release_update_records
-                ORDER BY release_date DESC, updated_at DESC, id DESC
-                LIMIT %s
+                ORDER BY release_date DESC, id DESC
                 """,
-                (safe_limit,),
             )
             rows = cursor.fetchall()
-    return rows or []
+    # 版本记录量很小，先取全量再按语义版本排序，避免数据库时间排序先 LIMIT 漏掉最新版。
+    sorted_rows = sorted(rows or [], key=_release_update_sort_key, reverse=True)
+    return sorted_rows[:safe_limit]
+
+
+def _release_update_sort_key(row: dict[str, Any]) -> tuple[tuple[int, ...], str, int]:
+    return (
+        _version_sort_key(row.get("version")),
+        _date_sort_key(row.get("release_date")),
+        int(row.get("id") or 0),
+    )
+
+
+def _version_sort_key(version: Any) -> tuple[int, ...]:
+    text = str(version or "").strip().lower().removeprefix("v")
+    return tuple(int(part) for part in re.findall(r"\d+", text))
+
+
+def _date_sort_key(value: Any) -> str:
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value or "")
 
 
 def get_release_update_record(record_key: str) -> dict[str, Any] | None:
@@ -433,8 +453,7 @@ def upsert_release_update_record(record: dict[str, Any]) -> dict[str, Any]:
                   page_path = VALUES(page_path),
                   title = VALUES(title),
                   description = VALUES(description),
-                  created_by = VALUES(created_by),
-                  updated_at = CURRENT_TIMESTAMP
+                  created_by = VALUES(created_by)
                 """,
                 (
                     record["record_key"],
