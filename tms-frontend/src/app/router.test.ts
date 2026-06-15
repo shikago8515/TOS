@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
+import DraftPackingComparePage from '../pages/draft-packing-compare/DraftPackingComparePage.vue'
 import JasonPdfReorderPage from '../pages/jason-pdf-reorder/JasonPdfReorderPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
 import ReleaseUpdatesPage from '../pages/release-updates/ReleaseUpdatesPage.vue'
@@ -50,6 +51,15 @@ describe('router', () => {
     const route = router.getRoutes().find((entry) => entry.path === '/it-invoice-pdf-reorder')
 
     expect(route?.redirect).toBe('/jason/pdf-reorder')
+  })
+
+  it('routes Draft & Packing List compare through its existing canonical path', async () => {
+    const { router } = await import('./router')
+    const route = router.getRoutes().find((entry) => entry.path === '/draft-packing-compare')
+
+    expect(route?.name).toBe('draft-packing-compare')
+    expect(route?.components?.default).toBe(DraftPackingComparePage)
+    expect(route?.components?.default).not.toBe(RoutePlaceholder)
   })
 
   it('routes the web automation hub to its real page component', async () => {

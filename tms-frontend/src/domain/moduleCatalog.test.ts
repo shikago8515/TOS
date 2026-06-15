@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getLocalizedModuleTitle,
   getModuleById,
+  getModulesByGroup,
   tosModules,
   tosNavGroups,
 } from './moduleCatalog'
@@ -34,6 +35,22 @@ describe('moduleCatalog', () => {
       routeName: 'jason-pdf-reorder',
       navLabel: '发票 PDF 重排序',
     })
+  })
+
+  it('shows Draft & Packing List compare directly under Jessica after reconciliation', () => {
+    const draftPackingModule = getModuleById('draft-packing-compare')
+    const jessicaModules = getModulesByGroup('jessica')
+    const legacyPdfModules = getModulesByGroup('pdf-data-compare')
+    const moduleIds = jessicaModules.map((module) => module.id)
+
+    expect(draftPackingModule).toMatchObject({
+      group: 'jessica',
+      path: '/draft-packing-compare',
+      routeName: 'draft-packing-compare',
+    })
+    expect(moduleIds).toContain('draft-packing-compare')
+    expect(legacyPdfModules.map((module) => module.id)).not.toContain('draft-packing-compare')
+    expect(moduleIds.indexOf('draft-packing-compare')).toBeGreaterThan(moduleIds.indexOf('jessca'))
   })
 
   it('uses full module titles for page breadcrumbs in both languages', () => {

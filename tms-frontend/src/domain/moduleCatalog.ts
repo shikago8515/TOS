@@ -1,6 +1,12 @@
 export type TosModuleStage = 'production' | 'validation' | 'placeholder'
 
-export type TosModuleCategory = 'excel' | 'browser-automation' | 'pdf' | 'web-collector' | 'system'
+export type TosModuleCategory =
+  | 'reconciliation'
+  | 'excel'
+  | 'browser-automation'
+  | 'pdf'
+  | 'web-collector'
+  | 'system'
 
 export type TosModuleGroup =
   | 'home'
@@ -57,6 +63,7 @@ export const tosNavGroups = [
 ] as const satisfies readonly TosNavGroupDefinition[]
 
 export const tosModuleCategoryLabels: Record<TosModuleCategory, { label: string; labelEn: string }> = {
+  reconciliation: { label: '对账核对', labelEn: 'Reconciliation' },
   excel: { label: 'Excel 处理', labelEn: 'Excel Processing' },
   'browser-automation': { label: '浏览器自动化', labelEn: 'Browser Automation' },
   pdf: { label: 'PDF / 单据处理', labelEn: 'PDF / Document Processing' },
@@ -103,7 +110,7 @@ export const tosModules = [
     navLabel: '对账核对',
     navLabelEn: 'Reconciliation',
     group: 'jessica',
-    category: 'excel',
+    category: 'reconciliation',
     stage: 'production',
     description: 'Jessca 发票价格核对与差异整理',
     descriptionEn: 'Jessca invoice price checking and discrepancy cleanup',
@@ -222,12 +229,12 @@ export const tosModules = [
     titleEn: 'Draft & Packing List Compare',
     navLabel: 'Draft & Packing List 核对',
     navLabelEn: 'Draft & Packing Compare',
-    group: 'pdf-data-compare',
-    category: 'pdf',
+    group: 'jessica',
+    category: 'reconciliation',
     stage: 'validation',
     description: '提取 Draft Form E 与 Packing List PDF 字段并生成上下对比 Excel',
     descriptionEn: 'Extract and compare Draft Form E and Packing List PDF fields',
-    order: 10,
+    order: 21,
   },
   {
     id: 'tms-finance-internal-reconciliation',
