@@ -12,7 +12,11 @@
           <div>
             <div class="stg-banner__version-row">
               <h1 class="stg-banner__version">{{ currentVersion }}</h1>
-              <span class="stg-badge" :class="`stg-badge--${statusTone}`">
+              <span
+                v-if="status?.status !== 'unsupported'"
+                class="stg-badge"
+                :class="`stg-badge--${statusTone}`"
+              >
                 <i class="stg-badge__dot" />
                 {{ statusLabel }}
               </span>
