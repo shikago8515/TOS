@@ -152,6 +152,40 @@ PACKING_PAGE = PackingExtractedPage(
 )
 
 
+PACKING_PAGE_WITH_SUMMARY_FOOTER = PackingExtractedPage(
+    text="""
+PO No PO Line
+0902319350 1 RC2613OW006 LE5888 PANTS 0306700331 ADIDAS 703 78
+Goods Description
+WOMEN'S WOVEN DENIM PANTS,MAIN MATERIAL: 100% COTTON
+This document is a summary and does not contain all the terms and conditions applicable to the transaction.
+The complete document may be accessed on the system. Page 6 of 8
+""",
+    tables=[
+        [
+            [
+                "PO No",
+                "PO Line",
+                "Working No",
+                "Article No",
+                "Market PO Number",
+                "QTY",
+                "C t n Count",
+            ],
+            [
+                "0902319350",
+                "1",
+                "RC2613OW006",
+                "LE5888",
+                "0306700331",
+                "703",
+                "78",
+            ],
+        ],
+    ],
+)
+
+
 class DraftPackingCompareModuleTests(unittest.TestCase):
     def setUp(self) -> None:
         self.module = DraftPackingCompareModule()
@@ -204,6 +238,17 @@ class DraftPackingCompareModuleTests(unittest.TestCase):
         self.assertEqual(missing_hts.po_number, "0902319334")
         self.assertEqual(missing_hts.hs_code, "")
         self.assertTrue(any("HTS" in issue for issue in missing_hts.issues))
+
+    def test_parse_packing_pages_removes_summary_footer_from_goods_description(self):
+        records = self.module.parse_packing_pages([PACKING_PAGE_WITH_SUMMARY_FOOTER])
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(
+            records[0].goods_description,
+            "WOMEN'S WOVEN DENIM PANTS,MAIN MATERIAL: 100% COTTON",
+        )
+        self.assertNotIn("This document is a summary", records[0].goods_description)
+        self.assertNotIn("Page 6 of 8", records[0].goods_description)
 
     def test_build_comparison_result_marks_strict_hs_difference(self):
         draft_records = self.module.parse_draft_text(DIRECT_AND_ATTACHMENT_DRAFT_TEXT)

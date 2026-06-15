@@ -130,6 +130,10 @@ class DraftPackingCompareModule:
         r"(?:R\s+)?\d",
         re.IGNORECASE,
     )
+    PACKING_DESCRIPTION_FOOTER_RE = re.compile(
+        r"\b(This document is a summary|The complete document may be accessed on the system|Page\s+\d+\s+of\s+\d+)\b",
+        re.IGNORECASE,
+    )
     RED_FILL = PatternFill("solid", fgColor="FFFFC7CE")
     YELLOW_FILL = PatternFill("solid", fgColor="FFFFF2CC")
     HEADER_FILL = PatternFill("solid", fgColor="FFD9EAF7")
@@ -473,7 +477,7 @@ class DraftPackingCompareModule:
     def _attach_packing_descriptions(self, text: str, records: Sequence[ExtractedRecord]) -> None:
         descriptions: dict[str, str] = {}
         for match in self.PACKING_BLOCK_RE.finditer(text):
-            description = self._normalize_description(match.group("description"))
+            description = self._normalize_packing_description(match.group("description"))
             if description:
                 descriptions[match.group("po")] = description
 
@@ -733,6 +737,22 @@ class DraftPackingCompareModule:
         text = re.sub(r"\s+,", ",", text)
         text = re.sub(r",\s+", ",", text)
         return self._normalize_text(text)
+
+    def _normalize_packing_description(self, value: Any) -> str:
+        description_lines: list[str] = []
+        for raw_line in str(value).replace("\r", "\n").splitlines():
+            line = self._normalize_text(raw_line)
+            if not line:
+                continue
+            footer_match = self.PACKING_DESCRIPTION_FOOTER_RE.search(line)
+            if footer_match:
+                line = line[: footer_match.start()].strip()
+                if line:
+                    description_lines.append(line)
+                break
+            description_lines.append(line)
+
+        return self._normalize_description(" ".join(description_lines))
 
     def _normalize_compare_text(self, value: Any) -> str:
         return self._normalize_text(value).upper()

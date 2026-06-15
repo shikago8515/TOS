@@ -145,6 +145,8 @@ npm run server:package
 GitCode CI 在 runner 内下载 Node.js 22.11.0，通过 `npm run ci:install` 安装依赖，并用 `PYTHON=python3 npm run check` 做远端完整检查。修改 `.gitcode/workflows/tos-check.yml` 时不得顺手加入 `pack`、`build:win`、发布清单写入、上传或正式发布步骤。
 
 用户可见改动默认由 AI 自动运行 `npm run version:bump` 并维护 `tms-frontend/src/shared/version/releaseNotes.json`。纯文档、纯测试、纯注释和不影响产品行为的内部脚本整理默认不递增产品版本；用户明确指定版本时使用 `npm run version:set -- <version>`。
+`releaseNotes.json` 只描述当前版本变更；`version:bump` 会保留旧的 `added`、`improved`、`fixed` 数组，递增后必须移除上一版本遗留条目。
+`/release-updates` 的内置历史时间线由 `tms-frontend/src/shared/version/releaseHistory.json` 和后端默认 seed 同步维护；新增历史条目时必须用测试校验前后端内容一致。
 
 ### 前端
 

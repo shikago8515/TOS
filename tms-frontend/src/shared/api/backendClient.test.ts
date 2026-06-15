@@ -6,6 +6,7 @@ import {
   getBackendBaseUrl,
   readErrorMessage,
   readResponseMessage,
+  requestBackendJson,
 } from './backendClient'
 
 function stubWindow(electronAPI?: Partial<ElectronApi>): void {
@@ -71,5 +72,15 @@ describe('backendClient', () => {
         { status: 404, path: '/api/draft-packing-compare/process' },
       ),
     ).toBe('当前后端版本缺少此接口，请重启 TOS 或等待后端切换完成')
+  })
+
+  it('turns fetch network failures into a localized backend connection message', async () => {
+    stubWindow()
+    const path = '/api/release-updates?limit=160'
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+
+    await expect(
+      requestBackendJson({ path }),
+    ).rejects.toThrow('无法连接后端服务')
   })
 })

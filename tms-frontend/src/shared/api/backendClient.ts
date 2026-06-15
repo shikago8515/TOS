@@ -16,6 +16,7 @@ export interface ResponseMessageContext {
 }
 
 const backendApiNotFoundMessage = '当前后端版本缺少此接口，请重启 TOS 或等待后端切换完成'
+const backendConnectionErrorMessage = '无法连接后端服务'
 
 let backendStartPromise: Promise<string | undefined> | null = null
 
@@ -92,7 +93,7 @@ export async function postFormData<TResponse>({
     }
 
     request.onerror = () => {
-      reject(new Error('无法连接后端服务'))
+      reject(new Error(backendConnectionErrorMessage))
     }
 
     request.send(formData)
@@ -118,11 +119,16 @@ export async function requestBackendJson<TResponse>({
     requestBody = JSON.stringify(body)
   }
 
-  const response = await fetch(`${baseUrl}${path}`, {
-    method,
-    headers,
-    body: requestBody,
-  })
+  let response: Response
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      method,
+      headers,
+      body: requestBody,
+    })
+  } catch (_error) {
+    throw new Error(backendConnectionErrorMessage)
+  }
   const text = await response.text()
   const data = text ? JSON.parse(text) as TResponse : {} as TResponse
 

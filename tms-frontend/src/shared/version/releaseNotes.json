@@ -1,9 +1,12 @@
 {
-  "version": "0.9.8-beta.3.10",
+  "version": "0.9.8-beta.3.11",
   "date": "2026-06-15",
   "added": [],
   "improved": [
-    "将 Draft & Packing List 核对入口移到 Jessica 导航下，并保留原页面路径和处理接口。"
+    "版本更新记录页本地 fallback 支持展示内置历史版本记录。"
   ],
-  "fixed": []
+  "fixed": [
+    "修复 Draft & Packing List 核对结果中 Goods Description 误带入 PDF 免责声明和页码的问题。",
+    "修复版本更新记录页在浏览器模式且后端未启动时显示 Failed to fetch 的问题，改为展示本地版本说明。"
+  ]
 }

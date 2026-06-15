@@ -1,6 +1,9 @@
 import { requestBackendJson } from '../../shared/api/backendClient'
+import { fallbackAppVersion } from '../../shared/version/appVersion'
+import bundledReleaseHistory from '../../shared/version/releaseHistory.json'
 
 export type ReleaseUpdateCategory = 'added' | 'improved' | 'fixed' | string
+export type ReleaseUpdatesSource = 'backend' | 'bundled'
 
 export interface ReleaseUpdateRecord {
   id: number
@@ -19,20 +22,80 @@ export interface ReleaseUpdateRecord {
 
 export interface ReleaseUpdatesResponse {
   ok: boolean
+  source: ReleaseUpdatesSource
   version: string
   records: ReleaseUpdateRecord[]
   total: number
 }
 
+interface BundledReleaseHistoryRecord {
+  recordKey: string
+  version: string
+  releaseDate: string
+  category: ReleaseUpdateCategory
+  pageName: string
+  pagePath: string
+  title: string
+  description: string
+}
+
 export async function fetchReleaseUpdates(limit = 120): Promise<ReleaseUpdatesResponse> {
   const safeLimit = Math.max(1, Math.min(limit, 300))
-  const payload = await requestBackendJson<ReleaseUpdatesResponse>({
-    path: `/api/release-updates?limit=${safeLimit}`,
-  })
-  return {
-    ok: Boolean(payload.ok),
-    version: String(payload.version || ''),
-    records: Array.isArray(payload.records) ? payload.records : [],
-    total: Number(payload.total || 0),
+  try {
+    const payload = await requestBackendJson<ReleaseUpdatesResponse>({
+      path: `/api/release-updates?limit=${safeLimit}`,
+    })
+    return {
+      ok: Boolean(payload.ok),
+      source: 'backend',
+      version: String(payload.version || ''),
+      records: Array.isArray(payload.records) ? payload.records : [],
+      total: Number(payload.total || 0),
+    }
+  } catch (error) {
+    if (isBackendUnavailableError(error)) {
+      return buildBundledReleaseUpdates(safeLimit)
+    }
+
+    throw error
   }
+}
+
+function buildBundledReleaseUpdates(limit: number): ReleaseUpdatesResponse {
+  const records = (bundledReleaseHistory as BundledReleaseHistoryRecord[])
+    .slice(0, limit)
+    .map((record) => buildBundledRecord(record))
+
+  return {
+    ok: true,
+    source: 'bundled',
+    version: fallbackAppVersion,
+    records,
+    total: records.length,
+  }
+}
+
+function buildBundledRecord(record: BundledReleaseHistoryRecord): ReleaseUpdateRecord {
+  return {
+    id: 0,
+    recordKey: String(record.recordKey || ''),
+    version: String(record.version || ''),
+    releaseDate: String(record.releaseDate || ''),
+    category: record.category || 'improved',
+    pageName: String(record.pageName || '本地版本说明'),
+    pagePath: String(record.pagePath || ''),
+    title: String(record.title || ''),
+    description: String(record.description || ''),
+    createdBy: 'bundled',
+    createdAt: '',
+    updatedAt: '',
+  }
+}
+
+function isBackendUnavailableError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  return error.message === '无法连接后端服务' || error.message === 'Failed to fetch'
 }

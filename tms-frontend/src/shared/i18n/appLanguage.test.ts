@@ -215,6 +215,12 @@ describe('appLanguage', () => {
       '本次更新带来了一些性能提升与细节优化。',
       '全局通用',
       '获取版本记录失败，请检查网络后重试。',
+      '本地版本说明',
+      '后端未连接，当前显示本地版本说明。',
+      '无法连接后端服务',
+      '版本更新记录页本地 fallback 支持展示内置历史版本记录。',
+      '修复 Draft & Packing List 核对结果中 Goods Description 误带入 PDF 免责声明和页码的问题。',
+      '修复版本更新记录页在浏览器模式且后端未启动时显示 Failed to fetch 的问题，改为展示本地版本说明。',
     ]
 
     for (const phrase of phrases) {

@@ -56,6 +56,11 @@
       </button>
     </div>
 
+    <div v-if="usingBundledFallback" class="ru-source-note">
+      <AppIcon name="alert-triangle" />
+      <span>{{ text('后端未连接，当前显示本地版本说明。') }}</span>
+    </div>
+
     <transition name="fade-slide">
       <div v-if="errorMessage" class="ru-alert">
         <div class="ru-alert__content">
@@ -139,6 +144,7 @@ const records = ref<ReleaseUpdateRecord[]>([])
 const runtimeVersion = ref('')
 const loading = ref(false)
 const errorMessage = ref('')
+const usingBundledFallback = ref(false)
 const activeFilter = ref<FilterValue>('all')
 
 const filters: Array<{ value: FilterValue; label: string; icon: string }> = [
@@ -176,7 +182,9 @@ async function loadRecords(): Promise<void> {
     const payload = await fetchReleaseUpdates(160)
     runtimeVersion.value = payload.version
     records.value = payload.records
+    usingBundledFallback.value = payload.source === 'bundled'
   } catch (error) {
+    usingBundledFallback.value = false
     errorMessage.value = readErrorMessage(error, text('获取版本记录失败，请检查网络后重试。'))
   } finally {
     loading.value = false
@@ -459,6 +467,21 @@ function formatDate(value: string): string {
 
 .ru-filter.is-active em {
   background: rgba(255,255,255,0.2);
+}
+
+.ru-source-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  min-height: 34px;
+  padding: 0 12px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  color: #9a3412;
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
 /* 反馈状态区：骨架与加载 */

@@ -850,6 +850,15 @@ const staticTextTranslations: Record<string, string> = {
   '本次更新带来了一些性能提升与细节优化。': 'This update includes performance improvements and detail refinements.',
   全局通用: 'Global',
   '获取版本记录失败，请检查网络后重试。': 'Failed to load version records. Check the network and try again.',
+  本地版本说明: 'Local release notes',
+  '后端未连接，当前显示本地版本说明。': 'Backend is not connected. Showing local release notes.',
+  无法连接后端服务: 'Unable to connect to the backend service',
+  '版本更新记录页本地 fallback 支持展示内置历史版本记录。':
+    'The Version Update Log local fallback now shows built-in historical release records.',
+  '修复 Draft & Packing List 核对结果中 Goods Description 误带入 PDF 免责声明和页码的问题。':
+    'Fixed Draft & Packing List results including PDF disclaimer text and page numbers in Goods Description.',
+  '修复版本更新记录页在浏览器模式且后端未启动时显示 Failed to fetch 的问题，改为展示本地版本说明。':
+    'Fixed the Version Update Log showing Failed to fetch in browser mode when the backend is not running; it now shows local release notes.',
   '请先配置正式更新地址，再下载免安装版。': 'Configure the update source before downloading the no-install version.',
   '更新源暂未提供免安装版下载。': 'The update source has not provided a no-install download.',
   '更新源暂未提供 changelog.json': 'The update source has not provided changelog.json',
