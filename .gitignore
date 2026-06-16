@@ -46,6 +46,7 @@ temp-*.py
 .env
 .env.*
 !.env.example
+!tms-frontend/.env.server
 *.local.json
 *.secret.local.json
 .shared/
