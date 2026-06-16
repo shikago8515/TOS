@@ -80,6 +80,16 @@ def _default_record(
 
 DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
     _default_record(
+        "builtin-0.9.8-beta.3.17-improved-electron-external-allowlist",
+        "0.9.8-beta.3.17",
+        "2026-06-16",
+        "improved",
+        "TOS 桌面客户端 / 安全",
+        "/settings",
+        "收口桌面外链打开边界",
+        "收口 Electron 外链打开 allowlist，默认不再使用 GitHub 作为桌面更新源，外部网页和手动下载只允许明确可信的 HTTPS 地址。",
+    ),
+    _default_record(
         "builtin-0.9.8-beta.3.16-improved-system-api-contract",
         "0.9.8-beta.3.16",
         "2026-06-16",
