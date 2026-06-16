@@ -128,6 +128,53 @@ sudo docker compose -f docker-compose.tos.yml logs --tail=120 tos-backend
 
 发布记录使用 `docs/templates/server-release-record.md`。
 
+## 桌面安装包与 MinIO
+
+TOS 桌面安装包不放在服务器 `~/TOS` 源码目录里，而是放在 `automation-stack` 的 MinIO Docker volume 中。
+
+服务器实际位置：
+
+```text
+MinIO compose: /home/obito_li/automation-stack/compose.yaml
+MinIO container: minio
+Container data path: /data
+Host Docker volume: /var/lib/docker/volumes/automation-stack_minio_data/_data
+TOS downloads bucket path: /var/lib/docker/volumes/automation-stack_minio_data/_data/tos-downloads
+```
+
+`tos-downloads` bucket 的安装包对象约定：
+
+```text
+tos-desktop/TOS-Desktop-Setup.exe
+tos-desktop/TOS-Desktop-Payload.zip
+tos-desktop/payloads/<payload-sha256>/TOS-Desktop-Payload.zip
+tos-desktop-full/TOS-Desktop-Full-Setup.exe
+automation-helper/TOS-Automation-Helper-Setup.exe
+automation-helper/TOS-Automation-Helper-Payload.zip
+automation-helper/payloads/<payload-sha256>/TOS-Automation-Helper-Payload.zip
+```
+
+不要直接替换 Docker volume 下的 `part.*` 文件。MinIO 大对象由 metadata 和分片组成，必须通过 MinIO API、`mc cp` 或后端上传辅助流程写入。
+
+替换 TOS 桌面安装包时，先删除旧的 TOS desktop 对象：
+
+```text
+tos-desktop/TOS-Desktop-Setup.exe
+tos-desktop/TOS-Desktop-Payload.zip
+tos-desktop/payloads/*
+tos-desktop-full/TOS-Desktop-Full-Setup.exe
+```
+
+不要删除 `automation-helper/*`，除非本次也重新构建并验证了小助手安装包。
+
+浏览器页面使用后端代理下载地址，不直接暴露 MinIO：
+
+```text
+https://ai.tomwell.net:56130/tos/tos-desktop/download
+https://ai.tomwell.net:56130/tos/tos-desktop-full/download
+https://ai.tomwell.net:56130/tos/automation-helper/download
+```
+
 ## 回滚
 
 如果重建失败或页面异常，使用本次部署记录的 `DEPLOY_ID` 回滚：

@@ -71,6 +71,43 @@ npm run build:win
 - 后端系统配置下载接口位于 `/api/system/config/tos-desktop/*` 和 `/api/system/config/tos-desktop-full/download`，默认从 MinIO `downloads` bucket 读取安装器和 payload。
 - 前端系统设置页默认使用 `https://ai.tomwell.net:56130/tos/tos-desktop/download` 与 `https://ai.tomwell.net:56130/tos/tos-desktop-full/download`，也可通过 Vite 环境变量覆盖。
 
+完整离线安装包构建命令：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\build-tos-desktop-full-nsis-installer.ps1
+```
+
+当前完整离线安装包输出：
+
+```text
+dist-tos-desktop-full/TOS-Desktop-Full-Setup.exe
+```
+
+当前已验证的完整包元数据：
+
+```text
+version: 0.9.8-beta.3.16
+size: 125591564 bytes
+sha256: c55426951cfb3bdaff00f219798a0d9430b45e73f9cc3e3cae62dd33ad5cd219
+builder: NSIS-full
+networkDuringInstall: false
+```
+
+`networkDuringInstall: false` 表示安装阶段解压内置 `TOS-Desktop-Payload.zip`，不会去 MinIO 下载 payload；应用启动后的业务 API 仍然连接远程 TOS 服务器后端。
+
+上传服务器前必须先做本地安装校验：
+
+```powershell
+$installer = Resolve-Path .\dist-tos-desktop-full\TOS-Desktop-Full-Setup.exe
+$target = "D:\software\TOS_full_verify"
+if (Test-Path $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+Start-Process -FilePath $installer -ArgumentList "/S", "/D=$target" -Wait
+Test-Path "$target\TOS.exe"
+Test-Path "$target\resources\app.asar"
+Test-Path "$target\resources\backend-runtime\tos-backend\tos-backend.exe"
+```
+
 ## 独立运行边界
 
 这些目录有独立运行和打包边界，修改前先读对应 README、registry 和启动脚本：

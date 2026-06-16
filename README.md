@@ -25,6 +25,7 @@ TOS 是一个 Windows x64 桌面工具，当前源码工作区由三部分组成
 - `docs/engineering-closure-roadmap.md`：未完全工程化部分的优先级、边界和验收标准。
 - `docs/tos-ai-workflow.md`：TOS-AI 从 GitCode 同步、分支开发、版本、CI 到服务器发布的完整工作流。
 - `docs/server-deployment-runbook.md`：服务器 `~/TOS` 目录式 Docker Compose 更新、备份、验证和回滚流程。
+- `docs/server-deployment-runbook.md` 同时记录桌面安装包在服务器 MinIO Docker volume 中的物理位置、对象 key、旧安装包删除规则和公开下载代理地址。
 - `docs/frontend-tms-finance-parity.md`：TMS 财务页 parity 与复用边界说明。
 - `tms-backend/README.md`：后端运行、模块和测试说明。
 - `tms-electron-app/README.md`：Electron 运行、打包和发布说明。
