@@ -107,6 +107,8 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
 
         self.assertEqual(upsert_record.call_count, len(release_updates_api.DEFAULT_RELEASE_UPDATE_RECORDS))
         record_keys = [call.args[0]["record_key"] for call in upsert_record.call_args_list]
+        self.assertIn("builtin-0.9.8-beta.3.15-fixed-release-updates-browser-backend", record_keys)
+        self.assertIn("builtin-0.9.8-beta.3.15-added-tos-desktop-full-installer", record_keys)
         self.assertIn("builtin-0.9.8-beta.3.15-fixed-release-updates-version-sort", record_keys)
         self.assertIn("2026-06-13-release-update-records-page", record_keys)
         self.assertIn("builtin-0.9.8-beta.3.14-improved-draft-packing-separator-row", record_keys)

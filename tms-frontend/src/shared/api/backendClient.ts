@@ -33,7 +33,21 @@ export async function getBackendBaseUrl(): Promise<string> {
     return backendUrl.replace(/\/$/, '')
   }
 
-  return import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000'
+  return readBrowserBackendUrl()
+}
+
+function readBrowserBackendUrl(): string {
+  const configuredUrl = import.meta.env.VITE_BACKEND_URL
+
+  if (typeof configuredUrl === 'string' && configuredUrl.trim()) {
+    return configuredUrl.trim().replace(/\/$/, '')
+  }
+
+  if (window.location?.pathname?.startsWith('/tos')) {
+    return '/tos'
+  }
+
+  return 'http://127.0.0.1:8000'
 }
 
 async function ensureBackendReady(): Promise<string | undefined> {

@@ -1,5 +1,55 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.15-fixed-release-updates-browser-backend",
+    "version": "0.9.8-beta.3.15",
+    "releaseDate": "2026-06-16",
+    "category": "fixed",
+    "pageName": "版本更新记录",
+    "pagePath": "/release-updates",
+    "title": "修复浏览器版版本记录后端连接",
+    "description": "浏览器版部署在 /tos 路径下时自动使用同源 /tos 后端前缀，避免误连本机 127.0.0.1 导致显示本地版本说明。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.15-added-tos-desktop-full-installer",
+    "version": "0.9.8-beta.3.15",
+    "releaseDate": "2026-06-16",
+    "category": "added",
+    "pageName": "系统设置 / 下载中心",
+    "pagePath": "/settings",
+    "title": "新增 TOS 完整安装包下载链路",
+    "description": "新增 TOS-Desktop-Full-Setup.exe 完整安装包，用户下载单个大安装包后，安装阶段直接解压内置 payload，不再连接 MinIO 下载组件。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.15-improved-tos-desktop-remote-backend",
+    "version": "0.9.8-beta.3.15",
+    "releaseDate": "2026-06-16",
+    "category": "improved",
+    "pageName": "TOS 桌面客户端",
+    "pagePath": "/settings",
+    "title": "桌面版改为连接服务器后端",
+    "description": "桌面客户端业务 API 默认连接服务器后端，用户电脑本机仅保留自动化启动器等本地能力，避免安装包查找本机业务后端。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.15-fixed-tos-desktop-installer-empty-folder",
+    "version": "0.9.8-beta.3.15",
+    "releaseDate": "2026-06-16",
+    "category": "fixed",
+    "pageName": "TOS 桌面安装包",
+    "pagePath": "/settings",
+    "title": "修复 TOS 安装目录为空的问题",
+    "description": "修正 NSIS 卸载段命名导致安装阶段误执行清理逻辑的问题，安装后会保留 TOS.exe、app.asar 和运行资源。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.15-improved-settings-download-center-copy",
+    "version": "0.9.8-beta.3.15",
+    "releaseDate": "2026-06-16",
+    "category": "improved",
+    "pageName": "系统设置 / 下载中心",
+    "pagePath": "/settings",
+    "title": "优化下载中心中文文案",
+    "description": "TOS 应用安装包、TOS 完整安装包和自动化助手安装包在页面中使用中文说明，安装包文件名保持英文，便于下载和排查。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.15-fixed-release-updates-version-sort",
     "version": "0.9.8-beta.3.15",
     "releaseDate": "2026-06-15",

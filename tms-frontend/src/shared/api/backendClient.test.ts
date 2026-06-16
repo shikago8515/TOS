@@ -9,8 +9,8 @@ import {
   requestBackendJson,
 } from './backendClient'
 
-function stubWindow(electronAPI?: Partial<ElectronApi>): void {
-  vi.stubGlobal('window', { electronAPI })
+function stubWindow(electronAPI?: Partial<ElectronApi>, pathname = '/'): void {
+  vi.stubGlobal('window', { electronAPI, location: { pathname } })
 }
 
 afterEach(() => {
@@ -44,6 +44,12 @@ describe('backendClient', () => {
     stubWindow()
 
     await expect(getBackendBaseUrl()).resolves.toBe('http://127.0.0.1:8000')
+  })
+
+  it('uses the same-origin TOS backend when the browser app is served under /tos', async () => {
+    stubWindow(undefined, '/tos/release-updates')
+
+    await expect(getBackendBaseUrl()).resolves.toBe('/tos')
   })
 
   it('returns fallback text for non-Error failures', () => {
