@@ -24,8 +24,12 @@ const BACKEND_HOST = '127.0.0.1';
 const BACKEND_PORT = 8000;
 const BACKEND_PORT_CANDIDATES = [8000, 8001, 8002, 8003, 8004, 8005];
 const REQUIRED_BACKEND_OPENAPI_PATHS = requiredBackendOpenapiPaths;
+const REMOTE_BACKEND_URL = normalizeBackendBaseUrl(
+  process.env.TOS_REMOTE_BACKEND_URL || process.env.VITE_BACKEND_URL || 'https://ai.tomwell.net:56130/tos/desktop-api'
+);
+const USE_REMOTE_BACKEND = process.env.TOS_DESKTOP_BACKEND_MODE !== 'local';
 let activeBackendPort = BACKEND_PORT;
-let activeBackendUrl = buildBackendUrl(BACKEND_PORT);
+let activeBackendUrl = USE_REMOTE_BACKEND ? REMOTE_BACKEND_URL : buildBackendUrl(BACKEND_PORT);
 const APP_DISPLAY_NAME = 'TOS'/*12345678*/;
 const AUTOMATION_LAUNCHER_HOST = '127.0.0.1';
 const AUTOMATION_LAUNCHER_PORT = 3210;
@@ -1409,6 +1413,10 @@ function getBackendDataDir() {
   return path.join(app.getPath('userData'), 'backend-data');
 }
 
+function normalizeBackendBaseUrl(value) {
+  return String(value || '').trim().replace(/\/+$/, '');
+}
+
 function buildBackendUrl(port = activeBackendPort) {
   return `http://${BACKEND_HOST}:${port}`;
 }
@@ -1537,6 +1545,19 @@ async function spawnBundledBackend(executablePath, logStream, port) {
 }
 
 async function startBackendServer() {
+  if (USE_REMOTE_BACKEND) {
+    activeBackendUrl = REMOTE_BACKEND_URL;
+    return {
+      success: true,
+      alreadyRunning: true,
+      remote: true,
+      url: activeBackendUrl,
+      expectedVersion: app.getVersion(),
+      missingPaths: [],
+      versionMismatch: false
+    };
+  }
+
   if (backendProcess && !backendProcess.killed) {
     return {
       success: true,
@@ -1963,6 +1984,7 @@ app.whenReady().then(async () => {
   }
   // 正式界面不暴露 Electron 默认菜单，避免与业务导航重复。
   Menu.setApplicationMenu(null);
+  createWindow();
 
   const backendStatus = await startBackendServer();
   if (!backendStatus.success) {
@@ -1981,7 +2003,6 @@ app.whenReady().then(async () => {
       error: error instanceof Error ? error.message : String(error),
     });
   }
-  createWindow();
   if (initialProtocolUrl) {
     queueProtocolCommand(initialProtocolUrl);
   }

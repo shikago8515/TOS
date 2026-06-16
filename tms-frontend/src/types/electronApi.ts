@@ -11,6 +11,7 @@ export interface ElectronActionResult {
   missingPaths?: string[]
   port?: number
   profileDir?: string
+  remote?: boolean
   version?: string
   versionMismatch?: boolean
 }

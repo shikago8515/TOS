@@ -210,7 +210,7 @@
           <div class="stg-row__text">
             <p class="stg-row__label">{{ text('TOS 应用安装包') }}</p>
             <p class="stg-row__desc">
-              {{ text('下载完整桌面版，安装后可直接使用本机后端和自动化能力。') }}
+              {{ text('下载完整桌面版，安装后连接服务器后端，并保留本机自动化能力。') }}
             </p>
           </div>
           <button

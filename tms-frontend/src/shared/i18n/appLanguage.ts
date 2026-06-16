@@ -815,8 +815,8 @@ const staticTextTranslations: Record<string, string> = {
   '当前运行在服务器 / 浏览器环境，桌面客户端会显示自动更新能力。':
     'The current runtime is server / browser mode. Automatic update controls are shown in the desktop client.',
   'TOS 应用安装包': 'TOS App Installer',
-  '下载完整桌面版，安装后可直接使用本机后端和自动化能力。':
-    'Download the full desktop app with the local backend and automation features.',
+  '下载完整桌面版，安装后连接服务器后端，并保留本机自动化能力。':
+    'Download the full desktop app. It connects to the server backend and keeps local automation capabilities.',
   '已打开 TOS 应用安装包下载。': 'TOS app installer download opened.',
   'TOS 应用安装包下载失败': 'Failed to download the TOS app installer',
   自动化助手安装包: 'Automation Helper Installer',
