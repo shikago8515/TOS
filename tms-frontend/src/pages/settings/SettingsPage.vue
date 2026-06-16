@@ -89,7 +89,7 @@
           </div>
         </transition>
 
-        <!-- 2. 下载中心：全新非对称双主轴分栏布局 (深浅对比，小助手与完整包分立) -->
+        <!-- 2. 下载中心：全新非对称双主轴分栏布局 (清新双淡色版，无任何深色大黑框) -->
         <section class="stg-section stg-downloads">
           <div class="stg-section__header">
             <div class="stg-section__title-bar">
@@ -100,7 +100,7 @@
           </div>
 
           <div class="stg-downloads__split-container">
-            <!-- 2.1 左大栏：桌面独立运行客户端套件 (Native Professional - 尊贵深色版) -->
+            <!-- 2.1 左大栏：桌面独立运行客户端套件 (Native Professional - 清新极光青渐变) -->
             <div class="stg-downloads__panel-group stg-downloads__panel-group--desktop">
               <div class="stg-panel-glow"></div>
               
@@ -116,7 +116,7 @@
 
               <div class="stg-panel-cards">
                 <!-- 卡片 1: TOS 桌面端轻量安装包 (在线下载) -->
-                <div class="stg-download-card stg-download-card--dark">
+                <div class="stg-download-card stg-download-card--light">
                   <div class="stg-card-content">
                     <div class="stg-card-body">
                       <div class="stg-card-header-row">
@@ -142,7 +142,7 @@
                 </div>
 
                 <!-- 卡片 2: TOS 桌面端全量部署包 (离线完整) -->
-                <div class="stg-download-card stg-download-card--dark">
+                <div class="stg-download-card stg-download-card--light">
                   <div class="stg-card-content">
                     <div class="stg-card-body">
                       <div class="stg-card-header-row">
@@ -155,7 +155,7 @@
                     </div>
                     <div class="stg-card-footer">
                       <button
-                        class="stg-btn-dark-secondary"
+                        class="stg-btn-secondary stg-btn-secondary--cyan"
                         type="button"
                         :disabled="desktopFullInstallerDownloading"
                         @click="handleDesktopFullInstallerDownload"
@@ -168,7 +168,7 @@
                 </div>
 
                 <!-- 免安装绿色版 (仅在支持时显示) -->
-                <div v-if="hasDesktopUpdateSupport && manualDownload" class="stg-download-card stg-download-card--dark stg-download-card--fullwidth">
+                <div v-if="hasDesktopUpdateSupport && manualDownload" class="stg-download-card stg-download-card--light stg-download-card--fullwidth">
                   <div class="stg-card-content">
                     <div class="stg-card-body">
                       <div class="stg-card-header-row">
@@ -179,7 +179,7 @@
                     </div>
                     <div class="stg-card-footer">
                       <button
-                        class="stg-btn-dark-secondary"
+                        class="stg-btn-secondary"
                         type="button"
                         :disabled="isActionLocked"
                         @click="handleManualDownload"
@@ -193,7 +193,7 @@
               </div>
             </div>
 
-            <!-- 2.2 右小栏：网页端轻量级协作组件 (Web Extension Lite - 清爽浅色版) -->
+            <!-- 2.2 右小栏：网页端轻量级协作组件 (Web Extension Lite - 清爽极光绿渐变) -->
             <div class="stg-downloads__panel-group stg-downloads__panel-group--web">
               <div class="stg-panel-header">
                 <div class="stg-panel-header-icon-box stg-panel-header-icon-box--teal">
@@ -851,7 +851,7 @@ const {
 }
 
 /* ================================================================= */
-/* 3. 下载中心：全新非对称双主轴分栏布局 (深浅对比，分离小助手与完整包)  */
+/* 3. 下载中心：全新非对称双主轴分栏布局 (清新双淡色版，无任何深色大黑框) */
 /* ================================================================= */
 .stg-downloads {
   z-index: 10;
@@ -877,37 +877,37 @@ const {
   border: 1px solid var(--slate-200);
 }
 
-/* 左面板：专业桌面端 (深色系，科技感) */
+/* 左面板：专业桌面端 (极光青/水鸭青高级渐变背景 - 代替原先黑框) */
 .stg-downloads__panel-group--desktop {
-  background: linear-gradient(135deg, var(--slate-900) 0%, var(--slate-800) 100%);
-  border-color: var(--slate-800);
-  box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.2);
+  background: linear-gradient(135deg, #ffffff 0%, var(--teal-50) 100%);
+  border-color: var(--teal-100);
+  box-shadow: 0 12px 28px -4px rgba(13, 148, 136, 0.04);
 
   &:hover {
-    border-color: var(--slate-700);
-    box-shadow: 0 16px 36px -4px rgba(15, 23, 42, 0.3);
+    border-color: var(--teal-200);
+    box-shadow: 0 16px 36px -4px rgba(13, 148, 136, 0.08);
   }
 
   .stg-panel-glow {
     position: absolute;
     top: 0; left: 0; width: 100%; height: 100%;
-    background: radial-gradient(circle at 5% 5%, rgba(20, 184, 166, 0.15) 0%, rgba(20, 184, 166, 0) 50%);
+    background: radial-gradient(circle at 5% 5%, rgba(20, 184, 166, 0.08) 0%, rgba(20, 184, 166, 0) 50%);
     pointer-events: none;
     border-radius: inherit;
   }
 
   .stg-panel-header-icon-box {
-    background-color: rgba(255, 255, 255, 0.08);
-    color: var(--teal-500);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background-color: var(--teal-50);
+    color: var(--teal-600);
+    border: 1px solid var(--teal-100);
   }
 
   h3 {
-    color: #ffffff;
+    color: var(--slate-800);
   }
 
   p {
-    color: var(--slate-400);
+    color: var(--slate-500);
   }
 
   .stg-panel-cards {
@@ -918,22 +918,21 @@ const {
   }
 }
 
-/* 右面板：轻量小助手 (浅色系，清爽空气感) */
+/* 右面板：轻量小助手 (薄荷绿/极光绿高级渐变背景) */
 .stg-downloads__panel-group--web {
-  background: linear-gradient(135deg, var(--teal-50) 0%, var(--cyan-50) 100%);
-  border-color: var(--teal-100);
-  box-shadow: 0 6px 18px rgba(13, 148, 136, 0.03);
+  background: linear-gradient(135deg, #ffffff 0%, var(--cyan-50) 100%);
+  border-color: var(--cyan-100);
+  box-shadow: 0 12px 28px -4px rgba(6, 182, 212, 0.03);
 
   &:hover {
-    border-color: var(--teal-200);
-    box-shadow: 0 12px 24px rgba(13, 148, 136, 0.06);
+    border-color: var(--cyan-200);
+    box-shadow: 0 16px 36px -4px rgba(6, 182, 212, 0.07);
   }
 
   .stg-panel-header-icon-box {
-    background-color: #ffffff;
+    background-color: var(--cyan-50);
     color: var(--cyan-600);
-    border: 1px solid var(--teal-100);
-    box-shadow: 0 2px 8px rgba(13, 148, 136, 0.05);
+    border: 1px solid var(--cyan-100);
   }
 
   h3 {
@@ -957,11 +956,11 @@ const {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--teal-100);
   padding-bottom: 14px;
 
   .stg-downloads__panel-group--web & {
-    border-bottom: 1px solid rgba(20, 184, 166, 0.12);
+    border-bottom: 1px solid var(--cyan-100);
   }
 }
 
@@ -983,7 +982,7 @@ const {
 
   h3 {
     margin: 0;
-    font-size: 14.5px;
+    font-size: 14px;
     font-weight: 850;
     letter-spacing: 0.3px;
   }
@@ -995,7 +994,7 @@ const {
   }
 }
 
-/* 卡片个性化定义 */
+/* 卡片全部统一为高贵白色玻璃态，去除黑框样式 */
 .stg-download-card {
   display: flex;
   flex-direction: column;
@@ -1027,35 +1026,27 @@ const {
   gap: 6px;
 }
 
-.stg-download-card--dark {
-  background-color: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  color: #ffffff;
-
-  &:hover {
-    background-color: rgba(255, 255, 255, 0.06);
-    border-color: rgba(20, 184, 166, 0.35);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
-  }
-
-  .stg-card-title {
-    color: #ffffff;
-  }
-
-  .stg-card-description {
-    color: var(--slate-400);
-  }
-}
-
+/* 统一卡片背景，仅通过 Hover 发光来呈现对应产品的调性 */
 .stg-download-card--light {
   background-color: #ffffff;
-  border: 1px solid var(--teal-100);
-  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.02);
+  border: 1px solid var(--slate-200);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.01);
   height: 100%;
 
   &:hover {
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+  }
+
+  /* 桌面端的卡片 Hover 时发出青色微光 */
+  .stg-downloads__panel-group--desktop &:hover {
     border-color: var(--teal-400);
-    box-shadow: 0 10px 24px rgba(13, 148, 136, 0.1);
+    box-shadow: 0 10px 24px rgba(13, 148, 136, 0.08);
+  }
+
+  /* 网页小助手的卡片 Hover 时发出绿色微光 */
+  .stg-downloads__panel-group--web &:hover {
+    border-color: var(--cyan-400);
+    box-shadow: 0 10px 24px rgba(6, 182, 212, 0.08);
   }
 
   .stg-card-title {
@@ -1067,7 +1058,7 @@ const {
   }
 }
 
-/* 绿色绿色免安装版自适应整行宽度 */
+/* 绿色免安装版自适应整行 */
 .stg-download-card--fullwidth {
   grid-column: span 2;
 }
@@ -1180,7 +1171,21 @@ const {
     cursor: not-allowed;
   }
 
-  /* 右侧浅色小助手按钮默认亮绿色调 */
+  /* 桌面端全量部署包使用的次要按钮 */
+  &--cyan {
+    border-color: rgba(6, 182, 212, 0.25);
+    background-color: var(--cyan-50);
+    color: var(--cyan-700);
+
+    &:hover:not(:disabled) {
+      border-color: var(--cyan-500);
+      background-color: var(--cyan-500);
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(6, 182, 212, 0.15);
+    }
+  }
+
+  /* 右侧浅色小助手按钮 */
   &--teal {
     border-color: rgba(20, 184, 166, 0.25);
     background-color: var(--teal-50);
@@ -1192,39 +1197,6 @@ const {
       color: #ffffff;
       box-shadow: 0 4px 12px rgba(20, 184, 166, 0.15);
     }
-  }
-}
-
-.stg-btn-dark-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  height: 34px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: var(--border-radius-inner);
-  background-color: rgba(255, 255, 255, 0.05);
-  color: var(--slate-300);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: var(--transition-bezier);
-
-  &:hover:not(:disabled) {
-    border-color: #ffffff;
-    color: #ffffff;
-    background-color: rgba(255, 255, 255, 0.1);
-    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.05);
-  }
-
-  &:active {
-    transform: scale(0.97) !important;
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 }
 
