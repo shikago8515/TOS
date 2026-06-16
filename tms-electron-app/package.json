@@ -1,6 +1,6 @@
 {
   "name": "tms-integration-tool",
-  "version": "0.9.8-beta.3.15",
+  "version": "0.9.8-beta.3.16",
   "description": "TOS integration tool",
   "main": "main-simple.js",
   "scripts": {

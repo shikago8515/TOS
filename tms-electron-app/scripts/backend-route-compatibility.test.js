@@ -19,6 +19,25 @@ test('backend API contract includes Draft Packing compare routes', () => {
   assert.equal(backendApiContract.requiredOpenapiPaths.length, requiredBackendOpenapiPaths.length)
 })
 
+test('backend API contract includes release and system config routes', () => {
+  assert.deepEqual(
+    requiredBackendOpenapiPaths.filter((routePath) => (
+      routePath === '/api/release-updates' || routePath.startsWith('/api/system/config/')
+    )).sort(),
+    [
+      '/api/release-updates',
+      '/api/system/config/automation-helper/download',
+      '/api/system/config/automation-helper/payload',
+      '/api/system/config/automation-helper/payload/{payload_sha256}',
+      '/api/system/config/summary',
+      '/api/system/config/tos-desktop-full/download',
+      '/api/system/config/tos-desktop/download',
+      '/api/system/config/tos-desktop/payload',
+      '/api/system/config/tos-desktop/payload/{payload_sha256}',
+    ]
+  )
+})
+
 test('backend compatibility rejects healthy backend with an older version', () => {
   const readiness = evaluateBackendCompatibility({
     healthOk: true,
