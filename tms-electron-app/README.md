@@ -31,6 +31,17 @@ npm run verify:release-package
 npm run build:win
 ```
 
+`build:win` 当前会依次执行：
+
+- `build:backend-runtime`
+- `build:frontend`
+- `clean:update-artifacts`
+- `electron-builder --win --x64`
+- `verify:renderer-package`
+- `write:update-changelog`
+- `write:manual-downloads`
+- `verify:release-package`
+
 发布前还应手动验证 Electron 启动、后端 `/health`、主要 Excel 模块上传/处理/下载、更新状态和诊断导出。
 
 ## 打包与发布边界
@@ -48,8 +59,17 @@ npm run build:win
 - COS/CDN 或 GitHub Releases 下载地址
 - `TOS_FRONTEND_SOURCE`
 - NSIS 配置
+- TOS 轻量在线安装器、完整安装包和 payload 生成脚本
 
 当前正式交付产物以安装版为主。免安装 zip 作为安装包被系统拦截时的人工下载兜底，不参与自动安装。
+`manual-downloads.json` 是免安装 zip 的人工兜底下载清单，由 `write:manual-downloads` 在正式构建链路中生成，并由 `verify:release-package` 校验版本、URL、sha512 和 size。
+
+## 桌面安装包链路
+
+- `scripts/build-tos-desktop-nsis-installer.ps1` 生成 TOS 轻量在线安装器 `TOS-Desktop-Setup.exe` 和 `TOS-Desktop-Payload.zip`；安装时按 payload sha256 从配置 URL 下载并校验。
+- `scripts/build-tos-desktop-full-nsis-installer.ps1` 生成完整安装包 `TOS-Desktop-Full-Setup.exe`；payload 内置在安装包里，适合网络下载受限场景。
+- 后端系统配置下载接口位于 `/api/system/config/tos-desktop/*` 和 `/api/system/config/tos-desktop-full/download`，默认从 MinIO `downloads` bucket 读取安装器和 payload。
+- 前端系统设置页默认使用 `https://ai.tomwell.net:56130/tos/tos-desktop/download` 与 `https://ai.tomwell.net:56130/tos/tos-desktop-full/download`，也可通过 Vite 环境变量覆盖。
 
 ## 独立运行边界
 

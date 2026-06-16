@@ -1,5 +1,7 @@
 # TOS 项目冗余治理审计 - 2026-06-12
 
+> 历史快照：本文记录 2026-06-12 当时的冗余审计结论。当前工程事实以仓库根 `README.md`、`AGENTS.md`、`docs/engineering-closure-roadmap.md` 和当前源码为准；文中关于 `it-invoice-pdf-reorder` raw HTML 等状态可能已过期。
+
 ## 本轮目标
 
 - 在 `codex/tos-redundancy-cleanup-20260612` 分支执行保守清理。
