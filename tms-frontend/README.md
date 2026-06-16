@@ -56,17 +56,22 @@ npm run preview
 - `/jane-bom-compare`
 - `/jane-outbound-compare`
 - `/eric`
+- `/jason/pdf-reorder`
+- `/draft-packing-compare`
 - `/tms-finance-internal-reconciliation`
 - `/tms-finance-work-sales`
 - `/browser-plugins`
 - `/web-automation`
+- `/web-automation/scenarios/shipping-automation-2`
 - `/infornexus`
 - `/jane-sap`
 - `/eric-infornexus`
 - `/adidas-materials`
 - `/settings`
+- `/release-updates`
 
 `placeholder` 路由使用 `src/pages/RoutePlaceholder.vue`。
+旧 `/#/it-invoice-pdf-reorder` 已作为历史链接重定向到 Jason canonical 路由 `/#/jason/pdf-reorder`。
 
 ## 迁移规则
 
