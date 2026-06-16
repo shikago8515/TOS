@@ -1,0 +1,772 @@
+<template>
+  <div class="iaa">
+    <!-- === ALERT === -->
+    <transition name="iaa-alert-anim">
+      <div v-if="message" class="iaa-alert" :class="`iaa-alert--${messageTone}`">
+        <AppIcon :name="messageIconName" />
+        <span>{{ text(message) }}</span>
+        <button class="iaa-alert__close" @click="message = ''"><AppIcon name="stop-circle" /></button>
+      </div>
+    </transition>
+
+    <!-- === EMPTY === -->
+    <div v-if="!entry" class="iaa-empty">
+      <AppIcon name="alert-circle" class="iaa-empty__icon" />
+      <strong>{{ text('入口不存在') }}</strong>
+      <button class="iaa-back" @click="goBack"><AppIcon name="arrow-left" />{{ text('返回') }}</button>
+    </div>
+
+    <template v-else>
+      <!-- ═══ HERO HEADER ═══ -->
+      <header class="iaa-hd">
+        <div class="iaa-hd__left">
+          <button class="iaa-back-btn" @click="goBack"><AppIcon name="arrow-left" /></button>
+          <div class="iaa-hd__icon"><AppIcon name="globe-search" /></div>
+          <div class="iaa-hd__text">
+            <h1>{{ text(entry.title) }}</h1>
+            <p>{{ text(entry.subtitle) }}</p>
+          </div>
+        </div>
+        <div class="iaa-hd__right">
+          <div class="iaa-pill" :class="executorHealth?.ok ? 'iaa-pill--on' : 'iaa-pill--off'">
+            <span class="iaa-pill__dot" :class="executorHealth?.ok ? 'iaa-pill__dot--on' : ''" />
+            {{ executorHealth?.ok ? text('执行器就绪') : text('执行器未连接') }}
+          </div>
+          <span class="iaa-tag"><AppIcon name="zap" /> InforNexus</span>
+        </div>
+      </header>
+
+      <!-- ═══ HELPER BANNER ═══ -->
+      <transition name="iaa-alert-anim">
+        <div v-if="showLocalHelperPrompt" class="iaa-helper">
+          <div class="iaa-helper__icon"><AppIcon name="monitor-code" /></div>
+          <div class="iaa-helper__body">
+            <strong>{{ text('未检测到本机自动化助手') }}</strong>
+            <p>{{ text('请先启动 TOS 自动化助手，然后重新检测。') }}</p>
+          </div>
+          <div class="iaa-helper__btns">
+            <button class="iaa-btn iaa-btn--pri" @click="downloadAutomationHelper"><AppIcon name="download" />{{ text('下载助手') }}</button>
+            <button class="iaa-btn" @click="bootLocalHelper"><AppIcon name="play-circle" />{{ text('启动') }}</button>
+            <button class="iaa-btn" :disabled="refreshing" @click="refreshExecutorState(false)"><AppIcon name="refresh-cw" />{{ text('重新检测') }}</button>
+          </div>
+        </div>
+      </transition>
+
+      <!-- ═══ BODY: LEFT + RIGHT DOCK ═══ -->
+      <div class="iaa-body">
+        <!-- LEFT COLUMN -->
+        <div class="iaa-left">
+          <!-- Main Workflow Card -->
+          <section class="iaa-card iaa-card--primary">
+            <div class="iaa-card__hd">
+              <div class="iaa-card__hd-ico"><AppIcon name="globe-search" /></div>
+              <div class="iaa-card__hd-info">
+                <strong>{{ text('自动搜索并添加') }}</strong>
+                <small>{{ text('按 Excel 顺序逐个搜索、勾选并添加') }}</small>
+              </div>
+              <span v-if="executorHealth?.ok" class="iaa-chip iaa-chip--ok">{{ text('就绪') }}</span>
+              <span v-else class="iaa-chip iaa-chip--warn">{{ text('等待执行器') }}</span>
+            </div>
+
+            <!-- Credential Notice -->
+            <div v-if="hasStoredCredentials" class="iaa-cred-note">
+              <AppIcon name="check-circle" />
+              <span>{{ text('已保存') }} Infor Nexus {{ text('登录账号') }}: {{ savedCredentialUsername }}</span>
+            </div>
+
+            <!-- Credentials -->
+            <div class="iaa-card__bd">
+              <div class="iaa-cred-grid">
+                <label class="iaa-field">
+                  <span>{{ text('User ID') }}</span>
+                  <div class="iaa-inp-wrap">
+                    <AppIcon name="user" class="iaa-inp-icon" />
+                    <input v-model.trim="shippingUsername" type="text" class="iaa-inp" :placeholder="text('请输入 User ID')" autocomplete="username" />
+                  </div>
+                </label>
+                <label class="iaa-field">
+                  <span>{{ text('Password') }}</span>
+                  <div class="iaa-inp-wrap">
+                    <AppIcon name="shield-check" class="iaa-inp-icon" />
+                    <input v-model="shippingPassword" :type="showShippingPassword ? 'text' : 'password'" class="iaa-inp" placeholder="Enter password" autocomplete="current-password" />
+                    <button class="iaa-inp__btn" @click="showShippingPassword = !showShippingPassword"><AppIcon name="eye" /></button>
+                  </div>
+                </label>
+              </div>
+              <div class="iaa-cred-row">
+                <button class="iaa-btn iaa-btn--pri" :disabled="credentialSaving || !shippingUsername || !shippingPassword" @click="saveCurrentCredentials">
+                  <AppIcon name="shield-check" />{{ credentialSaving ? text('保存中') : text('保存登录账号密码') }}
+                </button>
+                <button class="iaa-btn" :disabled="credentialClearing || !hasStoredCredentials" @click="clearCurrentCredentials">
+                  <AppIcon name="stop-circle" />{{ text('清除') }}
+                </button>
+                <button class="iaa-btn" :disabled="templateLoading || !primaryTemplate" @click="downloadPrimaryTemplate">
+                  <AppIcon name="download" />{{ templateButtonLabel }}
+                </button>
+              </div>
+            </div>
+
+            <!-- File Dropzone -->
+            <div class="iaa-card__bd">
+              <label class="iaa-field"><span>{{ text('Excel 文件') }}</span></label>
+              <div class="iaa-drop" :class="{ 'iaa-drop--on': selectedFile, 'iaa-drop--over': isDragging }"
+                @click="openFilePicker" @dragenter.prevent="handleDragEnter" @dragover.prevent="handleDragOver" @dragleave.prevent="handleDragLeave" @drop.prevent="handleDrop">
+                <input ref="fileInput" type="file" accept=".xlsx,.xls" @click.stop @change="handleFileSelect" />
+                <template v-if="selectedFile">
+                  <div class="iaa-drop__ico iaa-drop__ico--ok"><AppIcon name="check-circle" /></div>
+                  <div class="iaa-drop__info">
+                    <b>{{ selectedFile.name }}</b>
+                    <small>{{ formatSize(selectedFile.size) }}</small>
+                  </div>
+                  <button class="iaa-drop__x" @click.stop="clearFile"><AppIcon name="stop-circle" /></button>
+                </template>
+                <template v-else>
+                  <div class="iaa-drop__ico iaa-drop__ico--float"><AppIcon name="upload" /></div>
+                  <div class="iaa-drop__info">
+                    <b>{{ text('点击或拖入 Excel 文件') }}</b>
+                    <small>{{ text('请把 10 位 ID 放在第二列') }}</small>
+                  </div>
+                </template>
+                <div v-if="isDragging" class="iaa-drop__overlay">{{ text('释放以上传文件') }}</div>
+              </div>
+            </div>
+
+            <!-- Execute -->
+            <div class="iaa-card__ft">
+              <button class="iaa-btn iaa-btn--execute" :disabled="!canRunShippingAutomation" @click="runInfornexusAutoAdd">
+                <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'iaa-spin': sending }" />
+                {{ sending ? text('执行中...') : text('上传 Excel 并执行') }}
+              </button>
+            </div>
+
+            <!-- Inline Status -->
+            <transition name="iaa-alert-anim">
+              <div v-if="lastResult || sending" class="iaa-status" :class="inlineStatusClass">
+                <AppIcon :name="statusIconName" />{{ text(statusText) }}
+              </div>
+            </transition>
+          </section>
+
+          <!-- Health Log -->
+          <details class="iaa-log">
+            <summary class="iaa-log__hd">
+              <AppIcon name="terminal" class="iaa-log__hd-icon" />
+              <span>{{ text('执行器健康日志') }}</span>
+              <AppIcon name="chevron-down" class="iaa-chev" />
+            </summary>
+            <pre class="iaa-log__pre">{{ healthRaw }}</pre>
+          </details>
+        </div>
+
+        <!-- ═══ RIGHT DOCK ═══ -->
+        <aside class="iaa-dock">
+          <!-- Executor Control -->
+          <div class="iaa-dock-card">
+            <div class="iaa-dock__hd">
+              <AppIcon name="server" class="iaa-dock__hd-icon" />
+              <span>{{ text('执行器控制') }}</span>
+              <span class="iaa-dock__dot" :class="executorHealth?.ok ? 'iaa-dock__dot--on' : ''" />
+            </div>
+            <div class="iaa-dock__bd">
+              <button class="iaa-btn iaa-btn--pri iaa-btn--full" :disabled="!canLaunchActiveApp" @click="startActiveApp(false)">
+                <AppIcon name="play-circle" />{{ launching ? text('启动中...') : text('启动执行器') }}
+              </button>
+              <button class="iaa-btn iaa-btn--danger iaa-btn--full" :disabled="!canStopActiveApp" @click="stopActiveApp">
+                <AppIcon name="stop-circle" />{{ text('停止') }}
+              </button>
+              <button class="iaa-btn iaa-btn--full" :disabled="refreshing" @click="refreshExecutorState(false)">
+                <AppIcon name="refresh-cw" :class="{ 'iaa-spin': refreshing }" />{{ text('刷新状态') }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Steps -->
+          <div class="iaa-dock-card iaa-dock-card--flex">
+            <div class="iaa-dock__hd">
+              <AppIcon name="workflow" class="iaa-dock__hd-icon" />
+              <span>{{ text('操作流程') }}</span>
+            </div>
+            <div class="iaa-dock__bd iaa-steps">
+              <div v-for="(s, i) in steps" :key="i" class="iaa-step">
+                <b class="iaa-step__n">{{ i + 1 }}</b>
+                <div class="iaa-step__text">
+                  <em>{{ text(s.title) }}</em>
+                  <small>{{ text(s.desc) }}</small>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Raw Response -->
+          <details v-if="lastRawResponse" class="iaa-dock-card">
+            <summary class="iaa-dock__hd iaa-dock__hd--summary">
+              <AppIcon name="code" class="iaa-dock__hd-icon" />
+              <span>{{ text('原始响应') }}</span>
+              <AppIcon name="chevron-down" class="iaa-chev" />
+            </summary>
+            <pre class="iaa-log__pre">{{ lastRawResponse }}</pre>
+          </details>
+        </aside>
+      </div>
+    </template>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import AppIcon from '../../../shared/ui/AppIcon.vue'
+import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+import type { AutomationAppInfo } from '../../../types/electronApi'
+import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
+import {
+  buildAutomationTemplateDownloadUrl, clearExecutorCredentials, createAutomationRunRecord,
+  fetchAutomationApps, fetchAutomationTemplates, fetchExecutorCredentials, finishAutomationRunRecord,
+  hasElectronAutomationSupport, launchAutomationConsole, openAutomationHelperDownload,
+  primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
+  recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole,
+} from '../../web-automation/webAutomationApi'
+import { canRunWithCredentials } from '../../web-automation/webAutomationCredentials'
+import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
+
+const ENTRY_ID = 'infornexus-auto-add'
+
+const router = useRouter(); const { text } = useAppLanguage()
+const entry = getWebAutomationEntry(ENTRY_ID)
+const electronSupported = hasElectronAutomationSupport()
+
+const activeApp = ref<AutomationAppInfo | null>(null)
+const executorHealth = ref<LocalExecutorHealth | null>(null)
+const executorCredentials = ref<ExecutorCredentials | null>(null)
+const automationTemplates = ref<AutomationTemplate[]>([])
+const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false)
+const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false); const sending = ref(false)
+const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info')
+const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
+const selectedFile = ref<File | null>(null)
+const shippingUsername = ref(''); const shippingPassword = ref(''); const showShippingPassword = ref(true)
+const statusText = ref(''); const statusLabel = ref('待命')
+const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
+
+const steps = [
+  { title: '上传 Excel 文件', desc: '读取第二列 10 位 ID。' },
+  { title: '启动执行器', desc: '启动可见浏览器登录 Infor Nexus。' },
+  { title: '自动搜索添加', desc: '按 Excel 顺序逐个搜索、勾选并添加。' },
+  { title: '查看结果', desc: '完成数量和失败明细在下方返回。' },
+]
+
+const healthRaw = computed(() => executorHealth.value ? JSON.stringify(executorHealth.value, null, 2) : '{}')
+const executorStatusLabel = computed(() => {
+  if (activeApp.value) { const l = text(getAutomationAppStatusLabel(activeApp.value)); if (executorHealth.value?.ok) { const c = Number(executorHealth.value.activeRunCount || 0); return c > 0 ? `${l} / ${c} ${text('个任务')}` : `${l} / ${text('就绪')}` }; if (activeApp.value.running) return `${l} / ${text('未连通')}`; return l }; return executorHealth.value?.ok ? text('就绪') : text('未启动')
+})
+const inlineStatusClass = computed(() => { if (sending.value) return 'iaa-status--info'; if (lastResult.value?.ok) return 'iaa-status--ok'; if (lastResult.value && !lastResult.value.ok) return 'iaa-status--err'; return '' })
+const statusIconName = computed(() => { if (sending.value) return 'loader'; if (lastResult.value?.ok) return 'check-circle'; if (lastResult.value && !lastResult.value.ok) return 'alert-circle'; return 'activity' })
+const canLaunchActiveApp = computed(() => Boolean(entry?.appId) && !launching.value)
+const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
+const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
+const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
+const savedCredentialUsername = computed(() => executorCredentials.value?.username || '')
+const primaryTemplate = computed(() => automationTemplates.value[0] || null)
+const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
+const executorRunUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-infornexus-auto-add-file` : '' })
+const canRunShippingAutomation = computed(() => canRunWithCredentials({ username: shippingUsername.value, password: shippingPassword.value, hasStoredCredentials: hasStoredCredentials.value, hasSelectedFile: Boolean(selectedFile.value), sending: sending.value }))
+const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
+
+onMounted(() => { void initializeScenario() })
+
+async function initializeScenario(): Promise<void> {
+  statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行 Infornexus 自动搜索添加。'
+  await refreshAutomationTemplates(); await refreshExecutorCredentials(); await refreshExecutorState(true)
+  if (electronSupported && activeApp.value?.available && !activeApp.value.running) await startActiveApp(true)
+}
+
+async function refreshExecutorState(silent: boolean): Promise<void> {
+  if (!entry || refreshing.value) return; refreshing.value = true; const fb = createFallback(entry)
+  try {
+    launcherReachable.value = electronSupported ? true : await probeLocalAutomationLauncherHealth()
+    if (electronSupported) { try { const apps = await fetchAutomationApps(); activeApp.value = apps.find((a) => a.id === entry?.appId) ?? fb } catch { activeApp.value = fb } } else { activeApp.value = fb }
+    if (!electronSupported && !launcherReachable.value) { executorHealth.value = null; activeApp.value = fb; if (!silent) { messageTone.value = 'warning'; message.value = text('未检测到本机自动化助手。') }; return }
+    executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl); await refreshExecutorCredentials()
+    if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
+    if (!silent) { messageTone.value = 'success'; message.value = text('状态已刷新。') }
+  } catch {
+    executorHealth.value = null; activeApp.value = activeApp.value || fb
+    if (!silent) { messageTone.value = 'warning'; message.value = launcherReachable.value ? text('本机自动化助手已连接，执行器尚未启动。') : text('执行器未就绪。') }
+  } finally { refreshing.value = false }
+}
+
+async function refreshExecutorCredentials(): Promise<void> {
+  if (!entry) return
+  try {
+    executorCredentials.value = await fetchExecutorCredentials(entry.id)
+    const u = executorCredentials.value.username || ''
+    if (u) shippingUsername.value = u
+    if (executorCredentials.value.hasStoredCredentials) { const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = r.username; shippingPassword.value = r.password }
+  } catch { executorCredentials.value = null }
+}
+
+async function refreshAutomationTemplates(): Promise<void> {
+  if (!entry) return; templateLoading.value = true
+  try { automationTemplates.value = await fetchAutomationTemplates(entry.id) } catch { automationTemplates.value = [] }
+  finally { templateLoading.value = false }
+}
+
+async function downloadPrimaryTemplate(): Promise<void> {
+  const t = primaryTemplate.value; if (!t) return
+  try { const u = await buildAutomationTemplateDownloadUrl(t); const a = document.createElement('a'); a.href = u; a.download = t.originalFilename || `${t.templateKey || 'template'}.xlsx`; a.rel = 'noopener'; document.body.append(a); a.click(); a.remove() }
+  catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('下载失败。')) }
+}
+
+function downloadAutomationHelper(): void { void openAutomationHelperDownload() }
+function bootLocalHelper(): void { primeLocalAutomationLauncherBoot(); messageTone.value = 'info'; message.value = text('已尝试启动本机自动化助手。'); window.setTimeout(() => { void refreshExecutorState(true) }, 1200) }
+
+async function saveCurrentCredentials(): Promise<void> {
+  if (!entry || credentialSaving.value) return
+  const u = shippingUsername.value.trim(); const p = shippingPassword.value
+  if (!u || !p) { messageTone.value = 'warning'; message.value = text('请先填写账号和密码。'); return }
+  credentialSaving.value = true
+  try { executorCredentials.value = await saveExecutorCredentials(entry.id, u, p); await refreshExecutorCredentials(); shippingPassword.value = p; messageTone.value = 'success'; message.value = text('已保存。') }
+  catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('保存失败。')) }
+  finally { credentialSaving.value = false }
+}
+
+async function clearCurrentCredentials(): Promise<void> {
+  if (!entry || credentialClearing.value) return; credentialClearing.value = true
+  try { executorCredentials.value = await clearExecutorCredentials(entry.id); messageTone.value = 'info'; message.value = text('已清除。') }
+  catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('清除失败。')) }
+  finally { credentialClearing.value = false }
+}
+
+async function startActiveApp(silent: boolean): Promise<void> {
+  if (!entry || launching.value) return
+  if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot()
+  launching.value = true
+  try {
+    const r = await launchAutomationConsole(entry.appId); if (!r.success) throw new Error(r.error || '启动失败')
+    await refreshExecutorState(true)
+    if (!silent) { messageTone.value = 'success'; message.value = r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') }
+  } catch (e) {
+    const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.appId, entryId: entry.id, error: m })
+    if (!silent) { messageTone.value = 'error'; message.value = m }
+  } finally { launching.value = false }
+}
+
+async function stopActiveApp(): Promise<void> {
+  if (!entry) return
+  try {
+    const r = await stopAutomationConsole(entry.appId); if (!r.success) throw new Error(r.error || '停止失败')
+    executorHealth.value = null; if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }
+    await refreshExecutorState(true).catch(() => {}); messageTone.value = 'info'; message.value = text('执行器已停止。')
+  } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('停止失败')) }
+}
+
+function handleFileSelect(e: Event): void { const f = getExcelFile((e.target as HTMLInputElement).files); if (f) setSelectedFile(f) }
+function handleDragEnter(e: DragEvent): void { if (!hasDraggedFiles(e) || isInternalDragMove(e)) return; dragDepth.value += 1; isDragging.value = true }
+function handleDragOver(e: DragEvent): void { if (!hasDraggedFiles(e)) return; if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; isDragging.value = true }
+function handleDragLeave(e: DragEvent): void { if (isInternalDragMove(e)) return; dragDepth.value = Math.max(0, dragDepth.value - 1); if (dragDepth.value === 0) isDragging.value = false }
+function handleDrop(e: DragEvent): void { resetDragging(); const f = getExcelFile(e.dataTransfer?.files); if (f) setSelectedFile(f) }
+function openFilePicker(): void { fileInput.value?.click() }
+function clearFile(): void { selectedFile.value = null; resetDragging(); if (fileInput.value) fileInput.value.value = '' }
+function setSelectedFile(file: File): void { if (!isExcelFile(file)) { messageTone.value = 'warning'; message.value = text('请上传 .xlsx 或 .xls 文件。'); return }; selectedFile.value = file; message.value = '' }
+function getExcelFile(files: FileList | null | undefined): File | null { const list = files ? Array.from(files) : []; const f = list.find(isExcelFile) || null; if (!f && list.length > 0) { messageTone.value = 'warning'; message.value = text('请上传 .xlsx 或 .xls 文件。') }; return f }
+function isExcelFile(file: File): boolean { return /\.(xlsx|xls)$/i.test(file.name) }
+function hasDraggedFiles(e: DragEvent): boolean { return Array.from(e.dataTransfer?.types || []).includes('Files') }
+function isInternalDragMove(e: DragEvent): boolean { const current = e.currentTarget; const related = e.relatedTarget; return current instanceof Node && related instanceof Node && current.contains(related) }
+function resetDragging(): void { dragDepth.value = 0; isDragging.value = false }
+function formatSize(b: number): string { if (b < 1024) return `${b} B`; if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`; return `${(b / (1024 * 1024)).toFixed(1)} MB` }
+
+async function resolveRunCredentialsPayload(): Promise<Record<string, string>> {
+  if (!entry) return {}
+  const u = shippingUsername.value.trim(); const tp = shippingPassword.value
+  if (tp.trim()) { if (!u) throw new Error('请填写账号密码。'); executorCredentials.value = await saveExecutorCredentials(entry.id, u, tp); await refreshExecutorCredentials(); return { username: u, password: tp } }
+  const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = r.username; shippingPassword.value = r.password; return { username: r.username, password: r.password }
+}
+
+function readErrorMessage(e: unknown, fb: string): string { return e instanceof Error && e.message ? e.message : fb }
+async function createBackendRunRecord(f: File): Promise<AutomationRunRecord | null> { if (!entry) return null; return createAutomationRunRecord(entry.id, f, `${entry.title}`) }
+async function finishBackendRunRecord(r: AutomationRunRecord | null, ok: boolean, msg: string, p: Record<string, any> | null): Promise<void> { if (!r?.runId) return; await finishAutomationRunRecord(r.runId, ok ? 'success' : 'failed', msg || (ok ? 'completed' : 'failed'), p, collectResultFiles(p)) }
+function collectResultFiles(p: Record<string, any> | null): AutomationRunFileInput[] {
+  const u = p?.artifacts?.downloadUrls; if (!u || typeof u !== 'object') return []
+  return [bfi(u.resultExcelUrl, 'result_excel', 'autoadd-last-result.xlsx'), bfi(u.resultJsonUrl, 'result_json', 'autoadd-last-result.json'), bfi(u.failedPoExcelUrl, 'failed_rows_excel', 'autoadd-last-failed.xlsx'), bfi(u.failedPoJsonUrl, 'failed_rows_json', 'autoadd-last-failed.json')].filter((x): x is AutomationRunFileInput => Boolean(x))
+}
+function bfi(rp: string, fr: string, fn: string): AutomationRunFileInput | null { const u = buildArtifactUrl(rp); if (!u) return null; return { url: u, fileRole: fr, fileName: fn } }
+function buildArtifactUrl(rp: string): string { const np = String(rp || '').trim(); if (!np) return ''; if (/^https?:\/\//i.test(np)) return np; const bu = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return bu ? `${bu}${np.startsWith('/') ? np : `/${np}`}` : '' }
+
+async function runInfornexusAutoAdd(): Promise<void> {
+  if (!entry || sending.value || !selectedFile.value) return
+  if (!(await ensureReady())) { setNotReady(); return }
+  const file = selectedFile.value; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; lastRawResponse.value = ''; message.value = ''
+  try {
+    const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload()
+    const res = await fetch(executorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: entry.localExecutorToken, ...cp }) })
+    const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw)
+    await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j)
+    if (!res.ok) { statusLabel.value = '失败'; statusText.value = j?.message || `HTTP ${res.status}`; lastResult.value = { ok: false, message: j?.message || `HTTP ${res.status}` }; messageTone.value = 'error'; message.value = text('执行失败。'); return }
+    if (j?.ok) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedIdCount ?? 0}/${j.totalIdCount ?? '?'} 个 ID。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }
+    statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。')
+  } catch (e) { statusLabel.value = '异常'; statusText.value = readErrorMessage(e, '网络错误'); lastResult.value = { ok: false }; messageTone.value = 'error'; message.value = text('执行异常。') }
+  finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) }
+}
+
+function setNotReady(): void { statusLabel.value = '未就绪'; statusText.value = '本机执行器尚未就绪。'; lastResult.value = { ok: false, message: 'Executor is not ready.' }; messageTone.value = 'warning'; message.value = text('本机执行器未就绪。') }
+async function ensureReady(): Promise<boolean> { if (executorHealth.value?.ok) return true; await startActiveApp(true); await refreshExecutorState(true).catch(() => {}); return Boolean(executorHealth.value?.ok) }
+async function fileToBase64(f: File): Promise<string> { const b = await f.arrayBuffer(); return arrayBufferToBase64(b) }
+function arrayBufferToBase64(b: ArrayBuffer): string { const bytes = new Uint8Array(b); const cs = 0x8000; let bin = ''; for (let i = 0; i < bytes.length; i += cs) { const chunk = bytes.subarray(i, i + cs); bin += String.fromCharCode(...chunk) }; return window.btoa(bin) }
+function safeParseJson(r: string): Record<string, any> | null { try { return r ? JSON.parse(r) : null } catch { return null } }
+function createFallback(e: WebAutomationEntry): AutomationAppInfo { return { id: e.appId, name: e.title, description: e.description, provider: 'Playwright', category: '网页自动化', version: '', available: true, running: false, port: Number(new URL(e.executorBaseUrl).port || 0), url: e.executorBaseUrl } }
+function goBack(): void { if (window.history.length > 1) router.back(); else void router.push('/') }
+</script>
+
+<style scoped lang="scss">
+/* ================================================================
+   Infornexus Auto-Add — v4 Right-Dock Layout
+   Left: Main workflow card (credentials + file + execute) + Health log
+   Right: 260px dock (executor controls + steps + raw response)
+   Sky blue + Emerald. No purple. Framework icons only.
+   ================================================================ */
+
+.iaa {
+  --a: #0ea5e9; --a2: #e0f2fe; --ag: #0284c7;
+  --em: #059669; --em2: #d1fae5;
+  --red: #dc2626; --br: #e2e8f0; --mu: #7c8db5; --ink: #1e293b;
+  --r: 14px; --sh: 0 2px 12px rgba(0,0,0,.04);
+  display: flex; flex-direction: column; gap: 14px;
+  height: 100%; padding: 0 20px 16px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+  color: var(--ink);
+}
+
+/* ═══ HERO HEADER ═══ */
+.iaa-hd {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 14px 0 0; flex-shrink: 0;
+  animation: iaa-rise .45s cubic-bezier(.22,1,.36,1) both;
+  &__left { display: flex; align-items: center; gap: 12px; }
+  &__icon {
+    width: 40px; height: 40px; border-radius: 13px; flex-shrink: 0;
+    background: linear-gradient(135deg, #10b981, #059669);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; box-shadow: 0 5px 16px rgba(16,185,129,.25);
+    :deep(.app-icon) { font-size: 18px; }
+  }
+  &__text {
+    h1 { margin: 0; font-size: 15px; font-weight: 800; letter-spacing: -.02em; }
+    p { margin: 2px 0 0; font-size: 11px; color: var(--mu); }
+  }
+  &__right { display: flex; align-items: center; gap: 8px; }
+}
+.iaa-back-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 11px;
+  border: 1px solid var(--br); background: #fff; color: #64748b;
+  cursor: pointer; transition: all .2s cubic-bezier(.22,1,.36,1);
+  box-shadow: 0 1px 3px rgba(0,0,0,.04); flex-shrink: 0;
+  :deep(.app-icon) { font-size: 14px; }
+  &:hover { background: #f8fafc; color: var(--ink); transform: translateX(-2px); }
+}
+
+/* ─── Status Pill ─── */
+.iaa-pill {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 14px; border-radius: 12px;
+  font-size: 11px; font-weight: 700; transition: all .3s ease;
+  &--on  { background: #ecfdf5; color: #047857; border: 1.5px solid #6ee7b7; box-shadow: 0 2px 8px rgba(5,150,105,.08); }
+  &--off { background: #fef2f2; color: #b91c1c; border: 1.5px solid #fecaca; }
+  &__dot { width: 7px; height: 7px; border-radius: 50%; background: #cbd5e1; flex-shrink: 0;
+    &--on { background: #10b981; box-shadow: 0 0 0 0 rgba(16,185,129,.35); animation: iaa-pulse 2.5s ease infinite; }
+  }
+}
+.iaa-tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 11px; border-radius: 9px;
+  background: #f8fafc; border: 1px solid var(--br);
+  font-size: 10px; font-weight: 600; color: #94a3b8;
+  :deep(.app-icon) { font-size: 10px; color: #f59e0b; }
+}
+
+/* ═══ ALERT ═══ */
+.iaa-alert {
+  display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+  border-radius: 12px; font-size: 12px; border: 1px solid; font-weight: 500;
+  :deep(.app-icon) { font-size: 15px; flex-shrink: 0; }
+  &--info    { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+  &--success { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+  &--warning { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+  &--error   { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+  &__close { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-left: auto; border: none; border-radius: 6px; background: rgba(0,0,0,.05); color: var(--mu); cursor: pointer; transition: all .15s;
+    :deep(.app-icon) { font-size: 12px; }
+    &:hover { background: rgba(0,0,0,.1); }
+  }
+}
+.iaa-alert-anim-enter-active { transition: all .25s cubic-bezier(.22,1,.36,1); }
+.iaa-alert-anim-leave-active { transition: all .15s ease; }
+.iaa-alert-anim-enter-from, .iaa-alert-anim-leave-to { opacity: 0; transform: translateY(-6px); }
+
+/* ═══ HELPER BANNER ═══ */
+.iaa-helper {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px;
+  padding: 14px 18px; border-radius: var(--r);
+  background: linear-gradient(135deg, #fffbeb, #fef3c7);
+  border: 1px solid #fde68a; flex-shrink: 0;
+  animation: iaa-slideR .4s cubic-bezier(.22,1,.36,1) .08s both;
+  &__icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: #fef3c7; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    :deep(.app-icon) { font-size: 18px; color: #d97706; }
+  }
+  &__body {
+    strong { display: block; font-size: 12px; font-weight: 700; }
+    p { margin: 2px 0 0; font-size: 11px; color: #92400e; }
+  }
+  &__btns { display: flex; gap: 6px; flex-shrink: 0; }
+}
+
+/* ═══ BODY: LEFT + RIGHT DOCK ═══ */
+.iaa-body {
+  display: grid; grid-template-columns: 1fr 260px; gap: 14px;
+  flex: 1; min-height: 0;
+}
+.iaa-left { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
+
+/* ═══ MAIN CARD ═══ */
+.iaa-card {
+  background: #fff; border: 1px solid var(--br); border-radius: var(--r);
+  box-shadow: var(--sh); overflow: hidden;
+  animation: iaa-rise .5s cubic-bezier(.22,1,.36,1) both;
+  &--primary { border-top: 4px solid var(--em); }
+  &__hd {
+    display: flex; align-items: center; gap: 10px;
+    padding: 16px 20px; border-bottom: 1px solid #f1f5f9;
+  }
+  &__hd-ico {
+    width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
+    background: var(--em2); display: flex; align-items: center; justify-content: center;
+    :deep(.app-icon) { font-size: 16px; color: var(--em); }
+  }
+  &__hd-info {
+    display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1;
+    strong { font-size: 13px; font-weight: 700; }
+    small { font-size: 10px; color: var(--mu); }
+  }
+  &__bd { padding: 14px 20px; display: flex; flex-direction: column; gap: 12px; }
+  &__ft { padding: 0 20px 16px; display: flex; flex-direction: column; gap: 8px; }
+}
+
+/* ─── Credential Notice ─── */
+.iaa-cred-note {
+  display: flex; align-items: center; gap: 7px;
+  margin: 12px 20px 0; padding: 9px 13px; border-radius: 10px;
+  background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d;
+  font-size: 12px; font-weight: 500;
+  :deep(.app-icon) { font-size: 14px; flex-shrink: 0; }
+}
+.iaa-cred-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.iaa-cred-row { display: flex; flex-wrap: wrap; gap: 7px; }
+
+/* ─── Fields ─── */
+.iaa-field { display: flex; flex-direction: column; gap: 4px;
+  > span { font-size: 11px; font-weight: 600; color: var(--ink); }
+}
+.iaa-inp-wrap { position: relative; display: flex; align-items: center; }
+.iaa-inp-icon { position: absolute; left: 10px; color: var(--mu); font-size: 14px; pointer-events: none; z-index: 1; }
+.iaa-inp {
+  flex: 1; min-width: 0; height: 34px; padding: 0 12px 0 32px;
+  border: 1px solid var(--br); border-radius: 8px;
+  background: #f8fafc; color: var(--ink); font-size: 12px;
+  transition: all .2s ease;
+  &::placeholder { color: #94a3b8; }
+  &:focus { outline: none; border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,.1); background: #fff; }
+  &__btn { position: absolute; right: 8px; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: none; border-radius: 6px; background: transparent; color: var(--mu); cursor: pointer; transition: all .15s;
+    :deep(.app-icon) { font-size: 13px; }
+    &:hover { color: var(--a); background: var(--a2); }
+  }
+}
+
+/* ─── Dropzone ─── */
+.iaa-drop {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; min-height: 90px; padding: 20px 14px;
+  border: 2px dashed #cbd5e1; border-radius: 12px; background: #f8fafc;
+  cursor: pointer; transition: all .2s ease-in-out; user-select: none;
+  input { display: none; }
+  &:hover { border-color: #94a3b8; background: #f1f5f9; }
+  &--on { border-color: #6ee7b7; border-style: solid; background: #f0fdfa; }
+  &--over { border-color: var(--em); border-style: dashed; background: rgba(5,150,105,.04); transform: scale(0.99); }
+  b { font-size: 12px; color: #374151; text-align: center; font-weight: 600; }
+  small { font-size: 10px; color: #94a3b8; }
+  &__ico {
+    width: 44px; height: 44px; border-radius: 12px;
+    background: #f1f5f9; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    :deep(.app-icon) { font-size: 20px; color: #94a3b8; }
+    &--ok { background: #d1fae5;
+      :deep(.app-icon) { font-size: 20px; color: #059669; }
+    }
+    &--float { animation: iaa-float 3s ease-in-out infinite; }
+  }
+  &__info { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  &__x { position: absolute; top: 8px; right: 8px; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 1px solid #fecaca; border-radius: 8px; background: #fff; color: #dc2626; cursor: pointer; flex-shrink: 0; transition: all .18s;
+    :deep(.app-icon) { font-size: 12px; }
+    &:hover { background: #fef2f2; border-color: #b91c1c; transform: translateY(-1px); }
+  }
+  &__overlay { position: absolute; inset: 4px; display: flex; align-items: center; justify-content: center; background: rgba(236,253,245,.92); border: 2px dashed var(--em); border-radius: 10px; font-size: 12px; font-weight: 700; color: var(--em); pointer-events: none; backdrop-filter: blur(4px); animation: iaa-dashPulse .8s ease-in-out infinite alternate; }
+}
+
+/* ─── Status Bar ─── */
+.iaa-status {
+  display: flex; align-items: center; gap: 7px;
+  margin: 0 20px 12px; padding: 9px 13px; border-radius: 10px;
+  font-size: 12px; border: 1px solid; font-weight: 500;
+  :deep(.app-icon) { font-size: 14px; flex-shrink: 0; }
+  &--info { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+  &--ok   { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+  &--err  { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+}
+
+/* ═══ HEALTH LOG ═══ */
+.iaa-log {
+  background: #fff; border: 1px solid var(--br); border-radius: var(--r);
+  box-shadow: var(--sh); overflow: hidden; flex-shrink: 0;
+  &__hd {
+    display: flex; align-items: center; gap: 7px;
+    padding: 10px 16px; font-size: 12px; font-weight: 700; color: var(--ink);
+    cursor: pointer; list-style: none; transition: color .15s;
+    &::-webkit-details-marker { display: none; }
+    &:hover { color: #0f172a; }
+    &-icon { font-size: 13px; color: var(--em); flex-shrink: 0; }
+    span { flex: 1; }
+  }
+  &__pre {
+    margin: 0 12px 12px; max-height: 110px; overflow-y: auto;
+    padding: 12px 14px; background: #0f172a; color: #38bdf8;
+    font-size: 10px; font-family: 'Cascadia Code','SF Mono',Consolas,monospace;
+    white-space: pre-wrap; word-break: break-word;
+    border-radius: 8px; line-height: 1.5;
+    border: 1px solid rgba(255,255,255,.05);
+    &::-webkit-scrollbar { width: 4px; }
+    &::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 2px; }
+  }
+}
+
+/* ═══ RIGHT DOCK ═══ */
+.iaa-dock {
+  display: flex; flex-direction: column; gap: 12px;
+  min-height: 0; animation: iaa-slideIn .45s cubic-bezier(.22,1,.36,1) .12s both;
+}
+.iaa-dock-card {
+  background: #fff; border: 1px solid var(--br); border-radius: var(--r);
+  box-shadow: var(--sh); overflow: hidden;
+  display: flex; flex-direction: column;
+  transition: all .22s cubic-bezier(.22,1,.36,1);
+  &:hover { box-shadow: 0 6px 20px rgba(0,0,0,.05); }
+  &--flex { flex: 1; min-height: 0; }
+}
+.iaa-dock__hd {
+  display: flex; align-items: center; gap: 7px;
+  padding: 12px 16px; font-size: 12px; font-weight: 700; color: var(--ink);
+  border-bottom: 1px solid #f1f5f9;
+  &-icon { font-size: 13px; color: var(--em); flex-shrink: 0; }
+  &--summary { cursor: pointer; list-style: none; &::-webkit-details-marker { display: none; } }
+}
+.iaa-dock__dot {
+  width: 7px; height: 7px; border-radius: 50%; background: #cbd5e1; margin-left: auto;
+  &--on { background: #10b981; animation: iaa-pulse 2.5s ease infinite; }
+}
+.iaa-dock__bd { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+
+/* ─── Steps ─── */
+.iaa-steps { display: flex; flex-direction: column; gap: 4px; }
+.iaa-step {
+  display: flex; gap: 10px; padding: 10px 10px; border-radius: 8px;
+  transition: background .15s;
+  &:hover { background: #f8fafc; }
+  &__n {
+    display: flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 7px; flex-shrink: 0;
+    background: var(--em2); color: var(--em);
+    font-size: 10px; font-weight: 800;
+  }
+  &__text {
+    min-width: 0; flex: 1;
+    em { display: block; font-size: 11px; font-style: normal; font-weight: 600; color: var(--ink); }
+    small { display: block; font-size: 10px; color: var(--mu); line-height: 1.4; margin-top: 2px; }
+  }
+}
+
+/* ═══ BUTTONS ═══ */
+.iaa-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  height: 34px; padding: 0 14px; border: 1px solid var(--br); border-radius: 10px;
+  background: #fff; color: #4b5563; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all .2s cubic-bezier(.22,1,.36,1); white-space: nowrap;
+  :deep(.app-icon) { font-size: 13px; flex-shrink: 0; }
+  &:hover:not(:disabled) { background: #f8fafc; border-color: #cbd5e1; transform: translateY(-1px); }
+  &:active:not(:disabled) { transform: translateY(0); }
+  &:disabled { opacity: .35; cursor: not-allowed; }
+  &--pri {
+    background: linear-gradient(135deg, var(--a), var(--ag));
+    color: #fff; border-color: transparent;
+    box-shadow: 0 2px 10px rgba(14,165,233,.2);
+    &:hover:not(:disabled) { box-shadow: 0 4px 16px rgba(14,165,233,.3); filter: brightness(1.05); }
+  }
+  &--danger { color: var(--red); border-color: #fecaca;
+    &:hover:not(:disabled) { background: #fef2f2; }
+  }
+  &--full { width: 100%; }
+  &--execute {
+    width: 100%; height: 42px; font-size: 13px; font-weight: 700; color: #fff;
+    border-color: transparent; border-radius: 12px;
+    background: linear-gradient(135deg, var(--em), #047857);
+    box-shadow: 0 3px 14px rgba(5,150,105,.25);
+    :deep(.app-icon) { font-size: 14px; }
+    &:hover:not(:disabled) { filter: brightness(1.06); box-shadow: 0 5px 20px rgba(5,150,105,.35); }
+  }
+}
+
+/* ═══ CHIPS ═══ */
+.iaa-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px; border-radius: 99px;
+  font-size: 9px; font-weight: 700; flex-shrink: 0; margin-left: auto;
+  :deep(.app-icon) { font-size: 9px; }
+  &--ok   { background: #ecfdf5; color: #059669; }
+  &--warn { background: #fffbeb; color: #d97706; }
+}
+
+/* ═══ EMPTY ═══ */
+.iaa-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 80px 20px; text-align: center;
+  &__icon { font-size: 36px; color: #d1d5db; }
+  strong { font-size: 16px; }
+}
+.iaa-back {
+  display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 12px;
+  border: 1px solid var(--br); border-radius: 8px; background: #fff; color: #4b5563;
+  font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s;
+  :deep(.app-icon) { font-size: 14px; }
+  &:hover { background: #f8fafc; }
+}
+
+.iaa-chev { transition: transform .25s; details[open] & { transform: rotate(180deg); } }
+.iaa-spin { animation: iaa-spin .8s linear infinite; }
+
+/* ═══ ANIMATIONS ═══ */
+@keyframes iaa-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes iaa-slideR { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes iaa-slideIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes iaa-spin { to { transform: rotate(360deg); } }
+@keyframes iaa-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes iaa-pulse { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.35); } 70% { box-shadow: 0 0 0 4px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
+@keyframes iaa-dashPulse { from { opacity: .7; } to { opacity: 1; border-color: #34d399; } }
+
+/* ═══ RESPONSIVE ═══ */
+@media (max-width: 1200px) { .iaa-body { grid-template-columns: 1fr 220px; } }
+@media (max-width: 960px) { .iaa-body { grid-template-columns: 1fr; } .iaa-dock { flex-direction: row; } .iaa-dock-card { flex: 1; &--flex { flex: 1; } } .iaa-cred-grid { grid-template-columns: 1fr; } }
+</style>
+
+<!-- Override shell padding so this page fills edge-to-edge -->
+<style>
+.content-shell:has(.iaa) {
+  padding: 0 !important;
+}
+</style>

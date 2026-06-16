@@ -8,6 +8,7 @@ import DraftPackingComparePage from '../pages/draft-packing-compare/DraftPacking
 import EricPage from '../pages/eric/EricPage.vue'
 import EricInfornexusPage from '../pages/eric-infornexus/EricInfornexusPage.vue'
 import HomePage from '../pages/home/HomePage.vue'
+import InfornexusAutoAddPage from '../pages/infornexus-auto-add/InfornexusAutoAddPage.vue'
 import InfornexusPage from '../pages/infornexus/InfornexusPage.vue'
 import JasonPdfReorderPage from '../pages/jason-pdf-reorder/JasonPdfReorderPage.vue'
 import JaneBomComparePage from '../pages/jane-bom-compare/JaneBomComparePage.vue'
@@ -19,6 +20,7 @@ import JesscaPage from '../pages/jessca/JesscaPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
 import ReleaseUpdatesPage from '../pages/release-updates/ReleaseUpdatesPage.vue'
 import SettingsPage from '../pages/settings/SettingsPage.vue'
+import ShippingAutomationPage from '../pages/shipping-automation/ShippingAutomationPage.vue'
 import ShippingAutomation2Page from '../pages/shipping-automation-2/ShippingAutomation2Page.vue'
 import SophiaTinaPage from '../pages/sophia-tina/SophiaTinaPage.vue'
 import TmsFinanceInternalReconciliationPage from '../pages/tms-finance-internal-reconciliation/TmsFinanceInternalReconciliationPage.vue'
@@ -66,11 +68,27 @@ const moduleRoutes: RouteRecordRaw[] = tosRouteDefinitions.map((route) => ({
 
 const scenarioRoutes: RouteRecordRaw[] = [
   {
+    path: '/web-automation/scenarios/shipping-automation',
+    name: 'web-automation-scenario-shipping-automation',
+    component: ShippingAutomationPage,
+    meta: {
+      title: 'shipping 自动化',
+    },
+  },
+  {
     path: '/web-automation/scenarios/shipping-automation-2',
     name: 'web-automation-scenario-shipping-automation-2',
     component: ShippingAutomation2Page,
     meta: {
       title: 'shipping 2 自动化',
+    },
+  },
+  {
+    path: '/web-automation/scenarios/infornexus-auto-add',
+    name: 'web-automation-scenario-infornexus-auto-add',
+    component: InfornexusAutoAddPage,
+    meta: {
+      title: 'Infornexus 自动搜索添加',
     },
   },
   {
