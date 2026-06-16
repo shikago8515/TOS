@@ -3,7 +3,9 @@ import { fallbackAppVersion } from '../../shared/version/appVersion'
 import bundledReleaseHistory from '../../shared/version/releaseHistory.json'
 
 export type ReleaseUpdateCategory = 'added' | 'improved' | 'fixed' | string
-export type ReleaseUpdatesSource = 'backend' | 'bundled'
+export type ReleaseUpdatesSource = 'backend' | 'server' | 'bundled'
+
+const serverReleaseUpdatesUrl = 'https://ai.tomwell.net:56130/tos/desktop-api/api/release-updates'
 
 export interface ReleaseUpdateRecord {
   id: number
@@ -45,20 +47,46 @@ export async function fetchReleaseUpdates(limit = 120): Promise<ReleaseUpdatesRe
     const payload = await requestBackendJson<ReleaseUpdatesResponse>({
       path: `/api/release-updates?limit=${safeLimit}`,
     })
-    return {
-      ok: Boolean(payload.ok),
-      source: 'backend',
-      version: String(payload.version || ''),
-      records: Array.isArray(payload.records) ? payload.records : [],
-      total: Number(payload.total || 0),
-    }
+    return normalizeReleaseUpdatesPayload(payload, 'backend')
   } catch (error) {
-    if (isBackendUnavailableError(error)) {
-      return buildBundledReleaseUpdates(safeLimit)
-    }
+    try {
+      const payload = await requestServerReleaseUpdates(safeLimit)
+      return normalizeReleaseUpdatesPayload(payload, 'server')
+    } catch (_serverError) {
+      if (isRecoverableReleaseUpdatesError(error)) {
+        return buildBundledReleaseUpdates(safeLimit)
+      }
 
-    throw error
+      throw error
+    }
   }
+}
+
+function normalizeReleaseUpdatesPayload(
+  payload: Partial<ReleaseUpdatesResponse>,
+  source: ReleaseUpdatesSource,
+): ReleaseUpdatesResponse {
+  return {
+    ok: Boolean(payload.ok),
+    source,
+    version: String(payload.version || ''),
+    records: Array.isArray(payload.records) ? payload.records : [],
+    total: Number(payload.total || 0),
+  }
+}
+
+async function requestServerReleaseUpdates(limit: number): Promise<ReleaseUpdatesResponse> {
+  const response = await fetch(`${serverReleaseUpdatesUrl}?limit=${limit}`, {
+    cache: 'no-store',
+  })
+  const text = await response.text()
+  const payload = text ? JSON.parse(text) as ReleaseUpdatesResponse : {} as ReleaseUpdatesResponse
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+
+  return payload
 }
 
 function buildBundledReleaseUpdates(limit: number): ReleaseUpdatesResponse {
@@ -92,10 +120,14 @@ function buildBundledRecord(record: BundledReleaseHistoryRecord): ReleaseUpdateR
   }
 }
 
-function isBackendUnavailableError(error: unknown): boolean {
+function isRecoverableReleaseUpdatesError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false
   }
 
-  return error.message === '无法连接后端服务' || error.message === 'Failed to fetch'
+  return (
+    error.message === '无法连接后端服务'
+    || error.message === 'Failed to fetch'
+    || error.message.includes('缺少此接口')
+  )
 }
