@@ -53,7 +53,6 @@ $ExtractFailedMessage = ConvertFrom-Utf8Base64 "VE9TIOahjOmdoueJiOaWh+S7tuino+WO
 $InstallDetail = ConvertFrom-Utf8Base64 "5q2j5Zyo5a6J6KOFIFRPUyDmoYzpnaLniYjmlofku7YuLi4="
 $CopyFailedMessage = ConvertFrom-Utf8Base64 "VE9TIOahjOmdoueJiOaWh+S7tuWkjeWItuWksei0peOAgumAgOWHuuS7o+egge+8mg=="
 $IncompleteMessage = ConvertFrom-Utf8Base64 "VE9TIOahjOmdoueJiOWuieijheS4jeWujOaVtO+8jOivt+mHjeaWsOi/kOihjOWuieijheWMheOAgg=="
-$UninstallSectionName = ConvertFrom-Utf8Base64 "5Y246L29"
 
 Require-Path $MakeNsis "NSIS compiler"
 Require-Path $Csc "C# compiler"
@@ -104,6 +103,10 @@ foreach ($pattern in $runtimeFiles) {
 
 $DownloaderSourcePath = Join-Path $OutputRoot "TOS-Desktop-Download.cs"
 $DownloaderExePath = Join-Path $OutputRoot "TOS-Desktop-Download.exe"
+$ExtractorSourcePath = Join-Path $OutputRoot "TOS-Desktop-Extract.cs"
+$ExtractorExePath = Join-Path $OutputRoot "TOS-Desktop-Extract.exe"
+$CopierSourcePath = Join-Path $OutputRoot "TOS-Desktop-Copy.cs"
+$CopierExePath = Join-Path $OutputRoot "TOS-Desktop-Copy.exe"
 $CleanupSourcePath = Join-Path $OutputRoot "TOS-Desktop-Cleanup.cs"
 $CleanupExePath = Join-Path $OutputRoot "TOS-Desktop-Cleanup.exe"
 
@@ -203,6 +206,203 @@ internal static class Program
 if ($LASTEXITCODE -ne 0) {
   throw "C# payload downloader build failed with exit code $LASTEXITCODE"
 }
+Require-Path $DownloaderExePath "TOS desktop payload downloader exe"
+
+@'
+using System;
+using System.Diagnostics;
+using System.IO;
+
+internal static class Program
+{
+    private static int Main(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine("Usage: extractor <zip-file> <target-dir>");
+            return 2;
+        }
+
+        try
+        {
+            string zipPath = Path.GetFullPath(args[0]);
+            string targetDir = Path.GetFullPath(args[1]);
+            if (!File.Exists(zipPath))
+            {
+                throw new FileNotFoundException("Payload zip not found.", zipPath);
+            }
+
+            Directory.CreateDirectory(targetDir);
+            string tarPath = FindTar();
+            Console.WriteLine("tar: " + tarPath);
+            Console.WriteLine("zip: " + zipPath);
+            Console.WriteLine("target: " + targetDir);
+
+            ProcessStartInfo info = new ProcessStartInfo();
+            info.FileName = tarPath;
+            info.Arguments = "-xf " + Quote(zipPath) + " -C " + Quote(targetDir);
+            info.UseShellExecute = false;
+            info.CreateNoWindow = true;
+            info.RedirectStandardOutput = true;
+            info.RedirectStandardError = true;
+
+            using (Process process = Process.Start(info))
+            {
+                string output = process.StandardOutput.ReadToEnd();
+                string error = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+                if (!string.IsNullOrWhiteSpace(output))
+                {
+                    Console.WriteLine(output.Trim());
+                }
+                if (!string.IsNullOrWhiteSpace(error))
+                {
+                    Console.Error.WriteLine(error.Trim());
+                }
+                if (process.ExitCode != 0)
+                {
+                    return process.ExitCode;
+                }
+            }
+
+            Console.WriteLine("Payload extraction completed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
+    }
+
+    private static string FindTar()
+    {
+        string windir = Environment.GetEnvironmentVariable("WINDIR") ?? @"C:\Windows";
+        string[] candidates = new string[]
+        {
+            Path.Combine(windir, "Sysnative", "tar.exe"),
+            Path.Combine(windir, "System32", "tar.exe"),
+            "tar.exe"
+        };
+        foreach (string candidate in candidates)
+        {
+            if (candidate.Equals("tar.exe", StringComparison.OrdinalIgnoreCase) || File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+        throw new FileNotFoundException("Windows tar.exe was not found.");
+    }
+
+    private static string Quote(string value)
+    {
+        return "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
+    }
+}
+'@ | Set-Content -Path $ExtractorSourcePath -Encoding ASCII
+
+& $Csc /nologo /target:exe /platform:anycpu /out:$ExtractorExePath $ExtractorSourcePath
+if ($LASTEXITCODE -ne 0) {
+  throw "C# payload extractor build failed with exit code $LASTEXITCODE"
+}
+Require-Path $ExtractorExePath "TOS desktop payload extractor exe"
+
+@'
+using System;
+using System.Diagnostics;
+using System.IO;
+
+internal static class Program
+{
+    private static string logPath;
+
+    private static int Main(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine("Usage: copier <source-dir> <target-dir> [log-file]");
+            return 2;
+        }
+
+        try
+        {
+            string sourceDir = Path.GetFullPath(args[0]);
+            string targetDir = Path.GetFullPath(args[1]);
+            logPath = args.Length >= 3 ? args[2] : null;
+            if (!Directory.Exists(sourceDir))
+            {
+                throw new DirectoryNotFoundException("Source directory not found: " + sourceDir);
+            }
+
+            Directory.CreateDirectory(targetDir);
+            string robocopy = Path.Combine(Environment.SystemDirectory, "robocopy.exe");
+            if (!File.Exists(robocopy))
+            {
+                robocopy = "robocopy.exe";
+            }
+
+            Log("robocopy: " + robocopy);
+            Log("source: " + sourceDir);
+            Log("target: " + targetDir);
+
+            ProcessStartInfo info = new ProcessStartInfo();
+            info.FileName = robocopy;
+            info.Arguments = Quote(sourceDir) + " " + Quote(targetDir) + " /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP";
+            info.UseShellExecute = false;
+            info.CreateNoWindow = true;
+            info.RedirectStandardOutput = true;
+            info.RedirectStandardError = true;
+
+            int exitCode;
+            using (Process process = Process.Start(info))
+            {
+                string output = process.StandardOutput.ReadToEnd();
+                string error = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+                exitCode = process.ExitCode;
+                if (!string.IsNullOrWhiteSpace(output))
+                {
+                    Log(output.Trim());
+                }
+                if (!string.IsNullOrWhiteSpace(error))
+                {
+                    Log(error.Trim());
+                }
+            }
+
+            Log("robocopy exit: " + exitCode);
+            return exitCode <= 7 ? 0 : exitCode;
+        }
+        catch (Exception ex)
+        {
+            Log(ex.ToString());
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
+    }
+
+    private static void Log(string message)
+    {
+        Console.WriteLine(message);
+        if (string.IsNullOrWhiteSpace(logPath))
+        {
+            return;
+        }
+        File.AppendAllText(logPath, message + Environment.NewLine);
+    }
+
+    private static string Quote(string value)
+    {
+        return "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
+    }
+}
+'@ | Set-Content -Path $CopierSourcePath -Encoding ASCII
+
+& $Csc /nologo /target:exe /platform:anycpu /out:$CopierExePath $CopierSourcePath
+if ($LASTEXITCODE -ne 0) {
+  throw "C# staged payload copier build failed with exit code $LASTEXITCODE"
+}
+Require-Path $CopierExePath "TOS desktop staged payload copier exe"
 
 @'
 using System;
@@ -272,6 +472,7 @@ internal static class Program
 if ($LASTEXITCODE -ne 0) {
   throw "C# cleanup helper build failed with exit code $LASTEXITCODE"
 }
+Require-Path $CleanupExePath "TOS desktop cleanup helper exe"
 
 if (Test-Path -LiteralPath $PayloadArchivePath) {
   Assert-Under $PayloadArchivePath $OutputRoot
@@ -290,6 +491,8 @@ $resolvedPayloadUrl = $PayloadUrl.Replace("{sha256}", $PayloadSha256)
 $payloadUrlForNsis = $resolvedPayloadUrl.Replace('"', '%22')
 $installerPathForNsis = $InstallerPath.Replace("\", "\\")
 $downloaderForNsis = $DownloaderExePath.Replace("\", "\\")
+$extractorForNsis = $ExtractorExePath.Replace("\", "\\")
+$copierForNsis = $CopierExePath.Replace("\", "\\")
 $cleanupForNsis = $CleanupExePath.Replace("\", "\\")
 
 @"
@@ -302,6 +505,12 @@ ShowInstDetails show
 
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
+
+!macro TOS_LOG TEXT
+  FileOpen `$R9 "`$1" a
+  FileWrite `$R9 "`$`{TEXT`}`$\r`$\n"
+  FileClose `$R9
+!macroend
 
 Name "$AppDisplayName"
 OutFile "$installerPathForNsis"
@@ -324,35 +533,53 @@ Section "$AppDisplayName" SecMain
   SetShellVarContext current
   InitPluginsDir
   StrCpy `$1 "`$TEMP\TOS-Desktop-Setup.log"
-  StrCpy `$3 "`$WINDIR\Sysnative\tar.exe"
-  IfFileExists "`$3" +2 0
-    StrCpy `$3 "`$WINDIR\System32\tar.exe"
+  StrCpy `$2 "`$TEMP\TOS-Desktop-Stage"
   Delete "`$1"
+  !insertmacro TOS_LOG "start instdir=`$INSTDIR"
+  !insertmacro TOS_LOG "stage=`$2"
   SetOutPath "`$PLUGINSDIR"
   File /oname=TOS-Desktop-Download.exe "$downloaderForNsis"
+  File /oname=TOS-Desktop-Extract.exe "$extractorForNsis"
+  File /oname=TOS-Desktop-Copy.exe "$copierForNsis"
   File /oname=TOS-Desktop-Cleanup.exe "$cleanupForNsis"
 
   DetailPrint "$StopDetail"
   nsExec::ExecToLog 'cmd /c ""`$PLUGINSDIR\TOS-Desktop-Cleanup.exe" "`$INSTDIR" >> "`$1" 2>&1"'
+  Pop `$0
+  !insertmacro TOS_LOG "cleanup exit=`$0"
 
   DetailPrint "$DownloadDetail"
   nsExec::ExecToLog 'cmd /c ""`$PLUGINSDIR\TOS-Desktop-Download.exe" "$payloadUrlForNsis" "`$PLUGINSDIR\TOS-Desktop-Payload.zip" "$PayloadSha256" >> "`$1" 2>&1"'
   Pop `$0
+  !insertmacro TOS_LOG "download exit=`$0"
   `${If} `$0 != 0
     MessageBox MB_ICONSTOP "$DownloadFailedMessage`$0"
     Abort
   `${EndIf}
 
+  DetailPrint "$ExtractDetail"
+  RMDir /r "`$2"
+  CreateDirectory "`$2"
+  nsExec::ExecToLog 'cmd /c ""`$PLUGINSDIR\TOS-Desktop-Extract.exe" "`$PLUGINSDIR\TOS-Desktop-Payload.zip" "`$2" >> "`$1" 2>&1"'
+  Pop `$0
+  !insertmacro TOS_LOG "extract exit=`$0"
+  `${If} `$0 != 0
+    MessageBox MB_ICONSTOP "$ExtractFailedMessage`$0"
+    Abort
+  `${EndIf}
+
   DetailPrint "$InstallDetail"
-  CreateDirectory "`$INSTDIR"
+  SetOutPath "`$INSTDIR"
   RMDir /r "`$INSTDIR\locales"
   RMDir /r "`$INSTDIR\resources"
   Delete "`$INSTDIR\TOS.exe"
   Delete "`$INSTDIR\electron.exe"
-  nsExec::ExecToLog 'cmd /c ""`$3" -xf "`$PLUGINSDIR\TOS-Desktop-Payload.zip" -C "`$INSTDIR" >> "`$1" 2>&1"'
+  Delete "`$INSTDIR\TOS-Desktop-Payload.zip"
+  nsExec::ExecToLog '"`$PLUGINSDIR\TOS-Desktop-Copy.exe" "`$2" "`$INSTDIR" "`$1"'
   Pop `$0
+  !insertmacro TOS_LOG "copy exit=`$0"
   `${If} `$0 != 0
-    MessageBox MB_ICONSTOP "$ExtractFailedMessage`$0"
+    MessageBox MB_ICONSTOP "$CopyFailedMessage`$0"
     Abort
   `${EndIf}
 
@@ -360,13 +587,17 @@ Section "$AppDisplayName" SecMain
     Goto install_incomplete
   IfFileExists "`$INSTDIR\resources\app.asar" +2 0
     Goto install_incomplete
+  IfFileExists "`$INSTDIR\resources\backend-runtime\tos-backend\tos-backend.exe" +2 0
+    Goto install_incomplete
   Goto install_complete
 
   install_incomplete:
+    !insertmacro TOS_LOG "install incomplete"
     MessageBox MB_ICONSTOP "$IncompleteMessage"
     Abort
 
   install_complete:
+  !insertmacro TOS_LOG "install complete"
   SetOutPath "`$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSDesktop" "DisplayName" "$AppDisplayName"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSDesktop" "Publisher" "TOS"
@@ -382,7 +613,7 @@ Section "$AppDisplayName" SecMain
   WriteUninstaller "`$INSTDIR\Uninstall.exe"
 SectionEnd
 
-Section "$UninstallSectionName"
+Section "Uninstall"
   SetShellVarContext current
   nsExec::ExecToLog 'cmd /c ""`$INSTDIR\TOS-Desktop-Cleanup.exe" "`$INSTDIR"'
   Delete "`$DESKTOP\TOS.lnk"
