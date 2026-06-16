@@ -1,6 +1,6 @@
 # tms-backend
 
-FastAPI backend recovered from the packaged TOS application.
+`tms-backend` 是 TOS 当前维护的 Python FastAPI 后端源码，负责业务文件处理、自动化存储、系统配置下载和版本更新记录接口。
 
 ## Entry Point
 
@@ -8,19 +8,54 @@ FastAPI backend recovered from the packaged TOS application.
 main.py
 ```
 
-Default service URL:
+默认本地服务地址：
 
 ```text
 http://127.0.0.1:8000
 ```
 
+## Commands
+
+```powershell
+python -m unittest discover tests/ -v
+python -m compileall .
+```
+
+日常工程检查优先从仓库根目录运行：
+
+```powershell
+npm run check:backend
+```
+
 ## Modules
 
-| Module | API router | Processing module |
+| Area | API router | Processing / storage module |
 | --- | --- | --- |
 | Jessca | `api/jessca_api.py` | `modules/jessca_module.py` |
 | Sophia/Tina | `api/sophia_tina_api.py` | `modules/sophia_tina_module.py` |
 | Jane | `api/jane_api.py` | `modules/jane_module.py` |
+| Jane BOM Summary | `api/jane_bom_summary_api.py` | `modules/jane_bom_summary_module.py` |
+| Jane BOM Compare | `api/jane_bom_compare_api.py` | `modules/jane_bom_compare_module.py` |
+| Jane Outbound Compare | `api/jane_outbound_compare_api.py` | `modules/jane_outbound_compare_module.py` |
 | Eric | `api/eric_api.py` | `modules/eric_module.py` |
+| Jason PDF Reorder | `api/it_invoice_pdf_reorder_api.py` | `modules/it_invoice_pdf_reorder_module.py` |
+| Draft & Packing List Compare | `api/draft_packing_compare_api.py` | `modules/draft_packing_compare_module.py` |
+| TMS Finance Internal Reconciliation | `api/tms_finance_internal_reconciliation_api.py` | `modules/tms_finance_internal_reconciliation_module.py` |
+| TMS Finance Work Sales | `api/tms_finance_work_sales_api.py` | `modules/tms_finance_work_sales_module.py` |
+| Automation Storage | `api/automation_storage_api.py` | `utils/mysql_store.py`, `utils/minio_storage.py` |
+| System Config / Downloads | `api/system_config_api.py` | `utils/settings.py`, `utils/minio_storage.py` |
+| Release Updates | `api/release_updates_api.py` | `utils/mysql_store.py` |
 
-The first recovery phase should preserve API compatibility. Later phases can move code into an `app/` package and add typed response schemas.
+## API Compatibility
+
+- Jason 的 canonical API prefix 是 `/api/jason/pdf-reorder/*`。
+- 旧 `/api/it-invoice-pdf-reorder/*` 和 legacy `/api/preview-invoice`、`/api/preview-po`、`/api/extract-numbers`、`/api/process` 继续保留兼容。
+- 系统配置下载接口包含自动化助手、TOS 轻量在线安装器、完整安装包和 payload 下载路径，例如 `/api/system/config/tos-desktop/download` 与 `/api/system/config/tos-desktop-full/download`。
+- `/api/release-updates` 提供版本更新记录读取和部署同步写入，默认 seed 需要与 `tms-frontend/src/shared/version/releaseHistory.json` 保持一致。
+
+## Engineering Notes
+
+- 保持现有 FastAPI path、method、form field、下载 URL 和 JSON 字段兼容，除非任务明确要求 breaking change。
+- Jason 模块已先行补充 Pydantic response models；其他高频模块按工程化路线图逐步 schema 化。
+- 文件上传和下载路径必须继续使用现有 basename、扩展名和目录边界校验工具，避免路径遍历。
+- `allow_origins=["*"]` + `allow_credentials=True` 仍是已知本地场景风险；收紧 CORS 时必须单独评估 Electron 和浏览器模式影响。

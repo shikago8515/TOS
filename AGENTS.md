@@ -85,6 +85,13 @@
 3. 优化 Jane 模块时先核对现有页面、API 模块和后端处理模块的契约；不要只改单端并假设另一端兼容。
 4. Jane 前端 UI 调整必须保持现有产品体验和共享样式一致，避免重新设计导航模型或视觉语言。
 
+## Jason 模块边界
+
+1. Jason / 发票 PDF 重排序的 canonical 前端入口是 `/#/jason/pdf-reorder`，canonical 后端 API prefix 是 `/api/jason/pdf-reorder/*`。
+2. `it-invoice-pdf-reorder` 是历史兼容技术标识；旧前端路由、旧 API prefix 和 legacy `/api/preview-invoice`、`/api/preview-po`、`/api/extract-numbers`、`/api/process` 在未确认历史包无调用前不得删除。
+3. Jason 前端源码主要位于 `tms-frontend/src/pages/jason-pdf-reorder/`；后端 API 仍位于 `tms-backend/api/it_invoice_pdf_reorder_api.py`，响应 schema 位于 `tms-backend/api/jason_pdf_reorder_schemas.py`。
+4. 修改 Jason 模块时不得改动业务字段名 `invoice_pdf`、`po_pdf`、下载 URL 形状或旧接口响应字段，除非明确进行 breaking change。
+
 ## Sophia/Tina 模块边界
 
 1. Sophia/Tina 报表使用原生 PivotTable 模板刷新路线；不要用 `openpyxl` 从零创建 PivotTable，也不要回退为静态汇总 sheet，除非用户明确改需求。
@@ -102,19 +109,26 @@
 6. `allow_origins=["*"]` + `allow_credentials=True` 是已知风险；不要把后端暴露到局域网或公网。若改 CORS，必须说明 Electron 桌面场景影响。
 7. 后端依赖当前使用 `requirements.txt`，不要为普通任务强制迁移到 `pyproject.toml`。
 
+## 版本更新记录边界
+
+1. `/release-updates` 页面从后端 `/api/release-updates` 读取记录，后端不可用时使用 `tms-frontend/src/shared/version/releaseHistory.json` 作为本地 fallback。
+2. 后端默认 seed 位于 `tms-backend/api/release_updates_api.py`，必须与 `releaseHistory.json` 保持同步；新增历史条目时运行相关一致性测试。
+3. 服务器发布包会生成 `releaseUpdateRecord` 并在部署脚本中同步到后端记录接口；修改该链路时必须同时核对 `scripts/engineering/package-server-update.mjs`、`scripts/server/apply-server-update.sh` 和相关测试。
+
 ## Electron、自动化和发布规则
 
 1. 修改 `tms-electron-app/main-simple.js`、`preload.js`、`package.json`、`scripts/`、自动更新、协议注册或 NSIS 配置前，先说明影响面。
-2. `electron-builder`、自动更新 feed、`manual-downloads.json`、`update-changelog.json`、COS/CDN 地址、`TOS_FRONTEND_SOURCE`、安装包输出规则属于发布敏感区域。
+2. `electron-builder`、自动更新 feed、`manual-downloads.json`、`update-changelog.json`、COS/CDN 地址、`TOS_FRONTEND_SOURCE`、安装包输出规则、TOS 桌面安装器和 payload 生成链路属于发布敏感区域。
 3. 发布敏感改动必须成套验证，不能只改单文件后建议发布。
 4. 正式 Windows 本地发行入口是 `cd tms-electron-app && npm run build:win`；`npm run pack` 不是正式发行入口。
-5. 修改 `electron-builder`、`backend-runtime`、`extraResources`、`afterPack`、更新清单或发行校验脚本时，必须成套运行 `verify-renderer-package` 和 `verify-release-package`。
+5. 修改 `electron-builder`、`backend-runtime`、`extraResources`、`afterPack`、更新清单、TOS 桌面安装器脚本或发行校验脚本时，必须成套运行 `verify-renderer-package` 和 `verify-release-package`。
 6. `app.asar` 必须保持瘦身校验，不得包含 `backend-runtime/`、`automation-apps/`、`automation-launcher/`、`browser-plugins/`、`external-apps/`、旧 `dist*` 或嵌套 `app.asar`。
 7. 本地发行产物默认只保留在 `tms-electron-app/dist`，不上传 GitCode/GitHub Release，除非用户明确要求。
 8. 发行完成后报告 installer、免安装 zip、`app.asar`、`backend-runtime`、`external-apps` 的实际大小。
 9. `backend-runtime` 依赖瘦身是独立优化项；不要在普通打包修复里顺手移除 `torch`、`cv2`、`pyarrow`、`scipy` 等大依赖。
 10. `automation-apps/`、`automation-launcher/`、`browser-plugins/`、`external-apps/` 是独立运行边界。修改时先读对应 README、registry 和启动脚本。
 11. 不修改 `archive/legacy-packaging/`，除非任务明确是处理历史打包方案。
+12. TOS 桌面轻量在线安装器脚本是 `scripts/build-tos-desktop-nsis-installer.ps1`，完整安装包脚本是 `scripts/build-tos-desktop-full-nsis-installer.ps1`；对应后端下载配置接口为 `/api/system/config/tos-desktop/*` 和 `/api/system/config/tos-desktop-full/download`。
 
 ## 服务器部署规则
 

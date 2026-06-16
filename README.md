@@ -89,6 +89,6 @@ npm run build:win
 
 ## 后续重点
 
-1. 按 `docs/engineering-closure-roadmap.md` 继续收口仍处于 `validation` 的前端模块和工程治理项。
-2. 为前后端接口补充更完整的契约测试和响应 schema。
-3. 按发布敏感规则单独收紧 Electron 外部 URL 打开策略。
+1. 按 `docs/engineering-closure-roadmap.md` 继续收口后端 response schema、桌面后端契约和系统接口说明。
+2. 单独收紧 Electron 外部 URL 打开策略、CORS 本地 allowlist 和本地 executor token 配置。
+3. 补齐发布验收 smoke，覆盖关键业务页面、版本更新记录和 TOS 桌面下载入口。
