@@ -87,9 +87,9 @@ dist-tos-desktop-full/TOS-Desktop-Full-Setup.exe
 当前已验证的完整包元数据：
 
 ```text
-version: 0.9.8-beta.3.16
-size: 125591564 bytes
-sha256: c55426951cfb3bdaff00f219798a0d9430b45e73f9cc3e3cae62dd33ad5cd219
+version: 0.9.8-beta.3.17
+size: 125591538 bytes
+sha256: b50cc00da0a27afa856c7c100d0f9c3d8ab6dd663925fb54a7b9d916f6a2ca8d
 builder: NSIS-full
 networkDuringInstall: false
 ```
@@ -105,7 +105,9 @@ if (Test-Path $target) { Remove-Item -LiteralPath $target -Recurse -Force }
 Start-Process -FilePath $installer -ArgumentList "/S", "/D=$target" -Wait
 Test-Path "$target\TOS.exe"
 Test-Path "$target\resources\app.asar"
-Test-Path "$target\resources\backend-runtime\tos-backend\tos-backend.exe"
+Test-Path "$target\resources\backend\main.py"
+Test-Path "$target\resources\automation-launcher"
+Test-Path "$target\resources\automation-apps\shipping-automation-demo\server.mjs"
 ```
 
 ## 独立运行边界

@@ -172,8 +172,6 @@ Section "$AppDisplayName" SecMain
     Goto install_incomplete
   IfFileExists "`$INSTDIR\resources\app.asar" +2 0
     Goto install_incomplete
-  IfFileExists "`$INSTDIR\resources\backend-runtime\tos-backend\tos-backend.exe" +2 0
-    Goto install_incomplete
   Goto install_complete
 
   install_incomplete:
