@@ -7,6 +7,7 @@ const os = require('os');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const { registerAdidasMaterialsCollector } = require('./adidas-materials-main');
+const { normalizeAllowedExternalUrl } = require('./external-url-allowlist');
 const {
   describeBackendCompatibilityFailure,
   evaluateBackendCompatibility,
@@ -36,7 +37,7 @@ const AUTOMATION_LAUNCHER_PORT = 3210;
 const AUTOMATION_LAUNCHER_URL = `http://${AUTOMATION_LAUNCHER_HOST}:${AUTOMATION_LAUNCHER_PORT}`;
 const AUTOMATION_PROTOCOL = 'tos';
 const AUTOMATION_LAUNCHER_BACKGROUND_FLAG = '--automation-launcher-background';
-const DEFAULT_UPDATE_FEED_URL = 'https://github.com/shikago8515/TOS/releases/latest/download/';
+const DEFAULT_UPDATE_FEED_URL = '';
 const UPDATE_SOURCE_CONFIG_FILE = 'update-source.json';
 const UPDATE_STATUS_CHANNEL = 'update-status';
 const MANUAL_DOWNLOADS_FILE = 'manual-downloads.json';
@@ -103,7 +104,7 @@ function readConfiguredUpdateFeed() {
 
   return {
     url: normalizeUpdateFeedUrl(DEFAULT_UPDATE_FEED_URL),
-    source: 'package'
+    source: DEFAULT_UPDATE_FEED_URL ? 'package' : 'not-configured'
   };
 }
 
@@ -275,7 +276,7 @@ function configureAutoUpdater() {
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
-  // GitHub Release 和普通静态源的 Range/缓存行为不完全一致，发布版统一下载完整安装包。
+  // 不同静态更新源的 Range/缓存行为不完全一致，发布版统一下载完整安装包。
   autoUpdater.disableDifferentialDownload = true;
   autoUpdater.allowPrerelease = true;
   autoUpdater.allowDowngrade = false;
@@ -491,10 +492,15 @@ async function openManualDownload() {
     return buildUpdateErrorResult('更新源暂未提供免安装版下载。');
   }
 
-  await shell.openExternal(manualDownload.url);
+  const allowedUrl = normalizeAllowedExternalUrl(manualDownload.url, { updateFeedUrl });
+  if (!allowedUrl) {
+    return buildUpdateErrorResult('Unsupported external URL');
+  }
+
+  await shell.openExternal(allowedUrl);
   return {
     success: true,
-    url: manualDownload.url,
+    url: allowedUrl,
     status: getPublicUpdateStatus()
   };
 }
@@ -1716,10 +1722,11 @@ function registerIpcHandlers() {
   ipcMain.handle('export-diagnostics-package', () => exportDiagnosticsPackage());
 
   ipcMain.handle('open-external', async (_event, url) => {
-    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+    const allowedUrl = normalizeAllowedExternalUrl(url, { updateFeedUrl });
+    if (!allowedUrl) {
       return { success: false, error: 'Unsupported external URL' };
     }
-    await shell.openExternal(url);
+    await shell.openExternal(allowedUrl);
     return { success: true };
   });
 
@@ -1924,7 +1931,10 @@ function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    const allowedUrl = normalizeAllowedExternalUrl(url, { updateFeedUrl });
+    if (allowedUrl) {
+      shell.openExternal(allowedUrl);
+    }
     return { action: 'deny' };
   });
 }
