@@ -295,7 +295,9 @@ const server = http.createServer(async (req, res) => {
       });
 
       try {
-        const result = await runShippingFile(credentials, poRows, inputFileName, activeRun.runId);
+        const result = await runShippingFile(credentials, poRows, inputFileName, activeRun.runId, {
+          shipmentScanAction: body?.shipmentScanAction,
+        });
         result.artifacts = await persistRunArtifacts(result, poRows, activeRun.runId);
         recordCompletedRun({
           runId: activeRun.runId,
@@ -510,13 +512,14 @@ async function runShipping2BulkFile(credentials, bulkType, inputFileName, runId,
   });
 }
 
-async function runShippingFile(credentials, poRows, inputFileName, runId) {
+async function runShippingFile(credentials, poRows, inputFileName, runId, options = {}) {
   return runShippingWorkflow(credentials, {
     runId,
     poRows,
     inputFileName,
     fillPoNumbers: true,
     targetPage: "shipment-scan",
+    shipmentScanAction: options?.shipmentScanAction,
   });
 }
 
