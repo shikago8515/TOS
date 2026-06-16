@@ -4,6 +4,12 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import {
+  createPoAutoDownloadAutomation,
+  isPoAutoDownloadDirectoryRoute,
+  isPoAutoDownloadRoute,
+  selectPoAutoDownloadDirectory,
+} from "./po-auto-download/po-auto-download.mjs";
 import { createShipping2ReleasedBulkAutomation } from "./shipping2-released-bulk.mjs";
 import { createShipping2UnreleasedBulkAutomation } from "./shipping2-unreleased-bulk.mjs";
 
@@ -57,6 +63,22 @@ const {
 const activeRuns = new Map();
 let lastRun = null;
 const recentRuns = [];
+const poAutoDownloadAutomation = createPoAutoDownloadAutomation({
+  browserEngines,
+  buildVisibleBrowserLaunchOptions,
+  config,
+  ensureLoggedIn,
+  extractPoRowsFromWorkbookPayload,
+  log,
+  normalizeUploadFileName,
+  recordCompletedRun,
+  registerActiveRun,
+  resolveCredentials,
+  safePageTitle,
+  safePageUrl,
+  unregisterActiveRun: (runId) => activeRuns.delete(runId),
+  xlsx,
+});
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -90,6 +112,22 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && await trySendArtifactDownload(requestPath, res)) {
+      return;
+    }
+
+    if (req.method === "POST" && isPoAutoDownloadDirectoryRoute(requestPath)) {
+      const body = await readJsonBody(req);
+      authorize(req, body);
+      const result = await selectPoAutoDownloadDirectory(body);
+      sendJson(res, result.statusCode, result.body);
+      return;
+    }
+
+    if (req.method === "POST" && isPoAutoDownloadRoute(requestPath)) {
+      const body = await readJsonBody(req);
+      authorize(req, body);
+      const result = await poAutoDownloadAutomation.handleRequest(body);
+      sendJson(res, result.statusCode, result.body);
       return;
     }
 
@@ -346,6 +384,11 @@ function buildHealthPayload() {
     recentRuns,
     dataDir: runtimeDataRoot,
     runtimeConfigPath,
+    capabilities: {
+      poAutoDownload: true,
+      poAutoDownloadDirectoryPicker: true,
+      poAutoDownloadRequestDownload: true,
+    },
     config: {
       loginUrl: config.loginUrl,
       browser: config.browser,

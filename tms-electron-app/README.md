@@ -120,3 +120,5 @@ Test-Path "$target\resources\automation-apps\shipping-automation-demo\server.mjs
 - `external-apps/`
 
 不要修改 `archive/legacy-packaging/`，除非任务明确处理历史打包方案。
+
+`automation-apps/shipping-automation-demo/po-auto-download/` 是 PO 自动下载的独立执行器模块。主 `server.mjs` 只做薄路由挂载；Excel 解析、登录态获取、请求式查询、后续下载和落盘逻辑保持在该子目录内。当前链路优先纯 HTTP 请求：登录、打开 `InvoicesView.jsp`、提交 `InProgressInvoices` 筛选并保存返回 HTML；只有纯请求下载接口无法闭环时，才补浏览器点击兜底。

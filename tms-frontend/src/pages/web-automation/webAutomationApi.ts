@@ -25,6 +25,7 @@ export interface LocalExecutorHealth {
   dataDir?: string
   runtimeConfigPath?: string
   runtimeSecretPath?: string
+  capabilities?: Record<string, unknown>
   config?: Record<string, unknown>
 }
 

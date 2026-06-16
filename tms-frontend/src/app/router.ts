@@ -22,6 +22,8 @@ import ReleaseUpdatesPage from '../pages/release-updates/ReleaseUpdatesPage.vue'
 import SettingsPage from '../pages/settings/SettingsPage.vue'
 import ShippingAutomationPage from '../pages/shipping-automation/ShippingAutomationPage.vue'
 import ShippingAutomation2Page from '../pages/shipping-automation-2/ShippingAutomation2Page.vue'
+import XinlongtaiShippingAutomationPage from '../pages/xinlongtai-shipping-automation/XinlongtaiShippingAutomationPage.vue'
+import PoAutoDownloadPage from '../pages/po-auto-download/PoAutoDownloadPage.vue'
 import SophiaTinaPage from '../pages/sophia-tina/SophiaTinaPage.vue'
 import TmsFinanceInternalReconciliationPage from '../pages/tms-finance-internal-reconciliation/TmsFinanceInternalReconciliationPage.vue'
 import WebAutomationPage from '../pages/web-automation/WebAutomationPage.vue'
@@ -76,6 +78,14 @@ const scenarioRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/web-automation/scenarios/xinlongtai-shipping-automation',
+    name: 'web-automation-scenario-xinlongtai-shipping-automation',
+    component: XinlongtaiShippingAutomationPage,
+    meta: {
+      title: '新龙泰-shipping 自动化',
+    },
+  },
+  {
     path: '/web-automation/scenarios/shipping-automation-2',
     name: 'web-automation-scenario-shipping-automation-2',
     component: ShippingAutomation2Page,
@@ -89,6 +99,14 @@ const scenarioRoutes: RouteRecordRaw[] = [
     component: InfornexusAutoAddPage,
     meta: {
       title: 'Infornexus 自动搜索添加',
+    },
+  },
+  {
+    path: '/web-automation/scenarios/po-auto-download',
+    name: 'web-automation-scenario-po-auto-download',
+    component: PoAutoDownloadPage,
+    meta: {
+      title: 'PO 自动下载',
     },
   },
   {

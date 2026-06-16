@@ -40,16 +40,16 @@ describe('backendClient', () => {
     ).resolves.toBe('http://127.0.0.1:8000/api/jane/download/result.xlsx')
   })
 
-  it('uses the IPv4 loopback backend URL in browser mode', async () => {
+  it('uses the server backend URL in local browser mode', async () => {
     stubWindow()
 
-    await expect(getBackendBaseUrl()).resolves.toBe('http://127.0.0.1:8000')
+    await expect(getBackendBaseUrl()).resolves.toBe('https://ai.tomwell.net:56130/tos/desktop-api')
   })
 
-  it('uses the same-origin TOS backend when the browser app is served under /tos', async () => {
+  it('uses the same-origin TOS desktop API backend when the browser app is served under /tos', async () => {
     stubWindow(undefined, '/tos/release-updates')
 
-    await expect(getBackendBaseUrl()).resolves.toBe('/tos')
+    await expect(getBackendBaseUrl()).resolves.toBe('/tos/desktop-api')
   })
 
   it('returns fallback text for non-Error failures', () => {

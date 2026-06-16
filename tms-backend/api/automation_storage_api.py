@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
@@ -158,7 +159,7 @@ async def download_template(template_id: int):
     response = get_object_response(row["bucket"], row["object_key"])
     filename = row.get("original_filename") or f"template-{template_id}.xlsx"
     headers = {
-        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Content-Disposition": _attachment_content_disposition(filename),
         "Cache-Control": "no-store",
     }
     return StreamingResponse(
@@ -269,6 +270,13 @@ def _template_payload(row: dict[str, Any]) -> dict[str, Any]:
         "sha256": row.get("sha256", ""),
         "downloadPath": f"/api/automation/templates/{row['id']}/download",
     }
+
+
+def _attachment_content_disposition(filename: str) -> str:
+    ascii_filename = filename.encode("ascii", errors="ignore").decode("ascii").strip()
+    fallback_filename = ascii_filename or "template.xlsx"
+    quoted_filename = quote(filename, safe="")
+    return f'attachment; filename="{fallback_filename}"; filename*=UTF-8\'\'{quoted_filename}'
 
 
 def _run_payload(row: dict[str, Any]) -> dict[str, Any]:

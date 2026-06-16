@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -34,6 +35,10 @@ TOS_DESKTOP_FULL_DEFAULT_BUCKET_KEY = "downloads"
 TOS_DESKTOP_FULL_DEFAULT_OBJECT_KEY = "tos-desktop-full/TOS-Desktop-Full-Setup.exe"
 TOS_DESKTOP_FULL_DEFAULT_FILENAME = "TOS-Desktop-Full-Setup.exe"
 TOS_DESKTOP_FULL_CONTENT_TYPE = "application/vnd.microsoft.portable-executable"
+PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_BUCKET_KEY = "templates"
+PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_OBJECT_KEY = "po-auto-download/po-auto-download-template.xls"
+PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_FILENAME = "PO 自动下载模板.XLS"
+PO_AUTO_DOWNLOAD_TEMPLATE_CONTENT_TYPE = "application/vnd.ms-excel"
 
 
 class SystemConfigSummaryResponse(BaseModel):
@@ -60,6 +65,10 @@ TOS_DESKTOP_FULL_INSTALLER_RESPONSE = {
 TOS_DESKTOP_PAYLOAD_RESPONSE = {
     "description": "TOS desktop payload archive download.",
     "content": {TOS_DESKTOP_PAYLOAD_CONTENT_TYPE: {}},
+}
+PO_AUTO_DOWNLOAD_TEMPLATE_RESPONSE = {
+    "description": "PO auto download Excel template.",
+    "content": {PO_AUTO_DOWNLOAD_TEMPLATE_CONTENT_TYPE: {}},
 }
 
 
@@ -348,6 +357,57 @@ async def tos_desktop_versioned_payload_download(
         response.stream(64 * 1024),
         media_type=str(
             desktop_config.get("payload_content_type") or TOS_DESKTOP_PAYLOAD_CONTENT_TYPE
+        ),
+        headers=headers,
+        background=BackgroundTask(response.close),
+    )
+
+
+@router.get(
+    "/po-auto-download/template/download",
+    response_class=StreamingResponse,
+    responses={200: PO_AUTO_DOWNLOAD_TEMPLATE_RESPONSE},
+)
+async def po_auto_download_template_download() -> StreamingResponse:
+    template_config = (
+        get_settings()
+        .get("downloads", {})
+        .get("po_auto_download_template", {})
+    )
+    bucket = str(
+        template_config.get("bucket")
+        or get_minio_bucket(PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_BUCKET_KEY)
+    )
+    object_key = str(
+        template_config.get("object_key")
+        or PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_OBJECT_KEY
+    )
+    filename = str(
+        template_config.get("filename")
+        or PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_FILENAME
+    )
+
+    try:
+        response = get_object_response(bucket, object_key)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="PO 自动下载模板未上传，请先上传到 MinIO。",
+        ) from exc
+
+    fallback_filename = "PO-auto-download-template.xls"
+    encoded_filename = quote(filename)
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="{fallback_filename}"; '
+            f"filename*=UTF-8''{encoded_filename}"
+        ),
+        "Cache-Control": "no-store",
+    }
+    return StreamingResponse(
+        response.stream(64 * 1024),
+        media_type=str(
+            template_config.get("content_type") or PO_AUTO_DOWNLOAD_TEMPLATE_CONTENT_TYPE
         ),
         headers=headers,
         background=BackgroundTask(response.close),

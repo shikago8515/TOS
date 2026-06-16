@@ -17,6 +17,7 @@ export interface ResponseMessageContext {
 
 const backendApiNotFoundMessage = '当前后端版本缺少此接口，请重启 TOS 或等待后端切换完成'
 const backendConnectionErrorMessage = '无法连接后端服务'
+const serverBackendUrl = 'https://ai.tomwell.net:56130/tos/desktop-api'
 
 let backendStartPromise: Promise<string | undefined> | null = null
 
@@ -44,10 +45,10 @@ function readBrowserBackendUrl(): string {
   }
 
   if (window.location?.pathname?.startsWith('/tos')) {
-    return '/tos'
+    return '/tos/desktop-api'
   }
 
-  return 'http://127.0.0.1:8000'
+  return serverBackendUrl
 }
 
 async function ensureBackendReady(): Promise<string | undefined> {

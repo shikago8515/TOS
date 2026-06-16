@@ -10,7 +10,7 @@
           <div class="stg-hero__background">
             <div class="stg-hero__glow"></div>
           </div>
-          
+
           <div class="stg-hero__content">
             <div class="stg-hero__info">
               <div class="stg-hero__icon-box">
@@ -21,7 +21,7 @@
                 <h1 class="stg-hero__title">{{ currentVersion }}</h1>
               </div>
             </div>
-            
+
             <div class="stg-hero__actions">
               <!-- 语言切换器 -->
               <div class="stg-hero__lang">
@@ -100,21 +100,14 @@
           </div>
 
           <div class="stg-downloads__split-container">
-            <!-- 2.1 左大栏：桌面独立运行客户端套件 (Native Professional - 清新极光青渐变) -->
-            <div class="stg-downloads__panel-group stg-downloads__panel-group--desktop">
-              <div class="stg-panel-glow"></div>
-              
-              <div class="stg-panel-header">
-                <div class="stg-panel-header-icon-box">
-                  <AppIcon name="monitor" />
-                </div>
-                <div class="stg-panel-title-group">
-                  <h3>{{ text('独立桌面客户端套件') }}</h3>
-                  <p>{{ text('本地原生执行，集成完整运行环境，具备最强系统级自动化操控权限') }}</p>
-                </div>
+            <!-- 2.1 左大栏：桌面独立运行客户端套件 (无多余背景边框包裹) -->
+            <div class="stg-downloads__group stg-downloads__group--desktop">
+              <div class="stg-group-header">
+                <AppIcon name="monitor" class="stg-group-icon" />
+                <span>{{ text('独立桌面客户端套件') }}</span>
               </div>
 
-              <div class="stg-panel-cards">
+              <div class="stg-panel-cards" :class="{ 'has-manual': hasDesktopUpdateSupport && manualDownload }">
                 <!-- 卡片 1: TOS 桌面端轻量安装包 (在线下载) -->
                 <div class="stg-download-card stg-download-card--light">
                   <div class="stg-card-content">
@@ -124,7 +117,7 @@
                         <span class="stg-card-badge">{{ text('在线下载') }}</span>
                       </div>
                       <p class="stg-card-description">
-                        {{ text('下载体积小巧的快速安装器。安装和初始化阶段需要连接远程服务器的 MinIO 存储服务，在线拉取并下载应用所需的完整内容和组件。') }}
+                        {{ text('体积轻巧，首选安装。在线从 MinIO 自动下载完整组件。') }}
                       </p>
                     </div>
                     <div class="stg-card-footer">
@@ -135,13 +128,13 @@
                         @click="handleDesktopInstallerDownload"
                       >
                         <AppIcon name="download" />
-                        <span>{{ desktopInstallerDownloading ? text('准备中...') : text('安全下载轻量安装器') }}</span>
+                        <span>{{ desktopInstallerDownloading ? text('获取中...') : text('安全下载轻量安装器') }}</span>
                       </button>
                     </div>
                   </div>
                 </div>
 
-                <!-- 卡片 2: TOS 桌面端全量部署包 (离线完整) -->
+                <!-- 卡片 2: TOS 桌面端全量部署包 (离线全量) -->
                 <div class="stg-download-card stg-download-card--light">
                   <div class="stg-card-content">
                     <div class="stg-card-body">
@@ -150,7 +143,7 @@
                         <span class="stg-card-badge-outline">{{ text('离线全量') }}</span>
                       </div>
                       <p class="stg-card-description">
-                        {{ text('包含了全量运行组件与核心环境的单体完整部署包。下载后进行安装时，完全不需要连接远程服务器再去下载任何多余内容，适合离线或物理内网环境一键部署。') }}
+                        {{ text('集成完整运行环境，完全离线一键部署，适合物理内网环境。') }}
                       </p>
                     </div>
                     <div class="stg-card-footer">
@@ -168,14 +161,14 @@
                 </div>
 
                 <!-- 免安装绿色版 (仅在支持时显示) -->
-                <div v-if="hasDesktopUpdateSupport && manualDownload" class="stg-download-card stg-download-card--light stg-download-card--fullwidth">
+                <div v-if="hasDesktopUpdateSupport && manualDownload" class="stg-download-card stg-download-card--light">
                   <div class="stg-card-content">
                     <div class="stg-card-body">
                       <div class="stg-card-header-row">
                         <h4 class="stg-card-title">{{ text('免安装绿色便携版') }}</h4>
                         <span class="stg-card-badge-outline">{{ text('绿色便携') }}</span>
                       </div>
-                      <p class="stg-card-description">{{ manualDownloadDetail }}</p>
+                      <p class="stg-card-description">{{ text('解压即用，无缝集成运行组件。') }}</p>
                     </div>
                     <div class="stg-card-footer">
                       <button
@@ -193,16 +186,11 @@
               </div>
             </div>
 
-            <!-- 2.2 右小栏：网页端轻量级协作组件 (Web Extension Lite - 清爽极光绿渐变) -->
-            <div class="stg-downloads__panel-group stg-downloads__panel-group--web">
-              <div class="stg-panel-header">
-                <div class="stg-panel-header-icon-box stg-panel-header-icon-box--teal">
-                  <AppIcon name="monitor-code" />
-                </div>
-                <div class="stg-panel-title-group">
-                  <h3>{{ text('网页自动化助手') }}</h3>
-                  <p>{{ text('免装完整包，直接在现有浏览器中桥接调度本机自动化环境') }}</p>
-                </div>
+            <!-- 2.2 右小栏：网页端轻量级协作组件 -->
+            <div class="stg-downloads__group stg-downloads__group--web">
+              <div class="stg-group-header">
+                <AppIcon name="monitor-code" class="stg-group-icon" />
+                <span>{{ text('网页自动化助手') }}</span>
               </div>
 
               <div class="stg-panel-cards">
@@ -215,8 +203,24 @@
                         <span class="stg-card-badge-helper">{{ text('浏览器专属') }}</span>
                       </div>
                       <p class="stg-card-description">
-                        {{ text('为 Web 浏览器用户打造的轻量级连接组件。只需在您本机的普通浏览器中添加配置，即可通过网页直接调度底层脚本，免去安装大型客户端的繁琐步骤。') }}
+                        {{ text('专为 Web 浏览器打造的轻量级桥接组件，网页端直连调度。') }}
                       </p>
+
+                      <!-- 网页助手优势特性对照列表 -->
+                      <ul class="stg-feature-list">
+                        <li class="stg-feature-item">
+                          <AppIcon name="check" class="stg-feature-icon" />
+                          <span>{{ text('极速轻量：免去客户端安装') }}</span>
+                        </li>
+                        <li class="stg-feature-item">
+                          <AppIcon name="check" class="stg-feature-icon" />
+                          <span>{{ text('即开即用：网页与本机无缝桥接') }}</span>
+                        </li>
+                        <li class="stg-feature-item">
+                          <AppIcon name="check" class="stg-feature-icon" />
+                          <span>{{ text('安全隔离：严格鉴权防越权') }}</span>
+                        </li>
+                      </ul>
                     </div>
                     <div class="stg-card-footer">
                       <button
@@ -248,58 +252,8 @@
 
           <div class="stg-updates__panel">
             <!-- 桌面更新流程 -->
-            <div v-if="hasDesktopUpdateSupport" class="stg-timeline">
-              <div class="stg-timeline-item" :class="{ 'is-active': true }">
-                <div class="stg-timeline-item__badge"><AppIcon name="refresh-cw" /></div>
-                <div class="stg-timeline-item__content">
-                  <h4>{{ text('检查更新') }}</h4>
-                  <p>{{ text('在更新服务器检索可用版本') }}</p>
-                  <button
-                    class="stg-timeline-action-btn"
-                    type="button"
-                    :disabled="isActionLocked"
-                    @click="handleCheck"
-                  >
-                    {{ status?.checking || activeAction === 'check' ? text('检查中...') : text('立即检查') }}
-                  </button>
-                </div>
-              </div>
-
-              <div class="stg-timeline-item" :class="{ 'is-disabled': !canDownload }">
-                <div class="stg-timeline-item__badge"><AppIcon name="download-cloud" /></div>
-                <div class="stg-timeline-item__content">
-                  <h4>{{ text('下载新版') }}</h4>
-                  <p>{{ text('获取云端最新的升级补丁') }}</p>
-                  <button
-                    class="stg-timeline-action-btn stg-timeline-action-btn--primary"
-                    type="button"
-                    :disabled="!canDownload || isActionLocked"
-                    @click="handleDownload"
-                  >
-                    {{ status?.downloading || activeAction === 'download' ? text('正在下载...') : text('开始下载') }}
-                  </button>
-                </div>
-              </div>
-
-              <div class="stg-timeline-item" :class="{ 'is-disabled': !canInstall }">
-                <div class="stg-timeline-item__badge"><AppIcon name="rocket" /></div>
-                <div class="stg-timeline-item__content">
-                  <h4>{{ text('热更新并重启') }}</h4>
-                  <p>{{ text('安装补丁并重新加载桌面客户端') }}</p>
-                  <button
-                    class="stg-timeline-action-btn stg-timeline-action-btn--success"
-                    type="button"
-                    :disabled="!canInstall"
-                    @click="handleInstall"
-                  >
-                    {{ activeAction === 'install' ? text('正在应用...') : text('立即安装') }}
-                  </button>
-                </div>
-              </div>
-            </div>
-
             <!-- 非桌面端环境：服务器/浏览器模式提示 -->
-            <div v-else class="stg-server-mode-card">
+            <div class="stg-server-mode-card">
               <div class="stg-server-mode__header">
                 <div class="stg-server-mode__avatar">
                   <AppIcon name="wifi" class="icon-pulse" />
@@ -310,14 +264,14 @@
                 </div>
               </div>
               <p class="stg-server-mode__desc">
-                {{ text('当前运行于 Web 服务器 / 浏览器沙盒中。当您使用 TOS 桌面客户端登录时，本面板将自动启用完整的“增量自动更新”与系统补丁管理功能。') }}
+                {{ text('当前运行于 Web 服务器 / 浏览器沙盒中。当您登录桌面客户端时，本面板将自动启用增量更新检测。') }}
               </p>
-              
+
               <!-- 交互设计：展示云端与本地交互的流程链路示意（升级为多层光效流动动画） -->
               <div class="stg-flow-chart">
                 <div class="stg-flow-node">
                   <AppIcon name="database" />
-                  <span>Cloud Server</span>
+                  <span>{{ text('云端服务') }}</span>
                 </div>
                 <div class="stg-flow-line">
                   <!-- 双重光点流动线，形成流畅的数据同步感 -->
@@ -327,7 +281,7 @@
                 </div>
                 <div class="stg-flow-node">
                   <AppIcon name="browser" />
-                  <span>Web App</span>
+                  <span>{{ text('网页应用') }}</span>
                 </div>
               </div>
             </div>
@@ -378,6 +332,7 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted, onUnmounted } from 'vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import SettingsLanguageSwitch from './SettingsLanguageSwitch.vue'
 import { useSettingsPageModel } from './useSettingsPageModel'
@@ -416,11 +371,25 @@ const {
   t,
   text,
 } = useSettingsPageModel()
+
+onMounted(() => {
+  const shell = document.querySelector('.content-shell')
+  if (shell) {
+    shell.classList.add('no-scroll')
+  }
+})
+
+onUnmounted(() => {
+  const shell = document.querySelector('.content-shell')
+  if (shell) {
+    shell.classList.remove('no-scroll')
+  }
+})
 </script>
 
 <style scoped lang="scss">
 /* ================================================================= */
-/* 现代高端极简设计令牌 (Teal / Cyan / Slate 配色体系，绝无紫色)         */
+/* Modern Settings Layout Tokens (Teal / Cyan / Slate, No Purple)     */
 /* ================================================================= */
 .stg-layout {
   --teal-50: #f0fdfa;
@@ -458,18 +427,46 @@ const {
 
   --transition-bezier: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   --transition-bounce: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-  --shadow-soft: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 8px -1px rgba(15, 23, 42, 0.02);
-  --shadow-elevated: 0 12px 30px -4px rgba(13, 148, 136, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.03);
+  --shadow-soft: 0 4px 20px -2px rgba(15, 23, 42, 0.03), 0 2px 8px -1px rgba(15, 23, 42, 0.01);
+  --shadow-elevated: 0 12px 30px -4px rgba(13, 148, 136, 0.06), 0 4px 12px -2px rgba(15, 23, 42, 0.02);
 
-  min-height: 100vh;
-  padding: 16px 20px 24px;
-  background-color: var(--slate-50);
+  height: 100%;
+  max-height: 100%;
+  box-sizing: border-box;
+  padding: 16px 20px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: radial-gradient(circle at 10% 20%, rgba(6, 182, 212, 0.04) 0%, transparent 40%),
+              radial-gradient(circle at 90% 80%, rgba(20, 184, 166, 0.04) 0%, transparent 40%),
+              #f8fafc;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   color: var(--slate-900);
   -webkit-font-smoothing: antialiased;
 }
 
-/* 动效关键帧 */
+/* 动态挂载到父外壳，强力禁滚且自适应 */
+:global(.content-shell.no-scroll) {
+  overflow: hidden !important;
+  height: 100% !important;
+  max-height: 100% !important;
+}
+
+/* Eliminate browser default focus borders */
+button, input, select, textarea {
+  outline: none !important;
+  &:focus {
+    outline: none !important;
+  }
+  &:focus-visible {
+    outline: none !important;
+    box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.25) !important;
+  }
+}
+
+/* Keyframe animations */
 @keyframes pulse-pulse {
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(0.95); opacity: 0.8; }
@@ -495,31 +492,37 @@ const {
 .is-spin { animation: spin-cw 0.8s linear infinite; }
 .icon-pulse { animation: pulse-pulse 2.2s ease-in-out infinite; }
 
-/* ================================================================= */
-/* 结构排版布局 (Grid & Columns)                                     */
-/* ================================================================= */
+/* Grid main container */
 .stg-main {
   display: grid;
-  grid-template-columns: 7fr 3fr;
-  gap: 20px;
-  max-width: 1400px;
-  margin: 0 auto;
+  grid-template-columns: 6.8fr 3.2fr;
+  gap: 16px;
+  width: 100%;
+  max-width: 1080px;
+  height: 100%;
+  max-height: 580px;
+  min-height: 0;
+  overflow: hidden;
   animation: stagger-in 0.6s var(--transition-bezier) both;
 }
 
 .stg-col-primary {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
+  height: 100%;
+  min-height: 0;
 }
 
 .stg-col-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
+  height: 100%;
+  min-height: 0;
 }
 
-/* 通用卡片容器 */
+/* Card wrappers */
 .stg-section {
   position: relative;
   background-color: #ffffff;
@@ -527,20 +530,22 @@ const {
   border-radius: var(--border-radius-card);
   box-shadow: var(--shadow-soft);
   transition: var(--transition-bezier);
+  overflow: hidden;
 
   &:hover {
-    box-shadow: 0 8px 30px rgba(15, 23, 42, 0.04);
-    border-color: var(--slate-300);
+    box-shadow: 0 8px 30px rgba(15, 23, 42, 0.03);
+    border-color: rgba(20, 184, 166, 0.2);
   }
 }
 
 .stg-section__header {
-  padding: 20px 24px 12px;
+  padding: 14px 18px 8px;
   border-bottom: 1px solid var(--slate-100);
+  flex-shrink: 0;
 
   h2 {
     margin: 0;
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 800;
     color: var(--slate-800);
   }
@@ -549,59 +554,63 @@ const {
 .stg-section__title-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .stg-section__icon {
-  font-size: 16px;
+  font-size: 14px;
   color: var(--teal-600);
 }
 
 .stg-section__desc {
-  margin: 4px 0 0;
-  font-size: 12.5px;
+  margin: 2px 0 0;
+  font-size: 11px;
   color: var(--slate-500);
 }
 
-/* 侧栏紧凑型卡片头部 */
+/* Compact headers */
 .stg-section__header-compact {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 16px 20px 10px;
+  padding: 12px 16px 6px;
   border-bottom: 1px solid var(--slate-100);
+  flex-shrink: 0;
 
   h3 {
     margin: 0;
-    font-size: 14px;
+    font-size: 12.5px;
     font-weight: 800;
     color: var(--slate-800);
   }
 }
 
 .stg-section__icon-mini {
-  font-size: 13px;
+  font-size: 11px;
   color: var(--teal-600);
 }
 
-/* ================================================================= */
-/* 1. Status Hero Banner                                            */
-/* ================================================================= */
+/* Hero card banner */
 .stg-hero {
   position: relative;
-  z-index: 20; 
+  z-index: 20;
   background: linear-gradient(135deg, #ffffff 0%, var(--teal-50) 100%);
   border: 1px solid var(--slate-200);
   border-radius: var(--border-radius-card);
   box-shadow: var(--shadow-soft);
-  padding: 24px;
+  padding: 14px 18px;
+  flex-shrink: 0;
   overflow: visible;
   transition: var(--transition-bezier);
 
   &.has-update {
     background: linear-gradient(135deg, #ffffff 0%, var(--cyan-50) 100%);
-    border-color: rgba(6, 182, 212, 0.3);
+    border-color: rgba(6, 182, 212, 0.25);
     box-shadow: var(--shadow-elevated);
+  }
+
+  &:hover {
+    border-color: rgba(20, 184, 166, 0.3);
   }
 }
 
@@ -623,7 +632,7 @@ const {
   right: -150px;
   width: 350px;
   height: 350px;
-  background: radial-gradient(circle, rgba(20, 184, 166, 0.12) 0%, rgba(20, 184, 166, 0) 70%);
+  background: radial-gradient(circle, rgba(20, 184, 166, 0.1) 0%, rgba(20, 184, 166, 0) 70%);
 }
 
 .stg-hero__content {
@@ -632,26 +641,26 @@ const {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 16px;
 }
 
 .stg-hero__info {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
 }
 
 .stg-hero__icon-box {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 46px;
-  height: 46px;
+  width: 36px;
+  height: 36px;
   background: linear-gradient(135deg, var(--teal-500) 0%, var(--teal-600) 100%);
   color: #ffffff;
-  border-radius: 12px;
-  font-size: 20px;
-  box-shadow: 0 4px 14px rgba(13, 148, 136, 0.25);
+  border-radius: 8px;
+  font-size: 16px;
+  box-shadow: 0 4px 10px rgba(13, 148, 136, 0.15);
 }
 
 .stg-hero__title-group {
@@ -660,7 +669,7 @@ const {
 }
 
 .stg-hero__subtitle {
-  font-size: 11px;
+  font-size: 9.5px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   font-weight: 700;
@@ -668,8 +677,8 @@ const {
 }
 
 .stg-hero__title {
-  margin: 2px 0 0;
-  font-size: 26px;
+  margin: 1px 0 0;
+  font-size: 20px;
   font-weight: 900;
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   color: var(--slate-900);
@@ -681,23 +690,23 @@ const {
   z-index: 30;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .stg-btn-interactive {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 34px;
-  padding: 0 14px;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
   border: 1px solid var(--slate-200);
   border-radius: var(--border-radius-inner);
   background-color: #ffffff;
   color: var(--slate-700);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.02);
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.01);
   transition: var(--transition-bezier);
 
   &:hover:not(:disabled) {
@@ -705,7 +714,7 @@ const {
     color: var(--teal-600);
     background-color: var(--teal-50);
     transform: translateY(-1px);
-    box-shadow: 0 4px 10px rgba(13, 148, 136, 0.08);
+    box-shadow: 0 4px 10px rgba(13, 148, 136, 0.06);
   }
 
   &:active:not(:disabled) {
@@ -728,8 +737,8 @@ const {
 .stg-hero__progress-panel {
   position: relative;
   z-index: 2;
-  margin-top: 18px;
-  padding-top: 16px;
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px solid var(--slate-200);
 }
 
@@ -737,20 +746,20 @@ const {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .stg-progress__status {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 5px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--teal-700);
 }
 
 .stg-progress__details {
-  font-size: 11px;
+  font-size: 10px;
   font-family: 'JetBrains Mono', monospace;
   color: var(--slate-500);
 }
@@ -758,12 +767,12 @@ const {
 .stg-progress__track {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .stg-progress__fill {
   position: relative;
-  height: 6px;
+  height: 4px;
   border-radius: var(--border-radius-pill);
   background: linear-gradient(90deg, var(--teal-500), var(--cyan-500));
   transition: width 0.4s cubic-bezier(0.1, 0.8, 0.25, 1);
@@ -782,36 +791,34 @@ const {
 }
 
 .stg-progress__percent {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 800;
   font-family: 'JetBrains Mono', monospace;
   color: var(--teal-600);
-  min-width: 36px;
+  min-width: 28px;
   text-align: right;
 }
 
-/* ================================================================= */
-/* 2. Toast 通知栏                                                   */
-/* ================================================================= */
+/* Toast component styles */
 .stg-toast {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 18px;
+  gap: 10px;
+  padding: 8px 14px;
   border-radius: var(--border-radius-inner);
   border: 1px solid var(--slate-200);
   background-color: #ffffff;
-  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 6px 16px -5px rgba(15, 23, 42, 0.06);
 }
 
 .stg-toast__lead-icon {
-  font-size: 16px;
+  font-size: 14px;
   flex-shrink: 0;
 }
 
 .stg-toast__message {
   flex: 1;
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 600;
 }
 
@@ -819,8 +826,8 @@ const {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   border: 0;
   background: transparent;
   color: var(--slate-400);
@@ -835,218 +842,165 @@ const {
 }
 
 .stg-toast--success {
-  border-color: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.15);
   background-color: var(--emerald-50);
   color: var(--emerald-600);
 }
 .stg-toast--warning {
-  border-color: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.15);
   background-color: #fffbeb;
   color: #d97706;
 }
 .stg-toast--error {
-  border-color: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.15);
   background-color: #fef2f2;
   color: #dc2626;
 }
 
-/* ================================================================= */
-/* 3. 下载中心：全新非对称双主轴分栏布局 (清新双淡色版，无任何深色大黑框) */
-/* ================================================================= */
+/* Downloads section layout */
 .stg-downloads {
   z-index: 10;
-  padding-bottom: 24px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .stg-downloads__split-container {
   display: grid;
-  grid-template-columns: 2.05fr 0.95fr; /* 68% vs 32% */
-  gap: 20px;
-  padding: 0 20px;
+  grid-template-columns: 1.95fr 1.05fr; /* 65% vs 35% */
+  gap: 16px;
+  padding: 0 16px 16px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
-/* 分组大基座面板 */
-.stg-downloads__panel-group {
-  position: relative;
-  border-radius: var(--border-radius-card);
-  padding: 24px 20px 20px;
+.stg-downloads__group {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  transition: var(--transition-bezier);
-  border: 1px solid var(--slate-200);
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
-/* 左面板：专业桌面端 (极光青/水鸭青高级渐变背景 - 代替原先黑框) */
-.stg-downloads__panel-group--desktop {
-  background: linear-gradient(135deg, #ffffff 0%, var(--teal-50) 100%);
-  border-color: var(--teal-100);
-  box-shadow: 0 12px 28px -4px rgba(13, 148, 136, 0.04);
-
-  &:hover {
-    border-color: var(--teal-200);
-    box-shadow: 0 16px 36px -4px rgba(13, 148, 136, 0.08);
-  }
-
-  .stg-panel-glow {
-    position: absolute;
-    top: 0; left: 0; width: 100%; height: 100%;
-    background: radial-gradient(circle at 5% 5%, rgba(20, 184, 166, 0.08) 0%, rgba(20, 184, 166, 0) 50%);
-    pointer-events: none;
-    border-radius: inherit;
-  }
-
-  .stg-panel-header-icon-box {
-    background-color: var(--teal-50);
-    color: var(--teal-600);
-    border: 1px solid var(--teal-100);
-  }
-
-  h3 {
-    color: var(--slate-800);
-  }
-
-  p {
-    color: var(--slate-500);
-  }
-
-  .stg-panel-cards {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 16px;
-    align-items: stretch;
-  }
-}
-
-/* 右面板：轻量小助手 (薄荷绿/极光绿高级渐变背景) */
-.stg-downloads__panel-group--web {
-  background: linear-gradient(135deg, #ffffff 0%, var(--cyan-50) 100%);
-  border-color: var(--cyan-100);
-  box-shadow: 0 12px 28px -4px rgba(6, 182, 212, 0.03);
-
-  &:hover {
-    border-color: var(--cyan-200);
-    box-shadow: 0 16px 36px -4px rgba(6, 182, 212, 0.07);
-  }
-
-  .stg-panel-header-icon-box {
-    background-color: var(--cyan-50);
-    color: var(--cyan-600);
-    border: 1px solid var(--cyan-100);
-  }
-
-  h3 {
-    color: var(--slate-800);
-  }
-
-  p {
-    color: var(--slate-500);
-  }
-
-  .stg-panel-cards {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    align-items: stretch;
-  }
-}
-
-/* 面板头部 */
-.stg-panel-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  border-bottom: 1px solid var(--teal-100);
-  padding-bottom: 14px;
-
-  .stg-downloads__panel-group--web & {
-    border-bottom: 1px solid var(--cyan-100);
-  }
-}
-
-.stg-panel-header-icon-box {
+.stg-group-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  font-size: 18px;
+  gap: 6px;
+  padding: 2px 4px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--slate-400);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   flex-shrink: 0;
+
+  .stg-group-icon {
+    font-size: 12px;
+    color: var(--teal-500);
+
+    .stg-downloads__group--web & {
+      color: var(--cyan-500);
+    }
+  }
 }
 
-.stg-panel-title-group {
+.stg-panel-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(20, 184, 166, 0.15);
+    border-radius: 2px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(20, 184, 166, 0.35);
+  }
+
+  &.has-manual {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.stg-downloads__group--web .stg-panel-cards {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-
-  h3 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 850;
-    letter-spacing: 0.3px;
-  }
-
-  p {
-    margin: 0;
-    font-size: 11px;
-    line-height: 1.45;
-  }
+  height: 100%;
+  align-items: stretch;
 }
 
-/* 卡片全部统一为高贵白色玻璃态，去除黑框样式 */
+/* Cards glassmorphism styles */
 .stg-download-card {
   display: flex;
   flex-direction: column;
   position: relative;
   border-radius: var(--border-radius-inner);
   overflow: hidden;
+  height: 100%;
   transition: var(--transition-bounce);
 }
 
 .stg-card-content {
-  padding: 18px 16px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  height: 100%;
+  box-sizing: border-box;
   flex: 1;
 }
 
 .stg-card-body {
-  margin-bottom: 16px;
+  margin-bottom: 8px;
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
 }
 
 .stg-card-header-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
 }
 
-/* 统一卡片背景，仅通过 Hover 发光来呈现对应产品的调性 */
 .stg-download-card--light {
-  background-color: #ffffff;
-  border: 1px solid var(--slate-200);
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.01);
-  height: 100%;
 
   &:hover {
-    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+    transform: translateY(-2px);
+    background-color: #ffffff;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.03);
   }
 
-  /* 桌面端的卡片 Hover 时发出青色微光 */
-  .stg-downloads__panel-group--desktop &:hover {
-    border-color: var(--teal-400);
-    box-shadow: 0 10px 24px rgba(13, 148, 136, 0.08);
+  .stg-downloads__group--desktop &:hover {
+    border-color: rgba(20, 184, 166, 0.25);
+    box-shadow: 0 8px 20px rgba(13, 148, 136, 0.06);
   }
 
-  /* 网页小助手的卡片 Hover 时发出绿色微光 */
-  .stg-downloads__panel-group--web &:hover {
-    border-color: var(--cyan-400);
-    box-shadow: 0 10px 24px rgba(6, 182, 212, 0.08);
+  .stg-downloads__group--web &:hover {
+    border-color: rgba(6, 182, 212, 0.25);
+    box-shadow: 0 8px 20px rgba(6, 182, 212, 0.06);
   }
 
   .stg-card-title {
@@ -1058,76 +1012,96 @@ const {
   }
 }
 
-/* 绿色免安装版自适应整行 */
-.stg-download-card--fullwidth {
-  grid-column: span 2;
-}
-
 .stg-card-title {
   margin: 0;
-  font-size: 13.5px;
+  font-size: 12px;
   font-weight: 800;
 }
 
 .stg-card-description {
+  margin: 3px 0 0 0;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+/* Web Helper Feature Checklist styles */
+.stg-feature-list {
+  list-style: none;
+  padding: 0;
   margin: 8px 0 0 0;
-  font-size: 11.5px;
-  line-height: 1.55;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.stg-feature-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--slate-600);
+}
+
+.stg-feature-icon {
+  font-size: 10px;
+  color: var(--teal-500);
+  flex-shrink: 0;
 }
 
 .stg-card-badge {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
-  padding: 2px 7px;
+  padding: 1px 5px;
   border-radius: var(--border-radius-pill);
   background-color: var(--teal-500);
   color: #ffffff;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.1px;
 }
 
 .stg-card-badge-outline {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
-  padding: 2px 7px;
+  padding: 1px 5px;
   border-radius: var(--border-radius-pill);
   background-color: transparent;
   color: var(--cyan-500);
   border: 1px solid rgba(6, 182, 212, 0.35);
-  letter-spacing: 0.2px;
+  letter-spacing: 0.1px;
 }
 
 .stg-card-badge-helper {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
-  padding: 2px 7px;
+  padding: 1px 5px;
   border-radius: var(--border-radius-pill);
   background-color: var(--teal-100);
   color: var(--teal-700);
   border: 1px solid rgba(20, 184, 166, 0.15);
-  letter-spacing: 0.2px;
+  letter-spacing: 0.1px;
 }
 
-/* 按钮重构 */
+/* Button UI elements */
 .stg-btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 5px;
   width: 100%;
-  height: 34px;
+  height: 28px;
   border: 0;
   border-radius: var(--border-radius-inner);
   background: linear-gradient(135deg, var(--teal-500) 0%, var(--teal-600) 100%);
   color: #ffffff;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.2);
+  box-shadow: 0 3px 8px rgba(13, 148, 136, 0.15);
   transition: var(--transition-bezier);
 
   &:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 6px 18px rgba(13, 148, 136, 0.3);
+    box-shadow: 0 5px 12px rgba(13, 148, 136, 0.25);
   }
 
   &:active {
@@ -1144,22 +1118,23 @@ const {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
   width: 100%;
-  height: 34px;
+  height: 28px;
   border: 1px solid var(--slate-200);
   border-radius: var(--border-radius-inner);
   background-color: #ffffff;
   color: var(--slate-700);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
   transition: var(--transition-bezier);
 
   &:hover:not(:disabled) {
-    border-color: var(--slate-800);
-    color: var(--slate-900);
-    background-color: var(--slate-100);
+    border-color: var(--teal-500);
+    color: var(--teal-600);
+    background-color: var(--teal-50);
+    box-shadow: 0 4px 10px rgba(20, 184, 166, 0.08);
   }
 
   &:active {
@@ -1171,7 +1146,6 @@ const {
     cursor: not-allowed;
   }
 
-  /* 桌面端全量部署包使用的次要按钮 */
   &--cyan {
     border-color: rgba(6, 182, 212, 0.25);
     background-color: var(--cyan-50);
@@ -1181,11 +1155,10 @@ const {
       border-color: var(--cyan-500);
       background-color: var(--cyan-500);
       color: #ffffff;
-      box-shadow: 0 4px 12px rgba(6, 182, 212, 0.15);
+      box-shadow: 0 4px 10px rgba(6, 182, 212, 0.15);
     }
   }
 
-  /* 右侧浅色小助手按钮 */
   &--teal {
     border-color: rgba(20, 184, 166, 0.25);
     background-color: var(--teal-50);
@@ -1195,20 +1168,37 @@ const {
       border-color: var(--teal-500);
       background-color: var(--teal-500);
       color: #ffffff;
-      box-shadow: 0 4px 12px rgba(20, 184, 166, 0.15);
+      box-shadow: 0 4px 10px rgba(20, 184, 166, 0.15);
     }
   }
 }
 
-/* ================================================================= */
-/* 4. 更新管理区 (时间线/流程设计)                                   */
-/* ================================================================= */
+/* Timeline/updates config */
 .stg-updates {
   z-index: 10;
+  flex: 1.35;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .stg-updates__panel {
-  padding: 10px 16px 16px;
+  padding: 8px 14px 14px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(20, 184, 166, 0.15);
+    border-radius: 2px;
+  }
 }
 
 .stg-timeline {
@@ -1228,7 +1218,7 @@ const {
 
 .stg-timeline-item {
   position: relative;
-  margin-bottom: 20px;
+  margin-bottom: 14px;
 
   &:last-child {
     margin-bottom: 0;
@@ -1263,14 +1253,14 @@ const {
 
   h4 {
     margin: 0;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
     color: var(--slate-800);
   }
 
   p {
-    margin: 2px 0 8px 0;
-    font-size: 11.5px;
+    margin: 2px 0 6px 0;
+    font-size: 10.5px;
     color: var(--slate-500);
     line-height: 1.4;
   }
@@ -1279,20 +1269,21 @@ const {
 .stg-timeline-action-btn {
   display: inline-flex;
   align-items: center;
-  height: 24px;
-  padding: 0 10px;
+  height: 22px;
+  padding: 0 8px;
   border: 1px solid var(--slate-300);
   border-radius: var(--border-radius-inner);
   background-color: #ffffff;
   color: var(--slate-700);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
   cursor: pointer;
   transition: var(--transition-bezier);
 
   &:hover {
-    border-color: var(--slate-900);
-    color: var(--slate-900);
+    border-color: var(--teal-500);
+    color: var(--teal-600);
+    background-color: var(--teal-50);
   }
 
   &:active {
@@ -1316,11 +1307,11 @@ const {
   background-color: var(--slate-50);
   border: 1px solid var(--slate-200);
   border-radius: var(--border-radius-inner);
-  padding: 16px;
+  padding: 12px;
   transition: var(--transition-bezier);
 
   &:hover {
-    border-color: var(--teal-100);
+    border-color: var(--teal-200);
     box-shadow: 0 6px 16px rgba(13, 148, 136, 0.03);
   }
 }
@@ -1328,20 +1319,20 @@ const {
 .stg-server-mode__header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
+  gap: 10px;
+  margin-bottom: 8px;
 }
 
 .stg-server-mode__avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background-color: var(--teal-100);
   color: var(--teal-600);
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .stg-server-mode__title {
@@ -1350,7 +1341,7 @@ const {
 
   h4 {
     margin: 0;
-    font-size: 12.5px;
+    font-size: 11.5px;
     font-weight: 800;
     color: var(--slate-800);
   }
@@ -1359,14 +1350,14 @@ const {
 .stg-status-badge {
   display: inline-flex;
   align-items: center;
-  font-size: 9px;
+  font-size: 8.5px;
   font-weight: 800;
   color: var(--teal-600);
-  
+
   &::before {
     content: '';
-    width: 5px;
-    height: 5px;
+    width: 4px;
+    height: 4px;
     border-radius: 50%;
     background-color: var(--teal-500);
     margin-right: 4px;
@@ -1375,18 +1366,17 @@ const {
 }
 
 .stg-server-mode__desc {
-  margin: 0 0 16px 0;
-  font-size: 11.5px;
-  line-height: 1.5;
+  margin: 0 0 12px 0;
+  font-size: 10.5px;
+  line-height: 1.45;
   color: var(--slate-500);
 }
 
-/* 云端同步流动示意图 (发光流星流) */
 .stg-flow-chart {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-radius: var(--border-radius-inner);
   background-color: #ffffff;
   border: 1px solid var(--slate-200);
@@ -1397,12 +1387,12 @@ const {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  font-size: 15px;
+  gap: 3px;
+  font-size: 13px;
   color: var(--slate-700);
 
   span {
-    font-size: 9.5px;
+    font-size: 9px;
     font-weight: 800;
     color: var(--slate-400);
     text-transform: uppercase;
@@ -1413,10 +1403,10 @@ const {
 .stg-flow-line {
   position: relative;
   flex: 1;
-  height: 4px;
+  height: 3px;
   background-color: var(--slate-100);
   border-radius: var(--border-radius-pill);
-  margin: 0 16px;
+  margin: 0 12px;
   overflow: hidden;
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
@@ -1425,34 +1415,51 @@ const {
   position: absolute;
   top: 0;
   height: 100%;
-  width: 14px;
+  width: 12px;
   background: linear-gradient(90deg, rgba(20, 184, 166, 0) 0%, var(--teal-500) 50%, rgba(20, 184, 166, 0) 100%);
   border-radius: inherit;
   animation: stream-flow 2.4s infinite linear;
-  
+
   &--1 { animation-delay: 0s; }
   &--2 { animation-delay: 0.8s; }
   &--3 { animation-delay: 1.6s; }
 }
 
-/* ================================================================= */
-/* 5. 详细参数面板                                                   */
-/* ================================================================= */
+/* Parameters Panel */
 .stg-metadata {
   z-index: 10;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .stg-metadata-list {
-  padding: 6px 16px 16px;
+  padding: 4px 14px 14px;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(20, 184, 166, 0.15);
+    border-radius: 2px;
+  }
 }
 
 .stg-metadata-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 0;
+  padding: 8px 0;
   border-bottom: 1px solid var(--slate-100);
   transition: var(--transition-bezier);
 
@@ -1469,7 +1476,7 @@ const {
   &--vertical {
     flex-direction: column;
     align-items: flex-start;
-    gap: 6px;
+    gap: 4px;
     &:hover {
       padding-left: 0;
       background-color: transparent;
@@ -1485,13 +1492,13 @@ const {
 }
 
 .stg-metadata-key {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--slate-500);
 }
 
 .stg-metadata-val {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--slate-800);
 }
@@ -1508,10 +1515,10 @@ const {
   word-break: break-all;
   color: var(--slate-500);
   font-weight: 500;
-  font-size: 10.5px;
+  font-size: 10px;
   background-color: var(--slate-50);
-  padding: 6px 8px;
-  border-radius: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
   width: 100%;
   border: 1px solid transparent;
   transition: var(--transition-bezier);
@@ -1524,26 +1531,24 @@ const {
 }
 
 .stg-pill-mode {
-  padding: 2px 8px;
+  padding: 1px 6px;
   background-color: var(--teal-50);
   color: var(--teal-700);
-  font-size: 10.5px;
+  font-size: 9.5px;
   font-weight: 800;
   border-radius: var(--border-radius-pill);
 }
 
 .stg-pill-source {
-  padding: 1px 6px;
+  padding: 1px 5px;
   background-color: var(--slate-100);
   color: var(--slate-500);
-  font-size: 9.5px;
+  font-size: 9px;
   font-weight: 800;
   border-radius: 4px;
 }
 
-/* ================================================================= */
-/* Transition 动效库                                                 */
-/* ================================================================= */
+/* Transition library */
 .stg-slide-fade-enter-active, .stg-slide-fade-leave-active {
   transition: all 0.4s var(--transition-bezier);
   max-height: 120px;
@@ -1571,14 +1576,14 @@ const {
   transform: translateY(-6px);
 }
 
-/* 响应式媒体查询 */
+/* Responsive media queries */
 @media (max-width: 1280px) {
   .stg-downloads__split-container {
     grid-template-columns: 1.85fr 1.15fr;
     gap: 16px;
   }
-  .stg-downloads__panel-group--desktop .stg-panel-cards {
-    grid-template-columns: 1fr;
+  .stg-panel-cards {
+    grid-template-columns: 1fr !important;
   }
 }
 
@@ -1586,6 +1591,14 @@ const {
   .stg-main {
     grid-template-columns: 1fr;
     gap: 16px;
+    height: auto;
+    max-height: none;
+    overflow: auto;
+  }
+  .stg-layout {
+    height: auto;
+    max-height: none;
+    overflow: auto;
   }
 }
 

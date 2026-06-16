@@ -1777,6 +1777,29 @@ function registerIpcHandlers() {
     return result;
   });
 
+  ipcMain.handle('select-directory', async (_event, options = {}) => {
+    try {
+      const dialogOptions = options && typeof options === 'object' ? options : {};
+      const title = typeof dialogOptions.title === 'string' && dialogOptions.title.trim()
+        ? dialogOptions.title.trim()
+        : '选择文件夹';
+      const defaultPath = typeof dialogOptions.defaultPath === 'string' && dialogOptions.defaultPath.trim()
+        ? dialogOptions.defaultPath.trim()
+        : undefined;
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title,
+        defaultPath,
+        properties: ['openDirectory', 'createDirectory']
+      });
+      if (result.canceled || !result.filePaths || !result.filePaths[0]) {
+        return { success: true, canceled: true };
+      }
+      return { success: true, canceled: false, path: result.filePaths[0] };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
   ipcMain.handle('launch-external-module', async (_event, moduleId) => {
     const moduleInfo = getExternalModulePath(moduleId);
     if (!moduleInfo) {

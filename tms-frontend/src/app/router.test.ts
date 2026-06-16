@@ -4,7 +4,9 @@ import DraftPackingComparePage from '../pages/draft-packing-compare/DraftPacking
 import JasonPdfReorderPage from '../pages/jason-pdf-reorder/JasonPdfReorderPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
 import ReleaseUpdatesPage from '../pages/release-updates/ReleaseUpdatesPage.vue'
+import PoAutoDownloadPage from '../pages/po-auto-download/PoAutoDownloadPage.vue'
 import WebAutomationPage from '../pages/web-automation/WebAutomationPage.vue'
+import XinlongtaiShippingAutomationPage from '../pages/xinlongtai-shipping-automation/XinlongtaiShippingAutomationPage.vue'
 
 beforeAll(() => {
   vi.stubGlobal('location', {
@@ -68,6 +70,26 @@ describe('router', () => {
 
     expect(route?.name).toBe('web-automation')
     expect(route?.components?.default).toBe(WebAutomationPage)
+    expect(route?.components?.default).not.toBe(RoutePlaceholder)
+  })
+
+  it('routes PO auto download to its standalone scenario page component', async () => {
+    const { router } = await import('./router')
+    const route = router.getRoutes().find((entry) => entry.path === '/web-automation/scenarios/po-auto-download')
+
+    expect(route?.name).toBe('web-automation-scenario-po-auto-download')
+    expect(route?.components?.default).toBe(PoAutoDownloadPage)
+    expect(route?.components?.default).not.toBe(RoutePlaceholder)
+  })
+
+  it('routes Xinlongtai shipping automation to its standalone scenario page component', async () => {
+    const { router } = await import('./router')
+    const route = router
+      .getRoutes()
+      .find((entry) => entry.path === '/web-automation/scenarios/xinlongtai-shipping-automation')
+
+    expect(route?.name).toBe('web-automation-scenario-xinlongtai-shipping-automation')
+    expect(route?.components?.default).toBe(XinlongtaiShippingAutomationPage)
     expect(route?.components?.default).not.toBe(RoutePlaceholder)
   })
 

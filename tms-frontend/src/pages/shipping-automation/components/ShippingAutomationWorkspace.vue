@@ -727,7 +727,7 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
     background: linear-gradient(135deg, var(--a), var(--ag));
     color: #fff; border-color: transparent;
     box-shadow: 0 2px 10px rgba(14,165,233,.2);
-    &:hover:not(:disabled) { box-shadow: 0 4px 16px rgba(14,165,233,.3); filter: brightness(1.05); }
+    &:hover:not(:disabled) { background: linear-gradient(135deg, var(--a), var(--ag)); box-shadow: 0 4px 16px rgba(14,165,233,.3); filter: brightness(1.05); }
   }
   &--danger { color: var(--red); border-color: #fecaca;
     &:hover:not(:disabled) { background: #fef2f2; }
@@ -739,7 +739,7 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
     background: linear-gradient(135deg, var(--a), var(--ag));
     box-shadow: 0 3px 14px rgba(14,165,233,.25);
     :deep(.app-icon) { font-size: 14px; }
-    &:hover:not(:disabled) { filter: brightness(1.06); box-shadow: 0 5px 20px rgba(14,165,233,.35); }
+    &:hover:not(:disabled) { background: linear-gradient(135deg, var(--a), var(--ag)); filter: brightness(1.06); box-shadow: 0 5px 20px rgba(14,165,233,.35); }
   }
 }
 

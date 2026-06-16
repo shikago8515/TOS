@@ -63,6 +63,7 @@ npm run preview
 - `/browser-plugins`
 - `/web-automation`
 - `/web-automation/scenarios/shipping-automation-2`
+- `/web-automation/scenarios/po-auto-download`
 - `/infornexus`
 - `/jane-sap`
 - `/eric-infornexus`
@@ -72,6 +73,18 @@ npm run preview
 
 `placeholder` 路由使用 `src/pages/RoutePlaceholder.vue`。
 旧 `/#/it-invoice-pdf-reorder` 已作为历史链接重定向到 Jason canonical 路由 `/#/jason/pdf-reorder`。
+
+`/web-automation/scenarios/po-auto-download` 使用独立源码目录 `src/pages/po-auto-download/`，不复用通用场景页。页面上传 Excel、选择本机下载目录，并调用本机 `shipping-automation-demo` 执行器的 `/api/run-po-auto-download-file`；Infor Nexus 登录、`InvoicesView.jsp`、`InProgressInvoices` 筛选请求和后续文件下载都留在执行器模块内处理。
+
+PO 自动下载执行中会轮询本机执行器 `/api/health` 的 `activeRun.progress`，实时显示阶段、已处理数量、已下载数量、失败数量和当前 Invoice，避免长批量下载时页面只显示等待状态；最终失败结果会展示前 3 条失败示例。
+
+PO 自动下载模板不放在前端 public 固定目录，页面通过后端 `/api/system/config/po-auto-download/template/download` 从 MinIO 下载，默认对象为 `tos-templates/po-auto-download/po-auto-download-template.xls`，浏览器保存文件名仍为 `PO 自动下载模板.XLS`。
+
+PO 自动下载的保存目录输入的是父目录；执行器每次运行会自动创建 `TC Invoice YYYY-MM-DD` 子文件夹，若重复则递增为 `TC Invoice YYYY-MM-DD-1`。用户可见的运行子文件夹默认只保留下载完成的 PDF，不写入搜索页 HTML、发票页 HTML 或结果 JSON。
+
+当前本机验证样例：使用 `PO 自动下载模板.XLS` 通过纯请求链路下载 13/13 个 active Invoice PDF，输出目录为 `D:\TOS-Shipping-test\TC Invoice 2026-06-16-1`。
+
+浏览器模式默认连接服务器后端 `https://ai.tomwell.net:56130/tos/desktop-api`；当部署在 `/tos` 路径下时使用同源 `/tos/desktop-api`，避免误连本机后端。
 
 ## 迁移规则
 

@@ -30,5 +30,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAutomationApps: () => ipcRenderer.invoke('get-automation-apps'),
   launchAutomationApp: (appId) => ipcRenderer.invoke('launch-automation-app', appId),
   stopAutomationApp: (appId) => ipcRenderer.invoke('stop-automation-app', appId),
+  selectDirectory: (options) => ipcRenderer.invoke('select-directory', options),
   launchAdidasMaterialCollector: () => ipcRenderer.invoke('launch-adidas-material-collector')
 });

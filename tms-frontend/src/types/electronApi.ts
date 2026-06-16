@@ -16,6 +16,13 @@ export interface ElectronActionResult {
   versionMismatch?: boolean
 }
 
+export interface DirectorySelectionResult {
+  success: boolean
+  canceled?: boolean
+  path?: string
+  error?: string
+}
+
 export interface ExternalModuleInfo {
   id: string
   name: string
@@ -150,6 +157,7 @@ export interface ElectronApi {
   getAutomationApps(): Promise<AutomationAppInfo[]>
   launchAutomationApp(appId: string): Promise<ElectronActionResult>
   stopAutomationApp(appId: string): Promise<ElectronActionResult>
+  selectDirectory?(options?: { title?: string; defaultPath?: string }): Promise<DirectorySelectionResult>
   launchAdidasMaterialCollector(): Promise<ElectronActionResult>
 }
 

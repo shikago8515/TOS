@@ -18,6 +18,7 @@ from utils.mysql_store import ensure_schema, list_excel_templates, upsert_excel_
 
 
 CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+XLS_CONTENT_TYPE = "application/vnd.ms-excel"
 
 
 AUTOMATION_TEMPLATES: list[dict[str, Any]] = [
@@ -32,6 +33,14 @@ AUTOMATION_TEMPLATES: list[dict[str, Any]] = [
             "PO No is required.",
             "Change Equipment ID, Issue Date, and Invoice Number are applied by the automation flow.",
         ],
+    },
+    {
+        "module_id": "xinlongtai-shipping-automation",
+        "template_key": "default",
+        "display_name": "新龙泰 Shipping 自动化 Excel 模板",
+        "filename": "新龙泰-shipping-自动化模板.XLS",
+        "source_path": "templates/automation/xinlongtai-shipping-automation-template.xls",
+        "content_type": XLS_CONTENT_TYPE,
     },
     {
         "module_id": "infornexus-auto-add",
@@ -79,13 +88,14 @@ def seed_templates() -> dict[str, Any]:
 
     for template in AUTOMATION_TEMPLATES:
         filename = sanitize_object_segment(template["filename"])
-        content = build_template_workbook(template)
+        content = read_template_content(template)
+        content_type = template.get("content_type", CONTENT_TYPE)
         object_key = build_object_key("templates", template["module_id"], template["template_key"], filename)
         storage_record = put_object_bytes(
             bucket=bucket,
             object_key=object_key,
             content=content,
-            content_type=CONTENT_TYPE,
+            content_type=content_type,
         )
         row = upsert_excel_template({
             "module_id": template["module_id"],
@@ -94,7 +104,7 @@ def seed_templates() -> dict[str, Any]:
             "bucket": storage_record["bucket"],
             "object_key": storage_record["object_key"],
             "original_filename": filename,
-            "content_type": CONTENT_TYPE,
+            "content_type": content_type,
             "file_size": storage_record["file_size"],
             "sha256": storage_record["sha256"],
         })
@@ -122,6 +132,17 @@ def seed_templates() -> dict[str, Any]:
             for module_id in module_ids
         },
     }
+
+
+def read_template_content(template: dict[str, Any]) -> bytes:
+    source_path = template.get("source_path")
+    if not source_path:
+        return build_template_workbook(template)
+
+    path = Path(str(source_path))
+    if not path.is_absolute():
+        path = BACKEND_ROOT / path
+    return path.read_bytes()
 
 
 def build_template_workbook(template: dict[str, Any]) -> bytes:

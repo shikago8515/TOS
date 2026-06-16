@@ -18,8 +18,10 @@ from utils.mysql_store import ensure_schema, upsert_automation_credentials
 
 INFOR_NEXUS_AUTOMATION_IDS = [
     "shipping-automation",
+    "xinlongtai-shipping-automation",
     "shipping-automation-2",
     "infornexus-auto-add",
+    "po-auto-download",
 ]
 MICROSOFT_AUTOMATION_IDS = [
     "microsoft-login-n8n",

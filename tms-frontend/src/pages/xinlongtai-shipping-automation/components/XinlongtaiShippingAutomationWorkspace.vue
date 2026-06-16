@@ -3,7 +3,7 @@
     <!-- === ALERT === -->
     <transition name="sa-alert-anim">
       <div v-if="message" class="sa-alert" :class="`sa-alert--${messageTone}`">
-        <AppIcon :name="messageTone === 'success' ? 'check-circle' : messageTone === 'error' ? 'alert-circle' : 'info'" />
+        <AppIcon :name="messageIconName" />
         <span>{{ text(message) }}</span>
         <button class="sa-alert__close" @click="message = ''"><AppIcon name="stop-circle" /></button>
       </div>
@@ -21,7 +21,7 @@
       <header class="sa-hd">
         <div class="sa-hd__left">
           <button class="sa-back-btn" @click="goBack"><AppIcon name="arrow-left" /></button>
-          <div class="sa-hd__icon"><AppIcon :name="heroIcon" /></div>
+          <div class="sa-hd__icon"><AppIcon name="package" /></div>
           <div class="sa-hd__text">
             <h1>{{ text(entry.title) }}</h1>
             <p>{{ text(entry.subtitle) }}</p>
@@ -32,7 +32,7 @@
             <span class="sa-pill__dot" :class="executorHealth?.ok ? 'sa-pill__dot--on' : ''" />
             {{ executorHealth?.ok ? text('执行器就绪') : text('执行器未连接') }}
           </div>
-          <span class="sa-tag"><AppIcon name="zap" /> {{ isMicrosoftScenario ? 'Microsoft / SAP' : 'InforNexus' }}</span>
+          <span class="sa-tag"><AppIcon name="zap" /> InforNexus</span>
         </div>
       </header>
 
@@ -59,10 +59,10 @@
           <!-- Main Workflow Card -->
           <section class="sa-card sa-card--primary">
             <div class="sa-card__hd">
-              <div class="sa-card__hd-ico"><AppIcon :name="isMicrosoftScenario ? 'upload' : 'play-circle'" /></div>
+              <div class="sa-card__hd-ico"><AppIcon name="play-circle" /></div>
               <div class="sa-card__hd-info">
-                <strong>{{ text(isMicrosoftScenario ? '上传文件并执行' : directScenarioTitle) }}</strong>
-                <small>{{ text(isMicrosoftScenario ? 'Excel 直发本机执行器' : directScenarioExcelHint) }}</small>
+                <strong>{{ text('登录并打开 Shipment Scan') }}</strong>
+                <small>{{ text('上传 PO No Excel 执行批量录入') }}</small>
               </div>
               <span v-if="executorHealth?.ok" class="sa-chip sa-chip--ok">{{ text('就绪') }}</span>
               <span v-else class="sa-chip sa-chip--warn">{{ text('等待执行器') }}</span>
@@ -71,49 +71,30 @@
             <!-- Credential Notice -->
             <div v-if="hasStoredCredentials" class="sa-cred-note">
               <AppIcon name="check-circle" />
-              <span>{{ credentialStatusText }}</span>
+              <span>{{ text('已保存') }} Infor Nexus {{ text('登录账号') }}: {{ savedCredentialUsername }}</span>
             </div>
 
             <!-- Credentials -->
-            <div v-if="isInfornexusDirectScenario || isMicrosoftScenario" class="sa-card__bd">
+            <div class="sa-card__bd">
               <div class="sa-cred-grid">
-                <template v-if="isInfornexusDirectScenario">
-                  <label class="sa-field">
-                    <span>{{ text('User ID') }}</span>
-                    <div class="sa-inp-wrap">
-                      <AppIcon name="user" class="sa-inp-icon" />
-                      <input v-model.trim="shippingUsername" type="text" class="sa-inp" :placeholder="text('请输入 User ID')" autocomplete="username" />
-                    </div>
-                  </label>
-                  <label class="sa-field">
-                    <span>{{ text('Password') }}</span>
-                    <div class="sa-inp-wrap">
-                      <AppIcon name="shield-check" class="sa-inp-icon" />
-                      <input v-model="shippingPassword" :type="showShippingPassword ? 'text' : 'password'" class="sa-inp" placeholder="Enter password" autocomplete="current-password" />
-                      <button class="sa-inp__btn" type="button" @click="showShippingPassword = !showShippingPassword"><AppIcon name="eye" /></button>
-                    </div>
-                  </label>
-                </template>
-                <template v-else-if="isMicrosoftScenario">
-                  <label class="sa-field">
-                    <span>{{ text('Microsoft 账号') }}</span>
-                    <div class="sa-inp-wrap">
-                      <AppIcon name="user" class="sa-inp-icon" />
-                      <input v-model.trim="microsoftUsername" type="text" class="sa-inp" :placeholder="text('请输入 Microsoft 账号')" autocomplete="username" />
-                    </div>
-                  </label>
-                  <label class="sa-field">
-                    <span>{{ text('Microsoft 密码') }}</span>
-                    <div class="sa-inp-wrap">
-                      <AppIcon name="shield-check" class="sa-inp-icon" />
-                      <input v-model="microsoftPassword" :type="showMicrosoftPassword ? 'text' : 'password'" class="sa-inp" placeholder="Enter password" autocomplete="current-password" />
-                      <button class="sa-inp__btn" type="button" @click="showMicrosoftPassword = !showMicrosoftPassword"><AppIcon name="eye" /></button>
-                    </div>
-                  </label>
-                </template>
+                <label class="sa-field">
+                  <span>{{ text('User ID') }}</span>
+                  <div class="sa-inp-wrap">
+                    <AppIcon name="user" class="sa-inp-icon" />
+                    <input v-model.trim="shippingUsername" type="text" class="sa-inp" :placeholder="text('请输入 User ID')" autocomplete="username" />
+                  </div>
+                </label>
+                <label class="sa-field">
+                  <span>{{ text('Password') }}</span>
+                  <div class="sa-inp-wrap">
+                    <AppIcon name="shield-check" class="sa-inp-icon" />
+                    <input v-model="shippingPassword" :type="showShippingPassword ? 'text' : 'password'" class="sa-inp" placeholder="Enter password" autocomplete="current-password" />
+                    <button class="sa-inp__btn" @click="showShippingPassword = !showShippingPassword"><AppIcon name="eye" /></button>
+                  </div>
+                </label>
               </div>
               <div class="sa-cred-row">
-                <button class="sa-btn sa-btn--pri" :disabled="credentialSaving || !activeUsername || !activePassword" @click="saveCurrentCredentials">
+                <button class="sa-btn sa-btn--pri" :disabled="credentialSaving || !shippingUsername || !shippingPassword" @click="saveCurrentCredentials">
                   <AppIcon name="shield-check" />{{ credentialSaving ? text('保存中') : text('保存登录账号密码') }}
                 </button>
                 <button class="sa-btn" :disabled="credentialClearing || !hasStoredCredentials" @click="clearCurrentCredentials">
@@ -126,7 +107,7 @@
             </div>
 
             <!-- File Dropzone -->
-            <div class="sa-card__bd" style="border-top: 1px solid #f1f5f9;">
+            <div class="sa-card__bd">
               <label class="sa-field"><span>{{ text('Excel 文件') }}</span></label>
               <div class="sa-drop" :class="{ 'sa-drop--on': selectedFile, 'sa-drop--over': isDragging }"
                 @click="openFilePicker" @dragenter.prevent="handleDragEnter" @dragover.prevent="handleDragOver" @dragleave.prevent="handleDragLeave" @drop.prevent="handleDrop">
@@ -137,13 +118,13 @@
                     <b>{{ selectedFile.name }}</b>
                     <small>{{ formatSize(selectedFile.size) }}</small>
                   </div>
-                  <button class="sa-drop__x" type="button" @click.stop="clearFile"><AppIcon name="stop-circle" /></button>
+                  <button class="sa-drop__x" @click.stop="clearFile"><AppIcon name="stop-circle" /></button>
                 </template>
                 <template v-else>
                   <div class="sa-drop__ico sa-drop__ico--float"><AppIcon name="upload" /></div>
                   <div class="sa-drop__info">
                     <b>{{ text('点击或拖入 Excel 文件') }}</b>
-                    <small>{{ text(isInfornexusDirectScenario ? directScenarioExcelHint : '支持 .xlsx / .xls 格式') }}</small>
+                    <small>{{ text('请包含 PO No 列') }}</small>
                   </div>
                 </template>
                 <div v-if="isDragging" class="sa-drop__overlay">{{ text('释放以上传文件') }}</div>
@@ -152,13 +133,9 @@
 
             <!-- Execute -->
             <div class="sa-card__ft">
-              <button v-if="isInfornexusDirectScenario" class="sa-btn sa-btn--execute" :disabled="!canRunShippingAutomation" @click="runInfornexusDirectWithExcel">
+              <button class="sa-btn sa-btn--execute" :disabled="!canRunShippingAutomation" @click="runShipping">
                 <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'sa-spin': sending }" />
-                <span>{{ sending ? text('执行中...') : text(directScenarioRunLabel) }}</span>
-              </button>
-              <button v-else class="sa-btn sa-btn--execute" :disabled="!canRunDirectExecutor" @click="sendDirectToExecutor">
-                <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'sa-spin': sending }" />
-                <span>{{ sending ? text('执行中...') : text('本地直连执行') }}</span>
+                {{ sending ? text('执行中...') : text('上传 Excel 并执行 Shipping') }}
               </button>
             </div>
 
@@ -170,7 +147,7 @@
             </transition>
 
             <!-- Artifact Downloads -->
-            <div v-if="isShippingScenario && shippingArtifactLinks?.resultExcelUrl" class="sa-card__ft sa-artifacts" style="border-top: 1px solid #f1f5f9; padding-top: 16px;">
+            <div v-if="shippingArtifactLinks?.resultExcelUrl" class="sa-card__ft sa-artifacts">
               <button class="sa-btn sa-btn--pri" @click="downloadShippingArtifact(shippingArtifactLinks.resultExcelUrl, 'shipping-last-result.xlsx')">
                 <AppIcon name="download" />{{ text('结果 Excel') }}
               </button>
@@ -180,21 +157,11 @@
             </div>
           </section>
 
-          <!-- Raw Response -->
-          <details v-if="lastRawResponse" class="sa-log">
-            <summary class="sa-log__hd">
-              <AppIcon name="code" class="sa-log__hd-icon" />
-              <span>{{ text('原始响应') }}</span>
-              <AppIcon name="chevron-down" class="sa-chev" />
-            </summary>
-            <pre class="sa-log__pre">{{ lastRawResponse }}</pre>
-          </details>
-
-          <!-- Health Log -->
+          <!-- Health Log (full-width under card) -->
           <details class="sa-log">
             <summary class="sa-log__hd">
               <AppIcon name="terminal" class="sa-log__hd-icon" />
-              <span>{{ text('执行器健康信息') }}</span>
+              <span>{{ text('执行器健康日志') }}</span>
               <AppIcon name="chevron-down" class="sa-chev" />
             </summary>
             <pre class="sa-log__pre">{{ healthRaw }}</pre>
@@ -230,35 +197,25 @@
               <span>{{ text('操作流程') }}</span>
             </div>
             <div class="sa-dock__bd sa-steps">
-              <template v-if="isShippingScenario">
-                <div v-for="(s, i) in shippingSteps" :key="i" class="sa-step">
-                  <b class="sa-step__n">{{ i + 1 }}</b>
-                  <div class="sa-step__text">
-                    <em>{{ text(s.title) }}</em>
-                    <small>{{ text(s.desc) }}</small>
-                  </div>
+              <div v-for="(s, i) in steps" :key="i" class="sa-step">
+                <b class="sa-step__n">{{ i + 1 }}</b>
+                <div class="sa-step__text">
+                  <em>{{ text(s.title) }}</em>
+                  <small>{{ text(s.desc) }}</small>
                 </div>
-              </template>
-              <template v-else-if="isInfornexusAutoAddScenario">
-                <div v-for="(s, i) in infornexusAutoAddSteps" :key="i" class="sa-step">
-                  <b class="sa-step__n">{{ i + 1 }}</b>
-                  <div class="sa-step__text">
-                    <em>{{ text(s.title) }}</em>
-                    <small>{{ text(s.desc) }}</small>
-                  </div>
-                </div>
-              </template>
-              <template v-else>
-                <div v-for="(s, i) in defaultSteps" :key="i" class="sa-step">
-                  <b class="sa-step__n">{{ i + 1 }}</b>
-                  <div class="sa-step__text">
-                    <em>{{ text(s.title) }}</em>
-                    <small>{{ text(s.desc) }}</small>
-                  </div>
-                </div>
-              </template>
+              </div>
             </div>
           </div>
+
+          <!-- Raw Response -->
+          <details v-if="lastRawResponse" class="sa-dock-card">
+            <summary class="sa-dock__hd sa-dock__hd--summary">
+              <AppIcon name="code" class="sa-dock__hd-icon" />
+              <span>{{ text('原始响应') }}</span>
+              <AppIcon name="chevron-down" class="sa-chev" />
+            </summary>
+            <pre class="sa-log__pre">{{ lastRawResponse }}</pre>
+          </details>
         </aside>
       </div>
     </template>
@@ -266,80 +223,155 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'; import { useRoute, useRouter } from 'vue-router'; import AppIcon from '../../shared/ui/AppIcon.vue'
-import type { AutomationAppInfo } from '../../types/electronApi'; import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from './webAutomationApi'
-import { buildAutomationTemplateDownloadUrl, clearExecutorCredentials, createAutomationRunRecord, fetchAutomationTemplates, fetchExecutorCredentials, openAutomationHelperDownload, fetchAutomationApps, finishAutomationRunRecord, hasElectronAutomationSupport, launchAutomationConsole, primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth, recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole } from './webAutomationApi'
-import { canRunWithCredentials } from './webAutomationCredentials'
-import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from './webAutomationModel'
-import { useAppLanguage } from '../../shared/i18n/appLanguage'
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import AppIcon from '../../../shared/ui/AppIcon.vue'
+import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+import type { AutomationAppInfo } from '../../../types/electronApi'
+import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
+import {
+  buildAutomationTemplateDownloadUrl, clearExecutorCredentials, createAutomationRunRecord,
+  fetchAutomationApps, fetchAutomationTemplates, fetchExecutorCredentials, finishAutomationRunRecord,
+  hasElectronAutomationSupport, launchAutomationConsole, openAutomationHelperDownload,
+  primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
+  recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole,
+} from '../../web-automation/webAutomationApi'
+import { canRunWithCredentials } from '../../web-automation/webAutomationCredentials'
+import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
 
-const route = useRoute(); const router = useRouter(); const { text } = useAppLanguage()
-const DSU = ''; const DSP = ''; const DMU = ''; const DMP = ''
+const XINLONGTAI_SHIPPING_ENTRY_ID = 'xinlongtai-shipping-automation'
+
+const router = useRouter(); const { text } = useAppLanguage()
+const entry = getWebAutomationEntry(XINLONGTAI_SHIPPING_ENTRY_ID)
 const electronSupported = hasElectronAutomationSupport()
-const activeApp = ref<AutomationAppInfo | null>(null); const executorHealth = ref<LocalExecutorHealth | null>(null); const executorCredentials = ref<ExecutorCredentials | null>(null); const automationTemplates = ref<AutomationTemplate[]>([])
-const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false); const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false); const sending = ref(false)
-const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info'); const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
-const selectedFile = ref<File | null>(null); const webhookUrl = ref('http://127.0.0.1:5678/webhook/microsoft-login-excel-demo')
-const shippingUsername = ref(DSU); const shippingPassword = ref(DSP); const showShippingPassword = ref(true)
-const microsoftUsername = ref(DMU); const microsoftPassword = ref(DMP); const showMicrosoftPassword = ref(true)
-const statusText = ref(''); const statusLabel = ref('待命'); const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
+
+const activeApp = ref<AutomationAppInfo | null>(null)
+const executorHealth = ref<LocalExecutorHealth | null>(null)
+const executorCredentials = ref<ExecutorCredentials | null>(null)
+const automationTemplates = ref<AutomationTemplate[]>([])
+const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false)
+const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false); const sending = ref(false)
+const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info')
+const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
+const selectedFile = ref<File | null>(null)
+const shippingUsername = ref(''); const shippingPassword = ref(''); const showShippingPassword = ref(true)
+const statusText = ref(''); const statusLabel = ref('待命')
+const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
 type SAL = { resultExcelUrl: string; resultJsonUrl?: string; failedPoExcelUrl?: string; failedPoJsonUrl?: string; failedRowCount: number }
 const shippingArtifactLinks = ref<SAL | null>(null)
 
-const shippingSteps = [{ title: '输入账号密码', desc: '使用 Infor Nexus 登录账号密码。' },{ title: '启动本地执行器', desc: '网页端和 EXE 同套启动器。' },{ title: '打开 Shipment Scan', desc: '进入 Applications > Print-Scan-Ship > Shipment Scan。' },{ title: '上传 Excel 执行', desc: '上传 PO No Excel 执行批量录入。' }]
-const infornexusAutoAddSteps = [{ title: '上传 Excel 文件', desc: '读取第二列 10 位 ID。' },{ title: '启动执行器', desc: '启动可见浏览器登录 Infor Nexus。' },{ title: '自动搜索添加', desc: '按 Excel 顺序逐个搜索、勾选并添加。' },{ title: '查看结果', desc: '完成数量和失败明细在下方返回。' }]
-const defaultSteps = [{ title: '上传 Excel 文件', desc: '选择 .xlsx 或 .xls 文件。' },{ title: '本地直连执行', desc: 'Excel 直发本机执行器。' },{ title: '查看结果', desc: '在下方状态区查看执行结果。' }]
+const steps = [
+  { title: '输入账号密码', desc: '使用 Infor Nexus 登录账号密码。' },
+  { title: '启动本地执行器', desc: '网页端和 EXE 同套启动器。' },
+  { title: '打开 Shipment Scan', desc: '进入 Applications > Print-Scan-Ship > Shipment Scan。' },
+  { title: '上传 Excel 执行', desc: '上传 PO No Excel 执行批量录入。' },
+]
 
-const entry = computed(() => getWebAutomationEntry(String(route.params.scenarioId || '')))
-const isShippingScenario = computed(() => entry.value?.id === 'shipping-automation')
-const isInfornexusAutoAddScenario = computed(() => entry.value?.id === 'infornexus-auto-add')
-const isInfornexusDirectScenario = computed(() => isShippingScenario.value || isInfornexusAutoAddScenario.value)
-const isMicrosoftScenario = computed(() => entry.value?.id === 'microsoft-login-n8n')
-const pageScenarioClass = computed(() => { if (isMicrosoftScenario.value) return 'pg--ms'; if (isShippingScenario.value) return 'pg--ship'; if (isInfornexusAutoAddScenario.value) return 'pg--inf'; return 'pg--def' })
-const heroIcon = computed(() => { if (isMicrosoftScenario.value) return 'zap'; if (isShippingScenario.value) return 'package'; if (isInfornexusAutoAddScenario.value) return 'globe-search'; return 'bot' })
-const directExecutorRunUrl = computed(() => { const b = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-login-file` : '' })
-const shippingExecutorRunUrl = computed(() => { const b = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-shipping-file` : '' })
-const infornexusAutoAddExecutorRunUrl = computed(() => { const b = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-infornexus-auto-add-file` : '' })
-const directScenarioTitle = computed(() => isInfornexusAutoAddScenario.value ? 'Infornexus 自动搜索添加' : '登录并打开 Shipment Scan')
-const directScenarioExcelHint = computed(() => isInfornexusAutoAddScenario.value ? '请把 10 位 ID 放在第二列' : '请包含 PO No 列')
-const directScenarioRunLabel = computed(() => isInfornexusAutoAddScenario.value ? '上传 Excel 并执行' : '上传 Excel 并执行 Shipping')
 const healthRaw = computed(() => executorHealth.value ? JSON.stringify(executorHealth.value, null, 2) : '{}')
-const executorStatusLabel = computed(() => { if (activeApp.value) { const l = text(getAutomationAppStatusLabel(activeApp.value)); if (executorHealth.value?.ok) { const c = Number(executorHealth.value.activeRunCount || 0); return c > 0 ? `${l} / ${c} ${text('个任务')}` : `${l} / ${text('就绪')}` }; if (activeApp.value.running) return `${l} / ${text('未连通')}`; return l }; return executorHealth.value?.ok ? text('就绪') : text('未启动') })
-const inlineStatusClass = computed(() => { if (sending.value) return 'pg-status--info'; if (lastResult.value?.ok) return 'pg-status--ok'; if (lastResult.value && !lastResult.value.ok) return 'pg-status--err'; return '' })
+const executorStatusLabel = computed(() => {
+  if (activeApp.value) { const l = text(getAutomationAppStatusLabel(activeApp.value)); if (executorHealth.value?.ok) { const c = Number(executorHealth.value.activeRunCount || 0); return c > 0 ? `${l} / ${c} ${text('个任务')}` : `${l} / ${text('就绪')}` }; if (activeApp.value.running) return `${l} / ${text('未连通')}`; return l }; return executorHealth.value?.ok ? text('就绪') : text('未启动')
+})
+const inlineStatusClass = computed(() => { if (sending.value) return 'sa-status--info'; if (lastResult.value?.ok) return 'sa-status--ok'; if (lastResult.value && !lastResult.value.ok) return 'sa-status--err'; return '' })
 const statusIconName = computed(() => { if (sending.value) return 'loader'; if (lastResult.value?.ok) return 'check-circle'; if (lastResult.value && !lastResult.value.ok) return 'alert-circle'; return 'activity' })
-const canLaunchActiveApp = computed(() => Boolean(entry.value?.appId) && !launching.value)
+const canLaunchActiveApp = computed(() => Boolean(entry?.appId) && !launching.value)
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
 const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
 const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
 const savedCredentialUsername = computed(() => executorCredentials.value?.username || '')
 const primaryTemplate = computed(() => automationTemplates.value[0] || null)
 const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
-const activeUsername = computed(() => isInfornexusDirectScenario.value ? shippingUsername.value : microsoftUsername.value)
-const activePassword = computed(() => isInfornexusDirectScenario.value ? shippingPassword.value : microsoftPassword.value)
-const loginSiteName = computed(() => isMicrosoftScenario.value ? 'Microsoft / SAP BTP' : 'Infor Nexus')
-const credentialStatusText = computed(() => { const sn = loginSiteName.value; return hasStoredCredentials.value ? `${text('已保存')} ${sn} ${text('登录账号')}: ${savedCredentialUsername.value}` : `${text('未保存')} ${sn} ${text('登录账号密码')}` })
+const shippingExecutorRunUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-shipping-file` : '' })
 const canRunShippingAutomation = computed(() => canRunWithCredentials({ username: shippingUsername.value, password: shippingPassword.value, hasStoredCredentials: hasStoredCredentials.value, hasSelectedFile: Boolean(selectedFile.value), sending: sending.value }))
-const canRunDirectExecutor = computed(() => { if (!isMicrosoftScenario.value) return Boolean(selectedFile.value) && !sending.value; return canRunWithCredentials({ username: microsoftUsername.value, password: microsoftPassword.value, hasStoredCredentials: hasStoredCredentials.value, hasSelectedFile: Boolean(selectedFile.value), sending: sending.value }) })
+const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
 
 onMounted(() => { void initializeScenario() })
+
 async function initializeScenario(): Promise<void> {
-  if (isShippingScenario.value) { shippingUsername.value = shippingUsername.value || DSU; shippingPassword.value = shippingPassword.value || DSP; statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行 Shipping。' }
-  else if (isInfornexusAutoAddScenario.value) { shippingUsername.value = shippingUsername.value || DSU; shippingPassword.value = shippingPassword.value || DSP; statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行 Infornexus 自动搜索添加。' }
-  else if (isMicrosoftScenario.value) { microsoftUsername.value = microsoftUsername.value || DMU; microsoftPassword.value = microsoftPassword.value || DMP; statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行。' }
+  statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行 Shipping。'
   await refreshAutomationTemplates(); await refreshExecutorCredentials(); await refreshExecutorState(true)
   if (electronSupported && activeApp.value?.available && !activeApp.value.running) await startActiveApp(true)
 }
-async function refreshExecutorState(silent: boolean): Promise<void> { if (!entry.value || refreshing.value) return; refreshing.value = true; const fb = createFallback(entry.value); try { launcherReachable.value = electronSupported ? true : await probeLocalAutomationLauncherHealth(); if (electronSupported) { try { const apps = await fetchAutomationApps(); activeApp.value = apps.find((a) => a.id === entry.value?.appId) ?? fb } catch { activeApp.value = fb } } else { activeApp.value = fb }; if (!electronSupported && !launcherReachable.value) { executorHealth.value = null; activeApp.value = fb; if (!silent) { messageTone.value = 'warning'; message.value = text('未检测到本机自动化助手。') }; return }; executorHealth.value = await probeLocalExecutorHealth(entry.value.executorBaseUrl); await refreshExecutorCredentials(); if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }; if (!silent) { messageTone.value = 'success'; message.value = text('状态已刷新。') } } catch { executorHealth.value = null; activeApp.value = activeApp.value || fb; if (!silent) { messageTone.value = 'warning'; message.value = launcherReachable.value ? text('本机自动化助手已连接，执行器尚未启动。') : text('执行器未就绪。') } } finally { refreshing.value = false } }
-async function refreshExecutorCredentials(): Promise<void> { if (!entry.value) return; try { executorCredentials.value = await fetchExecutorCredentials(entry.value.id); const u = executorCredentials.value.username || ''; if (u && isInfornexusDirectScenario.value) shippingUsername.value = u; if (u && isMicrosoftScenario.value) microsoftUsername.value = u; if (executorCredentials.value.hasStoredCredentials) await fillStored() } catch { executorCredentials.value = null } }
-async function fillStored(): Promise<void> { if (!entry.value) return; const r = await resolveAutomationCredentials(entry.value.id); if (isInfornexusDirectScenario.value) { shippingUsername.value = r.username; shippingPassword.value = r.password } else if (isMicrosoftScenario.value) { microsoftUsername.value = r.username; microsoftPassword.value = r.password } }
-async function refreshAutomationTemplates(): Promise<void> { if (!entry.value) return; templateLoading.value = true; try { automationTemplates.value = await fetchAutomationTemplates(entry.value.id) } catch { automationTemplates.value = [] } finally { templateLoading.value = false } }
-async function downloadPrimaryTemplate(): Promise<void> { const t = primaryTemplate.value; if (!t) return; try { const u = await buildAutomationTemplateDownloadUrl(t); const a = document.createElement('a'); a.href = u; a.download = t.originalFilename || `${t.templateKey || 'template'}.xlsx`; a.rel = 'noopener'; document.body.append(a); a.click(); a.remove() } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('下载失败。')) } }
+
+async function refreshExecutorState(silent: boolean): Promise<void> {
+  if (!entry || refreshing.value) return; refreshing.value = true; const fb = createFallback(entry)
+  try {
+    launcherReachable.value = electronSupported ? true : await probeLocalAutomationLauncherHealth()
+    if (electronSupported) { try { const apps = await fetchAutomationApps(); activeApp.value = apps.find((a) => a.id === entry?.appId) ?? fb } catch { activeApp.value = fb } } else { activeApp.value = fb }
+    if (!electronSupported && !launcherReachable.value) { executorHealth.value = null; activeApp.value = fb; if (!silent) { messageTone.value = 'warning'; message.value = text('未检测到本机自动化助手。') }; return }
+    executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl); await refreshExecutorCredentials()
+    if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
+    if (!silent) { messageTone.value = 'success'; message.value = text('状态已刷新。') }
+  } catch {
+    executorHealth.value = null; activeApp.value = activeApp.value || fb
+    if (!silent) { messageTone.value = 'warning'; message.value = launcherReachable.value ? text('本机自动化助手已连接，执行器尚未启动。') : text('执行器未就绪。') }
+  } finally { refreshing.value = false }
+}
+
+async function refreshExecutorCredentials(): Promise<void> {
+  if (!entry) return
+  try {
+    executorCredentials.value = await fetchExecutorCredentials(entry.id)
+    const u = executorCredentials.value.username || ''
+    if (u) shippingUsername.value = u
+    if (executorCredentials.value.hasStoredCredentials) { const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = r.username; shippingPassword.value = r.password }
+  } catch { executorCredentials.value = null }
+}
+
+async function refreshAutomationTemplates(): Promise<void> {
+  if (!entry) return; templateLoading.value = true
+  try { automationTemplates.value = await fetchAutomationTemplates(entry.id) } catch { automationTemplates.value = [] }
+  finally { templateLoading.value = false }
+}
+
+async function downloadPrimaryTemplate(): Promise<void> {
+  const t = primaryTemplate.value; if (!t) return
+  try { const u = await buildAutomationTemplateDownloadUrl(t); const a = document.createElement('a'); a.href = u; a.download = t.originalFilename || `${t.templateKey || 'template'}.xlsx`; a.rel = 'noopener'; document.body.append(a); a.click(); a.remove() }
+  catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('下载失败。')) }
+}
+
 function downloadAutomationHelper(): void { void openAutomationHelperDownload() }
 function bootLocalHelper(): void { primeLocalAutomationLauncherBoot(); messageTone.value = 'info'; message.value = text('已尝试启动本机自动化助手。'); window.setTimeout(() => { void refreshExecutorState(true) }, 1200) }
-async function saveCurrentCredentials(): Promise<void> { if (!entry.value || credentialSaving.value) return; const u = activeUsername.value.trim(); const p = activePassword.value; if (!u || !p) { messageTone.value = 'warning'; message.value = text('请先填写账号和密码。'); return }; credentialSaving.value = true; try { executorCredentials.value = await saveExecutorCredentials(entry.value.id, u, p); await refreshExecutorCredentials(); if (isInfornexusDirectScenario.value) { shippingUsername.value = executorCredentials.value.username || u; shippingPassword.value = p } else if (isMicrosoftScenario.value) { microsoftUsername.value = executorCredentials.value.username || u; microsoftPassword.value = p }; messageTone.value = 'success'; message.value = text('已保存。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('保存失败。')) } finally { credentialSaving.value = false } }
-async function clearCurrentCredentials(): Promise<void> { if (!entry.value || credentialClearing.value) return; credentialClearing.value = true; try { executorCredentials.value = await clearExecutorCredentials(entry.value.id); messageTone.value = 'info'; message.value = text('已清除。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('清除失败。')) } finally { credentialClearing.value = false } }
-async function startActiveApp(silent: boolean): Promise<void> { if (!entry.value || launching.value) return; if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot(); launching.value = true; try { const r = await launchAutomationConsole(entry.value.appId); if (!r.success) throw new Error(r.error || '启动失败'); await refreshExecutorState(true); if (!silent) { messageTone.value = 'success'; message.value = r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') } } catch (e) { const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.value.appId, entryId: entry.value.id, error: m }); if (!silent) { messageTone.value = 'error'; message.value = m } } finally { launching.value = false } }
-async function stopActiveApp(): Promise<void> { if (!entry.value) return; try { const r = await stopAutomationConsole(entry.value.appId); if (!r.success) throw new Error(r.error || '停止失败'); executorHealth.value = null; if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }; await refreshExecutorState(true).catch(() => {}); messageTone.value = 'info'; message.value = text('执行器已停止。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('停止失败')) } }
+
+async function saveCurrentCredentials(): Promise<void> {
+  if (!entry || credentialSaving.value) return
+  const u = shippingUsername.value.trim(); const p = shippingPassword.value
+  if (!u || !p) { messageTone.value = 'warning'; message.value = text('请先填写账号和密码。'); return }
+  credentialSaving.value = true
+  try { executorCredentials.value = await saveExecutorCredentials(entry.id, u, p); await refreshExecutorCredentials(); shippingPassword.value = p; messageTone.value = 'success'; message.value = text('已保存。') }
+  catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('保存失败。')) }
+  finally { credentialSaving.value = false }
+}
+
+async function clearCurrentCredentials(): Promise<void> {
+  if (!entry || credentialClearing.value) return; credentialClearing.value = true
+  try { executorCredentials.value = await clearExecutorCredentials(entry.id); messageTone.value = 'info'; message.value = text('已清除。') }
+  catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('清除失败。')) }
+  finally { credentialClearing.value = false }
+}
+
+async function startActiveApp(silent: boolean): Promise<void> {
+  if (!entry || launching.value) return
+  if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot()
+  launching.value = true
+  try {
+    const r = await launchAutomationConsole(entry.appId); if (!r.success) throw new Error(r.error || '启动失败')
+    await refreshExecutorState(true)
+    if (!silent) { messageTone.value = 'success'; message.value = r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') }
+  } catch (e) {
+    const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.appId, entryId: entry.id, error: m })
+    if (!silent) { messageTone.value = 'error'; message.value = m }
+  } finally { launching.value = false }
+}
+
+async function stopActiveApp(): Promise<void> {
+  if (!entry) return
+  try {
+    const r = await stopAutomationConsole(entry.appId); if (!r.success) throw new Error(r.error || '停止失败')
+    executorHealth.value = null; if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }
+    await refreshExecutorState(true).catch(() => {}); messageTone.value = 'info'; message.value = text('执行器已停止。')
+  } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('停止失败')) }
+}
+
 function handleFileSelect(e: Event): void { const f = getExcelFile((e.target as HTMLInputElement).files); if (f) setSelectedFile(f) }
 function handleDragEnter(e: DragEvent): void { if (!hasDraggedFiles(e) || isInternalDragMove(e)) return; dragDepth.value += 1; isDragging.value = true }
 function handleDragOver(e: DragEvent): void { if (!hasDraggedFiles(e)) return; if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; isDragging.value = true }
@@ -354,33 +386,60 @@ function hasDraggedFiles(e: DragEvent): boolean { return Array.from(e.dataTransf
 function isInternalDragMove(e: DragEvent): boolean { const current = e.currentTarget; const related = e.relatedTarget; return current instanceof Node && related instanceof Node && current.contains(related) }
 function resetDragging(): void { dragDepth.value = 0; isDragging.value = false }
 function formatSize(b: number): string { if (b < 1024) return `${b} B`; if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`; return `${(b / (1024 * 1024)).toFixed(1)} MB` }
-function resetWebhookUrl(): void { webhookUrl.value = entry.value?.webhookUrl || 'http://127.0.0.1:5678/webhook/microsoft-login-excel-demo' }
-async function resolveRunCredentialsPayload(uv: string, pv: string): Promise<Record<string, string>> { if (!entry.value) return {}; const u = uv.trim(); const tp = pv; if (tp.trim()) { if (!u) throw new Error('请填写账号密码。'); executorCredentials.value = await saveExecutorCredentials(entry.value.id, u, tp); await refreshExecutorCredentials(); applyCredUser(executorCredentials.value.username || u); return { username: u, password: tp } }; const r = await resolveAutomationCredentials(entry.value.id); applyCredUser(r.username); if (isInfornexusDirectScenario.value) shippingPassword.value = r.password; else if (isMicrosoftScenario.value) microsoftPassword.value = r.password; return { username: r.username, password: r.password } }
-function applyCredUser(u: string): void { if (!u) return; if (isInfornexusDirectScenario.value) shippingUsername.value = u; else if (isMicrosoftScenario.value) microsoftUsername.value = u }
-async function createBackendRunRecord(f: File): Promise<AutomationRunRecord | null> { if (!entry.value) return null; return createAutomationRunRecord(entry.value.id, f, entry.value.title) }
+
+async function resolveRunCredentialsPayload(): Promise<Record<string, string>> {
+  if (!entry) return {}
+  const u = shippingUsername.value.trim(); const tp = shippingPassword.value
+  if (tp.trim()) { if (!u) throw new Error('请填写账号密码。'); executorCredentials.value = await saveExecutorCredentials(entry.id, u, tp); await refreshExecutorCredentials(); return { username: u, password: tp } }
+  const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = r.username; shippingPassword.value = r.password; return { username: r.username, password: r.password }
+}
+
+function readErrorMessage(e: unknown, fb: string): string { return e instanceof Error && e.message ? e.message : fb }
+async function createBackendRunRecord(f: File): Promise<AutomationRunRecord | null> { if (!entry) return null; return createAutomationRunRecord(entry.id, f, entry.title) }
 async function finishBackendRunRecord(r: AutomationRunRecord | null, ok: boolean, msg: string, p: Record<string, any> | null): Promise<void> { if (!r?.runId) return; await finishAutomationRunRecord(r.runId, ok ? 'success' : 'failed', msg || (ok ? 'completed' : 'failed'), p, collectResultFiles(p)) }
-function collectResultFiles(p: Record<string, any> | null): AutomationRunFileInput[] { const u = p?.artifacts?.downloadUrls; if (!u || typeof u !== 'object') return []; return [bfi(u.resultExcelUrl, 'result_excel', 'shipping-last-result.xlsx'), bfi(u.resultJsonUrl, 'result_json', 'shipping-last-result.json'), bfi(u.failedPoExcelUrl, 'failed_rows_excel', 'shipping-last-failed-po-rows.xlsx'), bfi(u.failedPoJsonUrl, 'failed_rows_json', 'shipping-last-failed-po-rows.json')].filter((x): x is AutomationRunFileInput => Boolean(x)) }
+function collectResultFiles(p: Record<string, any> | null): AutomationRunFileInput[] {
+  const u = p?.artifacts?.downloadUrls; if (!u || typeof u !== 'object') return []
+  return [bfi(u.resultExcelUrl, 'result_excel', 'shipping-last-result.xlsx'), bfi(u.resultJsonUrl, 'result_json', 'shipping-last-result.json'), bfi(u.failedPoExcelUrl, 'failed_rows_excel', 'shipping-last-failed-po-rows.xlsx'), bfi(u.failedPoJsonUrl, 'failed_rows_json', 'shipping-last-failed-po-rows.json')].filter((x): x is AutomationRunFileInput => Boolean(x))
+}
 function bfi(rp: string, fr: string, fn: string): AutomationRunFileInput | null { const u = buildShippingArtifactUrl(rp); if (!u) return null; return { url: u, fileRole: fr, fileName: fn } }
-async function runInfornexusDirectWithExcel(): Promise<void> { if (isInfornexusAutoAddScenario.value) { await runInfornexusAutoAdd(); return }; await runShipping() }
-async function runShipping(): Promise<void> { if (!entry.value || sending.value || !isShippingScenario.value || !selectedFile.value) return; if (!(await ensureReady())) { setNotReady(); return }; const file = selectedFile.value; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload(shippingUsername.value, shippingPassword.value); const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.value.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: entry.value.localExecutorToken, ...cp }) }); const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); updateShippingArtifactLinks(j); await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { statusLabel.value = '失败'; statusText.value = j?.message || `HTTP ${res.status}`; lastResult.value = { ok: false, message: j?.message || `HTTP ${res.status}` }; messageTone.value = 'error'; message.value = text('执行失败。'); return }; if (j?.ok && j?.shipmentScanOpened) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedPoCount ?? 0}/${j.totalPoCount ?? '?'} 个 PO。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }; statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。') } catch (e) { statusLabel.value = '异常'; statusText.value = readErrorMessage(e, '网络错误'); lastResult.value = { ok: false }; messageTone.value = 'error'; message.value = text('执行异常。') } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
-async function runInfornexusAutoAdd(): Promise<void> { if (!entry.value || sending.value || !isInfornexusAutoAddScenario.value || !selectedFile.value) return; if (!(await ensureReady())) { setNotReady(); return }; const file = selectedFile.value; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload(shippingUsername.value, shippingPassword.value); const res = await fetch(infornexusAutoAddExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.value.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: entry.value.localExecutorToken, ...cp }) }); const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { statusLabel.value = '失败'; statusText.value = j?.message || `HTTP ${res.status}`; lastResult.value = { ok: false, message: j?.message || `HTTP ${res.status}` }; messageTone.value = 'error'; message.value = text('执行失败。'); return }; if (j?.ok) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedIdCount ?? 0}/${j.totalIdCount ?? '?'} 个 ID。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }; statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。') } catch (e) { statusLabel.value = '异常'; statusText.value = readErrorMessage(e, '网络错误'); lastResult.value = { ok: false }; messageTone.value = 'error'; message.value = text('执行异常。') } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
-async function sendDirectToExecutor(): Promise<void> { if (!selectedFile.value || sending.value || !entry.value) return; if (!(await ensureReady())) { setNotReady(); return }; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在执行...'; lastResult.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = await createBackendRunRecord(selectedFile.value); const fb64 = await fileToBase64(selectedFile.value); const cp = isMicrosoftScenario.value ? await resolveRunCredentialsPayload(microsoftUsername.value, microsoftPassword.value) : {}; const res = await fetch(directExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.value.localExecutorToken }, body: JSON.stringify({ fileName: selectedFile.value.name, fileBase64: fb64, token: entry.value.localExecutorToken, ...cp }) }); const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { statusLabel.value = '失败'; statusText.value = j?.message || `HTTP ${res.status}`; lastResult.value = { ok: false, message: j?.message || `HTTP ${res.status}` }; messageTone.value = 'error'; message.value = text('执行失败。'); return }; if (!j) throw new Error('无法解析响应。'); if (j.loginSuccess) { statusLabel.value = '成功'; statusText.value = `已处理 ${j.uploadedRowCount ?? '?'} 行。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。') } else { statusLabel.value = '未完成'; statusText.value = j.message || '未确认成功。'; lastResult.value = { ok: false, message: j.message }; messageTone.value = 'warning'; message.value = text('已触发，未确认。') } } catch (e) { statusLabel.value = '异常'; statusText.value = readErrorMessage(e, '网络错误'); lastResult.value = { ok: false }; messageTone.value = 'error'; message.value = text('执行异常。') } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
+
+async function runShipping(): Promise<void> {
+  if (!entry || sending.value || !selectedFile.value) return
+  if (!(await ensureReady())) { setNotReady(); return }
+  const file = selectedFile.value; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''
+  try {
+    const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload()
+    const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: entry.localExecutorToken, ...cp }) })
+    const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); updateShippingArtifactLinks(j)
+    await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j)
+    if (!res.ok) { statusLabel.value = '失败'; statusText.value = j?.message || `HTTP ${res.status}`; lastResult.value = { ok: false, message: j?.message || `HTTP ${res.status}` }; messageTone.value = 'error'; message.value = text('执行失败。'); return }
+    if (j?.ok && j?.shipmentScanOpened) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedPoCount ?? 0}/${j.totalPoCount ?? '?'} 个 PO。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }
+    statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。')
+  } catch (e) { statusLabel.value = '异常'; statusText.value = readErrorMessage(e, '网络错误'); lastResult.value = { ok: false }; messageTone.value = 'error'; message.value = text('执行异常。') }
+  finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) }
+}
+
 function setNotReady(): void { statusLabel.value = '未就绪'; statusText.value = '本机执行器尚未就绪。'; lastResult.value = { ok: false, message: 'Executor is not ready.' }; messageTone.value = 'warning'; message.value = text('本机执行器未就绪。') }
 async function ensureReady(): Promise<boolean> { if (executorHealth.value?.ok) return true; await startActiveApp(true); await refreshExecutorState(true).catch(() => {}); return Boolean(executorHealth.value?.ok) }
 async function fileToBase64(f: File): Promise<string> { const b = await f.arrayBuffer(); return arrayBufferToBase64(b) }
 function arrayBufferToBase64(b: ArrayBuffer): string { const bytes = new Uint8Array(b); const cs = 0x8000; let bin = ''; for (let i = 0; i < bytes.length; i += cs) { const chunk = bytes.subarray(i, i + cs); bin += String.fromCharCode(...chunk) }; return window.btoa(bin) }
 function safeParseJson(r: string): Record<string, any> | null { try { return r ? JSON.parse(r) : null } catch { return null } }
-function updateShippingArtifactLinks(p: Record<string, any> | null): void { if (!isShippingScenario.value) { shippingArtifactLinks.value = null; return }; const u = p?.artifacts?.downloadUrls; const re = buildShippingArtifactUrl(u?.resultExcelUrl); if (!re) { shippingArtifactLinks.value = null; return }; shippingArtifactLinks.value = { resultExcelUrl: re, resultJsonUrl: buildShippingArtifactUrl(u?.resultJsonUrl) || undefined, failedPoExcelUrl: buildShippingArtifactUrl(u?.failedPoExcelUrl) || undefined, failedPoJsonUrl: buildShippingArtifactUrl(u?.failedPoJsonUrl) || undefined, failedRowCount: Number(p?.artifacts?.failedRowCount ?? 0) } }
-function buildShippingArtifactUrl(rp: string): string { const np = String(rp || '').trim(); if (!np) return ''; if (/^https?:\/\//i.test(np)) return np; const bu = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, ''); return bu ? `${bu}${np.startsWith('/') ? np : `/${np}`}` : '' }
+function updateShippingArtifactLinks(p: Record<string, any> | null): void {
+  const u = p?.artifacts?.downloadUrls; const re = buildShippingArtifactUrl(u?.resultExcelUrl)
+  if (!re) { shippingArtifactLinks.value = null; return }
+  shippingArtifactLinks.value = { resultExcelUrl: re, resultJsonUrl: buildShippingArtifactUrl(u?.resultJsonUrl) || undefined, failedPoExcelUrl: buildShippingArtifactUrl(u?.failedPoExcelUrl) || undefined, failedPoJsonUrl: buildShippingArtifactUrl(u?.failedPoJsonUrl) || undefined, failedRowCount: Number(p?.artifacts?.failedRowCount ?? 0) }
+}
+function buildShippingArtifactUrl(rp: string): string { const np = String(rp || '').trim(); if (!np) return ''; if (/^https?:\/\//i.test(np)) return np; const bu = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return bu ? `${bu}${np.startsWith('/') ? np : `/${np}`}` : '' }
 function downloadShippingArtifact(u: string | undefined, fn: string): void { if (!u) return; const a = document.createElement('a'); a.href = u; a.download = fn; a.rel = 'noopener'; document.body.append(a); a.click(); a.remove() }
 function createFallback(e: WebAutomationEntry): AutomationAppInfo { return { id: e.appId, name: e.title, description: e.description, provider: 'Playwright', category: '网页自动化', version: '', available: true, running: false, port: Number(new URL(e.executorBaseUrl).port || 0), url: e.executorBaseUrl } }
 function goBack(): void { if (window.history.length > 1) router.back(); else void router.push('/') }
-function readErrorMessage(e: unknown, fb: string): string { return e instanceof Error && e.message ? e.message : fb }
 </script>
 
 <style scoped lang="scss">
 /* ================================================================
-   Shipping Automation — v4 Right-Dock Layout (1:1 aligned with components)
+   Shipping Automation — v4 Right-Dock Layout
+   Left: Main workflow card (credentials + file + execute + artifacts) + Health log
+   Right: 260px dock (executor controls + steps + raw response)
    Sky blue + Emerald. No purple. Framework icons only.
    ================================================================ */
 
@@ -526,7 +585,7 @@ function readErrorMessage(e: unknown, fb: string): string { return e instanceof 
 .sa-field { display: flex; flex-direction: column; gap: 4px;
   > span { font-size: 11px; font-weight: 600; color: var(--ink); }
 }
-.sa-inp-wrap { position: relative; display: flex; align-items: center; flex: 1; }
+.sa-inp-wrap { position: relative; display: flex; align-items: center; }
 .sa-inp-icon { position: absolute; left: 10px; color: var(--mu); font-size: 14px; pointer-events: none; z-index: 1; }
 .sa-inp {
   flex: 1; min-width: 0; height: 34px; padding: 0 12px 0 32px;
