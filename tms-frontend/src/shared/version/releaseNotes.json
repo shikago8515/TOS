@@ -1,9 +1,9 @@
 {
-  "version": "0.9.8-beta.3.16",
+  "version": "0.9.8-beta.3.17",
   "date": "2026-06-16",
   "added": [],
   "improved": [
-    "为版本更新记录和系统配置接口补充后端响应 schema，并将 TOS 桌面下载等系统接口纳入桌面后端兼容契约。"
+    "收口 Electron 外链打开 allowlist，默认不再使用 GitHub 作为桌面更新源，外部网页和手动下载只允许明确可信的 HTTPS 地址。"
   ],
   "fixed": []
 }

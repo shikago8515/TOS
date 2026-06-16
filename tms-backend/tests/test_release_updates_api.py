@@ -190,6 +190,7 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
 
         self.assertEqual(len(keys), len(set(keys)))
         self.assertGreater(len(records), 2)
+        self.assertIn("0.9.8-beta.3.17", versions)
         self.assertIn("0.9.8-beta.3.16", versions)
         self.assertIn("0.9.8-beta.3.15", versions)
         self.assertIn("0.9.8-beta.3.14", versions)
@@ -214,6 +215,7 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
 
         self.assertEqual(upsert_record.call_count, len(release_updates_api.DEFAULT_RELEASE_UPDATE_RECORDS))
         record_keys = [call.args[0]["record_key"] for call in upsert_record.call_args_list]
+        self.assertIn("builtin-0.9.8-beta.3.17-improved-electron-external-allowlist", record_keys)
         self.assertIn("builtin-0.9.8-beta.3.16-improved-system-api-contract", record_keys)
         self.assertIn("builtin-0.9.8-beta.3.15-fixed-release-updates-browser-backend", record_keys)
         self.assertIn("builtin-0.9.8-beta.3.15-added-tos-desktop-full-installer", record_keys)

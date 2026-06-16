@@ -19,6 +19,16 @@ test('disables differential updater downloads for NSIS releases', () => {
   assert.match(configureSource, /autoUpdater\.disableDifferentialDownload\s*=\s*true/)
 })
 
+test('does not use GitHub releases as the default desktop update feed', () => {
+  const mainSource = fs.readFileSync(mainProcessPath, 'utf8')
+
+  assert.match(mainSource, /DEFAULT_UPDATE_FEED_URL\s*=\s*''/)
+  assert.doesNotMatch(
+    mainSource,
+    /DEFAULT_UPDATE_FEED_URL\s*=\s*['"]https:\/\/github\.com\/shikago8515\/TOS\/releases\/latest\/download\//,
+  )
+})
+
 test('exposes manual zip fallback download separately from NSIS updater install', () => {
   const mainSource = fs.readFileSync(mainProcessPath, 'utf8')
   const preloadSource = fs.readFileSync(preloadPath, 'utf8')
