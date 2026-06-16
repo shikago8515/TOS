@@ -475,6 +475,14 @@ function sanitizeFileSegment(value) {
     .slice(0, 80) || "run";
 }
 
+function normalizeShipmentScanAction(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["assign", "assign-equipment-id", "assign equipment id"].includes(normalized)) {
+    return "Assign Equipment ID";
+  }
+  return "Remove/Change Equipment ID";
+}
+
 async function openShipmentScan(credentials, runId) {
   return runShippingWorkflow(credentials, {
     runId,
@@ -708,6 +716,7 @@ async function runShippingWorkflow(credentials, runContext) {
   const startedAt = new Date().toISOString();
   const poRows = Array.isArray(runContext?.poRows) ? runContext.poRows : [];
   const shouldFillPoNumbers = Boolean(runContext?.fillPoNumbers);
+  const shipmentScanAction = normalizeShipmentScanAction(runContext?.shipmentScanAction);
   const runId = String(runContext?.runId || createRunId("adhoc"));
   const targetPage = ["home", "event-management"].includes(runContext?.targetPage)
     ? runContext.targetPage
@@ -789,14 +798,14 @@ async function runShippingWorkflow(credentials, runContext) {
         const poRow = poRows[index];
         const nextPoRow = poRows[index + 1] || null;
         try {
-          const shipmentResult = await processShipmentPoRow(page, poRow);
+          const shipmentResult = await processShipmentPoRow(page, poRow, shipmentScanAction);
           poResults.push({
             ...poRow,
             ok: true,
             changeEquipmentApplyStatus: String(shipmentResult?.status || "applied"),
           });
           if (nextPoRow && !hasPageLifecycleEnded(page, lifecycle)) {
-            await prepareForNextShipmentPoIteration(page, poRow.poNo, nextPoRow.poNo);
+            await prepareForNextShipmentPoIteration(page, poRow.poNo, nextPoRow.poNo, shipmentScanAction);
           }
         } catch (error) {
           const normalizedError = normalizeRunError(
@@ -819,7 +828,7 @@ async function runShippingWorkflow(credentials, runContext) {
             throw normalizedError;
           }
           if (nextPoRow) {
-            await prepareForNextShipmentPoIteration(page, poRow.poNo, nextPoRow.poNo);
+            await prepareForNextShipmentPoIteration(page, poRow.poNo, nextPoRow.poNo, shipmentScanAction);
           }
         }
       }
@@ -888,7 +897,7 @@ async function runShippingWorkflow(credentials, runContext) {
         }
       }
     } else if (shouldOpenShipmentScan) {
-      await openShipmentScanDialog(page);
+      await openShipmentScanDialog(page, { shipmentScanAction });
     }
 
     if (hasPageLifecycleEnded(page, lifecycle)) {
@@ -951,7 +960,7 @@ async function runShippingWorkflow(credentials, runContext) {
       completedCreateShipmentCount,
       failedCreateShipmentCount,
       createShipmentResults,
-      selectedAction: isShipping2BulkRun ? shipping2BulkLabel : shouldFillPoNumbers ? "Remove/Change Equipment ID" : "",
+      selectedAction: isShipping2BulkRun ? shipping2BulkLabel : shouldFillPoNumbers ? shipmentScanAction : "",
       message: shouldFillPoNumbers
         ? `Shipment Scan processed ${completedPoCount}/${poRows.length} PO rows and Create Shipment processed ${completedCreateShipmentCount}/${createShipmentEquipmentIds.length} unique equipment IDs.`
         : isShipping2BulkRun
@@ -1048,6 +1057,7 @@ async function runShippingWorkflow(credentials, runContext) {
       completedCreateShipmentCount: createShipmentResults.filter((item) => item.ok).length,
       failedCreateShipmentCount: createShipmentResults.filter((item) => !item.ok).length,
       createShipmentResults,
+      selectedAction: isShipping2BulkRun ? shipping2BulkLabel : shouldFillPoNumbers ? shipmentScanAction : "",
       message: failureMessage || (isShipping2BulkRun
         ? `${shipping2BulkLabel} 自动化执行失败。`
         : shouldOpenShipmentScan
@@ -1475,6 +1485,7 @@ async function openShipmentScanDialog(page, options = {}) {
   const timeoutMs = Number(options?.timeoutMs) > 0
     ? Number(options.timeoutMs)
     : config.navigationTimeoutMs;
+  const shipmentScanAction = normalizeShipmentScanAction(options?.shipmentScanAction);
   const dialog = getShipmentScanDialog(page);
   const alreadyVisible = await dialog.isVisible().catch(() => false);
   if (!alreadyVisible) {
@@ -1483,8 +1494,8 @@ async function openShipmentScanDialog(page, options = {}) {
 
   await waitForShipmentScanDialog(page, timeoutMs);
   const visibleDialog = getShipmentScanDialog(page);
-  await waitForShipmentScanDialogControls(visibleDialog, timeoutMs);
-  log("Shipment Scan dialog ready.");
+  await waitForShipmentScanDialogControls(visibleDialog, timeoutMs, shipmentScanAction);
+  log("Shipment Scan dialog ready.", { shipmentScanAction });
   return visibleDialog;
 }
 
@@ -1495,7 +1506,7 @@ async function clickShipmentScanSideLink(page) {
   );
 }
 
-async function prepareForNextShipmentPoIteration(page, currentPoNo, nextPoNo) {
+async function prepareForNextShipmentPoIteration(page, currentPoNo, nextPoNo, shipmentScanAction) {
   const normalizedCurrentPoNo = String(currentPoNo || "").trim();
   const normalizedNextPoNo = String(nextPoNo || "").trim();
   if (!normalizedNextPoNo) {
@@ -1505,37 +1516,46 @@ async function prepareForNextShipmentPoIteration(page, currentPoNo, nextPoNo) {
   try {
     await openShipmentScanDialog(page, {
       timeoutMs: PREPARE_NEXT_PO_DIALOG_TIMEOUT_MS,
+      shipmentScanAction,
     });
     log("Prepared Shipment Scan for next PO.", {
       currentPoNo: normalizedCurrentPoNo,
       nextPoNo: normalizedNextPoNo,
+      shipmentScanAction: normalizeShipmentScanAction(shipmentScanAction),
       timeoutMs: PREPARE_NEXT_PO_DIALOG_TIMEOUT_MS,
     });
   } catch (error) {
     log("Shipment Scan preparation deferred to next iteration.", {
       currentPoNo: normalizedCurrentPoNo,
       nextPoNo: normalizedNextPoNo,
+      shipmentScanAction: normalizeShipmentScanAction(shipmentScanAction),
       timeoutMs: PREPARE_NEXT_PO_DIALOG_TIMEOUT_MS,
       error: error instanceof Error ? error.message : String(error),
     });
   }
 }
 
-async function waitForShipmentScanDialogControls(dialog, timeoutMs = config.navigationTimeoutMs) {
+async function waitForShipmentScanDialogControls(
+  dialog,
+  timeoutMs = config.navigationTimeoutMs,
+  shipmentScanAction = "Remove/Change Equipment ID",
+) {
+  const actionLabel = normalizeShipmentScanAction(shipmentScanAction);
+  const actionText = exactTextRegex(actionLabel);
   const poInput = dialog.locator('input[name="poNum"], input[name="poNumbers"]').first();
   const manualTarget = dialog.locator("div.x-form-check-wrap").filter({
-    hasText: /^Remove\/Change Equipment ID$/i,
+    hasText: actionText,
   }).first();
-  const removeChangeLabel = manualTarget.locator("label.x-form-cb-label", {
-    hasText: /^Remove\/Change Equipment ID$/i,
+  const actionLabelLocator = manualTarget.locator("label.x-form-cb-label", {
+    hasText: actionText,
   }).first();
-  const removeChangeRadio = manualTarget.locator('input[type="radio"][name="radioGroup"]').first();
+  const actionRadio = manualTarget.locator('input[type="radio"][name="radioGroup"]').first();
   const okButton = dialog.locator("button.x-btn-text").filter({ hasText: /^OK$/ }).first();
 
   await poInput.waitFor({ state: "visible", timeout: timeoutMs });
   await manualTarget.waitFor({ state: "attached", timeout: timeoutMs });
-  await removeChangeLabel.waitFor({ state: "visible", timeout: timeoutMs });
-  await removeChangeRadio.waitFor({ state: "attached", timeout: timeoutMs });
+  await actionLabelLocator.waitFor({ state: "visible", timeout: timeoutMs });
+  await actionRadio.waitFor({ state: "attached", timeout: timeoutMs });
   await okButton.waitFor({ state: "visible", timeout: timeoutMs });
   await dialogPause(dialog, 350);
 }
@@ -1603,9 +1623,11 @@ async function cleanupShipmentScanDialog(page) {
   }
 }
 
-async function selectRemoveChangeEquipmentId(dialog) {
+async function selectShipmentScanAction(dialog, shipmentScanAction = "Remove/Change Equipment ID") {
+  const actionLabel = normalizeShipmentScanAction(shipmentScanAction);
+  const actionText = exactTextRegex(actionLabel);
   const manualTarget = dialog.locator("div.x-form-check-wrap").filter({
-    hasText: /^Remove\/Change Equipment ID$/i,
+    hasText: actionText,
   }).first();
   await manualTarget.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
 
@@ -1613,7 +1635,7 @@ async function selectRemoveChangeEquipmentId(dialog) {
   const label = manualTarget.locator("label.x-form-cb-label").first();
 
   if (await isShipmentScanModeSelected(manualTarget, radio)) {
-    log("Selected Remove/Change Equipment ID.");
+    log("Selected Shipment Scan action.", { shipmentScanAction: actionLabel });
     return;
   }
 
@@ -1622,7 +1644,10 @@ async function selectRemoveChangeEquipmentId(dialog) {
 
   await radio.check({ force: true }).catch(() => {});
   if (await waitForShipmentScanModeSelected(manualTarget, radio, 1200)) {
-    log("Selected Remove/Change Equipment ID.", { target: "radio.check" });
+    log("Selected Shipment Scan action.", {
+      shipmentScanAction: actionLabel,
+      target: "radio.check",
+    });
     return;
   }
 
@@ -1640,7 +1665,10 @@ async function selectRemoveChangeEquipmentId(dialog) {
 
     await forceClickLocator(target.locator, `Shipment Scan ${target.label}`);
     if (await waitForShipmentScanModeSelected(manualTarget, radio, 1500)) {
-      log("Selected Remove/Change Equipment ID.", { target: target.label });
+      log("Selected Shipment Scan action.", {
+        shipmentScanAction: actionLabel,
+        target: target.label,
+      });
       return;
     }
   }
@@ -1675,20 +1703,23 @@ async function selectRemoveChangeEquipmentId(dialog) {
   }).catch(() => false);
 
   if (selectedByDom && await waitForShipmentScanModeSelected(manualTarget, radio, 1500)) {
-    log("Selected Remove/Change Equipment ID.", { target: "dom-dispatch" });
+    log("Selected Shipment Scan action.", {
+      shipmentScanAction: actionLabel,
+      target: "dom-dispatch",
+    });
     return;
   }
 
-  throw new Error("Remove/Change Equipment ID radio was not selected.");
+  throw new Error(`${actionLabel} radio was not selected.`);
 }
 
-async function processShipmentPoRow(page, poRow) {
+async function processShipmentPoRow(page, poRow, shipmentScanAction) {
   const normalizedChangeEquipmentId = String(poRow?.changeEquipmentId || "").trim();
   if (!normalizedChangeEquipmentId) {
     throw new Error(`Change equipment ID is empty for PO No ${String(poRow?.poNo || "").trim()}.`);
   }
 
-  await confirmShipmentScanFilters(page, poRow.poNo);
+  await confirmShipmentScanFilters(page, poRow.poNo, shipmentScanAction);
   await waitForShipmentGridRows(page, poRow.poNo);
   await selectShipmentGridRows(page, poRow.poNo);
   const dialog = await openChangeEquipmentIdDialog(page, poRow.poNo);
@@ -1703,17 +1734,19 @@ async function processShipmentPoRow(page, poRow) {
   return applyResult;
 }
 
-async function confirmShipmentScanFilters(page, poNo) {
+async function confirmShipmentScanFilters(page, poNo, shipmentScanAction) {
+  const actionLabel = normalizeShipmentScanAction(shipmentScanAction);
   let lastError = null;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
-      const shipmentDialog = await openShipmentScanDialog(page);
+      const shipmentDialog = await openShipmentScanDialog(page, { shipmentScanAction: actionLabel });
       await fillShipmentPoNumber(shipmentDialog, poNo);
-      await selectRemoveChangeEquipmentId(shipmentDialog);
+      await selectShipmentScanAction(shipmentDialog, actionLabel);
       await dialogPause(shipmentDialog, 350);
       await clickShipmentScanOk(shipmentDialog);
       log("Confirmed PO No.", {
         poNo: String(poNo || "").trim(),
+        shipmentScanAction: actionLabel,
         attempt,
       });
       return;

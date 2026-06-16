@@ -409,7 +409,7 @@ async function runShipping(): Promise<void> {
   const file = selectedFile.value; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''
   try {
     const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload()
-    const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: entry.localExecutorToken, ...cp }) })
+    const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: entry.localExecutorToken, shipmentScanAction: 'assign-equipment-id', ...cp }) })
     const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); updateShippingArtifactLinks(j)
     await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j)
     if (!res.ok) { statusLabel.value = '失败'; statusText.value = j?.message || `HTTP ${res.status}`; lastResult.value = { ok: false, message: j?.message || `HTTP ${res.status}` }; messageTone.value = 'error'; message.value = text('执行失败。'); return }
