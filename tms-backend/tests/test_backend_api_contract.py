@@ -25,6 +25,44 @@ class BackendApiContractTests(unittest.TestCase):
 
         self.assertEqual(missing_paths, [])
 
+    def test_system_contract_paths_expose_response_schemas(self) -> None:
+        paths = main.app.openapi()["paths"]
+
+        release_updates = paths["/api/release-updates"]
+        self.assertIn(
+            "$ref",
+            release_updates["get"]["responses"]["200"]["content"]["application/json"]["schema"],
+        )
+        self.assertIn(
+            "$ref",
+            release_updates["post"]["responses"]["200"]["content"]["application/json"]["schema"],
+        )
+
+        summary = paths["/api/system/config/summary"]["get"]
+        self.assertIn(
+            "$ref",
+            summary["responses"]["200"]["content"]["application/json"]["schema"],
+        )
+
+        self.assertIn(
+            "application/vnd.microsoft.portable-executable",
+            paths["/api/system/config/tos-desktop/download"]["get"]["responses"]["200"][
+                "content"
+            ],
+        )
+        self.assertIn(
+            "application/vnd.microsoft.portable-executable",
+            paths["/api/system/config/tos-desktop-full/download"]["get"]["responses"]["200"][
+                "content"
+            ],
+        )
+        self.assertIn(
+            "application/zip",
+            paths["/api/system/config/tos-desktop/payload/{payload_sha256}"]["get"][
+                "responses"
+            ]["200"]["content"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

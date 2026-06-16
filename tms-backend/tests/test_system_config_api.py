@@ -26,6 +26,62 @@ class SystemConfigApiTest(unittest.TestCase):
         app.include_router(system_config_api.router, prefix="/api")
         self.client = TestClient(app)
 
+    def test_config_summary_returns_typed_response(self) -> None:
+        with patch.object(
+            system_config_api,
+            "resolve_settings_path",
+            return_value="D:/project/TOS-main/tms-backend/config/settings.yaml",
+        ), patch.object(
+            system_config_api,
+            "get_settings_summary",
+            return_value={"downloads": {"tos_desktop": {"bucket": "downloads"}}},
+        ):
+            response = self.client.get("/api/system/config/summary")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "settingsFile": "D:/project/TOS-main/tms-backend/config/settings.yaml",
+                "settings": {"downloads": {"tos_desktop": {"bucket": "downloads"}}},
+            },
+        )
+
+    def test_openapi_exposes_summary_schema_and_download_media_types(self) -> None:
+        paths = self.client.app.openapi()["paths"]
+
+        summary_schema = paths["/api/system/config/summary"]["get"]["responses"]["200"][
+            "content"
+        ]["application/json"]["schema"]
+        self.assertIn("$ref", summary_schema)
+
+        self.assertIn(
+            system_config_api.TOS_DESKTOP_CONTENT_TYPE,
+            paths["/api/system/config/tos-desktop/download"]["get"]["responses"]["200"]["content"],
+        )
+        self.assertIn(
+            system_config_api.TOS_DESKTOP_FULL_CONTENT_TYPE,
+            paths["/api/system/config/tos-desktop-full/download"]["get"]["responses"]["200"]["content"],
+        )
+        self.assertIn(
+            system_config_api.TOS_DESKTOP_PAYLOAD_CONTENT_TYPE,
+            paths["/api/system/config/tos-desktop/payload/{payload_sha256}"]["get"][
+                "responses"
+            ]["200"]["content"],
+        )
+        self.assertIn(
+            system_config_api.HELPER_CONTENT_TYPE,
+            paths["/api/system/config/automation-helper/download"]["get"]["responses"]["200"][
+                "content"
+            ],
+        )
+        self.assertIn(
+            system_config_api.HELPER_PAYLOAD_CONTENT_TYPE,
+            paths["/api/system/config/automation-helper/payload/{payload_sha256}"]["get"][
+                "responses"
+            ]["200"]["content"],
+        )
+
     def test_tos_desktop_download_streams_installer(self) -> None:
         requested_keys: list[str] = []
 

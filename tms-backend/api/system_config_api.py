@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
 from utils.minio_storage import get_minio_bucket, get_object_response
@@ -35,7 +36,34 @@ TOS_DESKTOP_FULL_DEFAULT_FILENAME = "TOS-Desktop-Full-Setup.exe"
 TOS_DESKTOP_FULL_CONTENT_TYPE = "application/vnd.microsoft.portable-executable"
 
 
-@router.get("/summary")
+class SystemConfigSummaryResponse(BaseModel):
+    settingsFile: str
+    settings: dict[str, Any]
+
+
+HELPER_INSTALLER_RESPONSE = {
+    "description": "TOS automation helper installer download.",
+    "content": {HELPER_CONTENT_TYPE: {}},
+}
+HELPER_PAYLOAD_RESPONSE = {
+    "description": "TOS automation helper payload archive download.",
+    "content": {HELPER_PAYLOAD_CONTENT_TYPE: {}},
+}
+TOS_DESKTOP_INSTALLER_RESPONSE = {
+    "description": "TOS desktop web installer download.",
+    "content": {TOS_DESKTOP_CONTENT_TYPE: {}},
+}
+TOS_DESKTOP_FULL_INSTALLER_RESPONSE = {
+    "description": "TOS desktop full installer download.",
+    "content": {TOS_DESKTOP_FULL_CONTENT_TYPE: {}},
+}
+TOS_DESKTOP_PAYLOAD_RESPONSE = {
+    "description": "TOS desktop payload archive download.",
+    "content": {TOS_DESKTOP_PAYLOAD_CONTENT_TYPE: {}},
+}
+
+
+@router.get("/summary", response_model=SystemConfigSummaryResponse)
 async def config_summary() -> dict[str, Any]:
     return {
         "settingsFile": str(resolve_settings_path()),
@@ -43,7 +71,11 @@ async def config_summary() -> dict[str, Any]:
     }
 
 
-@router.get("/automation-helper/download")
+@router.get(
+    "/automation-helper/download",
+    response_class=StreamingResponse,
+    responses={200: HELPER_INSTALLER_RESPONSE},
+)
 async def automation_helper_download() -> StreamingResponse:
     helper_config = (
         get_settings()
@@ -74,7 +106,11 @@ async def automation_helper_download() -> StreamingResponse:
     )
 
 
-@router.get("/automation-helper/payload")
+@router.get(
+    "/automation-helper/payload",
+    response_class=StreamingResponse,
+    responses={200: HELPER_PAYLOAD_RESPONSE},
+)
 async def automation_helper_payload_download() -> StreamingResponse:
     helper_config = (
         get_settings()
@@ -111,7 +147,11 @@ async def automation_helper_payload_download() -> StreamingResponse:
     )
 
 
-@router.get("/automation-helper/payload/{payload_sha256}")
+@router.get(
+    "/automation-helper/payload/{payload_sha256}",
+    response_class=StreamingResponse,
+    responses={200: HELPER_PAYLOAD_RESPONSE},
+)
 async def automation_helper_versioned_payload_download(
     payload_sha256: str,
 ) -> StreamingResponse:
@@ -155,7 +195,11 @@ async def automation_helper_versioned_payload_download(
     )
 
 
-@router.get("/tos-desktop/download")
+@router.get(
+    "/tos-desktop/download",
+    response_class=StreamingResponse,
+    responses={200: TOS_DESKTOP_INSTALLER_RESPONSE},
+)
 async def tos_desktop_download() -> StreamingResponse:
     desktop_config = (
         get_settings()
@@ -186,7 +230,11 @@ async def tos_desktop_download() -> StreamingResponse:
     )
 
 
-@router.get("/tos-desktop-full/download")
+@router.get(
+    "/tos-desktop-full/download",
+    response_class=StreamingResponse,
+    responses={200: TOS_DESKTOP_FULL_INSTALLER_RESPONSE},
+)
 async def tos_desktop_full_download() -> StreamingResponse:
     desktop_config = (
         get_settings()
@@ -217,7 +265,11 @@ async def tos_desktop_full_download() -> StreamingResponse:
     )
 
 
-@router.get("/tos-desktop/payload")
+@router.get(
+    "/tos-desktop/payload",
+    response_class=StreamingResponse,
+    responses={200: TOS_DESKTOP_PAYLOAD_RESPONSE},
+)
 async def tos_desktop_payload_download() -> StreamingResponse:
     desktop_config = (
         get_settings()
@@ -254,7 +306,11 @@ async def tos_desktop_payload_download() -> StreamingResponse:
     )
 
 
-@router.get("/tos-desktop/payload/{payload_sha256}")
+@router.get(
+    "/tos-desktop/payload/{payload_sha256}",
+    response_class=StreamingResponse,
+    responses={200: TOS_DESKTOP_PAYLOAD_RESPONSE},
+)
 async def tos_desktop_versioned_payload_download(
     payload_sha256: str,
 ) -> StreamingResponse:

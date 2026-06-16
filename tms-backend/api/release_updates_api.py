@@ -28,6 +28,33 @@ class ReleaseUpdatePayload(BaseModel):
     createdBy: str = Field(default="manual", max_length=96)
 
 
+class ReleaseUpdateRecordResponse(BaseModel):
+    id: int
+    recordKey: str
+    version: str
+    releaseDate: str
+    category: str
+    pageName: str
+    pagePath: str
+    title: str
+    description: str
+    createdBy: str
+    createdAt: str
+    updatedAt: str
+
+
+class ReleaseUpdatesResponse(BaseModel):
+    ok: bool
+    version: str
+    records: list[ReleaseUpdateRecordResponse]
+    total: int
+
+
+class ReleaseUpdateSaveResponse(BaseModel):
+    ok: bool
+    record: ReleaseUpdateRecordResponse
+
+
 def _default_record(
     record_key: str,
     version: str,
@@ -52,6 +79,16 @@ def _default_record(
 
 
 DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
+    _default_record(
+        "builtin-0.9.8-beta.3.16-improved-system-api-contract",
+        "0.9.8-beta.3.16",
+        "2026-06-16",
+        "improved",
+        "桌面客户端 / 后端服务",
+        "/settings",
+        "收口系统接口后端契约",
+        "为版本更新记录和系统配置接口补充后端响应 schema，并将 TOS 桌面下载等系统接口纳入桌面后端兼容契约。",
+    ),
     _default_record(
         "builtin-0.9.8-beta.3.15-fixed-release-updates-browser-backend",
         "0.9.8-beta.3.15",
@@ -535,7 +572,7 @@ DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
 ]
 
 
-@router.get("")
+@router.get("", response_model=ReleaseUpdatesResponse)
 async def read_release_updates(limit: int = Query(100, ge=1, le=300)) -> dict[str, Any]:
     seed_default_release_updates()
     records = [_record_payload(row) for row in list_release_update_records(limit)]
@@ -547,7 +584,7 @@ async def read_release_updates(limit: int = Query(100, ge=1, le=300)) -> dict[st
     }
 
 
-@router.post("")
+@router.post("", response_model=ReleaseUpdateSaveResponse)
 async def save_release_update(payload: ReleaseUpdatePayload) -> dict[str, Any]:
     row = upsert_release_update_record({
         "record_key": payload.recordKey.strip(),
