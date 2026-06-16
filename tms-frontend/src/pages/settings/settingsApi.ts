@@ -7,6 +7,7 @@ import { buildBackendDownloadUrl, getBackendBaseUrl } from '../../shared/api/bac
 import { fallbackAppVersion } from '../../shared/version/appVersion'
 
 const defaultTosDesktopDownloadPath = 'https://ai.tomwell.net:56130/tos/tos-desktop/download'
+const defaultTosDesktopFullDownloadPath = 'https://ai.tomwell.net:56130/tos/tos-desktop-full/download'
 
 export function hasUpdateBridge(): boolean {
   return Boolean(window.electronAPI?.getUpdateStatus)
@@ -105,6 +106,31 @@ export async function resolveTosDesktopDownloadUrl(): Promise<string> {
 
 export async function openTosDesktopDownload(): Promise<void> {
   const downloadUrl = await resolveTosDesktopDownloadUrl()
+  const anchor = document.createElement('a')
+  anchor.href = downloadUrl
+  anchor.rel = 'noopener'
+  anchor.download = ''
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
+}
+
+export function getTosDesktopFullDownloadUrl(): string {
+  const configuredUrl = import.meta.env.VITE_TOS_DESKTOP_FULL_DOWNLOAD_URL
+  return typeof configuredUrl === 'string' && configuredUrl.trim()
+    ? configuredUrl.trim()
+    : defaultTosDesktopFullDownloadPath
+}
+
+export async function resolveTosDesktopFullDownloadUrl(): Promise<string> {
+  const configuredUrl = getTosDesktopFullDownloadUrl()
+  return configuredUrl.startsWith('/api/')
+    ? buildBackendDownloadUrl(configuredUrl)
+    : configuredUrl
+}
+
+export async function openTosDesktopFullDownload(): Promise<void> {
+  const downloadUrl = await resolveTosDesktopFullDownloadUrl()
   const anchor = document.createElement('a')
   anchor.href = downloadUrl
   anchor.rel = 'noopener'

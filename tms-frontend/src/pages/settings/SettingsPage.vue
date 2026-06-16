@@ -226,6 +226,30 @@
           </button>
         </div>
 
+        <!-- TOS full desktop installer -->
+        <div class="stg-row">
+          <span class="stg-row__icon">
+            <AppIcon name="package" />
+          </span>
+          <div class="stg-row__text">
+            <p class="stg-row__label">{{ text('TOS 完整安装包') }}</p>
+            <p class="stg-row__desc">
+              {{ text('下载单个完整安装包，安装阶段不再连接 MinIO 下载组件。') }}
+            </p>
+          </div>
+          <button
+            class="stg-row__action"
+            type="button"
+            :disabled="desktopFullInstallerDownloading"
+            @click="handleDesktopFullInstallerDownload"
+          >
+            <AppIcon name="download" />
+            <span>{{
+              desktopFullInstallerDownloading ? text('打开中...') : text('下载')
+            }}</span>
+          </button>
+        </div>
+
         <!-- Portable / manual download (desktop only) -->
         <div v-if="hasDesktopUpdateSupport && manualDownload" class="stg-row">
           <span class="stg-row__icon">
@@ -330,11 +354,13 @@ const {
   canDownload,
   canInstall,
   currentVersion,
+  desktopFullInstallerDownloading,
   desktopInstallerDownloading,
   downloadDetail,
   feedUrlSourceLabel,
   feedUrlText,
   handleCheck,
+  handleDesktopFullInstallerDownload,
   handleDesktopInstallerDownload,
   handleDownload,
   handleHelperDownload,

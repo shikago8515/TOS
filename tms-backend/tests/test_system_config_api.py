@@ -45,6 +45,25 @@ class SystemConfigApiTest(unittest.TestCase):
         self.assertIn("TOS-Desktop-Setup.exe", response.headers["content-disposition"])
         self.assertEqual(requested_keys, ["tos-desktop/TOS-Desktop-Setup.exe"])
 
+    def test_tos_desktop_full_download_streams_embedded_installer(self) -> None:
+        requested_keys: list[str] = []
+
+        def fake_get_object(_bucket: str, object_key: str) -> FakeObjectResponse:
+            requested_keys.append(object_key)
+            if object_key == "tos-desktop-full/TOS-Desktop-Full-Setup.exe":
+                return FakeObjectResponse(b"MZ full installer bytes")
+            raise FileNotFoundError(object_key)
+
+        with patch.object(system_config_api, "get_minio_bucket", return_value="tos-downloads"), \
+             patch.object(system_config_api, "get_settings", return_value={}), \
+             patch.object(system_config_api, "get_object_response", side_effect=fake_get_object):
+            response = self.client.get("/api/system/config/tos-desktop-full/download")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"MZ full installer bytes")
+        self.assertIn("TOS-Desktop-Full-Setup.exe", response.headers["content-disposition"])
+        self.assertEqual(requested_keys, ["tos-desktop-full/TOS-Desktop-Full-Setup.exe"])
+
     def test_tos_desktop_payload_streams_latest_payload(self) -> None:
         def fake_get_object(_bucket: str, object_key: str) -> FakeObjectResponse:
             if object_key == "tos-desktop/TOS-Desktop-Payload.zip":

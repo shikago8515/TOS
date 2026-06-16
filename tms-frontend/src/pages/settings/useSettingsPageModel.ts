@@ -17,6 +17,7 @@ import {
   installUpdate,
   openManualDownload,
   openTosDesktopDownload,
+  openTosDesktopFullDownload,
   subscribeUpdateStatus,
 } from './settingsApi'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
@@ -36,6 +37,7 @@ export function useSettingsPageModel() {
   const message = ref('')
   const messageTone = ref<NoticeTone>('info')
   const desktopInstallerDownloading = ref(false)
+  const desktopFullInstallerDownloading = ref(false)
   const helperDownloading = ref(false)
   let unsubscribeUpdateStatus: (() => void) | undefined
   const { t, text } = useAppLanguage()
@@ -248,6 +250,22 @@ export function useSettingsPageModel() {
       desktopInstallerDownloading.value = false
     }
   }
+
+  async function handleDesktopFullInstallerDownload(): Promise<void> {
+    desktopFullInstallerDownloading.value = true
+    message.value = ''
+
+    try {
+      await openTosDesktopFullDownload()
+      messageTone.value = 'info'
+      message.value = '已打开 TOS 完整安装包下载。'
+    } catch (error) {
+      messageTone.value = 'error'
+      message.value = readErrorMessage(error, 'TOS 完整安装包下载失败')
+    } finally {
+      desktopFullInstallerDownloading.value = false
+    }
+  }
   
   async function handleHelperDownload(): Promise<void> {
     helperDownloading.value = true
@@ -416,12 +434,14 @@ export function useSettingsPageModel() {
     canInstall,
     changelogGroups,
     currentVersion,
+    desktopFullInstallerDownloading,
     desktopInstallerDownloading,
     downloadDetail,
     emptyChangelogText,
     feedUrlSourceLabel,
     feedUrlText,
     handleCheck,
+    handleDesktopFullInstallerDownload,
     handleDesktopInstallerDownload,
     handleDownload,
     handleHelperDownload,

@@ -41,6 +41,11 @@ downloads:
     payload_filename: "TOS-Desktop-Payload.zip"
     payload_content_type: "application/zip"
     payload_versioned_prefix: "tos-desktop/payloads"
+  tos_desktop_full:
+    bucket: "tos-downloads"
+    object_key: "tos-desktop-full/TOS-Desktop-Full-Setup.exe"
+    filename: "TOS-Desktop-Full-Setup.exe"
+    content_type: "application/vnd.microsoft.portable-executable"
 
 security:
   # Leave blank for local development. The backend will create
