@@ -18,9 +18,13 @@
 
 ## 开发入口
 
+日常前端开发默认使用 server mode。远程后端地址只从 `tms-frontend/.env.server` 的公开 `VITE_BACKEND_URL` 读取；该文件不保存密钥或内部凭据。`dev:frontend`、`dev:frontend:server` 和 `dev:frontend:local` 都占用 `http://127.0.0.1:5174`，同一时间只能运行一种模式；切换 server/local 前先停止旧 Vite 进程。
+
 | 命令 | 等价子项目命令 |
 | --- | --- |
-| `npm run dev:frontend` | `npm --prefix tms-frontend run dev` |
+| `npm run dev:frontend` | `npm --prefix tms-frontend run dev`，默认 server mode |
+| `npm run dev:frontend:server` | `npm --prefix tms-frontend run dev:server`，显式 server mode |
+| `npm run dev:frontend:local` | `npm --prefix tms-frontend run dev:local`，联调本机后端 |
 | `npm run preview:frontend` | `npm --prefix tms-frontend run preview` |
 | `npm run dev:electron` | `npm --prefix tms-electron-app run dev` |
 

@@ -10,8 +10,8 @@ TOS 是一个 Windows x64 桌面工具，当前源码工作区由三部分组成
 
 ## 当前工程事实
 
-- 后端入口是 `tms-backend/main.py`，默认监听 `http://127.0.0.1:8000`。
-- 前端开发服务器由 `tms-frontend/package.json` 定义，当前是 `http://127.0.0.1:5174`。
+- 后端入口是 `tms-backend/main.py`，默认监听 `http://127.0.0.1:8000`，用于本机后端联调和 local dev。
+- 前端开发服务器由 `tms-frontend/package.json` 定义，当前是 `http://127.0.0.1:5174`；默认 `dev:frontend` 为 server mode，本机后端备用入口为 `dev:frontend:local`，入口细节见 `docs/engineering-entrypoints.md`。
 - Electron 打包默认使用 `tms-frontend/dist`；`TOS_FRONTEND_SOURCE=recovered` 仅用于紧急回退。
 - 仓库根目录 `package.json` 提供工程入口 scripts，用于编排前端、后端和 Electron 子项目的现有检查命令。
 - GitCode 远端检查位于 `.gitcode/workflows/tos-check.yml`，对 `main`、`codex/**` 分支 push 和面向 `main` 的合并请求运行完整 `npm run check`。
