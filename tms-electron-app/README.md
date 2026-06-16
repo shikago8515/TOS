@@ -6,14 +6,14 @@
 
 - 主进程入口：`main-simple.js`
 - preload：`preload.js`
-- 前端开发态加载：`http://127.0.0.1:5174`
+- 前端开发态加载：`http://127.0.0.1:5174`，默认由 `../tms-frontend` 的 server mode 提供
 - 打包态默认加载：`dist-frontend/index.html`
 - 默认前端来源：`../tms-frontend/dist`
 - 紧急回退前端来源：`TOS_FRONTEND_SOURCE=recovered`
 - 后端源码打包来源：`../tms-backend`
-- 后端默认地址：`http://127.0.0.1:8000`
+- 本机后端地址：`http://127.0.0.1:8000`，仅在 local mode 或本机后端联调时使用
 
-开发态 `npm run dev` 只启动 Electron。需要调试前端时，先在 `../tms-frontend` 运行 `npm run dev`。
+开发态 `npm run dev` 只启动 Electron。前端 server/local 模式由 `../tms-frontend` 控制，同一时间 `5174` 只运行一种模式；根目录入口见 `../docs/engineering-entrypoints.md`。
 
 ## 常用命令
 

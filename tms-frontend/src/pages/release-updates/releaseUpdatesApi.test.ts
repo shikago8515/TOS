@@ -26,10 +26,10 @@ describe('releaseUpdatesApi', () => {
           version: '0.9.8-beta.3.7',
           releaseDate: '2026-06-13',
           category: 'fixed',
-          pageName: '版本更新记录',
+          pageName: 'Release updates',
           pagePath: '/release-updates',
-          title: '旧记录',
-          description: '旧数据库记录',
+          title: 'Old record',
+          description: 'Old database record',
           createdBy: 'git',
           createdAt: '',
           updatedAt: '',
@@ -43,63 +43,29 @@ describe('releaseUpdatesApi', () => {
       records: [
         {
           version: '0.9.8-beta.3.7',
-          title: '旧记录',
+          title: 'Old record',
         },
       ],
     })
   })
 
-  it('uses the server release endpoint when the local backend cannot be reached', async () => {
-    vi.mocked(requestBackendJson).mockRejectedValue(new Error('无法连接后端服务'))
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: vi.fn().mockResolvedValue(JSON.stringify({
-        ok: true,
-        version: '0.9.8-beta.3.17',
-        total: 1,
-        records: [
-          {
-            id: 50,
-            recordKey: 'server-current',
-            version: '0.9.8-beta.3.17',
-            releaseDate: '2026-06-16',
-            category: 'improved',
-            pageName: '版本更新记录',
-            pagePath: '/release-updates',
-            title: '服务器实时记录',
-            description: '从服务器接口读取',
-            createdBy: 'server',
-            createdAt: '',
-            updatedAt: '',
-          },
-        ],
-      })),
-    })
+  it('falls back to bundled release notes without calling a hard-coded server endpoint', async () => {
+    vi.mocked(requestBackendJson).mockRejectedValue(new Error('Failed to fetch'))
+    const fetchMock = vi.fn().mockRejectedValue(new Error('unexpected direct fetch'))
     vi.stubGlobal('fetch', fetchMock)
 
     const payload = await fetchReleaseUpdates(160)
 
     expect(payload).toMatchObject({
       ok: true,
-      source: 'server',
-      version: '0.9.8-beta.3.17',
-      records: [
-        {
-          version: '0.9.8-beta.3.17',
-          title: '服务器实时记录',
-        },
-      ],
+      source: 'bundled',
+      version: fallbackAppVersion,
     })
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://ai.tomwell.net:56130/tos/desktop-api/api/release-updates?limit=160',
-      { cache: 'no-store' },
-    )
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('falls back to bundled release notes when both backend paths cannot be reached', async () => {
-    vi.mocked(requestBackendJson).mockRejectedValue(new Error('无法连接后端服务'))
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Failed to fetch')))
+  it('falls back to bundled release notes when the backend cannot be reached', async () => {
+    vi.mocked(requestBackendJson).mockRejectedValue(new Error('Failed to fetch'))
 
     const payload = await fetchReleaseUpdates(160)
 
@@ -126,7 +92,6 @@ describe('releaseUpdatesApi', () => {
 
   it('applies the requested limit to bundled history records', async () => {
     vi.mocked(requestBackendJson).mockRejectedValue(new Error('Failed to fetch'))
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Failed to fetch')))
 
     const payload = await fetchReleaseUpdates(3)
 

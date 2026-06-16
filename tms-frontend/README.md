@@ -23,15 +23,19 @@
 
 ```powershell
 npm run dev
+npm run dev:server
+npm run dev:local
 npm run typecheck
 npm run test
 npm run build
 npm run preview
 ```
 
+`npm run dev` 和 `npm run dev:server` 使用 server mode，远程后端地址来自 `.env.server` 的公开 `VITE_BACKEND_URL`。`npm run dev:local` 保留本机 FastAPI 联调入口。三者都占用 `5174`，切换模式前先停止旧 Vite 进程；根目录入口矩阵见 `../docs/engineering-entrypoints.md`。
+
 当前端口：
 
-- dev：`http://127.0.0.1:5174`
+- dev / dev:server / dev:local：`http://127.0.0.1:5174`
 - preview：`http://127.0.0.1:4174`
 
 ## 源码约定
