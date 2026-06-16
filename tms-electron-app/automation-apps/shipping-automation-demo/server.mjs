@@ -23,6 +23,7 @@ const bundledConfigPath = path.join(appRoot, "executor.config.json");
 const runtimeConfigPath = path.join(runtimeDataRoot, "executor.config.local.json");
 const artifactsDir = path.join(runtimeDataRoot, "run-artifacts");
 const PREPARE_NEXT_PO_DIALOG_TIMEOUT_MS = 3000;
+const XINLONGTAI_SHIPPING_AUTOMATION_ID = "xinlongtai-shipping-automation";
 
 const sharedExecutorRoot = path.resolve(appRoot, "..", "playwright-console");
 const sharedPackageJson = path.join(sharedExecutorRoot, "package.json");
@@ -296,6 +297,7 @@ const server = http.createServer(async (req, res) => {
 
       try {
         const result = await runShippingFile(credentials, poRows, inputFileName, activeRun.runId, {
+          automationId: body?.automationId || body?.moduleId || body?.entryId,
           shipmentScanAction: body?.shipmentScanAction,
         });
         result.artifacts = await persistRunArtifacts(result, poRows, activeRun.runId);
@@ -483,6 +485,19 @@ function normalizeShipmentScanAction(value) {
   return "Remove/Change Equipment ID";
 }
 
+function resolveShipmentScanAction(runContext) {
+  const automationId = String(
+    runContext?.automationId
+      || runContext?.moduleId
+      || runContext?.entryId
+      || "",
+  ).trim();
+  if (automationId === XINLONGTAI_SHIPPING_AUTOMATION_ID) {
+    return normalizeShipmentScanAction(runContext?.shipmentScanAction);
+  }
+  return "Remove/Change Equipment ID";
+}
+
 async function openShipmentScan(credentials, runId) {
   return runShippingWorkflow(credentials, {
     runId,
@@ -527,6 +542,7 @@ async function runShippingFile(credentials, poRows, inputFileName, runId, option
     inputFileName,
     fillPoNumbers: true,
     targetPage: "shipment-scan",
+    automationId: options?.automationId,
     shipmentScanAction: options?.shipmentScanAction,
   });
 }
@@ -716,7 +732,7 @@ async function runShippingWorkflow(credentials, runContext) {
   const startedAt = new Date().toISOString();
   const poRows = Array.isArray(runContext?.poRows) ? runContext.poRows : [];
   const shouldFillPoNumbers = Boolean(runContext?.fillPoNumbers);
-  const shipmentScanAction = normalizeShipmentScanAction(runContext?.shipmentScanAction);
+  const shipmentScanAction = resolveShipmentScanAction(runContext);
   const runId = String(runContext?.runId || createRunId("adhoc"));
   const targetPage = ["home", "event-management"].includes(runContext?.targetPage)
     ? runContext.targetPage
