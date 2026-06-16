@@ -96,9 +96,9 @@ describe('releaseNotice', () => {
 
   it('keeps bundled release notes scoped to the current version changes', () => {
     expect(releaseNotes.added).toEqual([])
-    expect(releaseNotes.improved).toEqual([])
-    expect(releaseNotes.fixed).toEqual([
-      '修复版本更新记录按数据库更新时间排序时旧版本可能排在最新版上方的问题，改为按版本号倒序展示。',
+    expect(releaseNotes.improved).toEqual([
+      '为版本更新记录和系统配置接口补充后端响应 schema，并将 TOS 桌面下载等系统接口纳入桌面后端兼容契约。',
     ])
+    expect(releaseNotes.fixed).toEqual([])
   })
 })

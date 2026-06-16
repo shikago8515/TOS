@@ -4,6 +4,9 @@ import sys
 import unittest
 from unittest.mock import patch
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
 
 BACKEND_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 REPO_ROOT = os.path.abspath(os.path.join(BACKEND_ROOT, ".."))
@@ -77,6 +80,109 @@ class _CaptureConnection:
 
 
 class ReleaseUpdatesApiTest(unittest.TestCase):
+    def setUp(self) -> None:
+        app = FastAPI()
+        app.include_router(release_updates_api.router, prefix="/api")
+        self.client = TestClient(app)
+
+    def test_read_release_updates_returns_stable_response_shape(self) -> None:
+        with patch.object(release_updates_api, "seed_default_release_updates"), patch.object(
+            release_updates_api,
+            "list_release_update_records",
+            return_value=[self._release_update_row(1, "0.9.8-beta.3.15")],
+        ):
+            response = self.client.get("/api/release-updates?limit=1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "ok": True,
+                "version": release_updates_api.APP_VERSION,
+                "records": [
+                    {
+                        "id": 1,
+                        "recordKey": "record-0.9.8-beta.3.15",
+                        "version": "0.9.8-beta.3.15",
+                        "releaseDate": "2026-06-15",
+                        "category": "improved",
+                        "pageName": "版本更新记录",
+                        "pagePath": "/release-updates",
+                        "title": "Record 0.9.8-beta.3.15",
+                        "description": "",
+                        "createdBy": "system",
+                        "createdAt": "",
+                        "updatedAt": "",
+                    }
+                ],
+                "total": 1,
+            },
+        )
+
+    def test_save_release_update_returns_stable_response_shape(self) -> None:
+        expected_row = self._release_update_row(2, "0.9.8-beta.3.15")
+
+        with patch.object(
+            release_updates_api,
+            "upsert_release_update_record",
+            return_value=expected_row,
+        ) as upsert_record:
+            response = self.client.post(
+                "/api/release-updates",
+                json={
+                    "recordKey": " record-0.9.8-beta.3.15 ",
+                    "version": " 0.9.8-beta.3.15 ",
+                    "releaseDate": "2026-06-15",
+                    "category": " fixed ",
+                    "pageName": " 版本更新记录 ",
+                    "pagePath": " /release-updates ",
+                    "title": " 修复记录 ",
+                    "description": " 描述 ",
+                    "createdBy": " deploy ",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        upsert_record.assert_called_once_with(
+            {
+                "record_key": "record-0.9.8-beta.3.15",
+                "version": "0.9.8-beta.3.15",
+                "release_date": "2026-06-15",
+                "category": "fixed",
+                "page_name": "版本更新记录",
+                "page_path": "/release-updates",
+                "title": "修复记录",
+                "description": "描述",
+                "created_by": "deploy",
+            }
+        )
+        self.assertEqual(
+            response.json()["record"],
+            {
+                "id": 2,
+                "recordKey": "record-0.9.8-beta.3.15",
+                "version": "0.9.8-beta.3.15",
+                "releaseDate": "2026-06-15",
+                "category": "improved",
+                "pageName": "版本更新记录",
+                "pagePath": "/release-updates",
+                "title": "Record 0.9.8-beta.3.15",
+                "description": "",
+                "createdBy": "system",
+                "createdAt": "",
+                "updatedAt": "",
+            },
+        )
+
+    def test_openapi_exposes_release_update_response_schemas(self) -> None:
+        openapi_path = self.client.app.openapi()["paths"]["/api/release-updates"]
+
+        get_schema = openapi_path["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+        post_schema = openapi_path["post"]["responses"]["200"]["content"]["application/json"]["schema"]
+
+        self.assertIn("$ref", get_schema)
+        self.assertIn("$ref", post_schema)
+
     def test_default_records_keep_unique_historical_versions(self) -> None:
         records = release_updates_api.DEFAULT_RELEASE_UPDATE_RECORDS
         keys = [record["record_key"] for record in records]
@@ -84,6 +190,7 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
 
         self.assertEqual(len(keys), len(set(keys)))
         self.assertGreater(len(records), 2)
+        self.assertIn("0.9.8-beta.3.16", versions)
         self.assertIn("0.9.8-beta.3.15", versions)
         self.assertIn("0.9.8-beta.3.14", versions)
         self.assertIn("0.9.8-beta.3.13", versions)
@@ -107,6 +214,7 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
 
         self.assertEqual(upsert_record.call_count, len(release_updates_api.DEFAULT_RELEASE_UPDATE_RECORDS))
         record_keys = [call.args[0]["record_key"] for call in upsert_record.call_args_list]
+        self.assertIn("builtin-0.9.8-beta.3.16-improved-system-api-contract", record_keys)
         self.assertIn("builtin-0.9.8-beta.3.15-fixed-release-updates-browser-backend", record_keys)
         self.assertIn("builtin-0.9.8-beta.3.15-added-tos-desktop-full-installer", record_keys)
         self.assertIn("builtin-0.9.8-beta.3.15-fixed-release-updates-version-sort", record_keys)
