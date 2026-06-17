@@ -1,5 +1,45 @@
 [
   {
+    "recordKey": "git-f20fec7594149756cb7b6ee80c8c0322e550acb9",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-17",
+    "category": "improved",
+    "pageName": "后端服务",
+    "pagePath": "/api",
+    "title": "docs: 收口本地开发和合并流程",
+    "description": "由 Git commit 自动记录：docs: 收口本地开发和合并流程。涉及文件：AGENTS.md、README.md、docs/engineering-entrypoints.md、docs/templates/gitcode-checklist.md、docs/templates/release-notes.md、docs/tos-ai-workflow.md、scripts/engineering/frontend-dev-entrypoints.test.mjs、tms-backend/README.md。"
+  },
+  {
+    "recordKey": "git-07fd04941c568ff333e4711b759304134e1b7a6a",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-17",
+    "category": "improved",
+    "pageName": "多个页面",
+    "pagePath": "",
+    "title": "chore: 同步版本记录到服务器主源",
+    "description": "由 Git commit 自动记录：chore: 同步版本记录到服务器主源。涉及文件：.githooks/post-commit、.githooks/post-merge、package.json、scripts/engineering/run-checks.mjs、scripts/release_update_sync.py、scripts/release_update_sync_test.py、tms-backend/api/release_updates_api.py、tms-backend/tests/test_release_updates_api.py 等 9 个文件。"
+  },
+  {
+    "recordKey": "git-33a8dcf7380a1c6c68f62751e87df3c48effa899",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-17",
+    "category": "fixed",
+    "pageName": "多个页面",
+    "pagePath": "",
+    "title": "fix: 收紧本地后端和安全边界",
+    "description": "由 Git commit 自动记录：fix: 收紧本地后端和安全边界。涉及文件：app-version.json、scripts/engineering/check-backend-version.mjs、scripts/engineering/check-backend-version.test.mjs、scripts/engineering/frontend-direct-fetch-boundary.test.mjs、tms-backend/api/eric_api.py、tms-backend/api/jane_bom_compare_api.py、tms-backend/api/jane_bom_summary_api.py、tms-backend/api/jane_outbound_compare_api.py 等 22 个文件。"
+  },
+  {
+    "recordKey": "git-a413676afc0a0a1251d33aca84ed1cbcc9cd343f",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-17",
+    "category": "added",
+    "pageName": "多个页面",
+    "pagePath": "",
+    "title": "feat: 重建 Work Sales 数据写入",
+    "description": "由 Git commit 自动记录：feat: 重建 Work Sales 数据写入。涉及文件：tms-backend/api/tms_finance_work_sales_api.py、tms-backend/modules/tms_finance_work_sales_module.py、tms-backend/tests/test_tms_finance_work_sales_module.py、tms-frontend/src/app/router.test.ts、tms-frontend/src/domain/moduleCatalog.test.ts、tms-frontend/src/domain/moduleCatalog.ts、tms-frontend/src/pages/tms-finance-internal-reconciliation/TmsFinanceInternalReconciliationPage.vue、tms-frontend/src/pages/tms-finance-internal-reconciliation/tmsFinancePageModel.test.ts 等 16 个文件。"
+  },
+  {
     "recordKey": "git-bbee1f57a7c5d246380f6f356a77f07a963f59b6",
     "version": "0.9.8-beta.3.19",
     "releaseDate": "2026-06-16",
