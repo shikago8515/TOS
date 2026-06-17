@@ -98,7 +98,10 @@ class SystemConfigApiTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"MZ installer bytes")
-        self.assertIn("TOS-Desktop-Setup.exe", response.headers["content-disposition"])
+        self.assertIn(
+            f"TOS-Desktop-Setup.{system_config_api.APP_VERSION}.exe",
+            response.headers["content-disposition"],
+        )
         self.assertEqual(requested_keys, ["tos-desktop/TOS-Desktop-Setup.exe"])
 
     def test_automation_helper_download_uses_versioned_filename(self) -> None:

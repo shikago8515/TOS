@@ -10,12 +10,15 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from app_version import APP_VERSION
 from utils.minio_storage import get_minio_bucket, put_object_bytes, sha256_bytes
 
 
 DESKTOP_OBJECT_KEY = "tos-desktop/TOS-Desktop-Setup.exe"
-DESKTOP_FILENAME = "TOS-Desktop-Setup.exe"
+DESKTOP_LEGACY_FILENAME = "TOS-Desktop-Setup.exe"
+DESKTOP_FILENAME = f"TOS-Desktop-Setup.{APP_VERSION}.exe"
 DESKTOP_CONTENT_TYPE = "application/vnd.microsoft.portable-executable"
+DESKTOP_INSTALLER_VERSIONED_PREFIX = "tos-desktop/installers"
 DESKTOP_PAYLOAD_OBJECT_KEY = "tos-desktop/TOS-Desktop-Payload.zip"
 DESKTOP_PAYLOAD_FILENAME = "TOS-Desktop-Payload.zip"
 DESKTOP_PAYLOAD_CONTENT_TYPE = "application/zip"
@@ -38,6 +41,15 @@ def upload_release(installer_path: Path, payload_path: Path | None = None) -> di
     storage = put_object_bytes(
         bucket=bucket,
         object_key=DESKTOP_OBJECT_KEY,
+        content=installer_content,
+        content_type=DESKTOP_CONTENT_TYPE,
+    )
+    installer_versioned_object_key = (
+        f"{DESKTOP_INSTALLER_VERSIONED_PREFIX}/{APP_VERSION}/{DESKTOP_FILENAME}"
+    )
+    installer_versioned_storage = put_object_bytes(
+        bucket=bucket,
+        object_key=installer_versioned_object_key,
         content=installer_content,
         content_type=DESKTOP_CONTENT_TYPE,
     )
@@ -86,10 +98,14 @@ def upload_release(installer_path: Path, payload_path: Path | None = None) -> di
         "ok": True,
         "bucket": bucket,
         "objectKey": DESKTOP_OBJECT_KEY,
-        "filename": DESKTOP_FILENAME,
+        "versionedObjectKey": installer_versioned_object_key,
+        "filename": installer_path.name,
+        "defaultFilename": DESKTOP_FILENAME,
         "fileSize": storage["file_size"],
+        "versionedFileSize": installer_versioned_storage["file_size"],
         "sha256": sha256_bytes(installer_content),
         "downloadPath": "/api/system/config/tos-desktop/download",
+        "version": APP_VERSION,
     }
     if payload_result is not None:
         result["payload"] = payload_result
@@ -103,6 +119,8 @@ def main() -> None:
         / "dist-tos-desktop"
         / DESKTOP_FILENAME
     )
+    if not default_path.exists():
+        default_path = default_path.with_name(DESKTOP_LEGACY_FILENAME)
     default_payload_path = default_path.with_name(DESKTOP_PAYLOAD_FILENAME)
     installer_path = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else default_path
     payload_path = (

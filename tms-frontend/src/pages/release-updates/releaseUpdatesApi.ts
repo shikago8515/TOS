@@ -28,6 +28,9 @@ export interface ReleaseUpdatesResponse {
   total: number
 }
 
+const defaultReleaseUpdatesBackendUrl = 'https://ai.tomwell.net:56130/tos/desktop-api'
+const releaseUpdatesRequestTimeoutMs = 6000
+
 interface BundledReleaseHistoryRecord {
   recordKey: string
   version: string
@@ -41,9 +44,16 @@ interface BundledReleaseHistoryRecord {
 
 export async function fetchReleaseUpdates(limit = 120): Promise<ReleaseUpdatesResponse> {
   const safeLimit = Math.max(1, Math.min(limit, 300))
+  const path = `/api/release-updates?limit=${safeLimit}`
+
+  const remotePayload = await requestRemoteReleaseUpdates(path)
+  if (remotePayload) {
+    return normalizeReleaseUpdatesPayload(remotePayload, 'backend')
+  }
+
   try {
     const payload = await requestBackendJson<ReleaseUpdatesResponse>({
-      path: `/api/release-updates?limit=${safeLimit}`,
+      path,
     })
     return normalizeReleaseUpdatesPayload(payload, 'backend')
   } catch (error) {
@@ -52,6 +62,65 @@ export async function fetchReleaseUpdates(limit = 120): Promise<ReleaseUpdatesRe
     }
 
     throw error
+  }
+}
+
+async function requestRemoteReleaseUpdates(
+  path: string,
+): Promise<Partial<ReleaseUpdatesResponse> | undefined> {
+  for (const baseUrl of readReleaseUpdatesBackendUrls()) {
+    try {
+      return await requestReleaseUpdatesFromUrl(baseUrl, path)
+    } catch (_error) {
+      // Try the next configured release-update backend before falling back.
+    }
+  }
+
+  return undefined
+}
+
+function readReleaseUpdatesBackendUrls(): string[] {
+  const urls: string[] = []
+  const configuredUrl = import.meta.env.VITE_RELEASE_UPDATES_BACKEND_URL
+
+  if (typeof configuredUrl === 'string' && configuredUrl.trim()) {
+    urls.push(configuredUrl.trim())
+  }
+
+  if (
+    typeof window !== 'undefined'
+    && window.location?.pathname?.startsWith('/tos')
+  ) {
+    urls.push('/tos/desktop-api')
+  }
+
+  urls.push(defaultReleaseUpdatesBackendUrl)
+
+  return Array.from(new Set(urls.map((url) => url.replace(/\/$/, ''))))
+}
+
+async function requestReleaseUpdatesFromUrl(
+  baseUrl: string,
+  path: string,
+): Promise<Partial<ReleaseUpdatesResponse>> {
+  const controller = new AbortController()
+  const timeout = globalThis.setTimeout(() => controller.abort(), releaseUpdatesRequestTimeoutMs)
+
+  try {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method: 'GET',
+      signal: controller.signal,
+    })
+    const text = await response.text()
+    const data = text ? JSON.parse(text) as Partial<ReleaseUpdatesResponse> : {}
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+
+    return data
+  } finally {
+    globalThis.clearTimeout(timeout)
   }
 }
 

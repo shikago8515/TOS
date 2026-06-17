@@ -27,7 +27,8 @@ HELPER_PAYLOAD_CONTENT_TYPE = "application/zip"
 HELPER_PAYLOAD_VERSIONED_PREFIX = "automation-helper/payloads"
 TOS_DESKTOP_DEFAULT_BUCKET_KEY = "downloads"
 TOS_DESKTOP_DEFAULT_OBJECT_KEY = "tos-desktop/TOS-Desktop-Setup.exe"
-TOS_DESKTOP_DEFAULT_FILENAME = "TOS-Desktop-Setup.exe"
+TOS_DESKTOP_LEGACY_FILENAME = "TOS-Desktop-Setup.exe"
+TOS_DESKTOP_DEFAULT_FILENAME = f"TOS-Desktop-Setup.{APP_VERSION}.exe"
 TOS_DESKTOP_CONTENT_TYPE = "application/vnd.microsoft.portable-executable"
 TOS_DESKTOP_PAYLOAD_DEFAULT_OBJECT_KEY = "tos-desktop/TOS-Desktop-Payload.zip"
 TOS_DESKTOP_PAYLOAD_DEFAULT_FILENAME = "TOS-Desktop-Payload.zip"
@@ -231,7 +232,11 @@ async def tos_desktop_download() -> StreamingResponse:
     )
     bucket = str(desktop_config.get("bucket") or get_minio_bucket(TOS_DESKTOP_DEFAULT_BUCKET_KEY))
     object_key = str(desktop_config.get("object_key") or TOS_DESKTOP_DEFAULT_OBJECT_KEY)
-    filename = str(desktop_config.get("filename") or TOS_DESKTOP_DEFAULT_FILENAME)
+    filename = _versioned_download_filename(
+        desktop_config.get("filename"),
+        TOS_DESKTOP_LEGACY_FILENAME,
+        TOS_DESKTOP_DEFAULT_FILENAME,
+    )
 
     try:
         response = get_object_response(bucket, object_key)

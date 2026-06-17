@@ -14,7 +14,52 @@ describe('releaseUpdatesApi', () => {
     vi.mocked(requestBackendJson).mockReset()
   })
 
+  it('reads release records from the remote server backend first', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: vi.fn().mockResolvedValue(JSON.stringify({
+        ok: true,
+        version: '0.9.8-beta.3.8',
+        total: 1,
+        records: [
+          {
+            id: 1,
+            recordKey: 'git-remote',
+            version: '0.9.8-beta.3.7',
+            releaseDate: '2026-06-13',
+            category: 'fixed',
+            pageName: 'Release updates',
+            pagePath: '/release-updates',
+            title: 'Remote database record',
+            description: 'Server database record',
+            createdBy: 'git',
+            createdAt: '',
+            updatedAt: '',
+          },
+        ],
+      })),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchReleaseUpdates(160)).resolves.toMatchObject({
+      source: 'backend',
+      version: '0.9.8-beta.3.8',
+      records: [
+        {
+          version: '0.9.8-beta.3.7',
+          title: 'Remote database record',
+        },
+      ],
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://ai.tomwell.net:56130/tos/desktop-api/api/release-updates?limit=160',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(requestBackendJson).not.toHaveBeenCalled()
+  })
+
   it('keeps the backend runtime version separate from record history versions', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('remote unavailable')))
     vi.mocked(requestBackendJson).mockResolvedValue({
       ok: true,
       version: '0.9.8-beta.3.8',
@@ -49,10 +94,9 @@ describe('releaseUpdatesApi', () => {
     })
   })
 
-  it('falls back to bundled release notes without calling a hard-coded server endpoint', async () => {
+  it('falls back to bundled release notes when remote and local backends are unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('remote unavailable')))
     vi.mocked(requestBackendJson).mockRejectedValue(new Error('Failed to fetch'))
-    const fetchMock = vi.fn().mockRejectedValue(new Error('unexpected direct fetch'))
-    vi.stubGlobal('fetch', fetchMock)
 
     const payload = await fetchReleaseUpdates(160)
 
@@ -61,10 +105,10 @@ describe('releaseUpdatesApi', () => {
       source: 'bundled',
       version: fallbackAppVersion,
     })
-    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('falls back to bundled release notes when the backend cannot be reached', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('remote unavailable')))
     vi.mocked(requestBackendJson).mockRejectedValue(new Error('Failed to fetch'))
 
     const payload = await fetchReleaseUpdates(160)
@@ -91,6 +135,7 @@ describe('releaseUpdatesApi', () => {
   })
 
   it('does not fall back to bundled release notes when the backend version is stale', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('remote unavailable')))
     vi.mocked(requestBackendJson).mockRejectedValue(
       new Error(`当前后端版本未更新：后端为 0.9.8-beta.3.17，前端为 ${fallbackAppVersion}，请重启本地后端。`),
     )
@@ -99,6 +144,7 @@ describe('releaseUpdatesApi', () => {
   })
 
   it('applies the requested limit to bundled history records', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('remote unavailable')))
     vi.mocked(requestBackendJson).mockRejectedValue(new Error('Failed to fetch'))
 
     const payload = await fetchReleaseUpdates(3)

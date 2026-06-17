@@ -66,7 +66,7 @@ npm run build:win
 
 ## 桌面安装包链路
 
-- `scripts/build-tos-desktop-nsis-installer.ps1` 生成 TOS 轻量在线安装器 `TOS-Desktop-Setup.exe` 和 `TOS-Desktop-Payload.zip`；安装时按 payload sha256 从配置 URL 下载并校验。
+- `scripts/build-tos-desktop-nsis-installer.ps1` 生成 TOS 轻量在线安装器 `TOS-Desktop-Setup.<version>.exe` 和 `TOS-Desktop-Payload.zip`；安装时按 payload sha256 从配置 URL 下载并校验。
 - `scripts/build-tos-desktop-full-nsis-installer.ps1` 生成完整安装包 `TOS-Desktop-Full-Setup.<version>.exe`；payload 内置在安装包里，适合网络下载受限场景。
 - 后端系统配置下载接口位于 `/api/system/config/tos-desktop/*` 和 `/api/system/config/tos-desktop-full/download`，默认从 MinIO `downloads` bucket 读取安装器和 payload。
 - 前端系统设置页默认使用 `https://ai.tomwell.net:56130/tos/tos-desktop/download` 与 `https://ai.tomwell.net:56130/tos/tos-desktop-full/download`，也可通过 Vite 环境变量覆盖。

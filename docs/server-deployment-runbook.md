@@ -146,6 +146,7 @@ TOS downloads bucket path: /var/lib/docker/volumes/automation-stack_minio_data/_
 
 ```text
 tos-desktop/TOS-Desktop-Setup.exe
+tos-desktop/installers/<version>/TOS-Desktop-Setup.<version>.exe
 tos-desktop/TOS-Desktop-Payload.zip
 tos-desktop/payloads/<payload-sha256>/TOS-Desktop-Payload.zip
 tos-desktop-full/TOS-Desktop-Full-Setup.exe
@@ -156,8 +157,7 @@ automation-helper/TOS-Automation-Helper-Payload.zip
 automation-helper/payloads/<payload-sha256>/TOS-Automation-Helper-Payload.zip
 ```
 
-`automation-helper/TOS-Automation-Helper-Setup.exe` 是兼容旧下载入口的 latest 对象；每次更新必须同时保留
-`automation-helper/installers/<version>/TOS-Automation-Helper-Setup.<version>.exe`。发布自动化助手时必须先提升
+`tos-desktop/TOS-Desktop-Setup.exe`、`tos-desktop-full/TOS-Desktop-Full-Setup.exe` 和 `automation-helper/TOS-Automation-Helper-Setup.exe` 是兼容旧下载入口的 latest 对象；每次更新必须同时保留对应的 `<prefix>/installers/<version>/*.<version>.exe` 版本归档对象。发布自动化助手时必须先提升
 `app-version.json`、`tms-electron-app/package.json`、`tms-backend/app_version.py` 的版本号，再构建和上传安装包。
 
 不要直接替换 Docker volume 下的 `part.*` 文件。MinIO 大对象由 metadata 和分片组成，必须通过 MinIO API、`mc cp` 或后端上传辅助流程写入。
@@ -166,6 +166,7 @@ automation-helper/payloads/<payload-sha256>/TOS-Automation-Helper-Payload.zip
 
 ```text
 tos-desktop/TOS-Desktop-Setup.exe
+tos-desktop/installers/*
 tos-desktop/TOS-Desktop-Payload.zip
 tos-desktop/payloads/*
 tos-desktop-full/TOS-Desktop-Full-Setup.exe

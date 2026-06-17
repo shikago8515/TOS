@@ -82,6 +82,26 @@ def _default_record(
 
 DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
     _default_record(
+        "builtin-0.9.8-beta.3.19-improved-automation-executor-health-probe",
+        "0.9.8-beta.3.19",
+        "2026-06-17",
+        "improved",
+        "网页自动化 / 本机执行器",
+        "/web-automation",
+        "优化本机执行器检测速度",
+        "本机执行器健康检查改为并行快探测 /api/health 和 /health，并收紧本机超时时间，减少浏览器刷新执行器状态时的等待卡顿。",
+    ),
+    _default_record(
+        "builtin-0.9.8-beta.3.19-improved-helper-version-update-prompt",
+        "0.9.8-beta.3.19",
+        "2026-06-17",
+        "improved",
+        "自动化助手 / 安装包",
+        "/settings",
+        "提示本机小助手版本更新",
+        "小助手、Shipping 执行器和 TOS 完整安装包版本统一跟随系统版本，浏览器自动检测到本机小助手版本落后或无法识别时会提示用户安装最新版。",
+    ),
+    _default_record(
         "git-b04b31d8534b8d99518dc963a2ab2e2125f51cac",
         "0.9.8-beta.3.19",
         "2026-06-17",

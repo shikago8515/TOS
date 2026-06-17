@@ -8,6 +8,7 @@ import { fallbackAppVersion } from '../../shared/version/appVersion'
 
 const defaultTosDesktopDownloadPath = 'https://ai.tomwell.net:56130/tos/tos-desktop/download'
 const defaultTosDesktopFullDownloadPath = 'https://ai.tomwell.net:56130/tos/tos-desktop-full/download'
+const defaultServerBackendBaseUrl = 'https://ai.tomwell.net:56130/tos/desktop-api'
 
 export function hasUpdateBridge(): boolean {
   return Boolean(window.electronAPI?.getUpdateStatus)
@@ -30,7 +31,7 @@ export async function getAppVersionInfo(): Promise<AppVersionInfo> {
  */
 export async function getBackendRuntimeVersion(): Promise<string> {
   try {
-    const backendBaseUrl = await getBackendBaseUrl()
+    const backendBaseUrl = await getVersionBackendBaseUrl()
     const response = await fetch(`${backendBaseUrl}/`)
 
     if (!response.ok) {
@@ -172,7 +173,7 @@ async function buildUnsupportedStatus(): Promise<UpdateStatus> {
 
 async function readBrowserAppVersion(): Promise<string> {
   try {
-    const backendBaseUrl = await getBackendBaseUrl()
+    const backendBaseUrl = await getVersionBackendBaseUrl()
     const response = await fetch(`${backendBaseUrl}/`)
 
     if (!response.ok) {
@@ -186,4 +187,15 @@ async function readBrowserAppVersion(): Promise<string> {
   } catch (_error) {
     return fallbackAppVersion
   }
+}
+
+async function getVersionBackendBaseUrl(): Promise<string> {
+  if (window.electronAPI?.startBackendServer || window.electronAPI?.getBackendUrl) {
+    return getBackendBaseUrl()
+  }
+
+  const configuredUrl = import.meta.env.VITE_BACKEND_URL
+  return typeof configuredUrl === 'string' && configuredUrl.trim()
+    ? configuredUrl.trim().replace(/\/$/, '')
+    : defaultServerBackendBaseUrl
 }
