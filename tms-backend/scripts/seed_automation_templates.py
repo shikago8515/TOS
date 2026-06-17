@@ -25,14 +25,10 @@ AUTOMATION_TEMPLATES: list[dict[str, Any]] = [
     {
         "module_id": "shipping-automation",
         "template_key": "default",
-        "display_name": "Shipping Automation Excel Template",
-        "filename": "shipping-automation-template.xlsx",
-        "headers": ["PO No", "Change Equipment ID", "Issue Date", "Invoice Number"],
-        "sample": ["4500000000", "CONT1234567", "2026-06-30", "INV-0001"],
-        "notes": [
-            "PO No is required.",
-            "Change Equipment ID, Issue Date, and Invoice Number are applied by the automation flow.",
-        ],
+        "display_name": "万代 Shipping 自动化 Excel 模板",
+        "filename": "万代-shipping-自动化模板.xlsx",
+        "source_path": "templates/automation/wandai-shipping-automation-template.xlsx",
+        "content_type": CONTENT_TYPE,
     },
     {
         "module_id": "xinlongtai-shipping-automation",

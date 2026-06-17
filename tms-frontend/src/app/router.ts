@@ -75,7 +75,7 @@ const scenarioRoutes: RouteRecordRaw[] = [
     name: 'web-automation-scenario-shipping-automation',
     component: ShippingAutomationPage,
     meta: {
-      title: 'shipping 自动化',
+      title: '万代shipping 自动化',
     },
   },
   {
@@ -91,7 +91,7 @@ const scenarioRoutes: RouteRecordRaw[] = [
     name: 'web-automation-scenario-shipping-automation-2',
     component: ShippingAutomation2Page,
     meta: {
-      title: 'shipping 2 自动化',
+      title: 'released Bulk 自动化',
     },
   },
   {

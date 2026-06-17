@@ -62,7 +62,7 @@
               <div class="sa-card__hd-ico"><AppIcon name="play-circle" /></div>
               <div class="sa-card__hd-info">
                 <strong>{{ text('登录并打开 Shipment Scan') }}</strong>
-                <small>{{ text('上传 PO No Excel 执行批量录入') }}</small>
+                <small>{{ text('上传万代 PO No Excel 执行批量录入') }}</small>
               </div>
               <span v-if="executorHealth?.ok" class="sa-chip sa-chip--ok">{{ text('就绪') }}</span>
               <span v-else class="sa-chip sa-chip--warn">{{ text('等待执行器') }}</span>
@@ -135,7 +135,7 @@
             <div class="sa-card__ft">
               <button class="sa-btn sa-btn--execute" :disabled="!canRunShippingAutomation" @click="runShipping">
                 <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'sa-spin': sending }" />
-                {{ sending ? text('执行中...') : text('上传 Excel 并执行 Shipping') }}
+                {{ sending ? text('执行中...') : text('上传万代 Excel 并执行 Shipping') }}
               </button>
             </div>
 
@@ -293,7 +293,7 @@ const steps = [
   { title: '输入账号密码', desc: '使用 Infor Nexus 登录账号密码。' },
   { title: '启动本地执行器', desc: '网页端和 EXE 同套启动器。' },
   { title: '打开 Shipment Scan', desc: '进入 Applications > Print-Scan-Ship > Shipment Scan。' },
-  { title: '上传 Excel 执行', desc: '上传 PO No Excel 执行批量录入。' },
+  { title: '上传 Excel 执行', desc: '上传万代 PO No Excel 执行批量录入。' },
 ]
 
 const healthRaw = computed(() => executorHealth.value ? JSON.stringify(executorHealth.value, null, 2) : '{}')
@@ -316,7 +316,7 @@ const messageIconName = computed(() => { if (messageTone.value === 'success') re
 onMounted(() => { void initializeScenario() })
 
 async function initializeScenario(): Promise<void> {
-  statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行 Shipping。'
+  statusLabel.value = '待命'; statusText.value = '等待上传万代 Excel 并执行 Shipping。'
   await refreshAutomationTemplates(); await refreshExecutorCredentials(); await refreshExecutorState(true)
   if (electronSupported && activeApp.value?.available && !activeApp.value.running) await startActiveApp(true)
 }

@@ -380,16 +380,24 @@ const staticTextTranslations: Record<string, string> = {
   没有匹配的入口: 'No matching entries',
   请调整搜索条件: 'Adjust the search terms',
   shipping自动化: 'Shipping Automation',
+  '万代shipping 自动化': 'Wandai Shipping Automation',
   'shipping 2 自动化': 'Shipping 2 Automation',
+  'released Bulk 自动化': 'released Bulk Automation',
   'n8n + Excel 驱动可见浏览器': 'n8n + Excel drives a visible browser',
   '上传 Excel 后由 n8n webhook 回调本机执行器，启动 Playwright 可见浏览器完成 Microsoft Login 与 SAP BTP 操作。':
     'After Excel upload, the n8n webhook calls the local executor and starts a visible Playwright browser for Microsoft Login and SAP BTP.',
   'Infor Nexus 运输业务自动化': 'Infor Nexus shipping automation',
+  'Infor Nexus 万代运输业务自动化': 'Infor Nexus Wandai shipping automation',
   '进入 https://network.infornexus.com，后续承接本地直连浏览器自动化链路。':
     'Open https://network.infornexus.com, then continue through the local direct browser automation flow.',
+  '进入 https://network.infornexus.com，后续承接万代本地直连浏览器自动化链路。':
+    'Open https://network.infornexus.com, then continue through the Wandai local direct browser automation flow.',
   'Infor Nexus 登录与页面预备流程': 'Infor Nexus login and page preparation flow',
+  'Infor Nexus released Bulk 自动化流程': 'Infor Nexus released Bulk automation flow',
   '先登录 Infor Nexus 并进入站点，后续页面操作会继续在这个独立场景里扩展。':
     'Log in to Infor Nexus and enter the site first; later page actions will expand in this dedicated scenario.',
+  '先登录 Infor Nexus 并进入 released Bulk 场景，后续页面操作会继续在这个独立场景里扩展。':
+    'Log in to Infor Nexus and enter the released Bulk scenario first; later page actions will expand in this dedicated scenario.',
   'Excel 第二列 ID 自动执行': 'Auto-run IDs from the second Excel column',
   '上传 Excel 后启动可视浏览器，读取第二列 10 位 ID 并在 Infor Nexus 自动搜索、勾选和添加。':
     'Upload Excel, launch a visible browser, read 10-digit IDs from the second column, then search, select, and add them in Infor Nexus.',
@@ -495,10 +503,14 @@ const staticTextTranslations: Record<string, string> = {
     'The local executor logs in to Infor Nexus and opens the Shipment Scan dialog automatically.',
   '请把 10 位 ID 放在第二列': 'Place 10-digit IDs in the second column',
   '请包含 PO No 列': 'Include the PO No column',
+  '上传万代 PO No Excel 执行批量录入': 'Upload Wandai PO No Excel for batch entry',
+  '上传万代 PO No Excel 执行批量录入。': 'Upload Wandai PO No Excel for batch entry.',
   上传Excel并执行自动搜索添加: 'Upload Excel and Run Auto Search/Add',
   '上传 Excel 并执行自动搜索添加': 'Upload Excel and Run Auto Search/Add',
   上传Excel并执行Shipping: 'Upload Excel and Run Shipping',
   '上传 Excel 并执行 Shipping': 'Upload Excel and Run Shipping',
+  '上传万代 Excel 并执行 Shipping': 'Upload Wandai Excel and Run Shipping',
+  '等待上传万代 Excel 并执行 Shipping。': 'Waiting for Wandai Excel upload and Shipping run.',
   输入账号密码: 'Enter Username and Password',
   使用当前页面填写InforNexus登录凭据: 'Enter Infor Nexus login credentials on this page.',
   '使用当前页面填写 Infor Nexus 登录凭据。': 'Enter Infor Nexus login credentials on this page.',

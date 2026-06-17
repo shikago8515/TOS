@@ -48,6 +48,18 @@ class AutomationStorageTests(unittest.TestCase):
         self.assertEqual(template["filename"], "新龙泰-shipping-自动化模板.XLS")
         self.assertGreater(len(content), 0)
 
+    def test_wandai_shipping_template_is_registered_from_source_file(self):
+        template = next(
+            item for item in AUTOMATION_TEMPLATES
+            if item["module_id"] == "shipping-automation"
+        )
+
+        content = read_template_content(template)
+
+        self.assertEqual(template["filename"], "万代-shipping-自动化模板.xlsx")
+        self.assertEqual(template["display_name"], "万代 Shipping 自动化 Excel 模板")
+        self.assertGreater(len(content), 0)
+
     def test_template_download_header_supports_chinese_filename(self):
         header = _attachment_content_disposition("新龙泰-shipping-自动化模板.XLS")
 
