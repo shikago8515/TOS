@@ -1004,6 +1004,11 @@ const staticTextTranslations: Record<string, string> = {
     'Internal reconciliation now appends missing rows to the open-item sheet instead of backfilling existing rows, avoiding accidental overwrites.',
   'Work Sales 调整为“BULK Sales 导出表 + TURNOVER 目标表”的追加流程。':
     'Work Sales now uses a BULK Sales export plus a TURNOVER target workbook for the append workflow.',
+  'Work Sales 调整为从 BULK Sales 导出表重建 TURNOVER Turnover Details 明细。':
+    'Work Sales now rebuilds TURNOVER Turnover Details from the BULK Sales export.',
+  'Work Sales 改为从 BULK Sales 导出表重建 TURNOVER 的 Turnover Details 明细，目标表旧明细会先清空再按源行写入。':
+    'Work Sales now rebuilds TURNOVER Turnover Details from the BULK Sales export, clearing old target rows before writing source rows.',
+  '重建 Work Sales 明细': 'Rebuild Work Sales Details',
   '文件上传支持拖拽追加多文件，拖拽状态更稳定。':
     'File upload now supports drag-and-drop appending for multiple files with more stable drag state handling.',
   '修复 TMS 财务追加时重复识别、格式复制、公式平移和小计范围更新不稳定的问题。':
@@ -1021,14 +1026,23 @@ const staticTextTranslations: Record<string, string> = {
     'Sample/Bulk Source Files -> Append to Internal Reconciliation Workbook',
   'BULK Sales 导出表 → TURNOVER Turnover Details 尾部追加':
     'BULK Sales Export -> Append to TURNOVER Turnover Details',
+  'BULK Sales 导出表 → 写入 TURNOVER Turnover Details':
+    'BULK Sales Export -> Fill TURNOVER Turnover Details',
   追加进度: 'Append Progress',
+  写入进度: 'Fill Progress',
+  开始写入: 'Start Fill',
   '追加中...': 'Appending...',
+  '写入中...': 'Filling...',
   'BULK Sales 导出表': 'BULK Sales Export',
   '上传从 iPlex 导出的 bulk sales 表，系统会读取对应列追加到 TURNOVER':
     'Upload the bulk sales export from iPlex; the system reads matching columns and appends them to TURNOVER.',
+  '上传从 iPlex 导出的 bulk sales 表，系统会读取对应列写入 TURNOVER':
+    'Upload the bulk sales export from iPlex; the system reads matching columns and fills TURNOVER.',
   'TURNOVER 目标表': 'TURNOVER Target Workbook',
   '上传要追加 Turnover Details 明细的 TURNOVER 工作簿':
     'Upload the TURNOVER workbook that will receive Turnover Details rows.',
+  '上传要重建 Turnover Details 明细的 TURNOVER 工作簿':
+    'Upload the TURNOVER workbook whose Turnover Details will be rebuilt.',
   'Sample/Bulk 来源文件': 'Sample/Bulk Source Files',
   可一次上传多个合并Sample合并BULK工作簿按上传顺序追加缺失行:
     'Upload multiple merged Sample and merged BULK workbooks; missing rows are appended in upload order.',
@@ -1045,6 +1059,8 @@ const staticTextTranslations: Record<string, string> = {
   内销对账表数据提取: 'Internal Reconciliation Data Extraction',
   WorkSales数据追加: 'Work Sales Data Append',
   'Work Sales 数据追加': 'Work Sales Data Append',
+  WorkSales数据写入: 'Work Sales Data Fill',
+  'Work Sales 数据写入': 'Work Sales Data Fill',
   来源提取行: 'Extracted Source Rows',
   'Sample 行': 'Sample Rows',
   'Bulk 行': 'Bulk Rows',
@@ -1058,8 +1074,12 @@ const staticTextTranslations: Record<string, string> = {
   'Sales 含税合计': 'Sales Total With Tax',
   诊断项: 'Diagnostics',
   源行: 'Source Rows',
+  写入行: 'Written Rows',
   'Sales 追加': 'Sales Appended',
   'Purchase 追加': 'Purchase Appended',
+  'Sales 写入': 'Sales Written',
+  'Purchase 写入': 'Purchase Written',
+  清空旧行: 'Cleared Rows',
   Infornexus子应用: 'Infornexus Sub-Application',
   'Infornexus 子应用': 'Infornexus Sub-Application',
   当前运行环境不支持外部子应用管理:

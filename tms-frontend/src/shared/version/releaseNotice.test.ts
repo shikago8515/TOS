@@ -96,9 +96,9 @@ describe('releaseNotice', () => {
 
   it('keeps bundled release notes scoped to the current version changes', () => {
     expect(releaseNotes.added).toEqual([])
-    expect(releaseNotes.improved).toEqual([
-      '收口 Electron 外链打开 allowlist，默认不再使用 GitHub 作为桌面更新源，外部网页和手动下载只允许明确可信的 HTTPS 地址。',
+    expect(releaseNotes.improved).toEqual([])
+    expect(releaseNotes.fixed).toEqual([
+      '前端请求业务接口前会检查本地后端版本，发现后端仍是旧版本时直接提示重启，避免把后端未更新误判为业务处理失败。',
     ])
-    expect(releaseNotes.fixed).toEqual([])
   })
 })

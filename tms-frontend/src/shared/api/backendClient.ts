@@ -1,3 +1,5 @@
+import { fallbackAppVersion } from '../version/appVersion'
+
 export interface UploadRequestOptions {
   path: string
   formData: FormData
@@ -16,8 +18,9 @@ export interface ResponseMessageContext {
 }
 
 const backendApiNotFoundMessage = '当前后端版本缺少此接口，请重启 TOS 或等待后端切换完成'
-const backendConnectionErrorMessage = '无法连接后端服务'
-const serverBackendUrl = 'https://ai.tomwell.net:56130/tos/desktop-api'
+const backendConnectionErrorMessage = '无法连接后端服务，请确认本地后端已启动并已重启到当前版本。'
+const backendVersionMismatchPrefix = '当前后端版本未更新'
+const localBackendUrl = 'http://127.0.0.1:8000'
 
 let backendStartPromise: Promise<string | undefined> | null = null
 
@@ -48,7 +51,7 @@ function readBrowserBackendUrl(): string {
     return '/tos/desktop-api'
   }
 
-  return serverBackendUrl
+  return localBackendUrl
 }
 
 async function ensureBackendReady(): Promise<string | undefined> {
@@ -78,7 +81,8 @@ export async function postFormData<TResponse>({
   onProgress,
 }: UploadRequestOptions): Promise<TResponse> {
   const baseUrl = await getBackendBaseUrl()
-  const url = `${baseUrl}${path}`
+  await ensureBackendRuntimeVersion(baseUrl)
+  const url = buildBackendUrl(baseUrl, path)
 
   return new Promise<TResponse>((resolve, reject) => {
     const request = new XMLHttpRequest()
@@ -117,7 +121,7 @@ export async function postFormData<TResponse>({
 
 export async function buildBackendDownloadUrl(path: string): Promise<string> {
   const baseUrl = await getBackendBaseUrl()
-  return `${baseUrl}${path}`
+  return buildBackendUrl(baseUrl, path)
 }
 
 export async function requestBackendJson<TResponse>({
@@ -126,6 +130,7 @@ export async function requestBackendJson<TResponse>({
   body,
 }: JsonRequestOptions): Promise<TResponse> {
   const baseUrl = await getBackendBaseUrl()
+  await ensureBackendRuntimeVersion(baseUrl)
   const headers: Record<string, string> = {}
   let requestBody: string | undefined
 
@@ -136,7 +141,7 @@ export async function requestBackendJson<TResponse>({
 
   let response: Response
   try {
-    response = await fetch(`${baseUrl}${path}`, {
+    response = await fetch(buildBackendUrl(baseUrl, path), {
       method,
       headers,
       body: requestBody,
@@ -152,6 +157,29 @@ export async function requestBackendJson<TResponse>({
   }
 
   return data
+}
+
+export async function ensureBackendRuntimeVersion(baseUrl?: string): Promise<void> {
+  const backendBaseUrl = baseUrl ?? await getBackendBaseUrl()
+  const backendVersion = await readBackendRuntimeVersion(backendBaseUrl)
+  const frontendVersion = normalizeVersion(fallbackAppVersion)
+
+  if (!backendVersion || backendVersion === frontendVersion) {
+    return
+  }
+
+  throw new Error(buildBackendVersionMismatchMessage(backendVersion, frontendVersion))
+}
+
+export function buildBackendVersionMismatchMessage(
+  backendVersion: string,
+  frontendVersion = fallbackAppVersion,
+): string {
+  return `${backendVersionMismatchPrefix}：后端为 ${backendVersion}，前端为 ${frontendVersion}，请重启本地后端。`
+}
+
+export function isBackendVersionMismatchMessage(message: string): boolean {
+  return message.includes(backendVersionMismatchPrefix)
 }
 
 export function readErrorMessage(error: unknown, fallback: string): string {
@@ -205,6 +233,42 @@ function isApiNotFound(data: unknown, context: ResponseMessageContext): boolean 
   }
 
   return (data as { detail?: unknown }).detail === 'Not Found'
+}
+
+function buildBackendUrl(baseUrl: string, path: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  return `${baseUrl.replace(/\/$/, '')}${normalizedPath}`
+}
+
+async function readBackendRuntimeVersion(baseUrl: string): Promise<string | undefined> {
+  let response: Response
+  try {
+    response = await fetch(buildBackendUrl(baseUrl, '/'), { method: 'GET' })
+  } catch (_error) {
+    throw new Error(backendConnectionErrorMessage)
+  }
+
+  if (!response.ok) {
+    return undefined
+  }
+
+  const text = await response.text()
+  if (!text) {
+    return undefined
+  }
+
+  try {
+    const payload = JSON.parse(text) as { version?: unknown }
+    return typeof payload.version === 'string'
+      ? normalizeVersion(payload.version)
+      : undefined
+  } catch (_error) {
+    return undefined
+  }
+}
+
+function normalizeVersion(version: string): string {
+  return version.trim().replace(/^v/i, '')
 }
 
 function formatValidationDetail(entry: unknown): string | undefined {

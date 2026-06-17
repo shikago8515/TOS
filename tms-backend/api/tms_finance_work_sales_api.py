@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-TMS 财务 - Work Sales 数据提取 API Router
+TMS 财务 - Work Sales 数据写入 API Router
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from utils.file_utils import (
 
 router = APIRouter(
     prefix="/tms-finance/work-sales",
-    tags=["TMS财务-Work Sales数据提取"],
+    tags=["TMS财务-Work Sales数据写入"],
 )
 tms_finance_work_sales_module = TmsFinanceWorkSalesModule()
 logger = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ async def process_work_sales(
     iplix_file: Optional[UploadFile] = File(None),
     output_dir: Optional[str] = Form(None),
 ):
-    """处理 Work Sales 数据追加。"""
+    """处理 Work Sales 数据写入。"""
 
     work_dir = os.path.join(UPLOAD_DIR, f"tms_finance_work_sales_{uuid4().hex}")
     os.makedirs(work_dir, exist_ok=True)
@@ -125,6 +125,10 @@ async def process_work_sales(
             "output_file": output_filename,
             "extracted_count": result["extracted_count"],
             "source_row_count": result["source_row_count"],
+            "sales_written_count": result["sales_written_count"],
+            "purchase_written_count": result["purchase_written_count"],
+            "cleared_sales_count": result["cleared_sales_count"],
+            "cleared_purchase_count": result["cleared_purchase_count"],
             "sales_appended_count": result["sales_appended_count"],
             "purchase_appended_count": result["purchase_appended_count"],
             "duplicate_count": result["duplicate_count"],
@@ -143,7 +147,7 @@ async def process_work_sales(
 
 @router.get("/download/{filename}")
 async def download_work_sales_result(filename: str):
-    """下载 Work Sales 数据提取结果。"""
+    """下载 Work Sales 数据写入结果。"""
 
     file_path = _download_path(filename)
     if not os.path.exists(file_path):

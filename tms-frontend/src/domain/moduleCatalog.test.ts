@@ -79,8 +79,8 @@ describe('moduleCatalog', () => {
     expect(getLocalizedModuleTitle(internalReconciliationModule, 'en-US')).toBe(
       'Internal Reconciliation Data Extraction',
     )
-    expect(getLocalizedModuleTitle(workSalesModule, 'zh-CN')).toBe('Work Sales 数据追加')
-    expect(getLocalizedModuleTitle(workSalesModule, 'en-US')).toBe('Work Sales Data Append')
+    expect(getLocalizedModuleTitle(workSalesModule, 'zh-CN')).toBe('Work Sales 数据写入')
+    expect(getLocalizedModuleTitle(workSalesModule, 'en-US')).toBe('Work Sales Data Fill')
     expect(getLocalizedModuleTitle(workSalesModule, 'en-US')).not.toBe(workSalesModule.navLabelEn)
   })
 

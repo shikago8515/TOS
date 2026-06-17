@@ -51,7 +51,7 @@ npm run check:backend
 - Jason 的 canonical API prefix 是 `/api/jason/pdf-reorder/*`。
 - 旧 `/api/it-invoice-pdf-reorder/*` 和 legacy `/api/preview-invoice`、`/api/preview-po`、`/api/extract-numbers`、`/api/process` 继续保留兼容。
 - 系统配置下载接口包含自动化助手、TOS 轻量在线安装器、完整安装包、payload 和 PO 自动下载模板下载路径，例如 `/api/system/config/tos-desktop/download`、`/api/system/config/tos-desktop-full/download` 与 `/api/system/config/po-auto-download/template/download`。
-- `/api/release-updates` 提供版本更新记录读取和部署同步写入，默认 seed 需要与 `tms-frontend/src/shared/version/releaseHistory.json` 保持一致。
+- `/api/release-updates` 提供版本更新记录读取和部署同步写入；服务器 MySQL 是主源，本地默认 seed 需要通过 `npm run release:updates:pull` 与 `tms-frontend/src/shared/version/releaseHistory.json` 保持一致。
 - 自动化凭据接口 `/api/automation/credentials/{automation_id}` 负责保存 Infor Nexus 等登录凭据；`po-auto-download/default` 使用同一张 `automation_credentials` 表，前端只回显账号，执行时通过 resolve 接口取加密密码。
 
 ## Engineering Notes
@@ -59,4 +59,4 @@ npm run check:backend
 - 保持现有 FastAPI path、method、form field、下载 URL 和 JSON 字段兼容，除非任务明确要求 breaking change。
 - Jason 模块已先行补充 Pydantic response models；其他高频模块按工程化路线图逐步 schema 化。
 - 文件上传和下载路径必须继续使用现有 basename、扩展名和目录边界校验工具，避免路径遍历。
-- `allow_origins=["*"]` + `allow_credentials=True` 仍是已知本地场景风险；收紧 CORS 时必须单独评估 Electron 和浏览器模式影响。
+- CORS 默认只允许本地前端来源 `http://127.0.0.1:5174` 和 `http://localhost:5174`；服务器或特殊部署通过 `TMS_CORS_ALLOW_ORIGINS` 显式配置允许来源。不要恢复 `allow_origins=["*"]` + `allow_credentials=True`。

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-TMS 财务 - Work Sales 数据追加模块。
+TMS 财务 - Work Sales 数据写入模块。
 """
 
 from __future__ import annotations
@@ -71,12 +71,18 @@ class TurnoverSection:
 
 
 class TmsFinanceWorkSalesModule:
-    """从 iPlex BULK Sales 导出表向 TURNOVER 的 Turnover Details 追加缺失行。"""
+    """从 iPlex BULK Sales 导出表重建 TURNOVER 的 Turnover Details 明细。"""
 
     DETAIL_SHEET_NAME = "Turnover Details"
     SALES_SECTION = "sales"
     PURCHASE_SECTION = "purchase"
     OUTPUT_PREFIX = "tms_finance_work_sales"
+    DEFAULT_MERCHANDISER = "Caroline"
+    SALES_VAS_RATE = "0.483581"
+    VAT_RATE = "0.13"
+    SALES_STATUS = "Issued VAT inv."
+    PURCHASE_STATUS = "received VAT inv."
+    SALES_TRAILING_ROWS = 4
 
     def process_files(
         self,
@@ -103,43 +109,10 @@ class TmsFinanceWorkSalesModule:
             if self.DETAIL_SHEET_NAME not in workbook.sheetnames:
                 raise ValueError("TURNOVER 文件缺少 Turnover Details Sheet")
             ws = workbook[self.DETAIL_SHEET_NAME]
-            sales_section = self._find_turnover_section(ws, self.SALES_SECTION)
-            purchase_section = self._find_turnover_section(ws, self.PURCHASE_SECTION)
-
-            existing_sales = self._build_existing_fingerprints(ws, sales_section)
-            existing_purchase = self._build_existing_fingerprints(ws, purchase_section)
-            seen_sales = set(existing_sales)
-            seen_purchase = set(existing_purchase)
-            sales_rows_to_append: List[BulkSalesRow] = []
-            purchase_rows_to_append: List[BulkSalesRow] = []
-            duplicate_count = 0
-
-            for row in source_rows:
-                sales_fingerprint = self._build_source_fingerprint(row, self.SALES_SECTION)
-                purchase_fingerprint = self._build_source_fingerprint(row, self.PURCHASE_SECTION)
-                sales_duplicate = sales_fingerprint in seen_sales
-                purchase_duplicate = purchase_fingerprint in seen_purchase
-                if sales_duplicate and purchase_duplicate:
-                    duplicate_count += 1
-                    continue
-                if not sales_duplicate:
-                    sales_rows_to_append.append(row)
-                    seen_sales.add(sales_fingerprint)
-                if not purchase_duplicate:
-                    purchase_rows_to_append.append(row)
-                    seen_purchase.add(purchase_fingerprint)
-
-            if sales_rows_to_append:
-                self._append_section_rows(ws, sales_section, sales_rows_to_append, self.SALES_SECTION)
-            sales_section = self._find_turnover_section(ws, self.SALES_SECTION)
-            purchase_section = self._find_turnover_section(ws, self.PURCHASE_SECTION)
-            if purchase_rows_to_append:
-                self._append_section_rows(ws, purchase_section, purchase_rows_to_append, self.PURCHASE_SECTION)
-
-            sales_section = self._find_turnover_section(ws, self.SALES_SECTION)
-            purchase_section = self._find_turnover_section(ws, self.PURCHASE_SECTION)
-            self._rewrite_subtotal_formulas(ws, sales_section)
-            self._rewrite_subtotal_formulas(ws, purchase_section)
+            cleared_sales_count, cleared_purchase_count = self._rebuild_turnover_details(
+                ws,
+                source_rows,
+            )
 
             output_filename = f"{self.OUTPUT_PREFIX}_{uuid4().hex}.xlsx"
             output_path = os.path.join(output_root, output_filename)
@@ -147,39 +120,53 @@ class TmsFinanceWorkSalesModule:
         finally:
             workbook.close()
 
-        sales_appended_count = len(sales_rows_to_append)
-        purchase_appended_count = len(purchase_rows_to_append)
+        sales_written_count = len(source_rows)
+        purchase_written_count = len(source_rows)
+        duplicate_count = 0
         return {
             "success": True,
             "message": (
-                "Work Sales 数据追加完成："
-                f"Sales 追加 {sales_appended_count} 行，"
-                f"Purchase 追加 {purchase_appended_count} 行。"
+                "Work Sales 数据写入完成："
+                f"Sales 写入 {sales_written_count} 行，"
+                f"Purchase 写入 {purchase_written_count} 行。"
             ),
             "output_path": output_path,
             "output_file": output_filename,
             "source_row_count": len(source_rows),
             "extracted_count": len(source_rows),
-            "sales_appended_count": sales_appended_count,
-            "purchase_appended_count": purchase_appended_count,
+            "sales_written_count": sales_written_count,
+            "purchase_written_count": purchase_written_count,
+            "cleared_sales_count": cleared_sales_count,
+            "cleared_purchase_count": cleared_purchase_count,
+            "sales_appended_count": sales_written_count,
+            "purchase_appended_count": purchase_written_count,
             "duplicate_count": duplicate_count,
             "diagnostic_count": 0,
             "diagnostics": [],
             "totals": {
-                "sales_appended_count": sales_appended_count,
-                "purchase_appended_count": purchase_appended_count,
+                "sales_written_count": sales_written_count,
+                "purchase_written_count": purchase_written_count,
+                "cleared_sales_count": cleared_sales_count,
+                "cleared_purchase_count": cleared_purchase_count,
+                "sales_appended_count": sales_written_count,
+                "purchase_appended_count": purchase_written_count,
             },
             "source_summary": {
                 "source_rows": len(source_rows),
-                "sales_rows": sales_appended_count,
-                "purchase_rows": purchase_appended_count,
+                "sales_rows": sales_written_count,
+                "purchase_rows": purchase_written_count,
+                "sales_written_rows": sales_written_count,
+                "purchase_written_rows": purchase_written_count,
+                "cleared_sales_rows": cleared_sales_count,
+                "cleared_purchase_rows": cleared_purchase_count,
                 "duplicate_rows": duplicate_count,
             },
             "logs": [
                 f"BULK Sales 读取 {len(source_rows)} 行",
-                f"Sales 明细追加 {sales_appended_count} 行",
-                f"Purchase 明细追加 {purchase_appended_count} 行",
-                f"完全重复跳过 {duplicate_count} 行",
+                f"清空旧 Sales 明细 {cleared_sales_count} 行",
+                f"清空旧 Purchase 明细 {cleared_purchase_count} 行",
+                f"Sales 明细写入 {sales_written_count} 行",
+                f"Purchase 明细写入 {purchase_written_count} 行",
             ],
         }
 
@@ -362,14 +349,27 @@ class TmsFinanceWorkSalesModule:
         data_start_row: int,
         columns: TurnoverColumns,
     ) -> int:
-        for row in range(data_start_row, ws.max_row + 1):
+        subtotal_row = self._find_subtotal_row_or_none(ws, data_start_row, columns)
+        if subtotal_row is None:
+            raise ValueError("Turnover Details 缺少明细小计行")
+        return subtotal_row
+
+    def _find_subtotal_row_or_none(
+        self,
+        ws: Worksheet,
+        data_start_row: int,
+        columns: TurnoverColumns,
+        stop_row: Optional[int] = None,
+    ) -> Optional[int]:
+        end_row = min(stop_row or ws.max_row, ws.max_row)
+        for row in range(data_start_row, end_row + 1):
             quantity_value = ws.cell(row, columns.quantity).value
             style_value = self._clean_text(ws.cell(row, columns.style).value)
             if isinstance(quantity_value, str) and quantity_value.upper().startswith("=SUM("):
                 return row
             if not style_value and self._row_has_sum_formula(ws, row):
                 return row
-        raise ValueError("Turnover Details 缺少明细小计行")
+        return None
 
     def _append_section_rows(
         self,
@@ -401,6 +401,7 @@ class TmsFinanceWorkSalesModule:
         ws.cell(row_index, columns.unit_price_exclude_vat).value = item.buyer_unit_price
         ws.cell(row_index, columns.quantity).value = item.quantity
         ws.cell(row_index, columns.total_system_include_vat).value = item.sales_amount_net
+        ws.cell(row_index, columns.merchandiser).value = self.DEFAULT_MERCHANDISER
         ws.cell(row_index, columns.handover_date).value = item.handover_date
         ws.cell(row_index, columns.invoice).value = item.invoice
 
@@ -415,8 +416,239 @@ class TmsFinanceWorkSalesModule:
         ws.cell(row_index, columns.unit_price_exclude_vat).value = item.factory_unit_price
         ws.cell(row_index, columns.quantity).value = item.quantity
         ws.cell(row_index, columns.total_system_include_vat).value = item.purchase_amount
+        ws.cell(row_index, columns.merchandiser).value = self.DEFAULT_MERCHANDISER
         ws.cell(row_index, columns.handover_date).value = item.handover_date
         ws.cell(row_index, columns.invoice).value = item.invoice
+
+    def _rebuild_turnover_details(
+        self,
+        ws: Worksheet,
+        source_rows: List[BulkSalesRow],
+    ) -> Tuple[int, int]:
+        sales_header_row = self._find_sales_header_row(ws)
+        purchase_header_row = self._find_purchase_header_row(ws)
+        sales_columns = self._build_turnover_columns(ws, sales_header_row, self.SALES_SECTION)
+        purchase_columns = self._build_turnover_columns(
+            ws,
+            purchase_header_row,
+            self.PURCHASE_SECTION,
+        )
+        purchase_title_row = self._find_purchase_title_row(ws, purchase_header_row)
+
+        sales_start_row = sales_header_row + 1
+        existing_sales_subtotal = self._find_subtotal_row_or_none(
+            ws,
+            sales_start_row,
+            sales_columns,
+            stop_row=purchase_title_row - 1,
+        )
+        sales_data_end_row = (existing_sales_subtotal or purchase_title_row) - 1
+        cleared_sales_count = self._count_existing_detail_rows(
+            ws,
+            sales_start_row,
+            sales_data_end_row,
+            sales_columns,
+        )
+
+        purchase_start_row = purchase_header_row + 1
+        existing_purchase_subtotal = self._find_subtotal_row_or_none(
+            ws,
+            purchase_start_row,
+            purchase_columns,
+            stop_row=ws.max_row,
+        )
+        purchase_data_end_row = (existing_purchase_subtotal or (ws.max_row + 1)) - 1
+        cleared_purchase_count = self._count_existing_detail_rows(
+            ws,
+            purchase_start_row,
+            purchase_data_end_row,
+            purchase_columns,
+        )
+
+        required_sales_rows = len(source_rows) + self.SALES_TRAILING_ROWS
+        current_sales_rows = purchase_title_row - sales_start_row
+        self._resize_row_region(ws, sales_start_row, current_sales_rows, required_sales_rows)
+
+        sales_header_row = self._find_sales_header_row(ws)
+        purchase_header_row = self._find_purchase_header_row(ws)
+        sales_columns = self._build_turnover_columns(ws, sales_header_row, self.SALES_SECTION)
+        sales_start_row = sales_header_row + 1
+        self._write_sales_block(ws, sales_start_row, source_rows, sales_columns)
+
+        purchase_header_row = self._find_purchase_header_row(ws)
+        purchase_columns = self._build_turnover_columns(
+            ws,
+            purchase_header_row,
+            self.PURCHASE_SECTION,
+        )
+        purchase_start_row = purchase_header_row + 1
+        existing_purchase_subtotal = self._find_subtotal_row_or_none(
+            ws,
+            purchase_start_row,
+            purchase_columns,
+            stop_row=ws.max_row,
+        )
+        current_purchase_rows = (
+            existing_purchase_subtotal - purchase_start_row + 1
+            if existing_purchase_subtotal is not None
+            else max(0, ws.max_row - purchase_start_row + 1)
+        )
+        required_purchase_rows = len(source_rows) + 1
+        self._resize_row_region(
+            ws,
+            purchase_start_row,
+            current_purchase_rows,
+            required_purchase_rows,
+        )
+
+        purchase_header_row = self._find_purchase_header_row(ws)
+        purchase_columns = self._build_turnover_columns(
+            ws,
+            purchase_header_row,
+            self.PURCHASE_SECTION,
+        )
+        self._write_purchase_block(ws, purchase_header_row + 1, source_rows, purchase_columns)
+        return cleared_sales_count, cleared_purchase_count
+
+    def _find_purchase_title_row(self, ws: Worksheet, purchase_header_row: int) -> int:
+        for row in range(purchase_header_row - 1, 0, -1):
+            title = self._clean_text(ws.cell(row, 1).value).upper()
+            if title.startswith("PURCHASE DETAILS"):
+                return row
+        raise ValueError("Turnover Details 缺少 Purchase Details 标题")
+
+    def _count_existing_detail_rows(
+        self,
+        ws: Worksheet,
+        start_row: int,
+        end_row: int,
+        columns: TurnoverColumns,
+    ) -> int:
+        if end_row < start_row:
+            return 0
+        count = 0
+        for row in range(start_row, end_row + 1):
+            style = self._clean_text(ws.cell(row, columns.style).value)
+            invoice = self._clean_text(ws.cell(row, columns.invoice).value)
+            if style or invoice:
+                count += 1
+        return count
+
+    def _resize_row_region(
+        self,
+        ws: Worksheet,
+        start_row: int,
+        current_count: int,
+        required_count: int,
+    ) -> None:
+        if current_count < required_count:
+            ws.insert_rows(start_row + current_count, required_count - current_count)
+        elif current_count > required_count:
+            ws.delete_rows(start_row + required_count, current_count - required_count)
+
+    def _write_sales_block(
+        self,
+        ws: Worksheet,
+        start_row: int,
+        rows: List[BulkSalesRow],
+        columns: TurnoverColumns,
+    ) -> None:
+        template_row = start_row
+        for offset, item in enumerate(rows):
+            target_row = start_row + offset
+            self._prepare_row_for_rebuild(ws, template_row, target_row)
+            self._write_sales_row(ws, target_row, item, columns)
+            self._write_sales_formulas(ws, target_row)
+
+        subtotal_row = start_row + len(rows)
+        self._prepare_row_for_rebuild(ws, template_row, subtotal_row)
+        self._write_subtotal_formulas(ws, subtotal_row, start_row, subtotal_row - 1)
+
+        tax_carry_row = subtotal_row + 1
+        self._prepare_row_for_rebuild(ws, template_row, tax_carry_row)
+        ws.cell(tax_carry_row, 9).value = f"=I{subtotal_row}"
+
+        for row in range(tax_carry_row + 1, tax_carry_row + 3):
+            self._prepare_row_for_rebuild(ws, template_row, row)
+
+    def _write_purchase_block(
+        self,
+        ws: Worksheet,
+        start_row: int,
+        rows: List[BulkSalesRow],
+        columns: TurnoverColumns,
+    ) -> None:
+        template_row = start_row
+        for offset, item in enumerate(rows):
+            target_row = start_row + offset
+            self._prepare_row_for_rebuild(ws, template_row, target_row)
+            self._write_purchase_row(ws, target_row, item, columns)
+            self._write_purchase_formulas(ws, target_row)
+
+        subtotal_row = start_row + len(rows)
+        self._prepare_row_for_rebuild(ws, template_row, subtotal_row)
+        self._write_subtotal_formulas(ws, subtotal_row, start_row, subtotal_row - 1)
+
+    def _write_sales_formulas(self, ws: Worksheet, row_index: int) -> None:
+        ws.cell(row_index, 5).value = f"=ROUND(C{row_index}*D{row_index},2)"
+        ws.cell(row_index, 6).value = f"=ROUND({self.SALES_VAS_RATE}*D{row_index},2)"
+        ws.cell(row_index, 8).value = f"=ROUND(E{row_index}+F{row_index}+G{row_index},2)"
+        ws.cell(row_index, 9).value = f"=ROUND(H{row_index}*{self.VAT_RATE},2)"
+        ws.cell(row_index, 10).value = f"=H{row_index}+I{row_index}"
+        ws.cell(row_index, 11).value = f"=J{row_index}"
+        ws.cell(row_index, 14).value = f"=J{row_index}-L{row_index}"
+        ws.cell(row_index, 15).value = self.SALES_STATUS
+
+    def _write_purchase_formulas(self, ws: Worksheet, row_index: int) -> None:
+        ws.cell(row_index, 5).value = f"=ROUND(C{row_index}*D{row_index},2)"
+        ws.cell(row_index, 7).value = f"=ROUND(E{row_index}*{self.VAT_RATE},2)"
+        ws.cell(row_index, 9).value = f"=E{row_index}+G{row_index}+F{row_index}"
+        ws.cell(row_index, 10).value = f"=L{row_index}+G{row_index}"
+        ws.cell(row_index, 13).value = f"=E{row_index}-L{row_index}"
+        ws.cell(row_index, 14).value = self.PURCHASE_STATUS
+
+    def _write_subtotal_formulas(
+        self,
+        ws: Worksheet,
+        subtotal_row: int,
+        start_row: int,
+        end_row: int,
+    ) -> None:
+        for column in range(4, 15):
+            letter = get_column_letter(column)
+            ws.cell(subtotal_row, column).value = f"=SUM({letter}{start_row}:{letter}{end_row})"
+
+    def _prepare_row_for_rebuild(
+        self,
+        ws: Worksheet,
+        template_row: int,
+        target_row: int,
+    ) -> None:
+        if 1 <= template_row <= ws.max_row and template_row != target_row:
+            self._copy_row_style(ws, template_row, target_row)
+        self._clear_row_values(ws, target_row)
+
+    def _copy_row_style(self, ws: Worksheet, template_row: int, target_row: int) -> None:
+        source_dimension = ws.row_dimensions[template_row]
+        target_dimension = ws.row_dimensions[target_row]
+        target_dimension.height = source_dimension.height
+        target_dimension.hidden = source_dimension.hidden
+        target_dimension.outlineLevel = source_dimension.outlineLevel
+        target_dimension.collapsed = source_dimension.collapsed
+        for column in range(1, ws.max_column + 1):
+            source_cell = ws.cell(template_row, column)
+            target_cell = ws.cell(target_row, column)
+            if source_cell.has_style:
+                target_cell.font = copy(source_cell.font)
+                target_cell.fill = copy(source_cell.fill)
+                target_cell.border = copy(source_cell.border)
+                target_cell.alignment = copy(source_cell.alignment)
+                target_cell.number_format = source_cell.number_format
+                target_cell.protection = copy(source_cell.protection)
+
+    def _clear_row_values(self, ws: Worksheet, row_index: int) -> None:
+        for column in range(1, ws.max_column + 1):
+            ws.cell(row_index, column).value = None
 
     def _build_existing_fingerprints(
         self,

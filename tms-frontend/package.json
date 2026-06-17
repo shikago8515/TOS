@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --mode server --host 127.0.0.1 --port 5174 --strictPort",
+    "dev": "vite --host 127.0.0.1 --port 5174 --strictPort",
     "dev:server": "vite --mode server --host 127.0.0.1 --port 5174 --strictPort",
     "dev:local": "vite --host 127.0.0.1 --port 5174 --strictPort",
     "typecheck": "vue-tsc --noEmit",

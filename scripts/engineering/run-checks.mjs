@@ -20,6 +20,21 @@ const commandGroups = {
       '--test',
       'scripts/engineering/package-server-update.test.mjs',
     ]),
+    command('backend-version-sentinel-test', '.', process.execPath, [
+      '--test',
+      'scripts/engineering/check-backend-version.test.mjs',
+    ]),
+    command('frontend-dev-entrypoints-test', '.', process.execPath, [
+      '--test',
+      'scripts/engineering/frontend-dev-entrypoints.test.mjs',
+    ]),
+    command('frontend-direct-fetch-boundary-test', '.', process.execPath, [
+      '--test',
+      'scripts/engineering/frontend-direct-fetch-boundary.test.mjs',
+    ]),
+    command('release-update-sync-test', '.', pythonBin, [
+      'scripts/release_update_sync_test.py',
+    ]),
   ],
   frontendFull: [
     command('frontend:typecheck', 'tms-frontend', npmBin, ['run', 'typecheck'], npmShell),

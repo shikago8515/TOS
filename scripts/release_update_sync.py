@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -14,6 +15,13 @@ from urllib.request import Request, urlopen
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = WORKSPACE_ROOT / "tms-backend"
+FRONTEND_RELEASE_HISTORY_PATH = Path("tms-frontend/src/shared/version/releaseHistory.json")
+BACKEND_RELEASE_UPDATES_API_PATH = Path("tms-backend/api/release_updates_api.py")
+RELEASE_UPDATE_CACHE_SYNC_TITLE = "chore: 同步版本更新缓存"
+RELEASE_UPDATE_CACHE_SYNC_FILES = {
+    FRONTEND_RELEASE_HISTORY_PATH.as_posix(),
+    BACKEND_RELEASE_UPDATES_API_PATH.as_posix(),
+}
 
 
 def main() -> int:
@@ -21,24 +29,40 @@ def main() -> int:
     target = parser.add_mutually_exclusive_group()
     target.add_argument("--commit", help="Single commit SHA to record.")
     target.add_argument("--range", dest="commit_range", help="Git revision range, for example ORIG_HEAD..HEAD.")
-    parser.add_argument("--limit", type=int, default=1, help="Maximum commits to record when no range is provided.")
+    target.add_argument("--pull", action="store_true", help="Pull records from the server into local fallback caches.")
+    parser.add_argument("--limit", type=int, default=None, help="Maximum commits or server records to read.")
     parser.add_argument("--event", default="manual", help="Source event, for example commit, merge, deploy.")
-    parser.add_argument("--backend-url", default=os.environ.get("TOS_RELEASE_UPDATES_API_URL", ""))
+    parser.add_argument("--backend-url", default="", help="Release updates API URL or backend base URL.")
+    parser.add_argument("--allow-direct-db", action="store_true", help="Allow writing directly to the configured MySQL database.")
     parser.add_argument("--dry-run", action="store_true", help="Print records without writing them.")
     parser.add_argument("--quiet", action="store_true", help="Suppress success output.")
     args = parser.parse_args()
 
     try:
+        backend_url = resolve_release_updates_api_url(args.backend_url)
+        if args.pull:
+            if not backend_url:
+                raise RuntimeError("Missing release updates backend URL; set TOS_RELEASE_UPDATES_API_URL or tms-frontend/.env.server.")
+            records = fetch_release_update_records(backend_url, args.limit or 300)
+            result = sync_release_update_cache(server_records=records, dry_run=args.dry_run)
+            if args.dry_run:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                print(f"Synced {result['recordCount']} release update record(s).")
+            return 0
+
         records = build_release_update_records(args)
         if args.dry_run:
             print(json.dumps(records, ensure_ascii=False, indent=2))
             return 0
 
-        if args.backend_url:
+        if backend_url:
             for record in records:
-                post_record(args.backend_url, record)
-        else:
+                post_record(backend_url, record)
+        elif args.allow_direct_db:
             upsert_records_directly(records)
+        else:
+            raise RuntimeError("Missing release updates backend URL; set TOS_RELEASE_UPDATES_API_URL or tms-frontend/.env.server.")
 
         if not args.quiet:
             print(f"Recorded {len(records)} release update record(s).")
@@ -50,9 +74,190 @@ def main() -> int:
 
 
 def build_release_update_records(args: argparse.Namespace) -> list[dict[str, Any]]:
-    commits = read_commits(args.commit, args.commit_range, args.limit)
+    commits = read_commits(args.commit, args.commit_range, args.limit or 1)
     version = read_app_version()
-    return [build_record(commit, version, args.event) for commit in commits]
+    return [
+        build_record(commit, version, args.event)
+        for commit in commits
+        if not is_release_update_cache_sync_commit(commit)
+    ]
+
+
+def resolve_release_updates_api_url(explicit_url: str | None = "", workspace_root: Path = WORKSPACE_ROOT) -> str:
+    raw_url = (explicit_url or os.environ.get("TOS_RELEASE_UPDATES_API_URL") or "").strip()
+    if not raw_url:
+        raw_url = read_env_server_backend_url(workspace_root)
+    return normalize_release_updates_api_url(raw_url)
+
+
+def read_env_server_backend_url(workspace_root: Path = WORKSPACE_ROOT) -> str:
+    env_server_path = workspace_root / "tms-frontend" / ".env.server"
+    if not env_server_path.exists():
+        return ""
+
+    for line in env_server_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        if key.strip() == "VITE_BACKEND_URL":
+            return value.strip().strip("\"'")
+    return ""
+
+
+def normalize_release_updates_api_url(raw_url: str) -> str:
+    url = str(raw_url or "").strip().rstrip("/")
+    if not url:
+        return ""
+    if url.endswith("/api/release-updates"):
+        return url
+    return f"{url}/api/release-updates"
+
+
+def fetch_release_update_records(api_url: str, limit: int = 300) -> list[dict[str, Any]]:
+    safe_limit = max(1, min(int(limit or 300), 300))
+    separator = "&" if "?" in api_url else "?"
+    request = Request(f"{api_url}{separator}limit={safe_limit}", method="GET")
+    try:
+        with urlopen(request, timeout=20) as response:
+            if response.status >= 300:
+                raise RuntimeError(f"HTTP {response.status}")
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        raise RuntimeError(f"HTTP {exc.code}: {exc.read().decode('utf-8', errors='ignore')}") from exc
+    except URLError as exc:
+        raise RuntimeError(str(exc.reason)) from exc
+
+    records = payload.get("records") if isinstance(payload, dict) else None
+    if not isinstance(records, list):
+        raise RuntimeError("Release updates API returned an invalid records payload.")
+    return records
+
+
+def sync_release_update_cache(
+    *,
+    workspace_root: Path = WORKSPACE_ROOT,
+    server_records: list[dict[str, Any]],
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    local_records = read_local_release_history(workspace_root)
+    merged_records = merge_release_update_records(server_records, local_records)
+
+    if not dry_run:
+        write_local_release_history(workspace_root, merged_records)
+        write_backend_default_records(workspace_root, merged_records)
+
+    return {
+        "recordCount": len(merged_records),
+        "records": merged_records,
+    }
+
+
+def read_local_release_history(workspace_root: Path = WORKSPACE_ROOT) -> list[dict[str, Any]]:
+    history_path = workspace_root / FRONTEND_RELEASE_HISTORY_PATH
+    if not history_path.exists():
+        return []
+    payload = json.loads(history_path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, list) else []
+
+
+def merge_release_update_records(
+    server_records: list[dict[str, Any]],
+    local_records: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    merged: list[tuple[dict[str, str], int]] = []
+    seen_keys: set[str] = set()
+    order = 0
+
+    for source_records in (server_records, local_records):
+        for raw_record in source_records:
+            record = normalize_release_update_record(raw_record)
+            record_key = record["recordKey"]
+            if is_release_update_cache_sync_record(record):
+                order += 1
+                continue
+            if not record_key or record_key in seen_keys:
+                order += 1
+                continue
+            seen_keys.add(record_key)
+            merged.append((record, order))
+            order += 1
+
+    merged.sort(key=lambda item: release_update_sort_key(item[0], item[1]), reverse=True)
+    return [record for record, _order in merged]
+
+
+def normalize_release_update_record(raw_record: dict[str, Any]) -> dict[str, str]:
+    return {
+        "recordKey": str(raw_record.get("recordKey") or raw_record.get("record_key") or "").strip(),
+        "version": str(raw_record.get("version") or "").strip(),
+        "releaseDate": str(raw_record.get("releaseDate") or raw_record.get("release_date") or "").strip(),
+        "category": str(raw_record.get("category") or "improved").strip() or "improved",
+        "pageName": str(raw_record.get("pageName") or raw_record.get("page_name") or "全局通用").strip(),
+        "pagePath": str(raw_record.get("pagePath") or raw_record.get("page_path") or "").strip(),
+        "title": str(raw_record.get("title") or "").strip(),
+        "description": str(raw_record.get("description") or "").strip(),
+    }
+
+
+def is_release_update_cache_sync_record(record: dict[str, str]) -> bool:
+    return (
+        record.get("recordKey", "").startswith("git-")
+        and record.get("title", "").strip() == RELEASE_UPDATE_CACHE_SYNC_TITLE
+    )
+
+
+def release_update_sort_key(record: dict[str, str], order: int) -> tuple[tuple[int, ...], str, int]:
+    return (
+        version_sort_key(record["version"]),
+        record["releaseDate"],
+        -order,
+    )
+
+
+def version_sort_key(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in re.findall(r"\d+", version.lower().removeprefix("v")))
+
+
+def write_local_release_history(workspace_root: Path, records: list[dict[str, str]]) -> None:
+    history_path = workspace_root / FRONTEND_RELEASE_HISTORY_PATH
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    write_text_lf(history_path, f"{json.dumps(records, ensure_ascii=False, indent=2)}\n")
+
+
+def write_backend_default_records(workspace_root: Path, records: list[dict[str, str]]) -> None:
+    api_path = workspace_root / BACKEND_RELEASE_UPDATES_API_PATH
+    content = api_path.read_text(encoding="utf-8")
+    start_marker = "DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = ["
+    end_marker = "\n\n\n@router.get"
+    start = content.index(start_marker)
+    end = content.index(end_marker, start)
+    updated = f"{content[:start]}{build_backend_default_records_source(records)}{content[end:]}"
+    write_text_lf(api_path, updated)
+
+
+def write_text_lf(path: Path, content: str) -> None:
+    with path.open("w", encoding="utf-8", newline="\n") as file:
+        file.write(content)
+
+
+def build_backend_default_records_source(records: list[dict[str, str]]) -> str:
+    lines = ["DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = ["]
+    for record in records:
+        lines.extend([
+            "    _default_record(",
+            f"        {json.dumps(record['recordKey'], ensure_ascii=False)},",
+            f"        {json.dumps(record['version'], ensure_ascii=False)},",
+            f"        {json.dumps(record['releaseDate'], ensure_ascii=False)},",
+            f"        {json.dumps(record['category'], ensure_ascii=False)},",
+            f"        {json.dumps(record['pageName'], ensure_ascii=False)},",
+            f"        {json.dumps(record['pagePath'], ensure_ascii=False)},",
+            f"        {json.dumps(record['title'], ensure_ascii=False)},",
+            f"        {json.dumps(record['description'], ensure_ascii=False)},",
+            "    ),",
+        ])
+    lines.append("]")
+    return "\n".join(lines)
 
 
 def read_commits(commit: str | None, commit_range: str | None, limit: int) -> list[dict[str, str]]:
@@ -97,6 +302,19 @@ def build_record(commit: dict[str, str], version: str, event: str) -> dict[str, 
         "description": description,
         "created_by": f"git:{commit['author'] or 'unknown'}",
     }
+
+
+def is_release_update_cache_sync_commit(commit: dict[str, str]) -> bool:
+    files = {
+        item.replace("\\", "/")
+        for item in commit.get("files", "").splitlines()
+        if item.strip()
+    }
+    return (
+        commit.get("subject", "").strip() == RELEASE_UPDATE_CACHE_SYNC_TITLE
+        and bool(files)
+        and files.issubset(RELEASE_UPDATE_CACHE_SYNC_FILES)
+    )
 
 
 def infer_page(files: list[str]) -> tuple[str, str]:
@@ -200,9 +418,7 @@ def upsert_records_directly(records: list[dict[str, Any]]) -> None:
 
 
 def post_record(base_url: str, record: dict[str, Any]) -> None:
-    url = base_url.rstrip("/")
-    if not url.endswith("/api/release-updates"):
-        url = f"{url}/api/release-updates"
+    url = normalize_release_updates_api_url(base_url)
     payload = {
         "recordKey": record["record_key"],
         "version": record["version"],
@@ -215,7 +431,11 @@ def post_record(base_url: str, record: dict[str, Any]) -> None:
         "createdBy": record["created_by"],
     }
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    request = Request(url, data=data, method="POST", headers={"Content-Type": "application/json"})
+    headers = {"Content-Type": "application/json"}
+    write_token = os.environ.get("TOS_RELEASE_UPDATE_WRITE_TOKEN", "").strip()
+    if write_token:
+        headers["X-Release-Update-Token"] = write_token
+    request = Request(url, data=data, method="POST", headers=headers)
     try:
         with urlopen(request, timeout=15) as response:
             if response.status >= 300:

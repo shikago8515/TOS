@@ -5,6 +5,8 @@ TMS Backend API
 FastAPI Server
 """
 
+import os
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,10 +38,28 @@ app = FastAPI(
     version=APP_VERSION
 )
 
+DEFAULT_CORS_ALLOW_ORIGINS = (
+    "http://127.0.0.1:5174",
+    "http://localhost:5174",
+)
+
+
+def resolve_cors_allow_origins(raw_value: str | None = None) -> list[str]:
+    configured_value = raw_value if raw_value is not None else os.environ.get("TMS_CORS_ALLOW_ORIGINS")
+    if not configured_value:
+        return list(DEFAULT_CORS_ALLOW_ORIGINS)
+
+    return [
+        origin.strip()
+        for origin in configured_value.split(",")
+        if origin.strip()
+    ]
+
+
 # 添加 CORS 中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=resolve_cors_allow_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

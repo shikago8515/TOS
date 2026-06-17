@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ElectronApi } from '../../types/electronApi'
+import { fallbackAppVersion } from '../version/appVersion'
 import {
   buildBackendDownloadUrl,
   getBackendBaseUrl,
+  isBackendVersionMismatchMessage,
+  postFormData,
   readErrorMessage,
   readResponseMessage,
   requestBackendJson,
@@ -40,10 +43,10 @@ describe('backendClient', () => {
     ).resolves.toBe('http://127.0.0.1:8000/api/jane/download/result.xlsx')
   })
 
-  it('uses the server backend URL in local browser mode', async () => {
+  it('uses the IPv4 loopback backend URL in local browser mode', async () => {
     stubWindow()
 
-    await expect(getBackendBaseUrl()).resolves.toBe('https://ai.tomwell.net:56130/tos/desktop-api')
+    await expect(getBackendBaseUrl()).resolves.toBe('http://127.0.0.1:8000')
   })
 
   it('uses the same-origin TOS desktop API backend when the browser app is served under /tos', async () => {
@@ -87,6 +90,52 @@ describe('backendClient', () => {
 
     await expect(
       requestBackendJson({ path }),
-    ).rejects.toThrow('无法连接后端服务')
+    ).rejects.toThrow('无法连接后端服务，请确认本地后端已启动并已重启到当前版本')
+  })
+
+  it('stops JSON requests when the running backend version is stale', async () => {
+    stubWindow()
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: vi.fn().mockResolvedValue('{"version":"0.9.8-beta.3.17"}'),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      requestBackendJson({ path: '/api/release-updates?limit=160' }),
+    ).rejects.toThrow(
+      `当前后端版本未更新：后端为 0.9.8-beta.3.17，前端为 ${fallbackAppVersion}，请重启本地后端。`,
+    )
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops form uploads before XMLHttpRequest when the running backend version is stale', async () => {
+    stubWindow()
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: vi.fn().mockResolvedValue('{"version":"0.9.8-beta.3.17"}'),
+    })
+    const xhrMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('XMLHttpRequest', xhrMock)
+
+    await expect(
+      postFormData({
+        path: '/api/tms-finance/work-sales/process',
+        formData: new FormData(),
+      }),
+    ).rejects.toThrow(
+      `当前后端版本未更新：后端为 0.9.8-beta.3.17，前端为 ${fallbackAppVersion}，请重启本地后端。`,
+    )
+    expect(xhrMock).not.toHaveBeenCalled()
+  })
+
+  it('identifies backend version mismatch messages', () => {
+    expect(
+      isBackendVersionMismatchMessage(
+        `当前后端版本未更新：后端为 0.9.8-beta.3.17，前端为 ${fallbackAppVersion}，请重启本地后端。`,
+      ),
+    ).toBe(true)
+    expect(isBackendVersionMismatchMessage('处理失败，请重试')).toBe(false)
   })
 })

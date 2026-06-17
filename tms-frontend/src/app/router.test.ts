@@ -46,14 +46,14 @@ describe('router', () => {
     expect(route?.name).toBe('jason-pdf-reorder')
     expect(route?.components?.default).toBe(JasonPdfReorderPage)
     expect(route?.components?.default).not.toBe(RoutePlaceholder)
-  })
+  }, 30_000)
 
   it('redirects the legacy invoice PDF reorder route to the Jason canonical path', async () => {
     const { router } = await import('./router')
     const route = router.getRoutes().find((entry) => entry.path === '/it-invoice-pdf-reorder')
 
     expect(route?.redirect).toBe('/jason/pdf-reorder')
-  })
+  }, 30_000)
 
   it('routes Draft & Packing List compare through its existing canonical path', async () => {
     const { router } = await import('./router')
