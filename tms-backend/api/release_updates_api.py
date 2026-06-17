@@ -82,6 +82,16 @@ def _default_record(
 
 DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
     _default_record(
+        "git-b04b31d8534b8d99518dc963a2ab2e2125f51cac",
+        "0.9.8-beta.3.19",
+        "2026-06-17",
+        "fixed",
+        "多个页面",
+        "",
+        "fix: 避免版本记录缓存提交循环写入",
+        "由 Git commit 自动记录：fix: 避免版本记录缓存提交循环写入。涉及文件：.githooks/post-merge、scripts/release_update_sync.py、scripts/release_update_sync_test.py、tms-backend/api/release_updates_api.py、tms-backend/utils/mysql_store.py、tms-frontend/src/shared/version/releaseHistory.json。",
+    ),
+    _default_record(
         "git-b6be8c1c92434a5add09afbadb14a8f189142092",
         "0.9.8-beta.3.19",
         "2026-06-17",
