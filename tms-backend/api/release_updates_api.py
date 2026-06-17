@@ -82,6 +82,16 @@ def _default_record(
 
 DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
     _default_record(
+        "git-7d7f1d9f0082c4711d8fb502e1f3ae9ede23a577",
+        "0.9.8-beta.3.19",
+        "2026-06-17",
+        "improved",
+        "版本更新记录",
+        "/release-updates",
+        "test: 放宽版本记录缓存排序断言",
+        "由 Git commit 自动记录：test: 放宽版本记录缓存排序断言。涉及文件：tms-frontend/src/pages/release-updates/releaseUpdatesApi.test.ts。",
+    ),
+    _default_record(
         "git-f20fec7594149756cb7b6ee80c8c0322e550acb9",
         "0.9.8-beta.3.19",
         "2026-06-17",

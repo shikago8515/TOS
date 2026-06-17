@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "git-7d7f1d9f0082c4711d8fb502e1f3ae9ede23a577",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-17",
+    "category": "improved",
+    "pageName": "版本更新记录",
+    "pagePath": "/release-updates",
+    "title": "test: 放宽版本记录缓存排序断言",
+    "description": "由 Git commit 自动记录：test: 放宽版本记录缓存排序断言。涉及文件：tms-frontend/src/pages/release-updates/releaseUpdatesApi.test.ts。"
+  },
+  {
     "recordKey": "git-f20fec7594149756cb7b6ee80c8c0322e550acb9",
     "version": "0.9.8-beta.3.19",
     "releaseDate": "2026-06-17",
