@@ -98,7 +98,7 @@ describe('releaseNotice', () => {
     expect(releaseNotes.added).toEqual([])
     expect(releaseNotes.improved).toEqual([])
     expect(releaseNotes.fixed).toEqual([
-      '前端请求业务接口前会检查本地后端版本，发现后端仍是旧版本时直接提示重启，避免把后端未更新误判为业务处理失败。',
+      '修复 adidas Materials 网页端启动独立自动化助手时缺少 collector 入口的问题。',
     ])
   })
 })

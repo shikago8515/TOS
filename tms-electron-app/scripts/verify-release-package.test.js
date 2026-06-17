@@ -15,6 +15,7 @@ const requiredUnpackedResourcePaths = [
   'resources/browser-plugins/infornexus-auto-add/manifest.json',
   'resources/browser-plugins/infornexus-auto-add/content.js',
   'resources/browser-plugins/infornexus-auto-add/xlsx.min.js',
+  'resources/automation-launcher/adidas-materials-direct.js',
   'resources/automation-launcher/core.js',
   'resources/automation-launcher/server.js',
   'resources/automation-apps/registry.json',
@@ -99,6 +100,27 @@ test('reports missing runtime resources in an unpacked app directory', () => {
   assert(issues.some((issue) => issue.includes('resources/backend/main.py')))
   assert(issues.some((issue) => issue.includes('resources/backend-runtime/tos-backend/tos-backend.exe')))
   assert(issues.some((issue) => issue.includes('resources/external-apps/infornexus/electron-app.exe')))
+})
+
+test('reports missing adidas Materials launcher bridge in release package', () => {
+  const root = makeTempDir()
+  const appOutDir = path.join(root, 'win-unpacked')
+  const version = '0.9.8-beta.3.19'
+
+  touchRequiredUnpackedResources(appOutDir, version)
+  fs.rmSync(
+    path.join(appOutDir, 'resources/automation-launcher/adidas-materials-direct.js'),
+    { force: true },
+  )
+
+  const issues = collectReleasePackageIssues({
+    distDir: root,
+    appOutDir,
+    expectedVersion: version,
+    skipArtifacts: true,
+  })
+
+  assert(issues.some((issue) => issue.includes('resources/automation-launcher/adidas-materials-direct.js')))
 })
 
 test('reports latest.yml when the referenced installer is missing', () => {

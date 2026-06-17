@@ -47,6 +47,7 @@ const requiredAutomationResources = [
 ]
 
 const requiredAutomationLauncherResources = [
+  'adidas-materials-direct.js',
   'core.js',
   'server.js',
 ]

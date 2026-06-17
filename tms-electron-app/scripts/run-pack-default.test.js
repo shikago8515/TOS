@@ -7,6 +7,7 @@ const test = require('node:test')
 const {
   copyDirectoryFiltered,
   findIncompleteFilteredFiles,
+  verifyAutomationLauncher,
 } = require('./run-pack-default')
 
 test('allows the backend runtime Sophia Tina template during package resource sync', () => {
@@ -31,4 +32,19 @@ test('allows the backend runtime Sophia Tina template during package resource sy
   assert.deepEqual(findIncompleteFilteredFiles(sourceRoot, targetRoot, sourceRoot, {
     includeXlsxPaths: [templatePath],
   }), [])
+})
+
+test('requires adidas Materials launcher bridge in packed automation launcher resources', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tos-launcher-resources-'))
+  const appOutDir = path.join(root, 'win-unpacked')
+  const launcherRoot = path.join(appOutDir, 'resources', 'automation-launcher')
+
+  fs.mkdirSync(launcherRoot, { recursive: true })
+  fs.writeFileSync(path.join(launcherRoot, 'core.js'), '')
+  fs.writeFileSync(path.join(launcherRoot, 'server.js'), '')
+
+  assert.throws(
+    () => verifyAutomationLauncher(appOutDir),
+    /automation launcher resource adidas-materials-direct\.js not found/,
+  )
 })

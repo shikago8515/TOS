@@ -41,6 +41,10 @@ Require-Path $MakeNsis "NSIS compiler"
 Require-Path $Csc "C# compiler"
 Require-Path (Join-Path $ElectronDir "automation-launcher") "automation launcher"
 Require-Path (Join-Path $ElectronDir "automation-apps") "automation apps"
+Require-Path (Join-Path $ElectronDir "adidas-materials-main.js") "adidas Materials collector entry"
+Require-Path (Join-Path $ElectronDir "adidas-materials-preload.js") "adidas Materials preload entry"
+Require-Path (Join-Path $ElectronDir "node_modules") "Electron Node dependencies"
+Require-Path (Join-Path $PSScriptRoot "copy-automation-helper-dependencies.js") "automation helper dependency copier"
 
 if (Test-Path -LiteralPath $OutputRoot) {
   Assert-Under $OutputRoot $ElectronDir
@@ -52,6 +56,12 @@ New-Item -ItemType Directory -Path (Join-Path $PayloadRoot "node") -Force | Out-
 Copy-Item -LiteralPath $NodeExe -Destination (Join-Path $PayloadRoot "node\node.exe") -Force
 Copy-Item -LiteralPath (Join-Path $ElectronDir "automation-launcher") -Destination (Join-Path $PayloadRoot "automation-launcher") -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $ElectronDir "automation-apps") -Destination (Join-Path $PayloadRoot "automation-apps") -Recurse -Force
+Copy-Item -LiteralPath (Join-Path $ElectronDir "adidas-materials-main.js") -Destination (Join-Path $PayloadRoot "adidas-materials-main.js") -Force
+Copy-Item -LiteralPath (Join-Path $ElectronDir "adidas-materials-preload.js") -Destination (Join-Path $PayloadRoot "adidas-materials-preload.js") -Force
+& $NodeExe (Join-Path $PSScriptRoot "copy-automation-helper-dependencies.js") (Join-Path $ElectronDir "node_modules") (Join-Path $PayloadRoot "node_modules") ws exceljs
+if ($LASTEXITCODE -ne 0) {
+  throw "Automation helper dependency copy failed with exit code $LASTEXITCODE"
+}
 
 $LauncherSourcePath = Join-Path $OutputRoot "TOS-Automation-Helper-Launcher.cs"
 $LauncherExePath = Join-Path $PayloadRoot "TOS-Automation-Helper.exe"
