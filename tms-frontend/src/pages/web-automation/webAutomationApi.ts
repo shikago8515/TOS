@@ -8,14 +8,20 @@ import {
   postFormData,
   requestBackendJson,
 } from '../../shared/api/backendClient'
+import { fallbackAppVersion } from '../../shared/version/appVersion'
 
 const moduleName = 'web-automation'
 const launcherBaseUrl = 'http://127.0.0.1:3210'
 const launcherProtocolUrl = 'tos://automation/launcher/start'
 const defaultAutomationHelperDownloadPath = '/api/system/config/automation-helper/download'
+const localHealthProbeTimeoutMs = 650
+const localLauncherProbeTimeoutMs = 650
+export const expectedAutomationHelperVersion = fallbackAppVersion
 
 export interface LocalExecutorHealth {
   ok: boolean
+  version?: string
+  helperVersion?: string
   busy?: boolean
   activeRun?: unknown
   activeRuns?: unknown[]
@@ -172,31 +178,45 @@ export async function recordWebAutomationEvent(
 export async function probeLocalExecutorHealth(baseUrl: string): Promise<LocalExecutorHealth> {
   const normalizedUrl = String(baseUrl || '').replace(/\/+$/, '')
   const candidates = [`${normalizedUrl}/api/health`, `${normalizedUrl}/health`]
-  let lastError: unknown = null
+  return firstFulfilled(
+    candidates.map((url) => fetchExecutorHealthCandidate(url)),
+  )
+}
 
-  for (const url of candidates) {
-    try {
-      const response = await fetchWithTimeout(url, { method: 'GET' }, 2500)
-      if (!response.ok) {
-        lastError = new Error(`Health check returned HTTP ${response.status}.`)
-        continue
-      }
-
-      const payload = await response.json().catch(() => ({}))
-      return {
-        ok: true,
-        ...(payload && typeof payload === 'object'
-          ? payload as Record<string, unknown>
-          : {}),
-      } as LocalExecutorHealth
-    } catch (error) {
-      lastError = error
-    }
+async function fetchExecutorHealthCandidate(url: string): Promise<LocalExecutorHealth> {
+  const response = await fetchWithTimeout(url, { method: 'GET' }, localHealthProbeTimeoutMs)
+  if (!response.ok) {
+    throw new Error(`Health check returned HTTP ${response.status}.`)
   }
 
-  throw lastError instanceof Error
-    ? lastError
-    : new Error('Local executor did not respond.')
+  const payload = await response.json().catch(() => ({}))
+  return {
+    ok: true,
+    ...(payload && typeof payload === 'object'
+      ? payload as Record<string, unknown>
+      : {}),
+  } as LocalExecutorHealth
+}
+
+async function firstFulfilled<T>(promises: Promise<T>[]): Promise<T> {
+  if (promises.length === 0) {
+    throw new Error('No health check candidates configured.')
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    let rejectedCount = 0
+    let lastError: unknown = null
+
+    for (const promise of promises) {
+      promise.then(resolve).catch((error) => {
+        rejectedCount += 1
+        lastError = error
+        if (rejectedCount === promises.length) {
+          reject(lastError instanceof Error ? lastError : new Error('Local executor did not respond.'))
+        }
+      })
+    }
+  })
 }
 
 export async function fetchExecutorCredentials(automationId: string): Promise<ExecutorCredentials> {
@@ -305,7 +325,7 @@ async function ensureLocalAutomationLauncher(): Promise<void> {
 
 async function isLauncherReachable(): Promise<boolean> {
   try {
-    const response = await fetchWithTimeout(`${launcherBaseUrl}/health`, { method: 'GET' }, 1200)
+    const response = await fetchWithTimeout(`${launcherBaseUrl}/health`, { method: 'GET' }, localLauncherProbeTimeoutMs)
     if (!response.ok) {
       return false
     }
@@ -314,6 +334,62 @@ async function isLauncherReachable(): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+export function resolveLocalAutomationHelperVersion(
+  health: LocalExecutorHealth | null | undefined,
+  activeApp?: AutomationAppInfo | null,
+): string {
+  const directVersion = String(health?.version || health?.helperVersion || '').trim()
+  if (directVersion) return directVersion
+
+  const configVersion = health?.config && typeof health.config === 'object'
+    ? String((health.config as Record<string, unknown>).version || '').trim()
+    : ''
+  if (configVersion) return configVersion
+
+  return String(activeApp?.version || '').trim()
+}
+
+export function getAutomationHelperUpdateMessage(
+  health: LocalExecutorHealth | null | undefined,
+  activeApp?: AutomationAppInfo | null,
+  expectedVersion = expectedAutomationHelperVersion,
+): string {
+  const expected = String(expectedVersion || '').trim()
+  if (!expected) return ''
+
+  const current = resolveLocalAutomationHelperVersion(health, activeApp)
+  if (!current) {
+    return `本机自动化助手版本过旧或无法识别，请下载并安装最新版（${expected}）。`
+  }
+
+  if (compareVersionNumbers(current, expected) < 0) {
+    return `本机自动化助手版本 ${current} 落后于当前系统 ${expected}，请下载并安装最新版后重试。`
+  }
+
+  return ''
+}
+
+export function compareVersionNumbers(left: string, right: string): number {
+  const leftParts = versionParts(left)
+  const rightParts = versionParts(right)
+  const length = Math.max(leftParts.length, rightParts.length)
+  for (let index = 0; index < length; index += 1) {
+    const diff = (leftParts[index] || 0) - (rightParts[index] || 0)
+    if (diff !== 0) return diff
+  }
+  return 0
+}
+
+function versionParts(version: string): number[] {
+  return String(version || '')
+    .trim()
+    .replace(/^v/i, '')
+    .split(/[^0-9]+/)
+    .filter(Boolean)
+    .map((part) => Number(part))
+    .filter((part) => Number.isFinite(part))
 }
 
 function triggerAutomationProtocol(url: string): void {

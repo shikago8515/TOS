@@ -261,6 +261,7 @@ export function useAppShellModel() {
       'jane-outbound-compare': 'sliders',
       'eric': 'terminal',
       'jason-pdf-reorder': 'file-search',
+      'po-auto-download': 'download-cloud',
       'draft-packing-compare': 'file-search',
       'browser-plugins': 'puzzle',
       'web-automation': 'workflow',

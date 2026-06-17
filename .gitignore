@@ -35,6 +35,7 @@ run-artifacts/
 tms-backend/it_invoice_pdf_reorder/runtime/jobs/
 结果excel/
 .local-launcher-data/
+.tmp-automation-status/
 playwright-user-data/
 backend-data/
 browser-plugin-profiles/

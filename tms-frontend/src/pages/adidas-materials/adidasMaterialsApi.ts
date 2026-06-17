@@ -2,11 +2,41 @@ import type {
   DiagnosticEvent,
   ElectronActionResult,
 } from '../../types/electronApi'
+import {
+  compareVersionNumbers,
+  expectedAutomationHelperVersion,
+} from '../web-automation/webAutomationApi'
 
 const moduleName = 'adidas 材料'
 const launcherBaseUrl = 'http://127.0.0.1:3210'
 const launcherBootProtocolUrl = 'tos://automation/launcher/start'
 const launcherStartPath = '/api/adidas-materials/start'
+
+export interface AdidasMaterialsLauncherHealth {
+  ok?: boolean
+  version?: string
+  helperVersion?: string
+  pid?: number
+}
+
+export interface AdidasMaterialsLauncherUpdateStatus {
+  needsUpdate: boolean
+  currentVersion: string
+  expectedVersion: string
+  message: string
+}
+
+export class AdidasMaterialsLauncherUpdateRequiredError extends Error {
+  readonly currentVersion: string
+  readonly expectedVersion: string
+
+  constructor(status: AdidasMaterialsLauncherUpdateStatus) {
+    super(status.message)
+    this.name = 'AdidasMaterialsLauncherUpdateRequiredError'
+    this.currentVersion = status.currentVersion
+    this.expectedVersion = status.expectedVersion
+  }
+}
 
 export async function launchAdidasMaterialsCollector(): Promise<ElectronActionResult> {
   await recordAdidasMaterialsEvent('launch-start')
@@ -24,15 +54,25 @@ export async function launchAdidasMaterialsCollector(): Promise<ElectronActionRe
 
 async function launchAdidasMaterialsCollectorFromWeb(): Promise<ElectronActionResult> {
   await ensureLocalAutomationLauncher()
+  const health = await fetchLauncherHealth().catch(() => null)
+  const updateStatus = buildLauncherUpdateStatus(health)
+  if (updateStatus.needsUpdate) {
+    throw new AdidasMaterialsLauncherUpdateRequiredError(updateStatus)
+  }
 
   try {
     return await requestLauncherJson<ElectronActionResult>('POST', launcherStartPath)
   } catch (error) {
-    if (isLauncherRouteMissing(error)) {
-      throw new Error('本机后台启动器版本过旧，缺少 adidas 网页端启动接口。请重启或更新后台启动器后再试。')
+    if (isLauncherMissingAdidasCollector(error)) {
+      throw new AdidasMaterialsLauncherUpdateRequiredError(buildLauncherUpdateStatus(health, true))
     }
     throw error
   }
+}
+
+export async function readAdidasMaterialsLauncherUpdateStatus(): Promise<AdidasMaterialsLauncherUpdateStatus> {
+  const health = await fetchLauncherHealth().catch(() => null)
+  return buildLauncherUpdateStatus(health)
 }
 
 export async function recordAdidasMaterialsEvent(
@@ -52,16 +92,21 @@ export async function recordAdidasMaterialsEvent(
 
 async function isLauncherReachable(): Promise<boolean> {
   try {
-    const response = await fetchWithTimeout(`${launcherBaseUrl}/health`, { method: 'GET' }, 1200)
-    if (!response.ok) {
-      return false
-    }
-
-    const payload = await response.json().catch(() => ({}))
+    const payload = await fetchLauncherHealth(1200)
     return Boolean(payload && payload.ok)
   } catch {
     return false
   }
+}
+
+async function fetchLauncherHealth(timeoutMs = 1200): Promise<AdidasMaterialsLauncherHealth> {
+  const response = await fetchWithTimeout(`${launcherBaseUrl}/health`, { method: 'GET' }, timeoutMs)
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+
+  const payload = await response.json().catch(() => ({}))
+  return (payload && typeof payload === 'object' ? payload : {}) as AdidasMaterialsLauncherHealth
 }
 
 async function ensureLocalAutomationLauncher(): Promise<void> {
@@ -76,8 +121,35 @@ async function ensureLocalAutomationLauncher(): Promise<void> {
   }
 }
 
-function isLauncherRouteMissing(error: unknown): boolean {
-  return error instanceof Error && /HTTP 404|Not found/i.test(error.message)
+function buildLauncherUpdateStatus(
+  health: AdidasMaterialsLauncherHealth | null | undefined,
+  forceUpdate = false,
+): AdidasMaterialsLauncherUpdateStatus {
+  const expectedVersion = expectedAutomationHelperVersion
+  const currentVersion = String(health?.helperVersion || health?.version || '').trim()
+  const versionBehind = Boolean(currentVersion && expectedVersion)
+    && compareVersionNumbers(currentVersion, expectedVersion) < 0
+  const unknownVersion = !currentVersion
+  const needsUpdate = forceUpdate || versionBehind || unknownVersion
+  let message = ''
+
+  if (needsUpdate) {
+    const currentLabel = currentVersion || '未知版本'
+    message = `本机自动化助手需要更新。当前版本：${currentLabel}；系统要求：${expectedVersion}。请下载安装最新助手后重新打开此页面。`
+  }
+
+  return {
+    needsUpdate,
+    currentVersion,
+    expectedVersion,
+    message,
+  }
+}
+
+function isLauncherMissingAdidasCollector(error: unknown): boolean {
+  return error instanceof Error
+    && /HTTP 404|Not found|entry not found|adidas materials collector entry not found|缺少 adidas|adidas.*启动接口/i
+      .test(error.message)
 }
 
 function triggerProtocol(url: string): void {
@@ -124,7 +196,7 @@ async function requestLauncherJson<T = Record<string, unknown>>(
       : payload && typeof payload.error === 'string'
         ? payload.error
         : `本机启动器请求失败，HTTP ${response.status}`
-    throw new Error(message)
+    throw new Error(`${message} (HTTP ${response.status})`)
   }
 
   return (payload || {}) as T

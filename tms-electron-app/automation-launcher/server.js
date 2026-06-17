@@ -4,6 +4,7 @@ const { launchAdidasMaterialsCollector } = require('./adidas-materials-direct')
 const {
   getAutomationApps,
   launchAutomationApp,
+  loadAutomationAppRegistry,
   resolveUserDataDir,
   shutdownAutomationApps,
   stopAutomationApp,
@@ -25,6 +26,7 @@ const sharedOptions = {
   processMap,
   userDataDir,
 }
+const helperVersion = resolveHelperVersion()
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -41,6 +43,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && (requestUrl.pathname === '/health' || requestUrl.pathname === '/api/health')) {
       sendJson(res, 200, {
         ok: true,
+        version: helperVersion,
+        helperVersion,
         host,
         port,
         pid: process.pid,
@@ -99,6 +103,18 @@ function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+}
+
+function resolveHelperVersion() {
+  const envVersion = String(process.env.TOS_AUTOMATION_HELPER_VERSION || '').trim()
+  if (envVersion) {
+    return envVersion
+  }
+
+  const versions = loadAutomationAppRegistry(automationAppRoot)
+    .map((app) => String(app.version || '').trim())
+    .filter(Boolean)
+  return versions[0] || ''
 }
 
 function sendJson(res, statusCode, payload) {

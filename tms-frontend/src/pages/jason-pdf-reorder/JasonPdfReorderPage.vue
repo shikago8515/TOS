@@ -1,427 +1,102 @@
-﻿<template>
+<template>
   <section class="it-invoice-page">
-    <header class="page-header">
-      <div class="brand">
-        <div class="brand-icon">
-          <AppIcon name="file-search" />
-        </div>
-        <div>
-          <h1>PO 发票顺序重排</h1>
-          <p>智能文档工作台</p>
-        </div>
-      </div>
+    <!-- === Workbench Top Header === -->
+    <ReorderHeader />
 
-      <label class="api-box">
-        <span>API</span>
-        <input v-model="apiBase" type="text" readonly aria-label="后端 API 地址">
-      </label>
-    </header>
+    <!-- === Fast Reorder Shortcut Bar === -->
+    <FastReorderBar
+      v-model:invoiceFile="invoiceFile"
+      v-model:poFile="poFile"
+      :isBusy="isBusy"
+      :downloadHref="downloadHref"
+      :latestResult="latestResult"
+      @clearInvoice="clearInvoice"
+      @clearPo="clearPo"
+      @fastReorder="handleFastReorder"
+      @openResult="openResultPdf"
+      @clearAll="clearAllFiles"
+    />
 
+    <!-- === Main Layout Grid === -->
     <main class="workbench-grid">
-      <section class="left-stack">
-        <article class="card card-invoice">
-          <header class="card-header">
-            <div class="card-heading">
-              <div class="card-icon">
-                <AppIcon name="file-search" />
-              </div>
-              <div>
-                <h2>发票 PO 提取</h2>
-                <p>上传发票 PDF 后生成 PO 顺序和明细</p>
-              </div>
-            </div>
-            <span class="badge" :class="{ active: invoiceEntries.length > 0 }">
-              {{ invoiceEntries.length }} 个PO
-            </span>
-          </header>
+      <!-- ===== LEFT STACK: STEP 1 - EXTRACTION SOURCE CONTROL (左侧提取源) ===== -->
+      <ExtractionSourcePanel
+        v-model:activeTab="activeTab"
+        v-model:invoiceFile="invoiceFile"
+        v-model:extractFiles="extractFiles"
+        v-model:extractPattern="extractPattern"
+        v-model:extractSearchType="extractSearchType"
+        v-model:pasteText="pasteText"
+        :invoiceEntries="invoiceEntries"
+        :invoiceSummary="invoiceSummary"
+        :extractNumbers="extractNumbers"
+        :extractGroups="extractGroups"
+        :isBusy="isBusy"
+        :invoiceInputKey="invoiceInputKey"
+        :extractInputKey="extractInputKey"
+        @previewInvoice="previewInvoiceFile"
+        @syncInvoice="syncInvoiceToPoList"
+        @copyInvoice="copyInvoicePoOrder"
+        @downloadInvoiceTxt="downloadInvoicePoOrder"
+        @downloadInvoiceCsv="downloadInvoiceDetailsCsv"
+        @clearInvoice="clearInvoice"
+        @applyExtractionRule="applyExtractionRule"
+        @setExtractPreset="setExtractPreset"
+        @extractFromPdf="extractFromPdfFiles"
+        @extractFromPaste="extractFromPaste"
+        @extractFromPageText="extractFromPageText"
+        @copyExtracted="copyExtractedNumbers"
+        @downloadExtracted="downloadExtractedNumbers"
+        @clearExtraction="clearExtraction"
+      >
+        <template #invoice-message>
+          <NoticeMessage :message="invoiceMessage.message" :tone="invoiceMessage.tone" />
+        </template>
+        <template #extract-message>
+          <NoticeMessage :message="extractMessage.message" :tone="extractMessage.tone" />
+        </template>
+      </ExtractionSourcePanel>
 
-          <div class="card-body">
-            <label
-              class="dropzone"
-              :class="{ 'has-file': Boolean(invoiceFile), dragging: draggingTarget === 'invoice' }"
-              @dragenter.prevent="draggingTarget = 'invoice'"
-              @dragover.prevent
-              @dragleave.prevent="draggingTarget = null"
-              @drop.prevent="handleSingleDrop($event, 'invoice')"
-            >
-              <input
-                :key="invoiceInputKey"
-                type="file"
-                accept="application/pdf,.pdf"
-                @change="handleSingleFileChange($event, 'invoice')"
-              >
-              <span class="dropzone-icon"><AppIcon name="upload" /></span>
-              <strong>{{ invoiceFile ? invoiceFile.name : '选择或拖入发票 PDF' }}</strong>
-              <span>{{ invoiceFile ? formatFileSize(invoiceFile.size) : '支持单个 .pdf 文件' }}</span>
-            </label>
+      <!-- ===== MIDDLE STACK: STEP 2 - AUDIT & REORDER CENTER (中侧核对与排序) ===== -->
+      <AuditReorderPanel
+        v-model:poOrderText="poOrderText"
+        :matchRows="matchRows"
+        :extraPoNumbers="extraPoNumbers"
+        :parsedPoCount="parsedPoCount"
+        :isBusy="isBusy"
+        @refreshMatches="refreshMatches"
+        @copyPoOrder="copyPoOrderText"
+        @clearPoOrderOnly="clearPoOrderOnly"
+        @generateSinglePo="generateSinglePo"
+        @printSummary="printSummary"
+      >
+        <template #po-message>
+          <NoticeMessage :message="poMessage.message" :tone="poMessage.tone" />
+        </template>
+      </AuditReorderPanel>
 
-            <div class="toolbar">
-              <button class="btn btn-soft" type="button" :disabled="isBusy('invoice-preview')" @click="previewInvoiceFile">
-                <AppIcon :name="isBusy('invoice-preview') ? 'loader' : 'file-search'" />
-                {{ isBusy('invoice-preview') ? '提取中...' : '提取发票' }}
-              </button>
-              <button class="btn btn-soft" type="button" @click="syncInvoiceToPoList()">
-                <AppIcon name="refresh-cw" />
-                同步到 PO 列表
-              </button>
-              <button class="btn" type="button" @click="copyInvoicePoOrder">
-                <AppIcon name="files" />
-                复制 PO
-              </button>
-              <button class="btn" type="button" @click="downloadInvoicePoOrder">
-                <AppIcon name="download" />
-                下载 TXT
-              </button>
-              <button class="btn" type="button" @click="downloadInvoiceDetailsCsv">
-                <AppIcon name="download-cloud" />
-                下载 CSV
-              </button>
-              <button class="btn btn-danger-soft" type="button" @click="clearInvoice">
-                清空
-              </button>
-            </div>
-
-            <div class="metrics">
-              <div class="metric">
-                <span>PO 数量</span>
-                <strong>{{ invoiceEntries.length }}</strong>
-              </div>
-              <div class="metric">
-                <span>总数量</span>
-                <strong>{{ valueOrDash(invoiceSummary?.totalQuantity) }}</strong>
-              </div>
-              <div class="metric">
-                <span>货品金额</span>
-                <strong>{{ valueOrDash(invoiceSummary?.totalAmount) }}</strong>
-              </div>
-              <div class="metric">
-                <span>发票总额</span>
-                <strong>{{ valueOrDash(invoiceSummary?.invoiceTotals?.invoice_total) }}</strong>
-              </div>
-            </div>
-
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>PO</th>
-                    <th>发票页</th>
-                    <th>Article</th>
-                    <th>描述</th>
-                    <th class="num">数量</th>
-                    <th class="num">货品金额</th>
-                    <th class="num">净额</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-if="invoiceEntries.length === 0">
-                    <td colspan="8">
-                      <div class="empty-state">
-                        <AppIcon name="file-search" />
-                        <span>等待上传发票 PDF 并提取数据</span>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr v-for="entry in invoiceEntries" v-else :key="`${entry.po}-${entry.index}`">
-                    <td>{{ entry.index }}</td>
-                    <td><strong>{{ entry.po }}</strong></td>
-                    <td>{{ formatPages(entry.invoicePages) }}</td>
-                    <td>{{ valueOrDash(entry.articleNo) }}</td>
-                    <td class="description-cell">{{ valueOrDash(entry.description) }}</td>
-                    <td class="num">{{ valueOrDash(entry.quantity) }}</td>
-                    <td class="num">{{ valueOrDash(entry.totalAmount) }}</td>
-                    <td class="num">{{ valueOrDash(entry.netAmount) }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <NoticeMessage :message="invoiceMessage.message" :tone="invoiceMessage.tone" />
-          </div>
-        </article>
-
-        <article class="card">
-          <header class="card-header compact-header">
-            <div class="card-heading">
-              <div class="card-icon">
-                <AppIcon name="target" />
-              </div>
-              <div>
-                <h2>自定义号码提取</h2>
-                <p>从 PDF、粘贴文本或当前页面提取号码</p>
-              </div>
-            </div>
-            <span class="badge">{{ extractNumbers.length }} 个号码</span>
-          </header>
-
-          <div class="card-body">
-            <div class="rule-row">
-              <input
-                v-model="extractPattern"
-                class="text-input"
-                type="text"
-                placeholder="如 090|45 或 \\d{10}"
-                @keydown.enter.prevent="applyExtractionRule"
-              >
-              <button class="btn btn-soft" type="button" @click="applyExtractionRule">应用规则</button>
-            </div>
-
-            <div class="radio-row">
-              <label v-for="option in extractTypeOptions" :key="option.value" class="radio-pill">
-                <input v-model="extractSearchType" type="radio" :value="option.value">
-                {{ option.label }}
-              </label>
-            </div>
-
-            <div class="preset-row">
-              <button class="btn" type="button" @click="setExtractPreset('090|45', 'startsWith')">090/45 开头</button>
-              <button class="btn" type="button" @click="setExtractPreset('\\d{10}', 'regex')">10 位数字</button>
-              <button class="btn" type="button" @click="setExtractPreset('45', 'contains')">包含 45</button>
-            </div>
-
-            <label
-              class="dropzone mini-drop"
-              :class="{ 'has-file': extractFiles.length > 0, dragging: draggingTarget === 'extract' }"
-              @dragenter.prevent="draggingTarget = 'extract'"
-              @dragover.prevent
-              @dragleave.prevent="draggingTarget = null"
-              @drop.prevent="handleExtractDrop"
-            >
-              <input
-                :key="extractInputKey"
-                type="file"
-                accept="application/pdf,.pdf"
-                multiple
-                @change="handleExtractFilesChange"
-              >
-              <span class="dropzone-icon"><AppIcon name="files" /></span>
-              <strong>{{ extractFiles.length ? `${extractFiles.length} 个 PDF` : '选择用于提取的 PDF' }}</strong>
-              <span>{{ extractFiles.length ? extractFiles.map((file) => file.name).join('，') : '可多选' }}</span>
-            </label>
-
-            <textarea
-              v-model="pasteText"
-              class="textarea small"
-              placeholder="粘贴文本，然后点击从粘贴提取"
-            />
-
-            <div class="toolbar">
-              <button class="btn btn-soft" type="button" :disabled="isBusy('extract-pdf')" @click="extractFromPdfFiles">
-                <AppIcon :name="isBusy('extract-pdf') ? 'loader' : 'file-search'" />
-                {{ isBusy('extract-pdf') ? '提取中...' : '从 PDF 提取' }}
-              </button>
-              <button class="btn btn-soft" type="button" @click="extractFromPaste">从粘贴提取</button>
-              <button class="btn btn-soft" type="button" @click="extractFromPageText">抓取页面文本</button>
-              <button class="btn" type="button" @click="copyExtractedNumbers">复制全部</button>
-              <button class="btn" type="button" @click="downloadExtractedNumbers">下载 TXT</button>
-              <button class="btn btn-danger-soft" type="button" @click="clearExtraction">清空</button>
-            </div>
-
-            <div class="number-list">
-              <div v-if="extractNumbers.length === 0" class="empty-state compact">
-                <span>等待提取号码</span>
-              </div>
-              <template v-else>
-                <section v-for="group in extractGroups" :key="group.fileName" class="number-group">
-                  <h3>{{ group.fileName }}</h3>
-                  <template v-for="page in group.pages" :key="`${group.fileName}-${page.pageNum}`">
-                    <p>第 {{ page.pageNum }} 页 · {{ page.numbers.length }} 个</p>
-                    <div
-                      v-for="number in page.numbers"
-                      :key="`${group.fileName}-${page.pageNum}-${number}`"
-                      class="number-row"
-                    >
-                      <span>{{ numberIndex(number) }}</span>
-                      <strong>{{ number }}</strong>
-                    </div>
-                  </template>
-                </section>
-              </template>
-            </div>
-
-            <NoticeMessage :message="extractMessage.message" :tone="extractMessage.tone" />
-          </div>
-        </article>
-      </section>
-
-      <section class="right-stack">
-        <article class="card output-card">
-          <header class="card-header">
-            <div class="card-heading">
-              <div class="card-icon">
-                <AppIcon name="check-circle" />
-              </div>
-              <div>
-                <h2>PO PDF 匹配与生成</h2>
-                <p>按左侧 PO 顺序生成重排 PDF</p>
-              </div>
-            </div>
-            <span class="badge success">{{ poPages.size }} 个PO</span>
-          </header>
-
-          <div class="card-body">
-            <label
-              class="dropzone"
-              :class="{ 'has-file': Boolean(poFile), dragging: draggingTarget === 'po' }"
-              @dragenter.prevent="draggingTarget = 'po'"
-              @dragover.prevent
-              @dragleave.prevent="draggingTarget = null"
-              @drop.prevent="handleSingleDrop($event, 'po')"
-            >
-              <input
-                :key="poInputKey"
-                type="file"
-                accept="application/pdf,.pdf"
-                @change="handleSingleFileChange($event, 'po')"
-              >
-              <span class="dropzone-icon"><AppIcon name="upload" /></span>
-              <strong>{{ poFile ? poFile.name : '选择或拖入 PO PDF' }}</strong>
-              <span>{{ poFile ? formatFileSize(poFile.size) : '支持单个 .pdf 文件' }}</span>
-            </label>
-
-            <div class="toolbar">
-              <button class="btn btn-soft" type="button" :disabled="isBusy('po-preview')" @click="previewPoFile">
-                <AppIcon :name="isBusy('po-preview') ? 'loader' : 'file-search'" />
-                {{ isBusy('po-preview') ? '识别中...' : '识别 PO 页码' }}
-              </button>
-              <button class="btn btn-soft" type="button" @click="refreshMatches">
-                <AppIcon name="refresh" />
-                应用列表
-              </button>
-              <button class="btn" type="button" @click="copyPoOrderText">复制列表</button>
-              <button class="btn btn-danger-soft" type="button" @click="clearPo">清空</button>
-            </div>
-
-            <div class="options-row">
-              <label><input v-model="printCurrentOnly" type="checkbox"> 打印当前页</label>
-              <label><input v-model="printNextPage" type="checkbox"> 同时打印下一页</label>
-              <label><input v-model="includeNotFound" type="checkbox"> 摘要包含未找到 PO</label>
-            </div>
-
-            <label class="field-label" for="po-order-text">
-              <span>PO 顺序列表</span>
-              <small>{{ parsedPoCount }} 个有效 PO</small>
-            </label>
-            <textarea
-              id="po-order-text"
-              v-model="poOrderText"
-              class="textarea"
-              placeholder="4501749160&#10;4501749225&#10;4501749152"
-            />
-
-            <div class="generate-bar">
-              <span :class="['status-text', resultStatusTone]">{{ resultStatusText }}</span>
-              <div class="generate-actions">
-                <a
-                  v-if="downloadHref"
-                  class="btn btn-success btn-lg"
-                  :href="downloadHref"
-                  :download="latestResult?.fileName"
-                >
-                  <AppIcon name="download" />
-                  下载结果
-                </a>
-                <button
-                  v-if="downloadHref"
-                  class="btn btn-lg"
-                  type="button"
-                  @click="openResultPdf"
-                >
-                  打开 PDF
-                </button>
-                <button
-                  class="btn btn-primary btn-lg"
-                  type="button"
-                  :disabled="!canGenerate || isBusy('generate')"
-                  @click="generatePdf"
-                >
-                  <AppIcon :name="isBusy('generate') ? 'loader' : 'play-circle'" />
-                  {{ isBusy('generate') ? '生成中...' : '生成重排 PDF' }}
-                </button>
-              </div>
-            </div>
-
-            <div class="toolbar result-tools">
-              <button class="btn btn-warning-soft" type="button" @click="printSummary">
-                打印摘要
-              </button>
-            </div>
-
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>PO</th>
-                    <th>PO页</th>
-                    <th>Article</th>
-                    <th class="num">数量</th>
-                    <th class="num">货品金额</th>
-                    <th>状态</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-if="matchRows.length === 0">
-                    <td colspan="8">
-                      <div class="empty-state">
-                        <AppIcon name="file-search" />
-                        <span>等待同步或输入 PO 列表</span>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr v-for="(row, index) in matchRows" v-else :key="row.po">
-                    <td>{{ index + 1 }}</td>
-                    <td><strong>{{ row.po }}</strong></td>
-                    <td>{{ formatPages(row.pages) }}</td>
-                    <td>{{ valueOrDash(row.articleNo) }}</td>
-                    <td class="num">{{ valueOrDash(row.quantity) }}</td>
-                    <td class="num">{{ valueOrDash(row.totalAmount) }}</td>
-                    <td>
-                      <span :class="['tag', row.found ? 'tag-success' : 'tag-warn']">
-                        {{ row.found ? '已匹配' : '未找到' }}
-                      </span>
-                    </td>
-                    <td>
-                      <button class="btn btn-soft" type="button" :disabled="isBusy(`single-${row.po}`)" @click="generateSinglePo(row.po)">
-                        {{ isBusy(`single-${row.po}`) ? '生成中...' : '单独生成' }}
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <NoticeMessage :message="poMessage.message" :tone="poMessage.tone" />
-
-            <p v-if="extraPoNumbers.length" class="extra-note">
-              PO PDF 中有但当前列表未包含：{{ extraPoNumbers.join(', ') }}
-            </p>
-          </div>
-        </article>
-
-        <article class="card log-card">
-          <header class="card-header compact-header">
-            <div class="card-heading">
-              <div class="card-icon">
-                <AppIcon name="terminal" />
-              </div>
-              <div>
-                <h2>处理日志</h2>
-                <p>前端动作和后端返回摘要</p>
-              </div>
-            </div>
-            <button class="btn" type="button" @click="clearLogs">清空日志</button>
-          </header>
-          <div class="log-list">
-            <div v-for="line in logs" :key="line.id" class="log-line">
-              <span>{{ line.time }}</span>
-              <strong>{{ line.text }}</strong>
-            </div>
-          </div>
-        </article>
-      </section>
+      <!-- ===== RIGHT STACK: STEP 3 - FOCUS GENERATION & LOG (右侧核心匹配重排与日志) ===== -->
+      <GenerationLogPanel
+        v-model:poFile="poFile"
+        v-model:printCurrentOnly="printCurrentOnly"
+        v-model:printNextPage="printNextPage"
+        v-model:includeNotFound="includeNotFound"
+        v-model:isLogSidebarOpen="isLogSidebarOpen"
+        :poPagesSize="poPages.size"
+        :resultStatusText="resultStatusText"
+        :resultStatusTone="resultStatusTone"
+        :downloadHref="downloadHref"
+        :latestResult="latestResult"
+        :canGenerate="canGenerate"
+        :logs="logs"
+        :isBusy="isBusy"
+        :poInputKey="poInputKey"
+        @previewPo="previewPoFile"
+        @clearPo="clearPo"
+        @generatePdf="generatePdf"
+        @openResult="openResultPdf"
+        @clearLogs="clearLogs"
+      />
     </main>
   </section>
 </template>
@@ -456,25 +131,11 @@ import {
   parsePoList,
   buildExtractionRegex,
 } from './jasonPdfReorderModel'
-
-type NoticeTone = 'info' | 'success' | 'warning' | 'error'
-type BusyAction =
-  | 'invoice-preview'
-  | 'po-preview'
-  | 'extract-pdf'
-  | 'generate'
-  | `single-${string}`
-
-interface NoticeState {
-  message: string
-  tone: NoticeTone
-}
-
-interface LogLine {
-  id: number
-  time: string
-  text: string
-}
+import ReorderHeader from './components/ReorderHeader.vue'
+import FastReorderBar from './components/FastReorderBar.vue'
+import ExtractionSourcePanel from './components/ExtractionSourcePanel.vue'
+import AuditReorderPanel from './components/AuditReorderPanel.vue'
+import GenerationLogPanel from './components/GenerationLogPanel.vue'
 
 const NoticeMessage = defineComponent({
   name: 'NoticeMessage',
@@ -496,14 +157,26 @@ const NoticeMessage = defineComponent({
   },
 })
 
-const extractTypeOptions: Array<{ label: string; value: JasonPdfReorderExtractSearchType }> = [
-  { label: '开头匹配', value: 'startsWith' },
-  { label: '包含', value: 'contains' },
-  { label: '精确', value: 'exact' },
-  { label: '正则', value: 'regex' },
-]
+type NoticeTone = 'info' | 'success' | 'warning' | 'error'
+type BusyAction =
+  | 'invoice-preview'
+  | 'po-preview'
+  | 'extract-pdf'
+  | 'generate'
+  | `single-${string}`
 
+interface NoticeState {
+  message: string
+  tone: NoticeTone
+}
+
+interface LogLine {
+  id: number
+  time: string
+  text: string
+}
 const apiBase = ref('http://127.0.0.1:8000')
+const activeTab = ref<'invoice' | 'extract'>('invoice')
 const invoiceFile = ref<File | null>(null)
 const poFile = ref<File | null>(null)
 const extractFiles = ref<File[]>([])
@@ -532,6 +205,7 @@ const logId = ref(0)
 const logs = ref<LogLine[]>([
   { id: 0, time: '--:--:--', text: '等待操作' },
 ])
+const isLogSidebarOpen = ref(false)
 
 const invoiceMessage = reactive<NoticeState>({ message: '', tone: 'info' })
 const extractMessage = reactive<NoticeState>({ message: '', tone: 'info' })
@@ -635,7 +309,7 @@ async function previewPoFile(): Promise<void> {
   try {
     const response = await previewJasonPdfReorderPo(poFile.value)
     addBackendLogs(response.logs)
-    poPages.value = new Map((response.poPages || []).map((item) => [item.po, item.pages || []]))
+    poPages.value = new Map((response.poPages || []).map((item: any) => [item.po, item.pages || []]))
     setNotice(poMessage, `已识别 ${response.poCount || 0} 个 PO，共 ${response.pageCount || 0} 页`, 'success')
     addLog('[前端] PO 页码识别完成')
   } catch (error) {
@@ -963,6 +637,11 @@ function clearPo(): void {
   setNotice(poMessage, '已清空 PO 数据', 'info')
 }
 
+function clearPoOrderOnly(): void {
+  poOrderText.value = ''
+  setNotice(poMessage, '已清空 PO 列表', 'info')
+}
+
 function clearExtraction(): void {
   extractFiles.value = []
   extractGroups.value = []
@@ -975,6 +654,69 @@ function clearExtraction(): void {
 function clearLogs(): void {
   logs.value = [{ id: 0, time: '--:--:--', text: '等待操作' }]
   logId.value = 0
+}
+
+async function handleFastReorder(): Promise<void> {
+  if (!invoiceFile.value || !poFile.value) {
+    setNotice(poMessage, '请先上传发票 PDF 和 PO PDF', 'error')
+    return
+  }
+
+  busyAction.value = 'generate'
+  downloadHref.value = ''
+  resultStatusText.value = '正在执行极速重排，请稍候...'
+  resultStatusTone.value = 'idle'
+  addLog('[极速重排] 启动闪电极速重排流程')
+
+  try {
+    // 步骤一：提取发票
+    addLog('[极速重排] 步骤 1/3: 正在提取发票数据...')
+    const invoiceResp = await previewJasonPdfReorderInvoice(invoiceFile.value)
+    addBackendLogs(invoiceResp.logs)
+    invoiceEntries.value = invoiceResp.entries || []
+    invoiceSummary.value = invoiceResp.summary || null
+    // 自动同步发票的 PO 顺序到列表
+    poOrderText.value = invoicePoText(invoiceEntries.value)
+    addLog(`[极速重排] 发票数据提取完成，共获取 ${invoiceEntries.value.length} 个 PO`)
+
+    // 步骤二：识别 PO 页码
+    addLog('[极速重排] 步骤 2/3: 正在识别 PO 页码...')
+    const poResp = await previewJasonPdfReorderPo(poFile.value)
+    addBackendLogs(poResp.logs)
+    poPages.value = new Map((poResp.poPages || []).map((item: any) => [item.po, item.pages || []]))
+    addLog(`[极速重排] PO 页码识别完成，共 ${poResp.poCount || 0} 个 PO`)
+
+    // 步骤三：重排生成 PDF
+    addLog('[极速重排] 步骤 3/3: 正在生成重排后 PDF...')
+    const processResp = await processJasonPdfReorder({
+      invoiceFile: invoiceFile.value,
+      poFile: poFile.value,
+      poOrderText: poOrderText.value,
+      printCurrentOnly: printCurrentOnly.value,
+      printNextPage: printNextPage.value,
+      includeNotFound: includeNotFound.value,
+    })
+    await applyProcessResult(processResp)
+    
+    setNotice(poMessage, `极速生成完成：${processResp.fileName}`, 'success')
+    resultStatusText.value = '生成成功，可下载结果文件'
+    resultStatusTone.value = 'success'
+    addLog('[极速重排] 闪电极速重排完成！')
+  } catch (error) {
+    const message = readErrorMessage(error, '极速重排失败，请检查输入后重试')
+    setNotice(poMessage, message, 'error')
+    resultStatusText.value = '生成失败，请检查输入后重试'
+    resultStatusTone.value = 'error'
+    addLog(`[极速重排] 极速重排失败：${message}`)
+  } finally {
+    busyAction.value = null
+  }
+}
+
+function clearAllFiles(): void {
+  clearInvoice()
+  clearPo()
+  addLog('[前端] 已清空全部文件')
 }
 
 function setNotice(target: NoticeState, message: string, tone: NoticeTone): void {
@@ -1003,8 +745,8 @@ function addLog(text: string): void {
   logs.value = [...logs.value, line].slice(-80)
 }
 
-function isBusy(action: BusyAction): boolean {
-  return busyAction.value === action
+function isBusy(action: string): boolean {
+  return busyAction.value === (action as BusyAction)
 }
 
 function numberIndex(number: string): string {
@@ -1034,658 +776,141 @@ function isPdfFile(file: File): boolean {
 </script>
 
 <style scoped>
+/* ==========================================================================
+   Jason PO/Invoice PDF Reordering — Layout and Themes
+   Colors: Sky Blue (#0ea5e9) + Emerald Green (#10b981). No Purple.
+   ========================================================================== */
+
+/* Layout & Entrance */
 .it-invoice-page {
   --white: #ffffff;
   --gray-50: #f8fafc;
-  --gray-100: #eef2f7;
-  --gray-200: #dde4ee;
-  --gray-300: #c4cfdd;
-  --gray-400: #8996a8;
-  --gray-500: #647085;
-  --gray-700: #2f3a4a;
-  --gray-900: #111827;
-  --blue: #2563eb;
-  --blue-light: #e8f0fe;
-  --blue-dark: #1d4ed8;
-  --green: #138a46;
-  --green-light: #e3f5e9;
-  --amber: #b7791f;
-  --amber-light: #fff3d4;
-  --red: #cf2e2e;
-  --red-light: #ffe5e5;
+  --gray-100: #f1f5f9;
+  --gray-200: #e2e8f0;
+  --gray-300: #cbd5e1;
+  --gray-400: #94a3b8;
+  --gray-500: #64748b;
+  --gray-700: #334155;
+  --gray-900: #0f172a;
+  
+  --blue: #0ea5e9;
+  --blue-light: #f0f9ff;
+  --blue-dark: #0284c7;
+  
+  --green: #10b981;
+  --green-light: #ecfdf5;
+  --green-dark: #059669;
+  
+  --amber: #f59e0b;
+  --amber-light: #fef3c7;
+  --red: #ef4444;
+  --red-light: #fef2f2;
+  
   color: var(--gray-700);
-  display: grid;
-  gap: 18px;
-}
-
-.page-header,
-.card {
-  background: var(--white);
-  border: 1px solid var(--gray-200);
-  border-radius: 8px;
-}
-
-.page-header {
-  align-items: center;
   display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  padding: 16px 20px;
-}
-
-.brand,
-.card-heading {
-  align-items: center;
-  display: flex;
+  flex-direction: column;
   gap: 12px;
+  min-height: calc(100vh - 40px);
+  padding: 4px 16px 16px;
+  box-sizing: border-box;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-.brand h1,
-.card h2,
-.number-group h3 {
-  color: var(--gray-900);
-  margin: 0;
+/* Staggered entry animation */
+.jason-entry-anim {
+  animation: jason-slideUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.brand h1 {
-  font-size: 20px;
-  line-height: 1.2;
-}
-
-.brand p,
-.card p {
-  color: var(--gray-500);
-  font-size: 12px;
-  margin: 3px 0 0;
-}
-
-.brand-icon,
-.card-icon,
-.dropzone-icon {
-  align-items: center;
-  background: var(--gray-100);
-  border-radius: 8px;
-  color: var(--gray-500);
-  display: inline-flex;
-  justify-content: center;
-}
-
-.brand-icon {
-  font-size: 22px;
-  height: 42px;
-  width: 42px;
-}
-
-.card-icon {
-  font-size: 18px;
-  height: 36px;
-  width: 36px;
-}
-
-.api-box {
-  align-items: center;
-  background: var(--gray-50);
-  border: 1px solid var(--gray-200);
-  border-radius: 999px;
-  display: flex;
-  gap: 8px;
-  padding: 5px 5px 5px 14px;
-}
-
-.api-box span {
-  color: var(--gray-500);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.api-box input {
-  background: var(--white);
-  border: 1px solid var(--gray-200);
-  border-radius: 999px;
-  color: var(--gray-700);
-  font-size: 13px;
-  padding: 7px 12px;
-  width: 220px;
+@keyframes jason-slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .workbench-grid {
-  align-items: start;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
   display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr);
 }
 
-.left-stack,
-.right-stack {
-  display: grid;
-  gap: 18px;
-}
-
-.card {
-  overflow: hidden;
-}
-
-.card-header {
-  align-items: flex-start;
-  background: var(--gray-50);
-  border-bottom: 1px solid var(--gray-100);
+.workbench-col {
+  height: 100%;
+  min-height: 0;
   display: flex;
-  gap: 12px;
-  justify-content: space-between;
-  padding: 16px 18px;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.compact-header {
-  align-items: center;
-}
-
-.card-body {
-  display: grid;
-  gap: 14px;
-  padding: 18px;
-}
-
-.card-invoice .card-header {
-  background: #f3f6fa;
-}
-
-.output-card .card-header {
-  background: #f1f7f3;
-}
-
-.badge {
-  background: var(--gray-100);
-  border-radius: 999px;
-  color: var(--gray-500);
-  flex: 0 0 auto;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 5px 12px;
-}
-
-.badge.active {
-  background: var(--blue-light);
-  color: var(--blue);
-}
-
-.badge.success {
-  background: var(--green-light);
-  color: var(--green);
-}
-
-.dropzone {
-  align-items: center;
-  background: var(--gray-50);
-  border: 2px dashed var(--gray-300);
-  border-radius: 8px;
-  cursor: pointer;
-  display: grid;
-  gap: 8px;
-  justify-items: center;
-  min-height: 118px;
-  padding: 18px;
-  text-align: center;
-}
-
-.dropzone input {
-  display: none;
-}
-
-.dropzone strong {
-  color: var(--gray-700);
-  font-size: 14px;
-}
-
-.dropzone span:last-child {
-  color: var(--gray-400);
-  font-size: 12px;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dropzone-icon {
-  background: var(--white);
-  font-size: 20px;
-  height: 42px;
-  width: 42px;
-}
-
-.dropzone.dragging,
-.dropzone:hover {
-  background: var(--blue-light);
-  border-color: var(--blue);
-}
-
-.dropzone.has-file {
-  background: var(--white);
-  border-style: solid;
-}
-
-.mini-drop {
-  min-height: 88px;
-}
-
-.toolbar,
-.radio-row,
-.preset-row,
-.options-row,
-.generate-actions,
-.rule-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.rule-row {
-  align-items: center;
-}
-
-.text-input,
-.textarea {
-  background: var(--gray-50);
-  border: 1px solid var(--gray-200);
-  border-radius: 8px;
-  color: var(--gray-700);
-  font: inherit;
-  outline: none;
-  padding: 10px 12px;
-}
-
-.text-input {
-  flex: 1 1 220px;
-  min-width: 0;
-}
-
-.textarea {
-  font-family: "SF Mono", Consolas, "Courier New", monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  min-height: 132px;
-  resize: vertical;
-  width: 100%;
-}
-
-.textarea.small {
-  min-height: 82px;
-}
-
-.text-input:focus,
-.textarea:focus {
-  background: var(--white);
-  border-color: var(--blue);
-}
-
-.btn {
-  align-items: center;
-  background: var(--white);
-  border: 1px solid var(--gray-200);
-  border-radius: 6px;
-  color: var(--gray-700);
-  cursor: pointer;
-  display: inline-flex;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  gap: 6px;
-  justify-content: center;
-  min-height: 32px;
-  padding: 6px 12px;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.btn:hover:not(:disabled) {
-  background: var(--gray-50);
-  border-color: var(--gray-300);
-}
-
-.btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.btn-soft {
-  background: var(--blue-light);
-  border-color: transparent;
-  color: var(--blue);
-}
-
-.btn-primary {
-  background: var(--blue);
-  border-color: var(--blue);
-  color: var(--white);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--blue-dark);
-  border-color: var(--blue-dark);
-}
-
-.btn-success {
-  background: var(--green);
-  border-color: var(--green);
-  color: var(--white);
-}
-
-.btn-danger-soft {
-  background: var(--red-light);
-  border-color: transparent;
-  color: var(--red);
-}
-
-.btn-warning-soft {
-  background: var(--amber-light);
-  border-color: transparent;
-  color: var(--amber);
-}
-
-.btn-lg {
-  font-size: 13px;
-  min-height: 42px;
-  padding: 10px 16px;
-}
-
-.metrics {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.metric {
-  background: var(--white);
-  border: 1px solid var(--gray-200);
-  border-radius: 8px;
-  display: grid;
-  gap: 6px;
-  padding: 12px;
-}
-
-.metric span {
-  color: var(--gray-400);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.metric strong {
-  color: var(--gray-900);
-  font-size: 18px;
-  overflow-wrap: anywhere;
-}
-
-.table-wrap {
-  background: var(--white);
-  border: 1px solid var(--gray-200);
-  border-radius: 8px;
-  max-height: 360px;
-  overflow: auto;
-}
-
-table {
-  border-collapse: collapse;
-  font-size: 12px;
-  width: 100%;
-}
-
-th,
-td {
-  border-bottom: 1px solid var(--gray-100);
-  padding: 9px 10px;
-  text-align: left;
-  vertical-align: middle;
-  white-space: nowrap;
-}
-
-th {
-  background: var(--gray-50);
-  color: var(--gray-500);
-  font-size: 11px;
-  font-weight: 800;
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-
-.num {
-  text-align: right;
-}
-
-.description-cell {
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.empty-state {
-  align-items: center;
-  color: var(--gray-400);
-  display: flex;
-  font-size: 13px;
-  gap: 8px;
-  justify-content: center;
-  min-height: 74px;
-}
-
-.empty-state.compact {
-  min-height: 42px;
-}
-
+/* Local Notice Message styling */
 .notice {
-  border-radius: 6px;
-  font-size: 13px;
+  border-radius: 8px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 9px 12px;
+  padding: 8px 12px;
+  border: 1px solid;
 }
 
 .notice-info {
   background: var(--blue-light);
-  color: var(--blue);
+  border-color: #bee3f8;
+  color: var(--blue-dark);
 }
 
 .notice-success {
   background: var(--green-light);
-  color: var(--green);
+  border-color: #c6f6d5;
+  color: var(--green-dark);
 }
 
 .notice-warning {
   background: var(--amber-light);
+  border-color: #fef3c7;
   color: var(--amber);
 }
 
 .notice-error {
   background: var(--red-light);
+  border-color: #fed7d7;
   color: var(--red);
 }
 
-.radio-pill,
-.options-row label {
-  align-items: center;
-  background: var(--gray-50);
-  border: 1px solid var(--gray-200);
-  border-radius: 999px;
-  display: inline-flex;
-  font-size: 12px;
-  font-weight: 700;
-  gap: 6px;
-  padding: 7px 10px;
-}
-
-.number-list {
-  background: var(--gray-50);
-  border: 1px solid var(--gray-200);
-  border-radius: 8px;
-  max-height: 280px;
-  overflow: auto;
-  padding: 12px;
-}
-
-.number-group {
-  display: grid;
-  gap: 6px;
-}
-
-.number-group + .number-group {
-  margin-top: 12px;
-}
-
-.number-group h3,
-.number-group p {
-  color: var(--gray-500);
-  font-size: 12px;
-  font-weight: 800;
-  margin: 0;
-}
-
-.number-row {
-  align-items: center;
-  background: var(--white);
-  border: 1px solid var(--gray-200);
-  border-radius: 6px;
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
-  padding: 7px 9px;
-}
-
-.number-row span {
-  color: var(--gray-400);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.field-label {
-  align-items: center;
-  color: var(--gray-600);
-  display: flex;
-  font-size: 12px;
-  font-weight: 800;
-  justify-content: space-between;
-}
-
-.field-label small {
-  color: var(--gray-400);
-  font-weight: 700;
-}
-
-.generate-bar {
-  align-items: center;
-  background: var(--gray-50);
-  border: 1px solid var(--gray-200);
-  border-radius: 8px;
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
-  padding: 14px;
-}
-
-.status-text {
-  color: var(--gray-500);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.status-text.success {
-  color: var(--green);
-}
-
-.status-text.error {
-  color: var(--red);
-}
-
-.result-tools {
-  justify-content: flex-end;
-}
-
-.tag {
-  border-radius: 999px;
-  display: inline-flex;
-  font-size: 11px;
-  font-weight: 800;
-  padding: 3px 9px;
-}
-
-.tag-success {
-  background: var(--green-light);
-  color: var(--green);
-}
-
-.tag-warn {
-  background: var(--amber-light);
-  color: var(--amber);
-}
-
-.extra-note {
-  background: var(--amber-light);
-  border-radius: 6px;
-  color: var(--amber);
-  font-size: 12px;
-  font-weight: 700;
-  margin: 0;
-  padding: 9px 12px;
-}
-
-.log-card .card-header {
-  padding-bottom: 12px;
-  padding-top: 12px;
-}
-
-.log-list {
-  display: grid;
-  gap: 6px;
-  max-height: 260px;
-  overflow: auto;
-  padding: 14px 18px 18px;
-}
-
-.log-line {
-  align-items: baseline;
-  display: grid;
-  gap: 10px;
-  grid-template-columns: 80px minmax(0, 1fr);
-}
-
-.log-line span {
-  color: var(--gray-400);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.log-line strong {
-  color: var(--gray-600);
-  font-size: 12px;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-@media (max-width: 1100px) {
+/* Responsive constraints */
+@media (max-width: 1380px) {
   .workbench-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  }
+  .workbench-col--right {
+    grid-column: span 2;
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 16px;
+    align-items: start;
+  }
+}
+
+@media (max-width: 960px) {
+  .workbench-grid {
+    grid-template-columns: 1fr;
+  }
+  .workbench-col--right {
+    grid-column: span 1;
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 720px) {
-  .page-header,
-  .generate-bar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .api-box {
-    border-radius: 8px;
-  }
-
-  .api-box input {
-    width: 100%;
-  }
-
-  .metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .btn,
-  .generate-actions {
-    width: 100%;
+  .workbench-grid {
+    grid-template-columns: 1fr;
   }
 }
+
 </style>

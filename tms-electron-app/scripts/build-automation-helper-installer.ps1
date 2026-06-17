@@ -10,9 +10,11 @@ if ([string]::IsNullOrWhiteSpace($TimestampServer)) {
 }
 
 $ElectronDir = Split-Path -Parent $PSScriptRoot
+$RepoRoot = Split-Path -Parent $ElectronDir
+$ProductVersion = (Get-Content -LiteralPath (Join-Path $RepoRoot "app-version.json") -Raw | ConvertFrom-Json).version
 $OutputRoot = Join-Path $ElectronDir "dist-automation-helper"
 $PayloadRoot = Join-Path $OutputRoot "payload"
-$InstallerName = "TOS-Automation-Helper-Setup.exe"
+$InstallerName = "TOS-Automation-Helper-Setup.$ProductVersion.exe"
 $InstallerPath = Join-Path $OutputRoot $InstallerName
 $PayloadZipPath = Join-Path $OutputRoot "payload.zip"
 $PayloadPackPath = Join-Path $OutputRoot "payload.pack"

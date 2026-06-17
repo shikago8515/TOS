@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
+from app_version import APP_VERSION
 from utils.minio_storage import get_minio_bucket, get_object_response
 from utils.settings import get_settings, get_settings_summary, resolve_settings_path
 
@@ -17,7 +18,8 @@ router = APIRouter(prefix="/system/config", tags=["System Config"])
 
 HELPER_DEFAULT_BUCKET_KEY = "downloads"
 HELPER_DEFAULT_OBJECT_KEY = "automation-helper/TOS-Automation-Helper-Setup.exe"
-HELPER_DEFAULT_FILENAME = "TOS-Automation-Helper-Setup.exe"
+HELPER_LEGACY_FILENAME = "TOS-Automation-Helper-Setup.exe"
+HELPER_DEFAULT_FILENAME = f"TOS-Automation-Helper-Setup.{APP_VERSION}.exe"
 HELPER_CONTENT_TYPE = "application/vnd.microsoft.portable-executable"
 HELPER_PAYLOAD_DEFAULT_OBJECT_KEY = "automation-helper/TOS-Automation-Helper-Payload.zip"
 HELPER_PAYLOAD_DEFAULT_FILENAME = "TOS-Automation-Helper-Payload.zip"
@@ -33,12 +35,20 @@ TOS_DESKTOP_PAYLOAD_CONTENT_TYPE = "application/zip"
 TOS_DESKTOP_PAYLOAD_VERSIONED_PREFIX = "tos-desktop/payloads"
 TOS_DESKTOP_FULL_DEFAULT_BUCKET_KEY = "downloads"
 TOS_DESKTOP_FULL_DEFAULT_OBJECT_KEY = "tos-desktop-full/TOS-Desktop-Full-Setup.exe"
-TOS_DESKTOP_FULL_DEFAULT_FILENAME = "TOS-Desktop-Full-Setup.exe"
+TOS_DESKTOP_FULL_LEGACY_FILENAME = "TOS-Desktop-Full-Setup.exe"
+TOS_DESKTOP_FULL_DEFAULT_FILENAME = f"TOS-Desktop-Full-Setup.{APP_VERSION}.exe"
 TOS_DESKTOP_FULL_CONTENT_TYPE = "application/vnd.microsoft.portable-executable"
 PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_BUCKET_KEY = "templates"
 PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_OBJECT_KEY = "po-auto-download/po-auto-download-template.xls"
 PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_FILENAME = "PO 自动下载模板.XLS"
 PO_AUTO_DOWNLOAD_TEMPLATE_CONTENT_TYPE = "application/vnd.ms-excel"
+
+
+def _versioned_download_filename(configured_filename: Any, legacy_filename: str, versioned_filename: str) -> str:
+    filename = str(configured_filename or "")
+    if not filename or filename == legacy_filename:
+        return versioned_filename
+    return filename
 
 
 class SystemConfigSummaryResponse(BaseModel):
@@ -93,7 +103,11 @@ async def automation_helper_download() -> StreamingResponse:
     )
     bucket = str(helper_config.get("bucket") or get_minio_bucket(HELPER_DEFAULT_BUCKET_KEY))
     object_key = str(helper_config.get("object_key") or HELPER_DEFAULT_OBJECT_KEY)
-    filename = str(helper_config.get("filename") or HELPER_DEFAULT_FILENAME)
+    filename = _versioned_download_filename(
+        helper_config.get("filename"),
+        HELPER_LEGACY_FILENAME,
+        HELPER_DEFAULT_FILENAME,
+    )
 
     try:
         response = get_object_response(bucket, object_key)
@@ -252,7 +266,11 @@ async def tos_desktop_full_download() -> StreamingResponse:
     )
     bucket = str(desktop_config.get("bucket") or get_minio_bucket(TOS_DESKTOP_FULL_DEFAULT_BUCKET_KEY))
     object_key = str(desktop_config.get("object_key") or TOS_DESKTOP_FULL_DEFAULT_OBJECT_KEY)
-    filename = str(desktop_config.get("filename") or TOS_DESKTOP_FULL_DEFAULT_FILENAME)
+    filename = _versioned_download_filename(
+        desktop_config.get("filename"),
+        TOS_DESKTOP_FULL_LEGACY_FILENAME,
+        TOS_DESKTOP_FULL_DEFAULT_FILENAME,
+    )
 
     try:
         response = get_object_response(bucket, object_key)

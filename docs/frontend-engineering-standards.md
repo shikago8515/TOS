@@ -50,6 +50,15 @@ product UI while replacing recovered bundled assets with maintainable source.
 - Request and response shapes must be typed.
 - File upload APIs must expose progress handling consistently.
 
+## Automation Helper Versioning
+
+- Every automation-helper capability change must bump the shared product version in `app-version.json`, `tms-electron-app/package.json`, and `tms-backend/app_version.py` before release.
+- Automation-helper installer artifacts must include the version in the filename, for example `TOS-Automation-Helper-Setup.<version>.exe`.
+- Browser pages that depend on local helper endpoints must compare the local helper version from `127.0.0.1:3210/health` with the expected frontend version.
+- If the local helper version is missing or behind, the page must show a user-facing update dialog with current version, expected version, and a download action.
+- Missing local helper routes or missing helper entry files must be treated as update-required errors, not as generic launch failures.
+- Release upload scripts must keep a stable latest download object for compatibility and also upload a versioned archive/object for traceability.
+
 ## Styles
 
 - Global CSS is limited to reset, design tokens, and approved Element Plus

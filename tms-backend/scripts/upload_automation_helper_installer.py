@@ -11,11 +11,14 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from utils.minio_storage import get_minio_bucket, put_object_bytes, sha256_bytes
+from app_version import APP_VERSION
 
 
 HELPER_OBJECT_KEY = "automation-helper/TOS-Automation-Helper-Setup.exe"
-HELPER_FILENAME = "TOS-Automation-Helper-Setup.exe"
+HELPER_LEGACY_FILENAME = "TOS-Automation-Helper-Setup.exe"
+HELPER_FILENAME = f"TOS-Automation-Helper-Setup.{APP_VERSION}.exe"
 HELPER_CONTENT_TYPE = "application/vnd.microsoft.portable-executable"
+HELPER_INSTALLER_VERSIONED_PREFIX = "automation-helper/installers"
 HELPER_PAYLOAD_OBJECT_KEY = "automation-helper/TOS-Automation-Helper-Payload.zip"
 HELPER_PAYLOAD_FILENAME = "TOS-Automation-Helper-Payload.zip"
 HELPER_PAYLOAD_CONTENT_TYPE = "application/zip"
@@ -37,6 +40,15 @@ def upload_installer(installer_path: Path, payload_path: Path | None = None) -> 
     storage = put_object_bytes(
         bucket=bucket,
         object_key=HELPER_OBJECT_KEY,
+        content=content,
+        content_type=HELPER_CONTENT_TYPE,
+    )
+    installer_versioned_object_key = (
+        f"{HELPER_INSTALLER_VERSIONED_PREFIX}/{APP_VERSION}/{HELPER_FILENAME}"
+    )
+    installer_versioned_storage = put_object_bytes(
+        bucket=bucket,
+        object_key=installer_versioned_object_key,
         content=content,
         content_type=HELPER_CONTENT_TYPE,
     )
@@ -84,10 +96,14 @@ def upload_installer(installer_path: Path, payload_path: Path | None = None) -> 
         "ok": True,
         "bucket": bucket,
         "objectKey": HELPER_OBJECT_KEY,
-        "filename": HELPER_FILENAME,
+        "versionedObjectKey": installer_versioned_object_key,
+        "filename": installer_path.name,
+        "defaultFilename": HELPER_FILENAME,
         "fileSize": storage["file_size"],
+        "versionedFileSize": installer_versioned_storage["file_size"],
         "sha256": sha256_bytes(content),
         "downloadPath": "/api/system/config/automation-helper/download",
+        "version": APP_VERSION,
     }
     if payload_result is not None:
         result["payload"] = payload_result
@@ -101,6 +117,8 @@ def main() -> None:
         / "dist-automation-helper"
         / HELPER_FILENAME
     )
+    if not default_path.exists():
+        default_path = default_path.with_name(HELPER_LEGACY_FILENAME)
     default_payload_path = default_path.with_name(HELPER_PAYLOAD_FILENAME)
     installer_path = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else default_path
     payload_path = (

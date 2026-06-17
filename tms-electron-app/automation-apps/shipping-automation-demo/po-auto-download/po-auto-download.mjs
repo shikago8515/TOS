@@ -76,6 +76,17 @@ export async function selectPoAutoDownloadDirectory(body = {}) {
   }
 }
 
+function toBoolean(value, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes", "y", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
+  }
+  return Boolean(fallback);
+}
+
 export function createPoAutoDownloadAutomation(deps) {
   const {
     config,
@@ -92,6 +103,7 @@ export function createPoAutoDownloadAutomation(deps) {
     const credentials = resolveCredentials(body);
     const poRows = extractInvoiceRowsFromWorkbookPayload(body);
     const inputFileName = normalizeUploadFileName(body);
+    const headless = toBoolean(body?.headless, config.headless);
     const selectedDownloadDirectory = resolveDownloadDirectory(body);
     const downloadDirectory = await resolveRunDownloadDirectory(selectedDownloadDirectory);
     const requestConcurrency = resolveRequestConcurrency(body, config);
@@ -99,6 +111,7 @@ export function createPoAutoDownloadAutomation(deps) {
     const activeRun = registerActiveRun({
       action: "run-po-auto-download-file",
       browser: config.browser,
+      headless,
       downloadDirectory,
       selectedDownloadDirectory,
       downloadMode: "request-first",
@@ -132,6 +145,7 @@ export function createPoAutoDownloadAutomation(deps) {
         finishedAt: result.generatedAt,
         ok: result.ok,
         finalUrl: result.finalUrl,
+        headless,
         downloadDirectory,
         selectedDownloadDirectory,
         downloadMode: result.downloadMode,

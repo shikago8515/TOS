@@ -1,5 +1,25 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.19-improved-automation-executor-health-probe",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-17",
+    "category": "improved",
+    "pageName": "网页自动化 / 本机执行器",
+    "pagePath": "/web-automation",
+    "title": "优化本机执行器检测速度",
+    "description": "本机执行器健康检查改为并行快探测 /api/health 和 /health，并收紧本机超时时间，减少浏览器刷新执行器状态时的等待卡顿。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.19-improved-helper-version-update-prompt",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-17",
+    "category": "improved",
+    "pageName": "自动化助手 / 安装包",
+    "pagePath": "/settings",
+    "title": "提示本机小助手版本更新",
+    "description": "小助手、Shipping 执行器和 TOS 完整安装包版本统一跟随系统版本，浏览器自动检测到本机小助手版本落后或无法识别时会提示用户安装最新版。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.17-improved-electron-external-allowlist",
     "version": "0.9.8-beta.3.17",
     "releaseDate": "2026-06-16",

@@ -147,15 +147,6 @@
             </transition>
           </section>
 
-          <!-- Health Log -->
-          <details class="iaa-log">
-            <summary class="iaa-log__hd">
-              <AppIcon name="terminal" class="iaa-log__hd-icon" />
-              <span>{{ text('执行器健康日志') }}</span>
-              <AppIcon name="chevron-down" class="iaa-chev" />
-            </summary>
-            <pre class="iaa-log__pre">{{ healthRaw }}</pre>
-          </details>
         </div>
 
         <!-- ═══ RIGHT DOCK ═══ -->
@@ -168,15 +159,23 @@
               <span class="iaa-dock__dot" :class="executorHealth?.ok ? 'iaa-dock__dot--on' : ''" />
             </div>
             <div class="iaa-dock__bd">
-              <button class="iaa-btn iaa-btn--pri iaa-btn--full" :disabled="!canLaunchActiveApp" @click="startActiveApp(false)">
-                <AppIcon name="play-circle" />{{ launching ? text('启动中...') : text('启动执行器') }}
-              </button>
-              <button class="iaa-btn iaa-btn--danger iaa-btn--full" :disabled="!canStopActiveApp" @click="stopActiveApp">
-                <AppIcon name="stop-circle" />{{ text('停止') }}
-              </button>
-              <button class="iaa-btn iaa-btn--full" :disabled="refreshing" @click="refreshExecutorState(false)">
-                <AppIcon name="refresh-cw" :class="{ 'iaa-spin': refreshing }" />{{ text('刷新状态') }}
-              </button>
+              <BrowserVisibilitySwitch v-model="showBrowserView" />
+              <div class="sa-btn-grid">
+                <button class="sa-btn sa-btn--pri" :disabled="!canLaunchActiveApp" @click="startActiveApp(false)">
+                  <AppIcon name="play-circle" />{{ launching ? text('启动中...') : text('启动') }}
+                </button>
+                <button class="sa-btn sa-btn--danger-soft" :disabled="!canStopActiveApp" @click="stopActiveApp">
+                  <AppIcon name="stop-circle" />{{ text('停止') }}
+                </button>
+              </div>
+              <div class="sa-btn-grid">
+                <button class="sa-btn sa-btn--soft" :disabled="refreshing" @click="refreshExecutorState(false)">
+                  <AppIcon name="refresh-cw" :class="{ 'sa-spin': refreshing }" />{{ text('刷新') }}
+                </button>
+                <button class="sa-btn sa-btn--soft" type="button" @click="isHealthLogOpen = true">
+                  <AppIcon name="terminal" />{{ text('日志') }}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -209,6 +208,32 @@
         </aside>
       </div>
     </template>
+
+    <!-- Health Log Drawer Overlay -->
+    <transition name="sa-drawer-fade">
+      <div v-if="isHealthLogOpen" class="sa-drawer-overlay" @click="isHealthLogOpen = false" />
+    </transition>
+
+    <!-- Health Log Drawer -->
+    <transition name="sa-drawer-slide">
+      <div v-if="isHealthLogOpen" class="sa-drawer">
+        <header class="sa-drawer__hd">
+          <div class="sa-drawer__title">
+            <AppIcon name="terminal" />
+            <div>
+              <h3>{{ text('执行器健康日志') }}</h3>
+              <p>{{ text('运行状态与连通性控制台') }}</p>
+            </div>
+          </div>
+          <button class="sa-drawer__close-btn" @click="isHealthLogOpen = false">
+            <AppIcon name="stop-circle" />
+          </button>
+        </header>
+        <div class="sa-drawer__bd">
+          <pre class="sa-drawer__pre">{{ healthRaw }}</pre>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -216,17 +241,20 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
+import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 import type { AutomationAppInfo } from '../../../types/electronApi'
 import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {
   buildAutomationTemplateDownloadUrl, clearExecutorCredentials, createAutomationRunRecord,
   fetchAutomationApps, fetchAutomationTemplates, fetchExecutorCredentials, finishAutomationRunRecord,
+  getAutomationHelperUpdateMessage,
   hasElectronAutomationSupport, launchAutomationConsole, openAutomationHelperDownload,
   primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
   recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
 import { canRunWithCredentials } from '../../web-automation/webAutomationCredentials'
+import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
 
 const ENTRY_ID = 'infornexus-auto-add'
@@ -242,9 +270,11 @@ const automationTemplates = ref<AutomationTemplate[]>([])
 const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false)
 const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false); const sending = ref(false)
 const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info')
+const isHealthLogOpen = ref(false)
 const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
 const shippingUsername = ref(''); const shippingPassword = ref(''); const showShippingPassword = ref(true)
+const showBrowserView = ref(true)
 const statusText = ref(''); const statusLabel = ref('待命')
 const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
 
@@ -288,7 +318,9 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
     if (!electronSupported && !launcherReachable.value) { executorHealth.value = null; activeApp.value = fb; if (!silent) { messageTone.value = 'warning'; message.value = text('未检测到本机自动化助手。') }; return }
     executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl); await refreshExecutorCredentials()
     if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
-    if (!silent) { messageTone.value = 'success'; message.value = text('状态已刷新。') }
+    const updateMessage = getAutomationHelperUpdateMessage(executorHealth.value, activeApp.value)
+    if (updateMessage) { messageTone.value = 'warning'; message.value = text(updateMessage) }
+    else if (!silent) { messageTone.value = 'success'; message.value = text('状态已刷新。') }
   } catch {
     executorHealth.value = null; activeApp.value = activeApp.value || fb
     if (!silent) { messageTone.value = 'warning'; message.value = launcherReachable.value ? text('本机自动化助手已连接，执行器尚未启动。') : text('执行器未就绪。') }
@@ -398,10 +430,10 @@ async function runInfornexusAutoAdd(): Promise<void> {
   const file = selectedFile.value; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; lastRawResponse.value = ''; message.value = ''
   try {
     const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload()
-    const res = await fetch(executorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: entry.localExecutorToken, ...cp }) })
+    const res = await fetch(executorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: entry.localExecutorToken, headless: !showBrowserView.value, ...cp }) })
     const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw)
     await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j)
-    if (!res.ok) { statusLabel.value = '失败'; statusText.value = j?.message || `HTTP ${res.status}`; lastResult.value = { ok: false, message: j?.message || `HTTP ${res.status}` }; messageTone.value = 'error'; message.value = text('执行失败。'); return }
+    if (!res.ok) { const m = formatAutomationExecutorMessage(j?.message || `HTTP ${res.status}`); if (shouldShowAutomationErrorDialog(j?.message)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }
     if (j?.ok) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedIdCount ?? 0}/${j.totalIdCount ?? '?'} 个 ID。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }
     statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。')
   } catch (e) { statusLabel.value = '异常'; statusText.value = readErrorMessage(e, '网络错误'); lastResult.value = { ok: false }; messageTone.value = 'error'; message.value = text('执行异常。') }
@@ -762,6 +794,154 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
 /* ═══ RESPONSIVE ═══ */
 @media (max-width: 1200px) { .iaa-body { grid-template-columns: 1fr 220px; } }
 @media (max-width: 960px) { .iaa-body { grid-template-columns: 1fr; } .iaa-dock { flex-direction: row; } .iaa-dock-card { flex: 1; &--flex { flex: 1; } } .iaa-cred-grid { grid-template-columns: 1fr; } }
+
+/* 执行器控制双列格栅 */
+.sa-btn-grid {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.sa-btn-grid:last-child {
+  margin-bottom: 0;
+}
+.sa-btn-grid .sa-btn {
+  flex: 1;
+  min-width: 0;
+  padding: 0 8px;
+  height: 32px;
+  font-size: 11px;
+}
+
+/* 按钮微调优化 */
+.sa-btn--danger-soft {
+  background: #fef2f2 !important;
+  border-color: transparent !important;
+  color: #ef4444 !important;
+}
+.sa-btn--danger-soft:hover:not(:disabled) {
+  background: #fee2e2 !important;
+}
+.sa-btn--soft {
+  background: #f0f9ff !important;
+  border-color: transparent !important;
+  color: #0ea5e9 !important;
+}
+.sa-btn--soft:hover:not(:disabled) {
+  background: #e0f2fe !important;
+}
+
+/* 侧边栏健康日志 Drawer & Overlay */
+.sa-drawer-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+}
+.sa-drawer {
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  width: 420px;
+  background: #0f172a;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  z-index: 1001;
+  box-sizing: border-box;
+  color: #f8fafc;
+}
+.sa-drawer__hd {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.sa-drawer__title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sa-drawer__title h3 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0;
+  color: #fff;
+}
+.sa-drawer__title p {
+  font-size: 10px;
+  color: #94a3b8;
+  margin: 2px 0 0;
+}
+.sa-drawer__close-btn {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+.sa-drawer__close-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #f8fafc;
+}
+.sa-drawer__bd {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  box-sizing: border-box;
+}
+.sa-drawer__pre {
+  margin: 0;
+  font-family: 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #cbd5e1;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* 侧栏过渡动画 */
+.sa-drawer-fade-enter-active,
+.sa-drawer-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+.sa-drawer-fade-enter-from,
+.sa-drawer-fade-leave-to {
+  opacity: 0;
+}
+.sa-drawer-slide-enter-active,
+.sa-drawer-slide-leave-active {
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.sa-drawer-slide-enter-from,
+.sa-drawer-slide-leave-to {
+  transform: translateX(100%);
+}
+
+/* 兼容 .sa-btn 基础样式 */
+.sa-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  height: 34px; padding: 0 14px; border: 1px solid var(--br); border-radius: 10px;
+  background: #fff; color: #4b5563; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all .2s cubic-bezier(.22,1,.36,1); white-space: nowrap;
+  :deep(.app-icon) { font-size: 13px; flex-shrink: 0; }
+  &:hover:not(:disabled) { background: #f8fafc; border-color: #cbd5e1; transform: translateY(-1px); }
+  &:active:not(:disabled) { transform: translateY(0); }
+  &:disabled { opacity: .35; cursor: not-allowed; }
+  &--pri {
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    color: #fff; border-color: transparent;
+    box-shadow: 0 2px 10px rgba(14,165,233,.2);
+    &:hover:not(:disabled) { background: linear-gradient(135deg, #0ea5e9, #0284c7); box-shadow: 0 4px 16px rgba(14,165,233,.3); filter: brightness(1.05); }
+  }
+}
 </style>
 
 <!-- Override shell padding so this page fills edge-to-edge -->

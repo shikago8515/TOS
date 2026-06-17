@@ -7,10 +7,12 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ElectronDir = Split-Path -Parent $PSScriptRoot
+$RepoRoot = Split-Path -Parent $ElectronDir
+$ProductVersion = (Get-Content -LiteralPath (Join-Path $RepoRoot "app-version.json") -Raw | ConvertFrom-Json).version
 $WebInstallerBuilder = Join-Path $PSScriptRoot "build-tos-desktop-nsis-installer.ps1"
 $WebOutputRoot = Join-Path $ElectronDir "dist-tos-desktop"
 $OutputRoot = Join-Path $ElectronDir "dist-tos-desktop-full"
-$InstallerName = "TOS-Desktop-Full-Setup.exe"
+$InstallerName = "TOS-Desktop-Full-Setup.$ProductVersion.exe"
 $InstallerPath = Join-Path $OutputRoot $InstallerName
 $PayloadArchiveName = "TOS-Desktop-Payload.zip"
 $PayloadArchivePath = Join-Path $WebOutputRoot $PayloadArchiveName
@@ -183,6 +185,7 @@ Section "$AppDisplayName" SecMain
   !insertmacro TOS_LOG "install complete"
   SetOutPath "`$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSDesktop" "DisplayName" "$AppDisplayName"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSDesktop" "DisplayVersion" "$ProductVersion"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSDesktop" "Publisher" "TOS"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSDesktop" "InstallLocation" "`$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSDesktop" "UninstallString" '"`$INSTDIR\Uninstall.exe"'

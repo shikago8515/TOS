@@ -30,6 +30,7 @@ const sharedPackageJson = path.join(sharedExecutorRoot, "package.json");
 const requireShared = createRequire(sharedPackageJson);
 const { chromium, firefox, webkit } = requireShared("playwright");
 const xlsx = requireShared("xlsx");
+const executorVersion = await resolveExecutorVersion();
 
 const browserEngines = { chromium, firefox, webkit };
 const VISIBLE_CHROMIUM_WINDOW_ARGS = ["--start-maximized", "--window-position=0,0"];
@@ -146,6 +147,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       const credentials = resolveCredentials(body);
+      const headless = resolveRunHeadless(body);
       const releasedBulkRows = bulkType === "released"
         ? extractShipping2ReleasedBulkRowsFromWorkbookPayload(body)
         : [];
@@ -158,6 +160,7 @@ const server = http.createServer(async (req, res) => {
       const activeRun = registerActiveRun({
         action: `run-shipping2-${bulkType}-bulk`,
         browser: config.browser,
+        headless,
         bulkType,
         inputFileName,
         inputMode: "shipping2-bulk",
@@ -167,6 +170,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const result = await runShipping2BulkFile(credentials, bulkType, inputFileName, activeRun.runId, {
           releasedBulkRows,
+          headless,
           unreleasedBulkRows,
         });
         recordCompletedRun({
@@ -196,13 +200,15 @@ const server = http.createServer(async (req, res) => {
       authorize(req, body);
 
       const credentials = resolveCredentials(body);
+      const headless = resolveRunHeadless(body);
       const activeRun = registerActiveRun({
         action: "open-shipment-scan",
         browser: config.browser,
+        headless,
       });
 
       try {
-        const result = await openShipmentScan(credentials, activeRun.runId);
+        const result = await openShipmentScan(credentials, activeRun.runId, { headless });
         recordCompletedRun({
           runId: activeRun.runId,
           startedAt: activeRun.startedAt,
@@ -223,13 +229,15 @@ const server = http.createServer(async (req, res) => {
       authorize(req, body);
 
       const credentials = resolveCredentials(body);
+      const headless = resolveRunHeadless(body);
       const activeRun = registerActiveRun({
         action: "open-infornexus-home",
         browser: config.browser,
+        headless,
       });
 
       try {
-        const result = await openInfornexusHome(credentials, activeRun.runId);
+        const result = await openInfornexusHome(credentials, activeRun.runId, { headless });
         recordCompletedRun({
           runId: activeRun.runId,
           startedAt: activeRun.startedAt,
@@ -250,18 +258,20 @@ const server = http.createServer(async (req, res) => {
       authorize(req, body);
 
       const credentials = resolveCredentials(body);
+      const headless = resolveRunHeadless(body);
       const idRows = extractInfornexusAutoAddRowsFromWorkbookPayload(body);
       const inputFileName = normalizeUploadFileName(body);
       const activeRun = registerActiveRun({
         action: "run-infornexus-auto-add-file",
         browser: config.browser,
+        headless,
         inputFileName,
         inputMode: "infornexus-auto-add",
         totalIdCount: idRows.length,
       });
 
       try {
-        const result = await runInfornexusAutoAddFile(credentials, idRows, inputFileName, activeRun.runId);
+        const result = await runInfornexusAutoAddFile(credentials, idRows, inputFileName, activeRun.runId, { headless });
         recordCompletedRun({
           runId: activeRun.runId,
           startedAt: activeRun.startedAt,
@@ -280,16 +290,24 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (req.method === "POST" && (requestPath === "/run-shipping-file" || requestPath === "/api/run-shipping-file")) {
+    const isShippingFileRequest = requestPath === "/run-shipping-file" || requestPath === "/api/run-shipping-file";
+    const isXinlongtaiShippingFileRequest = requestPath === "/run-xinlongtai-shipping-file"
+      || requestPath === "/api/run-xinlongtai-shipping-file";
+    if (req.method === "POST" && (isShippingFileRequest || isXinlongtaiShippingFileRequest)) {
       const body = await readJsonBody(req);
       authorize(req, body);
 
       const credentials = resolveCredentials(body);
-      const poRows = extractPoRowsFromWorkbookPayload(body);
+      const headless = resolveRunHeadless(body);
+      const isXinlongtaiShippingRun = isXinlongtaiShippingFileRequest || isXinlongtaiShippingRequestBody(body);
+      const poRows = extractPoRowsFromWorkbookPayload(body, {
+        isXinlongtaiWorkbook: isXinlongtaiShippingRun,
+      });
       const inputFileName = normalizeUploadFileName(body);
       const activeRun = registerActiveRun({
-        action: "run-shipping-file",
+        action: isXinlongtaiShippingRun ? "run-xinlongtai-shipping-file" : "run-shipping-file",
         browser: config.browser,
+        headless,
         inputFileName,
         inputMode: "local-file",
         totalPoCount: poRows.length,
@@ -297,8 +315,8 @@ const server = http.createServer(async (req, res) => {
 
       try {
         const result = await runShippingFile(credentials, poRows, inputFileName, activeRun.runId, {
-          automationId: body?.automationId || body?.moduleId || body?.entryId,
-          shipmentScanAction: body?.shipmentScanAction,
+          headless,
+          shipmentScanAction: isXinlongtaiShippingRun ? "assign-equipment-id" : undefined,
         });
         result.artifacts = await persistRunArtifacts(result, poRows, activeRun.runId);
         recordCompletedRun({
@@ -380,6 +398,8 @@ function buildHealthPayload() {
   const activeRunList = Array.from(activeRuns.values());
   return {
     ok: true,
+    version: executorVersion,
+    helperVersion: executorVersion,
     busy: activeRunList.length > 0,
     activeRun: activeRunList[0] || null,
     activeRuns: activeRunList,
@@ -394,6 +414,7 @@ function buildHealthPayload() {
       poAutoDownloadRequestDownload: true,
     },
     config: {
+      version: executorVersion,
       loginUrl: config.loginUrl,
       browser: config.browser,
       headless: config.headless,
@@ -477,6 +498,37 @@ function sanitizeFileSegment(value) {
     .slice(0, 80) || "run";
 }
 
+async function resolveExecutorVersion() {
+  const envVersion = String(process.env.TOS_AUTOMATION_HELPER_VERSION || "").trim();
+  if (envVersion) {
+    return envVersion;
+  }
+
+  try {
+    const packageJson = JSON.parse(
+      await readFile(path.join(appRoot, "package.json"), "utf8"),
+    );
+    return String(packageJson.version || "").trim();
+  } catch (_error) {
+    return "";
+  }
+}
+
+function toBoolean(value, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes", "y", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
+  }
+  return Boolean(fallback);
+}
+
+function resolveRunHeadless(runContext) {
+  return toBoolean(runContext?.headless, config.headless);
+}
+
 function normalizeShipmentScanAction(value) {
   const normalized = String(value || "").trim().toLowerCase();
   if (["assign", "assign-equipment-id", "assign equipment id"].includes(normalized)) {
@@ -485,35 +537,49 @@ function normalizeShipmentScanAction(value) {
   return "Remove/Change Equipment ID";
 }
 
-function resolveShipmentScanAction(runContext) {
-  const automationId = String(
-    runContext?.automationId
-      || runContext?.moduleId
-      || runContext?.entryId
-      || "",
-  ).trim();
-  if (automationId === XINLONGTAI_SHIPPING_AUTOMATION_ID) {
-    return normalizeShipmentScanAction(runContext?.shipmentScanAction);
-  }
-  return "Remove/Change Equipment ID";
+function getShipmentScanToolbarActionLabel(shipmentScanAction) {
+  return isAssignEquipmentShipmentScanAction(shipmentScanAction)
+    ? "Assign Equipment ID"
+    : "Change Equipment ID";
 }
 
-async function openShipmentScan(credentials, runId) {
+function isAssignEquipmentShipmentScanAction(value) {
+  return normalizeShipmentScanAction(value) === "Assign Equipment ID";
+}
+
+function isXinlongtaiShippingRequestBody(body) {
+  const automationId = String(
+    body?.automationId
+      || body?.moduleId
+      || body?.entryId
+      || "",
+  ).trim();
+  return automationId === XINLONGTAI_SHIPPING_AUTOMATION_ID
+    || isAssignEquipmentShipmentScanAction(body?.shipmentScanAction);
+}
+
+function resolveShipmentScanAction(runContext) {
+  return normalizeShipmentScanAction(runContext?.shipmentScanAction);
+}
+
+async function openShipmentScan(credentials, runId, options = {}) {
   return runShippingWorkflow(credentials, {
     runId,
     poRows: [],
     inputFileName: "",
     fillPoNumbers: false,
+    headless: options?.headless,
     targetPage: "shipment-scan",
   });
 }
 
-async function openInfornexusHome(credentials, runId) {
+async function openInfornexusHome(credentials, runId, options = {}) {
   return runShippingWorkflow(credentials, {
     runId,
     poRows: [],
     inputFileName: "",
     fillPoNumbers: false,
+    headless: options?.headless,
     targetPage: "home",
   });
 }
@@ -524,6 +590,7 @@ async function runShipping2BulkFile(credentials, bulkType, inputFileName, runId,
     poRows: [],
     inputFileName,
     fillPoNumbers: false,
+    headless: options?.headless,
     targetPage: "event-management",
     shipping2BulkType: bulkType,
     releasedBulkRows: Array.isArray(options?.releasedBulkRows)
@@ -541,26 +608,27 @@ async function runShippingFile(credentials, poRows, inputFileName, runId, option
     poRows,
     inputFileName,
     fillPoNumbers: true,
+    headless: options?.headless,
     targetPage: "shipment-scan",
-    automationId: options?.automationId,
     shipmentScanAction: options?.shipmentScanAction,
   });
 }
 
-async function runInfornexusAutoAddFile(credentials, idRows, inputFileName, runId) {
+async function runInfornexusAutoAddFile(credentials, idRows, inputFileName, runId, options = {}) {
   return runInfornexusAutoAddWorkflow(credentials, {
     runId,
     idRows,
     inputFileName,
+    headless: options?.headless,
   });
 }
 
 async function runInfornexusAutoAddWorkflow(credentials, runContext) {
   const engine = browserEngines[config.browser] || chromium;
   const launchOptions = {
-    headless: config.headless,
     slowMo: config.slowMo,
     ...config.launchOptions,
+    headless: resolveRunHeadless(runContext),
   };
   const browserLaunchOptions = buildVisibleBrowserLaunchOptions(launchOptions, config.browser);
 
@@ -718,9 +786,9 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
 async function runShippingWorkflow(credentials, runContext) {
   const engine = browserEngines[config.browser] || chromium;
   const launchOptions = {
-    headless: config.headless,
     slowMo: config.slowMo,
     ...config.launchOptions,
+    headless: resolveRunHeadless(runContext),
   };
   const browserLaunchOptions = buildVisibleBrowserLaunchOptions(launchOptions, config.browser);
 
@@ -1480,19 +1548,25 @@ function getShipmentScanDialog(page) {
     .last();
 }
 
-function getShipmentScanWorkspace(page) {
+function getShipmentScanWorkspaceTitlePattern(shipmentScanAction) {
+  return isAssignEquipmentShipmentScanAction(shipmentScanAction)
+    ? /^(?:Undo Shipment Scan|Shipment Scan)$/i
+    : /^Undo Shipment Scan$/i;
+}
+
+function getShipmentScanWorkspace(page, shipmentScanAction = "Remove/Change Equipment ID") {
   return page
     .locator("div.x-panel:visible")
     .filter({
       has: page.locator("span.x-panel-header-text", {
-        hasText: /^Undo Shipment Scan$/i,
+        hasText: getShipmentScanWorkspaceTitlePattern(shipmentScanAction),
       }),
     })
     .first();
 }
 
-function getShipmentScanGrid(page) {
-  return getShipmentScanWorkspace(page)
+function getShipmentScanGrid(page, shipmentScanAction = "Remove/Change Equipment ID") {
+  return getShipmentScanWorkspace(page, shipmentScanAction)
     .locator("div.x-grid3:visible")
     .first();
 }
@@ -1736,12 +1810,12 @@ async function processShipmentPoRow(page, poRow, shipmentScanAction) {
   }
 
   await confirmShipmentScanFilters(page, poRow.poNo, shipmentScanAction);
-  await waitForShipmentGridRows(page, poRow.poNo);
-  await selectShipmentGridRows(page, poRow.poNo);
-  const dialog = await openChangeEquipmentIdDialog(page, poRow.poNo);
+  await waitForShipmentGridRows(page, poRow.poNo, shipmentScanAction);
+  await selectShipmentGridRows(page, poRow.poNo, shipmentScanAction);
+  const dialog = await openChangeEquipmentIdDialog(page, poRow.poNo, shipmentScanAction);
   await fillChangeEquipmentIdDialog(dialog, normalizedChangeEquipmentId);
   const applyResult = await applyChangeEquipmentIdDialog(page, dialog, poRow.poNo);
-  await waitForShipmentWorkspaceReadyAfterApply(page, poRow.poNo);
+  await waitForShipmentWorkspaceReadyAfterApply(page, poRow.poNo, shipmentScanAction);
   log("Completed shipment PO row.", {
     poNo: String(poRow?.poNo || "").trim(),
     changeEquipmentId: normalizedChangeEquipmentId,
@@ -1797,7 +1871,7 @@ async function fillShipmentPoNumber(dialog, poNo) {
   log("Entered PO No.", { poNo: normalizedPoNo });
 }
 
-async function waitForShipmentGridRows(page, poNo) {
+async function waitForShipmentGridRows(page, poNo, shipmentScanAction = "Remove/Change Equipment ID") {
   const timeoutMs = Math.min(config.navigationTimeoutMs, 12000);
   const startedAt = Date.now();
   let lastDialogError = "";
@@ -1815,7 +1889,7 @@ async function waitForShipmentGridRows(page, poNo) {
       throw new Error(`PO No ${poNo}: ${lastDialogError}`);
     }
 
-    const state = await getShipmentGridState(page, poNo);
+    const state = await getShipmentGridState(page, poNo, shipmentScanAction);
     lastState = state;
 
     if (state.rowCount > 0 && state.matchedPoRowCount > 0) {
@@ -1889,14 +1963,14 @@ async function waitForShipmentGridRows(page, poNo) {
   throw new Error(`PO No ${poNo}: timed out waiting for shipment rows. State: ${JSON.stringify(lastState || {})}`);
 }
 
-async function waitForShipmentWorkspaceReadyAfterApply(page, poNo) {
+async function waitForShipmentWorkspaceReadyAfterApply(page, poNo, shipmentScanAction = "Remove/Change Equipment ID") {
   const timeoutMs = Math.min(config.navigationTimeoutMs, 4000);
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
     const processingVisible = await hasVisibleWindowText(page, /processing/i);
     const visibleDialog = await getTopVisibleDialogInfo(page).catch(() => null);
-    const workspaceVisible = await getShipmentScanWorkspace(page).isVisible().catch(() => false);
+    const workspaceVisible = await getShipmentScanWorkspace(page, shipmentScanAction).isVisible().catch(() => false);
     const shipmentScanLinkVisible = await page
       .locator('div.sidepanellinks a[href="#Shipment%20Scan"]')
       .first()
@@ -1920,16 +1994,18 @@ async function waitForShipmentWorkspaceReadyAfterApply(page, poNo) {
   });
 }
 
-async function selectShipmentGridRows(page, poNo) {
+async function selectShipmentGridRows(page, poNo, shipmentScanAction = "Remove/Change Equipment ID") {
   const timeoutMs = Math.min(config.navigationTimeoutMs, 15000);
   const startedAt = Date.now();
   let lastState = null;
   let stableSelectedCount = 0;
   let lastSignature = "";
-  const grid = getShipmentScanGrid(page);
+  let assignHeaderClickAttempted = false;
+  const isAssignEquipmentSelection = isAssignEquipmentShipmentScanAction(shipmentScanAction);
+  const grid = getShipmentScanGrid(page, shipmentScanAction);
 
   while (Date.now() - startedAt < timeoutMs) {
-    const selectionState = await getShipmentGridState(page, poNo);
+    const selectionState = await getShipmentGridState(page, poNo, shipmentScanAction);
     lastState = selectionState;
 
     if (selectionState.noDataVisible && selectionState.rowCount === 0) {
@@ -1959,6 +2035,37 @@ async function selectShipmentGridRows(page, poNo) {
     stableSelectedCount = 0;
     lastSignature = selectionState.rowSignature;
 
+    if (isAssignEquipmentSelection
+      && selectionState.rowCount > 0
+      && selectionState.matchedPoRowCount > 0) {
+      if (!assignHeaderClickAttempted) {
+        const headerClickResult = await clickAssignEquipmentShipmentGridCheckers(page, poNo, "header");
+        assignHeaderClickAttempted = true;
+        if (headerClickResult.headerClicked || headerClickResult.modelSelected) {
+          log("Selected Assign Equipment ID shipment rows from header step.", {
+            poNo,
+            ...headerClickResult,
+          });
+          await page.waitForTimeout(350);
+          continue;
+        }
+      }
+
+      const rowClickResult = await clickAssignEquipmentShipmentGridCheckers(page, poNo, "rows");
+      if (rowClickResult.rowClickedCount > 0 || rowClickResult.modelSelected) {
+        log("Selected Assign Equipment ID shipment rows from row step.", {
+          poNo,
+          ...rowClickResult,
+        });
+        await page.waitForTimeout(350);
+        continue;
+      }
+      if (rowClickResult.gridFound && rowClickResult.matchedRowCount > 0) {
+        await page.waitForTimeout(350);
+        continue;
+      }
+    }
+
     const headerChecker = grid.locator("div.x-grid3-hd-checker").first();
     const headerVisible = await headerChecker.isVisible().catch(() => false);
     if (headerVisible) {
@@ -1982,21 +2089,207 @@ async function selectShipmentGridRows(page, poNo) {
   throw new Error(`PO No ${poNo}: shipment rows were not fully selected. State: ${JSON.stringify(lastState || {})}`);
 }
 
-async function openChangeEquipmentIdDialog(page, poNo) {
-  const selectionState = await getShipmentGridState(page, poNo);
+async function clickAssignEquipmentShipmentGridCheckers(page, poNo, mode = "header") {
+  const normalizedPoNo = String(poNo || "").trim();
+  const clickMode = mode === "rows" ? "rows" : "header";
+  return page.evaluate(({ targetPo, clickMode: modeValue }) => {
+    const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+    const isVisible = (element) => {
+      if (!element) {
+        return false;
+      }
+
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none"
+        && style.visibility !== "hidden"
+        && rect.width > 0
+        && rect.height > 0;
+    };
+    const isShipmentWorkspaceHeader = (value) => {
+      const text = normalize(value);
+      return /^Undo Shipment Scan$/i.test(text) || /^Shipment Scan$/i.test(text);
+    };
+    const dispatchGridClick = (element, options = {}) => {
+      if (!element) {
+        return false;
+      }
+
+      const candidates = [
+        element,
+        element.closest("td"),
+        element.parentElement,
+      ].filter(Boolean);
+      for (const target of candidates) {
+        const rect = target.getBoundingClientRect();
+        const eventInit = {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: Math.round(rect.left + rect.width / 2),
+          clientY: Math.round(rect.top + rect.height / 2),
+          ctrlKey: Boolean(options.ctrlKey),
+          metaKey: Boolean(options.ctrlKey),
+          shiftKey: Boolean(options.shiftKey),
+        };
+        for (const eventType of ["mouseover", "mousemove", "mousedown", "mouseup", "click"]) {
+          target.dispatchEvent(new MouseEvent(eventType, eventInit));
+        }
+        if (typeof target.click === "function") {
+          target.click();
+        }
+      }
+      return true;
+    };
+
+    const result = {
+      workspaceFound: false,
+      gridFound: false,
+      headerClicked: false,
+      modelSelected: false,
+      modelSelectedCount: 0,
+      matchedRowCount: 0,
+      selectedBeforeCount: 0,
+      rowClickedCount: 0,
+    };
+    const workspace = Array.from(document.querySelectorAll("div.x-panel"))
+      .find((element) => isVisible(element)
+        && Array.from(element.querySelectorAll("span.x-panel-header-text"))
+          .some((header) => isShipmentWorkspaceHeader(header.textContent)));
+    if (!workspace) {
+      return result;
+    }
+    result.workspaceFound = true;
+
+    const grid = Array.from(workspace.querySelectorAll("div.x-grid3"))
+      .find((element) => isVisible(element));
+    if (!grid) {
+      return result;
+    }
+    result.gridFound = true;
+    const rowNodes = Array.from(grid.querySelectorAll("div.x-grid3-row"))
+      .filter((element) => isVisible(element));
+    const matchingRowNodes = rowNodes.filter((rowNode) => {
+      const rowText = normalize(rowNode.innerText || rowNode.textContent);
+      return !targetPo || rowText.includes(targetPo);
+    });
+    result.matchedRowCount = matchingRowNodes.length;
+
+    const trySelectWithExtModel = () => {
+      const ext = window.Ext;
+      if (!ext || typeof ext.getCmp !== "function") {
+        return false;
+      }
+
+      const candidateIds = [];
+      let node = grid;
+      while (node && node !== document.body) {
+        if (node.id) {
+          candidateIds.push(node.id);
+        }
+        node = node.parentElement;
+      }
+      if (workspace.id) {
+        candidateIds.push(workspace.id);
+      }
+
+      const rowIndexes = matchingRowNodes
+        .map((rowNode) => rowNodes.indexOf(rowNode))
+        .filter((index) => index >= 0);
+      for (const id of Array.from(new Set(candidateIds))) {
+        const component = ext.getCmp(id);
+        const selectionModel = component?.getSelectionModel?.();
+        if (!selectionModel) {
+          continue;
+        }
+
+        if (rowIndexes.length > 0 && typeof selectionModel.selectRows === "function") {
+          selectionModel.selectRows(rowIndexes, false);
+          result.modelSelected = true;
+          result.modelSelectedCount = rowIndexes.length;
+          return true;
+        }
+        if (rowIndexes.length > 0 && typeof selectionModel.selectRow === "function") {
+          rowIndexes.forEach((index, position) => selectionModel.selectRow(index, position > 0));
+          result.modelSelected = true;
+          result.modelSelectedCount = rowIndexes.length;
+          return true;
+        }
+        if (!targetPo && typeof selectionModel.selectAll === "function") {
+          selectionModel.selectAll();
+          result.modelSelected = true;
+          result.modelSelectedCount = rowNodes.length;
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+    if (modeValue === "header") {
+      if (trySelectWithExtModel()) {
+        return result;
+      }
+
+      const headerChecker = Array.from(grid.querySelectorAll("div.x-grid3-hd-checker"))
+        .find((element) => isVisible(element));
+      result.headerClicked = dispatchGridClick(headerChecker);
+      return result;
+    }
+
+    if (trySelectWithExtModel()) {
+      return result;
+    }
+    for (const rowNode of matchingRowNodes) {
+      const checker = rowNode.querySelector("div.x-grid3-row-checker");
+      const checkerClass = String(checker?.className || "");
+      const rowClass = String(rowNode.className || "");
+      const selected = isVisible(checker)
+        && (checkerClass.includes("x-grid3-row-checker-on") || rowClass.includes("x-grid3-row-selected"));
+      if (selected) {
+        result.selectedBeforeCount += 1;
+        continue;
+      }
+      if (dispatchGridClick(checker, { ctrlKey: true })) {
+        result.rowClickedCount += 1;
+      }
+    }
+
+    return result;
+  }, {
+    targetPo: normalizedPoNo,
+    clickMode,
+  }).catch(() => ({
+    workspaceFound: false,
+    gridFound: false,
+    headerClicked: false,
+    modelSelected: false,
+    modelSelectedCount: 0,
+    matchedRowCount: 0,
+    selectedBeforeCount: 0,
+    rowClickedCount: 0,
+  }));
+}
+
+async function openChangeEquipmentIdDialog(page, poNo, shipmentScanAction = "Remove/Change Equipment ID") {
+  const toolbarActionLabel = getShipmentScanToolbarActionLabel(shipmentScanAction);
+  const selectionState = await getShipmentGridState(page, poNo, shipmentScanAction);
   if (selectionState.rowCount === 0
     || selectionState.matchedPoRowCount === 0
     || selectionState.packagesSelectedCount === 0) {
-    throw new Error(`PO No ${poNo}: shipment rows were not ready for Change Equipment ID. State: ${JSON.stringify(selectionState)}`);
+    throw new Error(`PO No ${poNo}: shipment rows were not ready for ${toolbarActionLabel}. State: ${JSON.stringify(selectionState)}`);
   }
 
-  const button = getShipmentScanWorkspace(page)
-    .locator("button.x-btn-text.icon-edit-small")
-    .filter({ hasText: /^Change Equipment ID$/ })
+  const button = getShipmentScanWorkspace(page, shipmentScanAction)
+    .locator("button.x-btn-text")
+    .filter({ hasText: exactTextRegex(toolbarActionLabel) })
     .first();
   await button.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
-  await button.click();
-  log("Clicked Change Equipment ID.", { poNo });
+  await forceClickLocator(button, toolbarActionLabel);
+  log(`Clicked ${toolbarActionLabel}.`, {
+    poNo,
+    shipmentScanAction: normalizeShipmentScanAction(shipmentScanAction),
+  });
 
   const timeoutMs = Math.min(config.navigationTimeoutMs, 15000);
   const startedAt = Date.now();
@@ -2011,7 +2304,7 @@ async function openChangeEquipmentIdDialog(page, poNo) {
     const dialogInfo = await getTopVisibleDialogInfo(page);
     if (dialogInfo?.id && dialogInfo.inputs?.length) {
       const dialog = page.locator(`[id="${dialogInfo.id}"]`).first();
-      log("Change Equipment ID dialog opened.", {
+      log(`${toolbarActionLabel} dialog opened.`, {
         poNo,
         dialogId: dialogInfo.id,
       });
@@ -2021,7 +2314,7 @@ async function openChangeEquipmentIdDialog(page, poNo) {
     await page.waitForTimeout(250);
   }
 
-  throw new Error(`PO No ${poNo}: Change Equipment ID dialog did not appear.`);
+  throw new Error(`PO No ${poNo}: ${toolbarActionLabel} dialog did not appear.`);
 }
 
 async function fillChangeEquipmentIdDialog(dialog, changeEquipmentId) {
@@ -2808,10 +3101,16 @@ async function getShipmentGridSelectionState(page) {
   });
 }
 
-async function getShipmentGridState(page, poNo) {
+async function getShipmentGridState(page, poNo, shipmentScanAction = "Remove/Change Equipment ID") {
   const normalizedPoNo = String(poNo || "").trim();
-  return page.evaluate((targetPo) => {
+  const allowPlainShipmentScanTitle = isAssignEquipmentShipmentScanAction(shipmentScanAction);
+  return page.evaluate(({ targetPo, allowPlainShipmentScanTitle: allowPlainTitle }) => {
     const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+    const isShipmentWorkspaceHeader = (value) => {
+      const text = normalize(value);
+      return /^Undo Shipment Scan$/i.test(text)
+        || (allowPlainTitle && /^Shipment Scan$/i.test(text));
+    };
     const isVisible = (element) => {
       if (!element) {
         return false;
@@ -2828,7 +3127,7 @@ async function getShipmentGridState(page, poNo) {
     const workspace = Array.from(document.querySelectorAll("div.x-panel"))
       .find((element) => isVisible(element)
         && Array.from(element.querySelectorAll("span.x-panel-header-text"))
-          .some((header) => /Undo Shipment Scan/i.test(normalize(header.textContent))));
+          .some((header) => isShipmentWorkspaceHeader(header.textContent)));
     if (!workspace) {
       return {
         rowCount: 0,
@@ -2894,7 +3193,10 @@ async function getShipmentGridState(page, poNo) {
       noDataVisible,
       rowSignature: rowTexts.slice(0, 8).join(" || ").slice(0, 600),
     };
-  }, normalizedPoNo).catch(() => ({
+  }, {
+    targetPo: normalizedPoNo,
+    allowPlainShipmentScanTitle,
+  }).catch(() => ({
     rowCount: 0,
     selectedRowCount: 0,
     headerSelected: false,
@@ -3661,7 +3963,7 @@ function extractInfornexusAutoAddRowsFromWorkbookPayload(body) {
   return idRows;
 }
 
-function extractPoRowsFromWorkbookPayload(body) {
+function extractPoRowsFromWorkbookPayload(body, options = {}) {
   const fileBase64 = String(body?.fileBase64 || body?.fileContentBase64 || "").trim();
   if (!fileBase64) {
     const error = new Error("fileBase64 must be a non-empty base64 string.");
@@ -3694,6 +3996,7 @@ function extractPoRowsFromWorkbookPayload(body) {
   }
 
   const worksheet = workbook.Sheets[sheetName];
+  const isXinlongtaiWorkbook = Boolean(options?.isXinlongtaiWorkbook);
   const rows = xlsx.utils.sheet_to_json(worksheet, {
     defval: "",
     raw: false,
@@ -3702,10 +4005,10 @@ function extractPoRowsFromWorkbookPayload(body) {
   const poRows = rows
     .map((row, index) => ({
       rowIndex: index + 2,
-      poNo: extractPoNoValue(row),
+      poNo: extractPoNoValue(row, { isXinlongtaiWorkbook }),
       changeEquipmentId: extractChangeEquipmentIdValue(row),
       issueDate: extractIssueDateValue(row),
-      invoiceNumber: extractInvoiceNumberValue(row),
+      invoiceNumber: extractInvoiceNumberValue(row, { isXinlongtaiWorkbook }),
       originalRow: row,
     }))
     .filter((row) => row.poNo);
@@ -3727,7 +4030,7 @@ function resolveWorksheetName(workbook, preferredSheetName) {
   return Array.isArray(workbook?.SheetNames) ? workbook.SheetNames[0] || "" : "";
 }
 
-function extractPoNoValue(row) {
+function extractPoNoValue(row, options = {}) {
   if (!row || typeof row !== "object") {
     return "";
   }
@@ -3740,6 +4043,10 @@ function extractPoNoValue(row) {
     ?? row["PO no1"]
     ?? row["PO No."]
     ?? row["PO Number"]
+    ?? row["PO NUMBER"]
+    ?? row["P/O Number"]
+    ?? row["P/O NUMBER"]
+    ?? row["Purchase Order Number"]
     ?? row["PO"];
   if (directValue !== undefined && directValue !== null && String(directValue).trim()) {
     return String(directValue).trim();
@@ -3747,9 +4054,20 @@ function extractPoNoValue(row) {
 
   const poKey = Object.keys(row).find((key) => {
     const normalizedKey = normalizeHeaderName(key);
-    return normalizedKey === "pono" || normalizedKey === "pono1";
+    return isPoNoHeader(normalizedKey, options);
   });
   return poKey ? String(row[poKey] ?? "").trim() : "";
+}
+
+function isPoNoHeader(normalizedKey, options = {}) {
+  return normalizedKey === "pono"
+    || normalizedKey === "pono1"
+    || normalizedKey === "ponumber"
+    || normalizedKey === "purchaseordernumber"
+    || normalizedKey === "purchaseorder"
+    || normalizedKey === "orderno"
+    || normalizedKey === "order"
+    || (options?.isXinlongtaiWorkbook && normalizedKey === "po");
 }
 
 function extractChangeEquipmentIdValue(row) {
@@ -3796,7 +4114,7 @@ function extractIssueDateValue(row) {
   return dateKey ? String(row[dateKey] ?? "").trim() : "";
 }
 
-function extractInvoiceNumberValue(row) {
+function extractInvoiceNumberValue(row, options = {}) {
   if (!row || typeof row !== "object") {
     return "";
   }
@@ -3820,7 +4138,8 @@ function extractInvoiceNumberValue(row) {
     const normalizedKey = normalizeHeaderName(key);
     return normalizedKey === "invoicenumber"
       || normalizedKey === "invoiceno"
-      || normalizedKey === "invoice";
+      || normalizedKey === "invoice"
+      || (options?.isXinlongtaiWorkbook && normalizedKey === "invnumber");
   });
   return invoiceKey ? String(row[invoiceKey] ?? "").trim() : "";
 }

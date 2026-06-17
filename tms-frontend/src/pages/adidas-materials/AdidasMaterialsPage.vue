@@ -48,6 +48,48 @@
       </div>
     </transition>
 
+    <transition name="am-modal">
+      <div v-if="updateDialogOpen" class="am-modal-overlay" @click.self="updateDialogOpen = false">
+        <section class="am-update-modal" role="dialog" aria-modal="true" aria-labelledby="adidas-helper-update-title">
+          <header class="am-update-modal__head">
+            <div class="am-update-modal__icon">
+              <AppIcon name="download-cloud" />
+            </div>
+            <div>
+              <h2 id="adidas-helper-update-title">需要更新本机自动化助手</h2>
+              <p>当前助手缺少 adidas 网页端启动能力，请安装最新版后再打开采集器。</p>
+            </div>
+            <button class="am-update-modal__close" type="button" @click="updateDialogOpen = false">
+              <AppIcon name="x" />
+            </button>
+          </header>
+
+          <div class="am-update-modal__body">
+            <div class="am-version-grid">
+              <div>
+                <span>当前版本</span>
+                <strong>{{ updateCurrentVersion || '未知版本' }}</strong>
+              </div>
+              <div>
+                <span>系统要求</span>
+                <strong>{{ updateExpectedVersion }}</strong>
+              </div>
+            </div>
+            <p>{{ updateMessage }}</p>
+            <p>安装包文件名会带版本号；安装完成后请重启本机自动化助手，或重新打开此页面。</p>
+          </div>
+
+          <footer class="am-update-modal__foot">
+            <button class="am-secondary-btn" type="button" @click="updateDialogOpen = false">稍后处理</button>
+            <button class="am-download-btn" type="button" @click="downloadLatestHelper">
+              <AppIcon name="download" />
+              下载最新助手
+            </button>
+          </footer>
+        </section>
+      </div>
+    </transition>
+
     <!-- ===== 3. Capability Cards ===== -->
     <div class="am-caps">
       <article
@@ -114,10 +156,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
+import { openAutomationHelperDownload } from '../web-automation/webAutomationApi'
 import {
   adidasMaterialsCapabilities,
   adidasMaterialsNotes,
@@ -126,13 +169,20 @@ import {
   type AdidasMaterialsNoticeTone,
 } from './adidasMaterialsModel'
 import {
+  AdidasMaterialsLauncherUpdateRequiredError,
   launchAdidasMaterialsCollector,
+  readAdidasMaterialsLauncherUpdateStatus,
   recordAdidasMaterialsEvent,
+  type AdidasMaterialsLauncherUpdateStatus,
 } from './adidasMaterialsApi'
 
 const launching = ref(false)
 const message = ref('')
 const messageTone = ref<AdidasMaterialsNoticeTone>('info')
+const updateDialogOpen = ref(false)
+const updateCurrentVersion = ref('')
+const updateExpectedVersion = ref('')
+const updateMessage = ref('')
 const { text } = useAppLanguage()
 
 const capabilities = computed(() =>
@@ -156,6 +206,10 @@ const alertIcon = computed(() => {
   return map[messageTone.value]
 })
 
+onMounted(() => {
+  void checkLauncherVersionOnOpen()
+})
+
 async function openCollector(): Promise<void> {
   launching.value = true
   message.value = ''
@@ -171,12 +225,53 @@ async function openCollector(): Promise<void> {
       message.value = result.error ? text(result.error) : text('打开 adidas 外部浏览器失败')
     }
   } catch (error) {
+    if (error instanceof AdidasMaterialsLauncherUpdateRequiredError) {
+      showUpdateDialog({
+        needsUpdate: true,
+        currentVersion: error.currentVersion,
+        expectedVersion: error.expectedVersion,
+        message: error.message,
+      })
+      await recordAdidasMaterialsEvent('launcher-update-required', {
+        currentVersion: error.currentVersion,
+        expectedVersion: error.expectedVersion,
+      })
+      return
+    }
+
     const errorMessage = readErrorMessage(error, text('打开 adidas 外部浏览器失败'))
     await recordAdidasMaterialsEvent('launch-exception', { error: errorMessage })
     messageTone.value = 'error'
     message.value = errorMessage
   } finally {
     launching.value = false
+  }
+}
+
+async function checkLauncherVersionOnOpen(): Promise<void> {
+  const status = await readAdidasMaterialsLauncherUpdateStatus().catch(() => null)
+  if (status?.needsUpdate) {
+    showUpdateDialog(status)
+  }
+}
+
+function showUpdateDialog(status: AdidasMaterialsLauncherUpdateStatus): void {
+  updateCurrentVersion.value = status.currentVersion
+  updateExpectedVersion.value = status.expectedVersion
+  updateMessage.value = status.message
+  updateDialogOpen.value = true
+  messageTone.value = 'warning'
+  message.value = status.message
+}
+
+async function downloadLatestHelper(): Promise<void> {
+  try {
+    await openAutomationHelperDownload()
+    messageTone.value = 'info'
+    message.value = '已打开自动化助手安装包下载。'
+  } catch (error) {
+    messageTone.value = 'error'
+    message.value = readErrorMessage(error, '自动化助手安装包下载失败。')
   }
 }
 
@@ -460,6 +555,177 @@ function readErrorMessage(error: unknown, fallback: string): string {
 .am-alert-leave-active { transition: all 0.3s ease-in; }
 .am-alert-enter-from { opacity: 0; transform: translateX(30px); }
 .am-alert-leave-to { opacity: 0; transform: translateX(20px); }
+
+.am-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(3px);
+}
+
+.am-update-modal {
+  width: min(560px, 100%);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+}
+
+.am-update-modal__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 20px 22px;
+  background: linear-gradient(135deg, #f8fafc, #ecfeff);
+  border-bottom: 1px solid #e2e8f0;
+
+  h2 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 18px;
+    font-weight: 800;
+  }
+
+  p {
+    margin: 5px 0 0;
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+}
+
+.am-update-modal__icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0f766e;
+  background: #ccfbf1;
+  font-size: 20px;
+}
+
+.am-update-modal__close {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    color: #0f172a;
+    background: #f8fafc;
+  }
+}
+
+.am-update-modal__body {
+  display: grid;
+  gap: 14px;
+  padding: 20px 22px;
+
+  p {
+    margin: 0;
+    color: #475569;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+}
+
+.am-version-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+
+  div {
+    padding: 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+  }
+
+  span {
+    display: block;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  strong {
+    color: #0f172a;
+    font-size: 15px;
+    overflow-wrap: anywhere;
+  }
+}
+
+.am-update-modal__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 22px 20px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.am-secondary-btn,
+.am-download-btn {
+  min-height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.am-secondary-btn {
+  background: #fff;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+
+  &:hover {
+    background: #f8fafc;
+  }
+}
+
+.am-download-btn {
+  border: none;
+  color: #fff;
+  background: linear-gradient(135deg, #0d9488, #0f766e);
+  box-shadow: 0 4px 14px rgba(13, 148, 136, 0.22);
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(13, 148, 136, 0.28);
+  }
+}
+
+.am-modal-enter-active,
+.am-modal-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.am-modal-enter-from,
+.am-modal-leave-to {
+  opacity: 0;
+}
 
 /* ===== 3. Capability Cards ===== */
 .am-caps {
@@ -809,6 +1075,14 @@ function readErrorMessage(error: unknown, fallback: string): string {
   }
 
   .am-caps { grid-template-columns: 1fr; }
+
+  .am-modal-overlay { padding: 14px; }
+  .am-update-modal__head { grid-template-columns: auto minmax(0, 1fr); }
+  .am-update-modal__close { grid-column: 2; justify-self: end; }
+  .am-version-grid { grid-template-columns: 1fr; }
+  .am-update-modal__foot { flex-direction: column-reverse; }
+  .am-secondary-btn,
+  .am-download-btn { width: 100%; }
 
   .am-timeline { grid-template-columns: 1fr; gap: 14px; }
   .am-step {

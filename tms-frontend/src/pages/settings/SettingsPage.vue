@@ -433,7 +433,7 @@ onUnmounted(() => {
   height: 100%;
   max-height: 100%;
   box-sizing: border-box;
-  padding: 16px 20px;
+  padding: 12px 16px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -496,11 +496,11 @@ button, input, select, textarea {
 .stg-main {
   display: grid;
   grid-template-columns: 6.8fr 3.2fr;
-  gap: 16px;
+  gap: 18px;
   width: 100%;
-  max-width: 1080px;
+  max-width: 1220px;
   height: 100%;
-  max-height: 580px;
+  max-height: 660px;
   min-height: 0;
   overflow: hidden;
   animation: stagger-in 0.6s var(--transition-bezier) both;
@@ -509,7 +509,7 @@ button, input, select, textarea {
 .stg-col-primary {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
   height: 100%;
   min-height: 0;
 }
@@ -517,7 +517,7 @@ button, input, select, textarea {
 .stg-col-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
   height: 100%;
   min-height: 0;
 }
@@ -539,13 +539,13 @@ button, input, select, textarea {
 }
 
 .stg-section__header {
-  padding: 14px 18px 8px;
+  padding: 16px 20px 10px;
   border-bottom: 1px solid var(--slate-100);
   flex-shrink: 0;
 
   h2 {
     margin: 0;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 800;
     color: var(--slate-800);
   }
@@ -554,17 +554,17 @@ button, input, select, textarea {
 .stg-section__title-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .stg-section__icon {
-  font-size: 14px;
+  font-size: 16px;
   color: var(--teal-600);
 }
 
 .stg-section__desc {
   margin: 2px 0 0;
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--slate-500);
 }
 
@@ -573,20 +573,20 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px 6px;
+  padding: 14px 18px 8px;
   border-bottom: 1px solid var(--slate-100);
   flex-shrink: 0;
 
   h3 {
     margin: 0;
-    font-size: 12.5px;
+    font-size: 14px;
     font-weight: 800;
     color: var(--slate-800);
   }
 }
 
 .stg-section__icon-mini {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--teal-600);
 }
 
@@ -598,7 +598,7 @@ button, input, select, textarea {
   border: 1px solid var(--slate-200);
   border-radius: var(--border-radius-card);
   box-shadow: var(--shadow-soft);
-  padding: 14px 18px;
+  padding: 16px 20px;
   flex-shrink: 0;
   overflow: visible;
   transition: var(--transition-bezier);
@@ -641,25 +641,25 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 18px;
 }
 
 .stg-hero__info {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .stg-hero__icon-box {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 42px;
+  height: 42px;
   background: linear-gradient(135deg, var(--teal-500) 0%, var(--teal-600) 100%);
   color: #ffffff;
   border-radius: 8px;
-  font-size: 16px;
+  font-size: 18px;
   box-shadow: 0 4px 10px rgba(13, 148, 136, 0.15);
 }
 
@@ -669,7 +669,7 @@ button, input, select, textarea {
 }
 
 .stg-hero__subtitle {
-  font-size: 9.5px;
+  font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   font-weight: 700;
@@ -678,7 +678,7 @@ button, input, select, textarea {
 
 .stg-hero__title {
   margin: 1px 0 0;
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 900;
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   color: var(--slate-900);
@@ -690,20 +690,20 @@ button, input, select, textarea {
   z-index: 30;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .stg-btn-interactive {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 10px;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
   border: 1px solid var(--slate-200);
   border-radius: var(--border-radius-inner);
   background-color: #ffffff;
   color: var(--slate-700);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   box-shadow: 0 2px 4px rgba(15, 23, 42, 0.01);
@@ -870,8 +870,8 @@ button, input, select, textarea {
 .stg-downloads__split-container {
   display: grid;
   grid-template-columns: 1.95fr 1.05fr; /* 65% vs 35% */
-  gap: 16px;
-  padding: 0 16px 16px;
+  gap: 18px;
+  padding: 0 18px 18px;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -880,7 +880,7 @@ button, input, select, textarea {
 .stg-downloads__group {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   height: 100%;
   min-height: 0;
   overflow: hidden;
@@ -889,9 +889,9 @@ button, input, select, textarea {
 .stg-group-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px 4px;
-  font-size: 11px;
+  gap: 7px;
+  padding: 3px 4px;
+  font-size: 12.5px;
   font-weight: 800;
   color: var(--slate-400);
   text-transform: uppercase;
@@ -899,7 +899,7 @@ button, input, select, textarea {
   flex-shrink: 0;
 
   .stg-group-icon {
-    font-size: 12px;
+    font-size: 14px;
     color: var(--teal-500);
 
     .stg-downloads__group--web & {
@@ -911,7 +911,7 @@ button, input, select, textarea {
 .stg-panel-cards {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  gap: 14px;
   align-items: stretch;
   flex: 1;
   min-height: 0;
@@ -955,7 +955,7 @@ button, input, select, textarea {
 }
 
 .stg-card-content {
-  padding: 12px 14px;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -965,7 +965,7 @@ button, input, select, textarea {
 }
 
 .stg-card-body {
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -976,9 +976,9 @@ button, input, select, textarea {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
 }
 
 .stg-download-card--light {
@@ -1014,13 +1014,13 @@ button, input, select, textarea {
 
 .stg-card-title {
   margin: 0;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 800;
 }
 
 .stg-card-description {
-  margin: 3px 0 0 0;
-  font-size: 10.5px;
+  margin: 4px 0 0 0;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -1028,31 +1028,31 @@ button, input, select, textarea {
 .stg-feature-list {
   list-style: none;
   padding: 0;
-  margin: 8px 0 0 0;
+  margin: 10px 0 0 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 
 .stg-feature-item {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 10px;
+  gap: 6px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--slate-600);
 }
 
 .stg-feature-icon {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--teal-500);
   flex-shrink: 0;
 }
 
 .stg-card-badge {
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 800;
-  padding: 1px 5px;
+  padding: 2px 7px;
   border-radius: var(--border-radius-pill);
   background-color: var(--teal-500);
   color: #ffffff;
@@ -1060,9 +1060,9 @@ button, input, select, textarea {
 }
 
 .stg-card-badge-outline {
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 800;
-  padding: 1px 5px;
+  padding: 2px 7px;
   border-radius: var(--border-radius-pill);
   background-color: transparent;
   color: var(--cyan-500);
@@ -1071,9 +1071,9 @@ button, input, select, textarea {
 }
 
 .stg-card-badge-helper {
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 800;
-  padding: 1px 5px;
+  padding: 2px 7px;
   border-radius: var(--border-radius-pill);
   background-color: var(--teal-100);
   color: var(--teal-700);
@@ -1086,14 +1086,14 @@ button, input, select, textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 6px;
   width: 100%;
-  height: 28px;
+  height: 32px;
   border: 0;
   border-radius: var(--border-radius-inner);
   background: linear-gradient(135deg, var(--teal-500) 0%, var(--teal-600) 100%);
   color: #ffffff;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 3px 8px rgba(13, 148, 136, 0.15);
@@ -1118,14 +1118,14 @@ button, input, select, textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 6px;
   width: 100%;
-  height: 28px;
+  height: 32px;
   border: 1px solid var(--slate-200);
   border-radius: var(--border-radius-inner);
   background-color: #ffffff;
   color: var(--slate-700);
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
   transition: var(--transition-bezier);
@@ -1184,7 +1184,7 @@ button, input, select, textarea {
 }
 
 .stg-updates__panel {
-  padding: 8px 14px 14px;
+  padding: 10px 16px 16px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -1307,7 +1307,7 @@ button, input, select, textarea {
   background-color: var(--slate-50);
   border: 1px solid var(--slate-200);
   border-radius: var(--border-radius-inner);
-  padding: 12px;
+  padding: 14px;
   transition: var(--transition-bezier);
 
   &:hover {
@@ -1319,20 +1319,20 @@ button, input, select, textarea {
 .stg-server-mode__header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
+  gap: 12px;
+  margin-bottom: 10px;
 }
 
 .stg-server-mode__avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   background-color: var(--teal-100);
   color: var(--teal-600);
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .stg-server-mode__title {
@@ -1341,7 +1341,7 @@ button, input, select, textarea {
 
   h4 {
     margin: 0;
-    font-size: 11.5px;
+    font-size: 13.5px;
     font-weight: 800;
     color: var(--slate-800);
   }
@@ -1350,7 +1350,7 @@ button, input, select, textarea {
 .stg-status-badge {
   display: inline-flex;
   align-items: center;
-  font-size: 8.5px;
+  font-size: 10px;
   font-weight: 800;
   color: var(--teal-600);
 
@@ -1366,8 +1366,8 @@ button, input, select, textarea {
 }
 
 .stg-server-mode__desc {
-  margin: 0 0 12px 0;
-  font-size: 10.5px;
+  margin: 0 0 14px 0;
+  font-size: 12px;
   line-height: 1.45;
   color: var(--slate-500);
 }
@@ -1376,7 +1376,7 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-radius: var(--border-radius-inner);
   background-color: #ffffff;
   border: 1px solid var(--slate-200);
@@ -1387,12 +1387,12 @@ button, input, select, textarea {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  font-size: 13px;
+  gap: 4px;
+  font-size: 15px;
   color: var(--slate-700);
 
   span {
-    font-size: 9px;
+    font-size: 10.5px;
     font-weight: 800;
     color: var(--slate-400);
     text-transform: uppercase;
@@ -1406,7 +1406,7 @@ button, input, select, textarea {
   height: 3px;
   background-color: var(--slate-100);
   border-radius: var(--border-radius-pill);
-  margin: 0 12px;
+  margin: 0 14px;
   overflow: hidden;
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
@@ -1436,7 +1436,7 @@ button, input, select, textarea {
 }
 
 .stg-metadata-list {
-  padding: 4px 14px 14px;
+  padding: 6px 16px 16px;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -1459,7 +1459,7 @@ button, input, select, textarea {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
+  padding: 10px 0;
   border-bottom: 1px solid var(--slate-100);
   transition: var(--transition-bezier);
 
@@ -1476,7 +1476,7 @@ button, input, select, textarea {
   &--vertical {
     flex-direction: column;
     align-items: flex-start;
-    gap: 4px;
+    gap: 5px;
     &:hover {
       padding-left: 0;
       background-color: transparent;
@@ -1492,13 +1492,13 @@ button, input, select, textarea {
 }
 
 .stg-metadata-key {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--slate-500);
 }
 
 .stg-metadata-val {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
   color: var(--slate-800);
 }
@@ -1515,9 +1515,9 @@ button, input, select, textarea {
   word-break: break-all;
   color: var(--slate-500);
   font-weight: 500;
-  font-size: 10px;
+  font-size: 11.5px;
   background-color: var(--slate-50);
-  padding: 4px 6px;
+  padding: 5px 7px;
   border-radius: 4px;
   width: 100%;
   border: 1px solid transparent;
@@ -1534,7 +1534,7 @@ button, input, select, textarea {
   padding: 1px 6px;
   background-color: var(--teal-50);
   color: var(--teal-700);
-  font-size: 9.5px;
+  font-size: 10.5px;
   font-weight: 800;
   border-radius: var(--border-radius-pill);
 }
@@ -1543,7 +1543,7 @@ button, input, select, textarea {
   padding: 1px 5px;
   background-color: var(--slate-100);
   color: var(--slate-500);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   border-radius: 4px;
 }

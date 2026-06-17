@@ -101,6 +101,28 @@ class SystemConfigApiTest(unittest.TestCase):
         self.assertIn("TOS-Desktop-Setup.exe", response.headers["content-disposition"])
         self.assertEqual(requested_keys, ["tos-desktop/TOS-Desktop-Setup.exe"])
 
+    def test_automation_helper_download_uses_versioned_filename(self) -> None:
+        requested_keys: list[str] = []
+
+        def fake_get_object(_bucket: str, object_key: str) -> FakeObjectResponse:
+            requested_keys.append(object_key)
+            if object_key == "automation-helper/TOS-Automation-Helper-Setup.exe":
+                return FakeObjectResponse(b"MZ helper installer bytes")
+            raise FileNotFoundError(object_key)
+
+        with patch.object(system_config_api, "get_minio_bucket", return_value="tos-downloads"), \
+             patch.object(system_config_api, "get_settings", return_value={}), \
+             patch.object(system_config_api, "get_object_response", side_effect=fake_get_object):
+            response = self.client.get("/api/system/config/automation-helper/download")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"MZ helper installer bytes")
+        self.assertIn(
+            f"TOS-Automation-Helper-Setup.{system_config_api.APP_VERSION}.exe",
+            response.headers["content-disposition"],
+        )
+        self.assertEqual(requested_keys, ["automation-helper/TOS-Automation-Helper-Setup.exe"])
+
     def test_tos_desktop_full_download_streams_embedded_installer(self) -> None:
         requested_keys: list[str] = []
 
@@ -117,7 +139,10 @@ class SystemConfigApiTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"MZ full installer bytes")
-        self.assertIn("TOS-Desktop-Full-Setup.exe", response.headers["content-disposition"])
+        self.assertIn(
+            f"TOS-Desktop-Full-Setup.{system_config_api.APP_VERSION}.exe",
+            response.headers["content-disposition"],
+        )
         self.assertEqual(requested_keys, ["tos-desktop-full/TOS-Desktop-Full-Setup.exe"])
 
     def test_tos_desktop_payload_streams_latest_payload(self) -> None:

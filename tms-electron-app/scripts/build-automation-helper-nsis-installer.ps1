@@ -7,9 +7,11 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ElectronDir = Split-Path -Parent $PSScriptRoot
+$RepoRoot = Split-Path -Parent $ElectronDir
+$ProductVersion = (Get-Content -LiteralPath (Join-Path $RepoRoot "app-version.json") -Raw | ConvertFrom-Json).version
 $OutputRoot = Join-Path $ElectronDir "dist-automation-helper"
 $PayloadRoot = Join-Path $OutputRoot "payload"
-$InstallerName = "TOS-Automation-Helper-Setup.exe"
+$InstallerName = "TOS-Automation-Helper-Setup.$ProductVersion.exe"
 $InstallerPath = Join-Path $OutputRoot $InstallerName
 $PayloadArchiveName = "TOS-Automation-Helper-Payload.zip"
 $PayloadArchivePath = Join-Path $OutputRoot $PayloadArchiveName
@@ -883,7 +885,7 @@ Section "$nsisAppName" SecMain
   DetailPrint "Writing startup and uninstall registry..."
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "TOSAutomationLauncher" '"`$INSTDIR\TOS-Automation-Helper.exe" --silent'
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSAutomationHelper" "DisplayName" "TOS Automation Helper"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSAutomationHelper" "DisplayVersion" "1.0.0"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSAutomationHelper" "DisplayVersion" "$ProductVersion"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSAutomationHelper" "Publisher" "TOS"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSAutomationHelper" "InstallLocation" "`$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TOSAutomationHelper" "UninstallString" '"`$INSTDIR\Uninstall.exe"'

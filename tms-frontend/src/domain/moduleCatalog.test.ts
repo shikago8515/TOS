@@ -37,6 +37,21 @@ describe('moduleCatalog', () => {
     })
   })
 
+  it('exposes PO auto download as a Jason sidebar entry', () => {
+    const poAutoDownloadModule = getModuleById('po-auto-download')
+    const jasonModules = getModulesByGroup('jason')
+    const moduleIds = jasonModules.map((module) => module.id)
+
+    expect(poAutoDownloadModule).toMatchObject({
+      group: 'jason',
+      path: '/web-automation/scenarios/po-auto-download',
+      routeName: 'web-automation-scenario-po-auto-download',
+      navLabel: 'PO 自动下载',
+    })
+    expect(moduleIds).toContain('po-auto-download')
+    expect(moduleIds.indexOf('po-auto-download')).toBeGreaterThan(moduleIds.indexOf('jason-pdf-reorder'))
+  })
+
   it('shows Draft & Packing List compare directly under Jessica after reconciliation', () => {
     const draftPackingModule = getModuleById('draft-packing-compare')
     const jessicaModules = getModulesByGroup('jessica')

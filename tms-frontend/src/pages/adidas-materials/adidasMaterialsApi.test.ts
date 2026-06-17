@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ElectronApi } from '../../types/electronApi'
-import { launchAdidasMaterialsCollector } from './adidasMaterialsApi'
+import { expectedAutomationHelperVersion } from '../web-automation/webAutomationApi'
+import {
+  AdidasMaterialsLauncherUpdateRequiredError,
+  launchAdidasMaterialsCollector,
+} from './adidasMaterialsApi'
 
 function stubWindow(electronAPI?: Partial<ElectronApi>): void {
   const body = {
@@ -49,7 +53,14 @@ describe('adidasMaterialsApi', () => {
 
   it('uses the local launcher endpoint from a normal web page', async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        helperVersion: expectedAutomationHelperVersion,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        helperVersion: expectedAutomationHelperVersion,
+      }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         success: true,
         mode: 'external-browser',
@@ -68,7 +79,7 @@ describe('adidasMaterialsApi', () => {
       expect.objectContaining({ method: 'GET' }),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
+      3,
       'http://127.0.0.1:3210/api/adidas-materials/start',
       expect.objectContaining({ method: 'POST' }),
     )
@@ -76,19 +87,72 @@ describe('adidasMaterialsApi', () => {
 
   it('does not fall back to a protocol launch when the local launcher is outdated', async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        helperVersion: expectedAutomationHelperVersion,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        helperVersion: expectedAutomationHelperVersion,
+      }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ message: 'Not found' }), { status: 404 }))
     vi.stubGlobal('fetch', fetchMock)
     stubWindow()
 
-    await expect(launchAdidasMaterialsCollector()).rejects.toThrow('本机后台启动器版本过旧')
+    await expect(launchAdidasMaterialsCollector()).rejects.toThrow(AdidasMaterialsLauncherUpdateRequiredError)
+  })
+
+  it('prompts for an update before launch when the helper version is behind', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        helperVersion: '0.1.0',
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        helperVersion: '0.1.0',
+      }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    stubWindow()
+
+    await expect(launchAdidasMaterialsCollector()).rejects.toThrow(AdidasMaterialsLauncherUpdateRequiredError)
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      'http://127.0.0.1:3210/api/adidas-materials/start',
+      expect.anything(),
+    )
+  })
+
+  it('prompts for an update when the launcher is missing the adidas collector entry', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        helperVersion: expectedAutomationHelperVersion,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        helperVersion: expectedAutomationHelperVersion,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        message: 'adidas materials collector entry not found',
+      }), { status: 500 }))
+    vi.stubGlobal('fetch', fetchMock)
+    stubWindow()
+
+    await expect(launchAdidasMaterialsCollector()).rejects.toThrow(AdidasMaterialsLauncherUpdateRequiredError)
   })
 
   it('boots the local launcher before starting the external browser from a web page', async () => {
     const fetchMock = vi.fn()
       .mockRejectedValueOnce(new Error('connection refused'))
       .mockRejectedValueOnce(new Error('connection refused'))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        helperVersion: expectedAutomationHelperVersion,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        helperVersion: expectedAutomationHelperVersion,
+      }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         success: true,
         mode: 'external-browser',
