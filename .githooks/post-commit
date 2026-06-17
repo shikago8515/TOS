@@ -1,3 +1,7 @@
 #!/usr/bin/env sh
 
+if [ "${TOS_RELEASE_UPDATES_SKIP:-}" = "1" ]; then
+  exit 0
+fi
+
 python scripts/release_update_sync.py --commit HEAD --event commit --quiet >/dev/null 2>&1 || true
