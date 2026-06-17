@@ -12,6 +12,16 @@ class ReleaseUpdateSyncTest(unittest.TestCase):
     def test_merge_prefers_server_records_and_preserves_local_newer_records(self) -> None:
         server_records = [
             {
+                "recordKey": "git-cache-sync",
+                "version": "0.9.8-beta.3.19",
+                "releaseDate": "2026-06-17",
+                "category": "improved",
+                "pageName": "多个页面",
+                "pagePath": "",
+                "title": "chore: 同步版本更新缓存",
+                "description": "cache sync should not be shown",
+            },
+            {
                 "recordKey": "git-server",
                 "version": "0.9.8-beta.3.17",
                 "releaseDate": "2026-06-16",
@@ -95,6 +105,27 @@ class ReleaseUpdateSyncTest(unittest.TestCase):
             self.assertIn("TOS_RELEASE_UPDATES_SKIP", hook_text)
             self.assertIn('if [ "${TOS_RELEASE_UPDATES_SKIP:-}" = "1" ]; then', hook_text)
             self.assertLess(hook_text.index("TOS_RELEASE_UPDATES_SKIP"), hook_text.index("release_update_sync.py"))
+
+        post_merge_text = (release_update_sync.WORKSPACE_ROOT / ".githooks" / "post-merge").read_text(encoding="utf-8")
+        self.assertIn("--commit HEAD --event merge", post_merge_text)
+        self.assertNotIn("--range", post_merge_text)
+
+    def test_cache_sync_commit_is_not_recorded_from_ranges(self) -> None:
+        self.assertTrue(
+            release_update_sync.is_release_update_cache_sync_commit({
+                "subject": "chore: 同步版本更新缓存",
+                "files": "\n".join([
+                    "tms-backend/api/release_updates_api.py",
+                    "tms-frontend/src/shared/version/releaseHistory.json",
+                ]),
+            }),
+        )
+        self.assertFalse(
+            release_update_sync.is_release_update_cache_sync_commit({
+                "subject": "chore: 同步版本更新缓存",
+                "files": "README.md",
+            }),
+        )
 
     def test_pull_dry_run_does_not_write_cache_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

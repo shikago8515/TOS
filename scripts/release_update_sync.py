@@ -17,6 +17,11 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = WORKSPACE_ROOT / "tms-backend"
 FRONTEND_RELEASE_HISTORY_PATH = Path("tms-frontend/src/shared/version/releaseHistory.json")
 BACKEND_RELEASE_UPDATES_API_PATH = Path("tms-backend/api/release_updates_api.py")
+RELEASE_UPDATE_CACHE_SYNC_TITLE = "chore: 同步版本更新缓存"
+RELEASE_UPDATE_CACHE_SYNC_FILES = {
+    FRONTEND_RELEASE_HISTORY_PATH.as_posix(),
+    BACKEND_RELEASE_UPDATES_API_PATH.as_posix(),
+}
 
 
 def main() -> int:
@@ -71,7 +76,11 @@ def main() -> int:
 def build_release_update_records(args: argparse.Namespace) -> list[dict[str, Any]]:
     commits = read_commits(args.commit, args.commit_range, args.limit or 1)
     version = read_app_version()
-    return [build_record(commit, version, args.event) for commit in commits]
+    return [
+        build_record(commit, version, args.event)
+        for commit in commits
+        if not is_release_update_cache_sync_commit(commit)
+    ]
 
 
 def resolve_release_updates_api_url(explicit_url: str | None = "", workspace_root: Path = WORKSPACE_ROOT) -> str:
@@ -164,6 +173,9 @@ def merge_release_update_records(
         for raw_record in source_records:
             record = normalize_release_update_record(raw_record)
             record_key = record["recordKey"]
+            if is_release_update_cache_sync_record(record):
+                order += 1
+                continue
             if not record_key or record_key in seen_keys:
                 order += 1
                 continue
@@ -186,6 +198,13 @@ def normalize_release_update_record(raw_record: dict[str, Any]) -> dict[str, str
         "title": str(raw_record.get("title") or "").strip(),
         "description": str(raw_record.get("description") or "").strip(),
     }
+
+
+def is_release_update_cache_sync_record(record: dict[str, str]) -> bool:
+    return (
+        record.get("recordKey", "").startswith("git-")
+        and record.get("title", "").strip() == RELEASE_UPDATE_CACHE_SYNC_TITLE
+    )
 
 
 def release_update_sort_key(record: dict[str, str], order: int) -> tuple[tuple[int, ...], str, int]:
@@ -283,6 +302,19 @@ def build_record(commit: dict[str, str], version: str, event: str) -> dict[str, 
         "description": description,
         "created_by": f"git:{commit['author'] or 'unknown'}",
     }
+
+
+def is_release_update_cache_sync_commit(commit: dict[str, str]) -> bool:
+    files = {
+        item.replace("\\", "/")
+        for item in commit.get("files", "").splitlines()
+        if item.strip()
+    }
+    return (
+        commit.get("subject", "").strip() == RELEASE_UPDATE_CACHE_SYNC_TITLE
+        and bool(files)
+        and files.issubset(RELEASE_UPDATE_CACHE_SYNC_FILES)
+    )
 
 
 def infer_page(files: list[str]) -> tuple[str, str]:

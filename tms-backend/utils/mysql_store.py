@@ -361,6 +361,10 @@ def list_release_update_records(limit: int = 100) -> list[dict[str, Any]]:
                 SELECT id, record_key, version, release_date, category, page_name,
                        page_path, title, description, created_by, created_at, updated_at
                 FROM release_update_records
+                WHERE NOT (
+                  record_key LIKE 'git-%%'
+                  AND title = 'chore: 同步版本更新缓存'
+                )
                 ORDER BY release_date DESC, id DESC
                 """,
             )

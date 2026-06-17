@@ -82,6 +82,16 @@ def _default_record(
 
 DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
     _default_record(
+        "git-b6be8c1c92434a5add09afbadb14a8f189142092",
+        "0.9.8-beta.3.19",
+        "2026-06-17",
+        "improved",
+        "多个页面",
+        "",
+        "merge: 收口 Work Sales 与版本同步",
+        "由 Git merge 自动记录：merge: 收口 Work Sales 与版本同步。涉及文件：.githooks/post-commit、.githooks/post-merge、AGENTS.md、README.md、app-version.json、docs/engineering-entrypoints.md、docs/templates/gitcode-checklist.md、docs/templates/release-notes.md 等 55 个文件。",
+    ),
+    _default_record(
         "git-7d7f1d9f0082c4711d8fb502e1f3ae9ede23a577",
         "0.9.8-beta.3.19",
         "2026-06-17",
