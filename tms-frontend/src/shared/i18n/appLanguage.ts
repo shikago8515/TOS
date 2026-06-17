@@ -394,6 +394,7 @@ const staticTextTranslations: Record<string, string> = {
   '上传 Excel 后启动可视浏览器，读取第二列 10 位 ID 并在 Infor Nexus 自动搜索、勾选和添加。':
     'Upload Excel, launch a visible browser, read 10-digit IDs from the second column, then search, select, and add them in Infor Nexus.',
   'PO 自动下载': 'PO Auto Download',
+  'Invoice 自动下载': 'Invoice Auto Download',
   'Excel PO 批量下载': 'Batch PO download from Excel',
   '上传 Excel 后按 PO 发起请求下载，并保存到指定本机目录。':
     'Upload Excel, request downloads by PO, and save files to the selected local folder.',

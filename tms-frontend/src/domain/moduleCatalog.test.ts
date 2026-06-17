@@ -46,7 +46,7 @@ describe('moduleCatalog', () => {
       group: 'jason',
       path: '/web-automation/scenarios/po-auto-download',
       routeName: 'web-automation-scenario-po-auto-download',
-      navLabel: 'PO 自动下载',
+      navLabel: 'Invoice 自动下载',
     })
     expect(moduleIds).toContain('po-auto-download')
     expect(moduleIds.indexOf('po-auto-download')).toBeGreaterThan(moduleIds.indexOf('jason-pdf-reorder'))
