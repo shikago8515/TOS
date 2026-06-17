@@ -107,7 +107,7 @@ const scenarioRoutes: RouteRecordRaw[] = [
     name: 'web-automation-scenario-po-auto-download',
     component: PoAutoDownloadPage,
     meta: {
-      title: 'PO 自动下载',
+      title: 'Invoice 自动下载',
     },
   },
   {

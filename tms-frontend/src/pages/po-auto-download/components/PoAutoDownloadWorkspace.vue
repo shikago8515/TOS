@@ -162,7 +162,7 @@
                 <div class="pad-path">
                   <div class="pad-input-wrap pad-input-wrap--path">
                     <AppIcon name="folder" />
-                    <input v-model.trim="saveDirectory" class="pad-input" type="text" :placeholder="text('例如：D:\\Downloads\\InforNexus\\PO')" @change="persistDownloadConfig" />
+                    <input v-model.trim="saveDirectory" class="pad-input" type="text" :placeholder="text('例如：D:\\Downloads\\InforNexus\\Invoice')" @change="persistDownloadConfig" />
                   </div>
                   <button class="pad-btn" type="button" :disabled="directorySelecting" @click="selectSaveDirectory">
                     <AppIcon :name="directorySelecting ? 'loader' : 'folder'" :class="{ 'pad-spin': directorySelecting }" />
@@ -684,7 +684,7 @@ async function selectSaveDirectory(): Promise<void> {
   if (window.electronAPI?.selectDirectory) {
     try {
       const result = await window.electronAPI.selectDirectory({
-        title: text('选择 PO 下载保存目录'),
+        title: text('选择 Invoice 下载保存目录'),
         defaultPath: saveDirectory.value.trim() || undefined,
       })
       if (!result.success) {

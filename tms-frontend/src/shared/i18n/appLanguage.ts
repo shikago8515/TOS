@@ -395,6 +395,9 @@ const staticTextTranslations: Record<string, string> = {
     'Upload Excel, launch a visible browser, read 10-digit IDs from the second column, then search, select, and add them in Infor Nexus.',
   'PO 自动下载': 'PO Auto Download',
   'Invoice 自动下载': 'Invoice Auto Download',
+  'Excel Invoice 批量下载': 'Batch Invoice download from Excel',
+  '上传 Excel 后按 Invoice Number 发起请求下载，并保存到指定本机目录。':
+    'Upload Excel, request downloads by Invoice Number, and save files to the selected local folder.',
   'Excel PO 批量下载': 'Batch PO download from Excel',
   '上传 Excel 后按 PO 发起请求下载，并保存到指定本机目录。':
     'Upload Excel, request downloads by PO, and save files to the selected local folder.',
@@ -409,6 +412,7 @@ const staticTextTranslations: Record<string, string> = {
   '模板下载失败。': 'Template download failed.',
   '下载保存目录': 'Download Folder',
   '例如：D:\\Downloads\\InforNexus\\PO': 'Example: D:\\Downloads\\InforNexus\\PO',
+  '例如：D:\\Downloads\\InforNexus\\Invoice': 'Example: D:\\Downloads\\InforNexus\\Invoice',
   选择目录: 'Choose Folder',
   手动填写: 'Enter Manually',
   '上传 Excel 并下载 PO 文件': 'Upload Excel and Download PO Files',
@@ -428,6 +432,7 @@ const staticTextTranslations: Record<string, string> = {
   '当前浏览器环境无法打开系统目录选择器，请手动填写完整本机路径。':
     'The current browser cannot open a system folder picker. Enter the full local path manually.',
   '选择 PO 下载保存目录': 'Choose PO Download Folder',
+  '选择 Invoice 下载保存目录': 'Choose Invoice Download Folder',
   '选择目录失败。': 'Failed to choose folder.',
   '正在打开本机目录选择器，请留意系统弹窗。': 'Opening the local folder picker. Watch for the system dialog.',
   '已取消选择目录。': 'Folder selection cancelled.',
