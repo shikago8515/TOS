@@ -46,7 +46,7 @@ function extractFrontendFastApiPaths(source, filePath) {
     for (const match of source.matchAll(pattern)) {
       const routePath = match[1]
       if (routePath.startsWith('/api/')) {
-        paths.add(routePath)
+        paths.add(normalizeContractPath(routePath))
       }
     }
   }
@@ -57,11 +57,15 @@ function extractFrontendFastApiPaths(source, filePath) {
       .replace(/\$\{encodeURIComponent\(jobId\)\}/g, '{job_id}')
       .replace(/\$\{encodeURIComponent\(job_id\)\}/g, '{job_id}')
     if (routePath.startsWith('/api/')) {
-      paths.add(routePath)
+      paths.add(normalizeContractPath(routePath))
     }
   }
 
   return paths
+}
+
+function normalizeContractPath(routePath) {
+  return routePath.split(/[?#]/, 1)[0]
 }
 
 test('desktop backend API contract covers frontend FastAPI paths', () => {

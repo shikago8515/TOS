@@ -30,5 +30,5 @@ tms-frontend/src/shared/version/releaseNotes.json
 - 指定版本运行 `npm run version:set -- <version>`。
 - `releaseNotes.json.version` 必须等于 `app-version.json.version`。
 - `releaseNotes.json` 只写当前版本变更；`version:bump` 后清理上一版本遗留的 `added`、`improved`、`fixed` 条目。
-- `/release-updates` 历史时间线同步维护 `releaseHistory.json` 和后端默认 seed，并用一致性测试防止前后端分叉。
+- `/release-updates` 历史时间线以服务器 MySQL `release_update_records` 为主源；本地 `releaseHistory.json` 和后端默认 seed 通过 `npm run release:updates:pull` 从服务器记录合并生成，并用一致性测试防止前后端分叉。
 - 至少一个 `added`、`improved`、`fixed` 数组非空。

@@ -58,11 +58,14 @@
    - `tms-frontend/src/app/router.ts`
 4. 页面组件使用 Vue 3 Composition API 和 `<script setup>`。
 5. 组件样式默认 scoped；全局 CSS 仅限 reset、design tokens 和项目级基础样式。
-6. 后端请求通过 `tms-frontend/src/shared/api/backendClient.ts` 或 feature API 模块；组件不要散落直接 `fetch`。
+6. 后端请求通过 `tms-frontend/src/shared/api/backendClient.ts` 或 feature API 模块；组件不要散落直接 `fetch`。少数本地 automation executor/launcher 直连属于显式例外，必须由 `scripts/engineering/frontend-direct-fetch-boundary.test.mjs` 白名单锁定。
 7. 文件上传、进度、结果展示、处理历史优先复用 `shared/ui` 和 `shared/process` 中已有组件。
 8. Excel 处理型页面优先复用 `shared/ui/excel-process`、`FilePrecheckPanel`、`ProcessHistoryPanel`、`ResultSummary`、`shared/process` 与 `shared/styles/jane-page.scss`；页面内只保留业务字段、按钮文案、API 参数映射、结果摘要转换和历史 module id 等差异。
 9. 当左侧导航和路由已经表达子流程时，不在页面内容区重复做大卡片式流程切换入口，除非产品明确要求。
 10. 当前项目未配置 ESLint、Prettier；前端测试脚本以 `tms-frontend/package.json` 为准，当前有 `npm run test`。不要在规则或报告中声称已经运行不存在的命令。
+11. 本地开发默认前端入口 `npm run dev:frontend` 必须连接本机后端 `http://127.0.0.1:8000`；不得让默认 `dev` 脚本加载 `--mode server` 或 `tms-frontend/.env.server`。
+12. 只有显式运行 `npm run dev:frontend:server` 时，才允许读取 `tms-frontend/.env.server` 中的公开 `VITE_BACKEND_URL` 连接服务器后端；切换 local/server 模式前必须停止旧的 `5174` Vite 进程。
+13. 前端页面出现“无法连接后端服务”时，先检查 Vite 实际注入的 `import.meta.env`、当前 `5174` 前端启动模式和 `npm run check:backend-version`，不得直接判断为业务模块处理失败。
 
 ## Jane 模块边界
 
@@ -106,14 +109,16 @@
 3. Excel 处理逻辑放在 `tms-backend/modules/`；API 层负责上传、下载、参数校验和响应封装。
 4. 所有上传文件名和下载文件名必须做 basename、扩展名和目录边界校验，避免路径遍历。
 5. 不新增 `HTTPException(status_code=500, detail=str(e))` 这类内部异常直出。对用户返回脱敏消息，内部细节写入受控日志或诊断信息。
-6. `allow_origins=["*"]` + `allow_credentials=True` 是已知风险；不要把后端暴露到局域网或公网。若改 CORS，必须说明 Electron 桌面场景影响。
+6. CORS 默认只允许本地前端来源；服务器或特殊部署必须通过 `TMS_CORS_ALLOW_ORIGINS` 显式配置允许来源。禁止恢复 `allow_origins=["*"]` + `allow_credentials=True`，除非先完成 Electron、浏览器和服务器暴露面的风险评估。
 7. 后端依赖当前使用 `requirements.txt`，不要为普通任务强制迁移到 `pyproject.toml`。
 
 ## 版本更新记录边界
 
 1. `/release-updates` 页面从后端 `/api/release-updates` 读取记录，后端不可用时使用 `tms-frontend/src/shared/version/releaseHistory.json` 作为本地 fallback。
-2. 后端默认 seed 位于 `tms-backend/api/release_updates_api.py`，必须与 `releaseHistory.json` 保持同步；新增历史条目时运行相关一致性测试。
-3. 服务器发布包会生成 `releaseUpdateRecord` 并在部署脚本中同步到后端记录接口；修改该链路时必须同时核对 `scripts/engineering/package-server-update.mjs`、`scripts/server/apply-server-update.sh` 和相关测试。
+2. 服务器 MySQL `release_update_records` 是版本更新记录主源；本地 `releaseHistory.json` 和后端默认 seed 是可再生成缓存，使用 `npm run release:updates:pull` 从服务器拉取合并。
+3. 写入版本更新记录默认通过服务器 `/api/release-updates`，使用 `npm run release:updates:push:dry-run` 预览、`npm run release:updates:push` 写入；禁止提交数据库账号、写入 token 或连接串。
+4. 后端默认 seed 位于 `tms-backend/api/release_updates_api.py`，必须与 `releaseHistory.json` 保持同步；新增历史条目时运行相关一致性测试。
+5. 服务器发布包会生成 `releaseUpdateRecord` 并在部署脚本中同步到后端记录接口；修改该链路时必须同时核对 `scripts/engineering/package-server-update.mjs`、`scripts/server/apply-server-update.sh` 和相关测试。
 
 ## Electron、自动化和发布规则
 

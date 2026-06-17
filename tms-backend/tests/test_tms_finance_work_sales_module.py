@@ -117,6 +117,42 @@ def _bulk_rows() -> list[dict[str, object]]:
             "handover_date": datetime(2026, 5, 7),
         },
         {
+            "invoice": "14-05-26-0063",
+            "invoice_date": datetime(2026, 5, 7),
+            "style": "RC2610OW000.",
+            "order": "0901888497",
+            "buyer_unit_price": 127.3,
+            "factory_unit_price": 115.6,
+            "quantity": 5053,
+            "sales_amount_net": 729646.74,
+            "purchase_amount": 584126.8,
+            "handover_date": datetime(2026, 5, 7),
+        },
+        {
+            "invoice": "14-05-26-0063",
+            "invoice_date": datetime(2026, 5, 7),
+            "style": "RC2610OW000.",
+            "order": "0901888498",
+            "buyer_unit_price": 127.3,
+            "factory_unit_price": 115.6,
+            "quantity": 5574,
+            "sales_amount_net": 804878.47,
+            "purchase_amount": 644354.4,
+            "handover_date": datetime(2026, 5, 7),
+        },
+        {
+            "invoice": "14-05-26-0063",
+            "invoice_date": datetime(2026, 5, 7),
+            "style": "RC2610OW001.",
+            "order": "0901888499",
+            "buyer_unit_price": 125.17,
+            "factory_unit_price": 113.82,
+            "quantity": 2896,
+            "sales_amount_net": 411181.68,
+            "purchase_amount": 329622.72,
+            "handover_date": datetime(2026, 5, 7),
+        },
+        {
             "invoice": "14-05-26-0062",
             "invoice_date": datetime(2026, 5, 7),
             "style": "RC2610OW000.",
@@ -126,6 +162,42 @@ def _bulk_rows() -> list[dict[str, object]]:
             "quantity": 1804,
             "sales_amount_net": 260496.63,
             "purchase_amount": 208542.4,
+            "handover_date": datetime(2026, 5, 7),
+        },
+        {
+            "invoice": "14-05-26-0062",
+            "invoice_date": datetime(2026, 5, 7),
+            "style": "RC2610OW001.",
+            "order": "0901888500",
+            "buyer_unit_price": 125.17,
+            "factory_unit_price": 113.82,
+            "quantity": 1442,
+            "sales_amount_net": 204740,
+            "purchase_amount": 164128.44,
+            "handover_date": datetime(2026, 5, 7),
+        },
+        {
+            "invoice": "14-05-26-0062",
+            "invoice_date": datetime(2026, 5, 7),
+            "style": "RC2610OW001.",
+            "order": "0901888501",
+            "buyer_unit_price": 125.17,
+            "factory_unit_price": 113.82,
+            "quantity": 1504,
+            "sales_amount_net": 213542.96,
+            "purchase_amount": 171185.28,
+            "handover_date": datetime(2026, 5, 7),
+        },
+        {
+            "invoice": "14-05-26-0062",
+            "invoice_date": datetime(2026, 5, 7),
+            "style": "RC2610OW000.",
+            "order": "0901888502",
+            "buyer_unit_price": 127.3,
+            "factory_unit_price": 115.6,
+            "quantity": 2005,
+            "sales_amount_net": 289520.93,
+            "purchase_amount": 231778,
             "handover_date": datetime(2026, 5, 7),
         },
     ]
@@ -205,6 +277,30 @@ class TmsFinanceWorkSalesModuleTests(unittest.TestCase):
         self._write_total_row(ws, purchase_total_row, purchase_header_row + 1, purchase_total_row - 1)
         workbook.save(path)
 
+    def _create_empty_turnover_template(
+        self,
+        path: str,
+        sales_blank_rows: int = 8,
+    ) -> None:
+        workbook = openpyxl.Workbook()
+        ws = workbook.active
+        ws.title = "Turnover Details"
+        ws["A1"] = "Turnover Details MAY 2026"
+        ws["E2"] = "SALES"
+        ws["F2"] = "OTHER INCOME"
+        ws["I2"] = "TAX"
+        ws["J2"] = "AR"
+        for column, header in enumerate(SALES_HEADERS, start=1):
+            ws.cell(3, column).value = header
+
+        purchase_title_row = 4 + sales_blank_rows + 4
+        purchase_header_row = purchase_title_row + 2
+        ws.cell(purchase_title_row, 1).value = "Purchase Details MAY 2026"
+        ws.cell(purchase_title_row + 1, 5).value = "Purchase"
+        for column, header in enumerate(PURCHASE_HEADERS, start=1):
+            ws.cell(purchase_header_row, column).value = header
+        workbook.save(path)
+
     def _write_sales_template_row(self, ws, row_index: int, row: dict[str, object]) -> None:
         ws.cell(row_index, 1).value = row["style"]
         ws.cell(row_index, 3).value = row["buyer_unit_price"]
@@ -240,7 +336,58 @@ class TmsFinanceWorkSalesModuleTests(unittest.TestCase):
             letter = openpyxl.utils.get_column_letter(column)
             ws.cell(total_row, column).value = f"=SUM({letter}{start_row}:{letter}{end_row})"
 
-    def test_appends_bulk_sales_rows_to_turnover_details_sections(self) -> None:
+    def test_rebuilds_empty_turnover_details_from_bulk_sales_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bulk_path = os.path.join(tmpdir, "bulk sales.xlsx")
+            turnover_path = os.path.join(tmpdir, "turnover.xlsx")
+            self._create_bulk_sales_workbook(bulk_path, _bulk_rows())
+            self._create_empty_turnover_template(turnover_path)
+
+            result = self.module.process_files(
+                bulk_sales_path=bulk_path,
+                turnover_path=turnover_path,
+                output_dir=tmpdir,
+            )
+
+            self.assertTrue(result["success"])
+            self.assertEqual(result["source_row_count"], 8)
+            self.assertEqual(result["sales_written_count"], 8)
+            self.assertEqual(result["purchase_written_count"], 8)
+            self.assertEqual(result["cleared_sales_count"], 0)
+            self.assertEqual(result["cleared_purchase_count"], 0)
+            self.assertEqual(result["sales_appended_count"], 8)
+            self.assertEqual(result["purchase_appended_count"], 8)
+            self.assertEqual(result["duplicate_count"], 0)
+            output_wb = openpyxl.load_workbook(result["output_path"], data_only=False)
+            try:
+                ws = output_wb["Turnover Details"]
+                self.assertNotIn("Work Sales Summary", output_wb.sheetnames)
+                self.assertEqual(ws.cell(4, 1).value, "RC2610OW001.")
+                self.assertEqual(ws.cell(4, 3).value, 125.17)
+                self.assertEqual(ws.cell(4, 4).value, 2977)
+                self.assertEqual(ws.cell(4, 12).value, 422682.26)
+                self.assertEqual(ws.cell(4, 15).value, "Issued VAT inv.")
+                self.assertEqual(ws.cell(4, 16).value, "Caroline")
+                self.assertEqual(ws.cell(4, 18).value, "14-05-26-0063")
+                self.assertEqual(ws.cell(4, 5).value, "=ROUND(C4*D4,2)")
+                self.assertEqual(ws.cell(4, 6).value, "=ROUND(0.483581*D4,2)")
+                self.assertEqual(ws.cell(12, 4).value, "=SUM(D4:D11)")
+                self.assertEqual(ws.cell(13, 9).value, "=I12")
+                self.assertEqual(ws.cell(16, 1).value, "Purchase Details MAY 2026")
+                self.assertEqual(ws.cell(18, 1).value, "Style Number")
+                self.assertEqual(ws.cell(19, 1).value, "RC2610OW001.")
+                self.assertEqual(ws.cell(19, 3).value, 113.82)
+                self.assertEqual(ws.cell(19, 4).value, 2977)
+                self.assertEqual(ws.cell(19, 12).value, 338842.14)
+                self.assertEqual(ws.cell(19, 14).value, "received VAT inv.")
+                self.assertEqual(ws.cell(19, 16).value, "Caroline")
+                self.assertEqual(ws.cell(19, 18).value, "14-05-26-0063")
+                self.assertEqual(ws.cell(19, 5).value, "=ROUND(C19*D19,2)")
+                self.assertEqual(ws.cell(27, 4).value, "=SUM(D19:D26)")
+            finally:
+                output_wb.close()
+
+    def test_replaces_existing_turnover_details_instead_of_appending(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             bulk_path = os.path.join(tmpdir, "bulk sales.xlsx")
             turnover_path = os.path.join(tmpdir, "turnover.xlsx")
@@ -253,42 +400,35 @@ class TmsFinanceWorkSalesModuleTests(unittest.TestCase):
                 output_dir=tmpdir,
             )
 
-            self.assertTrue(result["success"])
-            self.assertEqual(result["source_row_count"], 2)
-            self.assertEqual(result["sales_appended_count"], 2)
-            self.assertEqual(result["purchase_appended_count"], 2)
-            self.assertEqual(result["duplicate_count"], 0)
+            self.assertEqual(result["source_row_count"], 8)
+            self.assertEqual(result["sales_written_count"], 8)
+            self.assertEqual(result["purchase_written_count"], 8)
+            self.assertEqual(result["cleared_sales_count"], 1)
+            self.assertEqual(result["cleared_purchase_count"], 1)
             output_wb = openpyxl.load_workbook(result["output_path"], data_only=False)
             try:
                 ws = output_wb["Turnover Details"]
-                self.assertNotIn("Work Sales Summary", output_wb.sheetnames)
-                self.assertEqual(ws.cell(5, 1).value, "RC2610OW001.")
-                self.assertEqual(ws.cell(5, 3).value, 125.17)
-                self.assertEqual(ws.cell(5, 4).value, 2977)
-                self.assertEqual(ws.cell(5, 12).value, 422682.26)
-                self.assertEqual(ws.cell(5, 15).value, "Issued VAT inv.")
-                self.assertEqual(ws.cell(5, 16).value, "Caroline")
-                self.assertEqual(ws.cell(5, 18).value, "14-05-26-0063")
-                self.assertEqual(ws.cell(5, 5).value, "=ROUND(C5*D5,2)")
-                self.assertEqual(ws.cell(7, 4).value, "=SUM(D4:D6)")
-                self.assertEqual(ws.cell(15, 1).value, "RC2610OW001.")
-                self.assertEqual(ws.cell(15, 3).value, 113.82)
-                self.assertEqual(ws.cell(15, 4).value, 2977)
-                self.assertEqual(ws.cell(15, 12).value, 338842.14)
-                self.assertEqual(ws.cell(15, 14).value, "received VAT inv.")
-                self.assertEqual(ws.cell(15, 16).value, "Caroline")
-                self.assertEqual(ws.cell(15, 18).value, "14-05-26-0063")
-                self.assertEqual(ws.cell(15, 5).value, "=ROUND(C15*D15,2)")
-                self.assertEqual(ws.cell(17, 4).value, "=SUM(D14:D16)")
+                details_values = [
+                    ws.cell(row, column).value
+                    for row in range(1, ws.max_row + 1)
+                    for column in range(1, ws.max_column + 1)
+                ]
+                self.assertNotIn("OLDSTYLE.", details_values)
+                self.assertEqual(ws.cell(4, 1).value, "RC2610OW001.")
+                self.assertEqual(ws.cell(11, 1).value, "RC2610OW000.")
+                self.assertEqual(ws.cell(12, 4).value, "=SUM(D4:D11)")
+                self.assertEqual(ws.cell(19, 1).value, "RC2610OW001.")
+                self.assertEqual(ws.cell(26, 1).value, "RC2610OW000.")
+                self.assertEqual(ws.cell(27, 4).value, "=SUM(D19:D26)")
             finally:
                 output_wb.close()
 
-    def test_skips_rows_already_present_in_sales_and_purchase_sections(self) -> None:
+    def test_expands_turnover_details_when_source_exceeds_blank_template_capacity(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             bulk_path = os.path.join(tmpdir, "bulk sales.xlsx")
             turnover_path = os.path.join(tmpdir, "turnover.xlsx")
             self._create_bulk_sales_workbook(bulk_path, _bulk_rows())
-            self._create_turnover_workbook(turnover_path, _bulk_rows())
+            self._create_empty_turnover_template(turnover_path, sales_blank_rows=1)
 
             result = self.module.process_files(
                 bulk_sales_path=bulk_path,
@@ -296,15 +436,13 @@ class TmsFinanceWorkSalesModuleTests(unittest.TestCase):
                 output_dir=tmpdir,
             )
 
-            self.assertEqual(result["source_row_count"], 2)
-            self.assertEqual(result["sales_appended_count"], 0)
-            self.assertEqual(result["purchase_appended_count"], 0)
-            self.assertEqual(result["duplicate_count"], 2)
+            self.assertEqual(result["sales_written_count"], 8)
             output_wb = openpyxl.load_workbook(result["output_path"], data_only=False)
             try:
                 ws = output_wb["Turnover Details"]
-                self.assertEqual(ws.cell(6, 4).value, "=SUM(D4:D5)")
-                self.assertEqual(ws.cell(15, 4).value, "=SUM(D13:D14)")
+                self.assertEqual(ws.cell(16, 1).value, "Purchase Details MAY 2026")
+                self.assertEqual(ws.cell(18, 1).value, "Style Number")
+                self.assertEqual(ws.cell(27, 4).value, "=SUM(D19:D26)")
             finally:
                 output_wb.close()
 
@@ -356,9 +494,13 @@ class TmsFinanceWorkSalesModuleTests(unittest.TestCase):
 
             self.assertEqual(response.status_code, 200)
             payload = response.json()
-            self.assertEqual(payload["source_row_count"], 2)
-            self.assertEqual(payload["sales_appended_count"], 2)
-            self.assertEqual(payload["purchase_appended_count"], 2)
+            self.assertEqual(payload["source_row_count"], 8)
+            self.assertEqual(payload["sales_written_count"], 8)
+            self.assertEqual(payload["purchase_written_count"], 8)
+            self.assertEqual(payload["cleared_sales_count"], 1)
+            self.assertEqual(payload["cleared_purchase_count"], 1)
+            self.assertEqual(payload["sales_appended_count"], 8)
+            self.assertEqual(payload["purchase_appended_count"], 8)
             self.assertIn("output_file", payload)
 
             download_response = client.get(

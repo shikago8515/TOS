@@ -122,7 +122,7 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
     def test_save_release_update_returns_stable_response_shape(self) -> None:
         expected_row = self._release_update_row(2, "0.9.8-beta.3.15")
 
-        with patch.object(
+        with patch.dict(os.environ, {"TOS_RELEASE_UPDATE_WRITE_TOKEN": ""}), patch.object(
             release_updates_api,
             "upsert_release_update_record",
             return_value=expected_row,
@@ -209,12 +209,16 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
         )
         self.assertEqual(existing_default["version"], "0.9.8-beta.3.6")
 
-    def test_seed_default_release_updates_upserts_every_record(self) -> None:
-        with patch.object(release_updates_api, "upsert_release_update_record") as upsert_record:
+    def test_seed_default_release_updates_inserts_missing_records_without_overwriting(self) -> None:
+        with patch.object(release_updates_api, "insert_release_update_record_once") as insert_record, patch.object(
+            release_updates_api,
+            "upsert_release_update_record",
+        ) as upsert_record:
             release_updates_api.seed_default_release_updates()
 
-        self.assertEqual(upsert_record.call_count, len(release_updates_api.DEFAULT_RELEASE_UPDATE_RECORDS))
-        record_keys = [call.args[0]["record_key"] for call in upsert_record.call_args_list]
+        self.assertEqual(insert_record.call_count, len(release_updates_api.DEFAULT_RELEASE_UPDATE_RECORDS))
+        upsert_record.assert_not_called()
+        record_keys = [call.args[0]["record_key"] for call in insert_record.call_args_list]
         self.assertIn("builtin-0.9.8-beta.3.17-improved-electron-external-allowlist", record_keys)
         self.assertIn("builtin-0.9.8-beta.3.16-improved-system-api-contract", record_keys)
         self.assertIn("builtin-0.9.8-beta.3.15-fixed-release-updates-browser-backend", record_keys)
@@ -225,6 +229,66 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
         self.assertIn("builtin-0.9.8-beta.3.13-fixed-draft-packing-feedback-label", record_keys)
         self.assertIn("builtin-0.9.8-beta.3.12-improved-process-history-scroll", record_keys)
         self.assertIn("builtin-0.9.8-beta.3.11-fixed-draft-packing-description-cleanup", record_keys)
+
+    def test_save_release_update_allows_public_get_but_rejects_post_with_wrong_token(self) -> None:
+        expected_row = self._release_update_row(3, "0.9.8-beta.3.19")
+        with patch.dict(os.environ, {"TOS_RELEASE_UPDATE_WRITE_TOKEN": "secret-token"}), patch.object(
+            release_updates_api,
+            "seed_default_release_updates",
+        ), patch.object(
+            release_updates_api,
+            "list_release_update_records",
+            return_value=[expected_row],
+        ), patch.object(
+            release_updates_api,
+            "upsert_release_update_record",
+        ) as upsert_record:
+            get_response = self.client.get("/api/release-updates?limit=1")
+            missing_token_response = self.client.post(
+                "/api/release-updates",
+                json={
+                    "recordKey": "record-0.9.8-beta.3.19",
+                    "version": "0.9.8-beta.3.19",
+                    "releaseDate": "2026-06-17",
+                    "category": "fixed",
+                    "pageName": "版本更新记录",
+                    "pagePath": "/release-updates",
+                    "title": "缺少 token",
+                    "description": "",
+                    "createdBy": "test",
+                },
+            )
+
+        self.assertEqual(get_response.status_code, 200)
+        self.assertEqual(missing_token_response.status_code, 401)
+        upsert_record.assert_not_called()
+
+    def test_save_release_update_accepts_correct_write_token(self) -> None:
+        expected_row = self._release_update_row(4, "0.9.8-beta.3.19")
+
+        with patch.dict(os.environ, {"TOS_RELEASE_UPDATE_WRITE_TOKEN": "secret-token"}), patch.object(
+            release_updates_api,
+            "upsert_release_update_record",
+            return_value=expected_row,
+        ) as upsert_record:
+            response = self.client.post(
+                "/api/release-updates",
+                headers={"X-Release-Update-Token": "secret-token"},
+                json={
+                    "recordKey": "record-0.9.8-beta.3.19",
+                    "version": "0.9.8-beta.3.19",
+                    "releaseDate": "2026-06-17",
+                    "category": "fixed",
+                    "pageName": "版本更新记录",
+                    "pagePath": "/release-updates",
+                    "title": "正确 token",
+                    "description": "",
+                    "createdBy": "test",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        upsert_record.assert_called_once()
 
     def test_list_release_update_records_orders_semantic_versions_descending(self) -> None:
         rows = [

@@ -107,12 +107,26 @@ tms-frontend/src/shared/version/releaseNotes.json
 
 模板见 `docs/templates/release-notes.md`。
 
+版本更新历史以服务器 MySQL `release_update_records` 为主源，本地 `tms-frontend/src/shared/version/releaseHistory.json` 和后端默认 seed 只是可再生成缓存。更新版本记录时使用：
+
+```powershell
+npm run release:updates:push:dry-run
+npm run release:updates:push
+npm run release:updates:dry-run
+npm run release:updates:pull
+```
+
+`release:updates:push` 通过服务器 `/api/release-updates` 写入记录，不直连数据库账号；`release:updates:pull` 从服务器拉取并合并更新本地缓存。同步缓存类提交如需避免 post-commit 再次写入服务器，可以临时设置 `TOS_RELEASE_UPDATES_SKIP=1`。
+
 ## 5. GitCode 提交与 CI 门禁
 
 提交前确认状态和验证结果：
 
 ```powershell
 git status --short --branch
+npm run check:backend-version
+npm run release:updates:dry-run
+npm run release:updates:push:dry-run
 npm run check:quick
 ```
 
@@ -122,9 +136,12 @@ npm run check:quick
 git add <files>
 git commit -m "类型: 描述"
 git push -u gitcode codex/<topic>
+git push -u origin codex/<topic>
 ```
 
 GitCode CI 位于 `.gitcode/workflows/tos-check.yml`，对 `main`、`codex/**` 分支 push 和面向 `main` 的合并请求运行完整 `npm run check`。
+
+分支推送后先等 GitCode 分支 CI 通过，再合并进 `main`。合并后在 `main` 运行 `npm run check:quick`，再推送 `main` 到 GitCode；GitCode main CI 通过后，再同步推送到 GitHub。
 
 服务器正式发布前，必须满足：
 
@@ -213,4 +230,3 @@ sudo docker compose -f docker-compose.tos.yml ps
 curl -s http://127.0.0.1:18000/
 curl -I http://127.0.0.1:18080/
 ```
-

@@ -9,6 +9,10 @@ export interface TmsFinanceWorkSalesRequest {
 }
 
 export interface TmsFinanceWorkSalesTotals {
+  sales_written_count?: number
+  purchase_written_count?: number
+  cleared_sales_count?: number
+  cleared_purchase_count?: number
   sales_appended_rows?: number
   purchase_appended_rows?: number
   duplicate_rows?: number
@@ -18,6 +22,10 @@ export interface TmsFinanceWorkSalesSourceSummary {
   source_rows?: number
   sales_rows?: number
   purchase_rows?: number
+  sales_written_rows?: number
+  purchase_written_rows?: number
+  cleared_sales_rows?: number
+  cleared_purchase_rows?: number
   duplicate_rows?: number
 }
 
@@ -29,6 +37,10 @@ export interface TmsFinanceWorkSalesResponse {
   result_file?: string
   source_row_count?: number
   extracted_count?: number
+  sales_written_count?: number
+  purchase_written_count?: number
+  cleared_sales_count?: number
+  cleared_purchase_count?: number
   sales_appended_count?: number
   purchase_appended_count?: number
   duplicate_count?: number

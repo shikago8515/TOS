@@ -3,6 +3,7 @@
 Jane-BOM 核对 API Router
 """
 
+import logging
 import os
 import shutil
 from typing import List, Optional, Set
@@ -16,6 +17,8 @@ from modules.jane_bom_compare_module import JaneBomCompareModule
 
 router = APIRouter(prefix="/jane-bom-compare", tags=["Jane-BOM核对"])
 jane_bom_compare_module = JaneBomCompareModule()
+logger = logging.getLogger(__name__)
+PROCESSING_ERROR_MESSAGE = "处理失败，请查看诊断日志或稍后重试"
 
 ALLOWED_EXCEL_EXTENSIONS = {".xlsx", ".xlsm"}
 
@@ -142,7 +145,8 @@ async def process_jane_bom_compare(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.exception("Jane BOM compare processing failed")
+        raise HTTPException(status_code=500, detail=PROCESSING_ERROR_MESSAGE) from exc
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 

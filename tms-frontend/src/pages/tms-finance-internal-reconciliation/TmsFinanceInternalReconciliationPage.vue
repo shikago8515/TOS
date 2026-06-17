@@ -85,6 +85,7 @@ import {
   getTmsFinanceProcessById,
   getTmsFinanceProcessByRoute,
   getTmsFinanceResultMetricValue,
+  buildTmsFinanceProcessErrorSummary,
   type TmsFinanceProcessId,
   type TmsFinanceProcessOption,
 } from './tmsFinancePageModel'
@@ -344,13 +345,7 @@ function handleProcessError(
   success.value = false
   messageTone.value = 'error'
   message.value = readErrorMessage(error, '处理失败，请重试')
-  summaryItems.value = [
-    {
-      label: '处理状态',
-      value: '失败',
-      note: '可导出诊断包发给开发排查',
-    },
-  ]
+  summaryItems.value = buildTmsFinanceProcessErrorSummary(message.value)
   recordHistory('error', startedAt, inputFiles)
 }
 

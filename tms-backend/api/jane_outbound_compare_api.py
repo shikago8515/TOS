@@ -3,6 +3,7 @@
 Jane-OUTBOUND 核对 API Router
 """
 
+import logging
 import os
 import shutil
 from typing import Optional, Set
@@ -16,6 +17,8 @@ from modules.jane_outbound_compare_module import JaneOutboundCompareModule
 
 router = APIRouter(prefix="/jane-outbound-compare", tags=["Jane-OUTBOUND核对"])
 jane_outbound_compare_module = JaneOutboundCompareModule()
+logger = logging.getLogger(__name__)
+PROCESSING_ERROR_MESSAGE = "处理失败，请查看诊断日志或稍后重试"
 
 ALLOWED_EXCEL_EXTENSIONS = {".xlsx", ".xlsm"}
 
@@ -126,7 +129,8 @@ async def process_jane_outbound_compare(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.exception("Jane outbound compare processing failed")
+        raise HTTPException(status_code=500, detail=PROCESSING_ERROR_MESSAGE) from exc
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 

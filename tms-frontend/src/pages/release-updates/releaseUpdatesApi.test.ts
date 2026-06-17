@@ -78,8 +78,8 @@ describe('releaseUpdatesApi', () => {
     expect(payload.records.length).toBeGreaterThan(2)
     expect(payload.records[0]).toMatchObject({
       version: fallbackAppVersion,
-      pagePath: '/settings',
     })
+    expect(payload.records.some((record) => record.pagePath === '/release-updates')).toBe(true)
     expect(payload.records.map((record) => record.version)).toEqual(
       expect.arrayContaining([
         fallbackAppVersion,
@@ -88,6 +88,14 @@ describe('releaseUpdatesApi', () => {
         '0.9.8-beta.3.1',
       ]),
     )
+  })
+
+  it('does not fall back to bundled release notes when the backend version is stale', async () => {
+    vi.mocked(requestBackendJson).mockRejectedValue(
+      new Error(`当前后端版本未更新：后端为 0.9.8-beta.3.17，前端为 ${fallbackAppVersion}，请重启本地后端。`),
+    )
+
+    await expect(fetchReleaseUpdates(160)).rejects.toThrow('当前后端版本未更新')
   })
 
   it('applies the requested limit to bundled history records', async () => {
