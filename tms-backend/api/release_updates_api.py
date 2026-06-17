@@ -848,9 +848,10 @@ DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
 async def read_release_updates(limit: int = Query(100, ge=1, le=300)) -> dict[str, Any]:
     seed_default_release_updates()
     records = [_record_payload(row) for row in list_release_update_records(limit)]
+    latest_record_version = records[0]["version"] if records else APP_VERSION
     return {
         "ok": True,
-        "version": APP_VERSION,
+        "version": latest_record_version,
         "records": records,
         "total": len(records),
     }

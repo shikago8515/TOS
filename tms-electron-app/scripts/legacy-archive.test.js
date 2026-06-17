@@ -60,6 +60,7 @@ test('electron-builder excludes generated package outputs from app.asar', () => 
     '!dist-dnd-fix/**/*',
     '!dist-realtest/**/*',
     '!dist-tms-automation-check/**/*',
+    '!dist-tos-desktop-full/**/*',
     '!dist-*/win-unpacked/**/*',
     '!dist-*/**/app.asar',
     '!external-apps/**/*',

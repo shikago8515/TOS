@@ -81,6 +81,7 @@
       "!dist/**/*",
       "!dist-automation-helper/**/*",
       "!dist-tos-desktop/**/*",
+      "!dist-tos-desktop-full/**/*",
       "!dist-dnd-fix/**/*",
       "!dist-realtest/**/*",
       "!dist-tms-automation-check/**/*",

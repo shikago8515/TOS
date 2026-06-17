@@ -167,7 +167,7 @@ const affectedPageCount = computed(() => {
 })
 
 const latestVersionLabel = computed(() => {
-  const version = runtimeVersion.value || records.value[0]?.version
+  const version = records.value[0]?.version || runtimeVersion.value
   return version ? `V${cleanVersion(version)}` : '-'
 })
 

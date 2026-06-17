@@ -98,7 +98,7 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
             response.json(),
             {
                 "ok": True,
-                "version": release_updates_api.APP_VERSION,
+                "version": "0.9.8-beta.3.15",
                 "records": [
                     {
                         "id": 1,
