@@ -3,6 +3,7 @@
 Eric Excel integration API router.
 """
 
+import logging
 import os
 import shutil
 from typing import Optional, Set
@@ -16,6 +17,8 @@ from modules.eric_module import EricModule
 
 router = APIRouter(prefix="/eric", tags=["Eric"])
 eric_module = EricModule()
+logger = logging.getLogger(__name__)
+PROCESSING_ERROR_MESSAGE = "处理失败，请查看诊断日志或稍后重试"
 
 ALLOWED_PACK_EXTENSIONS = {".xlsx", ".xlsm"}
 ALLOWED_YTIC_EXTENSIONS = {".xls", ".xlsx", ".xlsm"}
@@ -106,7 +109,8 @@ async def process_eric(
             "logs": result["logs"],
         }
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.exception("Eric processing failed")
+        raise HTTPException(status_code=500, detail=PROCESSING_ERROR_MESSAGE) from exc
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 
@@ -164,7 +168,8 @@ async def reconcile_eric(
             "logs": result["logs"],
         }
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.exception("Eric reconciliation failed")
+        raise HTTPException(status_code=500, detail=PROCESSING_ERROR_MESSAGE) from exc
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 

@@ -12,7 +12,15 @@ BACKEND_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if BACKEND_ROOT not in sys.path:
     sys.path.insert(0, BACKEND_ROOT)
 
-from api import jane_api, jessca_api, sophia_tina_api
+from api import (
+    eric_api,
+    jane_api,
+    jane_bom_compare_api,
+    jane_bom_summary_api,
+    jane_outbound_compare_api,
+    jessca_api,
+    sophia_tina_api,
+)
 from utils.file_utils import (
     resolve_download_path,
     sanitize_output_reference,
@@ -97,6 +105,132 @@ class LegacyApiSecurityTests(unittest.TestCase):
         self.assertEqual(context.exception.detail, "处理失败，请查看诊断日志或稍后重试")
         self.assertNotIn("secret", context.exception.detail)
         self.assertIn("Jane processing failed", "\n".join(logs.output))
+
+    def test_jane_bom_summary_returns_sanitized_500_detail(self):
+        original_upload_dir = jane_bom_summary_api.UPLOAD_DIR
+        original_module = jane_bom_summary_api.jane_bom_summary_module
+
+        class ExplodingModule:
+            def process_reports(self, *_args, **_kwargs):
+                raise RuntimeError("internal path C:/secret/bom-summary.xlsx")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            jane_bom_summary_api.UPLOAD_DIR = temp_dir
+            jane_bom_summary_api.jane_bom_summary_module = ExplodingModule()
+            try:
+                with self.assertLogs(jane_bom_summary_api.logger, level="ERROR") as logs:
+                    with self.assertRaises(HTTPException) as context:
+                        asyncio.run(
+                            jane_bom_summary_api.process_jane_bom_summary(
+                                bom_files=[FakeUpload("bom.xlsx")],
+                                pack_file=FakeUpload("pack.xlsx"),
+                                output_dir=None,
+                            )
+                        )
+            finally:
+                jane_bom_summary_api.UPLOAD_DIR = original_upload_dir
+                jane_bom_summary_api.jane_bom_summary_module = original_module
+
+        self.assertEqual(context.exception.status_code, 500)
+        self.assertEqual(context.exception.detail, "处理失败，请查看诊断日志或稍后重试")
+        self.assertNotIn("secret", context.exception.detail)
+        self.assertIn("Jane BOM summary processing failed", "\n".join(logs.output))
+
+    def test_jane_bom_compare_returns_sanitized_500_detail(self):
+        original_upload_dir = jane_bom_compare_api.UPLOAD_DIR
+        original_module = jane_bom_compare_api.jane_bom_compare_module
+
+        class ExplodingModule:
+            def process_reports(self, *_args, **_kwargs):
+                raise RuntimeError("internal path C:/secret/bom-compare.xlsx")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            jane_bom_compare_api.UPLOAD_DIR = temp_dir
+            jane_bom_compare_api.jane_bom_compare_module = ExplodingModule()
+            try:
+                with self.assertLogs(jane_bom_compare_api.logger, level="ERROR") as logs:
+                    with self.assertRaises(HTTPException) as context:
+                        asyncio.run(
+                            jane_bom_compare_api.process_jane_bom_compare(
+                                production_file=FakeUpload("production.xlsx"),
+                                bom_summary_file=FakeUpload("bom_summary.xlsx"),
+                                bom_files=None,
+                                output_dir=None,
+                            )
+                        )
+            finally:
+                jane_bom_compare_api.UPLOAD_DIR = original_upload_dir
+                jane_bom_compare_api.jane_bom_compare_module = original_module
+
+        self.assertEqual(context.exception.status_code, 500)
+        self.assertEqual(context.exception.detail, "处理失败，请查看诊断日志或稍后重试")
+        self.assertNotIn("secret", context.exception.detail)
+        self.assertIn("Jane BOM compare processing failed", "\n".join(logs.output))
+
+    def test_jane_outbound_compare_returns_sanitized_500_detail(self):
+        original_upload_dir = jane_outbound_compare_api.UPLOAD_DIR
+        original_module = jane_outbound_compare_api.jane_outbound_compare_module
+
+        class ExplodingModule:
+            def process_reports(self, *_args, **_kwargs):
+                raise RuntimeError("internal path C:/secret/outbound.xlsx")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            jane_outbound_compare_api.UPLOAD_DIR = temp_dir
+            jane_outbound_compare_api.jane_outbound_compare_module = ExplodingModule()
+            try:
+                with self.assertLogs(jane_outbound_compare_api.logger, level="ERROR") as logs:
+                    with self.assertRaises(HTTPException) as context:
+                        asyncio.run(
+                            jane_outbound_compare_api.process_jane_outbound_compare(
+                                outbound_file=FakeUpload("outbound.xlsx"),
+                                tms_file=FakeUpload("tms.xlsx"),
+                                output_dir=None,
+                            )
+                        )
+            finally:
+                jane_outbound_compare_api.UPLOAD_DIR = original_upload_dir
+                jane_outbound_compare_api.jane_outbound_compare_module = original_module
+
+        self.assertEqual(context.exception.status_code, 500)
+        self.assertEqual(context.exception.detail, "处理失败，请查看诊断日志或稍后重试")
+        self.assertNotIn("secret", context.exception.detail)
+        self.assertIn("Jane outbound compare processing failed", "\n".join(logs.output))
+
+    def test_eric_process_returns_sanitized_500_detail(self):
+        original_upload_dir = eric_api.UPLOAD_DIR
+        original_module = eric_api.eric_module
+
+        class ExplodingModule:
+            def process_file(self, *_args):
+                raise RuntimeError("internal path C:/secret/eric.xlsx")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            eric_api.UPLOAD_DIR = temp_dir
+            eric_api.eric_module = ExplodingModule()
+            try:
+                with self.assertLogs(eric_api.logger, level="ERROR") as logs:
+                    with self.assertRaises(HTTPException) as context:
+                        asyncio.run(
+                            eric_api.process_eric(
+                                excel_file=FakeUpload("pack.xlsx"),
+                                output_dir=None,
+                            )
+                        )
+            finally:
+                eric_api.UPLOAD_DIR = original_upload_dir
+                eric_api.eric_module = original_module
+
+        self.assertEqual(context.exception.status_code, 500)
+        self.assertEqual(context.exception.detail, "处理失败，请查看诊断日志或稍后重试")
+        self.assertNotIn("secret", context.exception.detail)
+        self.assertIn("Eric processing failed", "\n".join(logs.output))
+
+
+class FakeUpload:
+    def __init__(self, filename: str):
+        self.filename = filename
+        self.file = io.BytesIO(b"not an excel file")
 
 
 if __name__ == "__main__":
