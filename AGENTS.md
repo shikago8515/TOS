@@ -66,6 +66,7 @@
 11. 本地开发默认前端入口 `npm run dev:frontend` 必须连接本机后端 `http://127.0.0.1:8000`；不得让默认 `dev` 脚本加载 `--mode server` 或 `tms-frontend/.env.server`。
 12. 只有显式运行 `npm run dev:frontend:server` 时，才允许读取 `tms-frontend/.env.server` 中的公开 `VITE_BACKEND_URL` 连接服务器后端；切换 local/server 模式前必须停止旧的 `5174` Vite 进程。
 13. 前端页面出现“无法连接后端服务”时，先检查 Vite 实际注入的 `import.meta.env`、当前 `5174` 前端启动模式和 `npm run check:backend-version`，不得直接判断为业务模块处理失败。
+14. 运行 `npm run version:bump`、切换分支、拉取同事更新或修改 `tms-backend/app_version.py` 后，先运行 `npm run dev:backend:restart` 和 `npm run check:backend-version`，再刷新本地 `5174` 前端页面，避免旧 `8000` 后端进程继续返回上一版本。
 
 ## Jane 模块边界
 

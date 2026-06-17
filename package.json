@@ -21,6 +21,7 @@
     "dev:frontend": "npm --prefix tms-frontend run dev",
     "dev:frontend:server": "npm --prefix tms-frontend run dev:server",
     "dev:frontend:local": "npm --prefix tms-frontend run dev:local",
+    "dev:backend:restart": "node scripts/engineering/restart-local-backend.mjs",
     "preview:frontend": "npm --prefix tms-frontend run preview",
     "dev:electron": "npm --prefix tms-electron-app run dev"
   },

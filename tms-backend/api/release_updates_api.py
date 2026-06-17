@@ -82,6 +82,16 @@ def _default_record(
 
 DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
     _default_record(
+        "builtin-0.9.8-beta.3.20-fixed-adidas-materials-helper-entry",
+        "0.9.8-beta.3.20",
+        "2026-06-17",
+        "fixed",
+        "adidas Materials",
+        "/adidas-materials",
+        "修复独立自动化助手启动",
+        "修复 adidas Materials 网页端启动独立自动化助手时缺少 collector 入口的问题。",
+    ),
+    _default_record(
         "builtin-0.9.8-beta.3.19-improved-automation-executor-health-probe",
         "0.9.8-beta.3.19",
         "2026-06-17",

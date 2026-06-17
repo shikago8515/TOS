@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.20-fixed-adidas-materials-helper-entry",
+    "version": "0.9.8-beta.3.20",
+    "releaseDate": "2026-06-17",
+    "category": "fixed",
+    "pageName": "adidas Materials",
+    "pagePath": "/adidas-materials",
+    "title": "修复独立自动化助手启动",
+    "description": "修复 adidas Materials 网页端启动独立自动化助手时缺少 collector 入口的问题。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.19-improved-automation-executor-health-probe",
     "version": "0.9.8-beta.3.19",
     "releaseDate": "2026-06-17",

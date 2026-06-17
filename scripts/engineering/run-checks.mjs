@@ -28,6 +28,10 @@ const commandGroups = {
       '--test',
       'scripts/engineering/frontend-dev-entrypoints.test.mjs',
     ]),
+    command('restart-local-backend-test', '.', process.execPath, [
+      '--test',
+      'scripts/engineering/restart-local-backend.test.mjs',
+    ]),
     command('frontend-direct-fetch-boundary-test', '.', process.execPath, [
       '--test',
       'scripts/engineering/frontend-direct-fetch-boundary.test.mjs',

@@ -13,6 +13,7 @@ const requiredUnpackedResources = [
   'resources/browser-plugins/infornexus-auto-add/manifest.json',
   'resources/browser-plugins/infornexus-auto-add/content.js',
   'resources/browser-plugins/infornexus-auto-add/xlsx.min.js',
+  'resources/automation-launcher/adidas-materials-direct.js',
   'resources/automation-launcher/core.js',
   'resources/automation-launcher/server.js',
   'resources/automation-apps/registry.json',

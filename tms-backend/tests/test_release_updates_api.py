@@ -219,6 +219,7 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
         self.assertEqual(insert_record.call_count, len(release_updates_api.DEFAULT_RELEASE_UPDATE_RECORDS))
         upsert_record.assert_not_called()
         record_keys = [call.args[0]["record_key"] for call in insert_record.call_args_list]
+        self.assertIn("builtin-0.9.8-beta.3.20-fixed-adidas-materials-helper-entry", record_keys)
         self.assertIn("builtin-0.9.8-beta.3.17-improved-electron-external-allowlist", record_keys)
         self.assertIn("builtin-0.9.8-beta.3.16-improved-system-api-contract", record_keys)
         self.assertIn("builtin-0.9.8-beta.3.15-fixed-release-updates-browser-backend", record_keys)
