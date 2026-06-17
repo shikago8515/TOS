@@ -1,4 +1,5 @@
 import type { ProcessSummaryItem } from '../../shared/process/processHistory'
+import { isBackendVersionMismatchMessage } from '../../shared/api/backendClient'
 import {
   tmsFinanceInternalReconciliationModuleId,
   tmsFinanceInternalReconciliationModuleName,
@@ -46,16 +47,16 @@ export const tmsFinanceProcessOptions: readonly TmsFinanceProcessOption[] = [
   },
   {
     id: 'work-sales',
-    label: 'Work Sales 数据追加',
-    subtitle: 'BULK Sales 导出表 → TURNOVER Turnover Details 尾部追加',
+    label: 'Work Sales 数据写入',
+    subtitle: 'BULK Sales 导出表 → 写入 TURNOVER Turnover Details',
     badge: '2 组必传',
     icon: 'bar-chart',
     requiredGroups: 2,
-    progressLabel: '追加进度',
-    idleActionLabel: '开始追加',
-    processingActionLabel: '追加中...',
-    resultMetricLabel: '追加行',
-    resultSummaryLabel: '追加行',
+    progressLabel: '写入进度',
+    idleActionLabel: '开始写入',
+    processingActionLabel: '写入中...',
+    resultMetricLabel: '写入行',
+    resultSummaryLabel: '写入行',
     moduleId: tmsFinanceWorkSalesModuleId,
     moduleName: tmsFinanceWorkSalesModuleName,
     routeName: 'tms-finance-work-sales',
@@ -85,4 +86,26 @@ export function getTmsFinanceResultMetricValue(
   const item = summaryItems.find((entry) => entry.label === process.resultSummaryLabel)
 
   return item?.value ?? '-'
+}
+
+export function buildTmsFinanceProcessErrorSummary(
+  errorMessage: string,
+): ProcessSummaryItem[] {
+  if (isBackendVersionMismatchMessage(errorMessage)) {
+    return [
+      {
+        label: '后端版本',
+        value: '未更新',
+        note: errorMessage,
+      },
+    ]
+  }
+
+  return [
+    {
+      label: '处理状态',
+      value: '失败',
+      note: '可导出诊断包发给开发排查',
+    },
+  ]
 }

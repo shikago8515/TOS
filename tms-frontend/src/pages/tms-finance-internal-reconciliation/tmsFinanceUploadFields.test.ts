@@ -10,18 +10,20 @@ describe('tmsFinanceUploadFields', () => {
     workSalesTurnoverFiles: [],
   }
 
-  it('requires BULK Sales and TURNOVER files for Work Sales append', () => {
+  it('requires BULK Sales and TURNOVER files for Work Sales fill', () => {
     const fields = buildTmsFinanceUploadFields('work-sales', emptyFiles)
     const bulkSalesField = fields.find((field) => field.id === 'work-sales-bulk-sales')
     const turnoverField = fields.find((field) => field.id === 'work-sales-turnover')
 
     expect(fields).toHaveLength(2)
     expect(bulkSalesField?.label).toBe('BULK Sales 导出表')
+    expect(bulkSalesField?.hint).toContain('写入')
     expect(bulkSalesField?.accept).toBe('.xls,.xlsx,.xlsm')
     expect(bulkSalesField?.acceptLabel).toBe('支持 .xls / .xlsx / .xlsm')
     expect(bulkSalesField?.expectedCount).toBe(1)
     expect(bulkSalesField?.required).not.toBe(false)
     expect(turnoverField?.label).toBe('TURNOVER 目标表')
+    expect(turnoverField?.hint).toContain('重建')
     expect(turnoverField?.accept).toBe('.xlsx,.xlsm')
     expect(turnoverField?.acceptLabel).toBe('支持 .xlsx / .xlsm')
     expect(turnoverField?.expectedCount).toBe(1)
