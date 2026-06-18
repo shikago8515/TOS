@@ -115,6 +115,26 @@ def _zip_entry_text(path: str, entry: str) -> str:
         return archive.read(entry).decode("utf-8")
 
 
+def _pivot_data_field_names(path: str, entry: str) -> list[str | None]:
+    namespace = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    with zipfile.ZipFile(path) as archive:
+        root = ElementTree.fromstring(archive.read(entry))
+    return [
+        field.attrib.get("name")
+        for field in root.findall(".//main:dataFields/main:dataField", namespace)
+    ]
+
+
+def _slicer_pivot_table_names(path: str, entry: str) -> list[str | None]:
+    namespace = {"x14": "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"}
+    with zipfile.ZipFile(path) as archive:
+        root = ElementTree.fromstring(archive.read(entry))
+    return [
+        pivot_table.attrib.get("name")
+        for pivot_table in root.findall(".//x14:pivotTable", namespace)
+    ]
+
+
 class SophiaTinaTemplatePathTests(unittest.TestCase):
     def test_pivot_template_path_can_be_overridden_for_runtime_packaging(self):
         original_override = os.environ.get("TOS_SOPHIA_TINA_TEMPLATE_PATH")
@@ -642,6 +662,238 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
             self.assertIn(
                 'xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"',
                 workbook_xml,
+            )
+
+    def test_0617_report_contracts_use_grouped_price_helpers_and_updated_pivots(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            work_dir = Path(temp_dir)
+            tms_path = self._write_excel(
+                work_dir,
+                "tms.xlsx",
+                [
+                    {
+                        "Factory": "FACTORY-A",
+                        "PO Number": "PO-PRICE",
+                        "Working Number": "WN-PRICE",
+                        "Article Number": "ART-RESULT",
+                        "Article Description": "Price grouping row",
+                        "Customer Request Date (CRD)": "2026-01-01",
+                        "PODD": "2026-01-10",
+                        "Shipment Method": "Ocean",
+                        "Gps Customer Number": "GPS-1",
+                        "Country/Region": "BRAZIL",
+                        "Ordered Quantity": 10,
+                    },
+                    {
+                        "Factory": "FACTORY-A",
+                        "PO Number": "PO-US",
+                        "Working Number": "WN-US",
+                        "Article Number": "ART-US",
+                        "Article Description": "US row",
+                        "Customer Request Date (CRD)": "2026-01-02",
+                        "PODD": "2026-01-11",
+                        "Shipment Method": "Air",
+                        "Gps Customer Number": "GPS-2",
+                        "Country/Region": "UNITED STATES",
+                        "Ordered Quantity": 5,
+                    },
+                    {
+                        "Factory": "FACTORY-A",
+                        "PO Number": "PO-CN",
+                        "Working Number": "WN-CN",
+                        "Article Number": "ART-CN",
+                        "Article Description": "CN row",
+                        "Customer Request Date (CRD)": "2026-01-03",
+                        "PODD": "2026-01-12",
+                        "Shipment Method": "Ocean",
+                        "Gps Customer Number": "GPS-3",
+                        "Country/Region": "CHINA",
+                        "Ordered Quantity": 15,
+                    },
+                ],
+            )
+            tms_price_path = self._write_excel(
+                work_dir,
+                "tms-price.xlsx",
+                [
+                    {
+                        "Working Number (M)": "WN-PRICE",
+                        "Article Number (A)": "ART-RESULT",
+                        "Season (M)": "SS26",
+                        "Marketing Forecast (M)": 100,
+                        "Milestone (C)": "Final",
+                        "Intl. FOB (C)": 20.0,
+                        "Factory Group Code (MF)": "FACTORY-A",
+                    },
+                    {
+                        "Working Number (M)": "WN-US",
+                        "Article Number (A)": "ART-US",
+                        "Season (M)": "SS26",
+                        "Marketing Forecast (M)": 50,
+                        "Milestone (C)": "Final",
+                        "Intl. FOB (C)": 30.0,
+                        "Factory Group Code (MF)": "FACTORY-A",
+                    },
+                    {
+                        "Working Number (M)": "WN-CN",
+                        "Article Number (A)": "ART-CN",
+                        "Season (M)": "SS26",
+                        "Marketing Forecast (M)": 150,
+                        "Milestone (C)": "Final",
+                        "Intl. FOB (C)": 40.0,
+                        "Factory Group Code (MF)": "FACTORY-A",
+                    },
+                    {
+                        "Working Number (M)": "WN-DEV-ONLY",
+                        "Article Number (A)": "ART-DEV",
+                        "Season (M)": "SS26",
+                        "Marketing Forecast (M)": 0,
+                        "Milestone (C)": "Final",
+                        "Intl. FOB (C)": 0.0,
+                        "Factory Group Code (MF)": "FACTORY-A",
+                    },
+                ],
+            )
+            price_path = self._write_excel(
+                work_dir,
+                "price.xlsx",
+                [
+                    {
+                        "Pack": "PACK-SS26",
+                        "Season": "SS26",
+                        "Working Number": "WN-PRICE",
+                        "Article Number": "ART-PRICE-A",
+                        "Factory": "FACTORY-A",
+                        "Factory Price": 9.0,
+                        "TMS Price": 19.0,
+                    },
+                    {
+                        "Pack": "PACK-SS26",
+                        "Season": "SS26",
+                        "Working Number": "WN-PRICE",
+                        "Article Number": "ART-PRICE-B",
+                        "Factory": "FACTORY-A",
+                        "Factory Price": 11.0,
+                        "TMS Price": 21.0,
+                    },
+                    {
+                        "Pack": "PACK-SS26",
+                        "Season": "SS26",
+                        "Working Number": "WN-US",
+                        "Article Number": "ART-US",
+                        "Factory": "FACTORY-A",
+                        "Factory Price": 12.0,
+                        "TMS Price": 30.0,
+                    },
+                    {
+                        "Pack": "PACK-SS26",
+                        "Season": "SS26",
+                        "Working Number": "WN-CN",
+                        "Article Number": "ART-CN",
+                        "Factory": "FACTORY-A",
+                        "Factory Price": 13.0,
+                        "TMS Price": 40.0,
+                    },
+                ],
+            )
+
+            result = self.module.process_reports(
+                [tms_path],
+                [tms_price_path],
+                [price_path],
+                output_dir=str(work_dir),
+            )
+
+            self.assertTrue(result["success"], result["message"])
+            wb = load_workbook(result["output_path"], data_only=False, read_only=True)
+            try:
+                result_ws = wb["Result"]
+                headers = [cell.value for cell in result_ws[1]]
+                column_by_name = {name: index + 1 for index, name in enumerate(headers)}
+                rows_by_working = {
+                    result_ws.cell(row=row_index, column=column_by_name["Working Number"]).value: row_index
+                    for row_index in range(2, result_ws.max_row + 1)
+                }
+                price_row = rows_by_working["WN-PRICE"]
+                self.assertEqual(
+                    result_ws.cell(price_row, column=column_by_name["Pack"]).value,
+                    "PACK-SS26",
+                )
+                self.assertEqual(
+                    result_ws.cell(price_row, column=column_by_name["Factory Price(USD)"]).value,
+                    9.0,
+                )
+                self.assertEqual(
+                    result_ws.cell(price_row, column=column_by_name["Factory Price(USD)"]).fill.fgColor.rgb,
+                    "FFFFF2CC",
+                )
+
+                diagnostics = wb["Diagnostics"]
+                diagnostics_text = "\n".join(
+                    str(diagnostics.cell(row=row, column=2).value)
+                    for row in range(2, diagnostics.max_row + 1)
+                )
+                self.assertIn("FACTORY_PRICE_CONFLICT", diagnostics_text)
+
+                development_ws = wb["Development Style Qty"]
+                self.assertEqual(development_ws.max_row, 1)
+                self.assertEqual(
+                    [development_ws.cell(1, column).value for column in range(1, 4)],
+                    ["Season", "Factory", "Development Style Count"],
+                )
+
+                self.assertEqual(wb["Country Analysis Source"].sheet_state, "hidden")
+                country_headers = [cell.value for cell in wb["Country Analysis Source"][1]]
+                country_group_column = country_headers.index("Country Group") + 1
+                country_groups = {
+                    wb["Country Analysis Source"].cell(row=row, column=country_group_column).value
+                    for row in range(2, wb["Country Analysis Source"].max_row + 1)
+                }
+                self.assertEqual(country_groups, {"CHINA", "UNITED STATES", "OTHER COUNTRIES"})
+
+                self.assertEqual(wb["Ship Method Source"].sheet_state, "hidden")
+                ship_headers = [cell.value for cell in wb["Ship Method Source"][1]]
+                ship_rows = [
+                    {
+                        header: wb["Ship Method Source"].cell(row=row_index, column=index + 1).value
+                        for index, header in enumerate(ship_headers)
+                    }
+                    for row_index in range(2, wb["Ship Method Source"].max_row + 1)
+                ]
+                ocean_row = next(row for row in ship_rows if row["Shipment Method"] == "Ocean")
+                air_row = next(row for row in ship_rows if row["Shipment Method"] == "Air")
+                self.assertAlmostEqual(ocean_row["Quantity (%)"], 25 / 30)
+                self.assertAlmostEqual(air_row["Quantity (%)"], 5 / 30)
+
+                self.assertEqual(wb["S2S Development Source"].sheet_state, "hidden")
+                s2s_headers = [cell.value for cell in wb["S2S Development Source"][1]]
+                self.assertEqual(
+                    s2s_headers,
+                    [
+                        "Season",
+                        "Factory",
+                        "Development Style Count",
+                        "Bulk Style Count",
+                        "Bulk Quantity (Pcs)",
+                    ],
+                )
+                s2s_row = {
+                    header: wb["S2S Development Source"].cell(row=2, column=index + 1).value
+                    for index, header in enumerate(s2s_headers)
+                }
+                self.assertEqual(s2s_row["Development Style Count"], 4)
+                self.assertEqual(s2s_row["Bulk Style Count"], 3)
+                self.assertEqual(s2s_row["Bulk Quantity (Pcs)"], 30)
+            finally:
+                wb.close()
+
+            self.assertEqual(
+                _pivot_data_field_names(result["output_path"], "xl/pivotTables/pivotTable9.xml")[:2],
+                ["Development Style Count", "Bulk Style Count"],
+            )
+            self.assertEqual(
+                set(_slicer_pivot_table_names(result["output_path"], "xl/slicerCaches/slicerCache1.xml")),
+                {"PivotTable15", "PivotTable16"},
             )
 
 

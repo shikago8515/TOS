@@ -107,6 +107,16 @@ class SophiaTinaModule:
     OOXML_XML_NS = "http://www.w3.org/XML/1998/namespace"
     OPC_CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
     OPC_RELATIONSHIPS_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+    COUNTRY_SOURCE_SHEET = "Country Analysis Source"
+    SHIP_METHOD_SOURCE_SHEET = "Ship Method Source"
+    S2S_SOURCE_SHEET = "S2S Development Source"
+    HELPER_WORKSHEETS = [
+        ("xl/worksheets/sheet13.xml", COUNTRY_SOURCE_SHEET, "rId22", "18"),
+        ("xl/worksheets/sheet14.xml", SHIP_METHOD_SOURCE_SHEET, "rId23", "19"),
+        ("xl/worksheets/sheet15.xml", S2S_SOURCE_SHEET, "rId24", "20"),
+    ]
+    COUNTRY_PIVOT_CACHE_ID = "500"
+    S2S_PIVOT_CACHE_ID = "501"
     PIVOT_TEMPLATE_PATH = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "templates", PIVOT_TEMPLATE_FILENAME)
     )
@@ -156,6 +166,7 @@ class SophiaTinaModule:
             results,
             output_path,
             diagnostics or [],
+            development_style_rows or [],
             template_path,
         )
         return
@@ -265,11 +276,18 @@ class SophiaTinaModule:
         results: List[Dict[str, Any]],
         output_path: str,
         diagnostics: List[Dict[str, Any]],
+        development_style_rows: List[Dict[str, Any]],
         template_path: str,
     ) -> None:
         """Write editable Result data into the native PivotTable template."""
         table_ref = f"A1:Q{max(len(results) + 1, 1)}"
-        replacements = self._build_pivot_template_replacements(results, diagnostics, table_ref, template_path)
+        replacements = self._build_pivot_template_replacements(
+            results,
+            diagnostics,
+            development_style_rows,
+            table_ref,
+            template_path,
+        )
         skip_entries = {"xl/calcChain.xml"}
         self._replace_xlsx_entries(template_path, output_path, replacements, skip_entries)
 
@@ -277,31 +295,185 @@ class SophiaTinaModule:
         self,
         results: List[Dict[str, Any]],
         diagnostics: List[Dict[str, Any]],
+        development_style_rows: List[Dict[str, Any]],
         table_ref: str,
         template_path: str,
     ) -> Dict[str, bytes]:
-        replacements: Dict[str, bytes] = {
-            "xl/worksheets/sheet10.xml": self._result_sheet_xml(results, table_ref),
-            "xl/worksheets/sheet11.xml": self._rules_sheet_xml(),
-            "xl/worksheets/sheet12.xml": self._diagnostics_sheet_xml(diagnostics),
-        }
-
         with zipfile.ZipFile(template_path, "r") as archive:
+            styles_xml, style_ids = self._updated_styles_xml(archive.read("xl/styles.xml"))
+            country_rows = self._country_analysis_source_rows(results)
+            ship_method_rows = self._ship_method_source_rows(results)
+            s2s_rows = self._s2s_development_source_rows(results, development_style_rows)
+            country_ref = f"A1:J{max(len(country_rows) + 1, 1)}"
+            ship_method_ref = f"A1:H{max(len(ship_method_rows) + 1, 1)}"
+            s2s_ref = f"A1:E{max(len(s2s_rows) + 1, 1)}"
+
+            replacements: Dict[str, bytes] = {
+                "xl/styles.xml": styles_xml,
+                "xl/worksheets/sheet8.xml": self._development_style_qty_sheet_xml(),
+                "xl/worksheets/sheet10.xml": self._result_sheet_xml(results, table_ref, style_ids),
+                "xl/worksheets/sheet11.xml": self._rules_sheet_xml(),
+                "xl/worksheets/sheet12.xml": self._diagnostics_sheet_xml(diagnostics),
+                "xl/worksheets/sheet13.xml": self._simple_sheet_xml(
+                    [
+                        "Season",
+                        "Years",
+                        "Factory",
+                        "Country Group",
+                        "Quantity",
+                        "Quantity % (S)",
+                        "Quantity % (Y)",
+                        "TMS Amount (USD)",
+                        "TMS Amount % (S)",
+                        "TMS Amount % (Y)",
+                    ],
+                    country_rows,
+                    '<cols><col min="1" max="4" width="20" customWidth="1"/>'
+                    '<col min="5" max="10" width="18" customWidth="1"/></cols>',
+                ),
+                "xl/worksheets/sheet14.xml": self._simple_sheet_xml(
+                    [
+                        "Factory",
+                        "Years",
+                        "PODD",
+                        "Shipment Method",
+                        "Quantity",
+                        "Quantity (%)",
+                        "TMS Amount USD)",
+                        "TMS Amount (%)",
+                    ],
+                    ship_method_rows,
+                    '<cols><col min="1" max="4" width="18" customWidth="1"/>'
+                    '<col min="5" max="8" width="18" customWidth="1"/></cols>',
+                ),
+                "xl/worksheets/sheet15.xml": self._simple_sheet_xml(
+                    [
+                        "Season",
+                        "Factory",
+                        "Development Style Count",
+                        "Bulk Style Count",
+                        "Bulk Quantity (Pcs)",
+                    ],
+                    s2s_rows,
+                    '<cols><col min="1" max="2" width="18" customWidth="1"/>'
+                    '<col min="3" max="5" width="24" customWidth="1"/></cols>',
+                ),
+            }
             replacements["xl/tables/table1.xml"] = self._updated_table_xml(
                 archive.read("xl/tables/table1.xml"),
                 table_ref,
             )
             replacements["xl/workbook.xml"] = self._updated_workbook_xml(archive.read("xl/workbook.xml"))
-            replacements["xl/_rels/workbook.xml.rels"] = self._without_calc_chain_relationship(
+            replacements["xl/_rels/workbook.xml.rels"] = self._updated_workbook_relationships(
                 archive.read("xl/_rels/workbook.xml.rels")
             )
-            replacements["[Content_Types].xml"] = self._without_calc_chain_content_type(
+            replacements["[Content_Types].xml"] = self._updated_content_types(
                 archive.read("[Content_Types].xml")
+            )
+            replacements["xl/pivotCache/pivotCacheDefinition3.xml"] = self._pivot_cache_definition_xml(
+                self.SHIP_METHOD_SOURCE_SHEET,
+                ship_method_ref,
+                [
+                    ("Factory", "0"),
+                    ("Years", "0"),
+                    ("PODD", "0"),
+                    ("Shipment Method", "0"),
+                    ("Quantity", "3"),
+                    ("Quantity (%)", "10"),
+                    ("TMS Amount USD)", "166"),
+                    ("TMS Amount (%)", "10"),
+                ],
+            )
+            replacements["xl/pivotCache/pivotCacheDefinition5.xml"] = self._pivot_cache_definition_xml(
+                self.COUNTRY_SOURCE_SHEET,
+                country_ref,
+                [
+                    ("Season", "0"),
+                    ("Years", "0"),
+                    ("Factory", "0"),
+                    ("Country Group", "0"),
+                    ("Quantity", "3"),
+                    ("Quantity % (S)", "10"),
+                    ("Quantity % (Y)", "10"),
+                    ("TMS Amount (USD)", "166"),
+                    ("TMS Amount % (S)", "10"),
+                    ("TMS Amount % (Y)", "10"),
+                ],
+            )
+            replacements["xl/pivotCache/pivotCacheDefinition6.xml"] = self._pivot_cache_definition_xml(
+                self.S2S_SOURCE_SHEET,
+                s2s_ref,
+                [
+                    ("Season", "0"),
+                    ("Factory", "0"),
+                    ("Development Style Count", "3"),
+                    ("Bulk Style Count", "3"),
+                    ("Bulk Quantity (Pcs)", "3"),
+                ],
+            )
+            replacements["xl/pivotCache/pivotCacheRecords5.xml"] = self._empty_pivot_cache_records_xml()
+            replacements["xl/pivotCache/pivotCacheRecords6.xml"] = self._empty_pivot_cache_records_xml()
+            replacements["xl/pivotCache/_rels/pivotCacheDefinition5.xml.rels"] = self._pivot_cache_relationship_xml(5)
+            replacements["xl/pivotCache/_rels/pivotCacheDefinition6.xml.rels"] = self._pivot_cache_relationship_xml(6)
+            replacements["xl/pivotTables/pivotTable3.xml"] = self._updated_pivot_table_xml(
+                archive.read("xl/pivotTables/pivotTable3.xml"),
+                self.COUNTRY_PIVOT_CACHE_ID,
+                [0, 2],
+                [3, -2],
+                [
+                    ("Quantity (Y)", 4, None, "3"),
+                    ("Quantity Percentage (%)", 5, None, "10"),
+                    ("TMS Amount (USD)", 7, None, "166"),
+                    ("TMS Amount Percentage (%)", 8, None, "10"),
+                ],
+                10,
+            )
+            replacements["xl/pivotTables/pivotTable4.xml"] = self._updated_pivot_table_xml(
+                archive.read("xl/pivotTables/pivotTable4.xml"),
+                self.COUNTRY_PIVOT_CACHE_ID,
+                [1, 2],
+                [3, -2],
+                [
+                    ("Quantity (Y)", 4, None, "3"),
+                    ("Quantity (%)", 6, None, "10"),
+                    ("TMS Amount (USD)", 7, None, "166"),
+                    ("TMS Amount (%)", 9, None, "10"),
+                ],
+                10,
+            )
+            replacements["xl/pivotTables/pivotTable8.xml"] = self._updated_pivot_table_xml(
+                archive.read("xl/pivotTables/pivotTable8.xml"),
+                "267",
+                [0, 1, 2, 3],
+                [-2],
+                [
+                    ("Quantity (Y)", 4, None, "3"),
+                    ("Quantity (%)", 5, None, "10"),
+                    ("TMS Amount USD)", 6, None, "166"),
+                    ("TMS Amount (%)", 7, None, "10"),
+                ],
+                8,
+            )
+            replacements["xl/pivotTables/pivotTable9.xml"] = self._updated_pivot_table_xml(
+                archive.read("xl/pivotTables/pivotTable9.xml"),
+                self.S2S_PIVOT_CACHE_ID,
+                [0, 1],
+                [-2],
+                [
+                    ("Development Style Count", 2, None, "3"),
+                    ("Bulk Style Count", 3, None, "3"),
+                    ("Bulk Quantity (Pcs)", 4, None, "3"),
+                ],
+                5,
+            )
+            replacements["xl/slicerCaches/slicerCache1.xml"] = self._updated_y2y_slicer_cache_xml(
+                archive.read("xl/slicerCaches/slicerCache1.xml")
             )
 
             for name in archive.namelist():
                 if name.startswith("xl/pivotCache/pivotCacheDefinition") and name.endswith(".xml"):
-                    replacements[name] = self._updated_pivot_cache_xml(archive.read(name), table_ref)
+                    if name not in replacements:
+                        replacements[name] = self._updated_pivot_cache_xml(archive.read(name), table_ref)
                 elif name.startswith("xl/pivotCache/pivotCacheRecords") and name.endswith(".xml"):
                     replacements[name] = self._empty_pivot_cache_records_xml()
 
@@ -342,7 +514,12 @@ class SophiaTinaModule:
                 os.remove(temp_path)
             raise
 
-    def _result_sheet_xml(self, results: List[Dict[str, Any]], table_ref: str) -> bytes:
+    def _result_sheet_xml(
+        self,
+        results: List[Dict[str, Any]],
+        table_ref: str,
+        style_ids: Dict[str, int],
+    ) -> bytes:
         rows = [self._row_xml(1, [
             self._cell_xml(1, col_idx, header, self._result_header_style(col_idx))
             for col_idx, header in enumerate(self.RESULT_HEADERS, 1)
@@ -352,6 +529,8 @@ class SophiaTinaModule:
             cells = []
             for col_idx, header in enumerate(self.RESULT_HEADERS, 1):
                 style_id = self._result_data_style(col_idx)
+                if header == "Factory Price(USD)" and result.get("_factory_price_conflict"):
+                    style_id = style_ids["factory_price_conflict"]
                 if header == "Factory Amount(USD)":
                     cells.append(
                         self._cell_xml(
@@ -419,7 +598,7 @@ class SophiaTinaModule:
             ["Shipment Method", "Shipment Method shippinginstruction_desc when split; otherwise TMS shipment field."],
             ["Marketing Forecast(M)", "TMS Price Marketing Forecast (M)."],
             ["Quantity", "Shipment Method pord_order_qty when single-combo split; otherwise TMS Ordered Quantity."],
-            ["Factory Price(USD)", "Factory Price by Season + Working Number + Factory + Article Number."],
+            ["Factory Price(USD)", "Factory Price by Season + Working Number + Factory; when multiple prices exist, keep the first matched value and highlight it."],
             ["Factory Amount(USD)", "Excel formula: Factory Price(USD) * Quantity."],
             ["TMS Price(USD)", "TMS Price Intl. FOB (C), priority Final > P2 > P1 > PREC; Factory Price TMS Price fallback."],
             ["TMS Amount(USD)", "Excel formula: TMS Price(USD) * Quantity."],
@@ -470,6 +649,150 @@ class SophiaTinaModule:
             '<col min="4" max="4" width="90" customWidth="1"/></cols>',
             freeze_panes=True,
         )
+
+    def _development_style_qty_sheet_xml(self) -> bytes:
+        return self._simple_sheet_xml(
+            ["Season", "Factory", "Development Style Count"],
+            [],
+            '<cols><col min="1" max="2" width="18" customWidth="1"/>'
+            '<col min="3" max="3" width="26" customWidth="1"/></cols>',
+        )
+
+    def _simple_sheet_xml(
+        self,
+        headers: List[str],
+        rows: List[List[Any]],
+        columns_xml: str,
+    ) -> bytes:
+        sheet_rows = [
+            self._row_xml(
+                1,
+                [self._cell_xml(1, col_idx, header, 4) for col_idx, header in enumerate(headers, 1)],
+            )
+        ]
+        for row_idx, row in enumerate(rows, 2):
+            cells = [
+                self._cell_xml(row_idx, col_idx, value, 5)
+                for col_idx, value in enumerate(row, 1)
+            ]
+            sheet_rows.append(self._row_xml(row_idx, cells))
+
+        end_column = openpyxl.utils.get_column_letter(len(headers))
+        end_row = max(len(rows) + 1, 1)
+        return self._worksheet_xml(
+            f"A1:{end_column}{end_row}",
+            "".join(sheet_rows),
+            columns_xml,
+            freeze_panes=True,
+        )
+
+    def _country_analysis_source_rows(self, results: List[Dict[str, Any]]) -> List[List[Any]]:
+        season_totals: Dict[Tuple[str, str], Dict[str, float]] = defaultdict(self._empty_metrics)
+        year_totals: Dict[Tuple[int, str], Dict[str, float]] = defaultdict(self._empty_metrics)
+        normalized_rows: List[Dict[str, Any]] = []
+
+        for row in results:
+            podd = self._to_datetime(row.get("PODD"))
+            season = self._clean_text(row.get("Season"))
+            factory = self._clean_text(row.get("Factory"))
+            normalized = {
+                "season": season,
+                "year": podd.year if podd else "",
+                "factory": factory,
+                "country_group": self._country_bucket(row.get("Country/Region")),
+                "quantity": self._optional_float(row.get("Quantity")) or 0.0,
+                "tms_amount": self._optional_float(row.get("_tms_amount_value")) or 0.0,
+            }
+            normalized_rows.append(normalized)
+            season_totals[(season, factory)]["quantity"] += normalized["quantity"]
+            season_totals[(season, factory)]["tms_amount"] += normalized["tms_amount"]
+            if podd:
+                year_totals[(podd.year, factory)]["quantity"] += normalized["quantity"]
+                year_totals[(podd.year, factory)]["tms_amount"] += normalized["tms_amount"]
+
+        rows: List[List[Any]] = []
+        for row in normalized_rows:
+            season_total = season_totals[(row["season"], row["factory"])]
+            year_total = (
+                year_totals[(row["year"], row["factory"])]
+                if row["year"] != ""
+                else self._empty_metrics()
+            )
+            rows.append([
+                row["season"],
+                row["year"],
+                row["factory"],
+                row["country_group"],
+                row["quantity"],
+                row["quantity"] / season_total["quantity"] if season_total["quantity"] else 0,
+                row["quantity"] / year_total["quantity"] if year_total["quantity"] else 0,
+                row["tms_amount"],
+                row["tms_amount"] / season_total["tms_amount"] if season_total["tms_amount"] else 0,
+                row["tms_amount"] / year_total["tms_amount"] if year_total["tms_amount"] else 0,
+            ])
+        return rows
+
+    def _ship_method_source_rows(self, results: List[Dict[str, Any]]) -> List[List[Any]]:
+        metrics: Dict[Tuple[str, int, int, str], Dict[str, float]] = defaultdict(self._empty_metrics)
+        monthly_totals: Dict[Tuple[str, int, int], Dict[str, float]] = defaultdict(self._empty_metrics)
+
+        for row in results:
+            podd = self._to_datetime(row.get("PODD"))
+            if podd is None:
+                continue
+            factory = self._clean_text(row.get("Factory"))
+            shipment_method = self._clean_text(row.get("Shipment Method"))
+            key = (factory, podd.year, podd.month, shipment_method)
+            total_key = (factory, podd.year, podd.month)
+            self._add_metrics(metrics[key], row)
+            self._add_metrics(monthly_totals[total_key], row)
+
+        rows: List[List[Any]] = []
+        for (factory, year, month, shipment_method), values in sorted(metrics.items()):
+            total = monthly_totals[(factory, year, month)]
+            quantity_total = total["quantity"]
+            tms_amount_total = total["tms_amount"]
+            rows.append([
+                factory,
+                year,
+                datetime(2000, month, 1).strftime("%b"),
+                shipment_method,
+                values["quantity"],
+                values["quantity"] / quantity_total if quantity_total else 0,
+                values["tms_amount"],
+                values["tms_amount"] / tms_amount_total if tms_amount_total else 0,
+            ])
+        return rows
+
+    def _s2s_development_source_rows(
+        self,
+        results: List[Dict[str, Any]],
+        development_style_rows: List[Dict[str, Any]],
+    ) -> List[List[Any]]:
+        development_lookup = {
+            (self._clean_text(row.get("Season")), self._clean_text(row.get("Factory"))):
+            int(row.get("Development Style Count") or 0)
+            for row in development_style_rows
+        }
+        bulk_styles: Dict[Tuple[str, str], Set[str]] = defaultdict(set)
+        quantities: Dict[Tuple[str, str], float] = defaultdict(float)
+        for row in results:
+            key = (self._clean_text(row.get("Season")), self._clean_text(row.get("Factory")))
+            working = self._clean_text(row.get("Working Number"))
+            if working:
+                bulk_styles[key].add(working)
+            quantities[key] += self._optional_float(row.get("Quantity")) or 0.0
+
+        rows: List[List[Any]] = []
+        for season, factory in sorted(bulk_styles):
+            rows.append([
+                season,
+                factory,
+                development_lookup.get((season, factory), 0),
+                len(bulk_styles[(season, factory)]),
+                quantities[(season, factory)],
+            ])
+        return rows
 
     def _worksheet_xml(
         self,
@@ -590,6 +913,56 @@ class SophiaTinaModule:
             return 40
         return 36
 
+    def _updated_styles_xml(self, xml_bytes: bytes) -> Tuple[bytes, Dict[str, int]]:
+        root = ElementTree.fromstring(xml_bytes)
+        fills = root.find(f"{{{self.OOXML_MAIN_NS}}}fills")
+        cell_xfs = root.find(f"{{{self.OOXML_MAIN_NS}}}cellXfs")
+        if fills is None or cell_xfs is None:
+            return xml_bytes, {"factory_price_conflict": self._result_data_style(14)}
+
+        conflict_fill_id = self._find_or_append_solid_fill(fills, "FFFFF2CC")
+        normal_price_style = cell_xfs[self._result_data_style(14)]
+        conflict_style_id = self._find_or_append_style_with_fill(
+            cell_xfs,
+            normal_price_style,
+            conflict_fill_id,
+        )
+        fills.set("count", str(len(list(fills))))
+        cell_xfs.set("count", str(len(list(cell_xfs))))
+        return self._serialize_spreadsheet_xml(root), {"factory_price_conflict": conflict_style_id}
+
+    def _find_or_append_solid_fill(self, fills: ElementTree.Element, rgb: str) -> int:
+        for index, fill in enumerate(list(fills)):
+            fg_color = fill.find(f".//{{{self.OOXML_MAIN_NS}}}fgColor")
+            if fg_color is not None and fg_color.attrib.get("rgb") == rgb:
+                return index
+
+        fill = ElementTree.Element(f"{{{self.OOXML_MAIN_NS}}}fill")
+        pattern = ElementTree.SubElement(fill, f"{{{self.OOXML_MAIN_NS}}}patternFill", {"patternType": "solid"})
+        ElementTree.SubElement(pattern, f"{{{self.OOXML_MAIN_NS}}}fgColor", {"rgb": rgb})
+        ElementTree.SubElement(pattern, f"{{{self.OOXML_MAIN_NS}}}bgColor", {"rgb": rgb})
+        fills.append(fill)
+        return len(list(fills)) - 1
+
+    def _find_or_append_style_with_fill(
+        self,
+        cell_xfs: ElementTree.Element,
+        base_style: ElementTree.Element,
+        fill_id: int,
+    ) -> int:
+        base_attrib = dict(base_style.attrib)
+        base_attrib["fillId"] = str(fill_id)
+        base_attrib["applyFill"] = "1"
+        for index, style in enumerate(list(cell_xfs)):
+            if dict(style.attrib) == base_attrib:
+                return index
+
+        style = ElementTree.Element(f"{{{self.OOXML_MAIN_NS}}}xf", base_attrib)
+        for child in list(base_style):
+            style.append(ElementTree.fromstring(ElementTree.tostring(child)))
+        cell_xfs.append(style)
+        return len(list(cell_xfs)) - 1
+
     def _updated_table_xml(self, xml_bytes: bytes, table_ref: str) -> bytes:
         root = ElementTree.fromstring(xml_bytes)
         root.set("ref", table_ref)
@@ -609,20 +982,260 @@ class SophiaTinaModule:
             source.set("ref", table_ref)
         return self._serialize_spreadsheet_xml(root)
 
+    def _pivot_cache_definition_xml(
+        self,
+        sheet_name: str,
+        source_ref: str,
+        fields: List[Tuple[str, str]],
+    ) -> bytes:
+        cache_fields = []
+        for name, num_fmt_id in fields:
+            if num_fmt_id in {"3", "10", "166"}:
+                shared_items = '<sharedItems containsBlank="1" containsNumber="1"/>'
+            else:
+                shared_items = '<sharedItems containsBlank="1"/>'
+            cache_fields.append(
+                f'<cacheField name="{escape(name)}" numFmtId="{num_fmt_id}">{shared_items}</cacheField>'
+            )
+
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+            f'<pivotCacheDefinition xmlns="{self.OOXML_MAIN_NS}" xmlns:r="{self.OOXML_REL_NS}" '
+            'r:id="rId1" refreshOnLoad="1" enableRefresh="1" recordCount="0" '
+            'createdVersion="5" refreshedVersion="5" minRefreshableVersion="3">'
+            '<cacheSource type="worksheet">'
+            f'<worksheetSource ref="{source_ref}" sheet="{escape(sheet_name)}"/>'
+            '</cacheSource>'
+            f'<cacheFields count="{len(fields)}">{"".join(cache_fields)}</cacheFields>'
+            '</pivotCacheDefinition>'
+        )
+        return xml.encode("utf-8")
+
     def _empty_pivot_cache_records_xml(self) -> bytes:
         return (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
             f'<pivotCacheRecords xmlns="{self.OOXML_MAIN_NS}" xmlns:r="{self.OOXML_REL_NS}" count="0"/>'
         ).encode("utf-8")
 
+    def _pivot_cache_relationship_xml(self, cache_index: int) -> bytes:
+        return (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+            f'<Relationships xmlns="{self.OPC_RELATIONSHIPS_NS}">'
+            '<Relationship Id="rId1" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotCacheRecords" '
+            f'Target="pivotCacheRecords{cache_index}.xml"/>'
+            '</Relationships>'
+        ).encode("utf-8")
+
+    def _updated_pivot_table_xml(
+        self,
+        xml_bytes: bytes,
+        cache_id: str,
+        row_fields: List[int],
+        column_fields: List[int],
+        data_fields: List[Tuple[str, int, Optional[str], str]],
+        field_count: int,
+    ) -> bytes:
+        root = ElementTree.fromstring(xml_bytes)
+        root.set("cacheId", cache_id)
+        self._replace_pivot_child(root, "pivotFields", self._pivot_fields_element(
+            field_count,
+            row_fields,
+            [field for field in column_fields if field >= 0],
+            [field_index for _, field_index, _, _ in data_fields],
+        ))
+        self._replace_pivot_child(root, "rowFields", self._pivot_axis_fields_element("rowFields", row_fields))
+        self._replace_pivot_child(root, "colFields", self._pivot_axis_fields_element("colFields", column_fields))
+        self._replace_pivot_child(root, "dataFields", self._pivot_data_fields_element(data_fields))
+        return self._serialize_spreadsheet_xml(root)
+
+    def _replace_pivot_child(
+        self,
+        root: ElementTree.Element,
+        child_name: str,
+        replacement: ElementTree.Element,
+    ) -> None:
+        tag = f"{{{self.OOXML_MAIN_NS}}}{child_name}"
+        for index, child in enumerate(list(root)):
+            if child.tag == tag:
+                root.remove(child)
+                root.insert(index, replacement)
+                return
+        root.append(replacement)
+
+    def _pivot_fields_element(
+        self,
+        field_count: int,
+        row_fields: List[int],
+        column_fields: List[int],
+        data_field_indexes: List[int],
+    ) -> ElementTree.Element:
+        root = ElementTree.Element(f"{{{self.OOXML_MAIN_NS}}}pivotFields", {"count": str(field_count)})
+        for index in range(field_count):
+            attrs = {"compact": "0", "outline": "0", "showAll": "0"}
+            if index in row_fields:
+                attrs["axis"] = "axisRow"
+            elif index in column_fields:
+                attrs["axis"] = "axisCol"
+            if index in data_field_indexes:
+                attrs["dataField"] = "1"
+            ElementTree.SubElement(root, f"{{{self.OOXML_MAIN_NS}}}pivotField", attrs)
+        return root
+
+    def _pivot_axis_fields_element(self, name: str, fields: List[int]) -> ElementTree.Element:
+        root = ElementTree.Element(f"{{{self.OOXML_MAIN_NS}}}{name}", {"count": str(len(fields))})
+        for field in fields:
+            ElementTree.SubElement(root, f"{{{self.OOXML_MAIN_NS}}}field", {"x": str(field)})
+        return root
+
+    def _pivot_data_fields_element(
+        self,
+        data_fields: List[Tuple[str, int, Optional[str], str]],
+    ) -> ElementTree.Element:
+        root = ElementTree.Element(f"{{{self.OOXML_MAIN_NS}}}dataFields", {"count": str(len(data_fields))})
+        for name, field_index, subtotal, num_fmt_id in data_fields:
+            attrs = {"name": name, "fld": str(field_index), "numFmtId": num_fmt_id}
+            if subtotal:
+                attrs["subtotal"] = subtotal
+            ElementTree.SubElement(root, f"{{{self.OOXML_MAIN_NS}}}dataField", attrs)
+        return root
+
+    def _updated_y2y_slicer_cache_xml(self, xml_bytes: bytes) -> bytes:
+        root = ElementTree.fromstring(xml_bytes)
+        pivot_tables = root.find(f"{{{self.OOXML_X14_NS}}}pivotTables")
+        if pivot_tables is None:
+            pivot_tables = ElementTree.SubElement(root, f"{{{self.OOXML_X14_NS}}}pivotTables")
+
+        existing_names = {
+            pivot_table.attrib.get("name")
+            for pivot_table in pivot_tables.findall(f"{{{self.OOXML_X14_NS}}}pivotTable")
+        }
+        for name in ("PivotTable15", "PivotTable16"):
+            if name not in existing_names:
+                ElementTree.SubElement(
+                    pivot_tables,
+                    f"{{{self.OOXML_X14_NS}}}pivotTable",
+                    {"tabId": "8", "name": name},
+                )
+        return self._serialize_spreadsheet_xml(root)
+
     def _updated_workbook_xml(self, xml_bytes: bytes) -> bytes:
         root = ElementTree.fromstring(xml_bytes)
+        sheets = root.find(f"{{{self.OOXML_MAIN_NS}}}sheets")
+        if sheets is not None:
+            existing_sheet_names = {
+                sheet.attrib.get("name")
+                for sheet in sheets.findall(f"{{{self.OOXML_MAIN_NS}}}sheet")
+            }
+            for _, sheet_name, relationship_id, sheet_id in self.HELPER_WORKSHEETS:
+                if sheet_name not in existing_sheet_names:
+                    ElementTree.SubElement(
+                        sheets,
+                        f"{{{self.OOXML_MAIN_NS}}}sheet",
+                        {
+                            "name": sheet_name,
+                            "sheetId": sheet_id,
+                            f"{{{self.OOXML_REL_NS}}}id": relationship_id,
+                            "state": "hidden",
+                        },
+                    )
+
+        pivot_caches = root.find(f"{{{self.OOXML_MAIN_NS}}}pivotCaches")
+        if pivot_caches is None:
+            pivot_caches = ElementTree.SubElement(root, f"{{{self.OOXML_MAIN_NS}}}pivotCaches")
+        existing_cache_ids = {
+            cache.attrib.get("cacheId")
+            for cache in pivot_caches.findall(f"{{{self.OOXML_MAIN_NS}}}pivotCache")
+        }
+        for cache_id, relationship_id in (
+            (self.COUNTRY_PIVOT_CACHE_ID, "rId25"),
+            (self.S2S_PIVOT_CACHE_ID, "rId26"),
+        ):
+            if cache_id not in existing_cache_ids:
+                ElementTree.SubElement(
+                    pivot_caches,
+                    f"{{{self.OOXML_MAIN_NS}}}pivotCache",
+                    {"cacheId": cache_id, f"{{{self.OOXML_REL_NS}}}id": relationship_id},
+                )
+
         calc_pr = root.find(f"{{{self.OOXML_MAIN_NS}}}calcPr")
         if calc_pr is None:
             calc_pr = ElementTree.SubElement(root, f"{{{self.OOXML_MAIN_NS}}}calcPr")
         calc_pr.set("fullCalcOnLoad", "1")
         calc_pr.set("forceFullCalc", "1")
         return self._serialize_workbook_xml(root)
+
+    def _updated_workbook_relationships(self, xml_bytes: bytes) -> bytes:
+        root = ElementTree.fromstring(xml_bytes)
+        for relationship in list(root):
+            if relationship.attrib.get("Type", "").endswith("/calcChain"):
+                root.remove(relationship)
+
+        existing_ids = {relationship.attrib.get("Id") for relationship in root}
+        for sheet_path, _, relationship_id, _ in self.HELPER_WORKSHEETS:
+            if relationship_id not in existing_ids:
+                ElementTree.SubElement(
+                    root,
+                    f"{{{self.OPC_RELATIONSHIPS_NS}}}Relationship",
+                    {
+                        "Id": relationship_id,
+                        "Type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet",
+                        "Target": sheet_path.replace("xl/", ""),
+                    },
+                )
+        for cache_index, relationship_id in (("5", "rId25"), ("6", "rId26")):
+            if relationship_id not in existing_ids:
+                ElementTree.SubElement(
+                    root,
+                    f"{{{self.OPC_RELATIONSHIPS_NS}}}Relationship",
+                    {
+                        "Id": relationship_id,
+                        "Type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotCacheDefinition",
+                        "Target": f"pivotCache/pivotCacheDefinition{cache_index}.xml",
+                    },
+                )
+        return self._serialize_package_relationships_xml(root)
+
+    def _updated_content_types(self, xml_bytes: bytes) -> bytes:
+        root = ElementTree.fromstring(xml_bytes)
+        for child in list(root):
+            if child.attrib.get("PartName") == "/xl/calcChain.xml":
+                root.remove(child)
+
+        for sheet_path, _, _, _ in self.HELPER_WORKSHEETS:
+            self._ensure_content_type_override(
+                root,
+                f"/{sheet_path}",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml",
+            )
+        for cache_index in ("5", "6"):
+            self._ensure_content_type_override(
+                root,
+                f"/xl/pivotCache/pivotCacheDefinition{cache_index}.xml",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheDefinition+xml",
+            )
+            self._ensure_content_type_override(
+                root,
+                f"/xl/pivotCache/pivotCacheRecords{cache_index}.xml",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheRecords+xml",
+            )
+        return self._serialize_content_types_xml(root)
+
+    def _ensure_content_type_override(
+        self,
+        root: ElementTree.Element,
+        part_name: str,
+        content_type: str,
+    ) -> None:
+        for child in root:
+            if child.attrib.get("PartName") == part_name:
+                child.set("ContentType", content_type)
+                return
+        ElementTree.SubElement(
+            root,
+            f"{{{self.OPC_CONTENT_TYPES_NS}}}Override",
+            {"PartName": part_name, "ContentType": content_type},
+        )
 
     @classmethod
     def _without_calc_chain_relationship(cls, xml_bytes: bytes) -> bytes:
@@ -720,7 +1333,7 @@ class SophiaTinaModule:
             ["Shipment Method", "未上传 Shipment Method 文件时使用 Released / Unreleased 表 Shipment Method/Shipment Mode；上传后按 PO 覆盖。"],
             ["Marketing Forecast(M)", "TMS Price 表 Marketing Forecast (M)。"],
             ["Quantity", "默认按 Result 明细维度汇总 Released / Unreleased 表 Ordered Quantity；上传 Shipment Method 后，单一业务组合 PO 按 pord_order_qty 拆分。"],
-            ["Factory Price(USD)", "Factory Price 表 G 列，按 Season + Working Number + Factory + Article Number 精确匹配。"],
+            ["Factory Price(USD)", "Factory Price 表 G 列，按 Season + Working Number + Factory 匹配；多价格时保留首个匹配值并高亮。"],
             ["Factory Amount(USD)", "Excel 公式：Factory Price(USD) * Quantity。"],
             ["TMS Price(USD)", "TMS Price 表 Intl. FOB (C)，优先级 Final > P2 > P1 > PREC；缺失时使用 Factory Price 表 TMS Price 后备。"],
             ["TMS Amount(USD)", "Excel 公式：TMS Price(USD) * Quantity。"],
@@ -1630,9 +2243,7 @@ class SophiaTinaModule:
 
             pack_lookup: Dict[Tuple[str, str], Any] = {}
             pack_by_working: Dict[str, Set[Any]] = {}
-            price_record_lookup: Dict[Tuple[str, str, str, str], Dict[str, Any]] = {}
-            price_by_working_factory_article: Dict[Tuple[str, str, str], List[Dict[str, Any]]] = defaultdict(list)
-            factory_group_prices: Dict[Tuple[str, str, str], Set[float]] = {}
+            price_group_records: Dict[Tuple[str, str, str], List[Dict[str, Any]]] = defaultdict(list)
             for _, row in price_df.iterrows():
                 working_key = self._clean_key(row[price_columns["working"]]).upper()
                 season_key = self._clean_key(row[price_columns["season"]]).upper()
@@ -1657,26 +2268,15 @@ class SophiaTinaModule:
                 if factory_price is None:
                     continue
                 group_key = self._make_factory_group_key(season_key, working_key, factory_key)
-                article_key = self._make_factory_article_key(
-                    season_key,
-                    working_key,
-                    factory_key,
-                    article_key,
-                )
-                if not all(group_key) or not article_key[3]:
+                if not all(group_key):
                     continue
-                factory_group_prices.setdefault(group_key, set()).add(factory_price)
-                record = {
+                price_group_records[group_key].append({
                     "pack": pack_value,
                     "factory_price": factory_price,
                     "tms_price": tms_price_fallback,
                     "factory": factory_key,
-                }
-                price_by_working_factory_article[
-                    (group_key[1], group_key[2], article_key[3]),
-                ].append(record)
-                if article_key not in price_record_lookup:
-                    price_record_lookup[article_key] = record
+                    "article": article_key,
+                })
 
             if pack_df is not None:
                 pack_working_col = self._find_column(pack_df, ["Working Number"])
@@ -1693,10 +2293,14 @@ class SophiaTinaModule:
                         if season_key and (working_key, season_key) not in pack_lookup:
                             pack_lookup[(working_key, season_key)] = pack_value
 
+            price_group_lookup = {
+                key: records[0]
+                for key, records in price_group_records.items()
+            }
             factory_conflict_groups = {
-                key: prices
-                for key, prices in factory_group_prices.items()
-                if len(prices) > 1
+                key: {record["factory_price"] for record in records}
+                for key, records in price_group_records.items()
+                if len({record["factory_price"] for record in records}) > 1
             }
             development_style_rows = [
                 {
@@ -1707,7 +2311,7 @@ class SophiaTinaModule:
                 for (season, factory), workings in sorted(development_working_by_season_factory.items())
             ]
 
-            log(f"✅ TMS Price 匹配键：{len(article_lookup)}；Factory Price 匹配键：{len(price_record_lookup)}；Pack 匹配键：{len(pack_lookup)}")
+            log(f"✅ TMS Price 匹配键：{len(article_lookup)}；Factory Price 匹配键：{len(price_group_lookup)}；Pack 匹配键：{len(pack_lookup)}")
 
             log(f"\n📊 正在生成 17 列 Result 数据...")
             results: List[Dict[str, Any]] = []
@@ -1767,58 +2371,36 @@ class SophiaTinaModule:
                             "Pack 表未匹配到 Working Number + Season，也没有唯一 Working Number 兜底值。",
                         )
 
-                factory_lookup_key = self._make_factory_article_key(season_value, working_key, factory_key, article_key)
-                price_record = price_record_lookup.get(factory_lookup_key)
-                factory_group_key = self._make_factory_group_key(season_value, working_key, factory_key)
-                factory_price_conflict = factory_group_key in factory_conflict_groups
-                if factory_price_conflict:
-                    highlighted_factory_conflicts += 1
-                    add_diagnostic(
-                        "WARN",
-                        "FACTORY_PRICE_CONFLICT",
-                        " / ".join(factory_group_key),
-                        f"同一个 Season + Working Number + Factory 存在多个 Factory Price：{sorted(factory_conflict_groups[factory_group_key])}；Result 已高亮对应价格单元格。",
-                    )
+                factory_lookup_key = self._make_factory_group_key(season_value, working_key, factory_key)
+                price_record = price_group_lookup.get(factory_lookup_key)
+                matched_factory_group_key = factory_lookup_key
                 if price_record is None and factory_key != source_factory_key:
-                    source_factory_lookup_key = self._make_factory_article_key(
+                    source_factory_lookup_key = self._make_factory_group_key(
                         season_value,
                         working_key,
                         source_factory_key,
-                        article_key,
                     )
-                    price_record = price_record_lookup.get(source_factory_lookup_key)
+                    price_record = price_group_lookup.get(source_factory_lookup_key)
                     if price_record is not None:
+                        matched_factory_group_key = source_factory_lookup_key
                         add_diagnostic(
                             "INFO",
                             "FACTORY_PRICE_SOURCE_FACTORY_FALLBACK",
                             f"{po_key or 'NO_PO'} / {working_key} / {article_key}",
                             "Allocation 覆盖后的 Factory 未匹配到价格，已按 TMS 原 Factory 匹配 Factory Price。",
                         )
+                factory_price_conflict = matched_factory_group_key in factory_conflict_groups
+                if factory_price_conflict:
+                    highlighted_factory_conflicts += 1
+                    add_diagnostic(
+                        "WARN",
+                        "FACTORY_PRICE_CONFLICT",
+                        " / ".join(matched_factory_group_key),
+                        f"同一个 Season + Working Number + Factory 存在多个 Factory Price：{sorted(factory_conflict_groups[matched_factory_group_key])}；Result 已填写第一个匹配价格并高亮对应价格单元格。",
+                    )
                 factory_price = price_record.get("factory_price") if price_record else None
                 if price_record and price_record.get("pack"):
                     pack_value = price_record["pack"]
-                if factory_price is None:
-                    fallback_price_records = price_by_working_factory_article.get(
-                        (working_key, factory_key, article_key),
-                        [],
-                    )
-                    if not fallback_price_records and factory_key != source_factory_key:
-                        fallback_price_records = price_by_working_factory_article.get(
-                            (working_key, source_factory_key, article_key),
-                            [],
-                        )
-                    unique_prices = {record["factory_price"] for record in fallback_price_records}
-                    if len(unique_prices) == 1 and fallback_price_records:
-                        price_record = fallback_price_records[0]
-                        factory_price = price_record["factory_price"]
-                        if price_record.get("pack"):
-                            pack_value = price_record["pack"]
-                        add_diagnostic(
-                            "INFO",
-                            "FACTORY_PRICE_FALLBACK",
-                            f"{working_key} / {factory_key} / {article_key}",
-                            "Article 缺少 Season 时，Factory Price 已按 Working Number + Factory + Article Number 唯一值兜底。",
-                        )
                 missing_factory_price = factory_price is None
                 if missing_factory_price:
                     missing_factory_prices += 1
@@ -1826,7 +2408,7 @@ class SophiaTinaModule:
                         "WARN",
                         "FACTORY_PRICE_MISSING",
                         " / ".join(factory_lookup_key),
-                        "Factory Price 表未按 Season + Working Number + Factory + Article Number 匹配到价格。",
+                        "Factory Price 表未按 Season + Working Number + Factory 匹配到价格。",
                     )
 
                 if tms_price is None:

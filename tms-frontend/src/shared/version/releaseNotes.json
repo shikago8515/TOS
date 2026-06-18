@@ -1,24 +1,27 @@
 {
-  "version": "0.9.8-beta.3.27",
+  "version": "0.9.8-beta.3.28",
   "date": "2026-06-18",
-  "noticeId": "2026-06-18-jessica-packing-list-pdf",
+  "noticeId": "2026-06-18-sophia-tina-report-0617",
   "showPopup": false,
-  "added": [
-    "Jessica 对账核对支持可选上传 Packing List PDF，并在同一个结果 Excel 中追加箱单核对结果。"
-  ],
+  "added": [],
   "improved": [
-    "保留原发票文件 + 参考表文件两表核对流程；上传 PDF 时额外核对发票号、日期、PO、Article、Style/Working No 和 QTY。"
+    "Sophia/Tina 报表按 0617 反馈调整 Result、国家分析、Y2Y、发运方式和 S2S 开发表统计口径。"
   ],
-  "fixed": [],
+  "fixed": [
+    "Factory Price 改为按 Season + Working Number + Factory 匹配，多价格时保留一个匹配值并高亮提示。",
+    "Development Style Qty 输出为空表头，S2S Development Analysis 继续使用后台计算的 Development Style Count。"
+  ],
   "modules": [
     {
-      "name": "Jessica / 对账核对",
-      "added": [
-        "新增 Packing List PDF 可选上传入口。"
-      ],
+      "name": "Sophia/Tina 报表",
       "improved": [
-        "结果 Excel 保留原核对结果和汇总表，并在上传 PDF 时新增 Packing List核对 sheet。",
-        "后端接口保持 invoices 和 reference_file 字段兼容，新增可选 packing_file 字段。"
+        "Country Analysis 统一分组为 CHINA、UNITED STATES 和 OTHER COUNTRIES。",
+        "Ship Method Analysis 的百分比分母固定为 Factory + Year + PODD(月)，筛选后比例保持不变。",
+        "Y2Y Factory slicer 同时关联页面内两个透视表。"
+      ],
+      "fixed": [
+        "Result 表 Pack 和 Factory Price 匹配规则与 0617 PPT 需求保持一致。",
+        "S2S Development Analysis 新增 Development Style Count 并位于 Bulk Style Count 左侧。"
       ]
     }
   ]
