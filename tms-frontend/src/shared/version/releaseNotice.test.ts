@@ -169,14 +169,12 @@ describe('releaseNotice', () => {
   it('keeps bundled release notes scoped to the current version changes', () => {
     expect(releaseNotes.added).toEqual([])
     expect(releaseNotes.improved).toEqual([
-      'iPlex 双表核对删除可见列配置区，上传两张表后自动识别固定业务列并直接显示核对异常表。',
-      '版本更新弹窗改为按发布批次触发，支持按模块集中展示更新内容，小修改默认不主动弹窗。',
+      'Draft & Packing List 核对结果 Excel 在 Cartons 后新增 Cartons In Words 列，Draft 行显示原文箱数英文词。',
     ])
     expect(releaseNotes.fixed).toEqual([])
     expect(releaseNotes.showPopup).toBe(false)
     expect(releaseNotes.modules.map((module) => module.name)).toEqual([
-      'iPlex 双表核对',
-      '版本更新提示',
+      'Draft & Packing List 核对',
     ])
   })
 })

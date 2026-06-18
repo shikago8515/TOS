@@ -82,6 +82,16 @@ def _default_record(
 
 DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
     _default_record(
+        "builtin-0.9.8-beta.3.26-improved-draft-packing-carton-words",
+        "0.9.8-beta.3.26",
+        "2026-06-18",
+        "improved",
+        "Draft & Packing List 核对",
+        "/draft-packing-compare",
+        "新增 Draft 箱数英文列",
+        "Draft & Packing List 核对结果 Excel 在 Cartons 后新增 Cartons In Words 列，Draft 行显示 PDF 原文中的大写英文箱数，Packing List 行保持空白。",
+    ),
+    _default_record(
         "builtin-0.9.8-beta.3.25-improved-iplex-auto-columns-release-notice-batch",
         "0.9.8-beta.3.25",
         "2026-06-18",

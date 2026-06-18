@@ -1,27 +1,19 @@
 {
-  "version": "0.9.8-beta.3.25",
+  "version": "0.9.8-beta.3.26",
   "date": "2026-06-18",
-  "noticeId": "2026-06-18-iplex-release-notice-batch",
+  "noticeId": "2026-06-18-draft-packing-carton-words",
   "showPopup": false,
   "added": [],
   "improved": [
-    "iPlex 双表核对删除可见列配置区，上传两张表后自动识别固定业务列并直接显示核对异常表。",
-    "版本更新弹窗改为按发布批次触发，支持按模块集中展示更新内容，小修改默认不主动弹窗。"
+    "Draft & Packing List 核对结果 Excel 在 Cartons 后新增 Cartons In Words 列，Draft 行显示原文箱数英文词。"
   ],
   "fixed": [],
   "modules": [
     {
-      "name": "iPlex 双表核对",
+      "name": "Draft & Packing List 核对",
       "improved": [
-        "删除可见列配置区，生成时自动识别 PO/RC 固定业务列。",
-        "原列配置位置改为核对异常表格，处理后直接显示差值不为 0 或未匹配的 RC 行。"
-      ]
-    },
-    {
-      "name": "版本更新提示",
-      "improved": [
-        "弹窗从按版本号触发调整为按发布批次 noticeId 触发。",
-        "支持按模块集中展示新增、优化和修复内容，小修改可记录版本但不主动弹窗。"
+        "结果 Excel 在 Cartons 后新增 Cartons In Words 列。",
+        "Draft 行保留 PDF 原文中的大写英文箱数，如 NINETEEN；Packing List 行该列留空。"
       ]
     }
   ]
