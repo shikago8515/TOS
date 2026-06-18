@@ -305,7 +305,7 @@ const canLaunchActiveApp = computed(() => Boolean(entry?.appId) && !launching.va
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
 const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
 const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
-const savedCredentialUsername = computed(() => executorCredentials.value?.username || '')
+const savedCredentialUsername = computed(() => formatInforNexusUserIdForDisplay(executorCredentials.value?.username || ''))
 const primaryTemplate = computed(() => automationTemplates.value[0] || null)
 const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
 const shippingExecutorRunUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-shipping-file` : '' })
@@ -341,10 +341,14 @@ async function refreshExecutorCredentials(): Promise<void> {
   if (!entry) return
   try {
     executorCredentials.value = await fetchExecutorCredentials(entry.id)
-    const u = executorCredentials.value.username || ''
+    const u = formatInforNexusUserIdForDisplay(executorCredentials.value.username || '')
     if (u) shippingUsername.value = u
-    if (executorCredentials.value.hasStoredCredentials) { const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = r.username; shippingPassword.value = r.password }
+    if (executorCredentials.value.hasStoredCredentials) { const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = formatInforNexusUserIdForDisplay(r.username); shippingPassword.value = r.password }
   } catch { executorCredentials.value = null }
+}
+
+function formatInforNexusUserIdForDisplay(value: string): string {
+  return String(value || '').trim()
 }
 
 async function refreshAutomationTemplates(): Promise<void> {
@@ -364,10 +368,10 @@ function bootLocalHelper(): void { primeLocalAutomationLauncherBoot(); messageTo
 
 async function saveCurrentCredentials(): Promise<void> {
   if (!entry || credentialSaving.value) return
-  const u = shippingUsername.value.trim(); const p = shippingPassword.value
+  const u = formatInforNexusUserIdForDisplay(shippingUsername.value); const p = shippingPassword.value
   if (!u || !p) { messageTone.value = 'warning'; message.value = text('请先填写账号和密码。'); return }
   credentialSaving.value = true
-  try { executorCredentials.value = await saveExecutorCredentials(entry.id, u, p); await refreshExecutorCredentials(); shippingPassword.value = p; messageTone.value = 'success'; message.value = text('已保存。') }
+  try { executorCredentials.value = await saveExecutorCredentials(entry.id, u, p); shippingUsername.value = u; await refreshExecutorCredentials(); shippingPassword.value = p; messageTone.value = 'success'; message.value = text('已保存。') }
   catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('保存失败。')) }
   finally { credentialSaving.value = false }
 }
@@ -419,9 +423,9 @@ function formatSize(b: number): string { if (b < 1024) return `${b} B`; if (b < 
 
 async function resolveRunCredentialsPayload(): Promise<Record<string, string>> {
   if (!entry) return {}
-  const u = shippingUsername.value.trim(); const tp = shippingPassword.value
-  if (tp.trim()) { if (!u) throw new Error('请填写账号密码。'); executorCredentials.value = await saveExecutorCredentials(entry.id, u, tp); await refreshExecutorCredentials(); return { username: u, password: tp } }
-  const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = r.username; shippingPassword.value = r.password; return { username: r.username, password: r.password }
+  const u = formatInforNexusUserIdForDisplay(shippingUsername.value); const tp = shippingPassword.value
+  if (tp.trim()) { if (!u) throw new Error('请填写账号密码。'); executorCredentials.value = await saveExecutorCredentials(entry.id, u, tp); shippingUsername.value = u; await refreshExecutorCredentials(); return { username: u, password: tp } }
+  const r = await resolveAutomationCredentials(entry.id); const displayUsername = formatInforNexusUserIdForDisplay(r.username); shippingUsername.value = displayUsername; shippingPassword.value = r.password; return { username: displayUsername, password: r.password }
 }
 
 function readErrorMessage(e: unknown, fb: string): string { return e instanceof Error && e.message ? e.message : fb }
@@ -447,7 +451,7 @@ function showRunRequirementDialog(rawMessage: string): false {
 function validateShippingInputs(): boolean {
   if (!entry) return showRunRequirementDialog('当前入口不存在，请返回 Eric - Infornexus 页面重新进入。')
   if (!selectedFile.value) return showRunRequirementDialog('请先上传 Excel 文件，文件需包含 PO No 列。')
-  const username = shippingUsername.value.trim()
+  const username = formatInforNexusUserIdForDisplay(shippingUsername.value)
   const password = shippingPassword.value.trim()
   if (password && !username) return showRunRequirementDialog('请先填写 User ID。')
   if (!password && !hasStoredCredentials.value) return showRunRequirementDialog('请先填写并保存 Infor Nexus 登录账号密码。')
@@ -463,7 +467,7 @@ async function runShipping(): Promise<void> {
   const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''
   try {
     const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload()
-    const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': currentEntry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: currentEntry.localExecutorToken, headless: !showBrowserView.value, ...cp }) })
+    const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': currentEntry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: currentEntry.localExecutorToken, headless: !showBrowserView.value, ...cp, shipmentScanAction: 'assign-equipment-id' }) })
     const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); updateShippingArtifactLinks(j)
     await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j)
     if (!res.ok) { const m = formatAutomationExecutorMessage(j?.message || `HTTP ${res.status}`); if (shouldShowAutomationErrorDialog(j?.message)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }

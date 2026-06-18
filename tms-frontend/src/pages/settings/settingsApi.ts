@@ -8,7 +8,6 @@ import { fallbackAppVersion } from '../../shared/version/appVersion'
 
 const defaultTosDesktopDownloadPath = 'https://ai.tomwell.net:56130/tos/tos-desktop/download'
 const defaultTosDesktopFullDownloadPath = 'https://ai.tomwell.net:56130/tos/tos-desktop-full/download'
-const defaultServerBackendBaseUrl = 'https://ai.tomwell.net:56130/tos/desktop-api'
 
 export interface ServerInstallerPackage {
   id: string
@@ -54,21 +53,7 @@ export async function getAppVersionInfo(): Promise<AppVersionInfo> {
  * 不依赖 Electron bridge，避免打包版本与后端运行时版本不同步。
  */
 export async function getBackendRuntimeVersion(): Promise<string> {
-  try {
-    const backendBaseUrl = await getVersionBackendBaseUrl()
-    const response = await fetch(`${backendBaseUrl}/`)
-
-    if (!response.ok) {
-      return fallbackAppVersion
-    }
-
-    const payload = await response.json() as { version?: unknown }
-    return typeof payload.version === 'string' && payload.version.trim()
-      ? payload.version.trim()
-      : fallbackAppVersion
-  } catch (_error) {
-    return fallbackAppVersion
-  }
+  return readServerManifestVersion()
 }
 
 export async function getServerInstallerVersions(): Promise<ServerInstallerVersions> {
@@ -223,9 +208,13 @@ async function buildUnsupportedStatus(): Promise<UpdateStatus> {
 }
 
 async function readBrowserAppVersion(): Promise<string> {
+  return readServerManifestVersion()
+}
+
+async function readServerManifestVersion(): Promise<string> {
   try {
     const backendBaseUrl = await getVersionBackendBaseUrl()
-    const response = await fetch(`${backendBaseUrl}/`)
+    const response = await fetch(`${backendBaseUrl}/api/system/config/installer-versions`)
 
     if (!response.ok) {
       return fallbackAppVersion
@@ -283,12 +272,10 @@ function isServerInstallerPackage(packageInfo: ServerInstallerPackage | null): p
 }
 
 async function getVersionBackendBaseUrl(): Promise<string> {
-  if (window.electronAPI?.startBackendServer || window.electronAPI?.getBackendUrl) {
-    return getBackendBaseUrl()
+  const configuredUrl = import.meta.env.VITE_BACKEND_URL
+  if (typeof configuredUrl === 'string' && configuredUrl.trim()) {
+    return configuredUrl.trim().replace(/\/$/, '')
   }
 
-  const configuredUrl = import.meta.env.VITE_BACKEND_URL
-  return typeof configuredUrl === 'string' && configuredUrl.trim()
-    ? configuredUrl.trim().replace(/\/$/, '')
-    : defaultServerBackendBaseUrl
+  return getBackendBaseUrl()
 }

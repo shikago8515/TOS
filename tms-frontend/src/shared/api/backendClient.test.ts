@@ -43,10 +43,10 @@ describe('backendClient', () => {
     ).resolves.toBe('http://127.0.0.1:8000/api/jane/download/result.xlsx')
   })
 
-  it('uses the IPv4 loopback backend URL in local browser mode', async () => {
+  it('uses the public server backend URL in browser mode by default', async () => {
     stubWindow()
 
-    await expect(getBackendBaseUrl()).resolves.toBe('http://127.0.0.1:8000')
+    await expect(getBackendBaseUrl()).resolves.toBe('https://ai.tomwell.net:56130/tos/desktop-api')
   })
 
   it('uses the same-origin TOS desktop API backend when the browser app is served under /tos', async () => {
@@ -93,8 +93,10 @@ describe('backendClient', () => {
     ).rejects.toThrow('无法连接后端服务，请确认本地后端已启动并已重启到当前版本')
   })
 
-  it('stops JSON requests when the running backend version is stale', async () => {
-    stubWindow()
+  it('stops JSON requests when a required local backend version is stale', async () => {
+    stubWindow({
+      getBackendUrl: vi.fn().mockResolvedValue('http://127.0.0.1:8000/'),
+    })
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       text: vi.fn().mockResolvedValue('{"version":"0.9.8-beta.3.17"}'),
@@ -102,15 +104,21 @@ describe('backendClient', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(
-      requestBackendJson({ path: '/api/release-updates?limit=160' }),
+      requestBackendJson({ path: '/api/release-updates?limit=160', requireRuntimeVersion: true }),
     ).rejects.toThrow(
       `当前后端版本未更新：后端为 0.9.8-beta.3.17，前端为 ${fallbackAppVersion}，请重启本地后端。`,
     )
     expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:8000/',
+      { method: 'GET' },
+    )
   })
 
-  it('stops form uploads before XMLHttpRequest when the running backend version is stale', async () => {
-    stubWindow()
+  it('stops form uploads before XMLHttpRequest when a required local backend version is stale', async () => {
+    stubWindow({
+      getBackendUrl: vi.fn().mockResolvedValue('http://127.0.0.1:8000/'),
+    })
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       text: vi.fn().mockResolvedValue('{"version":"0.9.8-beta.3.17"}'),
@@ -123,6 +131,7 @@ describe('backendClient', () => {
       postFormData({
         path: '/api/tms-finance/work-sales/process',
         formData: new FormData(),
+        requireRuntimeVersion: true,
       }),
     ).rejects.toThrow(
       `当前后端版本未更新：后端为 0.9.8-beta.3.17，前端为 ${fallbackAppVersion}，请重启本地后端。`,

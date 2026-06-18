@@ -17,6 +17,7 @@ const {
 
 let mainWindow;
 let backendProcess = null;
+const automationAppProcesses = new Map();
 let automationLauncherProcess = null;
 let automationLauncherStartPromise = null;
 let protocolCommandQueue = [];
@@ -38,6 +39,8 @@ const AUTOMATION_LAUNCHER_URL = `http://${AUTOMATION_LAUNCHER_HOST}:${AUTOMATION
 const AUTOMATION_PROTOCOL = 'tos';
 const AUTOMATION_LAUNCHER_BACKGROUND_FLAG = '--automation-launcher-background';
 const DEFAULT_UPDATE_FEED_URL = '';
+const DEFAULT_INSTALLER_MANIFEST_URL = process.env.TOS_INSTALLER_MANIFEST_URL
+  || 'https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/installer-versions';
 const UPDATE_SOURCE_CONFIG_FILE = 'update-source.json';
 const UPDATE_STATUS_CHANNEL = 'update-status';
 const MANUAL_DOWNLOADS_FILE = 'manual-downloads.json';
@@ -267,6 +270,95 @@ async function fetchUpdateChangelog(version) {
   }
 }
 
+function compareVersionStrings(left, right) {
+  const leftParts = String(left || '').replace(/^v/i, '').split(/[^0-9]+/).filter(Boolean).map(Number);
+  const rightParts = String(right || '').replace(/^v/i, '').split(/[^0-9]+/).filter(Boolean).map(Number);
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const diff = (leftParts[index] || 0) - (rightParts[index] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function normalizeInstallerManifestDownload(payload, currentVersion) {
+  if (!payload || typeof payload !== 'object') return null;
+  const version = typeof payload.version === 'string' && payload.version.trim()
+    ? payload.version.trim()
+    : '';
+  if (!version || compareVersionStrings(version, currentVersion) <= 0) return null;
+
+  const packages = Array.isArray(payload.packages) ? payload.packages : [];
+  const packageInfo = packages.find((item) => item && item.id === 'tos-desktop-full')
+    || packages.find((item) => item && item.id === 'tos-desktop');
+  if (!packageInfo || typeof packageInfo.downloadPath !== 'string' || !packageInfo.downloadPath.trim()) {
+    return null;
+  }
+
+  let resolvedUrl;
+  try {
+    resolvedUrl = new URL(packageInfo.downloadPath, DEFAULT_INSTALLER_MANIFEST_URL).toString();
+  } catch (_error) {
+    return null;
+  }
+
+  return {
+    updateInfo: {
+      version,
+      releaseName: typeof packageInfo.filename === 'string' ? packageInfo.filename : '',
+      releaseDate: typeof packageInfo.updatedAt === 'string' ? packageInfo.updatedAt : '',
+      releaseNotes: null
+    },
+    manualDownload: {
+      type: 'windows-x64-unpacked',
+      label: typeof packageInfo.label === 'string' && packageInfo.label.trim()
+        ? packageInfo.label.trim()
+        : 'TOS 安装包',
+      version,
+      url: resolvedUrl,
+      sha512: typeof packageInfo.sha256 === 'string' ? packageInfo.sha256 : '',
+      size: Number.isFinite(packageInfo.fileSize) ? packageInfo.fileSize : 0
+    }
+  };
+}
+
+async function checkServerInstallerManifestForUpdates() {
+  const payload = await requestRemoteJson(DEFAULT_INSTALLER_MANIFEST_URL, 6000);
+  const manifestUpdate = normalizeInstallerManifestDownload(payload, app.getVersion());
+
+  if (!manifestUpdate) {
+    const nextStatus = emitUpdateStatus({
+      status: 'not-available',
+      checking: false,
+      updateAvailable: false,
+      downloaded: false,
+      updateInfo: null,
+      manualDownload: null,
+      changelog: null,
+      progress: null,
+      error: null,
+      feedUrl: DEFAULT_INSTALLER_MANIFEST_URL,
+      feedUrlSource: 'server-manifest'
+    });
+    return { success: true, status: nextStatus };
+  }
+
+  const nextStatus = emitUpdateStatus({
+    status: 'available',
+    checking: false,
+    updateAvailable: true,
+    downloaded: false,
+    updateInfo: manifestUpdate.updateInfo,
+    manualDownload: manifestUpdate.manualDownload,
+    changelog: null,
+    progress: null,
+    error: null,
+    feedUrl: DEFAULT_INSTALLER_MANIFEST_URL,
+    feedUrlSource: 'server-manifest'
+  });
+  return { success: true, status: nextStatus };
+}
+
 function configureAutoUpdater() {
   if (updaterConfigured) return;
 
@@ -416,8 +508,16 @@ function ensureUpdaterCanRun() {
 }
 
 async function checkForUpdates() {
-  const unavailable = ensureUpdaterCanRun();
-  if (unavailable) return unavailable;
+  configureAutoUpdater();
+
+  if (!app.isPackaged) {
+    return buildUpdateErrorResult('自动更新只支持 NSIS 安装版，当前是开发环境。', 'unsupported');
+  }
+
+  if (!updateFeedUrl || isPlaceholderUpdateFeedUrl(updateFeedUrl)) {
+    emitUpdateStatus({ status: 'checking', checking: true, downloading: false, error: null });
+    return checkServerInstallerManifestForUpdates();
+  }
 
   try {
     await autoUpdater.checkForUpdates();
@@ -429,6 +529,13 @@ async function checkForUpdates() {
 }
 
 async function downloadUpdate() {
+  configureAutoUpdater();
+
+  if ((!updateFeedUrl || isPlaceholderUpdateFeedUrl(updateFeedUrl)) && updateState.manualDownload?.url) {
+    await shell.openExternal(updateState.manualDownload.url);
+    return { success: true, url: updateState.manualDownload.url, status: getPublicUpdateStatus() };
+  }
+
   const unavailable = ensureUpdaterCanRun();
   if (unavailable) return unavailable;
 
@@ -777,13 +884,17 @@ function getAutomationAppRoot() {
     : path.join(__dirname, 'automation-apps');
 }
 
+function getAutomationRegistryPath() {
+  return path.join(getAutomationAppRoot(), 'registry.json');
+}
+
 function loadAutomationAppRegistry() {
-  const registryPath = path.join(getAutomationAppRoot(), 'registry.json');
+  const registryPath = getAutomationRegistryPath();
   try {
     const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
     return Array.isArray(registry) ? registry : [];
   } catch (error) {
-    console.error(`Automation app registry load failed: ${error.message}`);
+    console.error(`Automation app registry load failed at ${registryPath}: ${error.message}`);
     return [];
   }
 }
@@ -891,7 +1002,12 @@ async function waitForAutomationApp(automationApp, timeoutMs = 15000) {
 async function launchAutomationApp(appId) {
   const automationApp = getAutomationAppById(appId);
   if (!automationApp) {
-    return { success: false, error: `Unknown automation app: ${appId}` };
+    const registry = loadAutomationAppRegistry();
+    const knownApps = registry.map((item) => item.id).filter(Boolean).join(', ') || '(none)';
+    return {
+      success: false,
+      error: `Unknown automation app: ${appId}. Registry: ${getAutomationRegistryPath()}. Known apps: ${knownApps}`,
+    };
   }
 
   if (!fs.existsSync(automationApp.entryPath)) {
@@ -1135,18 +1251,18 @@ async function ensureAutomationLauncher() {
   }
 }
 
-async function getAutomationApps() {
+async function getAutomationLauncherApps() {
   await ensureAutomationLauncher();
   const payload = await requestLauncherJson('GET', '/api/apps');
   return Array.isArray(payload.apps) ? payload.apps : [];
 }
 
-async function launchAutomationApp(appId) {
+async function launchAutomationLauncherApp(appId) {
   await ensureAutomationLauncher();
   return requestLauncherJson('POST', `/api/apps/${encodeURIComponent(appId)}/start`);
 }
 
-async function stopAutomationApp(appId) {
+async function stopAutomationLauncherApp(appId) {
   await ensureAutomationLauncher();
   return requestLauncherJson('POST', `/api/apps/${encodeURIComponent(appId)}/stop`);
 }
@@ -1239,7 +1355,7 @@ async function handleProtocolCommand(rawUrl) {
 
   const startMatch = parsed.pathname.match(/^\/apps\/([^/]+)\/start\/?$/);
   if (parsed.hostname === 'automation' && startMatch) {
-    await launchAutomationApp(decodeURIComponent(startMatch[1]));
+    await launchAutomationLauncherApp(decodeURIComponent(startMatch[1]));
   }
 }
 
@@ -2026,16 +2142,10 @@ app.whenReady().then(async () => {
   } else {
     writeDiagnosticEvent('backend', 'startup-success', backendStatus);
   }
-  try {
-    await ensureAutomationLauncher();
-    writeDiagnosticEvent('web-automation', 'launcher-startup-success', {
-      url: AUTOMATION_LAUNCHER_URL,
-    });
-  } catch (error) {
-    writeDiagnosticEvent('web-automation', 'launcher-startup-failure', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+  writeDiagnosticEvent('web-automation', 'embedded-automation-ready', {
+    automationAppRoot: getAutomationAppRoot(),
+    launcherMode: 'browser-only',
+  });
   if (initialProtocolUrl) {
     queueProtocolCommand(initialProtocolUrl);
   }

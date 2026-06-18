@@ -109,6 +109,23 @@ def get_automation_credentials(automation_id: str, account_key: str = "default")
     return row
 
 
+def list_automation_credentials(automation_id: str) -> list[dict[str, Any]]:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, automation_id, account_key, username, created_at, updated_at
+                FROM automation_credentials
+                WHERE automation_id = %s
+                ORDER BY updated_at DESC, account_key ASC
+                """,
+                (automation_id,),
+            )
+            rows = cursor.fetchall()
+    return rows or []
+
+
 def delete_automation_credentials(automation_id: str, account_key: str = "default") -> bool:
     ensure_schema()
     with mysql_connection() as connection:

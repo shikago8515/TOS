@@ -44,6 +44,16 @@ describe('webAutomationErrors', () => {
     expect(shouldShowAutomationErrorDialog(rawMessage)).toBe(true)
   })
 
+  it('formats Infor Nexus login failures as dialog-worthy messages', () => {
+    const accessCodeMessage = 'Infor Nexus 登录需要 Access Code：账号进入 e-Identity 验证流程。'
+    const passwordMessage = 'Infor Nexus 登录失败：账号或密码错误，请检查 User ID 和 Password。'
+
+    expect(formatAutomationExecutorMessage(accessCodeMessage)).toContain('Access Code')
+    expect(shouldShowAutomationErrorDialog(accessCodeMessage)).toBe(true)
+    expect(formatAutomationExecutorMessage(passwordMessage)).toBe(passwordMessage)
+    expect(shouldShowAutomationErrorDialog(passwordMessage)).toBe(true)
+  })
+
   it('keeps non-workbook errors as inline status only', () => {
     const rawMessage = 'Infor Nexus request login did not return a redirect.'
 

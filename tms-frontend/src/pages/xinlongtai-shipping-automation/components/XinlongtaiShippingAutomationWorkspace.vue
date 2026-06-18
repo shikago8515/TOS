@@ -9,6 +9,24 @@
       </div>
     </transition>
 
+    <transition name="sa-modal-anim">
+      <div v-if="pendingCredentialDeleteKey" class="sa-modal-mask" @click.self="cancelCredentialDelete">
+        <div class="sa-confirm">
+          <div class="sa-confirm__icon"><AppIcon name="trash" /></div>
+          <div class="sa-confirm__body">
+            <h3>{{ text('删除账号档案') }}</h3>
+            <p>{{ text(`确认删除“${credentialDisplayName(pendingCredentialDeleteKey)}”？`) }}</p>
+          </div>
+          <div class="sa-confirm__actions">
+            <button type="button" class="sa-btn" @click="cancelCredentialDelete">{{ text('取消') }}</button>
+            <button type="button" class="sa-btn sa-btn--danger" :disabled="credentialClearing" @click="confirmCredentialDelete">
+              <AppIcon name="trash" />{{ credentialClearing ? text('删除中...') : text('确认删除') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
     <!-- === EMPTY === -->
     <div v-if="!entry" class="sa-empty">
       <AppIcon name="alert-circle" class="sa-empty__icon" />
@@ -71,11 +89,49 @@
             <!-- Credential Notice -->
             <div v-if="hasStoredCredentials" class="sa-cred-note">
               <AppIcon name="check-circle" />
-              <span>{{ text('已保存') }} Infor Nexus {{ text('登录账号') }}: {{ savedCredentialUsername }}</span>
+              <span>{{ text('已保存') }} Infor Nexus {{ text('登录账号') }}: {{ selectedCredentialLabel }} / {{ savedCredentialUsername }}</span>
             </div>
 
             <!-- Credentials -->
             <div class="sa-card__bd">
+              <div class="sa-cred-profile-grid">
+                <div class="sa-field">
+                  <span>{{ text('账号档案') }}</span>
+                  <div class="sa-profile-control-row">
+                    <div class="sa-profile-picker" :class="{ 'sa-profile-picker--open': isCredentialMenuOpen }">
+                      <button type="button" class="sa-profile-trigger" :disabled="credentialOptions.length === 0" @click="toggleCredentialMenu">
+                        <span class="sa-profile-trigger__icon"><AppIcon name="bookmark" /></span>
+                        <span class="sa-profile-trigger__text">
+                          <strong>{{ selectedCredentialLabel }}</strong>
+                          <small>{{ formatInforNexusUserIdForDisplay(selectedCredentialOption?.username || '') || text('暂无已保存账号') }}</small>
+                        </span>
+                        <AppIcon name="chevron-down" class="sa-profile-trigger__chev" />
+                      </button>
+                      <div v-if="isCredentialMenuOpen && credentialOptions.length > 0" class="sa-profile-menu">
+                        <div v-for="option in credentialOptions" :key="option.accountKey" class="sa-profile-option" :class="{ 'sa-profile-option--active': option.accountKey === selectedCredentialKey }">
+                          <button type="button" class="sa-profile-option__main" @click="selectCredentialOption(option.accountKey)">
+                            <span>
+                              <strong>{{ credentialDisplayName(option.accountKey) }}</strong>
+                              <small>{{ formatInforNexusUserIdForDisplay(option.username) }}</small>
+                            </span>
+                            <AppIcon v-if="option.accountKey === selectedCredentialKey" name="check-circle" />
+                          </button>
+                          <button type="button" class="sa-profile-option__delete" :disabled="credentialClearing" :title="text('删除账号档案')" @click.stop="deleteCredentialProfile(option.accountKey)">
+                            <AppIcon name="trash" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <label class="sa-field">
+                  <span>{{ text('保存名称') }}</span>
+                  <div class="sa-inp-wrap">
+                    <AppIcon name="bookmark" class="sa-inp-icon" />
+                    <input v-model.trim="credentialName" type="text" class="sa-inp" :placeholder="text('例如 Lily / user3')" autocomplete="off" />
+                  </div>
+                </label>
+              </div>
               <div class="sa-cred-grid">
                 <label class="sa-field">
                   <span>{{ text('User ID') }}</span>
@@ -96,9 +152,6 @@
               <div class="sa-cred-row">
                 <button class="sa-btn sa-btn--pri" :disabled="credentialSaving || !shippingUsername || !shippingPassword" @click="saveCurrentCredentials">
                   <AppIcon name="shield-check" />{{ credentialSaving ? text('保存中') : text('保存登录账号密码') }}
-                </button>
-                <button class="sa-btn" :disabled="credentialClearing || !hasStoredCredentials" @click="clearCurrentCredentials">
-                  <AppIcon name="stop-circle" />{{ text('清除') }}
                 </button>
                 <button class="sa-btn" :disabled="templateLoading || !primaryTemplate" @click="downloadPrimaryTemplate">
                   <AppIcon name="download" />{{ templateButtonLabel }}
@@ -254,10 +307,10 @@ import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 import type { AutomationAppInfo } from '../../../types/electronApi'
-import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
+import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentialOption, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {
   buildAutomationTemplateDownloadUrl, clearExecutorCredentials, createAutomationRunRecord,
-  fetchAutomationApps, fetchAutomationTemplates, fetchExecutorCredentials, finishAutomationRunRecord,
+  fetchAutomationApps, fetchAutomationTemplates, fetchExecutorCredentialOptions, fetchExecutorCredentials, finishAutomationRunRecord,
   getAutomationHelperUpdateMessage,
   hasElectronAutomationSupport, launchAutomationConsole, openAutomationHelperDownload,
   primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
@@ -275,6 +328,7 @@ const electronSupported = hasElectronAutomationSupport()
 const activeApp = ref<AutomationAppInfo | null>(null)
 const executorHealth = ref<LocalExecutorHealth | null>(null)
 const executorCredentials = ref<ExecutorCredentials | null>(null)
+const credentialOptions = ref<ExecutorCredentialOption[]>([])
 const automationTemplates = ref<AutomationTemplate[]>([])
 const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false)
 const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false); const sending = ref(false)
@@ -283,6 +337,9 @@ const isHealthLogOpen = ref(false)
 const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
 const shippingUsername = ref(''); const shippingPassword = ref(''); const showShippingPassword = ref(true)
+const selectedCredentialKey = ref('default'); const credentialName = ref('default')
+const isCredentialMenuOpen = ref(false)
+const pendingCredentialDeleteKey = ref('')
 const showBrowserView = ref(true)
 const statusText = ref(''); const statusLabel = ref('待命')
 const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
@@ -306,7 +363,9 @@ const canLaunchActiveApp = computed(() => Boolean(entry?.appId) && !launching.va
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
 const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
 const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
-const savedCredentialUsername = computed(() => executorCredentials.value?.username || '')
+const savedCredentialUsername = computed(() => formatInforNexusUserIdForDisplay(executorCredentials.value?.username || ''))
+const selectedCredentialLabel = computed(() => credentialDisplayName(selectedCredentialKey.value))
+const selectedCredentialOption = computed(() => credentialOptions.value.find((option) => option.accountKey === selectedCredentialKey.value) || null)
 const primaryTemplate = computed(() => automationTemplates.value[0] || null)
 const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
 const shippingExecutorRunUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-xinlongtai-shipping-file` : '' })
@@ -338,14 +397,85 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
   } finally { refreshing.value = false }
 }
 
-async function refreshExecutorCredentials(): Promise<void> {
+async function refreshCredentialOptions(): Promise<void> {
   if (!entry) return
   try {
-    executorCredentials.value = await fetchExecutorCredentials(entry.id)
-    const u = executorCredentials.value.username || ''
+    credentialOptions.value = await fetchExecutorCredentialOptions(entry.id)
+  } catch {
+    credentialOptions.value = []
+  }
+}
+
+async function refreshExecutorCredentials(accountKey = selectedCredentialKey.value): Promise<void> {
+  if (!entry) return
+  const key = normalizeCredentialKey(accountKey)
+  selectedCredentialKey.value = key
+  credentialName.value = key
+  try {
+    await refreshCredentialOptions()
+    executorCredentials.value = await fetchExecutorCredentials(entry.id, key)
+    const u = formatInforNexusUserIdForDisplay(executorCredentials.value.username || '')
     if (u) shippingUsername.value = u
-    if (executorCredentials.value.hasStoredCredentials) { const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = r.username; shippingPassword.value = r.password }
-  } catch { executorCredentials.value = null }
+    if (executorCredentials.value.hasStoredCredentials) {
+      const r = await resolveAutomationCredentials(entry.id, key)
+      shippingUsername.value = formatInforNexusUserIdForDisplay(r.username)
+      shippingPassword.value = r.password
+    }
+  } catch {
+    executorCredentials.value = null
+  }
+}
+
+function handleCredentialSelectionChange(): void {
+  void refreshExecutorCredentials(selectedCredentialKey.value)
+}
+
+function toggleCredentialMenu(): void {
+  if (credentialOptions.value.length === 0) return
+  isCredentialMenuOpen.value = !isCredentialMenuOpen.value
+}
+
+function selectCredentialOption(accountKey: string): void {
+  isCredentialMenuOpen.value = false
+  selectedCredentialKey.value = normalizeCredentialKey(accountKey)
+  void refreshExecutorCredentials(selectedCredentialKey.value)
+}
+
+function deleteCredentialProfile(accountKey: string): void {
+  const key = normalizeCredentialKey(accountKey)
+  isCredentialMenuOpen.value = false
+  pendingCredentialDeleteKey.value = key
+}
+
+function cancelCredentialDelete(): void {
+  if (credentialClearing.value) return
+  pendingCredentialDeleteKey.value = ''
+}
+
+function confirmCredentialDelete(): void {
+  const key = pendingCredentialDeleteKey.value
+  if (!key) return
+  void clearCurrentCredentials(key)
+}
+
+function normalizeCredentialKey(value: string): string {
+  const key = String(value || '').trim()
+  return key || 'default'
+}
+
+function formatInforNexusUserIdForDisplay(value: string): string {
+  return String(value || '').trim()
+}
+
+function credentialDisplayName(value: string): string {
+  const key = normalizeCredentialKey(value)
+  return key === 'default' ? text('默认账号') : key
+}
+
+function credentialOptionLabel(option: ExecutorCredentialOption): string {
+  const name = credentialDisplayName(option.accountKey)
+  const username = formatInforNexusUserIdForDisplay(option.username)
+  return username ? `${name} / ${username}` : name
 }
 
 async function refreshAutomationTemplates(): Promise<void> {
@@ -365,19 +495,60 @@ function bootLocalHelper(): void { primeLocalAutomationLauncherBoot(); messageTo
 
 async function saveCurrentCredentials(): Promise<void> {
   if (!entry || credentialSaving.value) return
-  const u = shippingUsername.value.trim(); const p = shippingPassword.value
+  const currentEntry = entry
+  const u = formatInforNexusUserIdForDisplay(shippingUsername.value); const p = shippingPassword.value
+  const key = normalizeCredentialKey(credentialName.value || selectedCredentialKey.value)
   if (!u || !p) { messageTone.value = 'warning'; message.value = text('请先填写账号和密码。'); return }
   credentialSaving.value = true
-  try { executorCredentials.value = await saveExecutorCredentials(entry.id, u, p); await refreshExecutorCredentials(); shippingPassword.value = p; messageTone.value = 'success'; message.value = text('已保存。') }
-  catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('保存失败。')) }
-  finally { credentialSaving.value = false }
+  try {
+    executorCredentials.value = await saveExecutorCredentials(currentEntry.id, u, p, key)
+    shippingUsername.value = u
+    selectedCredentialKey.value = key
+    credentialName.value = key
+    await refreshExecutorCredentials(key)
+    shippingPassword.value = p
+    messageTone.value = 'success'
+    message.value = text('已保存账号档案。')
+    return
+  } catch (e) {
+    messageTone.value = 'error'
+    message.value = readErrorMessage(e, text('保存失败。'))
+    return
+  } finally {
+    credentialSaving.value = false
+  }
 }
 
-async function clearCurrentCredentials(): Promise<void> {
-  if (!entry || credentialClearing.value) return; credentialClearing.value = true
-  try { executorCredentials.value = await clearExecutorCredentials(entry.id); messageTone.value = 'info'; message.value = text('已清除。') }
-  catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('清除失败。')) }
-  finally { credentialClearing.value = false }
+async function clearCurrentCredentials(accountKey = selectedCredentialKey.value): Promise<void> {
+  if (!entry || credentialClearing.value) return
+  const currentEntry = entry
+  isCredentialMenuOpen.value = false
+  credentialClearing.value = true
+  try {
+    const key = normalizeCredentialKey(accountKey)
+    const wasSelected = key === selectedCredentialKey.value
+    executorCredentials.value = await clearExecutorCredentials(currentEntry.id, key)
+    await refreshCredentialOptions()
+    const nextKey = wasSelected ? credentialOptions.value[0]?.accountKey || 'default' : selectedCredentialKey.value
+    if (wasSelected) {
+      selectedCredentialKey.value = nextKey
+      credentialName.value = nextKey
+      shippingUsername.value = ''
+      shippingPassword.value = ''
+      if (credentialOptions.value.length > 0) await refreshExecutorCredentials(nextKey)
+      else executorCredentials.value = null
+    }
+    messageTone.value = 'info'
+    message.value = text('已清除账号档案。')
+    pendingCredentialDeleteKey.value = ''
+    return
+  } catch (e) {
+    messageTone.value = 'error'
+    message.value = readErrorMessage(e, text('清除失败。'))
+    return
+  } finally {
+    credentialClearing.value = false
+  }
 }
 
 async function startActiveApp(silent: boolean): Promise<void> {
@@ -420,9 +591,23 @@ function formatSize(b: number): string { if (b < 1024) return `${b} B`; if (b < 
 
 async function resolveRunCredentialsPayload(): Promise<Record<string, string>> {
   if (!entry) return {}
-  const u = shippingUsername.value.trim(); const tp = shippingPassword.value
-  if (tp.trim()) { if (!u) throw new Error('请填写账号密码。'); executorCredentials.value = await saveExecutorCredentials(entry.id, u, tp); await refreshExecutorCredentials(); return { username: u, password: tp } }
-  const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = r.username; shippingPassword.value = r.password; return { username: r.username, password: r.password }
+  const currentEntry = entry
+  const u = formatInforNexusUserIdForDisplay(shippingUsername.value); const tp = shippingPassword.value
+  const key = normalizeCredentialKey(credentialName.value || selectedCredentialKey.value)
+  if (tp.trim()) {
+    if (!u) throw new Error('请填写账号密码。')
+    executorCredentials.value = await saveExecutorCredentials(currentEntry.id, u, tp, key)
+    shippingUsername.value = u
+    selectedCredentialKey.value = key
+    credentialName.value = key
+    await refreshExecutorCredentials(key)
+    return { username: u, password: tp }
+  }
+  const resolved = await resolveAutomationCredentials(currentEntry.id, key)
+  const displayUsername = formatInforNexusUserIdForDisplay(resolved.username)
+  shippingUsername.value = displayUsername
+  shippingPassword.value = resolved.password
+  return { username: displayUsername, password: resolved.password }
 }
 
 function readErrorMessage(e: unknown, fb: string): string { return e instanceof Error && e.message ? e.message : fb }
@@ -463,7 +648,7 @@ function showRunRequirementDialog(rawMessage: string): false {
 function validateShippingInputs(): boolean {
   if (!entry) return showRunRequirementDialog('当前入口不存在，请返回 Eric - Infornexus 页面重新进入。')
   if (!selectedFile.value) return showRunRequirementDialog('请先上传 Excel 文件，文件需包含 PO No 列。')
-  const username = shippingUsername.value.trim()
+  const username = formatInforNexusUserIdForDisplay(shippingUsername.value)
   const password = shippingPassword.value.trim()
   if (password && !username) return showRunRequirementDialog('请先填写 User ID。')
   if (!password && !hasStoredCredentials.value) return showRunRequirementDialog('请先填写并保存 Infor Nexus 登录账号密码。')
@@ -479,7 +664,7 @@ async function runShipping(): Promise<void> {
   const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''
   try {
     const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload()
-    const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': currentEntry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: currentEntry.localExecutorToken, headless: !showBrowserView.value, ...cp, automationId: currentEntry.id, shipmentScanAction: 'assign-equipment-id' }) })
+    const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': currentEntry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: currentEntry.localExecutorToken, headless: !showBrowserView.value, ...cp, automationId: currentEntry.id, shipmentScanAction: 'remove-change-equipment-id' }) })
     const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); updateShippingArtifactLinks(j)
     await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j)
     if (!res.ok) { const m = formatAutomationExecutorMessage(j?.message || `HTTP ${res.status}`); if (shouldShowAutomationErrorDialog(j?.message)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }
@@ -609,6 +794,35 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
   &__btns { display: flex; gap: 6px; flex-shrink: 0; }
 }
 
+.sa-modal-mask {
+  position: fixed; inset: 0; z-index: 80;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: rgba(15,23,42,.24);
+  backdrop-filter: blur(3px);
+}
+.sa-confirm {
+  display: grid; grid-template-columns: 44px 1fr; gap: 12px;
+  width: min(420px, 100%); padding: 18px; border-radius: 14px;
+  background: #fff; border: 1px solid #fee2e2;
+  box-shadow: 0 24px 70px rgba(15,23,42,.22);
+  animation: sa-modalIn .18s ease-out both;
+  &__icon {
+    display: flex; align-items: center; justify-content: center;
+    width: 44px; height: 44px; border-radius: 12px;
+    background: #fef2f2; color: #ef4444;
+    :deep(.app-icon) { font-size: 18px; }
+  }
+  &__body {
+    min-width: 0;
+    h3 { margin: 0; font-size: 15px; line-height: 1.4; color: var(--ink); }
+    p { margin: 5px 0 0; color: var(--mu); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+  }
+  &__actions {
+    grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px;
+    padding-top: 6px;
+  }
+}
+
 /* ═══ BODY: LEFT + RIGHT DOCK ═══ */
 .sa-body {
   display: grid; grid-template-columns: 1fr 260px; gap: 14px;
@@ -648,6 +862,7 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
   font-size: 12px; font-weight: 500;
   :deep(.app-icon) { font-size: 14px; flex-shrink: 0; }
 }
+.sa-cred-profile-grid { display: grid; grid-template-columns: minmax(180px, .85fr) minmax(220px, 1fr); gap: 12px; }
 .sa-cred-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .sa-cred-row { display: flex; flex-wrap: wrap; gap: 7px; }
 
@@ -668,6 +883,80 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
     :deep(.app-icon) { font-size: 13px; }
     &:hover { color: var(--a); background: var(--a2); }
   }
+}
+.sa-cred-profile-grid .sa-inp { height: 46px; }
+.sa-profile-control-row {
+  display: flex; align-items: stretch; gap: 8px; min-width: 0;
+}
+.sa-profile-picker {
+  position: relative; flex: 1; min-width: 0; z-index: 10;
+  &--open { z-index: 40; }
+}
+.sa-profile-trigger {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; min-width: 0; height: 46px; padding: 0 12px;
+  border: 1px solid var(--br); border-radius: 10px;
+  background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+  color: var(--ink); cursor: pointer; text-align: left;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.9);
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+  &:hover:not(:disabled) { border-color: #93c5fd; background: #fff; box-shadow: 0 4px 14px rgba(14,165,233,.08); }
+  &:disabled { cursor: not-allowed; color: #94a3b8; background: #f8fafc; }
+  &__icon {
+    display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+    background: var(--a2); color: var(--a);
+    :deep(.app-icon) { font-size: 14px; }
+  }
+  &__text {
+    display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1;
+    strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 750; }
+    small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; color: var(--mu); }
+  }
+  &__chev { flex-shrink: 0; color: var(--mu); font-size: 14px; transition: transform .18s ease; }
+}
+.sa-profile-picker--open .sa-profile-trigger {
+  border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,.12);
+  .sa-profile-trigger__chev { transform: rotate(180deg); }
+}
+.sa-profile-menu {
+  position: absolute; left: 0; right: 0; top: calc(100% + 6px);
+  max-height: 236px; overflow: auto; padding: 6px;
+  border: 1px solid #dbeafe; border-radius: 12px; background: #fff;
+  box-shadow: 0 16px 34px rgba(15,23,42,.14);
+  animation: sa-menuIn .16s ease-out both;
+}
+.sa-profile-option {
+  display: flex; align-items: center; gap: 6px; border-radius: 9px;
+  & + & { margin-top: 4px; }
+  &--active { background: #eff6ff; }
+}
+.sa-profile-option__main {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  flex: 1; min-width: 0; padding: 9px 8px 9px 10px;
+  border: 0; border-radius: 9px; background: transparent; color: var(--ink);
+  cursor: pointer; text-align: left;
+  &:hover { background: #f8fafc; }
+  span { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+  strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 750; }
+  small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; color: var(--mu); }
+  :deep(.app-icon) { flex-shrink: 0; font-size: 13px; color: #0ea5e9; }
+}
+.sa-profile-option__delete {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; margin-right: 3px; flex-shrink: 0;
+  border: 1px solid transparent; border-radius: 8px; background: transparent;
+  color: #ef4444; cursor: pointer; transition: all .16s ease;
+  :deep(.app-icon) { font-size: 13px; }
+  &:hover:not(:disabled) { background: #fef2f2; border-color: #fecaca; }
+  &:disabled { opacity: .45; cursor: wait; }
+}
+.sa-select {
+  width: 100%; min-width: 0; height: 34px; padding: 0 32px 0 12px;
+  border: 1px solid var(--br); border-radius: 8px;
+  background: #f8fafc; color: var(--ink); font-size: 12px;
+  &:focus { outline: none; border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,.1); background: #fff; }
+  &:disabled { color: #94a3b8; cursor: not-allowed; }
 }
 
 /* ─── Dropzone ─── */
@@ -845,6 +1134,7 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
 @keyframes sa-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes sa-slideR { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes sa-slideIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes sa-menuIn { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes sa-spin { to { transform: rotate(360deg); } }
 @keyframes sa-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 @keyframes sa-pulse { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.35); } 70% { box-shadow: 0 0 0 4px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
@@ -852,7 +1142,7 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
 
 /* ═══ RESPONSIVE ═══ */
 @media (max-width: 1200px) { .sa-body { grid-template-columns: 1fr 220px; } }
-@media (max-width: 960px) { .sa-body { grid-template-columns: 1fr; } .sa-dock { flex-direction: row; } .sa-dock-card { flex: 1; &--flex { flex: 1; } } .sa-cred-grid { grid-template-columns: 1fr; } }
+@media (max-width: 960px) { .sa-body { grid-template-columns: 1fr; } .sa-dock { flex-direction: row; } .sa-dock-card { flex: 1; &--flex { flex: 1; } } .sa-cred-profile-grid, .sa-cred-grid { grid-template-columns: 1fr; } }
 
 /* 执行器控制双列格栅 */
 .sa-btn-grid {

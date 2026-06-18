@@ -4,12 +4,14 @@ export interface UploadRequestOptions {
   path: string
   formData: FormData
   onProgress?: (percentage: number) => void
+  requireRuntimeVersion?: boolean
 }
 
 export interface JsonRequestOptions {
   method?: string
   path: string
   body?: unknown
+  requireRuntimeVersion?: boolean
 }
 
 export interface ResponseMessageContext {
@@ -20,7 +22,7 @@ export interface ResponseMessageContext {
 const backendApiNotFoundMessage = '当前后端版本缺少此接口，请重启 TOS 或等待后端切换完成'
 const backendConnectionErrorMessage = '无法连接后端服务，请确认本地后端已启动并已重启到当前版本。'
 const backendVersionMismatchPrefix = '当前后端版本未更新'
-const localBackendUrl = 'http://127.0.0.1:8000'
+const remoteBackendUrl = 'https://ai.tomwell.net:56130/tos/desktop-api'
 
 let backendStartPromise: Promise<string | undefined> | null = null
 
@@ -51,7 +53,7 @@ function readBrowserBackendUrl(): string {
     return '/tos/desktop-api'
   }
 
-  return localBackendUrl
+  return remoteBackendUrl
 }
 
 async function ensureBackendReady(): Promise<string | undefined> {
@@ -79,9 +81,12 @@ export async function postFormData<TResponse>({
   path,
   formData,
   onProgress,
+  requireRuntimeVersion = false,
 }: UploadRequestOptions): Promise<TResponse> {
   const baseUrl = await getBackendBaseUrl()
-  await ensureBackendRuntimeVersion(baseUrl)
+  if (requireRuntimeVersion) {
+    await ensureBackendRuntimeVersion(baseUrl)
+  }
   const url = buildBackendUrl(baseUrl, path)
 
   return new Promise<TResponse>((resolve, reject) => {
@@ -128,9 +133,12 @@ export async function requestBackendJson<TResponse>({
   method = 'GET',
   path,
   body,
+  requireRuntimeVersion = false,
 }: JsonRequestOptions): Promise<TResponse> {
   const baseUrl = await getBackendBaseUrl()
-  await ensureBackendRuntimeVersion(baseUrl)
+  if (requireRuntimeVersion) {
+    await ensureBackendRuntimeVersion(baseUrl)
+  }
   const headers: Record<string, string> = {}
   let requestBody: string | undefined
 
@@ -161,6 +169,11 @@ export async function requestBackendJson<TResponse>({
 
 export async function ensureBackendRuntimeVersion(baseUrl?: string): Promise<void> {
   const backendBaseUrl = baseUrl ?? await getBackendBaseUrl()
+
+  if (isRemoteServerBackend(backendBaseUrl)) {
+    return
+  }
+
   const backendVersion = await readBackendRuntimeVersion(backendBaseUrl)
   const frontendVersion = normalizeVersion(fallbackAppVersion)
 
@@ -242,8 +255,12 @@ function buildBackendUrl(baseUrl: string, path: string): string {
 
 async function readBackendRuntimeVersion(baseUrl: string): Promise<string | undefined> {
   let response: Response
+  const runtimeVersionPath = isRemoteServerBackend(baseUrl)
+    ? '/api/system/config/installer-versions'
+    : '/'
+
   try {
-    response = await fetch(buildBackendUrl(baseUrl, '/'), { method: 'GET' })
+    response = await fetch(buildBackendUrl(baseUrl, runtimeVersionPath), { method: 'GET' })
   } catch (_error) {
     throw new Error(backendConnectionErrorMessage)
   }
@@ -269,6 +286,13 @@ async function readBackendRuntimeVersion(baseUrl: string): Promise<string | unde
 
 function normalizeVersion(version: string): string {
   return version.trim().replace(/^v/i, '')
+}
+
+function isRemoteServerBackend(baseUrl: string): boolean {
+  const normalized = String(baseUrl || '').trim().replace(/\/$/, '').toLowerCase()
+  return normalized === '/tos/desktop-api'
+    || normalized === remoteBackendUrl.toLowerCase()
+    || normalized.endsWith('/tos/desktop-api')
 }
 
 function formatValidationDetail(entry: unknown): string | undefined {

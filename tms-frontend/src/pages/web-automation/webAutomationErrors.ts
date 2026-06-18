@@ -5,6 +5,14 @@ interface AutomationValidationErrorRule {
 
 const automationValidationErrorRules: AutomationValidationErrorRule[] = [
   {
+    pattern: /Infor Nexus 登录需要 Access Code|Access Code.*e-Identity|without providing an Access Code/i,
+    message: 'Infor Nexus 登录需要 Access Code：账号进入 e-Identity 验证流程。请检查 User ID / Password 是否正确，或联系管理员确认账号权限。',
+  },
+  {
+    pattern: /Infor Nexus 登录失败|账号或密码错误|invalid.*(user|password|credential)|incorrect.*(user|password|credential)|authentication failed|login failed/i,
+    message: 'Infor Nexus 登录失败：账号或密码错误，请检查 User ID 和 Password。',
+  },
+  {
     pattern: /Uploaded workbook does not contain any data rows/i,
     message: '上传的 Excel 只有表头，没有可执行数据。请从第 2 行开始填写至少一条数据后再执行。',
   },

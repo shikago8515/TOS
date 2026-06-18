@@ -27,6 +27,7 @@ from utils.mysql_store import (
     get_automation_run,
     get_excel_template,
     insert_automation_run_file,
+    list_automation_credentials,
     list_automation_runs,
     list_excel_templates,
     update_automation_run,
@@ -36,6 +37,15 @@ from utils.mysql_store import (
 
 
 router = APIRouter(prefix="/automation", tags=["Automation Storage"])
+
+INFOR_NEXUS_SHARED_CREDENTIAL_IDS = (
+    "shipping-automation",
+    "shipping-automation-demo",
+    "shipping-automation-2",
+    "xinlongtai-shipping-automation",
+    "po-auto-download",
+    "released-bulk-automation",
+)
 
 
 class CredentialPayload(BaseModel):
@@ -58,43 +68,68 @@ class RunUpdatePayload(BaseModel):
     resultFiles: list[RunFilePayload] = Field(default_factory=list)
 
 
+@router.get("/credentials/{automation_id}/accounts")
+async def list_credentials(automation_id: str) -> dict[str, Any]:
+    accounts: list[dict[str, Any]] = []
+    seen_account_keys: set[str] = set()
+    for source_automation_id in _credential_lookup_ids(automation_id):
+        for row in list_automation_credentials(source_automation_id):
+            account_key = _normalize_account_key(row.get("account_key"))
+            if account_key in seen_account_keys:
+                continue
+            seen_account_keys.add(account_key)
+            accounts.append(_credential_account_payload(automation_id, row, source_automation_id))
+
+    return {
+        "ok": True,
+        "automationId": automation_id,
+        "accounts": accounts,
+    }
+
+
 @router.get("/credentials/{automation_id}")
 async def read_credentials(automation_id: str, accountKey: str = Query("default")) -> dict[str, Any]:
-    row = get_automation_credentials(automation_id, accountKey)
-    return _credential_public_payload(automation_id, accountKey, row)
+    account_key = _normalize_account_key(accountKey)
+    row, source_automation_id = _get_credentials_with_alias(automation_id, account_key)
+    return _credential_public_payload(automation_id, account_key, row, source_automation_id)
 
 
 @router.put("/credentials/{automation_id}")
 async def save_credentials(automation_id: str, payload: CredentialPayload) -> dict[str, Any]:
     username = payload.username.strip()
     password = payload.password
+    account_key = _normalize_account_key(payload.accountKey)
     if not username or not password:
         raise HTTPException(status_code=400, detail="请填写当前网站登录账号密码。")
 
     row = upsert_automation_credentials(
         automation_id,
-        payload.accountKey or "default",
+        account_key,
         username,
         encrypt_secret(password),
     )
-    return _credential_public_payload(automation_id, payload.accountKey or "default", row)
+    return _credential_public_payload(automation_id, account_key, row, automation_id)
 
 
 @router.delete("/credentials/{automation_id}")
 async def clear_credentials(automation_id: str, accountKey: str = Query("default")) -> dict[str, Any]:
-    delete_automation_credentials(automation_id, accountKey)
-    return _credential_public_payload(automation_id, accountKey, None)
+    account_key = _normalize_account_key(accountKey)
+    row, source_automation_id = _get_credentials_with_alias(automation_id, account_key)
+    delete_automation_credentials(source_automation_id if row else automation_id, account_key)
+    return _credential_public_payload(automation_id, account_key, None, source_automation_id)
 
 
 @router.post("/credentials/{automation_id}/resolve")
 async def resolve_credentials(automation_id: str, accountKey: str = Query("default")) -> dict[str, Any]:
-    row = get_automation_credentials(automation_id, accountKey)
+    account_key = _normalize_account_key(accountKey)
+    row, source_automation_id = _get_credentials_with_alias(automation_id, account_key)
     if not row:
         raise HTTPException(status_code=404, detail="未保存当前网站登录账号密码。请先填写并保存。")
     return {
         "ok": True,
         "automationId": automation_id,
-        "accountKey": accountKey,
+        "sourceAutomationId": source_automation_id,
+        "accountKey": account_key,
         "username": row["username"],
         "password": decrypt_secret(row["password_ciphertext"]),
     }
@@ -248,14 +283,57 @@ def _credential_public_payload(
     automation_id: str,
     account_key: str,
     row: dict[str, Any] | None,
+    source_automation_id: str | None = None,
 ) -> dict[str, Any]:
     return {
         "ok": True,
         "automationId": automation_id,
+        "sourceAutomationId": source_automation_id or automation_id,
         "accountKey": account_key,
         "hasStoredCredentials": bool(row),
         "username": row["username"] if row else "",
     }
+
+
+def _credential_account_payload(
+    automation_id: str,
+    row: dict[str, Any],
+    source_automation_id: str,
+) -> dict[str, Any]:
+    return {
+        "automationId": automation_id,
+        "sourceAutomationId": source_automation_id,
+        "accountKey": _normalize_account_key(row.get("account_key")),
+        "hasStoredCredentials": True,
+        "username": row.get("username", ""),
+        "createdAt": _format_datetime(row.get("created_at")),
+        "updatedAt": _format_datetime(row.get("updated_at")),
+    }
+
+
+def _get_credentials_with_alias(automation_id: str, account_key: str) -> tuple[dict[str, Any] | None, str]:
+    account_key = _normalize_account_key(account_key)
+    for candidate_id in _credential_lookup_ids(automation_id):
+        row = get_automation_credentials(candidate_id, account_key)
+        if row:
+            return row, candidate_id
+    return None, automation_id
+
+
+def _normalize_account_key(value: Any) -> str:
+    key = str(value or "default").strip()
+    return (key or "default")[:120]
+
+
+def _credential_lookup_ids(automation_id: str) -> list[str]:
+    lookup_ids = [automation_id]
+    if automation_id in INFOR_NEXUS_SHARED_CREDENTIAL_IDS:
+        lookup_ids.extend(
+            candidate_id
+            for candidate_id in INFOR_NEXUS_SHARED_CREDENTIAL_IDS
+            if candidate_id not in lookup_ids
+        )
+    return lookup_ids
 
 
 def _template_payload(row: dict[str, Any]) -> dict[str, Any]:

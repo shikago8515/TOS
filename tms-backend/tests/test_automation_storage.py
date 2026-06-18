@@ -6,7 +6,7 @@ from pathlib import Path
 from utils import credential_crypto
 from utils.credential_crypto import decrypt_secret, encrypt_secret
 from utils.mysql_store import SCHEMA_DDL
-from api.automation_storage_api import _attachment_content_disposition
+from api.automation_storage_api import _attachment_content_disposition, _credential_lookup_ids, _normalize_account_key
 from scripts.seed_automation_templates import AUTOMATION_TEMPLATES, read_template_content
 
 
@@ -66,6 +66,19 @@ class AutomationStorageTests(unittest.TestCase):
         self.assertIn('filename="', header)
         self.assertIn("filename*=UTF-8''", header)
         self.assertIn("%E6%96%B0%E9%BE%99%E6%B3%B0", header)
+
+    def test_shipping_executor_id_can_read_shared_infor_nexus_credentials(self):
+        lookup_ids = _credential_lookup_ids("shipping-automation-demo")
+
+        self.assertEqual(lookup_ids[0], "shipping-automation-demo")
+        self.assertIn("shipping-automation", lookup_ids)
+        self.assertIn("xinlongtai-shipping-automation", lookup_ids)
+        self.assertNotIn("infornexus-auto-add", lookup_ids)
+
+    def test_credential_account_key_is_normalized_for_saved_profiles(self):
+        self.assertEqual(_normalize_account_key("  Lily  "), "Lily")
+        self.assertEqual(_normalize_account_key(""), "default")
+        self.assertEqual(len(_normalize_account_key("x" * 160)), 120)
 
 
 def restore_env(name, value):

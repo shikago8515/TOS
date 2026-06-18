@@ -75,6 +75,18 @@
       <rect x="9" y="9" width="6" height="6" rx="1" />
     </template>
 
+    <template v-else-if="iconName === 'trash'">
+      <path d="M4 7h16" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M6 7l1 14h10l1-14" />
+      <path d="M9 7V4h6v3" />
+    </template>
+
+    <template v-else-if="iconName === 'bookmark'">
+      <path d="M6 4h12v17l-6-3.5L6 21z" />
+    </template>
+
     <template v-else-if="iconName === 'target'">
       <circle cx="12" cy="12" r="8" />
       <circle cx="12" cy="12" r="4" />

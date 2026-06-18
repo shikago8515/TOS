@@ -81,11 +81,12 @@ export function useSettingsPageModel() {
     'user-config': '本地配置',
     package: '打包配置',
     preview: '预览参考',
+    'server-manifest': '服务器安装包',
     none: '未读取',
   }
   
   const currentVersion = computed(
-    () => backendVersion.value || status.value?.currentVersion || versionInfo.value.version,
+    () => status.value?.currentVersion || versionInfo.value.version || backendVersion.value,
   )
   const latestVersion = computed(() => {
     const current = currentVersion.value
@@ -319,10 +320,17 @@ export function useSettingsPageModel() {
     }
   }
 
-  function handleHelperPanelOpen(): void {
-    openAutomationHelperPanel()
-    messageTone.value = 'info'
-    message.value = '已打开本机自动化助手更新面板。'
+  async function handleHelperPanelOpen(): Promise<void> {
+    message.value = ''
+
+    try {
+      const result = await openAutomationHelperPanel()
+      messageTone.value = result.status === 'opened' ? 'info' : 'warning'
+      message.value = result.message
+    } catch (error) {
+      messageTone.value = 'error'
+      message.value = readErrorMessage(error, '打开本机自动化助手更新面板失败')
+    }
   }
   
   async function runUpdateAction(

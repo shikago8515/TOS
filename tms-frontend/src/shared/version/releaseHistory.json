@@ -1,5 +1,75 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.27-added-xinlongtai-credential-profiles",
+    "version": "0.9.8-beta.3.27",
+    "releaseDate": "2026-06-18",
+    "category": "added",
+    "pageName": "新龙泰 Shipping 自动化",
+    "pagePath": "/web-automation/scenarios/xinlongtai-shipping-automation",
+    "title": "新增新龙泰账号档案管理",
+    "description": "新龙泰 Shipping 自动化页面支持保存多个 Infor Nexus 登录账号档案，可按名称选择不同账号，并在下拉列表中直接删除不再使用的账号记录。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.27-improved-installer-and-update-center",
+    "version": "0.9.8-beta.3.27",
+    "releaseDate": "2026-06-18",
+    "category": "improved",
+    "pageName": "系统设置 / 安装包下载",
+    "pagePath": "/settings",
+    "title": "优化安装包版本与更新检查",
+    "description": "设置页区分本机运行版本和服务器安装包版本，桌面端检查更新改为读取服务器安装包清单；完整安装包、轻量安装包和自动化助手安装包均保持带版本号输出。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.27-fixed-shipping-actions-and-credentials",
+    "version": "0.9.8-beta.3.27",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "万代 Shipping / 新龙泰 Shipping 自动化",
+    "pagePath": "/web-automation",
+    "title": "修复 Shipping 动作选择与账号保留",
+    "description": "万代 Shipping 固定选择 Assign Equipment ID，新龙泰 Shipping 固定选择 Remove/Change Equipment ID；账号和密码中的 @@ 原样保存、回显和提交，不再被自动替换；Infor Nexus 登录失败和 Access Code 页面会给出中文弹窗提示。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.26-fix-desktop-embedded-automation-process-map",
+    "version": "0.9.8-beta.3.26",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "桌面安装包 / Shipping 自动化",
+    "pagePath": "/web-automation",
+    "title": "修复桌面内置自动化执行器进程表缺失",
+    "description": "桌面端内置自动化启动器补齐进程管理表，修复启动 Shipping 执行器时报 ReferenceError: automationAppProcesses is not defined 的问题。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.25-remote-credentials-and-desktop-embedded-automation",
+    "version": "0.9.8-beta.3.25",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "网页自动化 / 桌面安装包",
+    "pagePath": "/web-automation",
+    "title": "修复远程账号回显与桌面内置执行器启动",
+    "description": "服务器端 Infor Nexus 账号支持 Shipping 执行器 id 与各业务场景 id 共用远程数据库凭据；桌面端启动自动化时直接读取安装包内置 automation-apps，不再被本机旧小助手占用 3210 端口影响。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.24-remote-db-and-desktop-automation-package",
+    "version": "0.9.8-beta.3.24",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "桌面安装包 / 网页自动化",
+    "pagePath": "/web-automation",
+    "title": "修复桌面安装包远程数据库与 Shipping 执行器识别",
+    "description": "桌面完整安装包默认使用远程服务器数据库读取账号、模板和运行记录；浏览器默认连接远程公开 API；Infor Nexus Shipping 相关场景兼容执行器 id 与业务场景 id 的账号读取，避免安装包中缺少账号或提示 Unknown automation app。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.23-fixed-helper-panel-and-shipping-launcher-message",
+    "version": "0.9.8-beta.3.23",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "自动化助手 / Shipping 自动化",
+    "pagePath": "/settings",
+    "title": "修复小助手面板与 Shipping 执行器提示",
+    "description": "设置页版本读取改为使用公开安装包清单接口；打开小助手面板前会先检测本机小助手版本，旧版或未启动时给出中文提示；Shipping 执行器缺失时提示用户安装最新版完整包或小助手。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.22-fixed-helper-runtime-version-sync",
     "version": "0.9.8-beta.3.22",
     "releaseDate": "2026-06-18",

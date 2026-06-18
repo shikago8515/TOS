@@ -45,7 +45,7 @@ describe('settingsApi', () => {
       version: '0.9.8-beta.3.0',
       isPackaged: false,
     })
-    expect(fetchMock).toHaveBeenCalledWith('https://ai.tomwell.net:56130/tos/desktop-api/')
+    expect(fetchMock).toHaveBeenCalledWith('https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/installer-versions')
   })
 
   it('uses the synchronized fallback version when backend version cannot be read', async () => {
@@ -86,7 +86,7 @@ describe('settingsApi', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(getBackendRuntimeVersion()).resolves.toBe('0.9.8-beta.3.15')
-    expect(fetchMock).toHaveBeenCalledWith('https://ai.tomwell.net:56130/tos/desktop-api/')
+    expect(fetchMock).toHaveBeenCalledWith('https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/installer-versions')
   })
 
   it('getBackendRuntimeVersion falls back to fallbackAppVersion on error', async () => {

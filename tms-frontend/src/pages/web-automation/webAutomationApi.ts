@@ -40,7 +40,20 @@ export interface ExecutorCredentials {
   hasStoredCredentials: boolean
   username: string
   automationId?: string
+  sourceAutomationId?: string
   accountKey?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface ExecutorCredentialOption {
+  automationId?: string
+  sourceAutomationId?: string
+  accountKey: string
+  hasStoredCredentials: boolean
+  username: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface ResolvedAutomationCredentials {
@@ -79,6 +92,10 @@ export interface AutomationRunFileInput {
   contentType?: string
 }
 
+export type AutomationHelperPanelOpenResult =
+  | { status: 'opened'; message: string }
+  | { status: 'not-running' | 'unsupported' | 'error'; message: string }
+
 export function hasElectronAutomationSupport(): boolean {
   return Boolean(window.electronAPI?.getAutomationApps)
 }
@@ -115,8 +132,27 @@ export async function openAutomationHelperDownload(): Promise<void> {
   anchor.remove()
 }
 
-export function openAutomationHelperPanel(): void {
-  window.open(`${launcherBaseUrl}/`, '_blank', 'noopener')
+export async function openAutomationHelperPanel(): Promise<AutomationHelperPanelOpenResult> {
+  const status = await probeAutomationHelperUpdatePanel()
+  if (status === 'available') {
+    window.open(`${launcherBaseUrl}/`, '_blank', 'noopener')
+    return {
+      status: 'opened',
+      message: '已打开本机自动化助手更新面板。',
+    }
+  }
+
+  if (status === 'unsupported') {
+    return {
+      status: 'unsupported',
+      message: '本机小助手版本过旧，暂不支持更新面板。请先下载安装最新版小助手后再打开。',
+    }
+  }
+
+  return {
+    status: 'not-running',
+    message: '未检测到正在运行的本机自动化助手。请先安装并启动最新版小助手，再打开更新面板。',
+  }
 }
 
 export async function fetchAutomationApps(): Promise<AutomationAppInfo[]> {
@@ -139,11 +175,28 @@ export async function launchAutomationConsole(appId: string): Promise<ElectronAc
     result = await requestLauncherJson<ElectronActionResult>('POST', `/api/apps/${encodeURIComponent(appId)}/start`)
   }
 
+  if (!result.success && result.error) {
+    result = {
+      ...result,
+      error: formatAutomationLauncherErrorMessage(result.error, appId),
+    }
+  }
+
   await recordWebAutomationEvent(result.success ? 'launch-success' : 'launch-failure', {
     appId,
     result,
   })
   return result
+}
+
+export function formatAutomationLauncherErrorMessage(message: string, appId?: string): string {
+  const rawMessage = String(message || '').trim()
+  if (/Unknown automation app:/i.test(rawMessage)) {
+    const appLabel = appId === 'shipping-automation-demo' ? 'Shipping 执行器' : '对应执行器'
+    return `本机自动化助手版本过旧或安装不完整，缺少 ${appLabel}。请安装最新 TOS 完整安装包或最新版小助手，重启小助手后再执行。`
+  }
+
+  return rawMessage
 }
 
 export async function stopAutomationConsole(appId: string): Promise<ElectronActionResult> {
@@ -223,9 +276,26 @@ async function firstFulfilled<T>(promises: Promise<T>[]): Promise<T> {
   })
 }
 
-export async function fetchExecutorCredentials(automationId: string): Promise<ExecutorCredentials> {
+function buildCredentialAccountQuery(accountKey?: string): string {
+  const key = String(accountKey || '').trim()
+  return key ? `?accountKey=${encodeURIComponent(key)}` : ''
+}
+
+export async function fetchExecutorCredentialOptions(
+  automationId: string,
+): Promise<ExecutorCredentialOption[]> {
+  const payload = await requestBackendJson<{ accounts?: ExecutorCredentialOption[] }>({
+    path: `/api/automation/credentials/${encodeURIComponent(automationId)}/accounts`,
+  })
+  return Array.isArray(payload.accounts) ? payload.accounts : []
+}
+
+export async function fetchExecutorCredentials(
+  automationId: string,
+  accountKey = 'default',
+): Promise<ExecutorCredentials> {
   return requestBackendJson<ExecutorCredentials>({
-    path: `/api/automation/credentials/${encodeURIComponent(automationId)}`,
+    path: `/api/automation/credentials/${encodeURIComponent(automationId)}${buildCredentialAccountQuery(accountKey)}`,
   })
 }
 
@@ -233,6 +303,7 @@ export async function saveExecutorCredentials(
   automationId: string,
   username: string,
   password: string,
+  accountKey = 'default',
 ): Promise<ExecutorCredentials> {
   return requestBackendJson<ExecutorCredentials>({
     method: 'PUT',
@@ -240,25 +311,28 @@ export async function saveExecutorCredentials(
     body: {
       username,
       password,
+      accountKey,
     },
   })
 }
 
 export async function clearExecutorCredentials(
   automationId: string,
+  accountKey = 'default',
 ): Promise<ExecutorCredentials> {
   return requestBackendJson<ExecutorCredentials>({
     method: 'DELETE',
-    path: `/api/automation/credentials/${encodeURIComponent(automationId)}`,
+    path: `/api/automation/credentials/${encodeURIComponent(automationId)}${buildCredentialAccountQuery(accountKey)}`,
   })
 }
 
 export async function resolveAutomationCredentials(
   automationId: string,
+  accountKey = 'default',
 ): Promise<ResolvedAutomationCredentials> {
   return requestBackendJson<ResolvedAutomationCredentials>({
     method: 'POST',
-    path: `/api/automation/credentials/${encodeURIComponent(automationId)}/resolve`,
+    path: `/api/automation/credentials/${encodeURIComponent(automationId)}/resolve${buildCredentialAccountQuery(accountKey)}`,
   })
 }
 
@@ -337,6 +411,22 @@ async function isLauncherReachable(): Promise<boolean> {
     return Boolean(payload && payload.ok)
   } catch {
     return false
+  }
+}
+
+async function probeAutomationHelperUpdatePanel(): Promise<'available' | 'unsupported' | 'not-running'> {
+  try {
+    const response = await fetchWithTimeout(`${launcherBaseUrl}/api/update/status`, { method: 'GET' }, 900)
+    if (!response.ok) {
+      return response.status === 404 ? 'unsupported' : 'not-running'
+    }
+
+    const payload = await response.json().catch(() => ({}))
+    return payload && typeof payload === 'object' && (payload as { ok?: unknown }).ok === true
+      ? 'available'
+      : 'unsupported'
+  } catch {
+    return 'not-running'
   }
 }
 
@@ -440,7 +530,7 @@ async function requestLauncherJson<T = Record<string, unknown>>(
       : payload && typeof payload.error === 'string'
         ? payload.error
         : `Launcher request failed with HTTP ${response.status}.`
-    throw new Error(message)
+    throw new Error(formatAutomationLauncherErrorMessage(message))
   }
 
   return (payload || {}) as T

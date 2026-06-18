@@ -316,7 +316,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const result = await runShippingFile(credentials, poRows, inputFileName, activeRun.runId, {
           headless,
-          shipmentScanAction: isXinlongtaiShippingRun ? "assign-equipment-id" : undefined,
+          shipmentScanAction: isXinlongtaiShippingRun ? "remove-change-equipment-id" : "assign-equipment-id",
         });
         result.artifacts = await persistRunArtifacts(result, poRows, activeRun.runId);
         recordCompletedRun({
@@ -458,7 +458,7 @@ function buildCredentialsPayload() {
 }
 
 function resolveCredentials(body) {
-  const username = String(body?.username || body?.userId || "").trim();
+  const username = normalizeInforNexusUsernameForLogin(body?.username || body?.userId || "");
   const password = String(body?.password || "");
   if (!username || !password) {
     const error = new Error("请提供 Infor Nexus 登录账号密码。");
@@ -466,6 +466,10 @@ function resolveCredentials(body) {
     throw error;
   }
   return { username, password };
+}
+
+function normalizeInforNexusUsernameForLogin(value) {
+  return String(value || "").trim();
 }
 
 function registerActiveRun(run) {
@@ -554,8 +558,7 @@ function isXinlongtaiShippingRequestBody(body) {
       || body?.entryId
       || "",
   ).trim();
-  return automationId === XINLONGTAI_SHIPPING_AUTOMATION_ID
-    || isAssignEquipmentShipmentScanAction(body?.shipmentScanAction);
+  return automationId === XINLONGTAI_SHIPPING_AUTOMATION_ID;
 }
 
 function resolveShipmentScanAction(runContext) {
@@ -1216,13 +1219,18 @@ async function waitForInforNexusLoggedIn(page, timeoutMs = config.navigationTime
       const href = String(window.location.href || "");
       const pathname = String(window.location.pathname || "");
       const bodyText = String(document.body?.innerText || "");
+      const hasLoginForm = Boolean(document.querySelector('input[placeholder="Username"], input[name*="user" i]'));
       return {
         href,
         pathname,
         readyState: document.readyState,
         isTradePage: /\/en\/trade\/?/i.test(pathname) && !/login/i.test(pathname),
         hasApplicationText: /\bAPPLICATIONS\b/i.test(bodyText),
-        hasLoginForm: Boolean(document.querySelector('input[placeholder="Username"], input[name*="user" i]')),
+        hasLoginForm,
+        hasAccessCodeChallenge: /Access Code/i.test(bodyText)
+          && /(e-Identity|without providing an Access Code|required to log in)/i.test(bodyText),
+        hasLoginFailure: hasLoginForm
+          && /(invalid|incorrect|not recognized|authentication failed|login failed|try again)/i.test(bodyText),
       };
     }).catch(() => null);
 
@@ -1241,6 +1249,14 @@ async function waitForInforNexusLoggedIn(page, timeoutMs = config.navigationTime
       applicationsVisible,
       navigationAttached,
     };
+
+    if (state?.hasAccessCodeChallenge) {
+      throw new Error("Infor Nexus 登录需要 Access Code：账号进入 e-Identity 验证流程。请检查 User ID / Password 是否正确，或联系管理员确认账号权限。");
+    }
+
+    if (state?.hasLoginFailure) {
+      throw new Error("Infor Nexus 登录失败：账号或密码错误，请检查 User ID 和 Password。");
+    }
 
     if (applicationsVisible || navigationAttached || (state?.isTradePage && !state?.hasLoginForm)) {
       return lastState;
