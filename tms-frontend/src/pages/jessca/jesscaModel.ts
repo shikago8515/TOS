@@ -7,6 +7,7 @@ export const jesscaModuleName = 'jessica - 对账核对'
 export function buildJesscaSummary(
   response: JesscaProcessResponse,
   invoiceFileCount: number,
+  packingFileCount = 0,
 ): ProcessSummaryItem[] {
   const matchedCount = response.matches
     ? Object.values(response.matches).reduce((sum, value) => sum + Number(value || 0), 0)
@@ -18,7 +19,7 @@ export function buildJesscaSummary(
       )
     : undefined
 
-  return [
+  const items: ProcessSummaryItem[] = [
     {
       label: '发票文件',
       value: String(response.invoice_count ?? invoiceFileCount),
@@ -45,4 +46,25 @@ export function buildJesscaSummary(
             : '未生成',
     },
   ]
+
+  if (packingFileCount > 0 || response.packing_count !== undefined) {
+    items.splice(
+      4,
+      0,
+      {
+        label: 'Packing List PDF',
+        value: String(packingFileCount),
+      },
+      {
+        label: '箱单核对记录',
+        value: String(response.packing_count ?? '-'),
+      },
+      {
+        label: '箱单异常',
+        value: String(response.packing_issue_count ?? '-'),
+      },
+    )
+  }
+
+  return items
 }

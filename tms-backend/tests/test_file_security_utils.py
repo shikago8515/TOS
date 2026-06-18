@@ -106,6 +106,86 @@ class LegacyApiSecurityTests(unittest.TestCase):
         self.assertNotIn("secret", context.exception.detail)
         self.assertIn("Jane processing failed", "\n".join(logs.output))
 
+    def test_jessca_process_accepts_optional_packing_pdf(self):
+        original_upload_dir = jessca_api.UPLOAD_DIR
+        original_module = jessca_api.jessca_module
+
+        class FakeUpload:
+            def __init__(self, filename: str):
+                self.filename = filename
+                self.file = io.BytesIO(b"content")
+
+        class CapturingJesscaModule:
+            def __init__(self):
+                self.packing_path = None
+
+            def process_invoices(self, _invoice_paths, _ref_path, output_dir=None, packing_path=None):
+                self.packing_path = packing_path
+                output_path = os.path.join(output_dir, "jessca-result.xlsx")
+                with open(output_path, "wb") as fp:
+                    fp.write(b"result")
+                return {
+                    "success": True,
+                    "message": f"批量核对完成：{output_path}",
+                    "logs": [f"结果文件：{output_path}"],
+                    "invoice_count": 1,
+                    "total_items": 1,
+                    "matches": {"一致": 1, "不一致": 0, "未找到": 0},
+                    "diagnostics": {},
+                    "packing_count": 1,
+                    "packing_matched_count": 1,
+                    "packing_issue_count": 0,
+                    "output_path": output_path,
+                }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module = CapturingJesscaModule()
+            jessca_api.UPLOAD_DIR = temp_dir
+            jessca_api.jessca_module = module
+            try:
+                response = asyncio.run(
+                    jessca_api.process_jessca(
+                        invoices=[FakeUpload("invoice.xls")],
+                        reference_file=FakeUpload("reference.xlsx"),
+                        packing_file=FakeUpload("packing.pdf"),
+                        output_dir=None,
+                    )
+                )
+            finally:
+                jessca_api.UPLOAD_DIR = original_upload_dir
+                jessca_api.jessca_module = original_module
+
+        self.assertIsNotNone(module.packing_path)
+        self.assertTrue(str(module.packing_path).endswith("packing_packing.pdf"))
+        self.assertEqual(response["packing_count"], 1)
+        self.assertEqual(response["packing_matched_count"], 1)
+        self.assertEqual(response["packing_issue_count"], 0)
+
+    def test_jessca_process_rejects_non_pdf_packing_file(self):
+        class FakeUpload:
+            def __init__(self, filename: str):
+                self.filename = filename
+                self.file = io.BytesIO(b"content")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_upload_dir = jessca_api.UPLOAD_DIR
+            jessca_api.UPLOAD_DIR = temp_dir
+            try:
+                with self.assertRaises(HTTPException) as context:
+                    asyncio.run(
+                        jessca_api.process_jessca(
+                            invoices=[FakeUpload("invoice.xls")],
+                            reference_file=FakeUpload("reference.xlsx"),
+                            packing_file=FakeUpload("packing.txt"),
+                            output_dir=None,
+                        )
+                    )
+            finally:
+                jessca_api.UPLOAD_DIR = original_upload_dir
+
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertIn("Packing List PDF 仅支持 .pdf", context.exception.detail)
+
     def test_jane_bom_summary_returns_sanitized_500_detail(self):
         original_upload_dir = jane_bom_summary_api.UPLOAD_DIR
         original_module = jane_bom_summary_api.jane_bom_summary_module

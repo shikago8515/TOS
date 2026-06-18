@@ -13,7 +13,7 @@ import xlrd
 import pandas as pd
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from typing import DefaultDict, List, Dict, Tuple, Any, Optional
 
@@ -68,17 +68,64 @@ class InvoiceDiagnostic:
     candidate_row_keys: Tuple[Any, ...]
 
 
+@dataclass(frozen=True)
+class InvoiceRecord:
+    """发票明细中可用于价格核对和 Packing List 核对的一行。"""
+
+    invoice_file: str
+    invoice_number: str
+    invoice_date: str
+    po_number: str
+    article: str
+    style: str
+    quantity: Optional[float]
+    price: float
+
+
+@dataclass(frozen=True)
+class PackingListRecord:
+    """Packing List PDF 中按 PO/Article/Working No 汇总出的一行。"""
+
+    invoice_number: str
+    ex_factory_date: str
+    po_number: str
+    working_number: str
+    article_number: str
+    customer_number: str
+    quantity: Optional[float]
+    cartons: Optional[int]
+
+
+@dataclass(frozen=True)
+class PackingComparisonRow:
+    """发票源文件与 Packing List PDF 的核对结果行。"""
+
+    status: str
+    issue_detail: str
+    invoice_number: str
+    packing_invoice_number: str
+    invoice_date: str
+    ex_factory_date: str
+    po_number: str
+    article: str
+    style: str
+    invoice_quantity: Optional[float]
+    packing_quantity: Optional[float]
+    packing_cartons: Optional[int]
+    market_po: str
+    source_invoice: str
+
+
 class JesscaModule:
     """Jessca 数据核对业务逻辑"""
 
     def __init__(self):
         pass
 
-    def read_invoice_data(self, invoice_path: str) -> List[Dict[str, Any]]:
-        """读取发票数据，统一处理.xls和.xlsx格式"""
+    def read_invoice_records(self, invoice_path: str) -> List[InvoiceRecord]:
+        """读取发票完整明细，统一处理 .xls 和 .xlsx 格式。"""
 
-        # 1. 根据文件格式创建对应的适配器
-        if invoice_path.endswith('.xls'):
+        if invoice_path.lower().endswith('.xls'):
             wb = xlrd.open_workbook(invoice_path)
             ws = wb.sheet_by_index(0)
             adapter = XlrdAdapter(wb, ws)
@@ -88,13 +135,36 @@ class JesscaModule:
             adapter = OpenpyxlAdapter(wb, ws)
 
         try:
-            # 2. 调用统一的解析逻辑
-            return self._parse_invoice_data(adapter)
+            return self._parse_invoice_records(adapter, os.path.basename(invoice_path))
         finally:
             adapter.close()
 
+    def read_invoice_data(self, invoice_path: str) -> List[Dict[str, Any]]:
+        """读取发票价格核对数据，保持旧调用方的返回结构不变。"""
+
+        return [
+            {
+                'article': record.article,
+                'style': record.style,
+                'price': record.price,
+            }
+            for record in self.read_invoice_records(invoice_path)
+        ]
+
     def _parse_invoice_data(self, adapter: ExcelRowAdapter) -> List[Dict[str, Any]]:
         """核心解析逻辑，使用适配器访问数据"""
+        return [
+            {
+                'article': record.article,
+                'style': record.style,
+                'price': record.price,
+            }
+            for record in self._parse_invoice_records(adapter, "")
+        ]
+
+    def _parse_invoice_records(self, adapter: ExcelRowAdapter, invoice_file: str) -> List[InvoiceRecord]:
+        """核心解析逻辑，使用适配器访问数据。"""
+        invoice_number, invoice_date = self._extract_invoice_header(adapter)
         data: List[Dict[str, Any]] = []
         pending_items: List[Dict[str, Any]] = []
 
@@ -107,6 +177,10 @@ class JesscaModule:
                 price_val = self._extract_price(adapter, row_idx)
                 if price_val is not None:
                     pending_items.append({
+                        'po_number': self._normalize_invoice_text(
+                            adapter.get_cell_value(row_idx, 1) if adapter.get_col_count(row_idx) > 1 else ""
+                        ),
+                        'quantity': self._extract_quantity(adapter, row_idx),
                         'article': None,
                         'price': price_val
                     })
@@ -126,19 +200,103 @@ class JesscaModule:
                     for item in pending_items:
                         if item['article'] is not None and item['price'] is not None:
                             data.append({
+                                'invoice_file': invoice_file,
+                                'invoice_number': invoice_number,
+                                'invoice_date': invoice_date,
+                                'po_number': item['po_number'],
                                 'article': item['article'],
                                 'style': style_val,
+                                'quantity': item['quantity'],
                                 'price': item['price']
                             })
                         elif item['price'] is not None:
                             data.append({
+                                'invoice_file': invoice_file,
+                                'invoice_number': invoice_number,
+                                'invoice_date': invoice_date,
+                                'po_number': item['po_number'],
                                 'article': '',
                                 'style': style_val,
+                                'quantity': item['quantity'],
                                 'price': item['price']
                             })
                     pending_items = []
 
-        return data
+        return [
+            InvoiceRecord(
+                invoice_file=str(item.get('invoice_file') or ""),
+                invoice_number=str(item.get('invoice_number') or ""),
+                invoice_date=str(item.get('invoice_date') or ""),
+                po_number=str(item.get('po_number') or ""),
+                article=str(item.get('article') or ""),
+                style=str(item.get('style') or ""),
+                quantity=item.get('quantity'),
+                price=float(item.get('price') or 0),
+            )
+            for item in data
+        ]
+
+    def _extract_invoice_header(self, adapter: ExcelRowAdapter) -> Tuple[str, str]:
+        invoice_number = ""
+        invoice_date = ""
+        for row_idx in range(min(adapter.get_row_count(), 12)):
+            for col_idx in range(adapter.get_col_count(row_idx)):
+                label = self._normalize_invoice_label(adapter.get_cell_value(row_idx, col_idx))
+                if not invoice_number and label in {"INV#", "INV", "INVOICE#", "INVOICENO", "INVOICENUMBER"}:
+                    invoice_number = self._find_next_non_empty_cell_text(adapter, row_idx, col_idx + 1)
+                elif not invoice_date and label == "DATE":
+                    invoice_date = self._normalize_invoice_date(
+                        adapter.get_cell_value(row_idx, col_idx + 1)
+                        if col_idx + 1 < adapter.get_col_count(row_idx)
+                        else None,
+                        adapter,
+                    )
+            if invoice_number and invoice_date:
+                break
+        return invoice_number, invoice_date
+
+    @staticmethod
+    def _normalize_invoice_label(value: Any) -> str:
+        text = str(value or "").strip().upper()
+        text = re.sub(r"\s+", "", text)
+        return text.rstrip(":：")
+
+    @staticmethod
+    def _normalize_invoice_text(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+        return str(value).strip()
+
+    def _find_next_non_empty_cell_text(self, adapter: ExcelRowAdapter, row_idx: int, start_col: int) -> str:
+        for col_idx in range(start_col, adapter.get_col_count(row_idx)):
+            text = self._normalize_invoice_text(adapter.get_cell_value(row_idx, col_idx))
+            if text:
+                return text
+        return ""
+
+    def _normalize_invoice_date(self, value: Any, adapter: ExcelRowAdapter) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, datetime):
+            return value.date().isoformat()
+        if isinstance(value, date):
+            return value.isoformat()
+        if isinstance(value, (int, float)):
+            datemode = getattr(getattr(adapter, "workbook", None), "datemode", None)
+            if datemode is not None:
+                try:
+                    return xlrd.xldate_as_datetime(value, datemode).date().isoformat()
+                except Exception:
+                    return self._normalize_invoice_text(value)
+        text = self._normalize_invoice_text(value)
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y/%m/%d"):
+            try:
+                return datetime.strptime(text, fmt).date().isoformat()
+            except ValueError:
+                continue
+        return text
 
     def _extract_price(self, adapter: ExcelRowAdapter, row_idx: int) -> Optional[float]:
         """从指定行提取价格"""
@@ -159,6 +317,34 @@ class JesscaModule:
                 return candidate
 
         return None
+
+    def _extract_quantity(self, adapter: ExcelRowAdapter, row_idx: int) -> Optional[float]:
+        """从 PO 行提取数量，优先按 QTY 表头定位。"""
+        for col_idx in self._find_quantity_columns(adapter, row_idx):
+            candidate = self._parse_price_value(adapter.get_cell_value(row_idx, col_idx))
+            if candidate is not None and candidate >= 0:
+                return int(candidate) if float(candidate).is_integer() else candidate
+        return None
+
+    def _find_quantity_columns(self, adapter: ExcelRowAdapter, row_idx: int) -> List[int]:
+        quantity_cols: List[int] = []
+        search_start = max(0, row_idx - 5)
+        for header_row in range(search_start, row_idx):
+            for col_idx in range(adapter.get_col_count(header_row)):
+                header_text = str(adapter.get_cell_value(header_row, col_idx) or "").strip().upper()
+                if not header_text:
+                    continue
+                if ("QTY" in header_text or "QUANTITY" in header_text) and "UNIT PRICE" not in header_text:
+                    quantity_cols.append(col_idx)
+
+        seen = set()
+        ordered_cols: List[int] = []
+        max_cols = adapter.get_col_count(row_idx)
+        for col_idx in quantity_cols + [5]:
+            if 0 <= col_idx < max_cols and col_idx not in seen:
+                ordered_cols.append(col_idx)
+                seen.add(col_idx)
+        return ordered_cols
 
     def _find_price_columns(self, adapter: ExcelRowAdapter, row_idx: int) -> List[int]:
         """根据表头定位单价列，避免把 QTY 数量列误当价格。"""
@@ -487,6 +673,119 @@ class JesscaModule:
             counts[diagnostic.status] = counts.get(diagnostic.status, 0) + 1
         return counts
 
+    @staticmethod
+    def _packing_key(po_number: Any, article: Any, style: Any) -> Tuple[str, str, str]:
+        return (
+            str(po_number or "").strip().upper(),
+            str(article or "").strip().upper(),
+            str(style or "").strip().upper(),
+        )
+
+    @staticmethod
+    def _same_text(left: Any, right: Any) -> bool:
+        return str(left or "").strip().upper() == str(right or "").strip().upper()
+
+    @staticmethod
+    def _same_number(left: Optional[float], right: Optional[float]) -> bool:
+        if left is None or right is None:
+            return left is right
+        return abs(float(left) - float(right)) < 0.0001
+
+    def read_packing_list_records(self, packing_path: str) -> List[PackingListRecord]:
+        """读取 Packing List PDF，复用 Draft/Packing 模块的表格解析能力。"""
+
+        from modules.draft_packing_compare_module import DraftPackingCompareModule
+
+        module = DraftPackingCompareModule()
+        pages = module._extract_packing_pages(packing_path)
+        extracted_records = module.parse_packing_pages(pages)
+        full_text = "\n".join(page.text for page in pages)
+        invoice_number = self._extract_packing_invoice_number(full_text)
+        ex_factory_date = self._extract_packing_ex_factory_date(full_text)
+
+        return [
+            PackingListRecord(
+                invoice_number=invoice_number,
+                ex_factory_date=ex_factory_date,
+                po_number=record.po_number,
+                working_number=record.working_number,
+                article_number=record.article_number,
+                customer_number=record.customer_number,
+                quantity=record.quantity,
+                cartons=record.cartons,
+            )
+            for record in extracted_records
+        ]
+
+    @staticmethod
+    def _extract_packing_invoice_number(text: str) -> str:
+        match = re.search(r"\b\d{2}-\d{2}-\d{2}-\d{4}\b", text)
+        return match.group(0) if match else ""
+
+    @staticmethod
+    def _extract_packing_ex_factory_date(text: str) -> str:
+        match = re.search(r"Ex-Factory\s+Date[\s\S]{0,120}?(\d{4}-\d{2}-\d{2})", text, re.IGNORECASE)
+        return match.group(1) if match else ""
+
+    def build_packing_list_comparison(
+        self,
+        invoice_records: List[InvoiceRecord],
+        packing_records: List[PackingListRecord],
+    ) -> List[PackingComparisonRow]:
+        """按 PO + Article + Style/Working No 核对发票源文件与 Packing List PDF。"""
+
+        packing_by_key: Dict[Tuple[str, str, str], PackingListRecord] = {
+            self._packing_key(record.po_number, record.article_number, record.working_number): record
+            for record in packing_records
+        }
+        rows: List[PackingComparisonRow] = []
+
+        for invoice in invoice_records:
+            key = self._packing_key(invoice.po_number, invoice.article, invoice.style)
+            packing = packing_by_key.pop(key, None)
+            rows.append(self._build_packing_comparison_row(invoice, packing))
+
+        for packing in packing_by_key.values():
+            rows.append(self._build_packing_comparison_row(None, packing))
+
+        return rows
+
+    def _build_packing_comparison_row(
+        self,
+        invoice: Optional[InvoiceRecord],
+        packing: Optional[PackingListRecord],
+    ) -> PackingComparisonRow:
+        issues: List[str] = []
+        if invoice is None and packing is not None:
+            issues.append("发票源文件缺少该 PO/Article/Working No")
+        elif packing is None and invoice is not None:
+            issues.append("Packing List PDF 缺少该 PO/Article/Style")
+        elif invoice is not None and packing is not None:
+            if invoice.invoice_number and packing.invoice_number and not self._same_text(invoice.invoice_number, packing.invoice_number):
+                issues.append(f"Invoice Number 不一致：发票={invoice.invoice_number}；Packing={packing.invoice_number}")
+            if invoice.invoice_date and packing.ex_factory_date and invoice.invoice_date != packing.ex_factory_date:
+                issues.append(f"Date 不一致：发票={invoice.invoice_date}；Packing Ex-Factory={packing.ex_factory_date}")
+            if not self._same_number(invoice.quantity, packing.quantity):
+                issues.append(f"QTY 不一致：发票={invoice.quantity or '-'}；Packing={packing.quantity or '-'}")
+
+        status = "一致" if not issues else ("需核对" if invoice and packing else "缺失")
+        return PackingComparisonRow(
+            status=status,
+            issue_detail="；".join(issues),
+            invoice_number=invoice.invoice_number if invoice else "",
+            packing_invoice_number=packing.invoice_number if packing else "",
+            invoice_date=invoice.invoice_date if invoice else "",
+            ex_factory_date=packing.ex_factory_date if packing else "",
+            po_number=(invoice.po_number if invoice else packing.po_number if packing else ""),
+            article=(invoice.article if invoice else packing.article_number if packing else ""),
+            style=(invoice.style if invoice else packing.working_number if packing else ""),
+            invoice_quantity=invoice.quantity if invoice else None,
+            packing_quantity=packing.quantity if packing else None,
+            packing_cartons=packing.cartons if packing else None,
+            market_po=packing.customer_number if packing else "",
+            source_invoice=invoice.invoice_file if invoice else "",
+        )
+
     def update_reference_table(self, ref_df: pd.DataFrame,
                               all_invoice_data: Dict[Tuple[str, str], Dict[str, float]]) -> Tuple[pd.DataFrame, Dict[str, int]]:
         result_df = ref_df.copy()
@@ -562,7 +861,8 @@ class JesscaModule:
                                 invoice_file_names: List[str],
                                 invoice_file_paths: List[str],
                                 ref_df: pd.DataFrame,
-                                output_path: str) -> Dict[str, Any]:
+                                output_path: str,
+                                packing_comparison_rows: Optional[List[PackingComparisonRow]] = None) -> Dict[str, Any]:
         """保存 Excel 结果，包含汇总表"""
 
         wb = openpyxl.Workbook()
@@ -621,6 +921,18 @@ class JesscaModule:
             thin_border
         )
 
+        packing_stats = {
+            'packing_count': 0,
+            'packing_matched_count': 0,
+            'packing_issue_count': 0,
+        }
+        if packing_comparison_rows is not None:
+            ws_packing = wb.create_sheet("Packing List核对")
+            packing_stats = self._write_packing_list_comparison_sheet(
+                ws_packing,
+                packing_comparison_rows,
+            )
+
         # 自动调整列宽
         main_column_max_widths = {}
         main_column_min_widths = {}
@@ -668,7 +980,116 @@ class JesscaModule:
             'sheet_names': wb.sheetnames,
             'missing_count': summary_stats['missing_count'],
             'data_count': summary_stats['data_count'],
-            'diagnostics': summary_stats['diagnostics']
+            'diagnostics': summary_stats['diagnostics'],
+            **packing_stats,
+        }
+
+    def _write_packing_list_comparison_sheet(
+        self,
+        ws: openpyxl.worksheet.worksheet.Worksheet,
+        rows: List[PackingComparisonRow],
+    ) -> Dict[str, int]:
+        headers = [
+            "Check Status",
+            "Issue Detail",
+            "Invoice No",
+            "Packing Invoice No",
+            "Invoice Date",
+            "Ex-Factory Date",
+            "PO No",
+            "Article No",
+            "Style / Working No",
+            "Invoice QTY",
+            "Packing QTY",
+            "Packing Cartons",
+            "Market PO",
+            "Source Invoice",
+        ]
+        thin_border = create_thin_border()
+        title_end_col = openpyxl.utils.get_column_letter(len(headers))
+        ws.merge_cells(f"A1:{title_end_col}1")
+        title_cell = ws["A1"]
+        title_cell.value = f"Packing List 核对结果 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        title_cell.font = Font(size=14, bold=True, color="FF1F2937")
+        title_cell.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[1].height = 28
+
+        for col_idx, header in enumerate(headers, 1):
+            cell = ws.cell(row=2, column=col_idx, value=header)
+            cell.font = Font(bold=True, color="FFFFFFFF", size=11)
+            cell.fill = PatternFill(start_color="FF4472C4", end_color="FF4472C4", fill_type="solid")
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = thin_border
+
+        matched_count = 0
+        issue_count = 0
+        status_fills = {
+            "一致": PatternFill(start_color="FFDDFFDD", end_color="FFDDFFDD", fill_type="solid"),
+            "需核对": PatternFill(start_color="FFFFDDDD", end_color="FFFFDDDD", fill_type="solid"),
+            "缺失": PatternFill(start_color="FFFFFFCC", end_color="FFFFFFCC", fill_type="solid"),
+        }
+        for row_idx, row in enumerate(rows, 3):
+            values = [
+                row.status,
+                row.issue_detail,
+                row.invoice_number,
+                row.packing_invoice_number,
+                row.invoice_date,
+                row.ex_factory_date,
+                row.po_number,
+                row.article,
+                row.style,
+                row.invoice_quantity,
+                row.packing_quantity,
+                row.packing_cartons,
+                row.market_po,
+                row.source_invoice,
+            ]
+            if row.status == "一致":
+                matched_count += 1
+            else:
+                issue_count += 1
+            for col_idx, value in enumerate(values, 1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                cell.border = thin_border
+                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=(col_idx == 2))
+                if col_idx == 1:
+                    fill = status_fills.get(row.status)
+                    if fill:
+                        cell.fill = fill
+                    cell.font = Font(bold=True)
+
+        self._adjust_column_widths(
+            ws,
+            {
+                1: 16,
+                2: 52,
+                3: 18,
+                4: 20,
+                5: 14,
+                6: 16,
+                7: 16,
+                8: 14,
+                9: 20,
+                14: 42,
+            },
+            {
+                1: 12,
+                2: 24,
+                3: 14,
+                4: 14,
+                5: 12,
+                6: 12,
+                7: 12,
+                8: 12,
+                9: 14,
+            },
+        )
+        ws.freeze_panes = "A3"
+        return {
+            "packing_count": len(rows),
+            "packing_matched_count": matched_count,
+            "packing_issue_count": issue_count,
         }
 
     def _write_compact_summary_sheet(self,
@@ -859,7 +1280,13 @@ class JesscaModule:
             adjusted_width = min(max(max_length + 2, min_width), max_width)
             ws.column_dimensions[column_letter].width = adjusted_width
 
-    def process_invoices(self, invoice_paths: List[str], ref_path: str, output_dir: str = None) -> Dict[str, Any]:
+    def process_invoices(
+        self,
+        invoice_paths: List[str],
+        ref_path: str,
+        output_dir: str = None,
+        packing_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """主处理流程"""
 
         result = {
@@ -869,6 +1296,9 @@ class JesscaModule:
             'total_items': 0,
             'matches': {'一致': 0, '不一致': 0, '未找到': 0},
             'diagnostics': {},
+            'packing_count': 0,
+            'packing_matched_count': 0,
+            'packing_issue_count': 0,
             'output_path': None,
             'logs': []
         }
@@ -887,6 +1317,7 @@ class JesscaModule:
             log(f"✅ 参考表读取完成，共 {len(ref_df)} 行数据")
 
             all_invoice_data: Dict[Tuple[str, str], Dict[str, float]] = {}
+            all_invoice_records: List[InvoiceRecord] = []
             invoice_file_names: List[str] = []
             invoice_file_paths: List[str] = []
 
@@ -904,7 +1335,15 @@ class JesscaModule:
                 log(f"\n[{idx}/{len(invoice_paths)}] 处理发票：{invoice_filename}")
 
                 try:
-                    invoice_data = self.read_invoice_data(invoice_path)
+                    invoice_records = self.read_invoice_records(invoice_path)
+                    invoice_data = [
+                        {
+                            'article': record.article,
+                            'style': record.style,
+                            'price': record.price,
+                        }
+                        for record in invoice_records
+                    ]
 
                     if len(invoice_data) == 0:
                         log(f"⚠️ 未在发票中识别到有效商品数据，跳过")
@@ -912,6 +1351,7 @@ class JesscaModule:
 
                     log(f"✅ 成功读取 {len(invoice_data)} 个商品")
                     total_items_count += len(invoice_data)
+                    all_invoice_records.extend(invoice_records)
 
                     for item in invoice_data:
                         key = (item['article'], item['style'])
@@ -949,6 +1389,21 @@ class JesscaModule:
                 output_dir = os.path.dirname(ref_path)
 
             ensure_dir(output_dir)
+            packing_comparison_rows: Optional[List[PackingComparisonRow]] = None
+            if packing_path:
+                log("\n📦 正在读取 Packing List PDF...")
+                packing_records = self.read_packing_list_records(packing_path)
+                packing_comparison_rows = self.build_packing_list_comparison(
+                    all_invoice_records,
+                    packing_records,
+                )
+                result['packing_count'] = len(packing_comparison_rows)
+                result['packing_matched_count'] = sum(1 for row in packing_comparison_rows if row.status == "一致")
+                result['packing_issue_count'] = result['packing_count'] - result['packing_matched_count']
+                log(
+                    "✅ Packing List 核对完成："
+                    f"{result['packing_count']} 行，异常 {result['packing_issue_count']} 条"
+                )
 
             default_name = (
                 os.path.splitext(os.path.basename(ref_path))[0] +
@@ -965,12 +1420,16 @@ class JesscaModule:
                 invoice_file_names,
                 invoice_file_paths,
                 ref_df,
-                output_path
+                output_path,
+                packing_comparison_rows=packing_comparison_rows,
             )
 
             result['output_path'] = output_path
             result['save_result'] = save_result
             result['diagnostics'] = save_result.get('diagnostics', {})
+            result['packing_count'] = save_result.get('packing_count', result['packing_count'])
+            result['packing_matched_count'] = save_result.get('packing_matched_count', result['packing_matched_count'])
+            result['packing_issue_count'] = save_result.get('packing_issue_count', result['packing_issue_count'])
 
             log(f"\n{'='*80}")
             log(f"✅ 批量核对完成！")

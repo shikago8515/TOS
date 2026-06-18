@@ -71,6 +71,7 @@ import { buildJesscaSummary, jesscaModuleId, jesscaModuleName } from './jesscaMo
 
 const invoiceFiles = ref<File[]>([])
 const referenceFiles = ref<File[]>([])
+const packingFiles = ref<File[]>([])
 const processing = ref(false)
 const progress = ref(0)
 const message = ref('')
@@ -96,15 +97,25 @@ const uploadFields = computed<ExcelFileField[]>(() => [
     hint: '上传 1 个参考表文件',
     expectedCount: 1,
   },
+  {
+    id: 'packing',
+    label: 'Packing List PDF（可选）',
+    files: packingFiles.value,
+    hint: '上传后会在同一个结果 Excel 中追加箱单核对结果',
+    required: false,
+    accept: '.pdf',
+    acceptLabel: '支持 .pdf',
+    expectedCount: 1,
+  },
 ])
 
 const fileGroups = computed(() => buildExcelFileGroups(uploadFields.value))
 const canProcess = computed(() => areRequiredFilesReady(fileGroups.value))
 const readyGroupCount = computed(
-  () => fileGroups.value.filter((group) => group.files.length > 0).length,
+  () => fileGroups.value.filter((group) => group.required && group.files.length > 0).length,
 )
 const totalSelectedCount = computed(
-  () => invoiceFiles.value.length + referenceFiles.value.length,
+  () => invoiceFiles.value.length + referenceFiles.value.length + packingFiles.value.length,
 )
 
 const pageStats = computed<ExcelPageStat[]>(() => [
@@ -161,6 +172,11 @@ function updateUploadFiles(fieldId: string, files: File[]): void {
 
   if (fieldId === 'reference') {
     referenceFiles.value = files
+    return
+  }
+
+  if (fieldId === 'packing') {
+    packingFiles.value = files
   }
 }
 
@@ -187,6 +203,7 @@ async function startProcess(): Promise<void> {
       {
         invoiceFiles: invoiceFiles.value,
         referenceFile: referenceFiles.value[0],
+        packingFile: packingFiles.value[0],
       },
       (nextProgress) => {
         progress.value = nextProgress
@@ -197,7 +214,7 @@ async function startProcess(): Promise<void> {
     resultFile.value = response.result_file ?? response.output_file ?? ''
     messageTone.value = response.success ? 'success' : 'error'
     message.value = response.error ? `${response.message} - ${response.error}` : response.message
-    summaryItems.value = buildJesscaSummary(response, invoiceFiles.value.length)
+    summaryItems.value = buildJesscaSummary(response, invoiceFiles.value.length, packingFiles.value.length)
     recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles)
   } catch (error) {
     success.value = false
@@ -225,6 +242,7 @@ async function downloadResult(): Promise<void> {
 function resetForm(): void {
   invoiceFiles.value = []
   referenceFiles.value = []
+  packingFiles.value = []
   processing.value = false
   progress.value = 0
   message.value = ''

@@ -207,6 +207,7 @@ class DraftPackingCompareModuleTests(unittest.TestCase):
         self.assertEqual(first.customer_number, "0306485444")
         self.assertEqual(first.quantity, 150)
         self.assertEqual(first.cartons, 13)
+        self.assertEqual(first.cartons_in_words, "THIRTEEN")
         self.assertEqual(first.hs_code, "620432")
         self.assertEqual(first.goods_description, "WOMEN'S WOVEN JACKET,FROM BODY: 100% COTTON")
 
@@ -215,6 +216,7 @@ class DraftPackingCompareModuleTests(unittest.TestCase):
         self.assertEqual(attachment.working_number, "RC2613OW006")
         self.assertEqual(attachment.article_number, "LE8303")
         self.assertEqual(attachment.cartons, 61)
+        self.assertEqual(attachment.cartons_in_words, "SIXTY ONE")
         self.assertEqual(attachment.goods_description, "WOMEN'S WOVEN PANTS,MAIN MATERIAL: 100% COTTON")
 
     def test_parse_packing_pages_uses_tables_and_reports_missing_hts(self):
@@ -295,6 +297,7 @@ class DraftPackingCompareModuleTests(unittest.TestCase):
                     "Cust Number / Market PO Number",
                     "Quantity",
                     "Cartons",
+                    "Cartons In Words",
                     "Goods Description",
                     "HS Code / HTS Code",
                     "Check Status",
@@ -306,12 +309,14 @@ class DraftPackingCompareModuleTests(unittest.TestCase):
             self.assertEqual(ws["B3"].value, "Packing List")
             self.assertEqual(ws["C2"].value, "AF26INSPW072")
             self.assertEqual(ws["D2"].value, "KV0625")
-            self.assertEqual(ws["I2"].value, "620432")
-            self.assertEqual(ws["I3"].value, "62043290")
-            self.assertEqual(ws["J2"].value, "需核对")
+            self.assertEqual(ws["H2"].value, "THIRTEEN")
+            self.assertIsNone(ws["H3"].value)
+            self.assertEqual(ws["J2"].value, "620432")
+            self.assertEqual(ws["J3"].value, "62043290")
+            self.assertEqual(ws["K2"].value, "需核对")
             self.assertEqual(ws.max_row, 3)
-            self.assertEqual(self._fill_rgb(ws["I2"]), "FFFFC7CE")
-            self.assertEqual(self._fill_rgb(ws["I3"]), "FFFFC7CE")
+            self.assertEqual(self._fill_rgb(ws["J2"]), "FFFFC7CE")
+            self.assertEqual(self._fill_rgb(ws["J3"]), "FFFFC7CE")
             self.assertGreaterEqual(issues.max_row, 2)
             self.assertIn("HS Code / HTS Code", [issues.cell(row=row, column=4).value for row in range(2, issues.max_row + 1)])
 

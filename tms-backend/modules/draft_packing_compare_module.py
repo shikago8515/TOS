@@ -31,6 +31,7 @@ class ExtractedRecord:
     customer_number: str = ""
     quantity: int | None = None
     cartons: int | None = None
+    cartons_in_words: str = ""
     goods_description: str = ""
     hs_code: str = ""
     issues: list[str] = field(default_factory=list)
@@ -93,6 +94,7 @@ class DraftPackingCompareModule:
         "Cust Number / Market PO Number",
         "Quantity",
         "Cartons",
+        "Cartons In Words",
         "Goods Description",
         "HS Code / HTS Code",
         "Check Status",
@@ -112,12 +114,13 @@ class DraftPackingCompareModule:
         "Cust Number / Market PO Number": 5,
         "Quantity": 6,
         "Cartons": 7,
-        "Goods Description": 8,
-        "HS Code / HTS Code": 9,
+        "Goods Description": 9,
+        "HS Code / HTS Code": 10,
         "Record": 1,
     }
     ITEM_HEADER_RE = re.compile(
-        r"(?m)^(?P<item>\d+)\s+.+?\((?P<cartons>\d+)\)\s+CARTONS\s+OF\s+ADIDAS\s+BRAND\s+GARMENT\b.*$",
+        r"(?m)^(?P<item>\d+)\s+(?:CART\s+NO\.\s*)?(?P<cartons_words>[A-Z][A-Z\s-]+?)\s*"
+        r"\((?P<cartons>\d+)\)\s+CARTONS\s+OF\s+ADIDAS\s+BRAND\s+GARMENT\b.*$",
         re.IGNORECASE,
     )
     PO_RE = re.compile(r"PO#\s*(?P<po>\d{10})", re.IGNORECASE)
@@ -169,6 +172,7 @@ class DraftPackingCompareModule:
                 customer_number=self._find_labeled_value(po_block, r"CUST\s+NO\.?"),
                 quantity=self._parse_int(self._find_labeled_value(po_block, r"QUANTITY")),
                 cartons=cartons,
+                cartons_in_words=self._normalize_text(item_match.group("cartons_words")) if item_match else "",
                 goods_description=self._extract_draft_description(context_text),
                 hs_code=self._find_labeled_value(po_block, r"HS\s+Code"),
             )
@@ -634,6 +638,7 @@ class DraftPackingCompareModule:
                 "",
                 "",
                 "",
+                "",
                 group.status,
                 group.issue_detail,
             ]
@@ -646,6 +651,7 @@ class DraftPackingCompareModule:
             record.customer_number,
             record.quantity,
             record.cartons,
+            record.cartons_in_words,
             record.goods_description,
             record.hs_code,
             group.status,

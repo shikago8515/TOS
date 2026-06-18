@@ -70,6 +70,66 @@
     "description": "设置页版本读取改为使用公开安装包清单接口；打开小助手面板前会先检测本机小助手版本，旧版或未启动时给出中文提示；Shipping 执行器缺失时提示用户安装最新版完整包或小助手。"
   },
   {
+    "recordKey": "builtin-0.9.8-beta.3.27-added-jessica-packing-list-pdf",
+    "version": "0.9.8-beta.3.27",
+    "releaseDate": "2026-06-18",
+    "category": "added",
+    "pageName": "Jessica / 对账核对",
+    "pagePath": "/jessca",
+    "title": "新增 Packing List PDF 核对",
+    "description": "Jessica 对账核对支持在原发票文件和参考表文件之外可选上传 Packing List PDF，并在同一个结果 Excel 中新增 Packing List核对 sheet。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.26-improved-draft-packing-carton-words",
+    "version": "0.9.8-beta.3.26",
+    "releaseDate": "2026-06-18",
+    "category": "improved",
+    "pageName": "Draft & Packing List 核对",
+    "pagePath": "/draft-packing-compare",
+    "title": "新增 Draft 箱数英文列",
+    "description": "Draft & Packing List 核对结果 Excel 在 Cartons 后新增 Cartons In Words 列，Draft 行显示 PDF 原文中的大写英文箱数，Packing List 行保持空白。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.25-improved-iplex-auto-columns-release-notice-batch",
+    "version": "0.9.8-beta.3.25",
+    "releaseDate": "2026-06-18",
+    "category": "improved",
+    "pageName": "iPlex 双表核对 / 版本更新提示",
+    "pagePath": "/iplex/dual-table-compare",
+    "title": "自动核对列并批次化版本弹窗",
+    "description": "iPlex 双表核对删除可见列配置区，生成时自动识别固定业务列并在原位置显示核对异常表；版本更新弹窗改为按发布批次触发，可按模块集中展示更新内容，小修改默认不主动弹窗。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.24-fixed-iplex-skip-total-rows",
+    "version": "0.9.8-beta.3.24",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "iPlex 双表核对",
+    "pagePath": "/iplex/dual-table-compare",
+    "title": "跳过 RC 总计行核对",
+    "description": "修复 iPlex 双表核对将 RC 表空 Key 总计行当作未匹配行处理的问题，总计行不再写入差值公式、不再标红，也不计入异常列表。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.23-improved-iplex-preview-and-red-row-marking",
+    "version": "0.9.8-beta.3.23",
+    "releaseDate": "2026-06-18",
+    "category": "improved",
+    "pageName": "iPlex 双表核对",
+    "pagePath": "/iplex/dual-table-compare",
+    "title": "显示异常列表并标红 Excel 行",
+    "description": "iPlex 双表核对处理完成后在页面直接显示不一致或未匹配的 RC 行，并在导出的 Excel 中将差值不为 0 或未匹配的整行标红。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.22-fixed-iplex-dual-table-direction",
+    "version": "0.9.8-beta.3.22",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "iPlex 双表核对",
+    "pagePath": "/iplex/dual-table-compare",
+    "title": "修正 iPlex 匹配方向",
+    "description": "修正 iPlex 双表核对匹配方向，按 PO # 对应 BUYER ORDER NO. 将 PO 调整数据匹配到 RC 表输出。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.22-fixed-helper-runtime-version-sync",
     "version": "0.9.8-beta.3.22",
     "releaseDate": "2026-06-18",
@@ -78,6 +138,16 @@
     "pagePath": "/settings",
     "title": "修复小助手运行时版本同步",
     "description": "版本同步脚本会同时更新自动化 app registry 和 shipping executor 版本，确保小助手安装后健康检查、更新面板和服务器安装包版本保持一致。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.21-added-iplex-dual-table-compare",
+    "version": "0.9.8-beta.3.21",
+    "releaseDate": "2026-06-17",
+    "category": "added",
+    "pageName": "iPlex 双表核对",
+    "pagePath": "/iplex/dual-table-compare",
+    "title": "新增 iPlex 双表核对工具",
+    "description": "新增 iPlex 双表核对工具，支持两张 Excel 按指定关键列匹配并导出带筛选的差值核对结果。"
   },
   {
     "recordKey": "builtin-0.9.8-beta.3.21-improved-helper-and-installer-update-panels",
