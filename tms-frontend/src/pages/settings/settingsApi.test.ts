@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ElectronApi } from '../../types/electronApi'
 import { fallbackAppVersion } from '../../shared/version/appVersion'
-import { getAppVersionInfo, getBackendRuntimeVersion, getUpdateStatusSnapshot } from './settingsApi'
+import {
+  getAppVersionInfo,
+  getBackendRuntimeVersion,
+  getServerInstallerVersions,
+  getUpdateStatusSnapshot,
+} from './settingsApi'
 
 function stubWindow(electronAPI?: Partial<ElectronApi>): void {
   vi.stubGlobal('window', { electronAPI })
@@ -89,5 +94,56 @@ describe('settingsApi', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
 
     await expect(getBackendRuntimeVersion()).resolves.toBe(fallbackAppVersion)
+  })
+
+  it('reads server installer package versions from backend config', async () => {
+    stubWindow()
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        ok: true,
+        version: '0.9.8-beta.3.20',
+        manifestUpdatedAt: '2026-06-18T02:00:00Z',
+        packages: [
+          {
+            id: 'automation-helper',
+            label: 'TOS Web Automation Helper',
+            version: '0.9.8-beta.3.20',
+            filename: 'TOS-Automation-Helper-Setup.0.9.8-beta.3.20.exe',
+            downloadPath: '/api/system/config/automation-helper/download',
+            bucket: 'tos-downloads',
+            objectKey: 'automation-helper/TOS-Automation-Helper-Setup.exe',
+            contentType: 'application/vnd.microsoft.portable-executable',
+            fileSize: 90617,
+            sha256: 'a'.repeat(64),
+          },
+        ],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const versions = await getServerInstallerVersions()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/installer-versions',
+    )
+    expect(versions.packages).toHaveLength(1)
+    expect(versions.packages[0]).toMatchObject({
+      id: 'automation-helper',
+      version: '0.9.8-beta.3.20',
+      filename: 'TOS-Automation-Helper-Setup.0.9.8-beta.3.20.exe',
+    })
+  })
+
+  it('falls back to an empty installer version list when backend metadata is unavailable', async () => {
+    stubWindow()
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
+
+    await expect(getServerInstallerVersions()).resolves.toEqual({
+      ok: false,
+      version: fallbackAppVersion,
+      manifestUpdatedAt: null,
+      packages: [],
+    })
   })
 })

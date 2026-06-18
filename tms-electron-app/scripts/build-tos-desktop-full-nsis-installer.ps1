@@ -53,11 +53,13 @@ Require-Path $MakeNsis "NSIS compiler"
 Require-Path $WebInstallerBuilder "TOS desktop web installer builder"
 
 if (-not $SkipPayloadBuild) {
-  $builderArgs = @("-ExecutionPolicy", "Bypass", "-File", $WebInstallerBuilder, "-MakeNsis", $MakeNsis)
-  if ($AppOutDir) {
-    $builderArgs += @("-AppOutDir", $AppOutDir)
+  $builderArgs = @{
+    MakeNsis = $MakeNsis
   }
-  & powershell @builderArgs
+  if ($AppOutDir) {
+    $builderArgs.AppOutDir = $AppOutDir
+  }
+  & $WebInstallerBuilder @builderArgs
   if ($LASTEXITCODE -ne 0) {
     throw "TOS desktop payload build failed with exit code $LASTEXITCODE"
   }

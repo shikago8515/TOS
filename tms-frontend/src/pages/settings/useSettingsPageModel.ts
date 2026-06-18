@@ -12,6 +12,7 @@ import {
   downloadUpdate,
   getBackendRuntimeVersion,
   getAppVersionInfo,
+  getServerInstallerVersions,
   getUpdateStatusSnapshot,
   hasUpdateBridge,
   installUpdate,
@@ -20,8 +21,12 @@ import {
   openTosDesktopFullDownload,
   subscribeUpdateStatus,
 } from './settingsApi'
+import type { ServerInstallerVersions } from './settingsApi'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
-import { openAutomationHelperDownload } from '../web-automation/webAutomationApi'
+import {
+  openAutomationHelperDownload,
+  openAutomationHelperPanel,
+} from '../web-automation/webAutomationApi'
 
 type NoticeTone = 'info' | 'success' | 'warning' | 'error'
 type UpdateAction = '' | 'init' | 'check' | 'download' | 'install' | 'manual'
@@ -32,6 +37,7 @@ export function useSettingsPageModel() {
     isPackaged: false,
   })
   const backendVersion = ref('')
+  const serverInstallerVersions = ref<ServerInstallerVersions | null>(null)
   const status = ref<UpdateStatus | null>(null)
   const activeAction = ref<UpdateAction>('')
   const message = ref('')
@@ -140,6 +146,34 @@ export function useSettingsPageModel() {
     const size = file.size ? formatBytes(file.size) : '-'
     return `${file.label} · ${version} · ${size}`
   })
+  const serverInstallerPackageRows = computed(() => {
+    const packageMap = new Map(
+      (serverInstallerVersions.value?.packages ?? []).map((packageInfo) => [packageInfo.id, packageInfo]),
+    )
+    return [
+      {
+        key: 'tos-desktop',
+        label: '轻量安装器版本',
+        packageInfo: packageMap.get('tos-desktop'),
+      },
+      {
+        key: 'tos-desktop-full',
+        label: '离线全量包版本',
+        packageInfo: packageMap.get('tos-desktop-full'),
+      },
+      {
+        key: 'automation-helper',
+        label: '网页小助手版本',
+        packageInfo: packageMap.get('automation-helper'),
+      },
+    ].map((item) => ({
+      key: item.key,
+      label: item.label,
+      filename: item.packageInfo?.filename ?? '',
+      versionLabel: item.packageInfo?.version ? formatDisplayVersion(item.packageInfo.version) : '-',
+      source: item.packageInfo?.source ?? '',
+    }))
+  })
   const emptyChangelogText = computed(() => {
     if (status.value?.status === 'available' || status.value?.status === 'downloaded') {
       return '更新源暂未提供 changelog.json'
@@ -203,14 +237,16 @@ export function useSettingsPageModel() {
     message.value = ''
   
     try {
-      const [nextVersionInfo, nextStatus, runtimeVersion] = await Promise.all([
+      const [nextVersionInfo, nextStatus, runtimeVersion, installerVersions] = await Promise.all([
         getAppVersionInfo(),
         getUpdateStatusSnapshot(),
         getBackendRuntimeVersion(),
+        getServerInstallerVersions(),
       ])
       versionInfo.value = nextVersionInfo
       status.value = nextStatus
       backendVersion.value = runtimeVersion
+      serverInstallerVersions.value = installerVersions
     } catch (error) {
       messageTone.value = 'error'
       message.value = readErrorMessage(error, '读取应用更新状态失败')
@@ -281,6 +317,12 @@ export function useSettingsPageModel() {
     } finally {
       helperDownloading.value = false
     }
+  }
+
+  function handleHelperPanelOpen(): void {
+    openAutomationHelperPanel()
+    messageTone.value = 'info'
+    message.value = '已打开本机自动化助手更新面板。'
   }
   
   async function runUpdateAction(
@@ -445,6 +487,7 @@ export function useSettingsPageModel() {
     handleDesktopInstallerDownload,
     handleDownload,
     handleHelperDownload,
+    handleHelperPanelOpen,
     handleInstall,
     handleManualDownload,
     hasCategorizedChangelog,
@@ -460,6 +503,8 @@ export function useSettingsPageModel() {
     progressPercent,
     releaseNoteItems,
     runModeLabel,
+    serverInstallerPackageRows,
+    serverInstallerVersions,
     status,
     statusLabel,
     statusTone,

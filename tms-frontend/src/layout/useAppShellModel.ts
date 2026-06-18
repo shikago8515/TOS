@@ -18,6 +18,12 @@ import {
   markReleaseNoticeSeen,
   type ReleaseNoticeState,
 } from '../shared/version/releaseNotice'
+import {
+  getAppVersionInfo,
+  getServerInstallerVersions,
+  openTosDesktopFullDownload,
+  type ServerInstallerPackage,
+} from '../pages/settings/settingsApi'
 
 interface SidebarCategory {
   id: string
@@ -54,8 +60,19 @@ export function useAppShellModel() {
   
   const toast = ref<ToastState>({ visible: false, type: 'info', icon: 'info', title: '', message: '' })
   let toastTimer: ReturnType<typeof setTimeout> | null = null
+  let installerUpdateTimer: number | null = null
   
   const releaseNotice = ref<ReleaseNoticeState>({ visible: false, releaseNotes: null })
+  const installerUpdate = ref({
+    checking: false,
+    downloading: false,
+    currentVersion: '',
+    latestVersion: '',
+    packageInfo: null as ServerInstallerPackage | null,
+    checkedAt: null as Date | null,
+    error: '',
+    notifiedVersion: '',
+  })
   
   const releaseNoticeTitle = computed(() => (isEnglish.value ? "What's New" : '本次更新内容'))
   const releaseNoticeCloseLabel = computed(() => (isEnglish.value ? 'Close release notes' : '关闭更新提示'))
@@ -76,6 +93,23 @@ export function useAppShellModel() {
   
   const hasUnseenReleaseNotes = computed(() => {
     return releaseNotice.value.visible && releaseNotice.value.releaseNotes !== null
+  })
+
+  const hasInstallerUpdate = computed(() => {
+    const { latestVersion, currentVersion } = installerUpdate.value
+    return Boolean(latestVersion) && compareVersionStrings(latestVersion, currentVersion) > 0
+  })
+
+  const installerUpdateLabel = computed(() => formatDisplayVersion(installerUpdate.value.latestVersion))
+
+  const installerUpdateTitle = computed(() => {
+    if (hasInstallerUpdate.value) {
+      return text(`发现安装包更新 ${installerUpdateLabel.value}，点击下载最新版完整安装包`)
+    }
+    if (installerUpdate.value.checking) {
+      return text('正在检查安装包版本')
+    }
+    return text('安装包已是最新版本')
   })
 
   function showToast(type: ToastState['type'], icon: string, title: string, message: string): void {
@@ -212,6 +246,110 @@ export function useAppShellModel() {
     void router.push('/release-updates')
   }
 
+  async function refreshInstallerUpdateHint(silent = true): Promise<void> {
+    if (!isDesktopRuntime() || installerUpdate.value.checking) {
+      return
+    }
+
+    installerUpdate.value = {
+      ...installerUpdate.value,
+      checking: true,
+      error: '',
+    }
+
+    try {
+      const [appVersionInfo, serverVersions] = await Promise.all([
+        getAppVersionInfo(),
+        getServerInstallerVersions(),
+      ])
+      const desktopFullPackage = serverVersions.packages.find((item) => item.id === 'tos-desktop-full')
+      const desktopPackage = serverVersions.packages.find((item) => item.id === 'tos-desktop')
+      const packageInfo = desktopFullPackage || desktopPackage || null
+      const currentVersion = appVersionInfo.version || ''
+      const latestVersion = packageInfo?.version || serverVersions.version || ''
+      const nextState = {
+        ...installerUpdate.value,
+        checking: false,
+        currentVersion,
+        latestVersion,
+        packageInfo,
+        checkedAt: new Date(),
+        error: '',
+      }
+      installerUpdate.value = nextState
+
+      if (packageInfo && compareVersionStrings(latestVersion, currentVersion) > 0) {
+        const versionKey = latestVersion.trim()
+        if (!silent || installerUpdate.value.notifiedVersion !== versionKey) {
+          showToast(
+            'warning',
+            'download-cloud',
+            text('发现安装包更新'),
+            text(`服务器已有 ${formatDisplayVersion(latestVersion)}，可从右上角下载最新版完整安装包。`),
+          )
+          installerUpdate.value = {
+            ...installerUpdate.value,
+            notifiedVersion: versionKey,
+          }
+        }
+      } else if (!silent) {
+        showToast(
+          'info',
+          'check-circle',
+          text('已是最新版本'),
+          text('当前桌面端安装包版本已和服务器保持一致。'),
+        )
+      }
+    } catch (error) {
+      installerUpdate.value = {
+        ...installerUpdate.value,
+        checking: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+      if (!silent) {
+        showToast(
+          'error',
+          'alert-circle',
+          text('检查更新失败'),
+          text('无法连接服务器安装包版本清单，请稍后再试。'),
+        )
+      }
+    }
+  }
+
+  async function downloadInstallerUpdate(): Promise<void> {
+    if (!hasInstallerUpdate.value || installerUpdate.value.downloading) {
+      return
+    }
+
+    installerUpdate.value = {
+      ...installerUpdate.value,
+      downloading: true,
+    }
+
+    try {
+      await openTosDesktopFullDownload()
+      showToast(
+        'info',
+        'download-cloud',
+        text('已开始下载安装包'),
+        text(`正在下载 ${installerUpdateLabel.value || text('最新版本')} 完整安装包，下载完成后请按安装向导覆盖安装。`),
+      )
+    } catch (_error) {
+      showToast(
+        'error',
+        'alert-circle',
+        text('下载安装包失败'),
+        text('无法打开服务器安装包下载，请检查网络或稍后重试。'),
+      )
+    } finally {
+      installerUpdate.value = {
+        ...installerUpdate.value,
+        downloading: false,
+      }
+    }
+  }
+
   function handleTopbarDocumentClick(event: MouseEvent): void {
     if (!profileMenuOpen.value) return
     const target = event.target
@@ -296,12 +434,20 @@ export function useAppShellModel() {
   onMounted(() => {
     handleResize()
     releaseNotice.value = buildReleaseNoticeStateFromStorage()
+    void refreshInstallerUpdateHint(true)
+    installerUpdateTimer = window.setInterval(() => {
+      void refreshInstallerUpdateHint(true)
+    }, 30 * 60 * 1000)
     window.addEventListener('resize', handleResize)
     document.addEventListener('click', handleTopbarDocumentClick)
     document.addEventListener('keydown', handleTopbarKeydown)
   })
   
   onBeforeUnmount(() => {
+    if (installerUpdateTimer) {
+      window.clearInterval(installerUpdateTimer)
+      installerUpdateTimer = null
+    }
     window.removeEventListener('resize', handleResize)
     document.removeEventListener('click', handleTopbarDocumentClick)
     document.removeEventListener('keydown', handleTopbarKeydown)
@@ -340,7 +486,11 @@ export function useAppShellModel() {
     getCategoryLabel,
     getModuleIcon,
     getModuleNavLabel,
+    hasInstallerUpdate,
     hasUnseenReleaseNotes,
+    installerUpdate,
+    installerUpdateLabel,
+    installerUpdateTitle,
     isMobile,
     isModuleActive,
     isNavGroupExpanded,
@@ -358,6 +508,8 @@ export function useAppShellModel() {
     sidebarToggleLabel,
     text,
     toast,
+    downloadInstallerUpdate,
+    refreshInstallerUpdateHint,
     toggleCategory,
     toggleNavGroup,
     toggleSidebar,
@@ -365,4 +517,71 @@ export function useAppShellModel() {
     profileMenuOpen,
     profileMenuRef,
   }
+}
+
+function isDesktopRuntime(): boolean {
+  return Boolean(window.electronAPI?.getAppVersion)
+}
+
+function formatDisplayVersion(version: string): string {
+  const normalized = version.trim()
+  if (!normalized) {
+    return ''
+  }
+  return /^v/i.test(normalized) ? normalized : `V${normalized}`
+}
+
+function compareVersionStrings(left: string, right: string): number {
+  const leftVersion = parseVersion(left)
+  const rightVersion = parseVersion(right)
+  const mainLength = Math.max(leftVersion.main.length, rightVersion.main.length, 3)
+
+  for (let index = 0; index < mainLength; index += 1) {
+    const leftPart = leftVersion.main[index] || 0
+    const rightPart = rightVersion.main[index] || 0
+    if (leftPart !== rightPart) {
+      return leftPart > rightPart ? 1 : -1
+    }
+  }
+
+  if (leftVersion.pre.length === 0 && rightVersion.pre.length > 0) return 1
+  if (leftVersion.pre.length > 0 && rightVersion.pre.length === 0) return -1
+
+  const preLength = Math.max(leftVersion.pre.length, rightVersion.pre.length)
+  for (let index = 0; index < preLength; index += 1) {
+    const leftPart = leftVersion.pre[index]
+    const rightPart = rightVersion.pre[index]
+    if (leftPart === undefined && rightPart !== undefined) return -1
+    if (leftPart !== undefined && rightPart === undefined) return 1
+    if (leftPart === rightPart) continue
+
+    const leftNumber = Number(leftPart)
+    const rightNumber = Number(rightPart)
+    const leftNumeric = Number.isFinite(leftNumber) && String(leftNumber) === leftPart
+    const rightNumeric = Number.isFinite(rightNumber) && String(rightNumber) === rightPart
+
+    if (leftNumeric && rightNumeric) return leftNumber > rightNumber ? 1 : -1
+    if (leftNumeric) return -1
+    if (rightNumeric) return 1
+    return String(leftPart).localeCompare(String(rightPart))
+  }
+
+  return 0
+}
+
+function parseVersion(version: string): { main: number[]; pre: string[] } {
+  const normalized = version
+    .trim()
+    .replace(/^v/i, '')
+    .split('+')[0]
+  const [mainPart = '', prePart = ''] = normalized.split('-', 2)
+  const main = mainPart
+    .split('.')
+    .map((part) => Number(part))
+    .map((part) => (Number.isFinite(part) ? part : 0))
+  const pre = prePart
+    ? prePart.split('.').map((part) => part.trim()).filter(Boolean)
+    : []
+
+  return { main, pre }
 }

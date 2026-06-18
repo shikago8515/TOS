@@ -11,6 +11,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app_version import APP_VERSION
+from utils.installer_manifest import update_installer_manifest
 from utils.minio_storage import get_minio_bucket, put_object_bytes, sha256_bytes
 
 
@@ -48,7 +49,7 @@ def upload_installer(installer_path: Path) -> dict[str, Any]:
         content_type=FULL_CONTENT_TYPE,
     )
 
-    return {
+    result = {
         "ok": True,
         "bucket": bucket,
         "objectKey": FULL_OBJECT_KEY,
@@ -61,6 +62,24 @@ def upload_installer(installer_path: Path) -> dict[str, Any]:
         "downloadPath": "/api/system/config/tos-desktop-full/download",
         "version": APP_VERSION,
     }
+    result["manifest"] = update_installer_manifest(
+        {
+            "tos-desktop-full": {
+                "label": "TOS Desktop Full Installer",
+                "version": APP_VERSION,
+                "filename": FULL_FILENAME,
+                "defaultFilename": FULL_FILENAME,
+                "downloadPath": "/api/system/config/tos-desktop-full/download",
+                "bucket": bucket,
+                "objectKey": FULL_OBJECT_KEY,
+                "versionedObjectKey": versioned_object_key,
+                "contentType": FULL_CONTENT_TYPE,
+                "fileSize": storage["file_size"],
+                "sha256": result["sha256"],
+            }
+        }
+    )
+    return result
 
 
 def main() -> None:

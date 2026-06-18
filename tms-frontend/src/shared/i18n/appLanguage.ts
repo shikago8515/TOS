@@ -913,6 +913,9 @@ const staticTextTranslations: Record<string, string> = {
   云端服务: 'Cloud Server',
   网页应用: 'Web App',
   运行参数: 'Runtime Parameters',
+  轻量安装器版本: 'Lightweight Installer Version',
+  离线全量包版本: 'Offline Full Package Version',
+  网页小助手版本: 'Web Helper Version',
   桌面客户端更新: 'Desktop Client Updates',
   '当前运行在服务器 / 浏览器环境，桌面客户端会显示自动更新能力。':
     'The current runtime is server / browser mode. Automatic update controls are shown in the desktop client.',

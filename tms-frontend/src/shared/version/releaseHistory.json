@@ -40,6 +40,16 @@
     "description": "修正 iPlex 双表核对匹配方向，按 PO # 对应 BUYER ORDER NO. 将 PO 调整数据匹配到 RC 表输出。"
   },
   {
+    "recordKey": "builtin-0.9.8-beta.3.22-fixed-helper-runtime-version-sync",
+    "version": "0.9.8-beta.3.22",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "自动化助手 / 安装包",
+    "pagePath": "/settings",
+    "title": "修复小助手运行时版本同步",
+    "description": "版本同步脚本会同时更新自动化 app registry 和 shipping executor 版本，确保小助手安装后健康检查、更新面板和服务器安装包版本保持一致。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.21-added-iplex-dual-table-compare",
     "version": "0.9.8-beta.3.21",
     "releaseDate": "2026-06-17",
@@ -48,6 +58,16 @@
     "pagePath": "/iplex/dual-table-compare",
     "title": "新增 iPlex 双表核对工具",
     "description": "新增 iPlex 双表核对工具，支持两张 Excel 按指定关键列匹配并导出带筛选的差值核对结果。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.21-improved-helper-and-installer-update-panels",
+    "version": "0.9.8-beta.3.21",
+    "releaseDate": "2026-06-18",
+    "category": "improved",
+    "pageName": "安装包与自动化助手",
+    "pagePath": "/settings",
+    "title": "新增小助手和桌面端更新入口",
+    "description": "小助手启动后可在本机面板检查服务器最新版、下载并打开最新版安装包；桌面端右上角会在服务器完整安装包版本高于本机版本时提示下载更新。"
   },
   {
     "recordKey": "builtin-0.9.8-beta.3.20-fixed-adidas-materials-helper-entry",

@@ -81,6 +81,61 @@ class SystemConfigApiTest(unittest.TestCase):
                 "responses"
             ]["200"]["content"],
         )
+        self.assertIn(
+            "$ref",
+            paths["/api/system/config/installer-versions"]["get"]["responses"]["200"][
+                "content"
+            ]["application/json"]["schema"],
+        )
+
+    def test_installer_versions_returns_minio_manifest_versions(self) -> None:
+        manifest = {
+            "kind": "tos-installer-manifest",
+            "appVersion": "0.9.8-beta.3.20",
+            "updatedAt": "2026-06-18T02:00:00Z",
+            "packages": {
+                "automation-helper": {
+                    "label": "TOS Web Automation Helper",
+                    "version": "0.9.8-beta.3.20",
+                    "filename": "TOS-Automation-Helper-Setup.0.9.8-beta.3.20.exe",
+                    "downloadPath": "/api/system/config/automation-helper/download",
+                    "bucket": "tos-downloads",
+                    "objectKey": "automation-helper/TOS-Automation-Helper-Setup.exe",
+                    "contentType": system_config_api.HELPER_CONTENT_TYPE,
+                    "fileSize": 90617,
+                    "sha256": "a" * 64,
+                }
+            },
+        }
+
+        with patch.object(system_config_api, "get_settings", return_value={}), \
+             patch.object(system_config_api, "get_minio_bucket", return_value="tos-downloads"), \
+             patch.object(system_config_api, "read_installer_manifest", return_value=manifest):
+            response = self.client.get("/api/system/config/installer-versions")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["manifestUpdatedAt"], "2026-06-18T02:00:00Z")
+        packages = {package["id"]: package for package in payload["packages"]}
+        self.assertEqual(packages["automation-helper"]["version"], "0.9.8-beta.3.20")
+        self.assertEqual(packages["automation-helper"]["source"], "manifest")
+        self.assertEqual(packages["automation-helper"]["fileSize"], 90617)
+
+    def test_installer_versions_falls_back_to_current_version_without_manifest(self) -> None:
+        with patch.object(system_config_api, "get_settings", return_value={}), \
+             patch.object(system_config_api, "get_minio_bucket", return_value="tos-downloads"), \
+             patch.object(
+                 system_config_api,
+                 "read_installer_manifest",
+                 return_value={"packages": {}, "updatedAt": None},
+             ):
+            response = self.client.get("/api/system/config/installer-versions")
+
+        self.assertEqual(response.status_code, 200)
+        packages = {package["id"]: package for package in response.json()["packages"]}
+        self.assertEqual(packages["automation-helper"]["version"], system_config_api.APP_VERSION)
+        self.assertEqual(packages["tos-desktop"]["version"], system_config_api.APP_VERSION)
+        self.assertEqual(packages["tos-desktop-full"]["version"], system_config_api.APP_VERSION)
 
     def test_tos_desktop_download_streams_installer(self) -> None:
         requested_keys: list[str] = []

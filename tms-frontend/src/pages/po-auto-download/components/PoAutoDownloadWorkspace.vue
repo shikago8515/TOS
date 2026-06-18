@@ -314,7 +314,6 @@ import {
   saveExecutorCredentials,
   stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
-import { canRunWithCredentials } from '../../web-automation/webAutomationCredentials'
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
 import { getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
 
@@ -383,15 +382,7 @@ const executorSupportsDirectoryPicker = computed(() => Boolean(
 const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
 const canLaunchActiveApp = computed(() => Boolean(entry?.appId) && !launching.value)
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
-const canRunPoDownload = computed(() => {
-  return canRunWithCredentials({
-    username: shippingUsername.value,
-    password: shippingPassword.value,
-    hasStoredCredentials: hasStoredCredentials.value,
-    hasSelectedFile: Boolean(selectedFile.value),
-    sending: sending.value,
-  }) && Boolean(saveDirectory.value.trim())
-})
+const canRunPoDownload = computed(() => !sending.value)
 const inlineStatusClass = computed(() => {
   if (sending.value) return 'pad-status--info'
   if (lastResult.value?.ok) return 'pad-status--ok'
@@ -836,19 +827,54 @@ function clearFile(): void {
   if (fileInput.value) fileInput.value.value = ''
 }
 
-async function runPoAutoDownload(): Promise<void> {
-  if (!entry || !selectedFile.value || sending.value) return
-  if (!saveDirectory.value.trim()) {
-    messageTone.value = 'warning'
-    message.value = text('请先填写下载保存目录。')
-    return
+function showRunRequirementDialog(rawMessage: string): false {
+  const localized = text(rawMessage)
+  messageTone.value = 'warning'
+  message.value = localized
+  statusLabel.value = '待命'
+  statusText.value = localized
+  window.alert(localized)
+  return false
+}
+
+function validatePoDownloadInputs(): boolean {
+  if (!entry) {
+    return showRunRequirementDialog('当前入口不存在，请返回 Eric - Infornexus 页面重新进入。')
   }
+  if (!selectedFile.value) {
+    return showRunRequirementDialog('请先上传 Excel 文件，文件需包含 INVOICE NUMBER 和 STATUS 列。')
+  }
+  if (!saveDirectory.value.trim()) {
+    return showRunRequirementDialog('请先选择或填写下载保存目录。')
+  }
+
+  const username = shippingUsername.value.trim()
+  const password = shippingPassword.value.trim()
+  if (password && !username) {
+    return showRunRequirementDialog('请先填写 User ID。')
+  }
+  if (!password && !hasStoredCredentials.value) {
+    return showRunRequirementDialog('请先填写并保存 Infor Nexus 登录账号密码。')
+  }
+
+  return true
+}
+
+async function runPoAutoDownload(): Promise<void> {
+  if (sending.value) return
+  if (!validatePoDownloadInputs()) return
   if (!await ensureReady()) {
     setNotReady()
+    window.alert(statusText.value)
+    return
+  }
+  const currentEntry = entry
+  if (!currentEntry) {
+    showRunRequirementDialog('当前入口不存在，请返回 Eric - Infornexus 页面重新进入。')
     return
   }
 
-  const file = selectedFile.value
+  const file = selectedFile.value as File
   persistDownloadConfig()
   sending.value = true
   statusLabel.value = '执行中'
@@ -865,7 +891,7 @@ async function runPoAutoDownload(): Promise<void> {
     const payload: Record<string, unknown> = {
       fileName: file.name,
       fileBase64,
-      token: entry.localExecutorToken,
+      token: currentEntry.localExecutorToken,
       headless: !showBrowserView.value,
       downloadDirectory: saveDirectory.value.trim(),
       downloadMode: 'request-first',
@@ -876,7 +902,7 @@ async function runPoAutoDownload(): Promise<void> {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Executor-Token': entry.localExecutorToken,
+        'X-Executor-Token': currentEntry.localExecutorToken,
       },
       body: JSON.stringify(payload),
     })
@@ -1184,6 +1210,20 @@ function goBack(): void {
     background: linear-gradient(135deg, var(--teal), var(--teal-dark));
     box-shadow: 0 12px 26px rgba(13, 148, 136, .24);
     font-size: 13px;
+
+    &:hover:not(:disabled) {
+      color: #fff;
+      border-color: transparent;
+      background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+      box-shadow: 0 14px 30px rgba(13, 148, 136, .3);
+      filter: brightness(1.04);
+    }
+
+    &:disabled {
+      opacity: .78;
+      color: #fff;
+      background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+    }
   }
 
   &--full {

@@ -103,6 +103,19 @@
           </div>
 
           <button
+            v-if="hasInstallerUpdate"
+            class="topbar-update-btn"
+            type="button"
+            :title="installerUpdateTitle"
+            :disabled="installerUpdate.downloading"
+            @click="downloadInstallerUpdate"
+          >
+            <AppIcon name="download-cloud" />
+            <span>{{ text('有更新') }}</span>
+            <small>{{ installerUpdateLabel }}</small>
+          </button>
+
+          <button
             class="topbar-icon-btn topbar-bell"
             type="button"
             :title="text('版本更新记录')"
@@ -235,11 +248,16 @@ import { useAppShellModel } from './useAppShellModel'
 const {
   dismissReleaseNotice,
   displayDate,
+  downloadInstallerUpdate,
   expandedCategories,
   getCategoryLabel,
   getModuleIcon,
   getModuleNavLabel,
+  hasInstallerUpdate,
   hasUnseenReleaseNotes,
+  installerUpdate,
+  installerUpdateLabel,
+  installerUpdateTitle,
   isMobile,
   isModuleActive,
   isNavGroupExpanded,
@@ -1658,6 +1676,58 @@ const {
     transform 0.18s ease;
 }
 
+.topbar-update-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid #99f6e4;
+  border-radius: 10px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.topbar-update-btn:hover {
+  border-color: var(--color-primary);
+  background: #ffffff;
+  box-shadow: var(--shadow-focus);
+  transform: translateY(-1px);
+}
+
+.topbar-update-btn:active {
+  transform: scale(0.98);
+}
+
+.topbar-update-btn:disabled {
+  cursor: wait;
+  opacity: 0.68;
+  transform: none;
+}
+
+.topbar-update-btn small {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--color-primary-strong);
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .topbar-profile {
   display: flex;
   align-items: center;
@@ -1885,6 +1955,14 @@ const {
   }
 
   .topbar-pill {
+    display: none;
+  }
+
+  .topbar-update-btn {
+    padding: 0 10px;
+  }
+
+  .topbar-update-btn span {
     display: none;
   }
 

@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
 from app_version import APP_VERSION
+from utils.installer_manifest import read_installer_manifest
 from utils.minio_storage import get_minio_bucket, get_object_response
 from utils.settings import get_settings, get_settings_summary, resolve_settings_path
 
@@ -57,6 +58,31 @@ class SystemConfigSummaryResponse(BaseModel):
     settings: dict[str, Any]
 
 
+class InstallerPackageInfo(BaseModel):
+    id: str
+    label: str
+    version: str
+    filename: str
+    downloadPath: str
+    bucket: str
+    objectKey: str
+    contentType: str
+    fileSize: int | None = None
+    sha256: str | None = None
+    updatedAt: str | None = None
+    versionedObjectKey: str | None = None
+    defaultFilename: str | None = None
+    payload: dict[str, Any] | None = None
+    source: str = "fallback"
+
+
+class InstallerVersionsResponse(BaseModel):
+    ok: bool
+    version: str
+    manifestUpdatedAt: str | None = None
+    packages: list[InstallerPackageInfo]
+
+
 HELPER_INSTALLER_RESPONSE = {
     "description": "TOS automation helper installer download.",
     "content": {HELPER_CONTENT_TYPE: {}},
@@ -88,6 +114,32 @@ async def config_summary() -> dict[str, Any]:
     return {
         "settingsFile": str(resolve_settings_path()),
         "settings": get_settings_summary(),
+    }
+
+
+@router.get("/installer-versions", response_model=InstallerVersionsResponse)
+async def installer_versions() -> dict[str, Any]:
+    fallback_packages = _build_fallback_installer_packages()
+    manifest = read_installer_manifest()
+    manifest_packages = manifest.get("packages")
+
+    if isinstance(manifest_packages, dict):
+        for package_id, package in manifest_packages.items():
+            if not isinstance(package, dict):
+                continue
+            fallback = fallback_packages.get(str(package_id), {})
+            merged = {**fallback, **package, "id": str(package_id), "source": "manifest"}
+            fallback_packages[str(package_id)] = _normalize_installer_package(merged)
+
+    return {
+        "ok": True,
+        "version": APP_VERSION,
+        "manifestUpdatedAt": manifest.get("updatedAt"),
+        "packages": [
+            fallback_packages["tos-desktop"],
+            fallback_packages["tos-desktop-full"],
+            fallback_packages["automation-helper"],
+        ],
     }
 
 
@@ -435,3 +487,102 @@ async def po_auto_download_template_download() -> StreamingResponse:
         headers=headers,
         background=BackgroundTask(response.close),
     )
+
+
+def _build_fallback_installer_packages() -> dict[str, dict[str, Any]]:
+    settings = get_settings()
+    downloads = settings.get("downloads", {}) if isinstance(settings.get("downloads"), dict) else {}
+    helper_config = downloads.get("automation_helper", {}) if isinstance(downloads.get("automation_helper"), dict) else {}
+    desktop_config = downloads.get("tos_desktop", {}) if isinstance(downloads.get("tos_desktop"), dict) else {}
+    full_config = downloads.get("tos_desktop_full", {}) if isinstance(downloads.get("tos_desktop_full"), dict) else {}
+
+    helper_filename = _versioned_download_filename(
+        helper_config.get("filename"),
+        HELPER_LEGACY_FILENAME,
+        HELPER_DEFAULT_FILENAME,
+    )
+    desktop_filename = _versioned_download_filename(
+        desktop_config.get("filename"),
+        TOS_DESKTOP_LEGACY_FILENAME,
+        TOS_DESKTOP_DEFAULT_FILENAME,
+    )
+    full_filename = _versioned_download_filename(
+        full_config.get("filename"),
+        TOS_DESKTOP_FULL_LEGACY_FILENAME,
+        TOS_DESKTOP_FULL_DEFAULT_FILENAME,
+    )
+
+    return {
+        "tos-desktop": _normalize_installer_package(
+            {
+                "id": "tos-desktop",
+                "label": "TOS Desktop Lightweight Installer",
+                "version": _extract_version_from_filename(desktop_filename) or APP_VERSION,
+                "filename": desktop_filename,
+                "defaultFilename": TOS_DESKTOP_DEFAULT_FILENAME,
+                "downloadPath": "/api/system/config/tos-desktop/download",
+                "bucket": str(desktop_config.get("bucket") or get_minio_bucket(TOS_DESKTOP_DEFAULT_BUCKET_KEY)),
+                "objectKey": str(desktop_config.get("object_key") or TOS_DESKTOP_DEFAULT_OBJECT_KEY),
+                "contentType": str(desktop_config.get("content_type") or TOS_DESKTOP_CONTENT_TYPE),
+                "source": "fallback",
+            }
+        ),
+        "tos-desktop-full": _normalize_installer_package(
+            {
+                "id": "tos-desktop-full",
+                "label": "TOS Desktop Full Installer",
+                "version": _extract_version_from_filename(full_filename) or APP_VERSION,
+                "filename": full_filename,
+                "defaultFilename": TOS_DESKTOP_FULL_DEFAULT_FILENAME,
+                "downloadPath": "/api/system/config/tos-desktop-full/download",
+                "bucket": str(full_config.get("bucket") or get_minio_bucket(TOS_DESKTOP_FULL_DEFAULT_BUCKET_KEY)),
+                "objectKey": str(full_config.get("object_key") or TOS_DESKTOP_FULL_DEFAULT_OBJECT_KEY),
+                "contentType": str(full_config.get("content_type") or TOS_DESKTOP_FULL_CONTENT_TYPE),
+                "source": "fallback",
+            }
+        ),
+        "automation-helper": _normalize_installer_package(
+            {
+                "id": "automation-helper",
+                "label": "TOS Web Automation Helper",
+                "version": _extract_version_from_filename(helper_filename) or APP_VERSION,
+                "filename": helper_filename,
+                "defaultFilename": HELPER_DEFAULT_FILENAME,
+                "downloadPath": "/api/system/config/automation-helper/download",
+                "bucket": str(helper_config.get("bucket") or get_minio_bucket(HELPER_DEFAULT_BUCKET_KEY)),
+                "objectKey": str(helper_config.get("object_key") or HELPER_DEFAULT_OBJECT_KEY),
+                "contentType": str(helper_config.get("content_type") or HELPER_CONTENT_TYPE),
+                "source": "fallback",
+            }
+        ),
+    }
+
+
+def _normalize_installer_package(package: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(package.get("id") or ""),
+        "label": str(package.get("label") or ""),
+        "version": str(package.get("version") or APP_VERSION),
+        "filename": str(package.get("filename") or package.get("defaultFilename") or ""),
+        "downloadPath": str(package.get("downloadPath") or ""),
+        "bucket": str(package.get("bucket") or ""),
+        "objectKey": str(package.get("objectKey") or package.get("object_key") or ""),
+        "contentType": str(package.get("contentType") or package.get("content_type") or "application/octet-stream"),
+        "fileSize": package.get("fileSize") or package.get("file_size"),
+        "sha256": package.get("sha256"),
+        "updatedAt": package.get("updatedAt"),
+        "versionedObjectKey": package.get("versionedObjectKey") or package.get("versioned_object_key"),
+        "defaultFilename": package.get("defaultFilename"),
+        "payload": package.get("payload") if isinstance(package.get("payload"), dict) else None,
+        "source": str(package.get("source") or "fallback"),
+    }
+
+
+def _extract_version_from_filename(filename: str) -> str:
+    stem = str(filename or "").strip().replace("\\", "/").rsplit("/", 1)[-1]
+    for suffix in (".exe", ".zip"):
+        if stem.lower().endswith(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    match = re.search(r"(\d+\.\d+\.\d+(?:-[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)?)$", stem)
+    return match.group(1) if match else ""

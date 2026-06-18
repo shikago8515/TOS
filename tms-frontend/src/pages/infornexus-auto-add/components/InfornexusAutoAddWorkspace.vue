@@ -253,7 +253,6 @@ import {
   primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
   recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
-import { canRunWithCredentials } from '../../web-automation/webAutomationCredentials'
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
 
@@ -299,7 +298,7 @@ const savedCredentialUsername = computed(() => executorCredentials.value?.userna
 const primaryTemplate = computed(() => automationTemplates.value[0] || null)
 const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
 const executorRunUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-infornexus-auto-add-file` : '' })
-const canRunShippingAutomation = computed(() => canRunWithCredentials({ username: shippingUsername.value, password: shippingPassword.value, hasStoredCredentials: hasStoredCredentials.value, hasSelectedFile: Boolean(selectedFile.value), sending: sending.value }))
+const canRunShippingAutomation = computed(() => !sending.value)
 const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
 
 onMounted(() => { void initializeScenario() })
@@ -424,13 +423,37 @@ function collectResultFiles(p: Record<string, any> | null): AutomationRunFileInp
 function bfi(rp: string, fr: string, fn: string): AutomationRunFileInput | null { const u = buildArtifactUrl(rp); if (!u) return null; return { url: u, fileRole: fr, fileName: fn } }
 function buildArtifactUrl(rp: string): string { const np = String(rp || '').trim(); if (!np) return ''; if (/^https?:\/\//i.test(np)) return np; const bu = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return bu ? `${bu}${np.startsWith('/') ? np : `/${np}`}` : '' }
 
+function showRunRequirementDialog(rawMessage: string): false {
+  const localized = text(rawMessage)
+  messageTone.value = 'warning'
+  message.value = localized
+  statusLabel.value = '待命'
+  statusText.value = localized
+  lastResult.value = { ok: false, message: localized }
+  window.alert(localized)
+  return false
+}
+
+function validateAutoAddInputs(): boolean {
+  if (!entry) return showRunRequirementDialog('当前入口不存在，请返回 Eric - Infornexus 页面重新进入。')
+  if (!selectedFile.value) return showRunRequirementDialog('请先上传 Excel 文件，请把 10 位 ID 放在第二列。')
+  const username = shippingUsername.value.trim()
+  const password = shippingPassword.value.trim()
+  if (password && !username) return showRunRequirementDialog('请先填写 User ID。')
+  if (!password && !hasStoredCredentials.value) return showRunRequirementDialog('请先填写并保存 Infor Nexus 登录账号密码。')
+  return true
+}
+
 async function runInfornexusAutoAdd(): Promise<void> {
-  if (!entry || sending.value || !selectedFile.value) return
-  if (!(await ensureReady())) { setNotReady(); return }
-  const file = selectedFile.value; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; lastRawResponse.value = ''; message.value = ''
+  if (sending.value) return
+  if (!validateAutoAddInputs()) return
+  if (!(await ensureReady())) { setNotReady(); window.alert(statusText.value); return }
+  const currentEntry = entry
+  if (!currentEntry) { showRunRequirementDialog('当前入口不存在，请返回 Eric - Infornexus 页面重新进入。'); return }
+  const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; lastRawResponse.value = ''; message.value = ''
   try {
     const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload()
-    const res = await fetch(executorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: entry.localExecutorToken, headless: !showBrowserView.value, ...cp }) })
+    const res = await fetch(executorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': currentEntry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: currentEntry.localExecutorToken, headless: !showBrowserView.value, ...cp }) })
     const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw)
     await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j)
     if (!res.ok) { const m = formatAutomationExecutorMessage(j?.message || `HTTP ${res.status}`); if (shouldShowAutomationErrorDialog(j?.message)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }
@@ -750,7 +773,12 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
     background: linear-gradient(135deg, var(--em), #047857);
     box-shadow: 0 3px 14px rgba(5,150,105,.25);
     :deep(.app-icon) { font-size: 14px; }
-    &:hover:not(:disabled) { filter: brightness(1.06); box-shadow: 0 5px 20px rgba(5,150,105,.35); }
+    &:hover:not(:disabled) {
+      color: #fff;
+      background: linear-gradient(135deg, var(--em), #047857);
+      filter: brightness(1.06);
+      box-shadow: 0 5px 20px rgba(5,150,105,.35);
+    }
   }
 }
 

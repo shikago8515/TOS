@@ -263,7 +263,6 @@ import {
   primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
   recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
-import { canRunWithCredentials } from '../../web-automation/webAutomationCredentials'
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
 
@@ -311,7 +310,7 @@ const savedCredentialUsername = computed(() => executorCredentials.value?.userna
 const primaryTemplate = computed(() => automationTemplates.value[0] || null)
 const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
 const shippingExecutorRunUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-xinlongtai-shipping-file` : '' })
-const canRunShippingAutomation = computed(() => canRunWithCredentials({ username: shippingUsername.value, password: shippingPassword.value, hasStoredCredentials: hasStoredCredentials.value, hasSelectedFile: Boolean(selectedFile.value), sending: sending.value }))
+const canRunShippingAutomation = computed(() => !sending.value)
 const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
 
 onMounted(() => { void initializeScenario() })
@@ -450,13 +449,37 @@ function collectResultFiles(p: Record<string, any> | null): AutomationRunFileInp
 }
 function bfi(rp: string, fr: string, fn: string): AutomationRunFileInput | null { const u = buildShippingArtifactUrl(rp); if (!u) return null; return { url: u, fileRole: fr, fileName: fn } }
 
+function showRunRequirementDialog(rawMessage: string): false {
+  const localized = text(rawMessage)
+  messageTone.value = 'warning'
+  message.value = localized
+  statusLabel.value = '待命'
+  statusText.value = localized
+  lastResult.value = { ok: false, message: localized }
+  window.alert(localized)
+  return false
+}
+
+function validateShippingInputs(): boolean {
+  if (!entry) return showRunRequirementDialog('当前入口不存在，请返回 Eric - Infornexus 页面重新进入。')
+  if (!selectedFile.value) return showRunRequirementDialog('请先上传 Excel 文件，文件需包含 PO No 列。')
+  const username = shippingUsername.value.trim()
+  const password = shippingPassword.value.trim()
+  if (password && !username) return showRunRequirementDialog('请先填写 User ID。')
+  if (!password && !hasStoredCredentials.value) return showRunRequirementDialog('请先填写并保存 Infor Nexus 登录账号密码。')
+  return true
+}
+
 async function runShipping(): Promise<void> {
-  if (!entry || sending.value || !selectedFile.value) return
-  if (!(await ensureReady())) { setNotReady(); return }
-  const file = selectedFile.value; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''
+  if (sending.value) return
+  if (!validateShippingInputs()) return
+  if (!(await ensureReady())) { setNotReady(); window.alert(statusText.value); return }
+  const currentEntry = entry
+  if (!currentEntry) { showRunRequirementDialog('当前入口不存在，请返回 Eric - Infornexus 页面重新进入。'); return }
+  const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''
   try {
     const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload()
-    const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: entry.localExecutorToken, headless: !showBrowserView.value, ...cp, automationId: entry.id, shipmentScanAction: 'assign-equipment-id' }) })
+    const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': currentEntry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: currentEntry.localExecutorToken, headless: !showBrowserView.value, ...cp, automationId: currentEntry.id, shipmentScanAction: 'assign-equipment-id' }) })
     const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); updateShippingArtifactLinks(j)
     await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j)
     if (!res.ok) { const m = formatAutomationExecutorMessage(j?.message || `HTTP ${res.status}`); if (shouldShowAutomationErrorDialog(j?.message)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }

@@ -122,6 +122,16 @@ DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
         "修正 iPlex 双表核对匹配方向，按 PO # 对应 BUYER ORDER NO. 将 PO 调整数据匹配到 RC 表输出。",
     ),
     _default_record(
+        "builtin-0.9.8-beta.3.22-fixed-helper-runtime-version-sync",
+        "0.9.8-beta.3.22",
+        "2026-06-18",
+        "fixed",
+        "自动化助手 / 安装包",
+        "/settings",
+        "修复小助手运行时版本同步",
+        "版本同步脚本会同时更新自动化 app registry 和 shipping executor 版本，确保小助手安装后健康检查、更新面板和服务器安装包版本保持一致。",
+    ),
+    _default_record(
         "builtin-0.9.8-beta.3.21-added-iplex-dual-table-compare",
         "0.9.8-beta.3.21",
         "2026-06-17",
@@ -130,6 +140,16 @@ DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
         "/iplex/dual-table-compare",
         "新增 iPlex 双表核对工具",
         "新增 iPlex 双表核对工具，支持两张 Excel 按指定关键列匹配并导出带筛选的差值核对结果。",
+    ),
+    _default_record(
+        "builtin-0.9.8-beta.3.21-improved-helper-and-installer-update-panels",
+        "0.9.8-beta.3.21",
+        "2026-06-18",
+        "improved",
+        "安装包与自动化助手",
+        "/settings",
+        "新增小助手和桌面端更新入口",
+        "小助手启动后可在本机面板检查服务器最新版、下载并打开最新版安装包；桌面端右上角会在服务器完整安装包版本高于本机版本时提示下载更新。",
     ),
     _default_record(
         "builtin-0.9.8-beta.3.20-fixed-adidas-materials-helper-entry",

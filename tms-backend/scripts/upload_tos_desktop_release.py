@@ -11,6 +11,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app_version import APP_VERSION
+from utils.installer_manifest import update_installer_manifest
 from utils.minio_storage import get_minio_bucket, put_object_bytes, sha256_bytes
 
 
@@ -109,6 +110,24 @@ def upload_release(installer_path: Path, payload_path: Path | None = None) -> di
     }
     if payload_result is not None:
         result["payload"] = payload_result
+    result["manifest"] = update_installer_manifest(
+        {
+            "tos-desktop": {
+                "label": "TOS Desktop Lightweight Installer",
+                "version": APP_VERSION,
+                "filename": DESKTOP_FILENAME,
+                "defaultFilename": DESKTOP_FILENAME,
+                "downloadPath": "/api/system/config/tos-desktop/download",
+                "bucket": bucket,
+                "objectKey": DESKTOP_OBJECT_KEY,
+                "versionedObjectKey": installer_versioned_object_key,
+                "contentType": DESKTOP_CONTENT_TYPE,
+                "fileSize": storage["file_size"],
+                "sha256": result["sha256"],
+                "payload": payload_result,
+            }
+        }
+    )
     return result
 
 
