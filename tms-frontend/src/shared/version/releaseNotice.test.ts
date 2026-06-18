@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { fallbackAppVersion } from './appVersion'
 import releaseNotes from './releaseNotes.json'
 import {
+  buildReleaseNoticeGroups,
   buildReleaseNoticeState,
   markReleaseNoticeSeen,
+  releaseNoticeSeenKeyStorageKey,
   releaseNoticeStorageKey,
   type ReleaseNotes,
   type StorageLike,
@@ -80,6 +82,76 @@ describe('releaseNotice', () => {
     expect(state.visible).toBe(false)
   })
 
+  it('does not show when the current release notes disable popup display', () => {
+    const state = buildReleaseNoticeState({
+      currentVersion,
+      releaseNotes: createNotes({ showPopup: false }),
+      seenNoticeKey: null,
+      seenVersion: null,
+    })
+
+    expect(state.visible).toBe(false)
+    expect(state.releaseNotes).toBeNull()
+  })
+
+  it('uses noticeId instead of version as the seen key for batched popups', () => {
+    const storage = new MemoryStorage()
+    const releaseNotes = createNotes({
+      noticeId: '2026-06-18-batch',
+      showPopup: true,
+    })
+
+    const firstState = buildReleaseNoticeState({
+      currentVersion,
+      releaseNotes,
+      seenNoticeKey: null,
+      seenVersion: currentVersion,
+    })
+    expect(firstState.visible).toBe(true)
+
+    markReleaseNoticeSeen(storage, currentVersion, releaseNotes)
+    expect(storage.getItem(releaseNoticeSeenKeyStorageKey)).toBe('2026-06-18-batch')
+    expect(storage.getItem(releaseNoticeStorageKey)).toBe(currentVersion)
+
+    const secondState = buildReleaseNoticeState({
+      currentVersion: '0.9.8-beta.3.99',
+      releaseNotes: { ...releaseNotes, version: '0.9.8-beta.3.99' },
+      seenNoticeKey: storage.getItem(releaseNoticeSeenKeyStorageKey),
+      seenVersion: storage.getItem(releaseNoticeStorageKey),
+    })
+    expect(secondState.visible).toBe(false)
+  })
+
+  it('builds release notice groups by module when module notes exist', () => {
+    const groups = buildReleaseNoticeGroups(createNotes({
+      modules: [
+        {
+          name: 'iPlex 双表核对',
+          fixed: ['总计行不再写公式。'],
+        },
+        {
+          name: 'Work Sales',
+          improved: ['合并导出流程。'],
+        },
+      ],
+    }))
+
+    expect(groups).toEqual([
+      {
+        key: 'module-0',
+        title: 'iPlex 双表核对',
+        icon: 'sparkles',
+        items: ['修复：总计行不再写公式。'],
+      },
+      {
+        key: 'module-1',
+        title: 'Work Sales',
+        icon: 'sparkles',
+        items: ['优化：合并导出流程。'],
+      },
+    ])
+  })
+
   it('does not show when release notes are not for the current version', () => {
     const state = buildReleaseNoticeState({
       currentVersion,
@@ -96,9 +168,15 @@ describe('releaseNotice', () => {
 
   it('keeps bundled release notes scoped to the current version changes', () => {
     expect(releaseNotes.added).toEqual([])
-    expect(releaseNotes.improved).toEqual([])
-    expect(releaseNotes.fixed).toEqual([
-      '修复 adidas Materials 网页端启动独立自动化助手时缺少 collector 入口的问题。',
+    expect(releaseNotes.improved).toEqual([
+      'iPlex 双表核对删除可见列配置区，上传两张表后自动识别固定业务列并直接显示核对异常表。',
+      '版本更新弹窗改为按发布批次触发，支持按模块集中展示更新内容，小修改默认不主动弹窗。',
+    ])
+    expect(releaseNotes.fixed).toEqual([])
+    expect(releaseNotes.showPopup).toBe(false)
+    expect(releaseNotes.modules.map((module) => module.name)).toEqual([
+      'iPlex 双表核对',
+      '版本更新提示',
     ])
   })
 })

@@ -324,6 +324,16 @@ function buildReleaseUpdateDescription({ version, releaseNotes, gitInfo, subject
 }
 
 function summarizeReleaseNotes(releaseNotes) {
+  const moduleNotes = Array.isArray(releaseNotes.modules)
+    ? releaseNotes.modules
+      .flatMap((module) => summarizeReleaseNoteModule(module))
+      .filter(Boolean)
+    : []
+
+  if (moduleNotes.length > 0) {
+    return moduleNotes.slice(0, 3).join('；')
+  }
+
   return ['added', 'improved', 'fixed']
     .flatMap((key) => {
       const items = releaseNotes[key]
@@ -336,10 +346,46 @@ function summarizeReleaseNotes(releaseNotes) {
 }
 
 function hasReleaseNotesContent(releaseNotes) {
-  return ['added', 'improved', 'fixed'].some((key) => {
+  const legacyHasContent = ['added', 'improved', 'fixed'].some((key) => {
     const items = releaseNotes[key]
-    return Array.isArray(items) && items.some((item) => typeof item === 'string' && item.trim())
+    return hasStringItems(items)
   })
+  const modulesHasContent = Array.isArray(releaseNotes.modules)
+    && releaseNotes.modules.some((module) => {
+      return hasStringItems(module?.added)
+        || hasStringItems(module?.improved)
+        || hasStringItems(module?.fixed)
+    })
+
+  return legacyHasContent || modulesHasContent
+}
+
+function summarizeReleaseNoteModule(module) {
+  const name = String(module?.name || '').trim()
+  if (!name) {
+    return []
+  }
+
+  return [
+    ...summarizeReleaseNoteItems(module.added, name, '新增'),
+    ...summarizeReleaseNoteItems(module.improved, name, '优化'),
+    ...summarizeReleaseNoteItems(module.fixed, name, '修复'),
+  ]
+}
+
+function summarizeReleaseNoteItems(items, moduleName, category) {
+  if (!Array.isArray(items)) {
+    return []
+  }
+
+  return items
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .map((item) => `${moduleName}：${category}：${item}`)
+}
+
+function hasStringItems(items) {
+  return Array.isArray(items) && items.some((item) => typeof item === 'string' && item.trim())
 }
 
 async function readJson(filePath) {

@@ -72,6 +72,7 @@ describe('moduleCatalog', () => {
     const invoiceModule = getModuleById('jason-pdf-reorder')
     const internalReconciliationModule = getModuleById('tms-finance-internal-reconciliation')
     const workSalesModule = getModuleById('tms-finance-work-sales')
+    const iplexModule = getModuleById('iplex-dual-table-compare')
 
     expect(getLocalizedModuleTitle(invoiceModule, 'zh-CN')).toBe('Jason / 发票 PDF 重排序')
     expect(getLocalizedModuleTitle(invoiceModule, 'en-US')).toBe('Jason / Invoice PDF Reorder')
@@ -82,6 +83,26 @@ describe('moduleCatalog', () => {
     expect(getLocalizedModuleTitle(workSalesModule, 'zh-CN')).toBe('Work Sales 数据写入')
     expect(getLocalizedModuleTitle(workSalesModule, 'en-US')).toBe('Work Sales Data Fill')
     expect(getLocalizedModuleTitle(workSalesModule, 'en-US')).not.toBe(workSalesModule.navLabelEn)
+    expect(getLocalizedModuleTitle(iplexModule, 'zh-CN')).toBe('iPlex 双表核对')
+    expect(getLocalizedModuleTitle(iplexModule, 'en-US')).toBe('iPlex Dual Table Compare')
+  })
+
+  it('exposes iPlex dual table compare under Lucia finance tools', () => {
+    const iplexModule = getModuleById('iplex-dual-table-compare')
+    const luciaModules = getModulesByGroup('finance-excel')
+    const moduleIds = luciaModules.map((module) => module.id)
+
+    expect(iplexModule).toMatchObject({
+      group: 'finance-excel',
+      path: '/iplex/dual-table-compare',
+      routeName: 'iplex-dual-table-compare',
+      category: 'excel',
+      stage: 'validation',
+    })
+    expect(moduleIds).toContain('iplex-dual-table-compare')
+    expect(moduleIds.indexOf('iplex-dual-table-compare')).toBeGreaterThan(
+      moduleIds.indexOf('tms-finance-work-sales'),
+    )
   })
 
   it('defines English full titles for every module', () => {
