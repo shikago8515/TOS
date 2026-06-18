@@ -115,6 +115,10 @@ export async function openAutomationHelperDownload(): Promise<void> {
   anchor.remove()
 }
 
+export function openAutomationHelperPanel(): void {
+  window.open(`${launcherBaseUrl}/`, '_blank', 'noopener')
+}
+
 export async function fetchAutomationApps(): Promise<AutomationAppInfo[]> {
   if (window.electronAPI?.getAutomationApps) {
     return window.electronAPI.getAutomationApps()

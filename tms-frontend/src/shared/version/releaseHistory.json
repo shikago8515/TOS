@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.21-improved-helper-and-installer-update-panels",
+    "version": "0.9.8-beta.3.21",
+    "releaseDate": "2026-06-18",
+    "category": "improved",
+    "pageName": "安装包与自动化助手",
+    "pagePath": "/settings",
+    "title": "新增小助手和桌面端更新入口",
+    "description": "小助手启动后可在本机面板检查服务器最新版、下载并打开最新版安装包；桌面端右上角会在服务器完整安装包版本高于本机版本时提示下载更新。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.20-fixed-adidas-materials-helper-entry",
     "version": "0.9.8-beta.3.20",
     "releaseDate": "2026-06-17",

@@ -23,7 +23,10 @@ import {
 } from './settingsApi'
 import type { ServerInstallerVersions } from './settingsApi'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
-import { openAutomationHelperDownload } from '../web-automation/webAutomationApi'
+import {
+  openAutomationHelperDownload,
+  openAutomationHelperPanel,
+} from '../web-automation/webAutomationApi'
 
 type NoticeTone = 'info' | 'success' | 'warning' | 'error'
 type UpdateAction = '' | 'init' | 'check' | 'download' | 'install' | 'manual'
@@ -315,6 +318,12 @@ export function useSettingsPageModel() {
       helperDownloading.value = false
     }
   }
+
+  function handleHelperPanelOpen(): void {
+    openAutomationHelperPanel()
+    messageTone.value = 'info'
+    message.value = '已打开本机自动化助手更新面板。'
+  }
   
   async function runUpdateAction(
     action: Exclude<UpdateAction, '' | 'init'>,
@@ -478,6 +487,7 @@ export function useSettingsPageModel() {
     handleDesktopInstallerDownload,
     handleDownload,
     handleHelperDownload,
+    handleHelperPanelOpen,
     handleInstall,
     handleManualDownload,
     hasCategorizedChangelog,

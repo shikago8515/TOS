@@ -232,6 +232,14 @@
                         <AppIcon name="download" />
                         <span>{{ helperDownloading ? text('获取中...') : text('极速下载助手扩展') }}</span>
                       </button>
+                      <button
+                        class="stg-btn-ghost"
+                        type="button"
+                        @click="handleHelperPanelOpen"
+                      >
+                        <AppIcon name="monitor-code" />
+                        <span>{{ text('打开小助手面板') }}</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -364,6 +372,7 @@ const {
   handleDesktopInstallerDownload,
   handleDownload,
   handleHelperDownload,
+  handleHelperPanelOpen,
   handleInstall,
   handleManualDownload,
   hasDesktopUpdateSupport,
@@ -985,6 +994,13 @@ button, input, select, textarea {
   justify-content: flex-start;
 }
 
+.stg-card-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .stg-card-header-row {
   display: flex;
   justify-content: space-between;
@@ -1183,6 +1199,33 @@ button, input, select, textarea {
       color: #ffffff;
       box-shadow: 0 4px 10px rgba(20, 184, 166, 0.15);
     }
+  }
+}
+
+.stg-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 32px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: var(--border-radius-inner);
+  background: #ffffff;
+  color: var(--slate-500);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition-bezier);
+
+  &:hover {
+    border-color: var(--cyan-500);
+    color: var(--cyan-700);
+    background: var(--cyan-50);
+  }
+
+  &:active {
+    transform: scale(0.97) !important;
   }
 }
 
