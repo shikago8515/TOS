@@ -10,6 +10,30 @@ const defaultTosDesktopDownloadPath = 'https://ai.tomwell.net:56130/tos/tos-desk
 const defaultTosDesktopFullDownloadPath = 'https://ai.tomwell.net:56130/tos/tos-desktop-full/download'
 const defaultServerBackendBaseUrl = 'https://ai.tomwell.net:56130/tos/desktop-api'
 
+export interface ServerInstallerPackage {
+  id: string
+  label: string
+  version: string
+  filename: string
+  downloadPath: string
+  bucket: string
+  objectKey: string
+  contentType: string
+  fileSize?: number | null
+  sha256?: string | null
+  updatedAt?: string | null
+  versionedObjectKey?: string | null
+  defaultFilename?: string | null
+  source?: string
+}
+
+export interface ServerInstallerVersions {
+  ok: boolean
+  version: string
+  manifestUpdatedAt?: string | null
+  packages: ServerInstallerPackage[]
+}
+
 export function hasUpdateBridge(): boolean {
   return Boolean(window.electronAPI?.getUpdateStatus)
 }
@@ -44,6 +68,33 @@ export async function getBackendRuntimeVersion(): Promise<string> {
       : fallbackAppVersion
   } catch (_error) {
     return fallbackAppVersion
+  }
+}
+
+export async function getServerInstallerVersions(): Promise<ServerInstallerVersions> {
+  try {
+    const backendBaseUrl = await getVersionBackendBaseUrl()
+    const response = await fetch(`${backendBaseUrl}/api/system/config/installer-versions`)
+
+    if (!response.ok) {
+      return buildFallbackInstallerVersions()
+    }
+
+    const payload = await response.json() as Partial<ServerInstallerVersions>
+    return {
+      ok: payload.ok === true,
+      version: typeof payload.version === 'string' && payload.version.trim()
+        ? payload.version.trim()
+        : fallbackAppVersion,
+      manifestUpdatedAt: typeof payload.manifestUpdatedAt === 'string'
+        ? payload.manifestUpdatedAt
+        : null,
+      packages: Array.isArray(payload.packages)
+        ? payload.packages.map(normalizeServerInstallerPackage).filter(isServerInstallerPackage)
+        : [],
+    }
+  } catch (_error) {
+    return buildFallbackInstallerVersions()
   }
 }
 
@@ -187,6 +238,48 @@ async function readBrowserAppVersion(): Promise<string> {
   } catch (_error) {
     return fallbackAppVersion
   }
+}
+
+function buildFallbackInstallerVersions(): ServerInstallerVersions {
+  return {
+    ok: false,
+    version: fallbackAppVersion,
+    manifestUpdatedAt: null,
+    packages: [],
+  }
+}
+
+function normalizeServerInstallerPackage(packageInfo: unknown): ServerInstallerPackage | null {
+  if (!packageInfo || typeof packageInfo !== 'object') {
+    return null
+  }
+
+  const value = packageInfo as Record<string, unknown>
+  const id = typeof value.id === 'string' ? value.id.trim() : ''
+  if (!id) {
+    return null
+  }
+
+  return {
+    id,
+    label: typeof value.label === 'string' ? value.label : '',
+    version: typeof value.version === 'string' ? value.version : '',
+    filename: typeof value.filename === 'string' ? value.filename : '',
+    downloadPath: typeof value.downloadPath === 'string' ? value.downloadPath : '',
+    bucket: typeof value.bucket === 'string' ? value.bucket : '',
+    objectKey: typeof value.objectKey === 'string' ? value.objectKey : '',
+    contentType: typeof value.contentType === 'string' ? value.contentType : '',
+    fileSize: typeof value.fileSize === 'number' ? value.fileSize : null,
+    sha256: typeof value.sha256 === 'string' ? value.sha256 : null,
+    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : null,
+    versionedObjectKey: typeof value.versionedObjectKey === 'string' ? value.versionedObjectKey : null,
+    defaultFilename: typeof value.defaultFilename === 'string' ? value.defaultFilename : null,
+    source: typeof value.source === 'string' ? value.source : '',
+  }
+}
+
+function isServerInstallerPackage(packageInfo: ServerInstallerPackage | null): packageInfo is ServerInstallerPackage {
+  return packageInfo !== null
 }
 
 async function getVersionBackendBaseUrl(): Promise<string> {

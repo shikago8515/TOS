@@ -89,7 +89,7 @@
                   </template>
                   <div v-if="bulk.dragging" class="s2-drop__overlay">{{ text('释放以上传') }}</div>
                 </div>
-                <button class="s2-btn s2-btn--run" :class="`s2-btn--run-${bulk.id}`" :disabled="bulk.running || !bulk.file" @click="startBulkAutomation(bulk.id)">
+                <button class="s2-btn s2-btn--run" :class="`s2-btn--run-${bulk.id}`" :disabled="bulk.running" @click="startBulkAutomation(bulk.id)">
                   <AppIcon :name="bulk.running ? 'loader' : 'play-circle'" :class="{ 's2-spin': bulk.running }" />
                   {{ bulk.running ? text('启动中...') : text('执行') }}
                 </button>
@@ -339,26 +339,31 @@ async function createBulkRunRecord(b: BulkState): Promise<AutomationRunRecord | 
 async function finishBulkRunRecord(rr: AutomationRunRecord | null, ok: boolean, msg: string, p: BulkResult | null): Promise<void> { if (!rr?.runId) return; await finishAutomationRunRecord(rr.runId, ok ? 'success' : 'failed', msg || (ok ? 'completed' : 'failed'), p) }
 
 async function startBulkAutomation(id: BulkId): Promise<void> {
-  const b = getBulk(id); if (!entry || !b || !b.file || b.running) return
+  const b = getBulk(id); if (!b || b.running) return
+  if (!validateBulkInputs(b)) return
+  const file = b.file as File
+  const currentEntry = entry
+  if (!currentEntry) { showRunRequirementDialog('当前入口不存在，请返回 Eric - Infornexus 页面重新进入。', b); return }
   b.running = true; b.tone = 'info'; b.result = null; b.statusText = `${b.label} 正在启动...`
   try {
     if (!(await ensureExecutorReady())) {
       b.tone = 'error'
       b.statusText = '执行器未就绪。'
+      window.alert(text('本机执行器尚未就绪，请先启动执行器后再试。'))
       return
     }
     const rr = await createBulkRunRecord(b)
-    const fb64 = await fileToBase64(b.file)
+    const fb64 = await fileToBase64(file)
     const cp = await resolveRunCredentialsPayload()
     const res = await fetch(getBulkUrl(id), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.localExecutorToken },
+      headers: { 'Content-Type': 'application/json', 'X-Executor-Token': currentEntry.localExecutorToken },
       body: JSON.stringify({
-        token: entry.localExecutorToken,
+        token: currentEntry.localExecutorToken,
         headless: !showBrowserView.value,
         ...cp,
         bulkType: id,
-        fileName: b.file.name,
+        fileName: file.name,
         fileBase64: fb64,
       }),
     })
@@ -394,6 +399,28 @@ function createFallbackAutomationApp(t: WebAutomationEntry): AutomationAppInfo {
 function safeParseJson<T>(raw: string): T | null { try { return raw ? JSON.parse(raw) as T : null } catch { return null } }
 function readErrorMessage(e: unknown, fb: string): string { return e instanceof Error && e.message ? e.message : fb }
 function goBack(): void { void router.push('/eric-infornexus') }
+
+function showRunRequirementDialog(rawMessage: string, bulk?: BulkState): false {
+  const localized = text(rawMessage)
+  messageTone.value = 'warning'
+  message.value = localized
+  if (bulk) {
+    bulk.tone = 'error'
+    bulk.statusText = localized
+  }
+  window.alert(localized)
+  return false
+}
+
+function validateBulkInputs(bulk: BulkState): boolean {
+  if (!entry) return showRunRequirementDialog('当前入口不存在，请返回 Eric - Infornexus 页面重新进入。', bulk)
+  if (!bulk.file) return showRunRequirementDialog(`请先为 ${bulk.label} 上传 Excel 文件。`, bulk)
+  const username = shippingUsername.value.trim()
+  const password = shippingPassword.value.trim()
+  if (password && !username) return showRunRequirementDialog('请先填写 User ID。', bulk)
+  if (!password && !hasStoredCredentials.value) return showRunRequirementDialog('请先填写并保存 Infor Nexus 登录账号密码。', bulk)
+  return true
+}
 </script>
 
 <style scoped lang="scss">
@@ -689,10 +716,13 @@ function goBack(): void { void router.push('/eric-infornexus') }
     width: 100%; height: 40px; font-size: 13px; font-weight: 700; color: #fff;
     border-color: transparent; border-radius: 12px;
     :deep(.app-icon) { font-size: 14px; }
-    &:hover:not(:disabled) { filter: brightness(1.06); }
+    &:hover:not(:disabled) { color: #fff; filter: brightness(1.06); }
+    &:disabled { opacity: .78; color: #fff; }
   }
   &--run-unreleased { background: linear-gradient(135deg, var(--a), var(--ag)); box-shadow: 0 3px 12px rgba(14,165,233,.25); }
   &--run-released   { background: linear-gradient(135deg, var(--em), #047857); box-shadow: 0 3px 12px rgba(5,150,105,.25); }
+  &--run-unreleased:hover:not(:disabled) { background: linear-gradient(135deg, var(--a), var(--ag)); }
+  &--run-released:hover:not(:disabled) { background: linear-gradient(135deg, var(--em), #047857); }
 }
 
 /* ═══ CHIPS ═══ */

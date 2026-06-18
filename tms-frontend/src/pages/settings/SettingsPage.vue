@@ -302,6 +302,18 @@
               <span class="stg-metadata-val mono-font">{{ currentVersion }}</span>
             </div>
 
+            <!-- 服务器安装包版本 -->
+            <div
+              v-for="packageRow in serverInstallerPackageRows"
+              :key="packageRow.key"
+              class="stg-metadata-item"
+            >
+              <span class="stg-metadata-key">{{ text(packageRow.label) }}</span>
+              <span class="stg-metadata-val mono-font highlight-cyan" :title="packageRow.filename || packageRow.versionLabel">
+                {{ packageRow.versionLabel }}
+              </span>
+            </div>
+
             <!-- 最新版本 (仅限桌面端) -->
             <div v-if="hasDesktopUpdateSupport" class="stg-metadata-item">
               <span class="stg-metadata-key">{{ t('app.settings.latestVersion') }}</span>
@@ -365,6 +377,7 @@ const {
   noticeTone,
   progressPercent,
   runModeLabel,
+  serverInstallerPackageRows,
   status,
   statusLabel,
   statusTone,

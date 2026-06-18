@@ -11,6 +11,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from utils.minio_storage import get_minio_bucket, put_object_bytes, sha256_bytes
+from utils.installer_manifest import update_installer_manifest
 from app_version import APP_VERSION
 
 
@@ -107,6 +108,24 @@ def upload_installer(installer_path: Path, payload_path: Path | None = None) -> 
     }
     if payload_result is not None:
         result["payload"] = payload_result
+    result["manifest"] = update_installer_manifest(
+        {
+            "automation-helper": {
+                "label": "TOS Web Automation Helper",
+                "version": APP_VERSION,
+                "filename": HELPER_FILENAME,
+                "defaultFilename": HELPER_FILENAME,
+                "downloadPath": "/api/system/config/automation-helper/download",
+                "bucket": bucket,
+                "objectKey": HELPER_OBJECT_KEY,
+                "versionedObjectKey": installer_versioned_object_key,
+                "contentType": HELPER_CONTENT_TYPE,
+                "fileSize": storage["file_size"],
+                "sha256": result["sha256"],
+                "payload": payload_result,
+            }
+        }
+    )
     return result
 
 
