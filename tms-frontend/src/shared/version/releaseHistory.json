@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.22-fixed-helper-runtime-version-sync",
+    "version": "0.9.8-beta.3.22",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "自动化助手 / 安装包",
+    "pagePath": "/settings",
+    "title": "修复小助手运行时版本同步",
+    "description": "版本同步脚本会同时更新自动化 app registry 和 shipping executor 版本，确保小助手安装后健康检查、更新面板和服务器安装包版本保持一致。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.21-improved-helper-and-installer-update-panels",
     "version": "0.9.8-beta.3.21",
     "releaseDate": "2026-06-18",

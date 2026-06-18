@@ -60,6 +60,18 @@ test('syncs product version to runtime version files, release notes, and Electro
   assert.equal(electronPackage.version, '0.9.8-beta.3.0')
   assert.equal(electronLock.version, '0.9.8-beta.3.0')
   assert.equal(electronLock.packages[''].version, '0.9.8-beta.3.0')
+
+  const automationRegistry = JSON.parse(
+    await readFile(join(root, 'tms-electron-app', 'automation-apps', 'registry.json'), 'utf8'),
+  )
+  assert.deepEqual(
+    automationRegistry.map((app) => app.version),
+    ['0.9.8-beta.3.0', '0.9.8-beta.3.0'],
+  )
+  const shippingPackage = JSON.parse(
+    await readFile(join(root, 'tms-electron-app', 'automation-apps', 'shipping-automation-demo', 'package.json'), 'utf8'),
+  )
+  assert.equal(shippingPackage.version, '0.9.8-beta.3.0')
 })
 
 async function createFixture() {
@@ -68,6 +80,7 @@ async function createFixture() {
   await mkdir(join(root, 'tms-backend'), { recursive: true })
   await mkdir(join(root, 'tms-frontend', 'src', 'shared', 'version'), { recursive: true })
   await mkdir(join(root, 'tms-electron-app'), { recursive: true })
+  await mkdir(join(root, 'tms-electron-app', 'automation-apps', 'shipping-automation-demo'), { recursive: true })
 
   await writeFile(join(root, 'app-version.json'), '{\n  "version": "0.9.8-beta.0.6"\n}\n')
   await writeFile(join(root, 'tms-backend', 'app_version.py'), 'APP_VERSION = "0.9.8-beta.0.6"\n')
@@ -101,6 +114,17 @@ async function createFixture() {
         },
       },
     }, null, 2),
+  )
+  await writeFile(
+    join(root, 'tms-electron-app', 'automation-apps', 'registry.json'),
+    JSON.stringify([
+      { id: 'shipping-automation-demo', version: '0.9.8-beta.0.6' },
+      { id: 'playwright-console', version: '0.9.8-beta.0.6' },
+    ], null, 2),
+  )
+  await writeFile(
+    join(root, 'tms-electron-app', 'automation-apps', 'shipping-automation-demo', 'package.json'),
+    JSON.stringify({ name: 'shipping-automation-demo', version: '0.9.8-beta.0.6' }, null, 2),
   )
 
   return root
