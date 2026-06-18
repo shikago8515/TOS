@@ -29,6 +29,7 @@ from api.release_updates_api import router as release_updates_router
 from api.tms_finance_internal_reconciliation_api import router as tms_finance_internal_reconciliation_router
 from api.tms_finance_work_sales_api import router as tms_finance_work_sales_router
 from api.draft_packing_compare_api import router as draft_packing_compare_router
+from api.iplex_dual_table_compare_api import router as iplex_dual_table_compare_router
 
 
 # 创建 FastAPI 应用
@@ -82,6 +83,7 @@ app.include_router(release_updates_router, prefix="/api")
 app.include_router(tms_finance_internal_reconciliation_router, prefix="/api")
 app.include_router(tms_finance_work_sales_router, prefix="/api")
 app.include_router(draft_packing_compare_router, prefix="/api")
+app.include_router(iplex_dual_table_compare_router, prefix="/api")
 
 
 # 根路径

@@ -1,5 +1,55 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.25-improved-iplex-auto-columns-release-notice-batch",
+    "version": "0.9.8-beta.3.25",
+    "releaseDate": "2026-06-18",
+    "category": "improved",
+    "pageName": "iPlex 双表核对 / 版本更新提示",
+    "pagePath": "/iplex/dual-table-compare",
+    "title": "自动核对列并批次化版本弹窗",
+    "description": "iPlex 双表核对删除可见列配置区，生成时自动识别固定业务列并在原位置显示核对异常表；版本更新弹窗改为按发布批次触发，可按模块集中展示更新内容，小修改默认不主动弹窗。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.24-fixed-iplex-skip-total-rows",
+    "version": "0.9.8-beta.3.24",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "iPlex 双表核对",
+    "pagePath": "/iplex/dual-table-compare",
+    "title": "跳过 RC 总计行核对",
+    "description": "修复 iPlex 双表核对将 RC 表空 Key 总计行当作未匹配行处理的问题，总计行不再写入差值公式、不再标红，也不计入异常列表。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.23-improved-iplex-preview-and-red-row-marking",
+    "version": "0.9.8-beta.3.23",
+    "releaseDate": "2026-06-18",
+    "category": "improved",
+    "pageName": "iPlex 双表核对",
+    "pagePath": "/iplex/dual-table-compare",
+    "title": "显示异常列表并标红 Excel 行",
+    "description": "iPlex 双表核对处理完成后在页面直接显示不一致或未匹配的 RC 行，并在导出的 Excel 中将差值不为 0 或未匹配的整行标红。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.22-fixed-iplex-dual-table-direction",
+    "version": "0.9.8-beta.3.22",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "iPlex 双表核对",
+    "pagePath": "/iplex/dual-table-compare",
+    "title": "修正 iPlex 匹配方向",
+    "description": "修正 iPlex 双表核对匹配方向，按 PO # 对应 BUYER ORDER NO. 将 PO 调整数据匹配到 RC 表输出。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.21-added-iplex-dual-table-compare",
+    "version": "0.9.8-beta.3.21",
+    "releaseDate": "2026-06-17",
+    "category": "added",
+    "pageName": "iPlex 双表核对",
+    "pagePath": "/iplex/dual-table-compare",
+    "title": "新增 iPlex 双表核对工具",
+    "description": "新增 iPlex 双表核对工具，支持两张 Excel 按指定关键列匹配并导出带筛选的差值核对结果。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.20-fixed-adidas-materials-helper-entry",
     "version": "0.9.8-beta.3.20",
     "releaseDate": "2026-06-17",

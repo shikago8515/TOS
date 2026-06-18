@@ -19,6 +19,17 @@ test('backend API contract includes Draft Packing compare routes', () => {
   assert.equal(backendApiContract.requiredOpenapiPaths.length, requiredBackendOpenapiPaths.length)
 })
 
+test('backend API contract includes iPlex dual table compare routes', () => {
+  assert.deepEqual(
+    requiredBackendOpenapiPaths.filter((routePath) => routePath.startsWith('/api/iplex/dual-table-compare/')).sort(),
+    [
+      '/api/iplex/dual-table-compare/download/{filename}',
+      '/api/iplex/dual-table-compare/inspect',
+      '/api/iplex/dual-table-compare/process',
+    ]
+  )
+})
+
 test('backend API contract includes release and system config routes', () => {
   assert.deepEqual(
     requiredBackendOpenapiPaths.filter((routePath) => (

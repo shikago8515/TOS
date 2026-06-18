@@ -51,6 +51,41 @@ test('rejects release notes that are not synced to the app version', async () =>
   )
 })
 
+test('accepts module-scoped release notes for batched popup summaries', async () => {
+  const root = await createFixture()
+  await writeJson(join(root, 'tms-frontend', 'src', 'shared', 'version', 'releaseNotes.json'), {
+    version: '0.9.8-beta.3.3',
+    date: '2026-06-12',
+    noticeId: '2026-06-12-batch',
+    showPopup: true,
+    added: [],
+    improved: [],
+    fixed: [],
+    modules: [
+      {
+        name: 'iPlex 双表核对',
+        fixed: ['总计行不再写公式。'],
+      },
+      {
+        name: 'Work Sales',
+        improved: ['合并导出流程。'],
+      },
+    ],
+  })
+
+  const metadata = await validateReleaseMetadata(root)
+  assert.equal(metadata.releaseNotes.modules.length, 2)
+
+  const plan = await createServerPackage({
+    repoRoot: root,
+    dryRun: true,
+    gitInfo: { ...gitInfo, subject: 'feat: 批量发布更新' },
+    now: new Date('2026-06-12T03:04:05.000Z'),
+  })
+  assert.match(plan.releaseUpdateRecord.description, /iPlex 双表核对：修复：总计行不再写公式/)
+  assert.match(plan.releaseUpdateRecord.description, /Work Sales：优化：合并导出流程/)
+})
+
 test('dry-run reports package plan without requiring a clean worktree', async () => {
   const root = await createFixture()
   const plan = await createServerPackage({

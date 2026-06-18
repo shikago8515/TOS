@@ -13,6 +13,7 @@ import {
 } from '../domain/moduleCatalog'
 import { useAppLanguage } from '../shared/i18n/appLanguage'
 import {
+  buildReleaseNoticeGroups,
   buildReleaseNoticeStateFromStorage,
   markReleaseNoticeSeen,
   type ReleaseNoticeState,
@@ -69,12 +70,8 @@ export function useAppShellModel() {
     if (!notes) {
       return []
     }
-  
-    return [
-      { key: 'added', title: text('新增'), icon: 'sparkles', items: notes.added },
-      { key: 'improved', title: text('优化'), icon: 'activity', items: notes.improved },
-      { key: 'fixed', title: text('修复'), icon: 'check-circle', items: notes.fixed },
-    ].filter((group) => group.items.length > 0)
+
+    return buildReleaseNoticeGroups(notes, text)
   })
   
   const hasUnseenReleaseNotes = computed(() => {
@@ -88,7 +85,9 @@ export function useAppShellModel() {
   }
   
   function dismissReleaseNotice(): void {
-    markReleaseNoticeSeen(window.localStorage)
+    if (releaseNotice.value.releaseNotes) {
+      markReleaseNoticeSeen(window.localStorage, undefined, releaseNotice.value.releaseNotes)
+    }
     releaseNotice.value = { visible: false, releaseNotes: null }
   }
   

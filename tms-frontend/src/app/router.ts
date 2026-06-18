@@ -8,6 +8,7 @@ import DraftPackingComparePage from '../pages/draft-packing-compare/DraftPacking
 import EricPage from '../pages/eric/EricPage.vue'
 import EricInfornexusPage from '../pages/eric-infornexus/EricInfornexusPage.vue'
 import HomePage from '../pages/home/HomePage.vue'
+import IplexDualTableComparePage from '../pages/iplex-dual-table-compare/IplexDualTableComparePage.vue'
 import InfornexusAutoAddPage from '../pages/infornexus-auto-add/InfornexusAutoAddPage.vue'
 import InfornexusPage from '../pages/infornexus/InfornexusPage.vue'
 import JasonPdfReorderPage from '../pages/jason-pdf-reorder/JasonPdfReorderPage.vue'
@@ -42,6 +43,7 @@ const routeComponents: Partial<Record<string, Component>> = {
   'draft-packing-compare': DraftPackingComparePage,
   'tms-finance-internal-reconciliation': TmsFinanceInternalReconciliationPage,
   'tms-finance-work-sales': TmsFinanceInternalReconciliationPage,
+  'iplex-dual-table-compare': IplexDualTableComparePage,
   'jane-sap': JaneSapPage,
   'eric-infornexus': EricInfornexusPage,
   'sophia-tina': SophiaTinaPage,
