@@ -82,6 +82,16 @@ def _default_record(
 
 DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
     _default_record(
+        "builtin-0.9.8-beta.3.27-added-jessica-packing-list-pdf",
+        "0.9.8-beta.3.27",
+        "2026-06-18",
+        "added",
+        "Jessica / 对账核对",
+        "/jessca",
+        "新增 Packing List PDF 核对",
+        "Jessica 对账核对支持在原发票文件和参考表文件之外可选上传 Packing List PDF，并在同一个结果 Excel 中新增 Packing List核对 sheet。",
+    ),
+    _default_record(
         "builtin-0.9.8-beta.3.26-improved-draft-packing-carton-words",
         "0.9.8-beta.3.26",
         "2026-06-18",

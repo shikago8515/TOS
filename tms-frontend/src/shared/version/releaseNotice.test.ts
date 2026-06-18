@@ -167,14 +167,16 @@ describe('releaseNotice', () => {
   })
 
   it('keeps bundled release notes scoped to the current version changes', () => {
-    expect(releaseNotes.added).toEqual([])
+    expect(releaseNotes.added).toEqual([
+      'Jessica 对账核对支持可选上传 Packing List PDF，并在同一个结果 Excel 中追加箱单核对结果。',
+    ])
     expect(releaseNotes.improved).toEqual([
-      'Draft & Packing List 核对结果 Excel 在 Cartons 后新增 Cartons In Words 列，Draft 行显示原文箱数英文词。',
+      '保留原发票文件 + 参考表文件两表核对流程；上传 PDF 时额外核对发票号、日期、PO、Article、Style/Working No 和 QTY。',
     ])
     expect(releaseNotes.fixed).toEqual([])
     expect(releaseNotes.showPopup).toBe(false)
     expect(releaseNotes.modules.map((module) => module.name)).toEqual([
-      'Draft & Packing List 核对',
+      'Jessica / 对账核对',
     ])
   })
 })

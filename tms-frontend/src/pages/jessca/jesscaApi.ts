@@ -6,6 +6,7 @@ import {
 export interface JesscaProcessRequest {
   invoiceFiles: File[]
   referenceFile: File
+  packingFile?: File
 }
 
 export interface JesscaProcessResponse {
@@ -18,6 +19,9 @@ export interface JesscaProcessResponse {
   total_items?: number
   matches?: Record<string, number>
   diagnostics?: Record<string, number>
+  packing_count?: number
+  packing_matched_count?: number
+  packing_issue_count?: number
 }
 
 export async function processJesscaFiles(
@@ -30,6 +34,9 @@ export async function processJesscaFiles(
     formData.append('invoices', file)
   })
   formData.append('reference_file', request.referenceFile)
+  if (request.packingFile) {
+    formData.append('packing_file', request.packingFile)
+  }
 
   return postFormData<JesscaProcessResponse>({
     path: '/api/jessca/process',

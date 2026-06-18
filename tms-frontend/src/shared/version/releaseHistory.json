@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.27-added-jessica-packing-list-pdf",
+    "version": "0.9.8-beta.3.27",
+    "releaseDate": "2026-06-18",
+    "category": "added",
+    "pageName": "Jessica / 对账核对",
+    "pagePath": "/jessca",
+    "title": "新增 Packing List PDF 核对",
+    "description": "Jessica 对账核对支持在原发票文件和参考表文件之外可选上传 Packing List PDF，并在同一个结果 Excel 中新增 Packing List核对 sheet。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.26-improved-draft-packing-carton-words",
     "version": "0.9.8-beta.3.26",
     "releaseDate": "2026-06-18",

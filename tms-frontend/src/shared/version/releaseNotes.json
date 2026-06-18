@@ -1,19 +1,24 @@
 {
-  "version": "0.9.8-beta.3.26",
+  "version": "0.9.8-beta.3.27",
   "date": "2026-06-18",
-  "noticeId": "2026-06-18-draft-packing-carton-words",
+  "noticeId": "2026-06-18-jessica-packing-list-pdf",
   "showPopup": false,
-  "added": [],
+  "added": [
+    "Jessica 对账核对支持可选上传 Packing List PDF，并在同一个结果 Excel 中追加箱单核对结果。"
+  ],
   "improved": [
-    "Draft & Packing List 核对结果 Excel 在 Cartons 后新增 Cartons In Words 列，Draft 行显示原文箱数英文词。"
+    "保留原发票文件 + 参考表文件两表核对流程；上传 PDF 时额外核对发票号、日期、PO、Article、Style/Working No 和 QTY。"
   ],
   "fixed": [],
   "modules": [
     {
-      "name": "Draft & Packing List 核对",
+      "name": "Jessica / 对账核对",
+      "added": [
+        "新增 Packing List PDF 可选上传入口。"
+      ],
       "improved": [
-        "结果 Excel 在 Cartons 后新增 Cartons In Words 列。",
-        "Draft 行保留 PDF 原文中的大写英文箱数，如 NINETEEN；Packing List 行该列留空。"
+        "结果 Excel 保留原核对结果和汇总表，并在上传 PDF 时新增 Packing List核对 sheet。",
+        "后端接口保持 invoices 和 reference_file 字段兼容，新增可选 packing_file 字段。"
       ]
     }
   ]

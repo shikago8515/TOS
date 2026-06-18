@@ -32,6 +32,7 @@ jessca_module = JesscaModule()
 logger = logging.getLogger(__name__)
 
 ALLOWED_EXCEL_EXTENSIONS = {".xlsx", ".xlsm", ".xls"}
+ALLOWED_PDF_EXTENSIONS = {".pdf"}
 PROCESSING_ERROR_MESSAGE = "处理失败，请查看诊断日志或稍后重试"
 
 # 临时目录
@@ -45,6 +46,13 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 def _validate_excel_filename(filename: Optional[str], label: str) -> str:
     try:
         return validate_upload_filename(filename, ALLOWED_EXCEL_EXTENSIONS, label)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _validate_pdf_filename(filename: Optional[str], label: str) -> str:
+    try:
+        return validate_upload_filename(filename, ALLOWED_PDF_EXTENSIONS, label)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -87,6 +95,7 @@ def _save_uploads(files: List[UploadFile], work_dir: str, label: str) -> List[st
 async def process_jessca(
     invoices: List[UploadFile] = File(...),
     reference_file: UploadFile = File(...),
+    packing_file: Optional[UploadFile] = File(None),
     output_dir: Optional[str] = Form(None)
 ):
     """
@@ -100,11 +109,17 @@ async def process_jessca(
         reference_name = _validate_excel_filename(reference_file.filename, "参考文件")
         ref_path = os.path.join(work_dir, reference_name)
         copy_upload_to_path(reference_file, ref_path)
+        packing_path = None
+        if packing_file is not None:
+            packing_name = _validate_pdf_filename(packing_file.filename, "Packing List PDF")
+            packing_path = os.path.join(work_dir, f"packing_{packing_name}")
+            copy_upload_to_path(packing_file, packing_path)
 
         result = jessca_module.process_invoices(
             invoice_paths, 
             ref_path, 
-            output_dir if output_dir else UPLOAD_DIR
+            output_dir if output_dir else UPLOAD_DIR,
+            packing_path=packing_path,
         )
         
         # 返回结果
@@ -119,6 +134,9 @@ async def process_jessca(
                 "total_items": result['total_items'],
                 "matches": result['matches'],
                 "diagnostics": result.get('diagnostics', {}),
+                "packing_count": result.get('packing_count', 0),
+                "packing_matched_count": result.get('packing_matched_count', 0),
+                "packing_issue_count": result.get('packing_issue_count', 0),
                 "output_file": output_filename
             }
         else:

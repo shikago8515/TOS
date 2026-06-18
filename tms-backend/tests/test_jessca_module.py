@@ -2,9 +2,10 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import date
 from typing import Any, Dict, List
 
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 import pandas as pd
 
 
@@ -12,7 +13,7 @@ BACKEND_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if BACKEND_ROOT not in sys.path:
     sys.path.insert(0, BACKEND_ROOT)
 
-from modules.jessca_module import JesscaModule
+from modules.jessca_module import InvoiceRecord, JesscaModule, PackingListRecord
 
 
 class JesscaModuleReferenceTableTests(unittest.TestCase):
@@ -198,6 +199,154 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(main_by_article["ART-NOT-INVOICE"]["values"]["核对状态"], "未在发票中找到")
         self.assertEqual(main_by_article["ART-STYLE"]["cells"]["核对状态"].fill.fgColor.rgb, "FFFFDDDD")
         self.assertEqual(main_by_article["ART-NOT-INVOICE"]["cells"]["核对状态"].fill.fgColor.rgb, "FFFFFFCC")
+
+    def test_read_invoice_records_extracts_header_po_quantity_and_price(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            invoice_path = os.path.join(temp_dir, "invoice.xlsx")
+            wb = Workbook()
+            ws = wb.active
+            ws["I4"] = "Inv#:"
+            ws["J4"] = "10-06-26-0712"
+            ws["I7"] = "Date:"
+            ws["J7"] = date(2026, 6, 7)
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([" PO NO.", "STOCK NO.", "COLOR", "DESCRIPTIONS", None, "QTY(PC)", "UNIT PRICE(PC)", None, "FOB"])
+            ws.append(["WOMEN'S KNITTED SHORT"])
+            ws.append(["PO:", "0902694555", None, None, None, 200, "USD", 6.6, "USD", 1320.0])
+            ws.append(["ARTICLE NO.:", "LG4321"])
+            ws.append(["STYLE NO.:", "RC2620OW008"])
+            wb.save(invoice_path)
+
+            records = self.module.read_invoice_records(invoice_path)
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].invoice_file, "invoice.xlsx")
+        self.assertEqual(records[0].invoice_number, "10-06-26-0712")
+        self.assertEqual(records[0].invoice_date, "2026-06-07")
+        self.assertEqual(records[0].po_number, "0902694555")
+        self.assertEqual(records[0].article, "LG4321")
+        self.assertEqual(records[0].style, "RC2620OW008")
+        self.assertEqual(records[0].quantity, 200)
+        self.assertEqual(records[0].price, 6.6)
+
+    def test_build_packing_list_comparison_matches_invoice_and_flags_quantity(self):
+        invoice_records = [
+            InvoiceRecord(
+                invoice_file="invoice.xlsx",
+                invoice_number="10-06-26-0712",
+                invoice_date="2026-06-07",
+                po_number="0902694555",
+                article="LG4321",
+                style="RC2620OW008",
+                quantity=200,
+                price=6.6,
+            ),
+            InvoiceRecord(
+                invoice_file="invoice.xlsx",
+                invoice_number="10-06-26-0712",
+                invoice_date="2026-06-07",
+                po_number="0902694557",
+                article="LG4323",
+                style="RC2620OW008",
+                quantity=200,
+                price=6.6,
+            ),
+        ]
+        packing_records = [
+            PackingListRecord(
+                invoice_number="10-06-26-0712",
+                ex_factory_date="2026-06-07",
+                po_number="0902694555",
+                working_number="RC2620OW008",
+                article_number="LG4321",
+                customer_number="0307073961",
+                quantity=200,
+                cartons=7,
+            ),
+            PackingListRecord(
+                invoice_number="10-06-26-0712",
+                ex_factory_date="2026-06-07",
+                po_number="0902694557",
+                working_number="RC2620OW008",
+                article_number="LG4323",
+                customer_number="0307073963",
+                quantity=180,
+                cartons=7,
+            ),
+        ]
+
+        rows = self.module.build_packing_list_comparison(invoice_records, packing_records)
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0].status, "一致")
+        self.assertEqual(rows[0].issue_detail, "")
+        self.assertEqual(rows[1].status, "需核对")
+        self.assertIn("QTY", rows[1].issue_detail)
+        self.assertEqual(rows[1].invoice_quantity, 200)
+        self.assertEqual(rows[1].packing_quantity, 180)
+
+    def test_save_excel_with_summary_adds_packing_list_sheet_when_rows_exist(self):
+        ref_df = pd.DataFrame(
+            [{"Price": 6.6, "Style NO.": "RC2620OW008", "Article NO.": "LG4321"}],
+        )
+        invoice_data = {("LG4321", "RC2620OW008"): {"invoice.xlsx": 6.6}}
+        result_df, _ = self.module.update_reference_table(ref_df, invoice_data)
+        packing_rows = self.module.build_packing_list_comparison(
+            [
+                InvoiceRecord(
+                    invoice_file="invoice.xlsx",
+                    invoice_number="10-06-26-0712",
+                    invoice_date="2026-06-07",
+                    po_number="0902694555",
+                    article="LG4321",
+                    style="RC2620OW008",
+                    quantity=200,
+                    price=6.6,
+                )
+            ],
+            [
+                PackingListRecord(
+                    invoice_number="10-06-26-0712",
+                    ex_factory_date="2026-06-07",
+                    po_number="0902694555",
+                    working_number="RC2620OW008",
+                    article_number="LG4321",
+                    customer_number="0307073961",
+                    quantity=200,
+                    cartons=7,
+                )
+            ],
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = os.path.join(temp_dir, "result.xlsx")
+            save_result = self.module.save_excel_with_summary(
+                result_df,
+                invoice_data,
+                ["invoice.xlsx"],
+                ["invoice.xlsx"],
+                ref_df,
+                output_path,
+                packing_comparison_rows=packing_rows,
+            )
+            workbook = load_workbook(output_path)
+
+        self.assertIn("Packing List核对", workbook.sheetnames)
+        self.assertEqual(save_result["packing_count"], 1)
+        self.assertEqual(save_result["packing_matched_count"], 1)
+        self.assertEqual(save_result["packing_issue_count"], 0)
+        packing_sheet = workbook["Packing List核对"]
+        headers = [cell.value for cell in packing_sheet[2]]
+        self.assertIn("PO No", headers)
+        self.assertIn("Packing QTY", headers)
+        self.assertEqual(packing_sheet["A3"].value, "一致")
 
 
 if __name__ == "__main__":
