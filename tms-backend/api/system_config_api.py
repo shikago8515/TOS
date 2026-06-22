@@ -53,6 +53,41 @@ def _versioned_download_filename(configured_filename: Any, legacy_filename: str,
     return filename
 
 
+def _installer_download_filename(
+    package_id: str,
+    object_key: str,
+    configured_filename: Any,
+    legacy_filename: str,
+    versioned_filename: str,
+) -> str:
+    filename = str(configured_filename or "")
+    if filename and filename != legacy_filename:
+        return filename
+
+    manifest_filename = _manifest_filename_for_stable_object(package_id, object_key)
+    if manifest_filename:
+        return manifest_filename
+
+    return versioned_filename
+
+
+def _manifest_filename_for_stable_object(package_id: str, object_key: str) -> str:
+    manifest = read_installer_manifest()
+    packages = manifest.get("packages")
+    if not isinstance(packages, dict):
+        return ""
+
+    package = packages.get(package_id)
+    if not isinstance(package, dict):
+        return ""
+
+    package_object_key = str(package.get("objectKey") or package.get("object_key") or "")
+    if package_object_key != object_key:
+        return ""
+
+    return str(package.get("filename") or "").strip()
+
+
 class SystemConfigSummaryResponse(BaseModel):
     settingsFile: str
     settings: dict[str, Any]
@@ -156,7 +191,9 @@ async def automation_helper_download() -> StreamingResponse:
     )
     bucket = str(helper_config.get("bucket") or get_minio_bucket(HELPER_DEFAULT_BUCKET_KEY))
     object_key = str(helper_config.get("object_key") or HELPER_DEFAULT_OBJECT_KEY)
-    filename = _versioned_download_filename(
+    filename = _installer_download_filename(
+        "automation-helper",
+        object_key,
         helper_config.get("filename"),
         HELPER_LEGACY_FILENAME,
         HELPER_DEFAULT_FILENAME,
@@ -284,7 +321,9 @@ async def tos_desktop_download() -> StreamingResponse:
     )
     bucket = str(desktop_config.get("bucket") or get_minio_bucket(TOS_DESKTOP_DEFAULT_BUCKET_KEY))
     object_key = str(desktop_config.get("object_key") or TOS_DESKTOP_DEFAULT_OBJECT_KEY)
-    filename = _versioned_download_filename(
+    filename = _installer_download_filename(
+        "tos-desktop",
+        object_key,
         desktop_config.get("filename"),
         TOS_DESKTOP_LEGACY_FILENAME,
         TOS_DESKTOP_DEFAULT_FILENAME,
@@ -323,7 +362,9 @@ async def tos_desktop_full_download() -> StreamingResponse:
     )
     bucket = str(desktop_config.get("bucket") or get_minio_bucket(TOS_DESKTOP_FULL_DEFAULT_BUCKET_KEY))
     object_key = str(desktop_config.get("object_key") or TOS_DESKTOP_FULL_DEFAULT_OBJECT_KEY)
-    filename = _versioned_download_filename(
+    filename = _installer_download_filename(
+        "tos-desktop-full",
+        object_key,
         desktop_config.get("filename"),
         TOS_DESKTOP_FULL_LEGACY_FILENAME,
         TOS_DESKTOP_FULL_DEFAULT_FILENAME,

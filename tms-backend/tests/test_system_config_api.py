@@ -159,8 +159,9 @@ class SystemConfigApiTest(unittest.TestCase):
         )
         self.assertEqual(requested_keys, ["tos-desktop/TOS-Desktop-Setup.exe"])
 
-    def test_automation_helper_download_uses_versioned_filename(self) -> None:
+    def test_automation_helper_download_uses_manifest_filename_for_stable_object(self) -> None:
         requested_keys: list[str] = []
+        manifest_filename = "TOS-Automation-Helper-Setup.0.9.8-beta.3.20.exe"
 
         def fake_get_object(_bucket: str, object_key: str) -> FakeObjectResponse:
             requested_keys.append(object_key)
@@ -168,17 +169,25 @@ class SystemConfigApiTest(unittest.TestCase):
                 return FakeObjectResponse(b"MZ helper installer bytes")
             raise FileNotFoundError(object_key)
 
+        manifest = {
+            "packages": {
+                "automation-helper": {
+                    "version": "0.9.8-beta.3.20",
+                    "filename": manifest_filename,
+                    "objectKey": "automation-helper/TOS-Automation-Helper-Setup.exe",
+                }
+            }
+        }
+
         with patch.object(system_config_api, "get_minio_bucket", return_value="tos-downloads"), \
              patch.object(system_config_api, "get_settings", return_value={}), \
+             patch.object(system_config_api, "read_installer_manifest", return_value=manifest), \
              patch.object(system_config_api, "get_object_response", side_effect=fake_get_object):
             response = self.client.get("/api/system/config/automation-helper/download")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"MZ helper installer bytes")
-        self.assertIn(
-            f"TOS-Automation-Helper-Setup.{system_config_api.APP_VERSION}.exe",
-            response.headers["content-disposition"],
-        )
+        self.assertIn(manifest_filename, response.headers["content-disposition"])
         self.assertEqual(requested_keys, ["automation-helper/TOS-Automation-Helper-Setup.exe"])
 
     def test_tos_desktop_full_download_streams_embedded_installer(self) -> None:

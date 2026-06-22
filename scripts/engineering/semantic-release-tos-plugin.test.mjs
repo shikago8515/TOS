@@ -56,6 +56,24 @@ test('prepare syncs TOS version files and current release notes', async () => {
     await readFile(join(root, 'tms-backend', 'app_version.py'), 'utf8'),
     /APP_VERSION = "0\.9\.8-beta\.3\.29"/,
   )
+  assert.equal(
+    JSON.parse(await readFile(join(root, 'tms-electron-app', 'automation-helper-version.json'), 'utf8')).version,
+    nextRelease.version,
+  )
+  assert.deepEqual(
+    JSON.parse(await readFile(join(root, 'tms-electron-app', 'automation-apps', 'registry.json'), 'utf8'))
+      .map((automationApp) => automationApp.version),
+    [nextRelease.version],
+  )
+  assert.equal(
+    JSON.parse(
+      await readFile(
+        join(root, 'tms-electron-app', 'automation-apps', 'shipping-automation-demo', 'package.json'),
+        'utf8',
+      ),
+    ).version,
+    nextRelease.version,
+  )
 
   const releaseNotes = JSON.parse(
     await readFile(join(root, 'tms-frontend', 'src', 'shared', 'version', 'releaseNotes.json'), 'utf8'),
@@ -145,6 +163,10 @@ async function createFixture() {
         },
       },
     }, null, 2),
+  )
+  await writeFile(
+    join(root, 'tms-electron-app', 'automation-helper-version.json'),
+    JSON.stringify({ version: '0.9.8-beta.3.28' }, null, 2),
   )
   await writeFile(
     join(root, 'tms-electron-app', 'automation-apps', 'registry.json'),

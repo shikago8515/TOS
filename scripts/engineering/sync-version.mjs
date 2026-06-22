@@ -68,6 +68,21 @@ export async function syncVersion({
       data.packages[''].version = version
     }
   })
+  await updateJson(root, 'tms-electron-app/automation-helper-version.json', (data) => {
+    data.version = version
+  })
+  await updateJson(root, 'tms-electron-app/automation-apps/registry.json', (data) => {
+    if (Array.isArray(data)) {
+      for (const automationApp of data) {
+        if (automationApp && typeof automationApp === 'object') {
+          automationApp.version = version
+        }
+      }
+    }
+  })
+  await updateJson(root, 'tms-electron-app/automation-apps/shipping-automation-demo/package.json', (data) => {
+    data.version = version
+  })
   return version
 }
 
