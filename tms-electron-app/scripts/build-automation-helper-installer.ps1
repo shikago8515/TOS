@@ -11,7 +11,8 @@ if ([string]::IsNullOrWhiteSpace($TimestampServer)) {
 
 $ElectronDir = Split-Path -Parent $PSScriptRoot
 $RepoRoot = Split-Path -Parent $ElectronDir
-$ProductVersion = (Get-Content -LiteralPath (Join-Path $RepoRoot "app-version.json") -Raw | ConvertFrom-Json).version
+$HelperVersionPath = Join-Path $ElectronDir "automation-helper-version.json"
+$ProductVersion = (Get-Content -LiteralPath $HelperVersionPath -Raw | ConvertFrom-Json).version
 $OutputRoot = Join-Path $ElectronDir "dist-automation-helper"
 $PayloadRoot = Join-Path $OutputRoot "payload"
 $InstallerName = "TOS-Automation-Helper-Setup.$ProductVersion.exe"
@@ -42,6 +43,7 @@ function Assert-Under([string]$Path, [string]$Root) {
 Require-Path $NodeExe "Node runtime"
 Require-Path $SevenZip "7-Zip"
 Require-Path $Csc "C# compiler"
+Require-Path $HelperVersionPath "automation helper version file"
 Require-Path (Join-Path $ElectronDir "automation-launcher") "automation launcher"
 Require-Path (Join-Path $ElectronDir "automation-apps") "automation apps"
 Require-Path (Join-Path $ElectronDir "adidas-materials-main.js") "adidas Materials collector entry"
@@ -57,6 +59,7 @@ New-Item -ItemType Directory -Path $PayloadRoot -Force | Out-Null
 
 New-Item -ItemType Directory -Path (Join-Path $PayloadRoot "node") -Force | Out-Null
 Copy-Item -LiteralPath $NodeExe -Destination (Join-Path $PayloadRoot "node\node.exe") -Force
+Copy-Item -LiteralPath (Join-Path $ElectronDir "automation-helper-version.json") -Destination (Join-Path $PayloadRoot "automation-helper-version.json") -Force
 Copy-Item -LiteralPath (Join-Path $ElectronDir "automation-launcher") -Destination (Join-Path $PayloadRoot "automation-launcher") -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $ElectronDir "automation-apps") -Destination (Join-Path $PayloadRoot "automation-apps") -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $ElectronDir "adidas-materials-main.js") -Destination (Join-Path $PayloadRoot "adidas-materials-main.js") -Force

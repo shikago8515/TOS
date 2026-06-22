@@ -53,6 +53,7 @@ export interface AutomationAppInfo {
   provider?: string
   category?: string
   version?: string
+  requiredHelperVersion?: string
   available: boolean
   running: boolean
   port?: number

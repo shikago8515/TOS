@@ -123,6 +123,10 @@
     ],
     "extraResources": [
       {
+        "from": "automation-helper-version.json",
+        "to": "automation-helper-version.json"
+      },
+      {
         "from": "automation-apps",
         "to": "automation-apps",
         "filter": [

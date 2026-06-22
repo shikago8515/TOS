@@ -44,6 +44,7 @@ const DEFAULT_INSTALLER_MANIFEST_URL = process.env.TOS_INSTALLER_MANIFEST_URL
 const UPDATE_SOURCE_CONFIG_FILE = 'update-source.json';
 const UPDATE_STATUS_CHANNEL = 'update-status';
 const MANUAL_DOWNLOADS_FILE = 'manual-downloads.json';
+const AUTOMATION_HELPER_VERSION_FILE = 'automation-helper-version.json';
 
 const externalModules = {
   infornexus: {
@@ -888,6 +889,26 @@ function getAutomationRegistryPath() {
   return path.join(getAutomationAppRoot(), 'registry.json');
 }
 
+function getAutomationHelperVersionPath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, AUTOMATION_HELPER_VERSION_FILE)
+    : path.join(__dirname, AUTOMATION_HELPER_VERSION_FILE);
+}
+
+function readAutomationHelperVersion() {
+  const envVersion = String(process.env.TOS_AUTOMATION_HELPER_VERSION || '').trim();
+  if (envVersion) {
+    return envVersion;
+  }
+
+  try {
+    const payload = JSON.parse(fs.readFileSync(getAutomationHelperVersionPath(), 'utf8'));
+    return String(payload.version || '').trim();
+  } catch (_error) {
+    return '';
+  }
+}
+
 function loadAutomationAppRegistry() {
   const registryPath = getAutomationRegistryPath();
   try {
@@ -960,6 +981,7 @@ async function getAutomationApps() {
       provider: automationApp.provider || '',
       category: automationApp.category || '网页自动化',
       version: automationApp.version || '',
+      requiredHelperVersion: automationApp.requiredHelperVersion || '',
       description: automationApp.description || '',
       baseDir,
       entryPath,
@@ -1035,6 +1057,10 @@ async function launchAutomationApp(appId) {
     TMS_PLAYWRIGHT_PORT: String(automationApp.port),
     TMS_PLAYWRIGHT_DATA_DIR: dataDir
   };
+  const helperVersion = readAutomationHelperVersion();
+  if (helperVersion) {
+    env.TOS_AUTOMATION_HELPER_VERSION = helperVersion;
+  }
 
   if (process.versions.electron) {
     env.ELECTRON_RUN_AS_NODE = '1';
@@ -1202,6 +1228,7 @@ async function ensureAutomationLauncher() {
     fs.mkdirSync(logDir, { recursive: true });
     const logPath = getAutomationLauncherLogPath();
     const logFd = fs.openSync(logPath, 'a');
+    const helperVersion = readAutomationHelperVersion();
     const env = {
       ...process.env,
       TMS_AUTOMATION_LAUNCHER_HOST: AUTOMATION_LAUNCHER_HOST,
@@ -1209,8 +1236,12 @@ async function ensureAutomationLauncher() {
       TMS_AUTOMATION_APP_ROOT: getAutomationAppRoot(),
       TMS_AUTOMATION_LAUNCHER_DATA_DIR: app.getPath('userData'),
       TMS_AUTOMATION_APP_NAME: APP_DISPLAY_NAME,
+      TOS_AUTOMATION_HELPER_VERSION_FILE: getAutomationHelperVersionPath(),
       ELECTRON_RUN_AS_NODE: '1',
     };
+    if (helperVersion) {
+      env.TOS_AUTOMATION_HELPER_VERSION = helperVersion;
+    }
 
     try {
       const child = spawn(process.execPath, [launcherScriptPath], {

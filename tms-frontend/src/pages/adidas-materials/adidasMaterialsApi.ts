@@ -4,7 +4,7 @@ import type {
 } from '../../types/electronApi'
 import {
   compareVersionNumbers,
-  expectedAutomationHelperVersion,
+  minimumAutomationHelperVersion,
 } from '../web-automation/webAutomationApi'
 
 const moduleName = 'adidas 材料'
@@ -125,7 +125,7 @@ function buildLauncherUpdateStatus(
   health: AdidasMaterialsLauncherHealth | null | undefined,
   forceUpdate = false,
 ): AdidasMaterialsLauncherUpdateStatus {
-  const expectedVersion = expectedAutomationHelperVersion
+  const expectedVersion = minimumAutomationHelperVersion
   const currentVersion = String(health?.helperVersion || health?.version || '').trim()
   const versionBehind = Boolean(currentVersion && expectedVersion)
     && compareVersionNumbers(currentVersion, expectedVersion) < 0
@@ -135,7 +135,7 @@ function buildLauncherUpdateStatus(
 
   if (needsUpdate) {
     const currentLabel = currentVersion || '未知版本'
-    message = `本机自动化助手需要更新。当前版本：${currentLabel}；系统要求：${expectedVersion}。请下载安装最新助手后重新打开此页面。`
+    message = `本机自动化助手需要更新。当前版本：${currentLabel}；当前功能要求：${expectedVersion}。请下载安装最新助手后重新打开此页面。`
   }
 
   return {

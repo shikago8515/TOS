@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ElectronApi } from '../../types/electronApi'
-import { expectedAutomationHelperVersion } from '../web-automation/webAutomationApi'
+import { minimumAutomationHelperVersion } from '../web-automation/webAutomationApi'
 import {
   AdidasMaterialsLauncherUpdateRequiredError,
   launchAdidasMaterialsCollector,
@@ -55,11 +55,11 @@ describe('adidasMaterialsApi', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
-        helperVersion: expectedAutomationHelperVersion,
+        helperVersion: minimumAutomationHelperVersion,
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
-        helperVersion: expectedAutomationHelperVersion,
+        helperVersion: minimumAutomationHelperVersion,
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         success: true,
@@ -89,11 +89,11 @@ describe('adidasMaterialsApi', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
-        helperVersion: expectedAutomationHelperVersion,
+        helperVersion: minimumAutomationHelperVersion,
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
-        helperVersion: expectedAutomationHelperVersion,
+        helperVersion: minimumAutomationHelperVersion,
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ message: 'Not found' }), { status: 404 }))
     vi.stubGlobal('fetch', fetchMock)
@@ -106,11 +106,11 @@ describe('adidasMaterialsApi', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
-        helperVersion: '0.1.0',
+        helperVersion: '0.9.8-beta.3.18',
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
-        helperVersion: '0.1.0',
+        helperVersion: '0.9.8-beta.3.18',
       }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
     stubWindow()
@@ -126,11 +126,11 @@ describe('adidasMaterialsApi', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
-        helperVersion: expectedAutomationHelperVersion,
+        helperVersion: minimumAutomationHelperVersion,
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
-        helperVersion: expectedAutomationHelperVersion,
+        helperVersion: minimumAutomationHelperVersion,
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         message: 'adidas materials collector entry not found',
@@ -147,11 +147,11 @@ describe('adidasMaterialsApi', () => {
       .mockRejectedValueOnce(new Error('connection refused'))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
-        helperVersion: expectedAutomationHelperVersion,
+        helperVersion: minimumAutomationHelperVersion,
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
-        helperVersion: expectedAutomationHelperVersion,
+        helperVersion: minimumAutomationHelperVersion,
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         success: true,

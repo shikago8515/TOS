@@ -31,12 +31,16 @@ const userDataDir = resolveUserDataDir({
   appName: process.env.TMS_AUTOMATION_APP_NAME || 'TOS',
 })
 
+const helperVersion = resolveHelperVersion()
 const sharedOptions = {
   automationAppRoot,
   processMap,
   userDataDir,
+  helperVersion,
+  baseEnv: helperVersion
+    ? { TOS_AUTOMATION_HELPER_VERSION: helperVersion }
+    : {},
 }
-const helperVersion = resolveHelperVersion()
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -142,6 +146,19 @@ function resolveHelperVersion() {
   const envVersion = String(process.env.TOS_AUTOMATION_HELPER_VERSION || '').trim()
   if (envVersion) {
     return envVersion
+  }
+
+  const helperVersionPath = process.env.TOS_AUTOMATION_HELPER_VERSION_FILE
+    ? path.resolve(process.env.TOS_AUTOMATION_HELPER_VERSION_FILE)
+    : path.resolve(__dirname, '..', 'automation-helper-version.json')
+  try {
+    const payload = JSON.parse(fs.readFileSync(helperVersionPath, 'utf8'))
+    const fileVersion = String(payload.version || '').trim()
+    if (fileVersion) {
+      return fileVersion
+    }
+  } catch (_error) {
+    // Fall back to legacy registry-derived helper versions for older payloads.
   }
 
   const versions = loadAutomationAppRegistry(automationAppRoot)

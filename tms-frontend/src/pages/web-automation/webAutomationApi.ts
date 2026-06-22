@@ -8,7 +8,6 @@ import {
   postFormData,
   requestBackendJson,
 } from '../../shared/api/backendClient'
-import { fallbackAppVersion } from '../../shared/version/appVersion'
 
 const moduleName = 'web-automation'
 const launcherBaseUrl = 'http://127.0.0.1:3210'
@@ -16,7 +15,7 @@ const launcherProtocolUrl = 'tos://automation/launcher/start'
 const defaultAutomationHelperDownloadPath = '/api/system/config/automation-helper/download'
 const localHealthProbeTimeoutMs = 650
 const localLauncherProbeTimeoutMs = 650
-export const expectedAutomationHelperVersion = fallbackAppVersion
+export const minimumAutomationHelperVersion = '0.9.8-beta.3.19'
 
 export interface LocalExecutorHealth {
   ok: boolean
@@ -442,27 +441,36 @@ export function resolveLocalAutomationHelperVersion(
     : ''
   if (configVersion) return configVersion
 
-  return String(activeApp?.version || '').trim()
+  return ''
 }
 
 export function getAutomationHelperUpdateMessage(
   health: LocalExecutorHealth | null | undefined,
   activeApp?: AutomationAppInfo | null,
-  expectedVersion = expectedAutomationHelperVersion,
+  minimumRequiredVersion = minimumAutomationHelperVersion,
 ): string {
-  const expected = String(expectedVersion || '').trim()
-  if (!expected) return ''
+  const requiredVersion = resolveAutomationHelperRequiredVersion(activeApp, minimumRequiredVersion)
+  if (!requiredVersion) return ''
 
   const current = resolveLocalAutomationHelperVersion(health, activeApp)
   if (!current) {
-    return `本机自动化助手版本过旧或无法识别，请下载并安装最新版（${expected}）。`
+    return `本机自动化助手版本无法识别，当前功能要求小助手版本不低于 ${requiredVersion}，请下载并安装最新小助手后重试。`
   }
 
-  if (compareVersionNumbers(current, expected) < 0) {
-    return `本机自动化助手版本 ${current} 落后于当前系统 ${expected}，请下载并安装最新版后重试。`
+  if (compareVersionNumbers(current, requiredVersion) < 0) {
+    return `本机自动化助手版本 ${current} 低于当前功能要求 ${requiredVersion}，请下载并安装最新小助手后重试。`
   }
 
   return ''
+}
+
+function resolveAutomationHelperRequiredVersion(
+  activeApp: AutomationAppInfo | null | undefined,
+  minimumRequiredVersion: string,
+): string {
+  const appRequiredVersion = String(activeApp?.requiredHelperVersion || '').trim()
+  if (appRequiredVersion) return appRequiredVersion
+  return String(minimumRequiredVersion || '').trim()
 }
 
 export function compareVersionNumbers(left: string, right: string): number {

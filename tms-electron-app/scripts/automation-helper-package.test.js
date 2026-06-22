@@ -42,6 +42,43 @@ test('automation helper installer payload includes adidas Materials collector en
   }
 })
 
+test('automation helper installers use the independent helper version file', () => {
+  for (const scriptName of helperInstallerScripts) {
+    const source = fs.readFileSync(path.join(scriptsDir, scriptName), 'utf8')
+
+    assert.match(
+      source,
+      /automation-helper-version\.json/,
+      `${scriptName} must read the independent helper version file`,
+    )
+    assert.doesNotMatch(
+      source,
+      /Join-Path \$RepoRoot "app-version\.json"/,
+      `${scriptName} must not derive the helper installer version from the TOS app version`,
+    )
+    assert.match(
+      source,
+      /Copy-Item -LiteralPath \(Join-Path \$ElectronDir "automation-helper-version\.json"\) -Destination \(Join-Path \$PayloadRoot "automation-helper-version\.json"\) -Force/,
+      `${scriptName} must copy the helper version file into the helper payload root`,
+    )
+  }
+})
+
+test('automation launcher reports helper version from the independent version file', () => {
+  const source = fs.readFileSync(path.join(scriptsDir, '..', 'automation-launcher', 'server.js'), 'utf8')
+
+  assert.match(
+    source,
+    /automation-helper-version\.json/,
+    'automation launcher must read the independent helper version file',
+  )
+  assert.match(
+    source,
+    /TOS_AUTOMATION_HELPER_VERSION/,
+    'automation launcher must still allow an explicit helper version override',
+  )
+})
+
 test('automation helper dependency copier preserves nested Node resolution', () => {
   const { copyDependencyClosure } = require('./copy-automation-helper-dependencies')
   const root = fs.mkdtempSync(path.join(require('os').tmpdir(), 'tos-helper-deps-'))

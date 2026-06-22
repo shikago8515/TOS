@@ -119,6 +119,7 @@ async function getAutomationApps(options) {
       provider: automationApp.provider || '',
       category: automationApp.category || '网页自动化',
       version: automationApp.version || '',
+      requiredHelperVersion: automationApp.requiredHelperVersion || '',
       description: automationApp.description || '',
       baseDir,
       entryPath,
@@ -175,6 +176,10 @@ async function launchAutomationApp(appId, options) {
     ...(options.baseEnv || {}),
     TMS_PLAYWRIGHT_PORT: String(automationApp.port),
     TMS_PLAYWRIGHT_DATA_DIR: dataDir,
+  }
+  const helperVersion = String(options.helperVersion || env.TOS_AUTOMATION_HELPER_VERSION || '').trim()
+  if (helperVersion) {
+    env.TOS_AUTOMATION_HELPER_VERSION = helperVersion
   }
 
   if (options.markElectronRunAsNode) {

@@ -21,7 +21,7 @@ test('rejects unsupported version formats', () => {
   )
 })
 
-test('syncs product version to runtime version files, release notes, and Electron manifests', async () => {
+test('syncs product version to runtime version files, release notes, and Electron manifests only', async () => {
   const root = await createFixture()
 
   await syncVersion({
@@ -66,12 +66,12 @@ test('syncs product version to runtime version files, release notes, and Electro
   )
   assert.deepEqual(
     automationRegistry.map((app) => app.version),
-    ['0.9.8-beta.3.0', '0.9.8-beta.3.0'],
+    ['0.9.8-beta.0.6', '0.9.8-beta.0.6'],
   )
   const shippingPackage = JSON.parse(
     await readFile(join(root, 'tms-electron-app', 'automation-apps', 'shipping-automation-demo', 'package.json'), 'utf8'),
   )
-  assert.equal(shippingPackage.version, '0.9.8-beta.3.0')
+  assert.equal(shippingPackage.version, '0.9.8-beta.0.6')
 })
 
 async function createFixture() {
