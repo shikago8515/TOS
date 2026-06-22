@@ -10,6 +10,13 @@ const runtimeRoot = path.join(electronDir, 'backend-runtime')
 const runtimeDir = path.join(runtimeRoot, 'tos-backend')
 const workPath = path.join(backendDir, 'build', 'pyinstaller')
 const launcherPath = path.join(backendDir, 'backend_launcher.py')
+const excludedBackendRuntimeModules = [
+  'torch',
+  'cv2',
+  'pyarrow',
+  'scipy',
+  'sklearn',
+]
 
 function assertInside(parent, target) {
   const resolvedParent = path.resolve(parent)
@@ -49,6 +56,7 @@ function buildPyInstallerArgs() {
     workPath,
     '--add-data',
     `${templateDir}${path.delimiter}templates`,
+    ...excludedBackendRuntimeModules.flatMap((moduleName) => ['--exclude-module', moduleName]),
     launcherPath,
   ]
 }
@@ -98,6 +106,7 @@ if (require.main === module) {
 module.exports = {
   backendDir,
   buildPyInstallerArgs,
+  excludedBackendRuntimeModules,
   main,
   templateDir,
 }

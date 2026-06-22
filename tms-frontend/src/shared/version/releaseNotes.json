@@ -1,27 +1,33 @@
 {
   "version": "0.9.8-beta.3.28",
-  "date": "2026-06-18",
-  "noticeId": "2026-06-18-sophia-tina-report-0617",
+  "date": "2026-06-22",
+  "noticeId": "2026-06-22-tos-package-slimming",
   "showPopup": false,
-  "added": [],
+  "added": [
+    "新增本地构建产物清理命令，可预览或清理桌面端、前端和后端生成物，默认保留依赖目录和上传运行数据。"
+  ],
   "improved": [
-    "Sophia/Tina 报表按 0617 反馈调整 Result、国家分析、Y2Y、发运方式和 S2S 开发表统计口径。"
+    "桌面安装包后端运行时排除未使用的重型可选包，发布资源不再携带 Infornexus 外部应用运行缓存。",
+    "发布包校验新增重型运行时目录和外部应用 cache 泄漏检查，避免瘦身回退。"
   ],
   "fixed": [
-    "Factory Price 改为按 Season + Working Number + Factory 匹配，多价格时保留一个匹配值并高亮提示。",
-    "Development Style Qty 输出为空表头，S2S Development Analysis 继续使用后台计算的 Development Style Count。"
+    "修复 Windows 环境下打包健康检查用 TOS.exe 运行 Node 脚本被拒绝时无法完成验证的问题。"
   ],
   "modules": [
     {
-      "name": "Sophia/Tina 报表",
+      "name": "桌面安装包 / 发布校验",
       "improved": [
-        "Country Analysis 统一分组为 CHINA、UNITED STATES 和 OTHER COUNTRIES。",
-        "Ship Method Analysis 的百分比分母固定为 Factory + Year + PODD(月)，筛选后比例保持不变。",
-        "Y2Y Factory slicer 同时关联页面内两个透视表。"
+        "PyInstaller 打包参数排除 torch、cv2、pyarrow、scipy 和 sklearn 等当前后端未声明使用的可选包。",
+        "Electron extraResources 排除 external-apps 下的 cache 目录，并由发布校验脚本强制检查。"
       ],
       "fixed": [
-        "Result 表 Pack 和 Factory Price 匹配规则与 0617 PPT 需求保持一致。",
-        "S2S Development Analysis 新增 Development Style Count 并位于 Bulk Style Count 左侧。"
+        "自动化健康检查遇到 Windows run-as-node 启动拒绝时，会回退到当前 Node runtime 执行同一脚本。"
+      ]
+    },
+    {
+      "name": "工程脚本",
+      "added": [
+        "新增 cleanup:local:dry-run 和 cleanup:local，用于清理本地构建产物。"
       ]
     }
   ]

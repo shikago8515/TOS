@@ -82,6 +82,36 @@ def _default_record(
 
 DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [
     _default_record(
+        "builtin-0.9.8-beta.3.28-improved-desktop-package-slimming",
+        "0.9.8-beta.3.28",
+        "2026-06-22",
+        "improved",
+        "桌面安装包 / 发布校验",
+        "/release-updates",
+        "优化桌面安装包瘦身校验",
+        "桌面安装包后端运行时排除当前后端未声明使用的重型可选包，并在发布包校验中禁止重型运行时目录和 Infornexus 外部应用 cache 泄漏进 win-unpacked。",
+    ),
+    _default_record(
+        "builtin-0.9.8-beta.3.28-added-local-artifact-cleanup",
+        "0.9.8-beta.3.28",
+        "2026-06-22",
+        "added",
+        "工程脚本",
+        "/settings",
+        "新增本地构建产物清理命令",
+        "新增 cleanup:local:dry-run 和 cleanup:local，用于预览或清理桌面端、前端和后端生成物，默认不会删除依赖目录或上传运行数据。",
+    ),
+    _default_record(
+        "builtin-0.9.8-beta.3.28-fixed-pack-health-run-as-node-fallback",
+        "0.9.8-beta.3.28",
+        "2026-06-22",
+        "fixed",
+        "桌面安装包 / 自动化校验",
+        "/release-updates",
+        "修复打包健康检查启动回退",
+        "Windows 环境下用 TOS.exe 以 run-as-node 模式执行自动化健康检查被拒绝时，打包脚本会回退到当前 Node runtime 执行同一 start.js，保证健康检查仍可验证。",
+    ),
+    _default_record(
         "builtin-0.9.8-beta.3.27-added-xinlongtai-credential-profiles",
         "0.9.8-beta.3.27",
         "2026-06-18",

@@ -7,6 +7,7 @@ const test = require('node:test')
 const {
   copyDirectoryFiltered,
   findIncompleteFilteredFiles,
+  shouldFallbackToCurrentNodeRuntime,
   verifyAutomationLauncher,
 } = require('./run-pack-default')
 
@@ -46,5 +47,24 @@ test('requires adidas Materials launcher bridge in packed automation launcher re
   assert.throws(
     () => verifyAutomationLauncher(appOutDir),
     /automation launcher resource adidas-materials-direct\.js not found/,
+  )
+})
+
+test('falls back to current Node runtime when packaged run-as-node launch is denied', () => {
+  assert.equal(
+    shouldFallbackToCurrentNodeRuntime(
+      { error: Object.assign(new Error('spawn TOS.exe EACCES'), { code: 'EACCES' }) },
+      { ELECTRON_RUN_AS_NODE: '1' },
+      'win32',
+    ),
+    true,
+  )
+  assert.equal(
+    shouldFallbackToCurrentNodeRuntime(
+      { error: Object.assign(new Error('spawn TOS.exe ENOENT'), { code: 'ENOENT' }) },
+      { ELECTRON_RUN_AS_NODE: '1' },
+      'win32',
+    ),
+    false,
   )
 })

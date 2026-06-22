@@ -6,6 +6,32 @@ const appDir = path.resolve(__dirname, '..')
 const packagePath = path.join(appDir, 'package.json')
 const defaultDistDir = path.join(appDir, 'dist')
 const defaultAppOutDir = path.join(defaultDistDir, 'win-unpacked')
+const forbiddenUnpackedResources = [
+  {
+    type: 'backend runtime',
+    relativePath: 'resources/backend-runtime/tos-backend/_internal/torch',
+  },
+  {
+    type: 'backend runtime',
+    relativePath: 'resources/backend-runtime/tos-backend/_internal/cv2',
+  },
+  {
+    type: 'backend runtime',
+    relativePath: 'resources/backend-runtime/tos-backend/_internal/pyarrow',
+  },
+  {
+    type: 'backend runtime',
+    relativePath: 'resources/backend-runtime/tos-backend/_internal/scipy',
+  },
+  {
+    type: 'backend runtime',
+    relativePath: 'resources/backend-runtime/tos-backend/_internal/sklearn',
+  },
+  {
+    type: 'external app cache',
+    relativePath: 'resources/external-apps/infornexus/cache',
+  },
+]
 
 const requiredUnpackedResources = [
   'resources/app.asar',
@@ -393,6 +419,12 @@ function collectBackendPackageIssues(appOutDir, expectedVersion) {
   return issues
 }
 
+function collectForbiddenUnpackedResourceIssues(appOutDir) {
+  return forbiddenUnpackedResources
+    .filter((resource) => fileExists(path.join(appOutDir, resource.relativePath)))
+    .map((resource) => `forbidden ${resource.type} resource: ${normalizePackagePath(resource.relativePath)}`)
+}
+
 function collectReleasePackageIssues(options = {}) {
   const distDir = path.resolve(options.distDir || defaultDistDir)
   const appOutDir = path.resolve(options.appOutDir || defaultAppOutDir)
@@ -404,6 +436,7 @@ function collectReleasePackageIssues(options = {}) {
   } else {
     issues.push(...collectMissingUnpackedResources(appOutDir))
     issues.push(...collectBackendPackageIssues(appOutDir, expectedVersion))
+    issues.push(...collectForbiddenUnpackedResourceIssues(appOutDir))
   }
 
   if (!options.skipArtifacts) {
@@ -474,5 +507,6 @@ if (require.main === module) {
 module.exports = {
   collectReleasePackageIssues,
   verifyReleasePackage,
+  forbiddenUnpackedResources,
   requiredUnpackedResources,
 }
