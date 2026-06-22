@@ -18,3 +18,22 @@ test('PyInstaller args include Sophia Tina templates as runtime data', () => {
   assert.equal(source, path.join(backendDir, 'templates'))
   assert.equal(target, 'templates')
 })
+
+test('PyInstaller args exclude unused heavyweight optional packages', () => {
+  const args = buildPyInstallerArgs()
+  const excludedModules = []
+
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === '--exclude-module') {
+      excludedModules.push(args[index + 1])
+    }
+  }
+
+  assert.deepEqual(excludedModules.sort(), [
+    'cv2',
+    'pyarrow',
+    'scipy',
+    'sklearn',
+    'torch',
+  ])
+})

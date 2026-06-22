@@ -487,6 +487,15 @@ function spawnHealthProcess(filePath, args, options) {
   return state
 }
 
+function shouldFallbackToCurrentNodeRuntime(state, env = {}, platform = process.platform) {
+  const code = state?.error?.code
+  return (
+    platform === 'win32' &&
+    env.ELECTRON_RUN_AS_NODE === '1' &&
+    (code === 'EACCES' || code === 'EPERM')
+  )
+}
+
 function formatHealthProcessFailure(label, state, lastError) {
   const parts = [`${label} did not become healthy`]
 
@@ -535,6 +544,51 @@ function stopHealthProcess(state) {
   }
 }
 
+async function waitForNodeScriptHealth({
+  appExe,
+  startScript,
+  cwd,
+  env,
+  url,
+  label,
+  timeoutMs = 60000,
+  requestTimeoutMs = 1000,
+}) {
+  const state = spawnHealthProcess(appExe, [startScript], { cwd, env })
+
+  try {
+    return await waitForHealth(url, state, label, timeoutMs, requestTimeoutMs)
+  } catch (error) {
+    if (!shouldFallbackToCurrentNodeRuntime(state, env)) {
+      throw error
+    }
+
+    stopHealthProcess(state)
+    console.warn(`${label}: packaged run-as-node launch denied; retrying with current Node runtime.`)
+
+    const fallbackEnv = { ...env }
+    delete fallbackEnv.ELECTRON_RUN_AS_NODE
+    const fallbackState = spawnHealthProcess(process.execPath, [startScript], {
+      cwd,
+      env: fallbackEnv,
+    })
+
+    try {
+      return await waitForHealth(
+        url,
+        fallbackState,
+        `${label} (current Node fallback)`,
+        timeoutMs,
+        requestTimeoutMs,
+      )
+    } finally {
+      stopHealthProcess(fallbackState)
+    }
+  } finally {
+    stopHealthProcess(state)
+  }
+}
+
 async function verifyBackendRuntimeHealth(targetUnpackedDir = unpackedDir) {
   const runtimeRoot = getBackendRuntimeTargetRoot(targetUnpackedDir)
   const runtimeExe = path.join(runtimeRoot, 'tos-backend', 'tos-backend.exe')
@@ -567,27 +621,26 @@ async function verifyAutomationConsoleHealth(targetUnpackedDir = unpackedDir) {
   requireFile(startScript, 'playwright console start script')
 
   const port = await findFreePort()
-  const state = spawnHealthProcess(appExe, [startScript], {
-    cwd: consoleRoot,
-    env: {
-      ...process.env,
-      ELECTRON_RUN_AS_NODE: '1',
-      TMS_PLAYWRIGHT_HOST: '127.0.0.1',
-      TMS_PLAYWRIGHT_PORT: String(port),
-      TMS_PLAYWRIGHT_DATA_DIR: dataDir,
-    },
-  })
+  const env = {
+    ...process.env,
+    ELECTRON_RUN_AS_NODE: '1',
+    TMS_PLAYWRIGHT_HOST: '127.0.0.1',
+    TMS_PLAYWRIGHT_PORT: String(port),
+    TMS_PLAYWRIGHT_DATA_DIR: dataDir,
+  }
 
   try {
-    await waitForHealth(
-      `http://127.0.0.1:${port}/api/workflows`,
-      state,
-      'playwright console health',
-      60000,
-      3000,
-    )
+    await waitForNodeScriptHealth({
+      appExe,
+      startScript,
+      cwd: consoleRoot,
+      env,
+      url: `http://127.0.0.1:${port}/api/workflows`,
+      label: 'playwright console health',
+      timeoutMs: 60000,
+      requestTimeoutMs: 3000,
+    })
   } finally {
-    stopHealthProcess(state)
     removeDirectoryWithRetry(dataDir)
   }
 }
@@ -602,21 +655,24 @@ async function verifyMicrosoftLoginDemoHealth(targetUnpackedDir = unpackedDir) {
   requireFile(startScript, 'microsoft login demo start script')
 
   const port = await findFreePort()
-  const state = spawnHealthProcess(appExe, [startScript], {
-    cwd: demoRoot,
-    env: {
-      ...process.env,
-      ELECTRON_RUN_AS_NODE: '1',
-      TMS_PLAYWRIGHT_HOST: '127.0.0.1',
-      TMS_PLAYWRIGHT_PORT: String(port),
-      TMS_PLAYWRIGHT_DATA_DIR: dataDir,
-    },
-  })
+  const env = {
+    ...process.env,
+    ELECTRON_RUN_AS_NODE: '1',
+    TMS_PLAYWRIGHT_HOST: '127.0.0.1',
+    TMS_PLAYWRIGHT_PORT: String(port),
+    TMS_PLAYWRIGHT_DATA_DIR: dataDir,
+  }
 
   try {
-    await waitForHealth(`http://127.0.0.1:${port}/api/health`, state, 'microsoft login demo health')
+    await waitForNodeScriptHealth({
+      appExe,
+      startScript,
+      cwd: demoRoot,
+      env,
+      url: `http://127.0.0.1:${port}/api/health`,
+      label: 'microsoft login demo health',
+    })
   } finally {
-    stopHealthProcess(state)
     removeDirectoryWithRetry(dataDir)
   }
 }
@@ -631,21 +687,24 @@ async function verifyShippingAutomationDemoHealth(targetUnpackedDir = unpackedDi
   requireFile(startScript, 'shipping automation demo start script')
 
   const port = await findFreePort()
-  const state = spawnHealthProcess(appExe, [startScript], {
-    cwd: demoRoot,
-    env: {
-      ...process.env,
-      ELECTRON_RUN_AS_NODE: '1',
-      TMS_PLAYWRIGHT_HOST: '127.0.0.1',
-      TMS_PLAYWRIGHT_PORT: String(port),
-      TMS_PLAYWRIGHT_DATA_DIR: dataDir,
-    },
-  })
+  const env = {
+    ...process.env,
+    ELECTRON_RUN_AS_NODE: '1',
+    TMS_PLAYWRIGHT_HOST: '127.0.0.1',
+    TMS_PLAYWRIGHT_PORT: String(port),
+    TMS_PLAYWRIGHT_DATA_DIR: dataDir,
+  }
 
   try {
-    await waitForHealth(`http://127.0.0.1:${port}/api/health`, state, 'shipping automation demo health')
+    await waitForNodeScriptHealth({
+      appExe,
+      startScript,
+      cwd: demoRoot,
+      env,
+      url: `http://127.0.0.1:${port}/api/health`,
+      label: 'shipping automation demo health',
+    })
   } finally {
-    stopHealthProcess(state)
     removeDirectoryWithRetry(dataDir)
   }
 }
@@ -858,6 +917,7 @@ module.exports = {
   copySourceFrontend,
   findIncompleteFilteredFiles,
   runFrontendBuild,
+  shouldFallbackToCurrentNodeRuntime,
   syncAutomationApps,
   verifyAutomationApps,
   syncAutomationLauncher,

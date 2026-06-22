@@ -373,6 +373,30 @@ test('reports backend runtime older than packaged backend source', () => {
   assert(issues.some((issue) => issue.includes('backend runtime is older than packaged backend source')))
 })
 
+test('reports forbidden heavyweight runtime and external app cache resources', () => {
+  const root = makeTempDir()
+  const appOutDir = path.join(root, 'win-unpacked')
+  const version = '0.9.8-beta.3.28'
+
+  touchRequiredUnpackedResources(appOutDir, version)
+  touch(path.join(appOutDir, 'resources', 'backend-runtime', 'tos-backend', '_internal', 'torch', 'lib', 'torch_cpu.dll'))
+  touch(path.join(appOutDir, 'resources', 'backend-runtime', 'tos-backend', '_internal', 'cv2', 'cv2.pyd'))
+  touch(path.join(appOutDir, 'resources', 'backend-runtime', 'tos-backend', '_internal', 'pyarrow', 'arrow.dll'))
+  touch(path.join(appOutDir, 'resources', 'external-apps', 'infornexus', 'cache', 'Cache', 'data_0'))
+
+  const issues = collectReleasePackageIssues({
+    distDir: root,
+    appOutDir,
+    expectedVersion: version,
+    skipArtifacts: true,
+  })
+
+  assert(issues.some((issue) => issue.includes('forbidden backend runtime resource: resources/backend-runtime/tos-backend/_internal/torch')))
+  assert(issues.some((issue) => issue.includes('forbidden backend runtime resource: resources/backend-runtime/tos-backend/_internal/cv2')))
+  assert(issues.some((issue) => issue.includes('forbidden backend runtime resource: resources/backend-runtime/tos-backend/_internal/pyarrow')))
+  assert(issues.some((issue) => issue.includes('forbidden external app cache resource: resources/external-apps/infornexus/cache')))
+})
+
 test('reports missing Sophia Tina pivot templates in backend resources', () => {
   const root = makeTempDir()
   const appOutDir = path.join(root, 'win-unpacked')

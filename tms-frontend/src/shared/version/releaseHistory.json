@@ -1,5 +1,35 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.28-improved-desktop-package-slimming",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-22",
+    "category": "improved",
+    "pageName": "桌面安装包 / 发布校验",
+    "pagePath": "/release-updates",
+    "title": "优化桌面安装包瘦身校验",
+    "description": "桌面安装包后端运行时排除当前后端未声明使用的重型可选包，并在发布包校验中禁止重型运行时目录和 Infornexus 外部应用 cache 泄漏进 win-unpacked。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-added-local-artifact-cleanup",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-22",
+    "category": "added",
+    "pageName": "工程脚本",
+    "pagePath": "/settings",
+    "title": "新增本地构建产物清理命令",
+    "description": "新增 cleanup:local:dry-run 和 cleanup:local，用于预览或清理桌面端、前端和后端生成物，默认不会删除依赖目录或上传运行数据。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-fixed-pack-health-run-as-node-fallback",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-22",
+    "category": "fixed",
+    "pageName": "桌面安装包 / 自动化校验",
+    "pagePath": "/release-updates",
+    "title": "修复打包健康检查启动回退",
+    "description": "Windows 环境下用 TOS.exe 以 run-as-node 模式执行自动化健康检查被拒绝时，打包脚本会回退到当前 Node runtime 执行同一 start.js，保证健康检查仍可验证。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.27-added-xinlongtai-credential-profiles",
     "version": "0.9.8-beta.3.27",
     "releaseDate": "2026-06-18",

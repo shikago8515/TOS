@@ -36,6 +36,10 @@ const commandGroups = {
       '--test',
       'scripts/engineering/frontend-direct-fetch-boundary.test.mjs',
     ]),
+    command('cleanup-local-artifacts-test', '.', process.execPath, [
+      '--test',
+      'scripts/engineering/cleanup-local-artifacts.test.mjs',
+    ]),
     command('release-update-sync-test', '.', pythonBin, [
       'scripts/release_update_sync_test.py',
     ]),

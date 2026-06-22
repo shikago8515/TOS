@@ -86,6 +86,18 @@ test('electron-builder packages backend templates as backend source resources', 
   )
 })
 
+test('electron-builder excludes external app runtime cache from release resources', () => {
+  const externalAppsResource = packageJson.build.extraResources.find((entry) => (
+    entry.from === 'external-apps' && entry.to === 'external-apps'
+  ))
+
+  assert(externalAppsResource, 'external-apps extraResource should exist')
+  assert(
+    externalAppsResource.filter.includes('!**/cache/**/*'),
+    'external-apps extraResource should exclude runtime cache directories',
+  )
+})
+
 test('portable release entrypoints stay disabled', () => {
   assert.equal(packageJson.scripts['pack:portable'], undefined)
   assert.equal(packageJson.build.portable, undefined)

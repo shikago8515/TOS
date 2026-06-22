@@ -168,24 +168,19 @@ describe('releaseNotice', () => {
 
   it('keeps bundled release notes scoped to the current version changes', () => {
     expect(releaseNotes.added).toEqual([
-      '新龙泰 Shipping 自动化新增账号档案管理，可保存多个 Infor Nexus 登录账号、按名称切换，并在下拉列表中删除账号记录。',
-      'Jessica 对账核对支持可选上传 Packing List PDF，并在同一个结果 Excel 中追加箱单核对结果。',
+      '新增本地构建产物清理命令，可预览或清理桌面端、前端和后端生成物，默认保留依赖目录和上传运行数据。',
     ])
     expect(releaseNotes.improved).toEqual([
-      '设置页区分本机运行版本和服务器安装包版本，桌面端检查更新改为读取服务器安装包清单。',
-      '完整安装包、轻量安装包和自动化助手安装包均按当前版本号重新打包，便于用户确认下载到最新版。',
-      '保留原发票文件 + 参考表文件两表核对流程；上传 PDF 时额外核对发票号、日期、PO、Article、Style/Working No 和 QTY。',
+      '桌面安装包后端运行时排除未使用的重型可选包，发布资源不再携带 Infornexus 外部应用运行缓存。',
+      '发布包校验新增重型运行时目录和外部应用 cache 泄漏检查，避免瘦身回退。',
     ])
     expect(releaseNotes.fixed).toEqual([
-      '万代 Shipping 固定选择 Assign Equipment ID，新龙泰 Shipping 固定选择 Remove/Change Equipment ID。',
-      '账号和密码中的 @@ 原样保存、回显和提交，不再被自动替换。',
-      '自动化账号密码、模板和运行记录接口不再被全局版本检查拦截，Infor Nexus 登录失败和 Access Code 页面会给出中文弹窗提示。',
+      '修复 Windows 环境下打包健康检查用 TOS.exe 运行 Node 脚本被拒绝时无法完成验证的问题。',
     ])
     expect(releaseNotes.showPopup).toBe(false)
     expect(releaseNotes.modules.map((module) => module.name)).toEqual([
-      '新龙泰 / 万代 Shipping 自动化',
-      '系统设置 / 安装包下载',
-      'Jessica / 对账核对',
+      '桌面安装包 / 发布校验',
+      '工程脚本',
     ])
   })
 })
