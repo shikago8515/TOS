@@ -39,6 +39,13 @@ test('server apply script posts release update records after deploy verification
   assert.match(deployScript, /releaseUpdateRecord/)
 })
 
+test('server apply script replaces backend data files from the package', async () => {
+  const deployScript = await readFile(new URL('../server/apply-server-update.sh', import.meta.url), 'utf8')
+
+  assert.match(deployScript, /rm -rf .*tms-backend\/data/)
+  assert.match(deployScript, /cp -a "\$SRC\/tms-backend\/data" tms-backend\//)
+})
+
 test('rejects release notes that are not synced to the app version', async () => {
   const root = await createFixture({
     appVersion: '0.9.8-beta.3.3',

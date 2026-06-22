@@ -24,8 +24,9 @@ if [ -f app-version.json ]; then
   cp -a app-version.json "backups/app-version.$DEPLOY_ID.json"
 fi
 
-rm -rf tms-backend/api tms-backend/modules tms-backend/templates tms-backend/utils
+rm -rf tms-backend/api tms-backend/data tms-backend/modules tms-backend/templates tms-backend/utils
 cp -a "$SRC/tms-backend/api" tms-backend/
+cp -a "$SRC/tms-backend/data" tms-backend/
 cp -a "$SRC/tms-backend/modules" tms-backend/
 cp -a "$SRC/tms-backend/templates" tms-backend/
 cp -a "$SRC/tms-backend/utils" tms-backend/
