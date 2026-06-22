@@ -13,6 +13,8 @@
 | `npm run check` | 完整工程检查 | 工程脚本测试、前端完整检查、后端完整检查、Electron 脚本测试 |
 | `npm run ci:install` | GitCode CI 依赖安装 | 根目录、前端、Electron、Playwright console 的 `npm ci`，以及后端 `pip install -r requirements.txt` |
 | `npm run test:server-package` | 服务器包脚本测试 | `node --test scripts/engineering/package-server-update.test.mjs` |
+| `npm run release:dry-run` | 自动发布预演 | 运行 `semantic-release --dry-run`，预览版本计算、CHANGELOG 和 release notes 生成 |
+| `npm run release` | 自动发布 | 由 CI 在 GitCode `main` push 后运行，生成版本提交、tag 和 GitCode Release |
 | `npm run release:updates:pull` | 版本记录同步 | 从服务器 `/api/release-updates` 拉取记录，合并更新本地 fallback 和后端默认 seed |
 | `npm run release:updates:push` | 版本记录写入 | 将当前 commit 的版本记录写入服务器 `/api/release-updates` |
 | `npm run release:updates:push:dry-run` | 版本记录写入预览 | 预览当前 commit 将写入的记录，不 POST |
@@ -54,11 +56,12 @@
 
 ## 版本记录同步
 
-- 版本更新记录以服务器数据库为主源，本地 `releaseHistory.json` 和后端默认 seed 是可再生成缓存。
+- 版本更新记录以服务器数据库为主源，本地 `releaseHistory.json` 和后端默认 seed `tms-backend/data/release_updates_seed.json` 是可再生成缓存。
 - 本地缓存落后服务器时运行 `npm run release:updates:pull`；先用 `npm run release:updates:dry-run` 检查合并结果。
 - 手动写入服务器前先运行 `npm run release:updates:push:dry-run` 检查当前 commit 将生成的记录；不要依赖 `npm run release:updates:push -- --dry-run` 这类参数透传。
 - commit/merge 自动记录通过 `.githooks` 调用 `scripts/release_update_sync.py`，默认从 `TOS_RELEASE_UPDATES_API_URL` 或 `tms-frontend/.env.server` 解析服务器 `/api/release-updates`，不得提交数据库账号或写入 token。
 - `POST /api/release-updates` 可由服务器环境变量 `TOS_RELEASE_UPDATE_WRITE_TOKEN` 保护；`GET /api/release-updates` 必须保持公开读取，避免版本页不可用。
+- `semantic-release` 只在 GitCode `main` push 后运行；CI 需要配置 `GITCODE_TOKEN`。`main` 作为 `beta.3` prerelease 分支，`stable` 仅作为 semantic-release 要求的稳定 release branch；首次启用前需要在当前基线提交补齐 `v0.9.8-beta.3.28` tag。
 
 ## GitCode 远端检查
 

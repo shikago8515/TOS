@@ -19,6 +19,20 @@ test('PyInstaller args include Sophia Tina templates as runtime data', () => {
   assert.equal(target, 'templates')
 })
 
+test('PyInstaller args include release update seed data as runtime data', () => {
+  const args = buildPyInstallerArgs()
+  const addDataValues = args
+    .map((arg, index) => (arg === '--add-data' ? args[index + 1] : undefined))
+    .filter(Boolean)
+  const seedDataValue = addDataValues.find((value) => value.endsWith(`${path.delimiter}data`))
+
+  assert(seedDataValue, 'expected release update data --add-data value')
+  const [source, target] = seedDataValue.split(path.delimiter)
+
+  assert.equal(source, path.join(backendDir, 'data'))
+  assert.equal(target, 'data')
+})
+
 test('PyInstaller args exclude unused heavyweight optional packages', () => {
   const args = buildPyInstallerArgs()
   const excludedModules = []

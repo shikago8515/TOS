@@ -14,6 +14,8 @@
     "release:updates:push": "python scripts/release_update_sync.py",
     "release:updates:push:dry-run": "python scripts/release_update_sync.py --dry-run",
     "release:updates:dry-run": "python scripts/release_update_sync.py --pull --limit 300 --dry-run",
+    "release:dry-run": "semantic-release --dry-run",
+    "release": "semantic-release",
     "version:set": "node scripts/engineering/sync-version.mjs --set",
     "version:bump": "node scripts/engineering/sync-version.mjs --bump",
     "server:package": "node scripts/engineering/package-server-update.mjs",
@@ -28,6 +30,12 @@
     "cleanup:local": "node scripts/engineering/cleanup-local-artifacts.mjs --apply"
   },
   "devDependencies": {
-    "electron-builder": "^26.8.1"
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/release-notes-generator": "^14.1.1",
+    "conventional-changelog-conventionalcommits": "^9.3.1",
+    "electron-builder": "^26.8.1",
+    "semantic-release": "^24.2.9"
   }
 }

@@ -62,3 +62,33 @@ jobs:
           NODE_DIST="node-v${NODE_VERSION}-linux-x64"
           export PATH="$PWD/.ci/${NODE_DIST}/bin:$PATH"
           PYTHON=python3 npm run check
+
+      - name: Semantic release
+        env:
+          GITCODE_REF: ${{ gitcode.ref }}
+          GITCODE_SHA: ${{ gitcode.sha }}
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+          GITCODE_REPOSITORY: shikago8515/TOS
+        run: |
+          cd repo_workspace
+          NODE_VERSION=22.11.0
+          NODE_DIST="node-v${NODE_VERSION}-linux-x64"
+          export PATH="$PWD/.ci/${NODE_DIST}/bin:$PATH"
+          if [ "$GITCODE_REF" != "refs/heads/main" ] || [ -z "$GITCODE_TOKEN" ]; then
+            echo "Skip semantic-release: not a main push or GITCODE_TOKEN is missing."
+            exit 0
+          fi
+          if git log -1 --pretty=%s | grep -q '^chore(release):'; then
+            echo "Skip semantic-release for release commit."
+            exit 0
+          fi
+          git config user.name "tos-release-bot"
+          git config user.email "tos-release-bot@users.noreply.gitcode.com"
+          git remote set-url origin "https://oauth2:${GITCODE_TOKEN}@gitcode.com/shikago8515/TOS.git"
+          git checkout -B main "$GITCODE_SHA"
+          git fetch origin main --tags --prune
+          if ! git ls-remote --exit-code --heads origin stable >/dev/null 2>&1; then
+            git push origin HEAD:stable
+          fi
+          git fetch origin stable --prune
+          npm run release -- --no-ci

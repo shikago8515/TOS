@@ -209,6 +209,15 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
         )
         self.assertEqual(existing_default["version"], "0.9.8-beta.3.6")
 
+    def test_default_records_are_loaded_from_json_seed(self) -> None:
+        with open(release_updates_api.RELEASE_UPDATE_SEED_PATH, "r", encoding="utf-8") as seed_file:
+            seed_records = json.load(seed_file)
+
+        self.assertEqual(
+            [self._frontend_projection(record) for record in seed_records],
+            [self._backend_projection(record) for record in release_updates_api.DEFAULT_RELEASE_UPDATE_RECORDS],
+        )
+
     def test_seed_default_release_updates_inserts_missing_records_without_overwriting(self) -> None:
         with patch.object(release_updates_api, "insert_release_update_record_once") as insert_record, patch.object(
             release_updates_api,

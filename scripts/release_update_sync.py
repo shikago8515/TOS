@@ -16,11 +16,11 @@ from urllib.request import Request, urlopen
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = WORKSPACE_ROOT / "tms-backend"
 FRONTEND_RELEASE_HISTORY_PATH = Path("tms-frontend/src/shared/version/releaseHistory.json")
-BACKEND_RELEASE_UPDATES_API_PATH = Path("tms-backend/api/release_updates_api.py")
+BACKEND_RELEASE_UPDATES_SEED_PATH = Path("tms-backend/data/release_updates_seed.json")
 RELEASE_UPDATE_CACHE_SYNC_TITLE = "chore: 同步版本更新缓存"
 RELEASE_UPDATE_CACHE_SYNC_FILES = {
     FRONTEND_RELEASE_HISTORY_PATH.as_posix(),
-    BACKEND_RELEASE_UPDATES_API_PATH.as_posix(),
+    BACKEND_RELEASE_UPDATES_SEED_PATH.as_posix(),
 }
 
 
@@ -226,38 +226,14 @@ def write_local_release_history(workspace_root: Path, records: list[dict[str, st
 
 
 def write_backend_default_records(workspace_root: Path, records: list[dict[str, str]]) -> None:
-    api_path = workspace_root / BACKEND_RELEASE_UPDATES_API_PATH
-    content = api_path.read_text(encoding="utf-8")
-    start_marker = "DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = ["
-    end_marker = "\n\n\n@router.get"
-    start = content.index(start_marker)
-    end = content.index(end_marker, start)
-    updated = f"{content[:start]}{build_backend_default_records_source(records)}{content[end:]}"
-    write_text_lf(api_path, updated)
+    seed_path = workspace_root / BACKEND_RELEASE_UPDATES_SEED_PATH
+    seed_path.parent.mkdir(parents=True, exist_ok=True)
+    write_text_lf(seed_path, f"{json.dumps(records, ensure_ascii=False, indent=2)}\n")
 
 
 def write_text_lf(path: Path, content: str) -> None:
     with path.open("w", encoding="utf-8", newline="\n") as file:
         file.write(content)
-
-
-def build_backend_default_records_source(records: list[dict[str, str]]) -> str:
-    lines = ["DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = ["]
-    for record in records:
-        lines.extend([
-            "    _default_record(",
-            f"        {json.dumps(record['recordKey'], ensure_ascii=False)},",
-            f"        {json.dumps(record['version'], ensure_ascii=False)},",
-            f"        {json.dumps(record['releaseDate'], ensure_ascii=False)},",
-            f"        {json.dumps(record['category'], ensure_ascii=False)},",
-            f"        {json.dumps(record['pageName'], ensure_ascii=False)},",
-            f"        {json.dumps(record['pagePath'], ensure_ascii=False)},",
-            f"        {json.dumps(record['title'], ensure_ascii=False)},",
-            f"        {json.dumps(record['description'], ensure_ascii=False)},",
-            "    ),",
-        ])
-    lines.append("]")
-    return "\n".join(lines)
 
 
 def read_commits(commit: str | None, commit_range: str | None, limit: int) -> list[dict[str, str]]:
@@ -323,7 +299,14 @@ def infer_page(files: list[str]) -> tuple[str, str]:
         (
             "版本更新记录",
             "/release-updates",
-            ("src/pages/release-updates/", "release_updates_api.py", "release_update_sync.py", ".githooks/"),
+            (
+                "src/pages/release-updates/",
+                "release_updates_api.py",
+                "release_updates_seed.json",
+                "releaseHistory.json",
+                "release_update_sync.py",
+                ".githooks/",
+            ),
         ),
         (
             "Jason / 发票 PDF 重排序",

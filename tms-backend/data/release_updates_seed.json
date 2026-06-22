@@ -1,0 +1,962 @@
+[
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-improved-desktop-package-slimming",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-22",
+    "category": "improved",
+    "pageName": "桌面安装包 / 发布校验",
+    "pagePath": "/release-updates",
+    "title": "优化桌面安装包瘦身校验",
+    "description": "桌面安装包后端运行时排除当前后端未声明使用的重型可选包，并在发布包校验中禁止重型运行时目录和 Infornexus 外部应用 cache 泄漏进 win-unpacked。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-added-local-artifact-cleanup",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-22",
+    "category": "added",
+    "pageName": "工程脚本",
+    "pagePath": "/settings",
+    "title": "新增本地构建产物清理命令",
+    "description": "新增 cleanup:local:dry-run 和 cleanup:local，用于预览或清理桌面端、前端和后端生成物，默认不会删除依赖目录或上传运行数据。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-fixed-pack-health-run-as-node-fallback",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-22",
+    "category": "fixed",
+    "pageName": "桌面安装包 / 自动化校验",
+    "pagePath": "/release-updates",
+    "title": "修复打包健康检查启动回退",
+    "description": "Windows 环境下用 TOS.exe 以 run-as-node 模式执行自动化健康检查被拒绝时，打包脚本会回退到当前 Node runtime 执行同一 start.js，保证健康检查仍可验证。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.27-added-xinlongtai-credential-profiles",
+    "version": "0.9.8-beta.3.27",
+    "releaseDate": "2026-06-18",
+    "category": "added",
+    "pageName": "新龙泰 Shipping 自动化",
+    "pagePath": "/web-automation/scenarios/xinlongtai-shipping-automation",
+    "title": "新增新龙泰账号档案管理",
+    "description": "新龙泰 Shipping 自动化页面支持保存多个 Infor Nexus 登录账号档案，可按名称选择不同账号，并在下拉列表中直接删除不再使用的账号记录。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.27-improved-installer-and-update-center",
+    "version": "0.9.8-beta.3.27",
+    "releaseDate": "2026-06-18",
+    "category": "improved",
+    "pageName": "系统设置 / 安装包下载",
+    "pagePath": "/settings",
+    "title": "优化安装包版本与更新检查",
+    "description": "设置页区分本机运行版本和服务器安装包版本，桌面端检查更新改为读取服务器安装包清单；完整安装包、轻量安装包和自动化助手安装包均保持带版本号输出。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.27-fixed-shipping-actions-and-credentials",
+    "version": "0.9.8-beta.3.27",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "万代 Shipping / 新龙泰 Shipping 自动化",
+    "pagePath": "/web-automation",
+    "title": "修复 Shipping 动作选择与账号保留",
+    "description": "万代 Shipping 固定选择 Assign Equipment ID，新龙泰 Shipping 固定选择 Remove/Change Equipment ID；账号和密码中的 @@ 原样保存、回显和提交，不再被自动替换；Infor Nexus 登录失败和 Access Code 页面会给出中文弹窗提示。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.26-fix-desktop-embedded-automation-process-map",
+    "version": "0.9.8-beta.3.26",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "桌面安装包 / Shipping 自动化",
+    "pagePath": "/web-automation",
+    "title": "修复桌面内置自动化执行器进程表缺失",
+    "description": "桌面端内置自动化启动器补齐进程管理表，修复启动 Shipping 执行器时报 ReferenceError: automationAppProcesses is not defined 的问题。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.25-remote-credentials-and-desktop-embedded-automation",
+    "version": "0.9.8-beta.3.25",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "网页自动化 / 桌面安装包",
+    "pagePath": "/web-automation",
+    "title": "修复远程账号回显与桌面内置执行器启动",
+    "description": "服务器端 Infor Nexus 账号支持 Shipping 执行器 id 与各业务场景 id 共用远程数据库凭据；桌面端启动自动化时直接读取安装包内置 automation-apps，不再被本机旧小助手占用 3210 端口影响。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.24-remote-db-and-desktop-automation-package",
+    "version": "0.9.8-beta.3.24",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "桌面安装包 / 网页自动化",
+    "pagePath": "/web-automation",
+    "title": "修复桌面安装包远程数据库与 Shipping 执行器识别",
+    "description": "桌面完整安装包默认使用远程服务器数据库读取账号、模板和运行记录；浏览器默认连接远程公开 API；Infor Nexus Shipping 相关场景兼容执行器 id 与业务场景 id 的账号读取，避免安装包中缺少账号或提示 Unknown automation app。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.23-fixed-helper-panel-and-shipping-launcher-message",
+    "version": "0.9.8-beta.3.23",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "自动化助手 / Shipping 自动化",
+    "pagePath": "/settings",
+    "title": "修复小助手面板与 Shipping 执行器提示",
+    "description": "设置页版本读取改为使用公开安装包清单接口；打开小助手面板前会先检测本机小助手版本，旧版或未启动时给出中文提示；Shipping 执行器缺失时提示用户安装最新版完整包或小助手。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.27-added-jessica-packing-list-pdf",
+    "version": "0.9.8-beta.3.27",
+    "releaseDate": "2026-06-18",
+    "category": "added",
+    "pageName": "Jessica / 对账核对",
+    "pagePath": "/jessca",
+    "title": "新增 Packing List PDF 核对",
+    "description": "Jessica 对账核对支持在原发票文件和参考表文件之外可选上传 Packing List PDF，并在同一个结果 Excel 中新增 Packing List核对 sheet。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.26-improved-draft-packing-carton-words",
+    "version": "0.9.8-beta.3.26",
+    "releaseDate": "2026-06-18",
+    "category": "improved",
+    "pageName": "Draft & Packing List 核对",
+    "pagePath": "/draft-packing-compare",
+    "title": "新增 Draft 箱数英文列",
+    "description": "Draft & Packing List 核对结果 Excel 在 Cartons 后新增 Cartons In Words 列，Draft 行显示 PDF 原文中的大写英文箱数，Packing List 行保持空白。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.25-improved-iplex-auto-columns-release-notice-batch",
+    "version": "0.9.8-beta.3.25",
+    "releaseDate": "2026-06-18",
+    "category": "improved",
+    "pageName": "iPlex 双表核对 / 版本更新提示",
+    "pagePath": "/iplex/dual-table-compare",
+    "title": "自动核对列并批次化版本弹窗",
+    "description": "iPlex 双表核对删除可见列配置区，生成时自动识别固定业务列并在原位置显示核对异常表；版本更新弹窗改为按发布批次触发，可按模块集中展示更新内容，小修改默认不主动弹窗。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.24-fixed-iplex-skip-total-rows",
+    "version": "0.9.8-beta.3.24",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "iPlex 双表核对",
+    "pagePath": "/iplex/dual-table-compare",
+    "title": "跳过 RC 总计行核对",
+    "description": "修复 iPlex 双表核对将 RC 表空 Key 总计行当作未匹配行处理的问题，总计行不再写入差值公式、不再标红，也不计入异常列表。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.23-improved-iplex-preview-and-red-row-marking",
+    "version": "0.9.8-beta.3.23",
+    "releaseDate": "2026-06-18",
+    "category": "improved",
+    "pageName": "iPlex 双表核对",
+    "pagePath": "/iplex/dual-table-compare",
+    "title": "显示异常列表并标红 Excel 行",
+    "description": "iPlex 双表核对处理完成后在页面直接显示不一致或未匹配的 RC 行，并在导出的 Excel 中将差值不为 0 或未匹配的整行标红。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.22-fixed-iplex-dual-table-direction",
+    "version": "0.9.8-beta.3.22",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "iPlex 双表核对",
+    "pagePath": "/iplex/dual-table-compare",
+    "title": "修正 iPlex 匹配方向",
+    "description": "修正 iPlex 双表核对匹配方向，按 PO # 对应 BUYER ORDER NO. 将 PO 调整数据匹配到 RC 表输出。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.22-fixed-helper-runtime-version-sync",
+    "version": "0.9.8-beta.3.22",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "自动化助手 / 安装包",
+    "pagePath": "/settings",
+    "title": "修复小助手运行时版本同步",
+    "description": "版本同步脚本会同时更新自动化 app registry 和 shipping executor 版本，确保小助手安装后健康检查、更新面板和服务器安装包版本保持一致。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.21-added-iplex-dual-table-compare",
+    "version": "0.9.8-beta.3.21",
+    "releaseDate": "2026-06-17",
+    "category": "added",
+    "pageName": "iPlex 双表核对",
+    "pagePath": "/iplex/dual-table-compare",
+    "title": "新增 iPlex 双表核对工具",
+    "description": "新增 iPlex 双表核对工具，支持两张 Excel 按指定关键列匹配并导出带筛选的差值核对结果。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.21-improved-helper-and-installer-update-panels",
+    "version": "0.9.8-beta.3.21",
+    "releaseDate": "2026-06-18",
+    "category": "improved",
+    "pageName": "安装包与自动化助手",
+    "pagePath": "/settings",
+    "title": "新增小助手和桌面端更新入口",
+    "description": "小助手启动后可在本机面板检查服务器最新版、下载并打开最新版安装包；桌面端右上角会在服务器完整安装包版本高于本机版本时提示下载更新。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.20-fixed-adidas-materials-helper-entry",
+    "version": "0.9.8-beta.3.20",
+    "releaseDate": "2026-06-17",
+    "category": "fixed",
+    "pageName": "adidas Materials",
+    "pagePath": "/adidas-materials",
+    "title": "修复独立自动化助手启动",
+    "description": "修复 adidas Materials 网页端启动独立自动化助手时缺少 collector 入口的问题。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.19-improved-automation-executor-health-probe",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-17",
+    "category": "improved",
+    "pageName": "网页自动化 / 本机执行器",
+    "pagePath": "/web-automation",
+    "title": "优化本机执行器检测速度",
+    "description": "本机执行器健康检查改为并行快探测 /api/health 和 /health，并收紧本机超时时间，减少浏览器刷新执行器状态时的等待卡顿。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.19-improved-helper-version-update-prompt",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-17",
+    "category": "improved",
+    "pageName": "自动化助手 / 安装包",
+    "pagePath": "/settings",
+    "title": "提示本机小助手版本更新",
+    "description": "小助手、Shipping 执行器和 TOS 完整安装包版本统一跟随系统版本，浏览器自动检测到本机小助手版本落后或无法识别时会提示用户安装最新版。"
+  },
+  {
+    "recordKey": "git-b04b31d8534b8d99518dc963a2ab2e2125f51cac",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-17",
+    "category": "fixed",
+    "pageName": "多个页面",
+    "pagePath": "",
+    "title": "fix: 避免版本记录缓存提交循环写入",
+    "description": "由 Git commit 自动记录：fix: 避免版本记录缓存提交循环写入。涉及文件：.githooks/post-merge、scripts/release_update_sync.py、scripts/release_update_sync_test.py、tms-backend/api/release_updates_api.py、tms-backend/utils/mysql_store.py、tms-frontend/src/shared/version/releaseHistory.json。"
+  },
+  {
+    "recordKey": "git-b6be8c1c92434a5add09afbadb14a8f189142092",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-17",
+    "category": "improved",
+    "pageName": "多个页面",
+    "pagePath": "",
+    "title": "merge: 收口 Work Sales 与版本同步",
+    "description": "由 Git merge 自动记录：merge: 收口 Work Sales 与版本同步。涉及文件：.githooks/post-commit、.githooks/post-merge、AGENTS.md、README.md、app-version.json、docs/engineering-entrypoints.md、docs/templates/gitcode-checklist.md、docs/templates/release-notes.md 等 55 个文件。"
+  },
+  {
+    "recordKey": "git-7d7f1d9f0082c4711d8fb502e1f3ae9ede23a577",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-17",
+    "category": "improved",
+    "pageName": "版本更新记录",
+    "pagePath": "/release-updates",
+    "title": "test: 放宽版本记录缓存排序断言",
+    "description": "由 Git commit 自动记录：test: 放宽版本记录缓存排序断言。涉及文件：tms-frontend/src/pages/release-updates/releaseUpdatesApi.test.ts。"
+  },
+  {
+    "recordKey": "git-f20fec7594149756cb7b6ee80c8c0322e550acb9",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-17",
+    "category": "improved",
+    "pageName": "后端服务",
+    "pagePath": "/api",
+    "title": "docs: 收口本地开发和合并流程",
+    "description": "由 Git commit 自动记录：docs: 收口本地开发和合并流程。涉及文件：AGENTS.md、README.md、docs/engineering-entrypoints.md、docs/templates/gitcode-checklist.md、docs/templates/release-notes.md、docs/tos-ai-workflow.md、scripts/engineering/frontend-dev-entrypoints.test.mjs、tms-backend/README.md。"
+  },
+  {
+    "recordKey": "git-07fd04941c568ff333e4711b759304134e1b7a6a",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-17",
+    "category": "improved",
+    "pageName": "多个页面",
+    "pagePath": "",
+    "title": "chore: 同步版本记录到服务器主源",
+    "description": "由 Git commit 自动记录：chore: 同步版本记录到服务器主源。涉及文件：.githooks/post-commit、.githooks/post-merge、package.json、scripts/engineering/run-checks.mjs、scripts/release_update_sync.py、scripts/release_update_sync_test.py、tms-backend/api/release_updates_api.py、tms-backend/tests/test_release_updates_api.py 等 9 个文件。"
+  },
+  {
+    "recordKey": "git-33a8dcf7380a1c6c68f62751e87df3c48effa899",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-17",
+    "category": "fixed",
+    "pageName": "多个页面",
+    "pagePath": "",
+    "title": "fix: 收紧本地后端和安全边界",
+    "description": "由 Git commit 自动记录：fix: 收紧本地后端和安全边界。涉及文件：app-version.json、scripts/engineering/check-backend-version.mjs、scripts/engineering/check-backend-version.test.mjs、scripts/engineering/frontend-direct-fetch-boundary.test.mjs、tms-backend/api/eric_api.py、tms-backend/api/jane_bom_compare_api.py、tms-backend/api/jane_bom_summary_api.py、tms-backend/api/jane_outbound_compare_api.py 等 22 个文件。"
+  },
+  {
+    "recordKey": "git-a413676afc0a0a1251d33aca84ed1cbcc9cd343f",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-17",
+    "category": "added",
+    "pageName": "多个页面",
+    "pagePath": "",
+    "title": "feat: 重建 Work Sales 数据写入",
+    "description": "由 Git commit 自动记录：feat: 重建 Work Sales 数据写入。涉及文件：tms-backend/api/tms_finance_work_sales_api.py、tms-backend/modules/tms_finance_work_sales_module.py、tms-backend/tests/test_tms_finance_work_sales_module.py、tms-frontend/src/app/router.test.ts、tms-frontend/src/domain/moduleCatalog.test.ts、tms-frontend/src/domain/moduleCatalog.ts、tms-frontend/src/pages/tms-finance-internal-reconciliation/TmsFinanceInternalReconciliationPage.vue、tms-frontend/src/pages/tms-finance-internal-reconciliation/tmsFinancePageModel.test.ts 等 16 个文件。"
+  },
+  {
+    "recordKey": "git-bbee1f57a7c5d246380f6f356a77f07a963f59b6",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-16",
+    "category": "improved",
+    "pageName": "版本更新记录",
+    "pagePath": "/release-updates",
+    "title": "merge: 收口前端开发入口",
+    "description": "由 Git manual 自动记录：merge: 收口前端开发入口。涉及文件：.gitignore、README.md、docs/engineering-entrypoints.md、package.json、tms-electron-app/README.md、tms-frontend/.env.server、tms-frontend/README.md、tms-frontend/package.json 等 10 个文件。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.19-fixed-backend-version-sentinel",
+    "version": "0.9.8-beta.3.19",
+    "releaseDate": "2026-06-16",
+    "category": "fixed",
+    "pageName": "桌面客户端 / 后端服务",
+    "pagePath": "/release-updates",
+    "title": "提示后端版本未更新",
+    "description": "前端请求业务接口前会检查本地后端版本，发现后端仍是旧版本时直接提示重启，避免把后端未更新误判为业务处理失败。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.18-improved-work-sales-turnover-details-fill",
+    "version": "0.9.8-beta.3.18",
+    "releaseDate": "2026-06-16",
+    "category": "improved",
+    "pageName": "Work Sales 数据写入",
+    "pagePath": "/tms-finance-work-sales",
+    "title": "重建 Work Sales 明细",
+    "description": "Work Sales 改为从 BULK Sales 导出表重建 TURNOVER 的 Turnover Details 明细，目标表旧明细会先清空再按源行写入。"
+  },
+  {
+    "recordKey": "git-844f6ea5ece625bced602e24cf178fc00d8fc203",
+    "version": "0.9.8-beta.3.17",
+    "releaseDate": "2026-06-16",
+    "category": "fixed",
+    "pageName": "全局通用",
+    "pagePath": "",
+    "title": "fix: send Xinlongtai automation id to executor",
+    "description": "由 Git commit 自动记录：fix: send Xinlongtai automation id to executor。涉及文件：tms-frontend/src/pages/xinlongtai-shipping-automation/components/XinlongtaiShippingAutomationWorkspace.vue。"
+  },
+  {
+    "recordKey": "git-e3e7dfabb261e92b9386eea859d644981a76dd4e",
+    "version": "0.9.8-beta.3.17",
+    "releaseDate": "2026-06-16",
+    "category": "fixed",
+    "pageName": "浏览器自动化",
+    "pagePath": "/web-automation",
+    "title": "fix: scope shipment action override to Xinlongtai",
+    "description": "由 Git commit 自动记录：fix: scope shipment action override to Xinlongtai。涉及文件：tms-electron-app/automation-apps/shipping-automation-demo/server.mjs。"
+  },
+  {
+    "recordKey": "git-12fd07b9fc9a299ad5d3aa3b6ac0b0fb919d6a59",
+    "version": "0.9.8-beta.3.17",
+    "releaseDate": "2026-06-16",
+    "category": "fixed",
+    "pageName": "浏览器自动化",
+    "pagePath": "/web-automation",
+    "title": "fix: support assign equipment action for Xinlongtai shipping",
+    "description": "由 Git commit 自动记录：fix: support assign equipment action for Xinlongtai shipping。涉及文件：tms-electron-app/automation-apps/shipping-automation-demo/server.mjs、tms-frontend/src/pages/xinlongtai-shipping-automation/components/XinlongtaiShippingAutomationWorkspace.vue。"
+  },
+  {
+    "recordKey": "git-5693b13c01d1e7060242551f0b4e13fe6fcb10c5",
+    "version": "0.9.8-beta.3.17",
+    "releaseDate": "2026-06-16",
+    "category": "fixed",
+    "pageName": "浏览器自动化",
+    "pagePath": "/web-automation",
+    "title": "fix: pass shipment scan action to shipping workflow",
+    "description": "由 Git commit 自动记录：fix: pass shipment scan action to shipping workflow。涉及文件：tms-electron-app/automation-apps/shipping-automation-demo/server.mjs。"
+  },
+  {
+    "recordKey": "git-ad80bc65ee7084af7396a788b9a77b4b8a3b4121",
+    "version": "0.9.8-beta.3.17",
+    "releaseDate": "2026-06-16",
+    "category": "improved",
+    "pageName": "多个页面",
+    "pagePath": "",
+    "title": "Merge remote-tracking branch 'origin/main'",
+    "description": "由 Git merge 自动记录：Merge remote-tracking branch 'origin/main'。涉及文件：.gitignore、README.md、docs/engineering-entrypoints.md、package.json、tms-electron-app/README.md、tms-frontend/.env.server、tms-frontend/README.md、tms-frontend/package.json 等 41 个文件。"
+  },
+  {
+    "recordKey": "git-84ba3dabb147e3e58e29da05a1d3a21321875666",
+    "version": "0.9.8-beta.3.17",
+    "releaseDate": "2026-06-16",
+    "category": "improved",
+    "pageName": "版本更新记录",
+    "pagePath": "/release-updates",
+    "title": "chore: 收口前端开发入口",
+    "description": "由 Git merge 自动记录：chore: 收口前端开发入口。涉及文件：.gitignore、README.md、docs/engineering-entrypoints.md、package.json、tms-electron-app/README.md、tms-frontend/.env.server、tms-frontend/README.md、tms-frontend/package.json 等 10 个文件。"
+  },
+  {
+    "recordKey": "git-18799c1e2e2a6070781b00f124ce7945f98a6539",
+    "version": "0.9.8-beta.3.17",
+    "releaseDate": "2026-06-16",
+    "category": "added",
+    "pageName": "多个页面",
+    "pagePath": "",
+    "title": "feat: add PO auto download workflow",
+    "description": "由 Git commit 自动记录：feat: add PO auto download workflow。涉及文件：tms-backend/README.md、tms-backend/api/automation_storage_api.py、tms-backend/api/system_config_api.py、tms-backend/scripts/seed_automation_templates.py、tms-backend/scripts/seed_existing_automation_credentials.py、tms-backend/templates/automation/xinlongtai-shipping-automation-template.xls、tms-backend/tests/test_automation_storage.py、tms-electron-app/README.md 等 33 个文件。"
+  },
+  {
+    "recordKey": "git-7fe486ee550d124d70c9e7c3ef066b8d9c322f1c",
+    "version": "0.9.8-beta.3.17",
+    "releaseDate": "2026-06-16",
+    "category": "fixed",
+    "pageName": "版本更新记录",
+    "pagePath": "/release-updates",
+    "title": "fix: 版本更新记录直连服务器兜底",
+    "description": "由 Git commit 自动记录：fix: 版本更新记录直连服务器兜底。涉及文件：tms-frontend/src/pages/release-updates/releaseUpdatesApi.test.ts、tms-frontend/src/pages/release-updates/releaseUpdatesApi.ts。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.17-improved-electron-external-allowlist",
+    "version": "0.9.8-beta.3.17",
+    "releaseDate": "2026-06-16",
+    "category": "improved",
+    "pageName": "TOS 桌面客户端 / 安全",
+    "pagePath": "/settings",
+    "title": "收口桌面外链打开边界",
+    "description": "收口 Electron 外链打开 allowlist，默认不再使用 GitHub 作为桌面更新源，外部网页和手动下载只允许明确可信的 HTTPS 地址。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.16-improved-system-api-contract",
+    "version": "0.9.8-beta.3.16",
+    "releaseDate": "2026-06-16",
+    "category": "improved",
+    "pageName": "桌面客户端 / 后端服务",
+    "pagePath": "/settings",
+    "title": "收口系统接口后端契约",
+    "description": "为版本更新记录和系统配置接口补充后端响应 schema，并将 TOS 桌面下载等系统接口纳入桌面后端兼容契约。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.15-improved-settings-download-center-copy",
+    "version": "0.9.8-beta.3.15",
+    "releaseDate": "2026-06-16",
+    "category": "improved",
+    "pageName": "系统设置 / 下载中心",
+    "pagePath": "/settings",
+    "title": "优化下载中心中文文案",
+    "description": "TOS 应用安装包、TOS 完整安装包和自动化助手安装包在页面中使用中文说明，安装包文件名保持英文，便于下载和排查。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.15-fixed-tos-desktop-installer-empty-folder",
+    "version": "0.9.8-beta.3.15",
+    "releaseDate": "2026-06-16",
+    "category": "fixed",
+    "pageName": "TOS 桌面安装包",
+    "pagePath": "/settings",
+    "title": "修复 TOS 安装目录为空的问题",
+    "description": "修正 NSIS 卸载段命名导致安装阶段误执行清理逻辑的问题，安装后会保留 TOS.exe、app.asar 和运行资源。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.15-improved-tos-desktop-remote-backend",
+    "version": "0.9.8-beta.3.15",
+    "releaseDate": "2026-06-16",
+    "category": "improved",
+    "pageName": "TOS 桌面客户端",
+    "pagePath": "/settings",
+    "title": "桌面版改为连接服务器后端",
+    "description": "桌面客户端业务 API 默认连接服务器后端，用户电脑本机仅保留自动化启动器等本地能力，避免安装包查找本机业务后端。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.15-added-tos-desktop-full-installer",
+    "version": "0.9.8-beta.3.15",
+    "releaseDate": "2026-06-16",
+    "category": "added",
+    "pageName": "系统设置 / 下载中心",
+    "pagePath": "/settings",
+    "title": "新增 TOS 完整安装包下载链路",
+    "description": "新增 TOS-Desktop-Full-Setup.exe 完整安装包，用户下载单个大安装包后，安装阶段直接解压内置 payload，不再连接 MinIO 下载组件。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.15-fixed-release-updates-browser-backend",
+    "version": "0.9.8-beta.3.15",
+    "releaseDate": "2026-06-16",
+    "category": "fixed",
+    "pageName": "版本更新记录",
+    "pagePath": "/release-updates",
+    "title": "修复浏览器版版本记录后端连接",
+    "description": "浏览器版部署在 /tos 路径下时自动使用同源 /tos 后端前缀，避免误连本机 127.0.0.1 导致显示本地版本说明。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.15-fixed-release-updates-version-sort",
+    "version": "0.9.8-beta.3.15",
+    "releaseDate": "2026-06-15",
+    "category": "fixed",
+    "pageName": "版本更新记录",
+    "pagePath": "/release-updates",
+    "title": "修复版本更新记录排序",
+    "description": "修复版本更新记录按数据库更新时间排序时旧版本可能排在最新版上方的问题，改为按版本号倒序展示。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.14-improved-draft-packing-separator-row",
+    "version": "0.9.8-beta.3.14",
+    "releaseDate": "2026-06-15",
+    "category": "improved",
+    "pageName": "Draft & Packing List 核对",
+    "pagePath": "/draft-packing-compare",
+    "title": "优化对比结果分隔行样式",
+    "description": "优化 Draft & Packing List 核对结果分隔行样式，组间空白行改用浅色填充，避免误判为空白问题行。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.13-fixed-draft-packing-feedback-label",
+    "version": "0.9.8-beta.3.13",
+    "releaseDate": "2026-06-15",
+    "category": "fixed",
+    "pageName": "Draft & Packing List 核对",
+    "pagePath": "/draft-packing-compare",
+    "title": "简化字段缺失反馈状态",
+    "description": "修正 Draft & Packing List 核对结果中字段缺失状态，只显示“需反馈”，不再附带 Nydia。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.12-improved-process-history-scroll",
+    "version": "0.9.8-beta.3.12",
+    "releaseDate": "2026-06-15",
+    "category": "improved",
+    "pageName": "处理记录",
+    "pagePath": "/jane",
+    "title": "处理记录改为内部滚动",
+    "description": "优化处理记录面板为内部滚动，避免长记录撑高页面。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.11-improved-release-updates-history-fallback",
+    "version": "0.9.8-beta.3.11",
+    "releaseDate": "2026-06-15",
+    "category": "improved",
+    "pageName": "版本更新记录",
+    "pagePath": "/release-updates",
+    "title": "补全本地历史版本记录",
+    "description": "版本更新记录页本地 fallback 支持展示内置历史版本记录。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.11-fixed-release-updates-backend-fallback",
+    "version": "0.9.8-beta.3.11",
+    "releaseDate": "2026-06-15",
+    "category": "fixed",
+    "pageName": "版本更新记录",
+    "pagePath": "/release-updates",
+    "title": "修复后端未连接时的版本记录显示",
+    "description": "修复版本更新记录页在浏览器模式且后端未启动时显示 Failed to fetch 的问题，改为展示本地版本说明。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.11-fixed-draft-packing-description-cleanup",
+    "version": "0.9.8-beta.3.11",
+    "releaseDate": "2026-06-15",
+    "category": "fixed",
+    "pageName": "Draft & Packing List 核对",
+    "pagePath": "/draft-packing-compare",
+    "title": "清理 Packing List 描述脏数据",
+    "description": "修复 Draft & Packing List 核对结果中 Goods Description 误带入 PDF 免责声明和页码的问题。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.10-improved-draft-packing-jessica-nav",
+    "version": "0.9.8-beta.3.10",
+    "releaseDate": "2026-06-15",
+    "category": "improved",
+    "pageName": "Draft & Packing List 核对",
+    "pagePath": "/draft-packing-compare",
+    "title": "调整 Draft & Packing List 导航位置",
+    "description": "将 Draft & Packing List 核对入口移到 Jessica 导航下，并保留原页面路径和处理接口。"
+  },
+  {
+    "recordKey": "git-988a6920aed8100cd460babf3105f4382f76ca44",
+    "version": "0.9.8-beta.3.9",
+    "releaseDate": "2026-06-15",
+    "category": "fixed",
+    "pageName": "版本更新记录",
+    "pagePath": "/release-updates",
+    "title": "fix: 同步服务器部署版本更新记录",
+    "description": "修复服务器已更新到新版本后，版本更新记录页仍可能显示上一版本的问题；服务器部署包会携带并同步本次部署记录。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.9-fixed-release-updates-stale-version",
+    "version": "0.9.8-beta.3.9",
+    "releaseDate": "2026-06-13",
+    "category": "fixed",
+    "pageName": "版本更新记录",
+    "pagePath": "/release-updates",
+    "title": "修复服务器更新后的旧版本显示",
+    "description": "修复服务器已更新到新版本后，版本更新记录页仍可能显示上一版本的问题。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.9-improved-server-release-manifest",
+    "version": "0.9.8-beta.3.9",
+    "releaseDate": "2026-06-13",
+    "category": "improved",
+    "pageName": "服务器部署",
+    "pagePath": "/release-updates",
+    "title": "部署 manifest 记录版本更新内容",
+    "description": "服务器部署 manifest 新增 releaseUpdateRecord 字段，便于追踪本次部署版本、commit 和更新内容。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.9-improved-release-updates-runtime-version",
+    "version": "0.9.8-beta.3.9",
+    "releaseDate": "2026-06-13",
+    "category": "improved",
+    "pageName": "版本更新记录",
+    "pagePath": "/release-updates",
+    "title": "优化最新版本显示来源",
+    "description": "版本更新记录页的“最新版本”改为优先显示后端运行版本，避免数据库历史记录未同步时误显示旧版本。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.9-added-server-release-update-sync",
+    "version": "0.9.8-beta.3.9",
+    "releaseDate": "2026-06-13",
+    "category": "added",
+    "pageName": "版本更新记录",
+    "pagePath": "/release-updates",
+    "title": "服务器部署同步版本记录",
+    "description": "服务器部署包现在会携带本次部署的版本更新记录，并在服务重启验证通过后自动同步到后端记录接口。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.8-fixed-jason-legacy-paths",
+    "version": "0.9.8-beta.3.8",
+    "releaseDate": "2026-06-13",
+    "category": "fixed",
+    "pageName": "Jason / 发票 PDF 重排序",
+    "pagePath": "/jason/pdf-reorder",
+    "title": "保留 Jason 旧路径兼容",
+    "description": "旧 #/it-invoice-pdf-reorder、/api/it-invoice-pdf-reorder/* 和 legacy /api/* 路径继续兼容，避免历史链接和发布包调用失效。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.8-improved-jason-response-models",
+    "version": "0.9.8-beta.3.8",
+    "releaseDate": "2026-06-13",
+    "category": "improved",
+    "pageName": "Jason / 发票 PDF 重排序",
+    "pagePath": "/jason/pdf-reorder",
+    "title": "补充 Jason 后端响应模型",
+    "description": "Jason 后端 API 已补充 Pydantic response models，并在 OpenAPI 中暴露具体响应 schema。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.8-improved-jason-naming",
+    "version": "0.9.8-beta.3.8",
+    "releaseDate": "2026-06-13",
+    "category": "improved",
+    "pageName": "Jason / 发票 PDF 重排序",
+    "pagePath": "/jason/pdf-reorder",
+    "title": "统一 Jason PDF 模块命名",
+    "description": "Jason 模块前端目录、路由、API client 和测试命名已统一到 Jason PDF Reorder。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.8-added-jason-pdf-canonical-entry",
+    "version": "0.9.8-beta.3.8",
+    "releaseDate": "2026-06-13",
+    "category": "added",
+    "pageName": "Jason / 发票 PDF 重排序",
+    "pagePath": "/jason/pdf-reorder",
+    "title": "新增 Jason PDF 重排序标准入口",
+    "description": "Jason / 发票 PDF 重排序新增 canonical 前端入口 #/jason/pdf-reorder 和后端 API /api/jason/pdf-reorder/*。"
+  },
+  {
+    "recordKey": "git-a367dcb6d51bad34ac71b312057fea0f40aee9d9",
+    "version": "0.9.8-beta.3.8",
+    "releaseDate": "2026-06-13",
+    "category": "improved",
+    "pageName": "多个页面",
+    "pagePath": "",
+    "title": "merge: unify Jason module frontend and backend entry",
+    "description": "由 Git deploy 自动记录：merge: unify Jason module frontend and backend entry。涉及 Jason PDF 重排、版本更新记录、路由、后端 API 和版本同步等文件。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.7-fixed-it-invoice-original-html",
+    "version": "0.9.8-beta.3.7",
+    "releaseDate": "2026-06-13",
+    "category": "fixed",
+    "pageName": "Jason / 发票 PDF 重排序",
+    "pagePath": "/jason/pdf-reorder",
+    "title": "删除发票 PDF 页面旧 HTML 残留",
+    "description": "删除 IT Invoice PDF Reorder 页面级 original-index.html 残留，降低后续维护误用风险。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.7-improved-it-invoice-source-guard",
+    "version": "0.9.8-beta.3.7",
+    "releaseDate": "2026-06-13",
+    "category": "improved",
+    "pageName": "Jason / 发票 PDF 重排序",
+    "pagePath": "/jason/pdf-reorder",
+    "title": "增加发票 PDF 源码守卫",
+    "description": "新增源码守卫测试，防止该页面重新引入 raw HTML、Shadow DOM 包装或 new Function 执行路径。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.7-improved-it-invoice-typed-api",
+    "version": "0.9.8-beta.3.7",
+    "releaseDate": "2026-06-13",
+    "category": "improved",
+    "pageName": "Jason / 发票 PDF 重排序",
+    "pagePath": "/jason/pdf-reorder",
+    "title": "抽出发票 PDF typed API",
+    "description": "IT Invoice PDF Reorder 前端请求已抽出 typed API/client，页面组件不再直接执行 raw HTML 脚本。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.7-added-it-invoice-vue-page",
+    "version": "0.9.8-beta.3.7",
+    "releaseDate": "2026-06-13",
+    "category": "added",
+    "pageName": "Jason / 发票 PDF 重排序",
+    "pagePath": "/jason/pdf-reorder",
+    "title": "迁移发票 PDF 重排序为 Vue 页面",
+    "description": "IT Invoice PDF Reorder 已迁移为正式 Vue 页面，保留发票提取、PO 页码识别、号码提取、重排生成和摘要打印流程。"
+  },
+  {
+    "recordKey": "git-7e4a4df502f6672fcb93556cb2d76183a8644b5a",
+    "version": "0.9.8-beta.3.7",
+    "releaseDate": "2026-06-13",
+    "category": "fixed",
+    "pageName": "多个页面",
+    "pagePath": "",
+    "title": "fix: 优化版本更新记录自动排序",
+    "description": "由 Git deploy 自动记录：fix: 优化版本更新记录自动排序。涉及文件：scripts/release_update_sync.py、tms-backend/utils/mysql_store.py。"
+  },
+  {
+    "recordKey": "git-69d5971691b365872db095150ef11dba3799d53a",
+    "version": "0.9.8-beta.3.7",
+    "releaseDate": "2026-06-13",
+    "category": "improved",
+    "pageName": "版本更新记录",
+    "pagePath": "/release-updates",
+    "title": "chore: 自动记录版本更新历史",
+    "description": "由 Git deploy 自动记录：chore: 自动记录版本更新历史。涉及文件：.githooks/post-commit、.githooks/post-merge、scripts/install_release_update_hooks.ps1、scripts/release_update_sync.py。"
+  },
+  {
+    "recordKey": "git-9c850dcb7c0ae5edfa9f584fe0df95515e4aa099",
+    "version": "0.9.8-beta.3.7",
+    "releaseDate": "2026-06-13",
+    "category": "improved",
+    "pageName": "多个页面",
+    "pagePath": "",
+    "title": "Merge remote-tracking branch 'origin/main'",
+    "description": "由 Git deploy 自动记录：Merge remote-tracking branch 'origin/main'。涉及文件：app-version.json、tms-backend/app_version.py、tms-electron-app/package-lock.json、tms-electron-app/package.json、tms-frontend/src/pages/it-invoice-pdf-reorder/ItInvoicePdfReorderPage.vue、tms-frontend/src/pages/it-invoice-pdf-reorder/itInvoicePdfReorderApi.test.ts、tms-frontend/src/pages/it-invoice-pdf-reorder/itInvoicePdfReorderApi.ts、tms-frontend/src/pages/it-invoice-pdf-reorder/itInvoicePdfReorderModel.test.ts 等 27 个文件。"
+  },
+  {
+    "recordKey": "git-3fc2a23860eca21623d8fdf4a83b0b8527e34830",
+    "version": "0.9.8-beta.3.7",
+    "releaseDate": "2026-06-13",
+    "category": "added",
+    "pageName": "多个页面",
+    "pagePath": "",
+    "title": "feat: 重构系统设置与版本更新入口",
+    "description": "由 Git deploy 自动记录：feat: 重构系统设置与版本更新入口。涉及文件：tms-backend/api/release_updates_api.py、tms-backend/main.py、tms-backend/utils/mysql_store.py、tms-frontend/src/app/router.test.ts、tms-frontend/src/app/router.ts、tms-frontend/src/layout/AppShell.vue、tms-frontend/src/layout/useAppShellModel.ts、tms-frontend/src/pages/release-updates/ReleaseUpdatesPage.vue 等 14 个文件。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.6-improved-web-automation-entry",
+    "version": "0.9.8-beta.3.6",
+    "releaseDate": "2026-06-13",
+    "category": "improved",
+    "pageName": "网页自动化",
+    "pagePath": "/web-automation",
+    "title": "接入网页自动化主入口",
+    "description": "接入网页自动化主入口，侧边栏和首页快捷入口会打开真实 Vue 页面，不再落到开发中占位页。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.6-added-engineering-roadmap",
+    "version": "0.9.8-beta.3.6",
+    "releaseDate": "2026-06-13",
+    "category": "added",
+    "pageName": "工程化工作流",
+    "pagePath": "/release-updates",
+    "title": "新增工程化收口路线图",
+    "description": "新增工程化收口路线图，明确前端源码化、后端 schema、安全硬化和发布验收的后续边界。"
+  },
+  {
+    "recordKey": "2026-06-13-it-invoice-summary-columns",
+    "version": "0.9.8-beta.3.6",
+    "releaseDate": "2026-06-13",
+    "category": "improved",
+    "pageName": "Jason / 发票 PDF 重排序",
+    "pagePath": "/jason/pdf-reorder",
+    "title": "调整 PO 重排汇总页金额字段",
+    "description": "生成 PDF 的汇总页改用 Shas Vas Price，并增加 Merchandise Amount、Total Adjustment、Total Taxes、Order Total 汇总列。"
+  },
+  {
+    "recordKey": "2026-06-13-automation-helper-installer",
+    "version": "0.9.8-beta.3.6",
+    "releaseDate": "2026-06-13",
+    "category": "improved",
+    "pageName": "网页自动化页面 / 系统设置",
+    "pagePath": "/settings",
+    "title": "优化本机自动化助手下载与安装链路",
+    "description": "右上角入口可下载自动化助手安装包，安装包从服务器地址下载完整 payload 并校验。"
+  },
+  {
+    "recordKey": "2026-06-13-automation-storage-minio-db",
+    "version": "0.9.8-beta.3.6",
+    "releaseDate": "2026-06-13",
+    "category": "added",
+    "pageName": "网页自动化页面",
+    "pagePath": "/web-automation",
+    "title": "自动化模板、账号密码和运行记录接入数据库与 MinIO",
+    "description": "自动化页面支持从数据库读取网站登录账号密码，Excel 模板和运行结果文件通过 MinIO 存储。"
+  },
+  {
+    "recordKey": "2026-06-13-automation-excel-drag-drop",
+    "version": "0.9.8-beta.3.6",
+    "releaseDate": "2026-06-13",
+    "category": "fixed",
+    "pageName": "网页自动化 / shipping 2 自动化",
+    "pagePath": "/web-automation/scenarios/shipping-automation-2",
+    "title": "优化自动化页面 Excel 拖拽上传",
+    "description": "修复拖拽 Excel 经过上传框内部文字、图标和按钮时页面高亮反复闪烁的问题。"
+  },
+  {
+    "recordKey": "2026-06-13-release-update-records-page",
+    "version": "0.9.8-beta.3.6",
+    "releaseDate": "2026-06-13",
+    "category": "added",
+    "pageName": "系统菜单 / 版本更新记录",
+    "pagePath": "/release-updates",
+    "title": "新增版本更新记录入口和独立页面",
+    "description": "右上角系统菜单新增版本更新记录入口，页面从数据库读取历史更新，并明确每条更新影响的页面。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.5-fixed-fastapi-not-found-message",
+    "version": "0.9.8-beta.3.5",
+    "releaseDate": "2026-06-13",
+    "category": "fixed",
+    "pageName": "桌面客户端 / 后端服务",
+    "pagePath": "/settings",
+    "title": "优化接口缺失提示",
+    "description": "优化 FastAPI 接口缺失时的前端提示，避免只显示 Not Found。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.5-improved-backend-port-bypass",
+    "version": "0.9.8-beta.3.5",
+    "releaseDate": "2026-06-13",
+    "category": "improved",
+    "pageName": "桌面客户端 / 后端服务",
+    "pagePath": "/settings",
+    "title": "优化旧后端端口占用处理",
+    "description": "当 8000 端口被旧后端占用时，桌面端会旁路启动当前版本后端并返回实际服务地址。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.5-improved-backend-api-contract",
+    "version": "0.9.8-beta.3.5",
+    "releaseDate": "2026-06-13",
+    "category": "improved",
+    "pageName": "桌面客户端 / 后端服务",
+    "pagePath": "/settings",
+    "title": "新增桌面端后端 API 契约清单",
+    "description": "新增桌面端后端 API 契约清单，启动时会按应用版本和 OpenAPI 路由校验后端兼容性。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.4-fixed-draft-packing-old-backend",
+    "version": "0.9.8-beta.3.4",
+    "releaseDate": "2026-06-13",
+    "category": "fixed",
+    "pageName": "Draft & Packing List 核对",
+    "pagePath": "/draft-packing-compare",
+    "title": "兼容桌面端旧后端接口",
+    "description": "修复桌面端复用旧后端时 Draft & Packing List 核对接口返回 Not Found 的问题，启动时会校验新增处理和下载接口。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.3-improved-packing-pdfplumber",
+    "version": "0.9.8-beta.3.3",
+    "releaseDate": "2026-06-12",
+    "category": "improved",
+    "pageName": "Draft & Packing List 核对",
+    "pagePath": "/draft-packing-compare",
+    "title": "优化 Packing List 表格 PDF 解析",
+    "description": "Packing List 表格型 PDF 解析改用 pdfplumber，提高 PO、Working Number、Article Number、Market PO、Quantity、Cartons 等字段定位稳定性。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.3-added-draft-packing-extraction",
+    "version": "0.9.8-beta.3.3",
+    "releaseDate": "2026-06-12",
+    "category": "added",
+    "pageName": "Draft & Packing List 核对",
+    "pagePath": "/draft-packing-compare",
+    "title": "新增 Draft/Packing 字段提取与核对",
+    "description": "新增后端 Draft/Packing 字段提取、严格 HS/HTS 核对、问题明细 Sheet 和缺失字段反馈信息。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.3-added-draft-packing-module",
+    "version": "0.9.8-beta.3.3",
+    "releaseDate": "2026-06-12",
+    "category": "added",
+    "pageName": "Draft & Packing List 核对",
+    "pagePath": "/draft-packing-compare",
+    "title": "新增 Draft & Packing List 核对模块",
+    "description": "新增 PDF数据获取核对 分组和 Draft & Packing List 核对模块，可上传 Draft Form E 与 Packing List PDF 并生成上下对比 Excel。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.2-fixed-browser-settings-desktop-actions",
+    "version": "0.9.8-beta.3.2",
+    "releaseDate": "2026-06-12",
+    "category": "fixed",
+    "pageName": "系统设置",
+    "pagePath": "/settings",
+    "title": "隐藏浏览器模式桌面端操作",
+    "description": "修复浏览器/服务器模式仍显示桌面安装包更新入口和诊断包按钮的问题。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.2-improved-english-business-copy",
+    "version": "0.9.8-beta.3.2",
+    "releaseDate": "2026-06-12",
+    "category": "improved",
+    "pageName": "多业务页面",
+    "pagePath": "/settings",
+    "title": "补齐英文业务文案",
+    "description": "Jane、TMS Finance、Infornexus、adidas Materials 等页面补齐英文业务文案。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.2-improved-english-breadcrumb",
+    "version": "0.9.8-beta.3.2",
+    "releaseDate": "2026-06-12",
+    "category": "improved",
+    "pageName": "全局导航",
+    "pagePath": "/settings",
+    "title": "优化英文面包屑标题",
+    "description": "英文模式面包屑改为使用完整页面标题，避免只显示左侧导航短名。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.2-added-settings-browser-mode",
+    "version": "0.9.8-beta.3.2",
+    "releaseDate": "2026-06-12",
+    "category": "added",
+    "pageName": "系统设置",
+    "pagePath": "/settings",
+    "title": "新增浏览器模式系统设置页",
+    "description": "服务器/浏览器模式下的系统设置页改为只展示版本、运行环境和语言。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.1-fixed-tms-finance-append",
+    "version": "0.9.8-beta.3.1",
+    "releaseDate": "2026-06-11",
+    "category": "fixed",
+    "pageName": "TMS 财务表格数据处理",
+    "pagePath": "/tms-finance-internal-reconciliation",
+    "title": "修复 TMS 财务追加稳定性",
+    "description": "修复 TMS 财务追加时重复识别、格式复制、公式平移和小计范围更新不稳定的问题。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.1-improved-file-drag-drop",
+    "version": "0.9.8-beta.3.1",
+    "releaseDate": "2026-06-11",
+    "category": "improved",
+    "pageName": "文件上传",
+    "pagePath": "/tms-finance-internal-reconciliation",
+    "title": "优化多文件拖拽上传",
+    "description": "文件上传支持拖拽追加多文件，拖拽状态更稳定。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.1-improved-work-sales-append",
+    "version": "0.9.8-beta.3.1",
+    "releaseDate": "2026-06-11",
+    "category": "improved",
+    "pageName": "Work Sales 数据追加",
+    "pagePath": "/tms-finance-work-sales",
+    "title": "调整 Work Sales 追加流程",
+    "description": "Work Sales 调整为“BULK Sales 导出表 + TURNOVER 目标表”的追加流程。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.1-improved-internal-reconciliation-append",
+    "version": "0.9.8-beta.3.1",
+    "releaseDate": "2026-06-11",
+    "category": "improved",
+    "pageName": "内销对账表数据提取",
+    "pagePath": "/tms-finance-internal-reconciliation",
+    "title": "调整内销对账追加流程",
+    "description": "内销对账表从“回填已有行”调整为向未清账追加缺失行，避免覆盖已有数据。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.1-added-tms-finance-stats",
+    "version": "0.9.8-beta.3.1",
+    "releaseDate": "2026-06-11",
+    "category": "added",
+    "pageName": "TMS 财务表格数据处理",
+    "pagePath": "/tms-finance-internal-reconciliation",
+    "title": "新增 TMS 财务追加结果统计",
+    "description": "TMS 财务追加结果统计，显示追加行、重复跳过、相似已追加、Sales/Purchase 追加数量。"
+  }
+]

@@ -16,6 +16,14 @@ const commandGroups = {
       '--test',
       'scripts/engineering/sync-version.test.mjs',
     ]),
+    command('semantic-release-config-test', '.', process.execPath, [
+      '--test',
+      'scripts/engineering/semantic-release-config.test.mjs',
+    ]),
+    command('semantic-release-tos-plugin-test', '.', process.execPath, [
+      '--test',
+      'scripts/engineering/semantic-release-tos-plugin.test.mjs',
+    ]),
     command('server:package-test', '.', process.execPath, [
       '--test',
       'scripts/engineering/package-server-update.test.mjs',

@@ -84,6 +84,10 @@ test('electron-builder packages backend templates as backend source resources', 
     backendResource.filter.includes('templates/**/*'),
     'backend extraResource should include templates/**/*',
   )
+  assert(
+    backendResource.filter.includes('data/**/*'),
+    'backend extraResource should include data/**/* for release update seed files',
+  )
 })
 
 test('electron-builder excludes external app runtime cache from release resources', () => {

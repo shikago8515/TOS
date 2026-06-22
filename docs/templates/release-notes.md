@@ -26,9 +26,9 @@ tms-frontend/src/shared/version/releaseNotes.json
 
 ## 版本规则
 
-- 用户可见改动默认运行 `npm run version:bump`。
+- 用户可见改动默认由 `semantic-release` 在 GitCode `main` push 后自动更新版本和当前版本说明；本地预演使用 `npm run release:dry-run`。
 - 指定版本运行 `npm run version:set -- <version>`。
 - `releaseNotes.json.version` 必须等于 `app-version.json.version`。
 - `releaseNotes.json` 只写当前版本变更；`version:bump` 后清理上一版本遗留的 `added`、`improved`、`fixed` 条目。
-- `/release-updates` 历史时间线以服务器 MySQL `release_update_records` 为主源；本地 `releaseHistory.json` 和后端默认 seed 通过 `npm run release:updates:pull` 从服务器记录合并生成，并用一致性测试防止前后端分叉。
+- `/release-updates` 历史时间线以服务器 MySQL `release_update_records` 为主源；本地 `releaseHistory.json` 和后端默认 seed `tms-backend/data/release_updates_seed.json` 通过 `npm run release:updates:pull` 从服务器记录合并生成，并用一致性测试防止前后端分叉。
 - 至少一个 `added`、`improved`、`fixed` 数组非空。

@@ -52,7 +52,7 @@ product UI while replacing recovered bundled assets with maintainable source.
 
 ## Automation Helper Versioning
 
-- Every automation-helper capability change must bump the shared product version in `app-version.json`, `tms-electron-app/package.json`, and `tms-backend/app_version.py` before release.
+- Every automation-helper capability change must be covered by a Conventional Commit so `semantic-release` can bump the shared product version in `app-version.json`, `tms-electron-app/package.json`, and `tms-backend/app_version.py` before release.
 - Installer artifacts must include the version in the filename, for example `TOS-Desktop-Setup.<version>.exe`, `TOS-Desktop-Full-Setup.<version>.exe`, and `TOS-Automation-Helper-Setup.<version>.exe`.
 - Browser pages that depend on local helper endpoints must compare the local helper version from `127.0.0.1:3210/health` with the expected frontend version.
 - If the local helper version is missing or behind, the page must show a user-facing update dialog with current version, expected version, and a download action.

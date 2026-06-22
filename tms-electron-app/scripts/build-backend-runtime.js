@@ -5,6 +5,7 @@ const { spawnSync } = require('child_process')
 const electronDir = path.resolve(__dirname, '..')
 const repoRoot = path.resolve(electronDir, '..')
 const backendDir = path.join(repoRoot, 'tms-backend')
+const backendDataDir = path.join(backendDir, 'data')
 const templateDir = path.join(backendDir, 'templates')
 const runtimeRoot = path.join(electronDir, 'backend-runtime')
 const runtimeDir = path.join(runtimeRoot, 'tos-backend')
@@ -56,6 +57,8 @@ function buildPyInstallerArgs() {
     workPath,
     '--add-data',
     `${templateDir}${path.delimiter}templates`,
+    '--add-data',
+    `${backendDataDir}${path.delimiter}data`,
     ...excludedBackendRuntimeModules.flatMap((moduleName) => ['--exclude-module', moduleName]),
     launcherPath,
   ]
@@ -64,6 +67,7 @@ function buildPyInstallerArgs() {
 function main() {
   requireFile(launcherPath, 'backend launcher')
   requireFile(path.join(templateDir, 'sophia_tina_pivot_template.xlsx'), 'Sophia/Tina pivot template')
+  requireFile(path.join(backendDataDir, 'release_updates_seed.json'), 'release updates seed data')
   fs.mkdirSync(runtimeRoot, { recursive: true })
 
   // 发布包优先运行 backend-runtime，所以每次打包前必须用当前后端源码重建它。
@@ -95,6 +99,10 @@ function main() {
     path.join(runtimeDir, '_internal', 'templates', 'sophia_tina_pivot_template.xlsx'),
     'backend runtime Sophia/Tina pivot template',
   )
+  requireFile(
+    path.join(runtimeDir, '_internal', 'data', 'release_updates_seed.json'),
+    'backend runtime release updates seed data',
+  )
 
   console.log(`Backend runtime rebuilt: ${runtimeDir}`)
 }
@@ -105,6 +113,7 @@ if (require.main === module) {
 
 module.exports = {
   backendDir,
+  backendDataDir,
   buildPyInstallerArgs,
   excludedBackendRuntimeModules,
   main,

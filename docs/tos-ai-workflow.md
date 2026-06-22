@@ -62,10 +62,10 @@ npm run check:quick
 
 ## 4. 自动版本与更新内容
 
-用户可见改动默认由 AI 自动递增版本，不再等待用户单独提醒：
+用户可见改动默认使用 Conventional Commits，由 GitCode `main` push 后的 `semantic-release` 自动递增版本；开发阶段可先预演：
 
 ```powershell
-npm run version:bump
+npm run release:dry-run
 ```
 
 用户指定版本时使用：
@@ -107,7 +107,7 @@ tms-frontend/src/shared/version/releaseNotes.json
 
 模板见 `docs/templates/release-notes.md`。
 
-版本更新历史以服务器 MySQL `release_update_records` 为主源，本地 `tms-frontend/src/shared/version/releaseHistory.json` 和后端默认 seed 只是可再生成缓存。更新版本记录时使用：
+版本更新历史以服务器 MySQL `release_update_records` 为主源，本地 `tms-frontend/src/shared/version/releaseHistory.json` 和 `tms-backend/data/release_updates_seed.json` 只是可再生成缓存。更新版本记录时使用：
 
 ```powershell
 npm run release:updates:push:dry-run
@@ -117,6 +117,8 @@ npm run release:updates:pull
 ```
 
 `release:updates:push` 通过服务器 `/api/release-updates` 写入记录，不直连数据库账号；`release:updates:pull` 从服务器拉取并合并更新本地缓存。同步缓存类提交如需避免 post-commit 再次写入服务器，可以临时设置 `TOS_RELEASE_UPDATES_SKIP=1`。
+
+版本号、`CHANGELOG.md`、当前版本 `releaseNotes.json` 和 Git tag 默认由 `semantic-release` 在 GitCode `main` push 后自动生成。`main` 当前继续发布 `beta.3` 预发布版本；`stable` 仅作为 semantic-release 要求的稳定 release branch，占位保持在当前基线。首次启用前需要在当前基线提交上补齐 `v0.9.8-beta.3.28` tag，避免自动发布从旧 tag 重新计算历史版本；CI 会在缺少 `stable` 分支时自动创建。
 
 ## 5. GitCode 提交与 CI 门禁
 

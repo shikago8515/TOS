@@ -115,7 +115,7 @@ class ReleaseUpdateSyncTest(unittest.TestCase):
             release_update_sync.is_release_update_cache_sync_commit({
                 "subject": "chore: 同步版本更新缓存",
                 "files": "\n".join([
-                    "tms-backend/api/release_updates_api.py",
+                    "tms-backend/data/release_updates_seed.json",
                     "tms-frontend/src/shared/version/releaseHistory.json",
                 ]),
             }),
@@ -132,8 +132,10 @@ class ReleaseUpdateSyncTest(unittest.TestCase):
             root = Path(temp_dir)
             history_path = root / "tms-frontend" / "src" / "shared" / "version" / "releaseHistory.json"
             api_path = root / "tms-backend" / "api" / "release_updates_api.py"
+            seed_path = root / "tms-backend" / "data" / "release_updates_seed.json"
             history_path.parent.mkdir(parents=True)
             api_path.parent.mkdir(parents=True)
+            seed_path.parent.mkdir(parents=True)
             history_payload = [
                 {
                     "recordKey": "local-only",
@@ -148,12 +150,13 @@ class ReleaseUpdateSyncTest(unittest.TestCase):
             ]
             original_history = json.dumps(history_payload, ensure_ascii=False, indent=2) + "\n"
             original_api = (
-                "DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [\n"
-                "]\n\n\n"
-                "@router.get(\"\", response_model=ReleaseUpdatesResponse)\n"
+                "from pathlib import Path\n"
+                "RELEASE_UPDATE_SEED_PATH = Path(__file__).resolve().parents[1] / \"data\" / \"release_updates_seed.json\"\n"
             )
+            original_seed = "[]\n"
             history_path.write_text(original_history, encoding="utf-8")
             api_path.write_text(original_api, encoding="utf-8")
+            seed_path.write_text(original_seed, encoding="utf-8")
 
             result = release_update_sync.sync_release_update_cache(
                 workspace_root=root,
@@ -175,21 +178,20 @@ class ReleaseUpdateSyncTest(unittest.TestCase):
             self.assertEqual(result["recordCount"], 2)
             self.assertEqual(history_path.read_text(encoding="utf-8"), original_history)
             self.assertEqual(api_path.read_text(encoding="utf-8"), original_api)
+            self.assertEqual(seed_path.read_text(encoding="utf-8"), original_seed)
 
-    def test_pull_writes_cache_files_with_lf_line_endings(self) -> None:
+    def test_pull_writes_release_history_and_backend_seed_with_lf_line_endings(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             history_path = root / "tms-frontend" / "src" / "shared" / "version" / "releaseHistory.json"
             api_path = root / "tms-backend" / "api" / "release_updates_api.py"
+            seed_path = root / "tms-backend" / "data" / "release_updates_seed.json"
             history_path.parent.mkdir(parents=True)
             api_path.parent.mkdir(parents=True)
+            seed_path.parent.mkdir(parents=True)
             history_path.write_text("[]\n", encoding="utf-8")
-            api_path.write_text(
-                "DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = [\n"
-                "]\n\n\n"
-                "@router.get(\"\", response_model=ReleaseUpdatesResponse)\n",
-                encoding="utf-8",
-            )
+            api_path.write_text("API source must not be rewritten\n", encoding="utf-8")
+            seed_path.write_text("[]\n", encoding="utf-8")
 
             release_update_sync.sync_release_update_cache(
                 workspace_root=root,
@@ -208,7 +210,11 @@ class ReleaseUpdateSyncTest(unittest.TestCase):
             )
 
             self.assertNotIn(b"\r\n", history_path.read_bytes())
-            self.assertNotIn(b"\r\n", api_path.read_bytes())
+            self.assertNotIn(b"\r\n", seed_path.read_bytes())
+            self.assertEqual(api_path.read_text(encoding="utf-8"), "API source must not be rewritten\n")
+
+            seed_records = json.loads(seed_path.read_text(encoding="utf-8"))
+            self.assertEqual(seed_records[0]["recordKey"], "server-only")
 
 
 if __name__ == "__main__":

@@ -118,7 +118,7 @@
 1. `/release-updates` 页面从后端 `/api/release-updates` 读取记录，后端不可用时使用 `tms-frontend/src/shared/version/releaseHistory.json` 作为本地 fallback。
 2. 服务器 MySQL `release_update_records` 是版本更新记录主源；本地 `releaseHistory.json` 和后端默认 seed 是可再生成缓存，使用 `npm run release:updates:pull` 从服务器拉取合并。
 3. 写入版本更新记录默认通过服务器 `/api/release-updates`，使用 `npm run release:updates:push:dry-run` 预览、`npm run release:updates:push` 写入；禁止提交数据库账号、写入 token 或连接串。
-4. 后端默认 seed 位于 `tms-backend/api/release_updates_api.py`，必须与 `releaseHistory.json` 保持同步；新增历史条目时运行相关一致性测试。
+4. 后端默认 seed 位于 `tms-backend/data/release_updates_seed.json`，必须与 `releaseHistory.json` 保持同步；新增历史条目时运行相关一致性测试。
 5. 服务器发布包会生成 `releaseUpdateRecord` 并在部署脚本中同步到后端记录接口；修改该链路时必须同时核对 `scripts/engineering/package-server-update.mjs`、`scripts/server/apply-server-update.sh` 和相关测试。
 
 ## Electron、自动化和发布规则
@@ -164,8 +164,8 @@ npm run server:package
 
 GitCode CI 在 runner 内下载 Node.js 22.11.0，通过 `npm run ci:install` 安装依赖，并用 `PYTHON=python3 npm run check` 做远端完整检查。修改 `.gitcode/workflows/tos-check.yml` 时不得顺手加入 `pack`、`build:win`、发布清单写入、上传或正式发布步骤。
 
-用户可见改动默认由 AI 自动运行 `npm run version:bump` 并维护 `tms-frontend/src/shared/version/releaseNotes.json`。纯文档、纯测试、纯注释和不影响产品行为的内部脚本整理默认不递增产品版本；用户明确指定版本时使用 `npm run version:set -- <version>`。
-`releaseNotes.json` 只描述当前版本变更；`version:bump` 会保留旧的 `added`、`improved`、`fixed` 数组，递增后必须移除上一版本遗留条目。
+用户可见改动默认由 `semantic-release` 根据 Conventional Commits 自动判断版本并维护 `tms-frontend/src/shared/version/releaseNotes.json`；本地需要手动指定版本时使用 `npm run version:set -- <version>`，临时手工递增仍可用 `npm run version:bump`。
+`releaseNotes.json` 只描述当前版本变更；自动发布会重写 `added`、`improved`、`fixed` 数组，手工运行 `version:bump` 后必须移除上一版本遗留条目。
 `/release-updates` 的内置历史时间线由 `tms-frontend/src/shared/version/releaseHistory.json` 和后端默认 seed 同步维护；新增历史条目时必须用测试校验前后端内容一致。
 
 ### 前端

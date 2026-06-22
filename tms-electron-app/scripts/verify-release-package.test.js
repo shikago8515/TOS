@@ -35,10 +35,12 @@ const requiredUnpackedResourcePaths = [
   'resources/backend/main.py',
   'resources/backend/app_version.py',
   'resources/backend/api/.gitkeep',
+  'resources/backend/data/release_updates_seed.json',
   'resources/backend/modules/.gitkeep',
   'resources/backend/templates/sophia_tina_pivot_template.xlsx',
   'resources/backend-runtime/tos-backend/tos-backend.exe',
   'resources/backend-runtime/tos-backend/_internal/base_library.zip',
+  'resources/backend-runtime/tos-backend/_internal/data/release_updates_seed.json',
   'resources/backend-runtime/tos-backend/_internal/templates/sophia_tina_pivot_template.xlsx',
   'resources/external-apps/infornexus/electron-app.exe',
 ]

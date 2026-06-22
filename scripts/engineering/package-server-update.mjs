@@ -18,6 +18,7 @@ const deployablePaths = [
   'tms-backend/backend_launcher.py',
   'tms-backend/requirements.txt',
   'tms-backend/api',
+  'tms-backend/data',
   'tms-backend/modules',
   'tms-backend/templates',
   'tms-backend/utils',

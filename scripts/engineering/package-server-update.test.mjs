@@ -122,6 +122,7 @@ test('creates a server update archive with manifest and only deployable paths', 
   assert(entries.includes('deploy/apply-server-update.sh'))
   assert(entries.includes('app-version.json'))
   assert(entries.includes('tms-backend/app_version.py'))
+  assert(entries.includes('tms-backend/data/release_updates_seed.json'))
   assert(entries.includes('tms-frontend/dist/index.html'))
   assert(!entries.some((entry) => entry.includes('node_modules/')))
   assert(!entries.some((entry) => entry.includes('Dockerfile')))
@@ -190,6 +191,7 @@ async function createFixture({
   await writeText(join(root, 'tms-backend', 'modules', 'module.py'), '# module\n')
   await writeText(join(root, 'tms-backend', 'templates', 'template.txt'), 'template\n')
   await writeText(join(root, 'tms-backend', 'utils', 'file_utils.py'), '# utils\n')
+  await writeJson(join(root, 'tms-backend', 'data', 'release_updates_seed.json'), [])
 
   await writeText(join(root, 'tms-frontend', 'index.html'), '<div id="app"></div>\n')
   await writeJson(join(root, 'tms-frontend', 'package.json'), { name: 'fixture' })

@@ -178,6 +178,7 @@
           "main.py",
           "requirements.txt",
           "api/**/*",
+          "data/**/*",
           "modules/**/*",
           "templates/**/*",
           "utils/**/*",
