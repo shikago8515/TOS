@@ -189,6 +189,7 @@ const staticTextTranslations: Record<string, string> = {
   'Jane - OUTBOUND核对': 'Jane OUTBOUND Compare',
   'Jane - 表格制作': 'Jane Table Making',
   Eric数据处理: 'Eric Data Processing',
+  数据核对: 'Data Compare',
   系统设置: 'Settings',
   应用: 'Application',
   运行模式: 'Run Mode',
@@ -641,6 +642,10 @@ const staticTextTranslations: Record<string, string> = {
     'After startup, the console page will be embedded here so the real flow can be verified directly.',
   请选择EricInfornexus页面重新选择场景: 'Return to the Eric - Infornexus page and choose a scenario again.',
   '请返回 Eric - Infornexus 页面重新选择场景。': 'Return to the Eric - Infornexus page and choose a scenario again.',
+  请选择JaneInfornexus页面重新选择场景: 'Return to the Jane - Infornexus page and choose a scenario again.',
+  '请返回 Jane - Infornexus 页面重新选择场景。': 'Return to the Jane - Infornexus page and choose a scenario again.',
+  '当前入口不存在，请返回 Jane - Infornexus 页面重新进入。':
+    'The current entry does not exist. Return to the Jane - Infornexus page and open the scenario again.',
   选择Bulk类型: 'Select Bulk Type',
   '选择 Bulk 类型': 'Select Bulk Type',
   'Unreleased Bulk 和 released Bulk 会进入不同的浏览器自动化逻辑。':

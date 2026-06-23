@@ -69,11 +69,15 @@ class AutomationStorageTests(unittest.TestCase):
 
     def test_shipping_executor_id_can_read_shared_infor_nexus_credentials(self):
         lookup_ids = _credential_lookup_ids("shipping-automation-demo")
+        released_bulk_lookup_ids = _credential_lookup_ids("shipping-automation-2")
 
         self.assertEqual(lookup_ids[0], "shipping-automation-demo")
         self.assertIn("shipping-automation", lookup_ids)
         self.assertIn("xinlongtai-shipping-automation", lookup_ids)
         self.assertNotIn("infornexus-auto-add", lookup_ids)
+        self.assertEqual(released_bulk_lookup_ids[0], "shipping-automation-2")
+        self.assertIn("shipping-automation", released_bulk_lookup_ids)
+        self.assertIn("po-auto-download", released_bulk_lookup_ids)
 
     def test_credential_account_key_is_normalized_for_saved_profiles(self):
         self.assertEqual(_normalize_account_key("  Lily  "), "Lily")
