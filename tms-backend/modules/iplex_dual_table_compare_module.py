@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any, Sequence
@@ -46,6 +47,7 @@ class IplexDualTableCompareModule:
     HELPER_SHEET_NAME = "_iplex_lookup"
     HEADER_FILL = PatternFill("solid", fgColor="FFD9EAF7")
     MISMATCH_FILL = PatternFill("solid", fgColor="FFFFC7CE")
+    SHORT_DATE_FORMAT = "yyyy-mm-dd"
 
     def inspect_workbook(
         self,
@@ -210,7 +212,13 @@ class IplexDualTableCompareModule:
         try:
             sheets: list[SheetData] = []
             for sheet in book.sheets():
-                rows = [list(sheet.row_values(row_index)) for row_index in range(sheet.nrows)]
+                rows = [
+                    [
+                        self._read_xls_cell(sheet, row_index, column_index, book.datemode)
+                        for column_index in range(sheet.ncols)
+                    ]
+                    for row_index in range(sheet.nrows)
+                ]
                 sheets.append(
                     SheetData(
                         name=sheet.name,
@@ -222,6 +230,12 @@ class IplexDualTableCompareModule:
             return sheets
         finally:
             book.release_resources()
+
+    def _read_xls_cell(self, sheet: xlrd.sheet.Sheet, row_index: int, column_index: int, datemode: int) -> Any:
+        value = sheet.cell_value(row_index, column_index)
+        if sheet.cell_type(row_index, column_index) == xlrd.XL_CELL_DATE:
+            return xlrd.xldate.xldate_as_datetime(value, datemode)
+        return value
 
     def _select_sheet(self, sheets: Sequence[SheetData], sheet_name: str | None) -> SheetData:
         if sheet_name:
@@ -262,7 +276,11 @@ class IplexDualTableCompareModule:
     ) -> None:
         for row_index, row_values in enumerate(sheet.rows, start=1):
             for column_index in range(1, max_column + 1):
-                worksheet.cell(row_index, column_index).value = self._read_cell(row_values, column_index)
+                value = self._read_cell(row_values, column_index)
+                cell = worksheet.cell(row_index, column_index)
+                cell.value = value
+                if isinstance(value, (datetime, date)):
+                    cell.number_format = self.SHORT_DATE_FORMAT
 
     def _write_helper_sheet(
         self,

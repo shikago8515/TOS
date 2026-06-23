@@ -211,6 +211,44 @@ class IplexDualTableCompareModuleTests(unittest.TestCase):
         self.assertNotEqual(sheet.cell(row=3, column=1).fill.fgColor.rgb, "FFFFC7CE")
         self.assertNotEqual(sheet.cell(row=3, column=7).fill.fgColor.rgb, "FFFFC7CE")
 
+    def test_process_formats_xls_date_columns_as_short_dates(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            main_path = Path(temp_dir) / "main.xls"
+            lookup_path = Path(temp_dir) / "lookup.xls"
+            self._write_lookup_xls(lookup_path)
+
+            def open_fake_workbook(path: str, *args: object, **kwargs: object) -> FakeXlsBook:
+                if Path(path).name == "main.xls":
+                    return FakeXlsBook(FakeMainDateXlsSheet())
+                return FakeXlsBook()
+
+            module = IplexDualTableCompareModule()
+            with patch("modules.iplex_dual_table_compare_module.xlrd.open_workbook", side_effect=open_fake_workbook):
+                result = module.process_files(
+                    main_path=str(main_path),
+                    lookup_path=str(lookup_path),
+                    config=IplexDualTableCompareConfig(
+                        main_sheet_name="Main",
+                        lookup_sheet_name="Lookup",
+                        main_header_row=1,
+                        lookup_header_row=1,
+                        main_key_column=1,
+                        lookup_key_column=3,
+                        four_digit_main_column=4,
+                        four_digit_lookup_column=7,
+                        two_digit_main_column=5,
+                        two_digit_lookup_column=10,
+                    ),
+                    output_dir=temp_dir,
+                )
+
+            workbook = openpyxl.load_workbook(result["output_path"], data_only=False)
+            sheet = workbook["Main"]
+
+        self.assertEqual(sheet.cell(row=1, column=6).value, "CREATE DATE")
+        self.assertEqual(sheet.cell(row=2, column=6).value.date().isoformat(), "2026-06-23")
+        self.assertEqual(sheet.cell(row=2, column=6).number_format, "yyyy-mm-dd")
+
     def _write_main_xlsx(self, path: Path) -> None:
         workbook = openpyxl.Workbook()
         sheet = workbook.active
@@ -261,12 +299,53 @@ class FakeXlsSheet:
     def cell_value(self, row_index: int, column_index: int) -> object:
         return self.rows[row_index][column_index]
 
+    def cell_type(self, row_index: int, column_index: int) -> int:
+        value = self.cell_value(row_index, column_index)
+        if value in (None, ""):
+            return 0
+        if isinstance(value, (int, float)):
+            return 2
+        return 1
+
+
+class FakeMainDateXlsSheet:
+    name = "Main"
+    rows = [
+        [
+            "BUYER ORDER NO.",
+            "ARTICLE NUMBER",
+            "REMARK",
+            "SHAS PRICE PER UNIT",
+            "TOTAL ADJUSTMENT",
+            "CREATE DATE",
+        ],
+        ["0902893225", "LG4295", "", 0.1000, 10.00, 46196.41319444445],
+    ]
+    nrows = len(rows)
+    ncols = len(rows[0])
+
+    def row_values(self, row_index: int) -> list[object]:
+        return self.rows[row_index]
+
+    def cell_value(self, row_index: int, column_index: int) -> object:
+        return self.rows[row_index][column_index]
+
+    def cell_type(self, row_index: int, column_index: int) -> int:
+        if row_index == 1 and column_index == 5:
+            return 3
+        value = self.cell_value(row_index, column_index)
+        if value in (None, ""):
+            return 0
+        if isinstance(value, (int, float)):
+            return 2
+        return 1
+
 
 class FakeXlsBook:
     datemode = 0
 
-    def __init__(self) -> None:
-        self.sheet = FakeXlsSheet()
+    def __init__(self, sheet: object | None = None) -> None:
+        self.sheet = sheet or FakeXlsSheet()
 
     def sheets(self) -> list[FakeXlsSheet]:
         return [self.sheet]
