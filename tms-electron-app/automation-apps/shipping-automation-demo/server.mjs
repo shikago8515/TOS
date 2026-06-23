@@ -10,6 +10,12 @@ import {
   isPoAutoDownloadRoute,
   selectPoAutoDownloadDirectory,
 } from "./po-auto-download/po-auto-download.mjs";
+import {
+  collectInfornexusAutoAddSearchDiagnostics,
+  formatInfornexusAutoAddSearchDiagnostics,
+  getInfornexusAutoAddSearchButton,
+  getInfornexusAutoAddSearchInput,
+} from "./infornexus-auto-add-page.mjs";
 import { createShipping2ReleasedBulkAutomation } from "./shipping2-released-bulk.mjs";
 import { createShipping2UnreleasedBulkAutomation } from "./shipping2-unreleased-bulk.mjs";
 
@@ -742,10 +748,13 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
       lifecycle,
       "Infornexus auto-add browser session became unavailable.",
     );
-    const failureMessage = normalizedError.message;
+    let failureMessage = normalizedError.message;
     if (page && !page.isClosed()) {
       latestScreenshotPath = path.join(artifactsDir, `infornexus-auto-add-${runId}-error-${Date.now()}.png`);
       await page.screenshot({ path: latestScreenshotPath, fullPage: true }).catch(() => {});
+      if (latestScreenshotPath) {
+        failureMessage = `${failureMessage} Screenshot: ${latestScreenshotPath}`;
+      }
     }
 
     const result = {
@@ -1268,18 +1277,6 @@ async function waitForInforNexusLoggedIn(page, timeoutMs = config.navigationTime
   throw new Error(`Infor Nexus 登录后在 ${timeoutMs}ms 内未进入业务主界面。最后状态：${JSON.stringify(lastState || {})}`);
 }
 
-function getInfornexusAutoAddSearchInput(page) {
-  return page
-    .locator('[name="tradecardForm"] [name="TradeSearchCriteria_newSearchParams_searchText"], [name="TradeSearchCriteria_newSearchParams_searchText"]')
-    .first();
-}
-
-function getInfornexusAutoAddSearchButton(page) {
-  return page
-    .locator('[name="tradecardForm"] input[value="Search"], input[value="Search"], button:has-text("Search"), [role="button"]:has-text("Search")')
-    .first();
-}
-
 function getInfornexusAutoAddResultCheckbox(page) {
   return page
     .locator('.listtablerowodd [type="checkbox"], .listtableroweven [type="checkbox"], [name="searchResults"] [type="checkbox"]')
@@ -1302,7 +1299,10 @@ async function waitForInfornexusAutoAddSearchReady(page) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Infornexus auto-add search form was not found after login. ${message}`);
+    const diagnostics = await collectInfornexusAutoAddSearchDiagnostics(page);
+    throw new Error(
+      `Infornexus auto-add search form was not found after login. ${message} ${formatInfornexusAutoAddSearchDiagnostics(diagnostics)}`,
+    );
   }
 }
 
