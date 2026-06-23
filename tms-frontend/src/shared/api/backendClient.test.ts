@@ -18,6 +18,7 @@ function stubWindow(electronAPI?: Partial<ElectronApi>, pathname = '/'): void {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 describe('backendClient', () => {
@@ -43,7 +44,21 @@ describe('backendClient', () => {
     ).resolves.toBe('http://127.0.0.1:8000/api/jane/download/result.xlsx')
   })
 
-  it('uses the public server backend URL in browser mode by default', async () => {
+  it('uses the local backend URL in dev browser mode by default', async () => {
+    stubWindow()
+
+    await expect(getBackendBaseUrl()).resolves.toBe('http://127.0.0.1:8000')
+  })
+
+  it('prefers the configured backend URL in browser mode', async () => {
+    vi.stubEnv('VITE_BACKEND_URL', 'http://127.0.0.1:9000/')
+    stubWindow()
+
+    await expect(getBackendBaseUrl()).resolves.toBe('http://127.0.0.1:9000')
+  })
+
+  it('uses the public server backend URL in production browser mode by default', async () => {
+    vi.stubEnv('DEV', false)
     stubWindow()
 
     await expect(getBackendBaseUrl()).resolves.toBe('https://ai.tomwell.net:56130/tos/desktop-api')

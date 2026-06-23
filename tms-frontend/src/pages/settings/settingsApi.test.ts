@@ -15,6 +15,7 @@ function stubWindow(electronAPI?: Partial<ElectronApi>): void {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
   vi.restoreAllMocks()
 })
 
@@ -33,7 +34,7 @@ describe('settingsApi', () => {
     expect(getAppVersion).toHaveBeenCalledTimes(1)
   })
 
-  it('reads backend version in browser/server mode', async () => {
+  it('reads backend version in browser local dev mode', async () => {
     stubWindow()
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -45,7 +46,7 @@ describe('settingsApi', () => {
       version: '0.9.8-beta.3.0',
       isPackaged: false,
     })
-    expect(fetchMock).toHaveBeenCalledWith('https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/installer-versions')
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:8000/api/system/config/installer-versions')
   })
 
   it('uses the synchronized fallback version when backend version cannot be read', async () => {
@@ -86,7 +87,7 @@ describe('settingsApi', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(getBackendRuntimeVersion()).resolves.toBe('0.9.8-beta.3.15')
-    expect(fetchMock).toHaveBeenCalledWith('https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/installer-versions')
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:8000/api/system/config/installer-versions')
   })
 
   it('getBackendRuntimeVersion falls back to fallbackAppVersion on error', async () => {
@@ -125,7 +126,7 @@ describe('settingsApi', () => {
     const versions = await getServerInstallerVersions()
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/installer-versions',
+      'http://127.0.0.1:8000/api/system/config/installer-versions',
     )
     expect(versions.packages).toHaveLength(1)
     expect(versions.packages[0]).toMatchObject({

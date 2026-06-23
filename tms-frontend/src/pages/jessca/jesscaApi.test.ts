@@ -28,12 +28,13 @@ describe('jesscaApi', () => {
 
     const request = vi.mocked(postFormData).mock.calls[0]?.[0]
     expect(request?.path).toBe('/api/jessca/process')
+    expect(request?.requireRuntimeVersion).toBe(true)
     expect(request?.formData.getAll('invoices')).toEqual([invoiceFile])
     expect(request?.formData.get('reference_file')).toBe(referenceFile)
     expect(request?.formData.has('packing_file')).toBe(false)
   })
 
-  it('posts the optional packing PDF when provided', async () => {
+  it('posts one optional packing PDF when provided', async () => {
     vi.mocked(postFormData).mockResolvedValue({ success: true, message: 'ok' })
     const invoiceFile = new File(['invoice'], 'invoice.xls', { type: 'application/vnd.ms-excel' })
     const referenceFile = new File(['reference'], 'reference.xlsx')
@@ -43,12 +44,35 @@ describe('jesscaApi', () => {
       {
         invoiceFiles: [invoiceFile],
         referenceFile,
-        packingFile,
+        packingFiles: [packingFile],
       },
       () => undefined,
     )
 
     const request = vi.mocked(postFormData).mock.calls[0]?.[0]
-    expect(request?.formData.get('packing_file')).toBe(packingFile)
+    expect(request?.formData.getAll('packing_file')).toEqual([packingFile])
+  })
+
+  it('posts multiple optional packing PDFs with repeated packing_file fields', async () => {
+    vi.mocked(postFormData).mockResolvedValue({ success: true, message: 'ok' })
+    const invoiceFile = new File(['invoice'], 'invoice.xls', { type: 'application/vnd.ms-excel' })
+    const referenceFile = new File(['reference'], 'reference.xlsx')
+    const firstPackingFile = new File(['packing-a'], 'packing-a.pdf', { type: 'application/pdf' })
+    const secondPackingFile = new File(['packing-b'], 'packing-b.pdf', { type: 'application/pdf' })
+
+    await processJesscaFiles(
+      {
+        invoiceFiles: [invoiceFile],
+        referenceFile,
+        packingFiles: [firstPackingFile, secondPackingFile],
+      },
+      () => undefined,
+    )
+
+    const request = vi.mocked(postFormData).mock.calls[0]?.[0]
+    expect(request?.formData.getAll('packing_file')).toEqual([
+      firstPackingFile,
+      secondPackingFile,
+    ])
   })
 })
