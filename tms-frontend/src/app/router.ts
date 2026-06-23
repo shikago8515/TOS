@@ -14,6 +14,7 @@ import InfornexusPage from '../pages/infornexus/InfornexusPage.vue'
 import JasonPdfReorderPage from '../pages/jason-pdf-reorder/JasonPdfReorderPage.vue'
 import JaneBomComparePage from '../pages/jane-bom-compare/JaneBomComparePage.vue'
 import JaneBomSummaryPage from '../pages/jane-bom-summary/JaneBomSummaryPage.vue'
+import JaneInfornexusPage from '../pages/jane-infornexus/JaneInfornexusPage.vue'
 import JaneOutboundComparePage from '../pages/jane-outbound-compare/JaneOutboundComparePage.vue'
 import JanePage from '../pages/jane/JanePage.vue'
 import JaneSapPage from '../pages/jane-sap/JaneSapPage.vue'
@@ -37,6 +38,7 @@ const routeComponents: Partial<Record<string, Component>> = {
   'jane-bom-summary': JaneBomSummaryPage,
   'jane-bom-compare': JaneBomComparePage,
   'jane-outbound-compare': JaneOutboundComparePage,
+  'jane-infornexus': JaneInfornexusPage,
   eric: EricPage,
   'jason-pdf-reorder': JasonPdfReorderPage,
   'web-automation-scenario-shipping-automation': ShippingAutomationPage,

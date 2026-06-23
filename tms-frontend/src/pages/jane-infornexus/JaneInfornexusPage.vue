@@ -1,9 +1,9 @@
 <template>
   <AutomationPageShell
     variant="infornexus"
-    page-title="Eric - Infornexus"
-    page-subtitle="Infor Nexus 运输自动化流程"
-    :allowed-entry-ids="['infornexus-auto-add']"
+    page-title="Jane - Infornexus"
+    page-subtitle="Infor Nexus released Bulk 自动化流程"
+    :allowed-entry-ids="['shipping-automation-2']"
   />
 </template>
 

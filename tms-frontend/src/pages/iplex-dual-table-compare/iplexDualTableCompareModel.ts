@@ -8,7 +8,7 @@ import type {
 } from './iplexDualTableCompareApi'
 
 export const iplexDualTableCompareModuleId = 'iplex-dual-table-compare'
-export const iplexDualTableCompareModuleName = 'iPlex 双表核对'
+export const iplexDualTableCompareModuleName = '数据核对'
 
 export interface IplexDualTableBusinessSelection {
   poFile: File

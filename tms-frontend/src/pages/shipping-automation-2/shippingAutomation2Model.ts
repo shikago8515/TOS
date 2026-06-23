@@ -1,4 +1,9 @@
 export const shippingAutomation2EntryId = 'shipping-automation-2'
+export const releasedBulkDefaultUsername = 'user7@@tmsfashion'
+
+export function resolveReleasedBulkCredentialUsername(username: string): string {
+  return username.trim() || releasedBulkDefaultUsername
+}
 
 export const shippingAutomation2Steps = [
   {

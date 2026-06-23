@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 import DraftPackingComparePage from '../pages/draft-packing-compare/DraftPackingComparePage.vue'
 import IplexDualTableComparePage from '../pages/iplex-dual-table-compare/IplexDualTableComparePage.vue'
 import JasonPdfReorderPage from '../pages/jason-pdf-reorder/JasonPdfReorderPage.vue'
+import JaneInfornexusPage from '../pages/jane-infornexus/JaneInfornexusPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
 import ReleaseUpdatesPage from '../pages/release-updates/ReleaseUpdatesPage.vue'
 import PoAutoDownloadPage from '../pages/po-auto-download/PoAutoDownloadPage.vue'
@@ -99,6 +100,15 @@ describe('router', () => {
 
     expect(route?.name).toBe('iplex-dual-table-compare')
     expect(route?.components?.default).toBe(IplexDualTableComparePage)
+    expect(route?.components?.default).not.toBe(RoutePlaceholder)
+  })
+
+  it('routes Jane Infornexus to its real page component', async () => {
+    const { router } = await import('./router')
+    const route = router.getRoutes().find((entry) => entry.path === '/jane-infornexus')
+
+    expect(route?.name).toBe('jane-infornexus')
+    expect(route?.components?.default).toBe(JaneInfornexusPage)
     expect(route?.components?.default).not.toBe(RoutePlaceholder)
   })
 

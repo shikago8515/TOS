@@ -118,8 +118,8 @@ describe('moduleCatalog', () => {
     expect(getLocalizedModuleTitle(workSalesModule, 'zh-CN')).toBe('Work Sales 数据写入')
     expect(getLocalizedModuleTitle(workSalesModule, 'en-US')).toBe('Work Sales Data Fill')
     expect(getLocalizedModuleTitle(workSalesModule, 'en-US')).not.toBe(workSalesModule.navLabelEn)
-    expect(getLocalizedModuleTitle(iplexModule, 'zh-CN')).toBe('iPlex 双表核对')
-    expect(getLocalizedModuleTitle(iplexModule, 'en-US')).toBe('iPlex Dual Table Compare')
+    expect(getLocalizedModuleTitle(iplexModule, 'zh-CN')).toBe('数据核对')
+    expect(getLocalizedModuleTitle(iplexModule, 'en-US')).toBe('Data Compare')
   })
 
   it('exposes iPlex dual table compare under Eric Excel tools', () => {
@@ -133,6 +133,10 @@ describe('moduleCatalog', () => {
       group: 'eric',
       path: '/iplex/dual-table-compare',
       routeName: 'iplex-dual-table-compare',
+      title: '数据核对',
+      titleEn: 'Data Compare',
+      navLabel: '数据核对',
+      navLabelEn: 'Data Compare',
       category: 'excel',
       stage: 'validation',
     })
@@ -141,6 +145,29 @@ describe('moduleCatalog', () => {
     expect(ericModuleIds.indexOf('iplex-dual-table-compare')).toBeGreaterThan(
       ericModuleIds.indexOf('eric'),
     )
+  })
+
+  it('moves released Bulk automation under Jane Infornexus without moving the Eric auto-add entry', () => {
+    const janeInfornexusModule = getModuleById('jane-infornexus')
+    const janeModules = getModulesByGroup('jane')
+    const ericModules = getModulesByGroup('eric')
+    const janeModuleIds = janeModules.map((module) => module.id)
+    const ericModuleIds = ericModules.map((module) => module.id)
+
+    expect(janeInfornexusModule).toMatchObject({
+      group: 'jane',
+      path: '/jane-infornexus',
+      routeName: 'jane-infornexus',
+      title: 'Jane / Infornexus',
+      titleEn: 'Jane / Infornexus',
+      navLabel: 'Infornexus',
+      navLabelEn: 'Infornexus',
+      category: 'browser-automation',
+      stage: 'production',
+    })
+    expect(janeModuleIds).toContain('jane-infornexus')
+    expect(janeModuleIds.indexOf('jane-infornexus')).toBeGreaterThan(janeModuleIds.indexOf('jane-sap'))
+    expect(ericModuleIds).toContain('eric-infornexus')
   })
 
   it('defines English full titles for every module', () => {

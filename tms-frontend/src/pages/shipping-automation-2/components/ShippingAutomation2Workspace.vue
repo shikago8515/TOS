@@ -13,7 +13,7 @@
     <div v-if="!entry" class="s2-empty">
       <AppIcon name="alert-circle" class="s2-empty__icon" />
       <strong>{{ text('入口不存在') }}</strong>
-      <span>{{ text('请返回 Eric - Infornexus 页面重新选择场景。') }}</span>
+      <span>{{ text('请返回 Jane - Infornexus 页面重新选择场景。') }}</span>
       <button class="s2-back" @click="goBack"><AppIcon name="arrow-left" />{{ text('返回') }}</button>
     </div>
 
@@ -217,7 +217,7 @@ import {
 } from '../../web-automation/webAutomationApi'
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
-import { shippingAutomation2EntryId } from '../shippingAutomation2Model'
+import { releasedBulkDefaultUsername, resolveReleasedBulkCredentialUsername, shippingAutomation2EntryId } from '../shippingAutomation2Model'
 
 type BulkId = 'unreleased' | 'released'
 type BulkTone = 'idle' | 'info' | 'success' | 'error'
@@ -232,7 +232,7 @@ const activeApp = ref<AutomationAppInfo | null>(null); const executorHealth = re
 const executorCredentials = ref<ExecutorCredentials | null>(null); const automationTemplates = ref<AutomationTemplate[]>([])
 const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false)
 const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false)
-const shippingUsername = ref(''); const shippingPassword = ref(''); const showPassword = ref(false)
+const shippingUsername = ref(releasedBulkDefaultUsername); const shippingPassword = ref(''); const showPassword = ref(false)
 const showBrowserView = ref(true)
 const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info')
 const isHealthLogOpen = ref(false)
@@ -303,11 +303,11 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
   }
 }
 
-async function refreshExecutorCredentials(): Promise<void> { if (!entry) return; try { executorCredentials.value = await fetchExecutorCredentials(entry.id); if (executorCredentials.value.username) shippingUsername.value = executorCredentials.value.username; if (executorCredentials.value.hasStoredCredentials) { const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = r.username; shippingPassword.value = r.password } } catch { executorCredentials.value = null } }
+async function refreshExecutorCredentials(): Promise<void> { if (!entry) return; try { executorCredentials.value = await fetchExecutorCredentials(entry.id); shippingUsername.value = resolveReleasedBulkCredentialUsername(executorCredentials.value.username); if (executorCredentials.value.hasStoredCredentials) { const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = resolveReleasedBulkCredentialUsername(r.username); shippingPassword.value = r.password } } catch { executorCredentials.value = null; shippingUsername.value = resolveReleasedBulkCredentialUsername(shippingUsername.value) } }
 async function refreshAutomationTemplates(): Promise<void> { if (!entry) return; templateLoading.value = true; try { automationTemplates.value = await fetchAutomationTemplates(entry.id) } catch { automationTemplates.value = [] } finally { templateLoading.value = false } }
 
 async function saveCurrentCredentials(): Promise<void> { if (!entry || credentialSaving.value) return; const u = shippingUsername.value.trim(); const p = shippingPassword.value; if (!u || !p) { messageTone.value = 'warning'; message.value = '请先填写账号和密码。'; return }; credentialSaving.value = true; try { executorCredentials.value = await saveExecutorCredentials(entry.id, u, p); await refreshExecutorCredentials(); shippingPassword.value = p; messageTone.value = 'success'; message.value = 'Infor Nexus 登录账号密码已保存。' } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, '保存失败。') } finally { credentialSaving.value = false } }
-async function clearCurrentCredentials(): Promise<void> { if (!entry || credentialClearing.value) return; credentialClearing.value = true; try { executorCredentials.value = await clearExecutorCredentials(entry.id); shippingPassword.value = ''; messageTone.value = 'info'; message.value = '已清除。' } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, '清除失败。') } finally { credentialClearing.value = false } }
+async function clearCurrentCredentials(): Promise<void> { if (!entry || credentialClearing.value) return; credentialClearing.value = true; try { executorCredentials.value = await clearExecutorCredentials(entry.id); shippingUsername.value = releasedBulkDefaultUsername; shippingPassword.value = ''; messageTone.value = 'info'; message.value = '已清除。' } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, '清除失败。') } finally { credentialClearing.value = false } }
 
 async function resolveRunCredentialsPayload(): Promise<Record<string, string>> { if (!entry) return {}; const u = shippingUsername.value.trim(); const tp = shippingPassword.value; if (tp.trim()) { if (!u) throw new Error('请填写 Infor Nexus 登录账号密码。'); executorCredentials.value = await saveExecutorCredentials(entry.id, u, tp); await refreshExecutorCredentials(); return { username: u, password: tp } }; const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = r.username; shippingPassword.value = r.password; return { username: r.username, password: r.password } }
 function bulkTemplate(id: BulkId): AutomationTemplate | null { return automationTemplates.value.find((t) => t.templateKey === id) || automationTemplates.value.find((t) => t.templateKey === 'default') || automationTemplates.value[0] || null }
@@ -343,7 +343,7 @@ async function startBulkAutomation(id: BulkId): Promise<void> {
   if (!validateBulkInputs(b)) return
   const file = b.file as File
   const currentEntry = entry
-  if (!currentEntry) { showRunRequirementDialog('当前入口不存在，请返回 Eric - Infornexus 页面重新进入。', b); return }
+  if (!currentEntry) { showRunRequirementDialog('当前入口不存在，请返回 Jane - Infornexus 页面重新进入。', b); return }
   b.running = true; b.tone = 'info'; b.result = null; b.statusText = `${b.label} 正在启动...`
   try {
     if (!(await ensureExecutorReady())) {
@@ -398,7 +398,7 @@ function formatSize(b: number): string { if (b < 1024) return `${b} B`; if (b < 
 function createFallbackAutomationApp(t: WebAutomationEntry): AutomationAppInfo { return { id: t.appId, name: t.title, description: t.description, provider: 'Playwright', category: 'Web Automation', version: 'local', available: true, running: false, url: t.executorBaseUrl } }
 function safeParseJson<T>(raw: string): T | null { try { return raw ? JSON.parse(raw) as T : null } catch { return null } }
 function readErrorMessage(e: unknown, fb: string): string { return e instanceof Error && e.message ? e.message : fb }
-function goBack(): void { void router.push('/eric-infornexus') }
+function goBack(): void { void router.push('/jane-infornexus') }
 
 function showRunRequirementDialog(rawMessage: string, bulk?: BulkState): false {
   const localized = text(rawMessage)
@@ -413,7 +413,7 @@ function showRunRequirementDialog(rawMessage: string, bulk?: BulkState): false {
 }
 
 function validateBulkInputs(bulk: BulkState): boolean {
-  if (!entry) return showRunRequirementDialog('当前入口不存在，请返回 Eric - Infornexus 页面重新进入。', bulk)
+  if (!entry) return showRunRequirementDialog('当前入口不存在，请返回 Jane - Infornexus 页面重新进入。', bulk)
   if (!bulk.file) return showRunRequirementDialog(`请先为 ${bulk.label} 上传 Excel 文件。`, bulk)
   const username = shippingUsername.value.trim()
   const password = shippingPassword.value.trim()

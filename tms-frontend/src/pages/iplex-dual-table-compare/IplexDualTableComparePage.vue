@@ -1,7 +1,6 @@
 <template>
   <ExcelProcessPageShell
-    title="iPlex 双表核对"
-    subtitle="PO # ↔ BUYER ORDER NO. → PO 调整数据匹配到 RC 表核对"
+    title="数据核对"
     :stats="pageStats"
     :toolbar-status="toolbarStatus"
     :actions="toolbarActions"
@@ -151,7 +150,7 @@ const historyRecords = ref<ProcessHistoryRecord[]>(
 const uploadFields = computed<ExcelFileField[]>(() => [
   {
     id: 'main',
-    label: 'PO with Adjustment 3LP',
+    label: 'Total Adjustment & Shas Vas Price 汇总表',
     files: mainFiles.value,
     hint: '提供 PO #、Adjustment_per_unit 和 Total Adjustment Amount，作为 VLOOKUP 查找来源',
     accept: '.xls,.xlsx,.xlsm',
@@ -160,7 +159,7 @@ const uploadFields = computed<ExcelFileField[]>(() => [
   },
   {
     id: 'lookup',
-    label: 'RC2620OW014 AD YTIC',
+    label: 'Total Adjustment & Shas Vas Price',
     files: lookupFiles.value,
     hint: '提供 BUYER ORDER NO.、SHAS PRICE PER UNIT 和 TOTAL ADJUSTMENT，系统将在此表追加差值列',
     accept: '.xls,.xlsx,.xlsm',
