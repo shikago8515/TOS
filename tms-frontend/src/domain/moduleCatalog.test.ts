@@ -37,19 +37,54 @@ describe('moduleCatalog', () => {
     })
   })
 
-  it('exposes PO auto download as a Jason sidebar entry', () => {
+  it('exposes Jessica browser automation entries directly in the sidebar', () => {
+    const shippingModule = getModuleById('shipping-automation')
+    const xinlongtaiModule = getModuleById('xinlongtai-shipping-automation')
     const poAutoDownloadModule = getModuleById('po-auto-download')
+    const jessicaModules = getModulesByGroup('jessica')
     const jasonModules = getModulesByGroup('jason')
-    const moduleIds = jasonModules.map((module) => module.id)
+    const jessicaModuleIds = jessicaModules.map((module) => module.id)
+    const jasonModuleIds = jasonModules.map((module) => module.id)
 
+    expect(shippingModule).toMatchObject({
+      group: 'jessica',
+      path: '/web-automation/scenarios/shipping-automation',
+      routeName: 'web-automation-scenario-shipping-automation',
+      navLabel: '万代shipping 自动化',
+      category: 'browser-automation',
+    })
+    expect(xinlongtaiModule).toMatchObject({
+      group: 'jessica',
+      path: '/web-automation/scenarios/xinlongtai-shipping-automation',
+      routeName: 'web-automation-scenario-xinlongtai-shipping-automation',
+      navLabel: '新龙泰-shipping 自动化',
+      category: 'browser-automation',
+    })
     expect(poAutoDownloadModule).toMatchObject({
-      group: 'jason',
+      group: 'jessica',
       path: '/web-automation/scenarios/po-auto-download',
       routeName: 'web-automation-scenario-po-auto-download',
+      title: 'Jessica / Invoice 自动下载',
       navLabel: 'Invoice 自动下载',
+      category: 'browser-automation',
     })
-    expect(moduleIds).toContain('po-auto-download')
-    expect(moduleIds.indexOf('po-auto-download')).toBeGreaterThan(moduleIds.indexOf('jason-pdf-reorder'))
+    expect(jessicaModuleIds).toEqual(
+      expect.arrayContaining([
+        'shipping-automation',
+        'xinlongtai-shipping-automation',
+        'po-auto-download',
+      ]),
+    )
+    expect(jasonModuleIds).not.toContain('po-auto-download')
+    expect(jessicaModuleIds.indexOf('shipping-automation')).toBeGreaterThan(
+      jessicaModuleIds.indexOf('draft-packing-compare'),
+    )
+    expect(jessicaModuleIds.indexOf('xinlongtai-shipping-automation')).toBeGreaterThan(
+      jessicaModuleIds.indexOf('shipping-automation'),
+    )
+    expect(jessicaModuleIds.indexOf('po-auto-download')).toBeGreaterThan(
+      jessicaModuleIds.indexOf('xinlongtai-shipping-automation'),
+    )
   })
 
   it('shows Draft & Packing List compare directly under Jessica after reconciliation', () => {
@@ -87,21 +122,24 @@ describe('moduleCatalog', () => {
     expect(getLocalizedModuleTitle(iplexModule, 'en-US')).toBe('iPlex Dual Table Compare')
   })
 
-  it('exposes iPlex dual table compare under Lucia finance tools', () => {
+  it('exposes iPlex dual table compare under Eric Excel tools', () => {
     const iplexModule = getModuleById('iplex-dual-table-compare')
+    const ericModules = getModulesByGroup('eric')
     const luciaModules = getModulesByGroup('finance-excel')
-    const moduleIds = luciaModules.map((module) => module.id)
+    const ericModuleIds = ericModules.map((module) => module.id)
+    const luciaModuleIds = luciaModules.map((module) => module.id)
 
     expect(iplexModule).toMatchObject({
-      group: 'finance-excel',
+      group: 'eric',
       path: '/iplex/dual-table-compare',
       routeName: 'iplex-dual-table-compare',
       category: 'excel',
       stage: 'validation',
     })
-    expect(moduleIds).toContain('iplex-dual-table-compare')
-    expect(moduleIds.indexOf('iplex-dual-table-compare')).toBeGreaterThan(
-      moduleIds.indexOf('tms-finance-work-sales'),
+    expect(ericModuleIds).toContain('iplex-dual-table-compare')
+    expect(luciaModuleIds).not.toContain('iplex-dual-table-compare')
+    expect(ericModuleIds.indexOf('iplex-dual-table-compare')).toBeGreaterThan(
+      ericModuleIds.indexOf('eric'),
     )
   })
 

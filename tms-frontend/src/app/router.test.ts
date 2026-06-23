@@ -6,6 +6,7 @@ import JasonPdfReorderPage from '../pages/jason-pdf-reorder/JasonPdfReorderPage.
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
 import ReleaseUpdatesPage from '../pages/release-updates/ReleaseUpdatesPage.vue'
 import PoAutoDownloadPage from '../pages/po-auto-download/PoAutoDownloadPage.vue'
+import ShippingAutomationPage from '../pages/shipping-automation/ShippingAutomationPage.vue'
 import WebAutomationPage from '../pages/web-automation/WebAutomationPage.vue'
 import XinlongtaiShippingAutomationPage from '../pages/xinlongtai-shipping-automation/XinlongtaiShippingAutomationPage.vue'
 
@@ -80,6 +81,15 @@ describe('router', () => {
 
     expect(route?.name).toBe('web-automation-scenario-po-auto-download')
     expect(route?.components?.default).toBe(PoAutoDownloadPage)
+    expect(route?.components?.default).not.toBe(RoutePlaceholder)
+  })
+
+  it('routes shipping automation to its standalone scenario page component', async () => {
+    const { router } = await import('./router')
+    const route = router.getRoutes().find((entry) => entry.path === '/web-automation/scenarios/shipping-automation')
+
+    expect(route?.name).toBe('web-automation-scenario-shipping-automation')
+    expect(route?.components?.default).toBe(ShippingAutomationPage)
     expect(route?.components?.default).not.toBe(RoutePlaceholder)
   })
 

@@ -39,6 +39,8 @@ const routeComponents: Partial<Record<string, Component>> = {
   'jane-outbound-compare': JaneOutboundComparePage,
   eric: EricPage,
   'jason-pdf-reorder': JasonPdfReorderPage,
+  'web-automation-scenario-shipping-automation': ShippingAutomationPage,
+  'web-automation-scenario-xinlongtai-shipping-automation': XinlongtaiShippingAutomationPage,
   'web-automation-scenario-po-auto-download': PoAutoDownloadPage,
   'draft-packing-compare': DraftPackingComparePage,
   'tms-finance-internal-reconciliation': TmsFinanceInternalReconciliationPage,
