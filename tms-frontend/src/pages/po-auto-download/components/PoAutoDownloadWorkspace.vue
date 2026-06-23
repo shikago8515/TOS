@@ -84,18 +84,60 @@
 
             <div class="pad-card__body">
               <div class="pad-grid">
-                <label class="pad-field">
+                <div ref="credentialPickerRef" class="pad-field pad-field--combo">
                   <span>{{ text('User ID') }}</span>
-                  <div class="pad-input-wrap">
-                    <AppIcon name="user" />
-                    <input v-model.trim="shippingUsername" class="pad-input" type="text" :placeholder="text('请输入 User ID')" autocomplete="username" />
+                  <div class="pad-combo" :class="{ 'pad-combo--open': credentialMenuOpen }">
+                    <div class="pad-input-wrap pad-input-wrap--combo">
+                      <AppIcon name="user" />
+                      <input
+                        v-model.trim="shippingUsername"
+                        class="pad-input"
+                        type="text"
+                        :placeholder="text('请输入 User ID')"
+                        autocomplete="username"
+                        role="combobox"
+                        :aria-expanded="credentialMenuOpen"
+                        aria-autocomplete="list"
+                        aria-controls="po-credential-options"
+                        @focus="openCredentialMenu"
+                        @click="openCredentialMenu"
+                        @input="handleCredentialInput"
+                      />
+                      <button class="pad-input-btn pad-input-btn--combo" type="button" :title="text('选择账号')" @click="toggleCredentialMenu">
+                        <AppIcon name="chevron-down" />
+                      </button>
+                    </div>
+                    <div v-if="credentialMenuOpen" id="po-credential-options" class="pad-combo-menu" role="listbox">
+                      <button
+                        v-for="option in filteredCredentialOptions"
+                        :key="`${option.sourceAutomationId || option.automationId || ENTRY_ID}:${option.accountKey}`"
+                        class="pad-combo-option"
+                        :class="{ 'pad-combo-option--active': option.accountKey === selectedCredentialKey }"
+                        type="button"
+                        role="option"
+                        :aria-selected="option.accountKey === selectedCredentialKey"
+                        @click="selectCredentialOption(option.accountKey)"
+                      >
+                        <span>
+                          <strong>{{ credentialOptionTitle(option) }}</strong>
+                          <small>{{ normalizePoAutoDownloadUsername(option.username) }}</small>
+                        </span>
+                        <AppIcon v-if="option.accountKey === selectedCredentialKey" name="check-circle" />
+                      </button>
+                      <div v-if="credentialOptions.length === 0" class="pad-combo-empty">
+                        {{ text('暂无已保存账号') }}
+                      </div>
+                      <div v-else-if="filteredCredentialOptions.length === 0" class="pad-combo-empty">
+                        {{ text('没有匹配账号') }}
+                      </div>
+                    </div>
                   </div>
-                </label>
+                </div>
                 <label class="pad-field">
                   <span>{{ text('Password') }}</span>
                   <div class="pad-input-wrap">
                     <AppIcon name="shield-check" />
-                    <input v-model="shippingPassword" class="pad-input pad-input--secret" :type="showShippingPassword ? 'text' : 'password'" placeholder="Enter password" autocomplete="current-password" />
+                    <input v-model="shippingPassword" class="pad-input pad-input--secret" :type="showShippingPassword ? 'text' : 'password'" :placeholder="text('请输入密码')" autocomplete="current-password" />
                     <button class="pad-input-btn" type="button" @click="showShippingPassword = !showShippingPassword">
                       <AppIcon name="eye" />
                     </button>
@@ -295,11 +337,12 @@ import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
 import { buildBackendDownloadUrl } from '../../../shared/api/backendClient'
 import type { AutomationAppInfo } from '../../../types/electronApi'
-import type { AutomationRunRecord, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
+import type { AutomationRunRecord, ExecutorCredentialOption, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {
   clearExecutorCredentials,
   createAutomationRunRecord,
   fetchAutomationApps,
+  fetchExecutorCredentialOptions,
   fetchExecutorCredentials,
   finishAutomationRunRecord,
   getAutomationHelperUpdateMessage,
@@ -316,7 +359,10 @@ import {
 } from '../../web-automation/webAutomationApi'
 import { appendAutomationFailureExamples, formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
 import {
+  buildCredentialAccountKey,
   DEFAULT_INFOR_NEXUS_USERNAME,
+  filterCredentialOptions,
+  findCredentialOptionByUsername,
   normalizeInforNexusUsername,
 } from '../../web-automation/webAutomationCredentials'
 import { getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
@@ -344,13 +390,17 @@ const directorySelecting = ref(false)
 const message = ref('')
 const messageTone = ref<WebAutomationNoticeTone>('info')
 const isHealthLogOpen = ref(false)
+const credentialPickerRef = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
 const isDragging = ref(false)
 const dragDepth = ref(0)
 const shippingUsername = ref(DEFAULT_INFOR_NEXUS_USERNAME)
 const shippingPassword = ref('')
-const showShippingPassword = ref(true)
+const showShippingPassword = ref(false)
+const credentialOptions = ref<ExecutorCredentialOption[]>([])
+const selectedCredentialKey = ref('default')
+const credentialMenuOpen = ref(false)
 const showBrowserView = ref(true)
 const saveDirectory = ref('')
 const statusLabel = ref('待命')
@@ -378,6 +428,7 @@ const executorDirectorySelectUrl = computed(() => {
 })
 const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
 const savedCredentialUsername = computed(() => normalizePoAutoDownloadUsername(executorCredentials.value?.username || ''))
+const filteredCredentialOptions = computed(() => filterCredentialOptions(credentialOptions.value, shippingUsername.value))
 const canSelectDirectory = computed(() => Boolean(window.electronAPI?.selectDirectory || executorDirectorySelectUrl.value))
 const executorSupportsDirectoryPicker = computed(() => Boolean(
   window.electronAPI?.selectDirectory
@@ -434,11 +485,13 @@ const messageIconName = computed(() => {
 })
 
 onMounted(() => {
+  document.addEventListener('click', closeCredentialMenuOnOutsideClick)
   restoreDownloadConfig()
   void initializeScenario()
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('click', closeCredentialMenuOnOutsideClick)
   stopProgressPolling()
 })
 
@@ -569,19 +622,110 @@ function formatRunProgress(progress: Record<string, any>): string {
   return current ? `${phase} · ${countText}，当前 ${current}` : `${phase} · ${countText}`
 }
 
-async function refreshExecutorCredentials(): Promise<void> {
+async function refreshCredentialOptions(): Promise<void> {
   if (!entry) return
   try {
-    executorCredentials.value = await fetchExecutorCredentials(entry.id)
-    const username = normalizePoAutoDownloadUsername(executorCredentials.value.username || '')
-    if (username) shippingUsername.value = username
-    if (executorCredentials.value.hasStoredCredentials) {
-      const resolved = await resolveAutomationCredentials(entry.id)
-      shippingUsername.value = normalizePoAutoDownloadUsername(resolved.username)
-      shippingPassword.value = resolved.password
+    credentialOptions.value = await fetchExecutorCredentialOptions(entry.id)
+  } catch {
+    credentialOptions.value = []
+  }
+}
+
+async function refreshExecutorCredentials(
+  accountKey = selectedCredentialKey.value || buildCredentialAccountKey(shippingUsername.value),
+): Promise<void> {
+  if (!entry) return
+  try {
+    await refreshCredentialOptions()
+    const key = normalizeCredentialKey(accountKey)
+    const loaded = await loadCredentialByKey(key)
+    if (loaded) return
+
+    const matchingOption = findCredentialOptionByUsername(credentialOptions.value, shippingUsername.value)
+    if (matchingOption && matchingOption.accountKey !== key) {
+      await loadCredentialByKey(matchingOption.accountKey)
     }
   } catch {
     executorCredentials.value = null
+  }
+}
+
+async function loadCredentialByKey(accountKey: string): Promise<boolean> {
+  if (!entry) return false
+  const key = normalizeCredentialKey(accountKey)
+  executorCredentials.value = await fetchExecutorCredentials(entry.id, key)
+  const username = normalizePoAutoDownloadUsername(executorCredentials.value.username || '')
+  if (username) shippingUsername.value = username
+
+  if (!executorCredentials.value.hasStoredCredentials) {
+    selectedCredentialKey.value = ''
+    return false
+  }
+
+  selectedCredentialKey.value = key
+  const resolved = await resolveAutomationCredentials(entry.id, key)
+  shippingUsername.value = normalizePoAutoDownloadUsername(resolved.username)
+  shippingPassword.value = resolved.password
+  return true
+}
+
+function normalizeCredentialKey(value: string): string {
+  return String(value || '').trim() || 'default'
+}
+
+function credentialOptionTitle(option: ExecutorCredentialOption): string {
+  const key = normalizeCredentialKey(option.accountKey)
+  const username = normalizePoAutoDownloadUsername(option.username)
+  if (key === 'default') {
+    return text('默认账号')
+  }
+  return key === username ? text('已保存账号') : key
+}
+
+function openCredentialMenu(): void {
+  credentialMenuOpen.value = true
+}
+
+function toggleCredentialMenu(): void {
+  credentialMenuOpen.value = !credentialMenuOpen.value
+}
+
+function closeCredentialMenuOnOutsideClick(event: MouseEvent): void {
+  const target = event.target
+  if (target instanceof Node && credentialPickerRef.value?.contains(target)) {
+    return
+  }
+  credentialMenuOpen.value = false
+}
+
+function handleCredentialInput(event: Event): void {
+  const target = event.target
+  const typedUsername = target instanceof HTMLInputElement ? target.value : shippingUsername.value
+  shippingUsername.value = typedUsername.trim()
+  credentialMenuOpen.value = true
+  const matchedOption = findCredentialOptionByUsername(credentialOptions.value, shippingUsername.value)
+  if (matchedOption) {
+    void selectCredentialOption(matchedOption.accountKey)
+    return
+  }
+
+  selectedCredentialKey.value = ''
+  executorCredentials.value = null
+  shippingPassword.value = ''
+}
+
+async function selectCredentialOption(accountKey: string): Promise<void> {
+  credentialMenuOpen.value = false
+  try {
+    const loaded = await loadCredentialByKey(accountKey)
+    if (!loaded) {
+      shippingPassword.value = ''
+    }
+  } catch (error) {
+    executorCredentials.value = null
+    shippingPassword.value = ''
+    messageTone.value = 'error'
+    message.value = readErrorMessage(error, text('读取账号密码失败。'))
   }
 }
 
@@ -645,9 +789,14 @@ async function saveCurrentCredentials(): Promise<void> {
   const password = shippingPassword.value
   if (!username || !password) return
   shippingUsername.value = username
+  const accountKey = selectedCredentialKey.value || buildCredentialAccountKey(username)
   credentialSaving.value = true
   try {
-    executorCredentials.value = await saveExecutorCredentials(entry.id, username, password)
+    executorCredentials.value = await saveExecutorCredentials(entry.id, username, password, accountKey)
+    selectedCredentialKey.value = accountKey
+    await refreshCredentialOptions()
+    await loadCredentialByKey(accountKey)
+    shippingPassword.value = password
     messageTone.value = 'success'
     message.value = text('登录账号密码已保存。')
   } catch (error) {
@@ -660,9 +809,12 @@ async function saveCurrentCredentials(): Promise<void> {
 
 async function clearCurrentCredentials(): Promise<void> {
   if (!entry || credentialClearing.value) return
+  const accountKey = selectedCredentialKey.value || buildCredentialAccountKey(shippingUsername.value)
   credentialClearing.value = true
   try {
-    executorCredentials.value = await clearExecutorCredentials(entry.id)
+    executorCredentials.value = await clearExecutorCredentials(entry.id, accountKey)
+    await refreshCredentialOptions()
+    selectedCredentialKey.value = ''
     shippingPassword.value = ''
     messageTone.value = 'success'
     message.value = text('登录账号密码已清除。')
@@ -973,7 +1125,8 @@ async function buildCredentialPayload(): Promise<{ username: string; password: s
       password: shippingPassword.value,
     }
   }
-  const resolved = await resolveAutomationCredentials(entry.id)
+  const accountKey = selectedCredentialKey.value || buildCredentialAccountKey(shippingUsername.value)
+  const resolved = await resolveAutomationCredentials(entry.id, accountKey)
   return {
     username: normalizePoAutoDownloadUsername(resolved.username),
     password: resolved.password,
@@ -1419,12 +1572,17 @@ function goBack(): void {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  min-width: 0;
 
   > span {
     font-size: 11px;
     font-weight: 800;
     color: #334155;
   }
+}
+
+.pad-field--combo {
+  position: relative;
 }
 
 .pad-field-head {
@@ -1450,6 +1608,95 @@ function goBack(): void {
   &--path {
     min-width: 0;
   }
+}
+
+.pad-combo {
+  position: relative;
+  min-width: 0;
+
+  &--open {
+    z-index: 30;
+  }
+}
+
+.pad-input-wrap--combo {
+  .pad-input {
+    padding-right: 42px;
+  }
+}
+
+.pad-input-btn--combo {
+  color: #0f766e;
+}
+
+.pad-combo-menu {
+  position: absolute;
+  z-index: 35;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 210px;
+  overflow: auto;
+  padding: 5px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, .14);
+}
+
+.pad-combo-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+
+  span {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  strong,
+  small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  small {
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  &:hover,
+  &--active {
+    color: var(--teal-dark);
+    background: #f0fdfa;
+  }
+
+  .app-icon {
+    flex: 0 0 auto;
+  }
+}
+
+.pad-combo-empty {
+  padding: 10px 9px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .pad-input {

@@ -83,6 +83,6 @@ While the batch is running, the executor writes live counters to `activeRun.prog
 
 The selected run folder is kept clean for users and contains downloaded PDF files only. Diagnostic HTML pages and result JSON are not written to that folder unless `poAutoDownload.saveDiagnostics` or request `saveDiagnostics` is explicitly enabled for troubleshooting.
 
-Login credentials are stored in the server backend database through `/api/automation/credentials/{automation_id}`. The `po-auto-download` credential row uses `automation_id = "po-auto-download"` and `account_key = "default"`.
+Login credentials are stored in the server backend database through `/api/automation/credentials/{automation_id}`. The `po-auto-download` page supports multiple saved account profiles through `account_key`; the frontend account combobox filters saved profiles by account key or username and resolves the selected profile before running.
 
 Latest local verification: `PO 自动下载模板.XLS` completed 13/13 active Invoice PDF downloads into `D:\TOS-Shipping-test\TC Invoice 2026-06-16-1`.
