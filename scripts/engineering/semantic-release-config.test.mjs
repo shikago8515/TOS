@@ -27,7 +27,19 @@ test('semantic-release updates TOS version files before committing release asset
   assert(tosPluginIndex < gitPluginIndex)
 
   const gitPlugin = config.plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === '@semantic-release/git')
-  assert(gitPlugin[1].assets.includes('app-version.json'))
-  assert(gitPlugin[1].assets.includes('tms-backend/app_version.py'))
-  assert(gitPlugin[1].assets.includes('tms-frontend/src/shared/version/releaseNotes.json'))
+  const expectedReleaseAssets = [
+    'app-version.json',
+    'tms-backend/app_version.py',
+    'tms-frontend/src/shared/version/appVersion.ts',
+    'tms-frontend/src/shared/version/releaseNotes.json',
+    'tms-electron-app/package.json',
+    'tms-electron-app/package-lock.json',
+    'tms-electron-app/automation-helper-version.json',
+    'tms-electron-app/automation-apps/registry.json',
+    'tms-electron-app/automation-apps/shipping-automation-demo/package.json',
+  ]
+
+  for (const expectedAsset of expectedReleaseAssets) {
+    assert(gitPlugin[1].assets.includes(expectedAsset), `${expectedAsset} must be committed by semantic-release`)
+  }
 })
