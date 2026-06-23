@@ -56,6 +56,7 @@ module.exports = {
           'tms-frontend/src/shared/version/releaseNotes.json',
           'tms-electron-app/package.json',
           'tms-electron-app/package-lock.json',
+          'tms-electron-app/automation-helper-version.json',
           'tms-electron-app/automation-apps/registry.json',
           'tms-electron-app/automation-apps/shipping-automation-demo/package.json',
         ],
