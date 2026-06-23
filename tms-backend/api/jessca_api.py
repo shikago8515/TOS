@@ -91,11 +91,34 @@ def _save_uploads(files: List[UploadFile], work_dir: str, label: str) -> List[st
     return paths
 
 
+def _normalize_optional_uploads(
+    upload_or_uploads: UploadFile | List[UploadFile] | None,
+) -> List[UploadFile]:
+    if upload_or_uploads is None:
+        return []
+    if isinstance(upload_or_uploads, list):
+        return upload_or_uploads
+    return [upload_or_uploads]
+
+
+def _save_packing_uploads(files: List[UploadFile], work_dir: str) -> List[str]:
+    paths = []
+    multiple_files = len(files) > 1
+    for index, upload in enumerate(files, start=1):
+        safe_name = _validate_pdf_filename(upload.filename, "Packing List PDF")
+        prefix = f"{index}_" if multiple_files else "packing_"
+        file_path = os.path.join(work_dir, f"{prefix}{safe_name}")
+        copy_upload_to_path(upload, file_path)
+        paths.append(file_path)
+
+    return paths
+
+
 @router.post("/process")
 async def process_jessca(
     invoices: List[UploadFile] = File(...),
     reference_file: UploadFile = File(...),
-    packing_file: Optional[UploadFile] = File(None),
+    packing_file: Optional[List[UploadFile]] = File(None),
     output_dir: Optional[str] = Form(None)
 ):
     """
@@ -109,17 +132,18 @@ async def process_jessca(
         reference_name = _validate_excel_filename(reference_file.filename, "参考文件")
         ref_path = os.path.join(work_dir, reference_name)
         copy_upload_to_path(reference_file, ref_path)
-        packing_path = None
-        if packing_file is not None:
-            packing_name = _validate_pdf_filename(packing_file.filename, "Packing List PDF")
-            packing_path = os.path.join(work_dir, f"packing_{packing_name}")
-            copy_upload_to_path(packing_file, packing_path)
+        packing_paths = _save_packing_uploads(
+            _normalize_optional_uploads(packing_file),
+            work_dir,
+        )
+        packing_path = packing_paths[0] if len(packing_paths) == 1 else None
 
         result = jessca_module.process_invoices(
             invoice_paths, 
             ref_path, 
             output_dir if output_dir else UPLOAD_DIR,
             packing_path=packing_path,
+            packing_paths=packing_paths if len(packing_paths) > 1 else None,
         )
         
         # 返回结果

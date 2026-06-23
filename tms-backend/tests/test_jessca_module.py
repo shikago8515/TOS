@@ -348,6 +348,91 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertIn("Packing QTY", headers)
         self.assertEqual(packing_sheet["A3"].value, "一致")
 
+    def test_process_invoices_merges_multiple_packing_pdf_records(self):
+        class MultiPackingJesscaModule(JesscaModule):
+            def __init__(self):
+                super().__init__()
+                self.read_packing_paths: List[str] = []
+
+            def read_invoice_records(self, _invoice_path: str) -> List[InvoiceRecord]:
+                return [
+                    InvoiceRecord(
+                        invoice_file="invoice.xlsx",
+                        invoice_number="10-06-26-0712",
+                        invoice_date="2026-06-07",
+                        po_number="0902694555",
+                        article="LG4321",
+                        style="RC2620OW008",
+                        quantity=200,
+                        price=6.6,
+                    ),
+                    InvoiceRecord(
+                        invoice_file="invoice.xlsx",
+                        invoice_number="10-06-26-0712",
+                        invoice_date="2026-06-07",
+                        po_number="0902694557",
+                        article="LG4323",
+                        style="RC2620OW008",
+                        quantity=180,
+                        price=7.1,
+                    ),
+                ]
+
+            def read_packing_list_records(self, packing_path: str) -> List[PackingListRecord]:
+                self.read_packing_paths.append(packing_path)
+                if packing_path.endswith("packing-a.pdf"):
+                    return [
+                        PackingListRecord(
+                            invoice_number="10-06-26-0712",
+                            ex_factory_date="2026-06-07",
+                            po_number="0902694555",
+                            working_number="RC2620OW008",
+                            article_number="LG4321",
+                            customer_number="0307073961",
+                            quantity=200,
+                            cartons=7,
+                        )
+                    ]
+
+                return [
+                    PackingListRecord(
+                        invoice_number="10-06-26-0712",
+                        ex_factory_date="2026-06-07",
+                        po_number="0902694557",
+                        working_number="RC2620OW008",
+                        article_number="LG4323",
+                        customer_number="0307073963",
+                        quantity=180,
+                        cartons=5,
+                    )
+                ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ref_path = os.path.join(temp_dir, "reference.xlsx")
+            pd.DataFrame(
+                [
+                    {"Price": 6.6, "Style NO.": "RC2620OW008", "Article NO.": "LG4321"},
+                    {"Price": 7.1, "Style NO.": "RC2620OW008", "Article NO.": "LG4323"},
+                ]
+            ).to_excel(ref_path, index=False)
+
+            module = MultiPackingJesscaModule()
+            result = module.process_invoices(
+                [os.path.join(temp_dir, "invoice.xlsx")],
+                ref_path,
+                temp_dir,
+                packing_paths=[
+                    os.path.join(temp_dir, "packing-a.pdf"),
+                    os.path.join(temp_dir, "packing-b.pdf"),
+                ],
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(len(module.read_packing_paths), 2)
+        self.assertEqual(result["packing_count"], 2)
+        self.assertEqual(result["packing_matched_count"], 2)
+        self.assertEqual(result["packing_issue_count"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

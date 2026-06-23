@@ -1286,6 +1286,7 @@ class JesscaModule:
         ref_path: str,
         output_dir: str = None,
         packing_path: Optional[str] = None,
+        packing_paths: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """主处理流程"""
 
@@ -1390,9 +1391,16 @@ class JesscaModule:
 
             ensure_dir(output_dir)
             packing_comparison_rows: Optional[List[PackingComparisonRow]] = None
-            if packing_path:
-                log("\n📦 正在读取 Packing List PDF...")
-                packing_records = self.read_packing_list_records(packing_path)
+            effective_packing_paths = packing_paths if packing_paths is not None else (
+                [packing_path] if packing_path else []
+            )
+            if effective_packing_paths:
+                log(f"\n📦 正在读取 {len(effective_packing_paths)} 个 Packing List PDF...")
+                packing_records: List[PackingListRecord] = []
+                for index, current_packing_path in enumerate(effective_packing_paths, start=1):
+                    packing_filename = os.path.basename(current_packing_path)
+                    log(f"[{index}/{len(effective_packing_paths)}] 读取 Packing List：{packing_filename}")
+                    packing_records.extend(self.read_packing_list_records(current_packing_path))
                 packing_comparison_rows = self.build_packing_list_comparison(
                     all_invoice_records,
                     packing_records,

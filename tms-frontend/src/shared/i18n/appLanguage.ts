@@ -242,6 +242,7 @@ const staticTextTranslations: Record<string, string> = {
   发票文件: 'Invoice Files',
   '发票文件（可多选）': 'Invoice Files (multiple)',
   参考表文件: 'Reference File',
+  'Packing List PDF（可多选）': 'Packing List PDF (multiple)',
   TMS文件: 'TMS Files',
   'TMS 文件': 'TMS Files',
   'TMS 文件（可多选）': 'TMS Files (multiple)',
@@ -692,6 +693,8 @@ const staticTextTranslations: Record<string, string> = {
   '处理失败，请重试': 'Processing failed. Please try again.',
   '上传一张或多张发票文件。': 'Upload one or more invoice files.',
   '上传 1 个参考表文件。': 'Upload one reference file.',
+  '上传一个或多个 PDF 后，会在同一个结果 Excel 中追加箱单核对结果':
+    'Upload one or more PDFs to append packing-list checks to the same result Excel file.',
   'Jessca 发票文件与参考表自动核对，输出价格差异和缺失款号整理结果。':
     'Automatically compare Jessca invoice files with the reference file and export price differences and missing style cleanup.',
   发票价格与参考表核对: 'Invoice price and reference file reconciliation',

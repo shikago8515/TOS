@@ -118,9 +118,18 @@ class LegacyApiSecurityTests(unittest.TestCase):
         class CapturingJesscaModule:
             def __init__(self):
                 self.packing_path = None
+                self.packing_paths = None
 
-            def process_invoices(self, _invoice_paths, _ref_path, output_dir=None, packing_path=None):
+            def process_invoices(
+                self,
+                _invoice_paths,
+                _ref_path,
+                output_dir=None,
+                packing_path=None,
+                packing_paths=None,
+            ):
                 self.packing_path = packing_path
+                self.packing_paths = packing_paths
                 output_path = os.path.join(output_dir, "jessca-result.xlsx")
                 with open(output_path, "wb") as fp:
                     fp.write(b"result")
@@ -161,6 +170,75 @@ class LegacyApiSecurityTests(unittest.TestCase):
         self.assertEqual(response["packing_matched_count"], 1)
         self.assertEqual(response["packing_issue_count"], 0)
 
+    def test_jessca_process_accepts_multiple_optional_packing_pdfs(self):
+        original_upload_dir = jessca_api.UPLOAD_DIR
+        original_module = jessca_api.jessca_module
+
+        class FakeUpload:
+            def __init__(self, filename: str):
+                self.filename = filename
+                self.file = io.BytesIO(b"content")
+
+        class CapturingJesscaModule:
+            def __init__(self):
+                self.packing_path = None
+                self.packing_paths = None
+
+            def process_invoices(
+                self,
+                _invoice_paths,
+                _ref_path,
+                output_dir=None,
+                packing_path=None,
+                packing_paths=None,
+            ):
+                self.packing_path = packing_path
+                self.packing_paths = packing_paths
+                output_path = os.path.join(output_dir, "jessca-result.xlsx")
+                with open(output_path, "wb") as fp:
+                    fp.write(b"result")
+                return {
+                    "success": True,
+                    "message": f"done: {output_path}",
+                    "logs": [f"result: {output_path}"],
+                    "invoice_count": 1,
+                    "total_items": 1,
+                    "matches": {"same": 1, "different": 0, "missing": 0},
+                    "diagnostics": {},
+                    "packing_count": 2,
+                    "packing_matched_count": 2,
+                    "packing_issue_count": 0,
+                    "output_path": output_path,
+                }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module = CapturingJesscaModule()
+            jessca_api.UPLOAD_DIR = temp_dir
+            jessca_api.jessca_module = module
+            try:
+                response = asyncio.run(
+                    jessca_api.process_jessca(
+                        invoices=[FakeUpload("invoice.xls")],
+                        reference_file=FakeUpload("reference.xlsx"),
+                        packing_file=[
+                            FakeUpload("packing-a.pdf"),
+                            FakeUpload("packing-b.pdf"),
+                        ],
+                        output_dir=None,
+                    )
+                )
+            finally:
+                jessca_api.UPLOAD_DIR = original_upload_dir
+                jessca_api.jessca_module = original_module
+
+        self.assertIsNone(module.packing_path)
+        self.assertEqual(len(module.packing_paths), 2)
+        self.assertTrue(str(module.packing_paths[0]).endswith("1_packing-a.pdf"))
+        self.assertTrue(str(module.packing_paths[1]).endswith("2_packing-b.pdf"))
+        self.assertEqual(response["packing_count"], 2)
+        self.assertEqual(response["packing_matched_count"], 2)
+        self.assertEqual(response["packing_issue_count"], 0)
+
     def test_jessca_process_rejects_non_pdf_packing_file(self):
         class FakeUpload:
             def __init__(self, filename: str):
@@ -176,7 +254,10 @@ class LegacyApiSecurityTests(unittest.TestCase):
                         jessca_api.process_jessca(
                             invoices=[FakeUpload("invoice.xls")],
                             reference_file=FakeUpload("reference.xlsx"),
-                            packing_file=FakeUpload("packing.txt"),
+                            packing_file=[
+                                FakeUpload("packing.pdf"),
+                                FakeUpload("packing.txt"),
+                            ],
                             output_dir=None,
                         )
                     )

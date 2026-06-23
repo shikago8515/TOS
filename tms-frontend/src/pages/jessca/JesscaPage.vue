@@ -99,13 +99,13 @@ const uploadFields = computed<ExcelFileField[]>(() => [
   },
   {
     id: 'packing',
-    label: 'Packing List PDF（可选）',
+    label: 'Packing List PDF（可多选）',
     files: packingFiles.value,
-    hint: '上传后会在同一个结果 Excel 中追加箱单核对结果',
+    hint: '上传一个或多个 PDF 后，会在同一个结果 Excel 中追加箱单核对结果',
+    multiple: true,
     required: false,
     accept: '.pdf',
     acceptLabel: '支持 .pdf',
-    expectedCount: 1,
   },
 ])
 
@@ -203,7 +203,7 @@ async function startProcess(): Promise<void> {
       {
         invoiceFiles: invoiceFiles.value,
         referenceFile: referenceFiles.value[0],
-        packingFile: packingFiles.value[0],
+        packingFiles: packingFiles.value,
       },
       (nextProgress) => {
         progress.value = nextProgress
