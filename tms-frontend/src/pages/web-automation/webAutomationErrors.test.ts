@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  appendAutomationFailureExamples,
   formatAutomationExecutorMessage,
   shouldShowAutomationErrorDialog,
 } from './webAutomationErrors'
@@ -54,10 +55,47 @@ describe('webAutomationErrors', () => {
     expect(shouldShowAutomationErrorDialog(passwordMessage)).toBe(true)
   })
 
-  it('keeps non-workbook errors as inline status only', () => {
-    const rawMessage = 'Infor Nexus request login did not return a redirect.'
+  it('formats request login HTML failures as dialog-worthy messages', () => {
+    const rawMessage = 'Infor Nexus request login did not return a redirect. HTTP 200. <!DOCTYPE html><html><title>Infor Nexus Login</title></html>'
 
-    expect(formatAutomationExecutorMessage(rawMessage)).toBe(rawMessage)
-    expect(shouldShowAutomationErrorDialog(rawMessage)).toBe(false)
+    const formattedMessage = formatAutomationExecutorMessage(rawMessage)
+    expect(formattedMessage).toBe('Infor Nexus 登录失败：登录请求返回登录页，未建立下载会话。请检查 User ID / Password，或确认账号是否需要 Access Code。')
+    expect(formattedMessage).not.toContain('<!DOCTYPE')
+    expect(shouldShowAutomationErrorDialog(rawMessage)).toBe(true)
+  })
+
+  it('formats missing request-login cookies as dialog-worthy messages', () => {
+    const rawMessage = 'Infor Nexus request login did not return required userToken/JSESSIONID cookies.'
+
+    expect(formatAutomationExecutorMessage(rawMessage)).toBe('Infor Nexus 登录未建立下载会话：缺少 userToken/JSESSIONID cookies。请重新登录，或联系管理员确认账号状态。')
+    expect(shouldShowAutomationErrorDialog(rawMessage)).toBe(true)
+  })
+
+  it('does not repeat per-row examples for login-stage failures', () => {
+    const baseMessage = 'Infor Nexus 登录失败：登录请求返回登录页，未建立下载会话。请检查 User ID / Password，或确认账号是否需要 Access Code。'
+    const payload = {
+      loginSuccess: false,
+      invoiceResults: [
+        { ok: false, invoiceNumber: '10-06-26-0754', error: baseMessage },
+        { ok: false, invoiceNumber: '10-06-26-0753', error: baseMessage },
+        { ok: false, invoiceNumber: '10-06-26-0752', error: baseMessage },
+      ],
+    }
+
+    expect(appendAutomationFailureExamples(baseMessage, payload)).toBe(baseMessage)
+  })
+
+  it('deduplicates repeated non-login failure examples', () => {
+    const payload = {
+      invoiceResults: [
+        { ok: false, invoiceNumber: 'INV-1', error: 'PDF dyncon URL was not found.' },
+        { ok: false, invoiceNumber: 'INV-2', error: 'PDF dyncon URL was not found.' },
+        { ok: false, invoiceNumber: 'INV-3', error: 'PageResolver URL was not found.' },
+      ],
+    }
+
+    expect(appendAutomationFailureExamples('未完成', payload)).toBe(
+      '未完成 失败示例：INV-1: PDF dyncon URL was not found.；INV-3: PageResolver URL was not found.',
+    )
   })
 })

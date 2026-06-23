@@ -3,10 +3,33 @@ interface AutomationValidationErrorRule {
   message: string
 }
 
+interface AutomationFailureItem {
+  ok?: unknown
+  invoiceNumber?: unknown
+  poNo?: unknown
+  rowIndex?: unknown
+  error?: unknown
+  step?: unknown
+}
+
+interface AutomationFailurePayload {
+  loginSuccess?: unknown
+  invoiceResults?: unknown
+  poResults?: unknown
+}
+
 const automationValidationErrorRules: AutomationValidationErrorRule[] = [
   {
     pattern: /Infor Nexus 登录需要 Access Code|Access Code.*e-Identity|without providing an Access Code/i,
     message: 'Infor Nexus 登录需要 Access Code：账号进入 e-Identity 验证流程。请检查 User ID / Password 是否正确，或联系管理员确认账号权限。',
+  },
+  {
+    pattern: /Infor Nexus request login did not return a redirect|Infor Nexus 登录失败：登录请求返回登录页|<!DOCTYPE html[\s\S]*Infor Nexus Login|<html[\s\S]*Infor Nexus Login/i,
+    message: 'Infor Nexus 登录失败：登录请求返回登录页，未建立下载会话。请检查 User ID / Password，或确认账号是否需要 Access Code。',
+  },
+  {
+    pattern: /Infor Nexus request login did not return required userToken\/JSESSIONID cookies|缺少 userToken\/JSESSIONID cookies/i,
+    message: 'Infor Nexus 登录未建立下载会话：缺少 userToken/JSESSIONID cookies。请重新登录，或联系管理员确认账号状态。',
   },
   {
     pattern: /Infor Nexus 登录失败|账号或密码错误|invalid.*(user|password|credential)|incorrect.*(user|password|credential)|authentication failed|login failed/i,
@@ -65,6 +88,35 @@ export function formatAutomationExecutorMessage(message: string | undefined, fal
   return rawMessage || fallback
 }
 
+export function appendAutomationFailureExamples(baseMessage: string, payload: AutomationFailurePayload | null | undefined): string {
+  const normalizedBaseMessage = String(baseMessage || '').trim()
+  if (!normalizedBaseMessage || isLoginStageFailureMessage(normalizedBaseMessage)) {
+    return normalizedBaseMessage
+  }
+
+  const results = Array.isArray(payload?.invoiceResults)
+    ? payload.invoiceResults
+    : Array.isArray(payload?.poResults)
+      ? payload.poResults
+      : []
+  const seenErrors = new Set<string>()
+  const failures = results
+    .filter((item): item is AutomationFailureItem => Boolean(item && typeof item === 'object' && !((item as AutomationFailureItem).ok)))
+    .map((item) => {
+      const error = String(item.error || item.step || '未返回错误详情').trim()
+      const normalizedError = error.toLowerCase()
+      if (seenErrors.has(normalizedError)) return ''
+      seenErrors.add(normalizedError)
+      const invoiceNumber = String(item.invoiceNumber || item.poNo || `第 ${item.rowIndex || '?'} 行`).trim()
+      return `${invoiceNumber}: ${error}`
+    })
+    .filter(Boolean)
+    .slice(0, 3)
+
+  if (failures.length === 0) return normalizedBaseMessage
+  return `${normalizedBaseMessage} 失败示例：${failures.join('；')}`
+}
+
 export function shouldShowAutomationErrorDialog(message: string | undefined): boolean {
   const rawMessage = String(message || '').trim()
   return Boolean(findAutomationValidationErrorRule(rawMessage))
@@ -80,4 +132,8 @@ function findAutomationValidationErrorRule(message: string): AutomationValidatio
   }
 
   return automationValidationErrorRules.find((rule) => rule.pattern.test(message))
+}
+
+function isLoginStageFailureMessage(message: string): boolean {
+  return /Infor Nexus (登录失败|登录未建立下载会话|登录需要 Access Code)|request login/i.test(message)
 }

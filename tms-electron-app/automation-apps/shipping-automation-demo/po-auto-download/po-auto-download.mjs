@@ -26,6 +26,90 @@ export function isPoAutoDownloadDirectoryRoute(requestPath) {
     || requestPath === "/api/select-po-auto-download-directory";
 }
 
+export async function createPoAutoDownloadRequestSession(options = {}) {
+  const credentials = options.credentials || {};
+  const config = options.config || {};
+  const log = typeof options.log === "function" ? options.log : () => {};
+  const runId = String(options.runId || "");
+  const jar = createCookieJar();
+  const loginOrigin = resolveLoginOrigin(config.loginUrl);
+  const entryUrl = config.loginUrl || `${loginOrigin}/`;
+  const loginUrl = new URL(INFORNEXUS_LOGIN_PATH, loginOrigin).toString();
+  const homeUrl = new URL(INFORNEXUS_HOME_PATH, loginOrigin).toString();
+  const invoicesViewUrl = new URL(INVOICES_VIEW_PATH, loginOrigin).toString();
+
+  const entryResponse = await requestWithCookieJar(entryUrl, {
+    headers: buildBrowserHeaders({ accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" }),
+    jar,
+    redirect: "manual",
+  });
+  const entryHtml = await entryResponse.text().catch(() => "");
+
+  const loginBody = buildLoginFormBody(credentials, entryHtml);
+  const loginResponse = await requestWithCookieJar(loginUrl, {
+    method: "POST",
+    headers: buildBrowserHeaders({
+      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+      contentType: "application/x-www-form-urlencoded",
+      origin: loginOrigin,
+      referer: `${loginOrigin}/`,
+    }),
+    body: loginBody,
+    jar,
+    redirect: "manual",
+  });
+
+  const loginText = await loginResponse.text().catch(() => "");
+  if (!hasRequiredInforNexusSessionCookies(jar)) {
+    throw buildRequestLoginFailureError(loginResponse, loginText);
+  }
+
+  const location = loginResponse.headers.get("location") || "";
+  const redirectedUrl = location ? new URL(location, loginUrl).toString() : homeUrl;
+  await requestWithCookieJar(redirectedUrl, {
+    headers: buildBrowserHeaders({
+      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      referer: `${loginOrigin}/`,
+    }),
+    jar,
+    redirect: "manual",
+  }).catch(() => null);
+
+  const invoicesViewResponse = await requestWithCookieJar(invoicesViewUrl, {
+    headers: buildBrowserHeaders({
+      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+      referer: redirectedUrl,
+    }),
+    jar,
+    redirect: "manual",
+  });
+  const invoicesText = await invoicesViewResponse.text().catch(() => "");
+  if (invoicesViewResponse.status >= 400 || (invoicesViewResponse.status >= 300 && invoicesViewResponse.status < 400)) {
+    throw new Error(`Infor Nexus InvoicesView request failed. HTTP ${invoicesViewResponse.status}. ${stripHtmlForMessage(invoicesText).slice(0, 240)}`);
+  }
+  if (isLikelyLoginPage(invoicesText)) {
+    throw new Error("Infor Nexus 登录会话已失效：打开 InvoicesView 时返回登录页。请重新登录后再试。");
+  }
+
+  log("PO auto-download captured request login session.", {
+    runId,
+    cookieNames: jar.names(),
+    finalUrl: invoicesViewUrl,
+  });
+
+  return {
+    cookieHeader: jar.header(),
+    cookieJar: jar,
+    cookieMap: jar.entries(),
+    loginOrigin,
+    sToken: jar.get("sToken"),
+    finalUrl: invoicesViewUrl,
+    title: "",
+    method: "request-login",
+    authMethod: "request-login",
+  };
+}
+
 export async function selectPoAutoDownloadDirectory(body = {}) {
   if (process.platform !== "win32") {
     return {
@@ -89,12 +173,17 @@ function toBoolean(value, fallback = false) {
 
 export function createPoAutoDownloadAutomation(deps) {
   const {
+    browserEngines,
+    buildVisibleBrowserLaunchOptions,
     config,
+    ensureLoggedIn,
     log,
     normalizeUploadFileName,
     recordCompletedRun,
     registerActiveRun,
     resolveCredentials,
+    safePageTitle,
+    safePageUrl,
     unregisterActiveRun,
     xlsx,
   } = deps;
@@ -134,6 +223,7 @@ export function createPoAutoDownloadAutomation(deps) {
         downloadDirectory,
         selectedDownloadDirectory,
         inputFileName,
+        headless,
         poRows,
         requestConcurrency,
         runId: activeRun.runId,
@@ -174,6 +264,7 @@ export function createPoAutoDownloadAutomation(deps) {
       downloadDirectory,
       selectedDownloadDirectory,
       inputFileName,
+      headless,
       poRows,
       requestConcurrency,
       runId,
@@ -242,7 +333,7 @@ export function createPoAutoDownloadAutomation(deps) {
         phase: "登录 Infor Nexus",
         message: "正在登录 Infor Nexus 并建立下载会话。",
       });
-      authSession = await createRequestAuthenticatedSession(credentials, runId);
+      authSession = await createRequestAuthenticatedSession(credentials, { headless, runId });
       const progressTracker = createProgressTracker(activeRun, {
         activeCount: activeRows.length,
         downloadDirectory,
@@ -311,6 +402,7 @@ export function createPoAutoDownloadAutomation(deps) {
         generatedAt: new Date().toISOString(),
         finalUrl: authSession.finalUrl,
         title: authSession.title,
+        authMethod: authSession.authMethod || authSession.method || "",
         startedAt,
       };
 
@@ -359,6 +451,7 @@ export function createPoAutoDownloadAutomation(deps) {
         generatedAt: new Date().toISOString(),
         finalUrl: authSession?.finalUrl || "",
         title: authSession?.title || "",
+        authMethod: authSession?.authMethod || authSession?.method || "",
         startedAt,
       };
       result.invoiceResults = result.poResults;
@@ -368,86 +461,104 @@ export function createPoAutoDownloadAutomation(deps) {
     }
   }
 
-  async function createRequestAuthenticatedSession(credentials, runId) {
-    const jar = createCookieJar();
+  async function createRequestAuthenticatedSession(credentials, options = {}) {
+    try {
+      return await createPoAutoDownloadRequestSession({
+        credentials,
+        config,
+        log,
+        runId: options.runId,
+      });
+    } catch (requestError) {
+      if (!canUseBrowserLoginFallback()) {
+        throw requestError;
+      }
+      log("PO auto-download request login failed; trying browser login fallback.", {
+        runId: options.runId,
+        error: requestError instanceof Error ? requestError.message : String(requestError),
+      });
+      return createBrowserAuthenticatedSession(credentials, options, requestError);
+    }
+  }
+
+  function canUseBrowserLoginFallback() {
+    const engine = browserEngines?.[config.browser];
+    return Boolean(engine && ensureLoggedIn);
+  }
+
+  async function createBrowserAuthenticatedSession(credentials, options = {}, requestError = null) {
+    const engine = browserEngines?.[config.browser];
+    if (!engine || !ensureLoggedIn) {
+      throw requestError instanceof Error ? requestError : new Error("PO auto-download browser login fallback is unavailable.");
+    }
+
     const loginOrigin = resolveLoginOrigin(config.loginUrl);
-    const entryUrl = config.loginUrl || `${loginOrigin}/`;
-    const loginUrl = new URL(INFORNEXUS_LOGIN_PATH, loginOrigin).toString();
-    const homeUrl = new URL(INFORNEXUS_HOME_PATH, loginOrigin).toString();
     const invoicesViewUrl = new URL(INVOICES_VIEW_PATH, loginOrigin).toString();
-
-    const entryResponse = await requestWithCookieJar(entryUrl, {
-      headers: buildBrowserHeaders({ accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" }),
-      jar,
-      redirect: "manual",
-    });
-    const entryHtml = await entryResponse.text().catch(() => "");
-
-    const loginBody = buildLoginFormBody(credentials, entryHtml);
-    const loginResponse = await requestWithCookieJar(loginUrl, {
-      method: "POST",
-      headers: buildBrowserHeaders({
-        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        contentType: "application/x-www-form-urlencoded",
-        origin: loginOrigin,
-        referer: `${loginOrigin}/`,
-      }),
-      body: loginBody,
-      jar,
-      redirect: "manual",
-    });
-
-    const location = loginResponse.headers.get("location") || "";
-    const redirectedUrl = location ? new URL(location, loginUrl).toString() : homeUrl;
-    const isExpectedRedirect = loginResponse.status >= 300 && loginResponse.status < 400;
-    if (!isExpectedRedirect) {
-      const loginText = await loginResponse.text().catch(() => "");
-      throw new Error(`Infor Nexus request login did not return a redirect. HTTP ${loginResponse.status}. ${loginText.slice(0, 240)}`);
-    }
-
-    if (!jar.has("userToken") || !jar.has("JSESSIONID")) {
-      throw new Error("Infor Nexus request login did not return required userToken/JSESSIONID cookies.");
-    }
-
-    await requestWithCookieJar(redirectedUrl, {
-      headers: buildBrowserHeaders({
-        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        referer: `${loginOrigin}/`,
-      }),
-      jar,
-      redirect: "manual",
-    }).catch(() => null);
-
-    const invoicesViewResponse = await requestWithCookieJar(invoicesViewUrl, {
-      headers: buildBrowserHeaders({
-        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        referer: redirectedUrl,
-      }),
-      jar,
-      redirect: "manual",
-    });
-    if (invoicesViewResponse.status >= 400 || (invoicesViewResponse.status >= 300 && invoicesViewResponse.status < 400)) {
-      const invoicesText = await invoicesViewResponse.text().catch(() => "");
-      throw new Error(`Infor Nexus InvoicesView request failed. HTTP ${invoicesViewResponse.status}. ${invoicesText.slice(0, 240)}`);
-    }
-    await invoicesViewResponse.text().catch(() => "");
-
-    log("PO auto-download captured request login session.", {
-      runId,
-      cookieNames: jar.names(),
-      finalUrl: invoicesViewUrl,
-    });
-
-    return {
-      cookieHeader: jar.header(),
-      cookieJar: jar,
-      cookieMap: jar.entries(),
-      loginOrigin,
-      sToken: jar.get("sToken"),
-      finalUrl: invoicesViewUrl,
-      title: "",
-      method: "request-login",
+    const launchOptions = {
+      slowMo: config.slowMo,
+      ...(config.launchOptions && typeof config.launchOptions === "object" ? config.launchOptions : {}),
+      headless: toBoolean(options.headless, config.headless),
     };
+    const browserLaunchOptions = typeof buildVisibleBrowserLaunchOptions === "function"
+      ? buildVisibleBrowserLaunchOptions(launchOptions, config.browser)
+      : launchOptions;
+
+    let browser = null;
+    let context = null;
+    let page = null;
+    try {
+      browser = await engine.launch(browserLaunchOptions);
+      context = await browser.newContext({ viewport: null });
+      page = await context.newPage();
+      page.setDefaultTimeout(config.navigationTimeoutMs);
+      page.setDefaultNavigationTimeout(config.navigationTimeoutMs);
+
+      await page.goto(config.loginUrl || `${loginOrigin}/`, {
+        waitUntil: "domcontentloaded",
+        timeout: config.navigationTimeoutMs,
+      });
+      await ensureLoggedIn(page, credentials);
+      if (config.postLoginWaitMs > 0) {
+        await page.waitForTimeout(config.postLoginWaitMs).catch(() => {});
+      }
+      await page.goto(invoicesViewUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: config.navigationTimeoutMs,
+      });
+
+      const jar = createCookieJarFromBrowserCookies(await context.cookies(loginOrigin));
+      if (!hasRequiredInforNexusSessionCookies(jar)) {
+        throw new Error("Infor Nexus 浏览器登录未建立下载会话：缺少 userToken/JSESSIONID cookies。请重新登录，或联系管理员确认账号状态。");
+      }
+
+      const title = typeof safePageTitle === "function"
+        ? await safePageTitle(page)
+        : await page.title().catch(() => "");
+      const finalUrl = typeof safePageUrl === "function"
+        ? safePageUrl(page)
+        : page.url();
+
+      log("PO auto-download captured browser login fallback session.", {
+        runId: options.runId,
+        cookieNames: jar.names(),
+        finalUrl: finalUrl || invoicesViewUrl,
+      });
+
+      return {
+        cookieHeader: jar.header(),
+        cookieJar: jar,
+        cookieMap: jar.entries(),
+        loginOrigin,
+        sToken: jar.get("sToken"),
+        finalUrl: finalUrl || invoicesViewUrl,
+        title,
+        method: "browser-login-fallback",
+        authMethod: "browser-login-fallback",
+      };
+    } finally {
+      await context?.close().catch(() => {});
+      await browser?.close().catch(() => {});
+    }
   }
 
   function extractInvoiceRowsFromWorkbookPayload(body) {
@@ -948,10 +1059,23 @@ async function fetchWithAuthSession(url, options = {}) {
   });
 }
 
+export function createCookieJarFromBrowserCookies(browserCookies = []) {
+  const jar = createCookieJar();
+  for (const cookie of Array.isArray(browserCookies) ? browserCookies : []) {
+    jar.set(cookie?.name, cookie?.value);
+  }
+  return jar;
+}
+
 function createCookieJar() {
   const cookies = new Map();
 
   return {
+    set(name, value) {
+      const cookieName = String(name || "").trim();
+      if (!cookieName) return;
+      cookies.set(cookieName, String(value ?? ""));
+    },
     get(name) {
       return cookies.get(name) || "";
     },
@@ -1428,6 +1552,39 @@ function isLikelyLoginPage(html) {
   return normalized.includes("login.jsp")
     && normalized.includes("password")
     && !normalized.includes("inprogressinvoicepagemanager");
+}
+
+function hasRequiredInforNexusSessionCookies(jar) {
+  return Boolean(jar?.has?.("userToken") && jar?.has?.("JSESSIONID"));
+}
+
+function buildRequestLoginFailureError(response, html) {
+  if (isAccessCodeChallengePage(html)) {
+    return new Error("Infor Nexus 登录需要 Access Code：账号进入 e-Identity 验证流程。请检查 User ID / Password 是否正确，或联系管理员确认账号权限。");
+  }
+  if (isLikelyLoginPage(html)) {
+    return new Error("Infor Nexus 登录失败：登录请求返回登录页，未建立下载会话。请检查 User ID / Password，或确认账号是否需要 Access Code。");
+  }
+  const status = Number(response?.status || 0);
+  if (status >= 400) {
+    return new Error(`Infor Nexus 登录请求失败：HTTP ${status}。${stripHtmlForMessage(html).slice(0, 160)}`);
+  }
+  return new Error("Infor Nexus 登录未建立下载会话：缺少 userToken/JSESSIONID cookies。请重新登录，或联系管理员确认账号状态。");
+}
+
+function isAccessCodeChallengePage(html) {
+  const text = stripHtmlForMessage(html);
+  return /Access Code/i.test(text)
+    && /(e-Identity|without providing an Access Code|required to log in)/i.test(text);
+}
+
+function stripHtmlForMessage(value) {
+  return String(value || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function withoutHtml(result) {

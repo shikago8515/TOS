@@ -314,7 +314,11 @@ import {
   saveExecutorCredentials,
   stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
-import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
+import { appendAutomationFailureExamples, formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
+import {
+  DEFAULT_INFOR_NEXUS_USERNAME,
+  normalizeInforNexusUsername,
+} from '../../web-automation/webAutomationCredentials'
 import { getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
 
 const ENTRY_ID = 'po-auto-download'
@@ -344,7 +348,7 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
 const isDragging = ref(false)
 const dragDepth = ref(0)
-const shippingUsername = ref('')
+const shippingUsername = ref(DEFAULT_INFOR_NEXUS_USERNAME)
 const shippingPassword = ref('')
 const showShippingPassword = ref(true)
 const showBrowserView = ref(true)
@@ -373,7 +377,7 @@ const executorDirectorySelectUrl = computed(() => {
   return base ? `${base}/api/select-download-directory` : ''
 })
 const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
-const savedCredentialUsername = computed(() => executorCredentials.value?.username || '')
+const savedCredentialUsername = computed(() => normalizePoAutoDownloadUsername(executorCredentials.value?.username || ''))
 const canSelectDirectory = computed(() => Boolean(window.electronAPI?.selectDirectory || executorDirectorySelectUrl.value))
 const executorSupportsDirectoryPicker = computed(() => Boolean(
   window.electronAPI?.selectDirectory
@@ -569,11 +573,11 @@ async function refreshExecutorCredentials(): Promise<void> {
   if (!entry) return
   try {
     executorCredentials.value = await fetchExecutorCredentials(entry.id)
-    const username = executorCredentials.value.username || ''
+    const username = normalizePoAutoDownloadUsername(executorCredentials.value.username || '')
     if (username) shippingUsername.value = username
     if (executorCredentials.value.hasStoredCredentials) {
       const resolved = await resolveAutomationCredentials(entry.id)
-      shippingUsername.value = resolved.username
+      shippingUsername.value = normalizePoAutoDownloadUsername(resolved.username)
       shippingPassword.value = resolved.password
     }
   } catch {
@@ -637,9 +641,10 @@ function bootLocalHelper(): void {
 
 async function saveCurrentCredentials(): Promise<void> {
   if (!entry || credentialSaving.value) return
-  const username = shippingUsername.value.trim()
+  const username = normalizePoAutoDownloadUsername(shippingUsername.value)
   const password = shippingPassword.value
   if (!username || !password) return
+  shippingUsername.value = username
   credentialSaving.value = true
   try {
     executorCredentials.value = await saveExecutorCredentials(entry.id, username, password)
@@ -961,16 +966,22 @@ async function buildCredentialPayload(): Promise<{ username: string; password: s
     throw new Error('Entry is missing.')
   }
   if (shippingPassword.value.trim()) {
+    const username = normalizePoAutoDownloadUsername(shippingUsername.value)
+    shippingUsername.value = username
     return {
-      username: shippingUsername.value.trim(),
+      username,
       password: shippingPassword.value,
     }
   }
   const resolved = await resolveAutomationCredentials(entry.id)
   return {
-    username: resolved.username,
+    username: normalizePoAutoDownloadUsername(resolved.username),
     password: resolved.password,
   }
+}
+
+function normalizePoAutoDownloadUsername(value: string): string {
+  return normalizeInforNexusUsername(value)
 }
 
 async function ensureReady(): Promise<boolean> {
@@ -1040,21 +1051,7 @@ function safeParseJson(raw: string): Record<string, any> | null {
 }
 
 function appendFailureExamples(baseMessage: string, payload: Record<string, any> | null): string {
-  const results = Array.isArray(payload?.invoiceResults)
-    ? payload?.invoiceResults
-    : Array.isArray(payload?.poResults)
-      ? payload?.poResults
-      : []
-  const failures = results
-    .filter((item: Record<string, any>) => item && !item.ok)
-    .slice(0, 3)
-    .map((item: Record<string, any>) => {
-      const invoiceNumber = String(item.invoiceNumber || item.poNo || `第 ${item.rowIndex || '?'} 行`).trim()
-      const error = String(item.error || item.step || '未返回错误详情').trim()
-      return `${invoiceNumber}: ${error}`
-    })
-  if (failures.length === 0) return baseMessage
-  return `${baseMessage} 失败示例：${failures.join('；')}`
+  return appendAutomationFailureExamples(baseMessage, payload)
 }
 
 function readErrorMessage(error: unknown, fallback: string): string {
