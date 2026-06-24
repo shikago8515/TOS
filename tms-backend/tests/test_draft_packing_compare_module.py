@@ -186,6 +186,46 @@ The complete document may be accessed on the system. Page 6 of 8
 )
 
 
+CHINA_PERU_FTA_TEXT = """
+CERTIFICATE OF ORIGIN
+Form for China-Peru FTA
+6.Item 7.Number and kind of 8.HS code 9.Origin 10.Gross 11.Number and 12.Invoiced
+number Packages;description of (Six digit criterion weight,quantity date of invoice value
+(Max goods code) (Quantity Unit)
+20) or other
+measures (liters,
+m³,etc.)
+1 EIGHTEEN (18) CARTONS OF KID'S 620462 PSR 67.04% 252 PIECES 10-04-26-0537 USD
+WOVEN DENIM PANT,MAIN G.WEIGHT MAY.05,2026 22838.65
+MATERIAL:100% COTTON 161.24 KGS
+PO# 0902275914
+ARTICLE NO.: KU8337
+STYLE NO.: OJF26250705
+2 SIXTEEN (16) CARTONS OF KID'S 620462 PSR 67.04% 251 PIECES
+WOVEN DENIM PANT,MAIN G.WEIGHT
+MATERIAL:100% COTTON 107.56 KGS
+PO# 0902275872
+ARTICLE NO.: KU8317
+STYLE NO.: OLKF26250706
+3 THIRTY NINE (39) CARTONS OF 620432 PSR 95.21% 504 PIECES
+KID'S WOVEN DENIM JACKET,MAIN G.WEIGHT
+MATERIAL:100% COTTON 415.23 KGS
+PO# 0902275843
+ARTICLE NO.: KS1734
+STYLE NO.: OJF26250703
+***
+"""
+
+
+class FailingOriginCertificateOcr:
+    def __init__(self) -> None:
+        self.called = False
+
+    def extract_records(self, pdf_path):
+        self.called = True
+        raise AssertionError("text-readable FTA PDFs should not trigger OCR fallback")
+
+
 class DraftPackingCompareModuleTests(unittest.TestCase):
     def setUp(self) -> None:
         self.module = DraftPackingCompareModule()
@@ -221,6 +261,26 @@ class DraftPackingCompareModuleTests(unittest.TestCase):
         self.assertEqual(attachment.cartons, 61)
         self.assertEqual(attachment.cartons_in_words, "SIXTY ONE")
         self.assertEqual(attachment.goods_description, "WOMEN'S WOVEN PANTS,MAIN MATERIAL: 100% COTTON")
+
+    def test_parse_origin_certificate_pdf_uses_text_fta_records_without_ocr(self):
+        ocr = FailingOriginCertificateOcr()
+        module = DraftPackingCompareModule(origin_certificate_ocr=ocr)
+        module._extract_pdf_text = lambda _pdf_path: CHINA_PERU_FTA_TEXT
+
+        records = module.parse_origin_certificate_pdf("text-readable-fta.pdf")
+
+        self.assertFalse(ocr.called)
+        self.assertEqual(len(records), 3)
+        first = records[0]
+        self.assertEqual(first.po_number, "0902275914")
+        self.assertEqual(first.working_number, "OJF26250705")
+        self.assertEqual(first.article_number, "KU8337")
+        self.assertEqual(first.quantity, 252)
+        self.assertEqual(first.cartons, 18)
+        self.assertEqual(first.cartons_in_words, "EIGHTEEN")
+        self.assertEqual(first.goods_description, "KID'S WOVEN DENIM PANT,MAIN MATERIAL:100% COTTON")
+        self.assertEqual(first.hs_code, "620462")
+        self.assertTrue(any("Cust Number" in issue for issue in first.issues))
 
     def test_parse_packing_pages_uses_tables_and_reports_missing_hts(self):
         records = self.module.parse_packing_pages([PACKING_PAGE])
