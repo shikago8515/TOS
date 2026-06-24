@@ -241,8 +241,23 @@ class JesscaModule:
         invoice_date = ""
         for row_idx in range(min(adapter.get_row_count(), 12)):
             for col_idx in range(adapter.get_col_count(row_idx)):
-                label = self._normalize_invoice_label(adapter.get_cell_value(row_idx, col_idx))
-                if not invoice_number and label in {"INV#", "INV", "INVOICE#", "INVOICENO", "INVOICENUMBER"}:
+                cell_value = adapter.get_cell_value(row_idx, col_idx)
+                if not invoice_number:
+                    invoice_number = self._extract_inline_invoice_number(cell_value)
+                if not invoice_date:
+                    invoice_date = self._extract_inline_invoice_date(cell_value, adapter)
+
+                label = self._normalize_invoice_label(cell_value)
+                if not invoice_number and label in {
+                    "INV#",
+                    "INV",
+                    "INVNO",
+                    "INVNO.",
+                    "INVOICE#",
+                    "INVOICENO",
+                    "INVOICENO.",
+                    "INVOICENUMBER",
+                }:
                     invoice_number = self._find_next_non_empty_cell_text(adapter, row_idx, col_idx + 1)
                 elif not invoice_date and label == "DATE":
                     invoice_date = self._normalize_invoice_date(
@@ -254,6 +269,26 @@ class JesscaModule:
             if invoice_number and invoice_date:
                 break
         return invoice_number, invoice_date
+
+    def _extract_inline_invoice_number(self, value: Any) -> str:
+        text = self._normalize_invoice_text(value)
+        if not text:
+            return ""
+
+        invoice_token = r"[A-Z0-9]*\d[A-Z0-9]*(?:[-./][A-Z0-9]*\d[A-Z0-9]*)+"
+        match = re.search(
+            rf"\b(?:INV(?:OICE)?\s*#?|INV(?:OICE)?\s*NO\.?|NO\.?)\s*[:：]\s*({invoice_token})\b",
+            text,
+            re.IGNORECASE,
+        )
+        return match.group(1).strip() if match else ""
+
+    def _extract_inline_invoice_date(self, value: Any, adapter: ExcelRowAdapter) -> str:
+        text = self._normalize_invoice_text(value)
+        match = re.search(r"\bDATE\s*[:：]\s*(.+)", text, re.IGNORECASE)
+        if not match:
+            return ""
+        return self._normalize_invoice_date(match.group(1).strip(), adapter)
 
     @staticmethod
     def _normalize_invoice_label(value: Any) -> str:
@@ -291,12 +326,61 @@ class JesscaModule:
                 except Exception:
                     return self._normalize_invoice_text(value)
         text = self._normalize_invoice_text(value)
+        text = re.sub(r"^DATE\s*[:：]\s*", "", text, flags=re.IGNORECASE).strip()
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y/%m/%d"):
             try:
                 return datetime.strptime(text, fmt).date().isoformat()
             except ValueError:
                 continue
+        english_month_date = self._normalize_english_month_date(text)
+        if english_month_date:
+            return english_month_date
         return text
+
+    @staticmethod
+    def _normalize_english_month_date(text: str) -> str:
+        month_lookup = {
+            "JAN": 1,
+            "JANUARY": 1,
+            "FEB": 2,
+            "FEBRUARY": 2,
+            "MAR": 3,
+            "MARCH": 3,
+            "APR": 4,
+            "APRIL": 4,
+            "MAY": 5,
+            "JUN": 6,
+            "JUNE": 6,
+            "JUL": 7,
+            "JULY": 7,
+            "AUG": 8,
+            "AUGUST": 8,
+            "SEP": 9,
+            "SEPT": 9,
+            "SEPTEMBER": 9,
+            "OCT": 10,
+            "OCTOBER": 10,
+            "NOV": 11,
+            "NOVEMBER": 11,
+            "DEC": 12,
+            "DECEMBER": 12,
+        }
+        parts = re.split(r"\s+", text.replace(",", " ").strip())
+        if len(parts) != 3:
+            return ""
+
+        month_token = parts[0].rstrip(".").upper()
+        if month_token not in month_lookup:
+            return ""
+
+        try:
+            return date(
+                int(parts[2]),
+                month_lookup[month_token],
+                int(parts[1]),
+            ).isoformat()
+        except ValueError:
+            return ""
 
     def _extract_price(self, adapter: ExcelRowAdapter, row_idx: int) -> Optional[float]:
         """从指定行提取价格"""

@@ -236,6 +236,70 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(records[0].quantity, 200)
         self.assertEqual(records[0].price, 6.6)
 
+    def test_read_invoice_records_extracts_inline_no_and_month_date_header(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            invoice_path = os.path.join(temp_dir, "invoice.xlsx")
+            wb = Workbook()
+            ws = wb.active
+            ws["J4"] = "NO: 17-05-26-1190"
+            ws["J7"] = "DATE: MAY 25 2026"
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([" PO NO.", "STOCK NO.", "COLOR", "DESCRIPTIONS", None, "QTY(PC)", "UNIT PRICE(PC)", None, "FOB"])
+            ws.append(["WOMEN'S WOVEN TRACK TOP"])
+            ws.append(["PO:", "0902590165", None, None, None, 100, "USD", 15.55, "USD", 1555.0])
+            ws.append(["ARTICLE NO.:", "LD5339"])
+            ws.append(["STYLE NO.:", "RC2613OW007"])
+            wb.save(invoice_path)
+
+            records = self.module.read_invoice_records(invoice_path)
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].invoice_number, "17-05-26-1190")
+        self.assertEqual(records[0].invoice_date, "2026-05-25")
+        self.assertEqual(records[0].po_number, "0902590165")
+        self.assertEqual(records[0].article, "LD5339")
+        self.assertEqual(records[0].style, "RC2613OW007")
+
+    def test_read_invoice_records_extracts_split_inv_no_label_header(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            invoice_path = os.path.join(temp_dir, "invoice.xlsx")
+            wb = Workbook()
+            ws = wb.active
+            ws["G4"] = "INV NO.:"
+            ws["H4"] = "10-04-26-0460"
+            ws["G7"] = "DATE:"
+            ws["H7"] = date(2026, 4, 15)
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([" PO NO.", "STOCK NO.", "COLOR", "DESCRIPTIONS", None, "QTY(PC)", "UNIT PRICE(PC)", None, "FOB"])
+            ws.append(["WOMEN'S WOVEN ST DNM WSH JACKET"])
+            ws.append(["PO#", "0902187227", None, None, None, 342, "USD", 21.8, "USD", 7455.6])
+            ws.append(["ARTICLE NO.:", "KV0625"])
+            ws.append(["STYLE NO.:", "AF26INSPW072"])
+            wb.save(invoice_path)
+
+            records = self.module.read_invoice_records(invoice_path)
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].invoice_number, "10-04-26-0460")
+        self.assertEqual(records[0].invoice_date, "2026-04-15")
+        self.assertEqual(records[0].po_number, "0902187227")
+        self.assertEqual(records[0].article, "KV0625")
+        self.assertEqual(records[0].style, "AF26INSPW072")
+
     def test_build_packing_list_comparison_matches_invoice_and_flags_quantity(self):
         invoice_records = [
             InvoiceRecord(
@@ -345,8 +409,12 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         packing_sheet = workbook["Packing List核对"]
         headers = [cell.value for cell in packing_sheet[2]]
         self.assertIn("PO No", headers)
+        self.assertIn("Invoice No", headers)
+        self.assertIn("Invoice Date", headers)
         self.assertIn("Packing QTY", headers)
         self.assertEqual(packing_sheet["A3"].value, "一致")
+        self.assertEqual(packing_sheet["C3"].value, "10-06-26-0712")
+        self.assertEqual(packing_sheet["E3"].value, "2026-06-07")
 
     def test_process_invoices_merges_multiple_packing_pdf_records(self):
         class MultiPackingJesscaModule(JesscaModule):
