@@ -318,6 +318,7 @@ class TmsFinanceInternalReconciliationModuleTests(unittest.TestCase):
             self.assertEqual(ws.cell(209, 10).value, 1118.23)
             self.assertEqual(ws.cell(209, 10).number_format, "0.00")
             self.assertEqual(ws.cell(209, 19).value, "CI-BULK-000")
+            self.assertIn(ws.cell(209, 20).value, (None, ""))
             self.assertTrue(all(ws.cell(209, column).value in (None, "") for column in range(1, 5)))
             self.assertTrue(all(ws.cell(209, column).value in (None, "") for column in (21, 22)))
             self.assertEqual(ws.cell(210, 6).value, "万代")
@@ -393,7 +394,7 @@ class TmsFinanceInternalReconciliationModuleTests(unittest.TestCase):
             ws.cell(208, 17).value = "2026-05-07"
             ws.cell(208, 18).value = "Caroline"
             ws.cell(208, 19).value = "CI-BULK-000"
-            ws.cell(208, 20).value = 969.58
+            ws.cell(208, 20).value = 12345.67
             workbook.save(target_path)
             bulk_path = self._save_bulk_workbook(folder)
 
