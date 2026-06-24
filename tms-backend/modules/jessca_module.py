@@ -15,7 +15,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from typing import DefaultDict, List, Dict, Tuple, Any, Optional
+from typing import DefaultDict, List, Dict, Tuple, Any, Optional, Set
 
 # 导入工具模块
 import sys
@@ -29,6 +29,9 @@ STATUS_PRICE_MISMATCH = "价格不一致"
 STATUS_STYLE_SUSPECT = "发票款号疑似错误"
 STATUS_ARTICLE_SUSPECT = "发票Article疑似错误"
 STATUS_MULTI_CANDIDATE = "字段疑似错误-候选多条"
+STATUS_REFERENCE_STYLE_SUSPECT = "参考表款号疑似错误"
+STATUS_REFERENCE_ARTICLE_SUSPECT = "参考表Article疑似错误"
+STATUS_REFERENCE_MULTI_CANDIDATE = "参考表字段疑似错误-候选多条"
 STATUS_REFERENCE_MISSING = "参考表未找到"
 STATUS_NOT_IN_INVOICE = "未在发票中找到"
 
@@ -543,7 +546,9 @@ class JesscaModule:
     @staticmethod
     def _status_fill(status: str) -> Optional[PatternFill]:
         if status in (STATUS_PRICE_MISMATCH, STATUS_STYLE_SUSPECT,
-                      STATUS_ARTICLE_SUSPECT, STATUS_MULTI_CANDIDATE):
+                      STATUS_ARTICLE_SUSPECT, STATUS_MULTI_CANDIDATE,
+                      STATUS_REFERENCE_STYLE_SUSPECT, STATUS_REFERENCE_ARTICLE_SUSPECT,
+                      STATUS_REFERENCE_MULTI_CANDIDATE):
             return PatternFill(start_color='FFFFDDDD', end_color='FFFFDDDD', fill_type='solid')
         if status in (STATUS_REFERENCE_MISSING, STATUS_NOT_IN_INVOICE):
             return PatternFill(start_color='FFFFFFCC', end_color='FFFFFFCC', fill_type='solid')
@@ -554,13 +559,23 @@ class JesscaModule:
     @staticmethod
     def _status_font(status: str) -> Optional[Font]:
         if status in (STATUS_PRICE_MISMATCH, STATUS_STYLE_SUSPECT,
-                      STATUS_ARTICLE_SUSPECT, STATUS_MULTI_CANDIDATE):
+                      STATUS_ARTICLE_SUSPECT, STATUS_MULTI_CANDIDATE,
+                      STATUS_REFERENCE_STYLE_SUSPECT, STATUS_REFERENCE_ARTICLE_SUSPECT,
+                      STATUS_REFERENCE_MULTI_CANDIDATE):
             return Font(bold=True, color='FFFF0000')
         if status in (STATUS_REFERENCE_MISSING, STATUS_NOT_IN_INVOICE):
             return Font(bold=True, color='FFCC6600')
         if status == STATUS_MATCHED:
             return Font(bold=True, color='FF00AA00')
         return None
+
+    @staticmethod
+    def _is_reference_source_status(status: str) -> bool:
+        return status in (
+            STATUS_REFERENCE_STYLE_SUSPECT,
+            STATUS_REFERENCE_ARTICLE_SUSPECT,
+            STATUS_REFERENCE_MULTI_CANDIDATE,
+        )
 
     def _build_reference_records(self, ref_df: pd.DataFrame,
                                  reference_columns: Dict[str, Any]) -> List[ReferenceRecord]:
@@ -644,26 +659,41 @@ class JesscaModule:
         )
 
     def _diagnose_without_exact_key(self, invoice_file: str, article: str, style: str,
-                                    price: float, reference_index: Dict[str, Dict[Tuple[Any, ...], List[ReferenceRecord]]]) -> InvoiceDiagnostic:
+                                    price: float,
+                                    reference_index: Dict[str, Dict[Tuple[Any, ...], List[ReferenceRecord]]],
+                                    packing_confirmed: bool = False) -> InvoiceDiagnostic:
         price_key = self._price_key(price)
         article_price_records = reference_index["article_price"].get((article, price_key), [])
         style_price_records = reference_index["style_price"].get((style, price_key), [])
         candidates = self._unique_reference_records(article_price_records + style_price_records)
 
         if len(candidates) == 1 and article_price_records:
+            status = STATUS_REFERENCE_STYLE_SUSPECT if packing_confirmed else STATUS_STYLE_SUSPECT
+            message = (
+                "发票与 Packing List 已一致，参考表款号疑似需要维护。"
+                if packing_confirmed
+                else "发票 Article 和价格可匹配参考表，发票款号疑似抓取错误。"
+            )
             return self._make_invoice_diagnostic(
-                invoice_file, article, style, price, candidates[0], STATUS_STYLE_SUSPECT,
-                "款号", "发票 Article 和价格可匹配参考表，发票款号疑似抓取错误。"
+                invoice_file, article, style, price, candidates[0], status,
+                "款号", message
             )
         if len(candidates) == 1 and style_price_records:
+            status = STATUS_REFERENCE_ARTICLE_SUSPECT if packing_confirmed else STATUS_ARTICLE_SUSPECT
+            message = (
+                "发票与 Packing List 已一致，参考表 Article 疑似需要维护。"
+                if packing_confirmed
+                else "发票款号和价格可匹配参考表，发票 Article 疑似抓取错误。"
+            )
             return self._make_invoice_diagnostic(
-                invoice_file, article, style, price, candidates[0], STATUS_ARTICLE_SUSPECT,
-                "Article", "发票款号和价格可匹配参考表，发票 Article 疑似抓取错误。"
+                invoice_file, article, style, price, candidates[0], status,
+                "Article", message
             )
         if candidates:
             return self._make_multi_candidate_diagnostic(
                 invoice_file, article, style, price, candidates,
-                bool(article_price_records), bool(style_price_records)
+                bool(article_price_records), bool(style_price_records),
+                packing_confirmed=packing_confirmed
             )
         return InvoiceDiagnostic(
             invoice_file=invoice_file,
@@ -682,7 +712,8 @@ class JesscaModule:
     def _make_multi_candidate_diagnostic(self, invoice_file: str, article: str, style: str,
                                          price: float, candidates: List[ReferenceRecord],
                                          matched_article_price: bool,
-                                         matched_style_price: bool) -> InvoiceDiagnostic:
+                                         matched_style_price: bool,
+                                         packing_confirmed: bool = False) -> InvoiceDiagnostic:
         suspected_field = "款号/Article"
         if matched_article_price and not matched_style_price:
             suspected_field = "款号"
@@ -690,13 +721,18 @@ class JesscaModule:
             suspected_field = "Article"
         suggested_prices = sorted({self._price_key(record.price) for record in candidates})
         suggested_price = suggested_prices[0] / 100 if len(suggested_prices) == 1 else None
-        message = f"两字段反查命中 {len(candidates)} 条参考记录，需人工确认。"
+        status = STATUS_REFERENCE_MULTI_CANDIDATE if packing_confirmed else STATUS_MULTI_CANDIDATE
+        message = (
+            f"发票与 Packing List 已一致，两字段反查命中 {len(candidates)} 条参考记录，需维护参考表。"
+            if packing_confirmed
+            else f"两字段反查命中 {len(candidates)} 条参考记录，需人工确认。"
+        )
         return InvoiceDiagnostic(
             invoice_file=invoice_file,
             article=article,
             style=style,
             price=price,
-            status=STATUS_MULTI_CANDIDATE,
+            status=status,
             suspected_field=suspected_field,
             message=message,
             suggested_style=self._join_candidate_values(candidates, "style"),
@@ -706,26 +742,42 @@ class JesscaModule:
         )
 
     def _build_invoice_diagnostics(self, all_invoice_data: Dict[Tuple[str, str], Dict[str, float]],
-                                   ref_df: pd.DataFrame) -> List[InvoiceDiagnostic]:
+                                   ref_df: pd.DataFrame,
+                                   packing_confirmed_invoice_keys: Optional[Set[Tuple[str, str, str, int]]] = None) -> List[InvoiceDiagnostic]:
         reference_columns = self._resolve_reference_columns(ref_df)
         records = self._build_reference_records(ref_df, reference_columns)
         reference_index = self._build_reference_index(records)
         diagnostics: List[InvoiceDiagnostic] = []
+        confirmed_keys = packing_confirmed_invoice_keys or set()
 
         for (article, style), invoice_prices_dict in all_invoice_data.items():
             article_text = self._normalize_reference_text(article)
             style_text = self._normalize_reference_text(style)
             exact_records = reference_index["article_style"].get((article_text, style_text), [])
             for invoice_file, invoice_price in invoice_prices_dict.items():
+                packing_confirmed = (
+                    self._invoice_diagnostic_key(invoice_file, article_text, style_text, invoice_price)
+                    in confirmed_keys
+                )
                 if exact_records:
                     diagnostics.append(self._diagnose_with_article_style(
                         invoice_file, article_text, style_text, invoice_price, exact_records
                     ))
                 else:
                     diagnostics.append(self._diagnose_without_exact_key(
-                        invoice_file, article_text, style_text, invoice_price, reference_index
+                        invoice_file, article_text, style_text, invoice_price, reference_index,
+                        packing_confirmed=packing_confirmed
                     ))
         return diagnostics
+
+    def _invoice_diagnostic_key(self, invoice_file: str, article: Any, style: Any,
+                                price: Optional[float]) -> Tuple[str, str, str, int]:
+        return (
+            str(invoice_file or ""),
+            self._normalize_reference_text(article),
+            self._normalize_reference_text(style),
+            self._price_key(price),
+        )
 
     @staticmethod
     def _diagnostic_severity(status: str) -> int:
@@ -733,7 +785,10 @@ class JesscaModule:
             STATUS_PRICE_MISMATCH: 0,
             STATUS_STYLE_SUSPECT: 1,
             STATUS_ARTICLE_SUSPECT: 1,
+            STATUS_REFERENCE_STYLE_SUSPECT: 1,
+            STATUS_REFERENCE_ARTICLE_SUSPECT: 1,
             STATUS_MULTI_CANDIDATE: 2,
+            STATUS_REFERENCE_MULTI_CANDIDATE: 2,
             STATUS_MATCHED: 9,
         }
         return severity_order.get(status, 20)
@@ -764,6 +819,33 @@ class JesscaModule:
             str(article or "").strip().upper(),
             str(style or "").strip().upper(),
         )
+
+    def _build_packing_confirmed_invoice_keys(
+        self,
+        invoice_records: List[InvoiceRecord],
+        packing_records: List[PackingListRecord],
+    ) -> Set[Tuple[str, str, str, int]]:
+        packing_by_key: Dict[Tuple[str, str, str], PackingListRecord] = {
+            self._packing_key(record.po_number, record.article_number, record.working_number): record
+            for record in packing_records
+        }
+        confirmed_keys: Set[Tuple[str, str, str, int]] = set()
+        for invoice in invoice_records:
+            packing = packing_by_key.get(self._packing_key(invoice.po_number, invoice.article, invoice.style))
+            if packing is None:
+                continue
+            # 只有 Packing List 核对完全一致时，才把参考表差异归因到参考表。
+            comparison = self._build_packing_comparison_row(invoice, packing)
+            if comparison.status == STATUS_MATCHED:
+                confirmed_keys.add(
+                    self._invoice_diagnostic_key(
+                        invoice.invoice_file,
+                        invoice.article,
+                        invoice.style,
+                        invoice.price,
+                    )
+                )
+        return confirmed_keys
 
     @staticmethod
     def _same_text(left: Any, right: Any) -> bool:
@@ -870,10 +952,18 @@ class JesscaModule:
             source_invoice=invoice.invoice_file if invoice else "",
         )
 
-    def update_reference_table(self, ref_df: pd.DataFrame,
-                              all_invoice_data: Dict[Tuple[str, str], Dict[str, float]]) -> Tuple[pd.DataFrame, Dict[str, int]]:
+    def update_reference_table(
+        self,
+        ref_df: pd.DataFrame,
+        all_invoice_data: Dict[Tuple[str, str], Dict[str, float]],
+        packing_confirmed_invoice_keys: Optional[Set[Tuple[str, str, str, int]]] = None,
+    ) -> Tuple[pd.DataFrame, Dict[str, int]]:
         result_df = ref_df.copy()
-        diagnostics = self._build_invoice_diagnostics(all_invoice_data, result_df)
+        diagnostics = self._build_invoice_diagnostics(
+            all_invoice_data,
+            result_df,
+            packing_confirmed_invoice_keys=packing_confirmed_invoice_keys,
+        )
         diagnostics_by_row = self._diagnostics_by_reference_row(diagnostics)
 
         statuses: List[str] = []
@@ -946,7 +1036,8 @@ class JesscaModule:
                                 invoice_file_paths: List[str],
                                 ref_df: pd.DataFrame,
                                 output_path: str,
-                                packing_comparison_rows: Optional[List[PackingComparisonRow]] = None) -> Dict[str, Any]:
+                                packing_comparison_rows: Optional[List[PackingComparisonRow]] = None,
+                                packing_confirmed_invoice_keys: Optional[Set[Tuple[str, str, str, int]]] = None) -> Dict[str, Any]:
         """保存 Excel 结果，包含汇总表"""
 
         wb = openpyxl.Workbook()
@@ -1002,7 +1093,8 @@ class JesscaModule:
             invoice_file_names,
             invoice_file_paths,
             ref_df,
-            thin_border
+            thin_border,
+            packing_confirmed_invoice_keys=packing_confirmed_invoice_keys,
         )
 
         packing_stats = {
@@ -1182,7 +1274,8 @@ class JesscaModule:
                                      invoice_file_names: List[str],
                                      invoice_file_paths: List[str],
                                      ref_df: pd.DataFrame,
-                                     thin_border: Border) -> Dict[str, Any]:
+                                     thin_border: Border,
+                                     packing_confirmed_invoice_keys: Optional[Set[Tuple[str, str, str, int]]] = None) -> Dict[str, Any]:
         """写入窄版汇总表：每张发票命中的价格用纵向明细行展示。"""
         summary_border = Border(
             left=Side(style='thin', color='FFD9E2EC'),
@@ -1225,7 +1318,11 @@ class JesscaModule:
             cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=False)
             cell.border = summary_border
 
-        diagnostics = self._build_invoice_diagnostics(all_invoice_data, ref_df)
+        diagnostics = self._build_invoice_diagnostics(
+            all_invoice_data,
+            ref_df,
+            packing_confirmed_invoice_keys=packing_confirmed_invoice_keys,
+        )
         diagnostic_lookup = {
             (diagnostic.article, diagnostic.style, diagnostic.invoice_file): diagnostic
             for diagnostic in diagnostics
@@ -1268,7 +1365,11 @@ class JesscaModule:
                 status = diagnostic.status if diagnostic else STATUS_REFERENCE_MISSING
                 abnormal_file = '-'
                 if status != STATUS_MATCHED:
-                    abnormal_file = invoice_path_lookup.get(invoice_name, invoice_name)
+                    abnormal_file = (
+                        "参考表"
+                        if self._is_reference_source_status(status)
+                        else invoice_path_lookup.get(invoice_name, invoice_name)
+                    )
 
                 ws_summary.row_dimensions[data_row].height = 24
                 values = [
@@ -1312,7 +1413,7 @@ class JesscaModule:
                 if status_font:
                     status_cell.font = status_font
                 if status != STATUS_MATCHED:
-                    file_cell.value = invoice_path_lookup.get(invoice_name, invoice_name)
+                    file_cell.value = abnormal_file
                     file_cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
                     file_cell.font = Font(size=9, color='FF374151')
                     ws_summary.row_dimensions[data_row].height = 38
@@ -1475,6 +1576,7 @@ class JesscaModule:
 
             ensure_dir(output_dir)
             packing_comparison_rows: Optional[List[PackingComparisonRow]] = None
+            packing_confirmed_invoice_keys: Set[Tuple[str, str, str, int]] = set()
             effective_packing_paths = packing_paths if packing_paths is not None else (
                 [packing_path] if packing_path else []
             )
@@ -1489,6 +1591,10 @@ class JesscaModule:
                     all_invoice_records,
                     packing_records,
                 )
+                packing_confirmed_invoice_keys = self._build_packing_confirmed_invoice_keys(
+                    all_invoice_records,
+                    packing_records,
+                )
                 result['packing_count'] = len(packing_comparison_rows)
                 result['packing_matched_count'] = sum(1 for row in packing_comparison_rows if row.status == "一致")
                 result['packing_issue_count'] = result['packing_count'] - result['packing_matched_count']
@@ -1496,6 +1602,14 @@ class JesscaModule:
                     "✅ Packing List 核对完成："
                     f"{result['packing_count']} 行，异常 {result['packing_issue_count']} 条"
                 )
+
+            if packing_confirmed_invoice_keys:
+                result_df, matches = self.update_reference_table(
+                    ref_df,
+                    all_invoice_data,
+                    packing_confirmed_invoice_keys=packing_confirmed_invoice_keys,
+                )
+                result['matches'] = matches
 
             default_name = (
                 os.path.splitext(os.path.basename(ref_path))[0] +
@@ -1514,6 +1628,7 @@ class JesscaModule:
                 ref_df,
                 output_path,
                 packing_comparison_rows=packing_comparison_rows,
+                packing_confirmed_invoice_keys=packing_confirmed_invoice_keys,
             )
 
             result['output_path'] = output_path

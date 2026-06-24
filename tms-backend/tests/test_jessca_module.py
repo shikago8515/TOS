@@ -416,6 +416,108 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(packing_sheet["C3"].value, "10-06-26-0712")
         self.assertEqual(packing_sheet["E3"].value, "2026-06-07")
 
+    def test_process_invoices_labels_reference_style_when_packing_confirms_invoice(self):
+        class VentReferenceJesscaModule(JesscaModule):
+            def read_invoice_records(self, _invoice_path: str) -> List[InvoiceRecord]:
+                return [
+                    InvoiceRecord(
+                        invoice_file="0490.xls",
+                        invoice_number="10-04-26-0490",
+                        invoice_date="2026-04-23",
+                        po_number="0902107846",
+                        article="KQ6747",
+                        style="F2625W617",
+                        quantity=357,
+                        price=31.82,
+                    )
+                ]
+
+            def read_packing_list_records(self, _packing_path: str) -> List[PackingListRecord]:
+                return [
+                    PackingListRecord(
+                        invoice_number="10-04-26-0490",
+                        ex_factory_date="2026-04-23",
+                        po_number="0902107846",
+                        working_number="F2625W617",
+                        article_number="KQ6747",
+                        customer_number="0306326640",
+                        quantity=357,
+                        cartons=36,
+                    )
+                ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ref_path = os.path.join(temp_dir, "reference.xlsx")
+            pd.DataFrame(
+                [{"Price": 31.82, "Style NO.": "F2625W167", "Article NO.": "KQ6747"}]
+            ).to_excel(ref_path, index=False)
+
+            module = VentReferenceJesscaModule()
+            result = module.process_invoices(
+                [os.path.join(temp_dir, "0490.xls")],
+                ref_path,
+                temp_dir,
+                packing_paths=[os.path.join(temp_dir, "packing.pdf")],
+            )
+            workbook = load_workbook(result["output_path"])
+
+        self.assertTrue(result["success"])
+        summary_records = self._sheet_records(workbook["汇总表"])
+        summary_record = next(
+            record for record in summary_records
+            if record["values"].get("来源发票") == "0490.xls"
+        )
+        self.assertEqual(summary_record["values"]["状态"], "参考表款号疑似错误")
+        self.assertEqual(summary_record["values"]["异常文件"], "参考表")
+        self.assertEqual(summary_record["values"]["建议参考款号"], "F2625W167")
+        self.assertEqual(summary_record["cells"]["状态"].fill.fgColor.rgb, "FFFFDDDD")
+
+        main_records = self._sheet_records(workbook["核对结果"])
+        main_record = next(
+            record for record in main_records
+            if record["values"].get("Article NO.") == "KQ6747"
+        )
+        self.assertEqual(main_record["values"]["核对状态"], "参考表款号疑似错误")
+
+    def test_process_invoices_keeps_invoice_style_suspect_without_packing_confirmation(self):
+        class VentReferenceJesscaModule(JesscaModule):
+            def read_invoice_records(self, _invoice_path: str) -> List[InvoiceRecord]:
+                return [
+                    InvoiceRecord(
+                        invoice_file="0490.xls",
+                        invoice_number="10-04-26-0490",
+                        invoice_date="2026-04-23",
+                        po_number="0902107846",
+                        article="KQ6747",
+                        style="F2625W617",
+                        quantity=357,
+                        price=31.82,
+                    )
+                ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ref_path = os.path.join(temp_dir, "reference.xlsx")
+            pd.DataFrame(
+                [{"Price": 31.82, "Style NO.": "F2625W167", "Article NO.": "KQ6747"}]
+            ).to_excel(ref_path, index=False)
+
+            module = VentReferenceJesscaModule()
+            result = module.process_invoices(
+                [os.path.join(temp_dir, "0490.xls")],
+                ref_path,
+                temp_dir,
+            )
+            workbook = load_workbook(result["output_path"])
+
+        self.assertTrue(result["success"])
+        summary_records = self._sheet_records(workbook["汇总表"])
+        summary_record = next(
+            record for record in summary_records
+            if record["values"].get("来源发票") == "0490.xls"
+        )
+        self.assertEqual(summary_record["values"]["状态"], "发票款号疑似错误")
+        self.assertNotEqual(summary_record["values"]["异常文件"], "参考表")
+
     def test_process_invoices_merges_multiple_packing_pdf_records(self):
         class MultiPackingJesscaModule(JesscaModule):
             def __init__(self):
