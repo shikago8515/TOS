@@ -6,8 +6,8 @@ import {
 } from './draftPackingCompareModel'
 
 describe('draftPackingCompareModel', () => {
-  it('uses the short PDF compare name for history records', () => {
-    expect(draftPackingCompareModuleName).toBe('PDF核对')
+  it('uses the origin certificate compare name for history records', () => {
+    expect(draftPackingCompareModuleName).toBe('产地证核对')
   })
 
   it('uses origin certificate labels in result summaries', () => {

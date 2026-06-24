@@ -1,6 +1,6 @@
 <template>
   <ExcelProcessPageShell
-    title="jessica - 对账核对"
+    title="Invoice 核对"
     :stats="pageStats"
     :toolbar-status="toolbarStatus"
     :actions="toolbarActions"
@@ -87,21 +87,18 @@ const uploadFields = computed<ExcelFileField[]>(() => [
     id: 'invoice',
     label: '发票文件（可多选）',
     files: invoiceFiles.value,
-    hint: '上传一张或多张发票文件',
     multiple: true,
   },
   {
     id: 'reference',
     label: '参考表文件',
     files: referenceFiles.value,
-    hint: '上传 1 个参考表文件',
     expectedCount: 1,
   },
   {
     id: 'packing',
     label: 'Packing List PDF（可多选）',
     files: packingFiles.value,
-    hint: '上传一个或多个 PDF 后，会在同一个结果 Excel 中追加箱单核对结果',
     multiple: true,
     required: false,
     accept: '.pdf',

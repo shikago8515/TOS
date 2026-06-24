@@ -1,6 +1,6 @@
 <template>
   <ExcelProcessPageShell
-    title="Eric 数据处理"
+    title="数据处理"
     :stats="pageStats"
     :toolbar-status="toolbarStatus"
     :actions="toolbarActions"
@@ -101,7 +101,6 @@ const uploadFields = computed<ExcelFileField[]>(() => [
     id: 'pack',
     label: 'Size Breakdown Excel',
     files: packFiles.value,
-    hint: '用于生成 Final_Data',
     accept: '.xlsx,.xlsm',
     acceptLabel: '支持 .xlsx / .xlsm',
     expectedCount: 1,
@@ -110,7 +109,6 @@ const uploadFields = computed<ExcelFileField[]>(() => [
     id: 'ytic',
     label: 'Check Excel',
     files: yticFiles.value,
-    hint: '用于提取尺寸、目的地和 SP 核对信息',
     accept: '.xls,.xlsx,.xlsm',
     acceptLabel: '支持 .xls / .xlsx / .xlsm',
     expectedCount: 1,

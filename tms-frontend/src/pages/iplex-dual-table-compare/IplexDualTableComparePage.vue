@@ -32,7 +32,6 @@
               <div class="iplex-preview__head">
                 <div>
                   <h3>核对异常列表</h3>
-                  <p>只显示差值不为 0 或未匹配的 RC 行。</p>
                 </div>
                 <span>{{ success ? `${previewRows.length} 行` : '待生成' }}</span>
               </div>
@@ -152,7 +151,6 @@ const uploadFields = computed<ExcelFileField[]>(() => [
     id: 'main',
     label: 'Total Adjustment & Shas Vas Price 汇总表',
     files: mainFiles.value,
-    hint: '提供 PO #、Adjustment_per_unit 和 Total Adjustment Amount，作为 VLOOKUP 查找来源',
     accept: '.xls,.xlsx,.xlsm',
     acceptLabel: '支持 .xls / .xlsx / .xlsm',
     expectedCount: 1,
@@ -161,7 +159,6 @@ const uploadFields = computed<ExcelFileField[]>(() => [
     id: 'lookup',
     label: 'Total Adjustment & Shas Vas Price',
     files: lookupFiles.value,
-    hint: '提供 BUYER ORDER NO.、SHAS PRICE PER UNIT 和 TOTAL ADJUSTMENT，系统将在此表追加差值列',
     accept: '.xls,.xlsx,.xlsm',
     acceptLabel: '支持 .xls / .xlsx / .xlsm',
     expectedCount: 1,
@@ -410,12 +407,6 @@ function clearHistory(): void {
   color: #0f172a;
   font-size: 15px;
   font-weight: 700;
-}
-
-.iplex-preview__head p {
-  margin: 4px 0 0;
-  color: #64748b;
-  font-size: 13px;
 }
 
 .iplex-preview__head span {

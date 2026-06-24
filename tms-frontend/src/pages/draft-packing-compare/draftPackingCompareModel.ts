@@ -2,7 +2,7 @@ import type { ProcessSummaryItem } from '../../shared/process/processHistory'
 import type { DraftPackingCompareProcessResponse } from './draftPackingCompareApi'
 
 export const draftPackingCompareModuleId = 'pdf-draft-packing-compare'
-export const draftPackingCompareModuleName = 'PDF核对'
+export const draftPackingCompareModuleName = '产地证核对'
 
 export interface DraftPackingCompareInputCounts {
   draft: number

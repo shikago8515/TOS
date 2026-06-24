@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import DraftPackingComparePage from '../pages/draft-packing-compare/DraftPackingComparePage.vue'
 import IplexDualTableComparePage from '../pages/iplex-dual-table-compare/IplexDualTableComparePage.vue'
+import InfornexusAutoAddPage from '../pages/infornexus-auto-add/InfornexusAutoAddPage.vue'
 import JasonPdfReorderPage from '../pages/jason-pdf-reorder/JasonPdfReorderPage.vue'
 import JaneInfornexusPage from '../pages/jane-infornexus/JaneInfornexusPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
@@ -63,7 +64,7 @@ describe('router', () => {
     const route = router.getRoutes().find((entry) => entry.path === '/draft-packing-compare')
 
     expect(route?.name).toBe('draft-packing-compare')
-    expect(route?.meta.title).toBe('PDF核对')
+    expect(route?.meta.title).toBe('产地证核对')
     expect(route?.components?.default).toBe(DraftPackingComparePage)
     expect(route?.components?.default).not.toBe(RoutePlaceholder)
   })
@@ -110,6 +111,15 @@ describe('router', () => {
 
     expect(route?.name).toBe('jane-infornexus')
     expect(route?.components?.default).toBe(JaneInfornexusPage)
+    expect(route?.components?.default).not.toBe(RoutePlaceholder)
+  })
+
+  it('routes Eric Infornexus directly to the auto-add workspace page', async () => {
+    const { router } = await import('./router')
+    const route = router.getRoutes().find((entry) => entry.path === '/eric-infornexus')
+
+    expect(route?.name).toBe('eric-infornexus')
+    expect(route?.components?.default).toBe(InfornexusAutoAddPage)
     expect(route?.components?.default).not.toBe(RoutePlaceholder)
   })
 
