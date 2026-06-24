@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Draft Form E 与 Packing List PDF 字段提取核对模块。"""
+"""产地证与 Packing List PDF 字段提取核对模块。"""
 
 from __future__ import annotations
 
@@ -14,6 +14,12 @@ import openpyxl
 import pdfplumber
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+
+from modules.origin_certificate_ocr import (
+    OriginCertificateOcrUnavailableError,
+    OriginCertificateRecord,
+    RapidOriginCertificateOcr,
+)
 
 
 @dataclass(frozen=True)
@@ -82,9 +88,10 @@ class ComparisonResult:
 
 
 class DraftPackingCompareModule:
-    """解析两份 PDF 并生成 Draft/Packing 上下对比 Excel。"""
+    """解析两份 PDF 并生成产地证/Packing 上下对比 Excel。"""
 
-    OUTPUT_SHEET = "Draft vs Packing"
+    ORIGIN_CERTIFICATE_SOURCE = "产地证"
+    OUTPUT_SHEET = "产地证 vs Packing"
     ISSUES_SHEET = "Issues"
     HEADERS = [
         "PO Number",
@@ -118,6 +125,7 @@ class DraftPackingCompareModule:
         "HS Code / HTS Code": 10,
         "Record": 1,
     }
+    NO_CONTENT_FILL_COLUMNS = {FIELD_COLUMNS["HS Code / HTS Code"]}
     ITEM_HEADER_RE = re.compile(
         r"(?m)^(?P<item>\d+)\s+(?:CART\s+NO\.\s*)?(?P<cartons_words>[A-Z][A-Z\s-]+?)\s*"
         r"\((?P<cartons>\d+)\)\s+CARTONS\s+OF\s+ADIDAS\s+BRAND\s+GARMENT\b.*$",
@@ -142,13 +150,48 @@ class DraftPackingCompareModule:
     HEADER_FILL = PatternFill("solid", fgColor="FFD9EAF7")
     SEPARATOR_FILL = PatternFill("solid", fgColor="FFEFF6FF")
 
+    def __init__(self, origin_certificate_ocr: RapidOriginCertificateOcr | None = None) -> None:
+        self.origin_certificate_ocr = origin_certificate_ocr or RapidOriginCertificateOcr()
+
+    def parse_origin_certificate_pdf(self, pdf_path: str | os.PathLike[str]) -> list[ExtractedRecord]:
+        text = self._extract_pdf_text(pdf_path)
+        records = self.parse_draft_text(text)
+        if records:
+            return records
+
+        try:
+            origin_records = self.origin_certificate_ocr.extract_records(pdf_path)
+        except OriginCertificateOcrUnavailableError as exc:
+            raise ValueError(str(exc)) from exc
+        return [self._record_from_origin_certificate(record) for record in origin_records]
+
     def parse_draft_pdf(self, pdf_path: str | os.PathLike[str]) -> list[ExtractedRecord]:
-        with pdfplumber.open(pdf_path) as pdf:
-            text = "\n".join(page.extract_text(x_tolerance=1, y_tolerance=3) or "" for page in pdf.pages)
-        return self.parse_draft_text(text)
+        return self.parse_origin_certificate_pdf(pdf_path)
 
     def parse_packing_pdf(self, pdf_path: str | os.PathLike[str]) -> list[ExtractedRecord]:
         return self.parse_packing_pages(self._extract_packing_pages(pdf_path))
+
+    def _extract_pdf_text(self, pdf_path: str | os.PathLike[str]) -> str:
+        with pdfplumber.open(pdf_path) as pdf:
+            return "\n".join(page.extract_text(x_tolerance=1, y_tolerance=3) or "" for page in pdf.pages)
+
+    def _record_from_origin_certificate(self, record: OriginCertificateRecord) -> ExtractedRecord:
+        extracted = ExtractedRecord(
+            source=self.ORIGIN_CERTIFICATE_SOURCE,
+            po_number=record.po_number,
+            working_number=record.working_number,
+            article_number=record.article_number,
+            customer_number=record.customer_number,
+            quantity=record.quantity,
+            cartons=record.cartons,
+            cartons_in_words=record.cartons_in_words,
+            goods_description=record.goods_description,
+            hs_code=record.hs_code,
+        )
+        if not extracted.po_number:
+            extracted.issues.append(f"{self.ORIGIN_CERTIFICATE_SOURCE} PO Number 字段缺失或定位困难")
+        self._add_missing_record_issues(extracted, self.ORIGIN_CERTIFICATE_SOURCE)
+        return extracted
 
     def parse_draft_text(self, text: str) -> list[ExtractedRecord]:
         item_matches = list(self.ITEM_HEADER_RE.finditer(text))
@@ -165,7 +208,7 @@ class DraftPackingCompareModule:
 
             cartons = self._parse_int(item_match.group("cartons")) if item_match else None
             record = ExtractedRecord(
-                source="Draft",
+                source=self.ORIGIN_CERTIFICATE_SOURCE,
                 po_number=po_match.group("po"),
                 working_number=self._find_labeled_value(po_block, r"STYLE\s+NO\.?"),
                 article_number=self._find_labeled_value(po_block, r"ARTICLE\s+NO\.?"),
@@ -176,7 +219,7 @@ class DraftPackingCompareModule:
                 goods_description=self._extract_draft_description(context_text),
                 hs_code=self._find_labeled_value(po_block, r"HS\s+Code"),
             )
-            self._add_missing_record_issues(record, "Draft")
+            self._add_missing_record_issues(record, self.ORIGIN_CERTIFICATE_SOURCE)
             records.append(record)
 
         return records
@@ -245,10 +288,10 @@ class DraftPackingCompareModule:
                     ComparisonIssue(
                         po_number=key[0],
                         key=key,
-                        source="Draft",
+                        source=self.ORIGIN_CERTIFICATE_SOURCE,
                         field_name="Record",
                         issue_type="字段缺失或定位困难",
-                        detail="Draft 未找到对应记录",
+                        detail="产地证 未找到对应记录",
                     )
                 )
             if packing is None:
@@ -298,7 +341,7 @@ class DraftPackingCompareModule:
         packing_pdf_path: str | os.PathLike[str],
         output_dir: str | os.PathLike[str],
     ) -> dict[str, Any]:
-        draft_records = self.parse_draft_pdf(draft_pdf_path)
+        draft_records = self.parse_origin_certificate_pdf(draft_pdf_path)
         packing_records = self.parse_packing_pdf(packing_pdf_path)
         return self.process_extracted_data(draft_records, packing_records, output_dir)
 
@@ -316,7 +359,7 @@ class DraftPackingCompareModule:
 
         return {
             "success": True,
-            "message": f"Draft & Packing List 核对完成，生成 {comparison.group_count} 组对比记录",
+            "message": f"产地证与 Packing List 核对完成，生成 {comparison.group_count} 组对比记录",
             "output_path": str(output_path),
             "group_count": comparison.group_count,
             "issue_count": comparison.issue_count,
@@ -325,7 +368,7 @@ class DraftPackingCompareModule:
             "draft_count": len(draft_records),
             "packing_count": len(packing_records),
             "logs": [
-                f"Draft 识别记录数：{len(draft_records)}",
+                f"产地证识别记录数：{len(draft_records)}",
                 f"Packing List 识别记录数：{len(packing_records)}",
                 f"核对分组数：{comparison.group_count}",
                 f"问题数：{comparison.issue_count}",
@@ -573,7 +616,7 @@ class DraftPackingCompareModule:
                     source="Both",
                     field_name=field_name,
                     issue_type="值不一致",
-                    detail=f"{field_name} 不一致：Draft={draft_value}；Packing List={packing_value}",
+                    detail=f"{field_name} 不一致：产地证={draft_value}；Packing List={packing_value}",
                 )
             )
         return issues
@@ -598,7 +641,7 @@ class DraftPackingCompareModule:
 
         for index, group in enumerate(comparison.groups):
             draft_row = ws.max_row + 1
-            ws.append(self._row_values(group.draft, "Draft", group))
+            ws.append(self._row_values(group.draft, self.ORIGIN_CERTIFICATE_SOURCE, group))
             packing_row = ws.max_row + 1
             ws.append(self._row_values(group.packing, "Packing List", group))
             self._apply_issue_fills(ws, group, draft_row, packing_row)
@@ -669,8 +712,10 @@ class DraftPackingCompareModule:
             column = self.FIELD_COLUMNS.get(issue.field_name)
             if not column:
                 continue
+            if column in self.NO_CONTENT_FILL_COLUMNS:
+                continue
             fill = self.YELLOW_FILL if issue.issue_type == "字段缺失或定位困难" else self.RED_FILL
-            if issue.source == "Draft":
+            if issue.source == self.ORIGIN_CERTIFICATE_SOURCE:
                 ws.cell(row=draft_row, column=column).fill = fill
             elif issue.source == "Packing List":
                 ws.cell(row=packing_row, column=column).fill = fill

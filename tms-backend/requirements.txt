@@ -8,6 +8,9 @@ pandas>=2.0.0
 xlrd>=2.0.0
 pypdf>=4.0.0
 pdfplumber>=0.11.0
+PyMuPDF>=1.24.0
+rapidocr==3.9.0
+onnxruntime==1.27.0
 reportlab>=4.0.0
 PyYAML>=6.0.0
 PyMySQL>=1.1.0

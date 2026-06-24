@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Draft & Packing List 核对 API Router。"""
+"""PDF核对 API Router。"""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from utils.file_utils import (
 )
 
 
-router = APIRouter(prefix="/draft-packing-compare", tags=["Draft & Packing List 核对"])
+router = APIRouter(prefix="/draft-packing-compare", tags=["PDF核对"])
 draft_packing_compare_module = DraftPackingCompareModule()
 logger = logging.getLogger(__name__)
 
@@ -69,13 +69,13 @@ async def process_draft_packing_compare(
     packing_file: UploadFile = File(...),
     output_dir: Optional[str] = Form(None),
 ):
-    """处理 Draft Form E 与 Packing List PDF 核对。"""
+    """处理产地证与 Packing List PDF 核对。"""
 
     work_dir = os.path.join(UPLOAD_DIR, f"draft_packing_compare_{uuid4().hex}")
     os.makedirs(work_dir, exist_ok=True)
 
     try:
-        draft_name = _validate_pdf_filename(draft_file.filename, "Draft Form E PDF")
+        draft_name = _validate_pdf_filename(draft_file.filename, "产地证PDF")
         packing_name = _validate_pdf_filename(packing_file.filename, "Packing List PDF")
         draft_path = os.path.join(work_dir, f"draft_{draft_name}")
         packing_path = os.path.join(work_dir, f"packing_{packing_name}")
@@ -119,7 +119,7 @@ async def process_draft_packing_compare(
 
 @router.get("/download/{filename}")
 async def download_draft_packing_compare_result(filename: str):
-    """下载 Draft & Packing List 核对结果。"""
+    """下载 PDF核对结果。"""
 
     file_path = _download_path(filename)
     if not os.path.exists(file_path):

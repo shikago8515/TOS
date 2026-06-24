@@ -2,7 +2,7 @@ import type { ProcessSummaryItem } from '../../shared/process/processHistory'
 import type { DraftPackingCompareProcessResponse } from './draftPackingCompareApi'
 
 export const draftPackingCompareModuleId = 'pdf-draft-packing-compare'
-export const draftPackingCompareModuleName = 'Draft & Packing List 核对'
+export const draftPackingCompareModuleName = 'PDF核对'
 
 export interface DraftPackingCompareInputCounts {
   draft: number
@@ -15,7 +15,7 @@ export function buildDraftPackingCompareSummary(
 ): ProcessSummaryItem[] {
   return [
     {
-      label: 'Draft Form E PDF',
+      label: '产地证PDF',
       value: String(counts.draft),
     },
     {
@@ -23,7 +23,7 @@ export function buildDraftPackingCompareSummary(
       value: String(counts.packing),
     },
     {
-      label: 'Draft 记录',
+      label: '产地证记录',
       value: String(response.draft_count ?? '-'),
     },
     {

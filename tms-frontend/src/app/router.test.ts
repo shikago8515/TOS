@@ -58,11 +58,12 @@ describe('router', () => {
     expect(route?.redirect).toBe('/jason/pdf-reorder')
   }, 30_000)
 
-  it('routes Draft & Packing List compare through its existing canonical path', async () => {
+  it('routes PDF compare through its existing canonical path', async () => {
     const { router } = await import('./router')
     const route = router.getRoutes().find((entry) => entry.path === '/draft-packing-compare')
 
     expect(route?.name).toBe('draft-packing-compare')
+    expect(route?.meta.title).toBe('PDF核对')
     expect(route?.components?.default).toBe(DraftPackingComparePage)
     expect(route?.components?.default).not.toBe(RoutePlaceholder)
   })
