@@ -1,12 +1,21 @@
 import os
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
+from api import automation_storage_api
 from utils import credential_crypto
 from utils.credential_crypto import decrypt_secret, encrypt_secret
 from utils.mysql_store import SCHEMA_DDL
-from api.automation_storage_api import _attachment_content_disposition, _credential_lookup_ids, _normalize_account_key
+from api.automation_storage_api import (
+    RunUpdatePayload,
+    _attachment_content_disposition,
+    _credential_lookup_ids,
+    _normalize_account_key,
+)
 from scripts.seed_automation_templates import AUTOMATION_TEMPLATES, read_template_content
 
 
@@ -84,12 +93,83 @@ class AutomationStorageTests(unittest.TestCase):
         self.assertEqual(_normalize_account_key(""), "default")
         self.assertEqual(len(_normalize_account_key("x" * 160)), 120)
 
+    def test_create_run_continues_when_source_file_storage_is_unavailable(self):
+        row = build_run_row("run-1")
+
+        with patch.object(automation_storage_api, "create_automation_run", return_value=row), \
+             patch.object(
+                 automation_storage_api,
+                 "_store_upload_file",
+                 new=AsyncMock(side_effect=RuntimeError("storage backend detail")),
+             ):
+            response = run_async(automation_storage_api.create_run(
+                automation_id="infornexus-auto-add",
+                module_id="",
+                run_name="debug",
+                message="started",
+                source_file=SimpleNamespace(filename="source.xlsx"),
+            ))
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["run"]["runId"], "run-1")
+        self.assertEqual(response["files"], [])
+        self.assertEqual(len(response["warnings"]), 1)
+        self.assertNotIn("storage backend detail", response["warnings"][0])
+
+    def test_finish_run_updates_status_when_result_file_storage_is_unavailable(self):
+        existing_row = build_run_row("run-2", status="running")
+        updated_row = build_run_row("run-2", status="failed", message="executor failed")
+        payload = RunUpdatePayload(
+            status="failed",
+            message="executor failed",
+            result={"ok": False, "message": "executor failed"},
+            resultFiles=[],
+        )
+
+        with patch.object(automation_storage_api, "get_automation_run", return_value=existing_row), \
+             patch.object(automation_storage_api, "update_automation_run", return_value=updated_row), \
+             patch.object(
+                 automation_storage_api,
+                 "_store_result_json",
+                 side_effect=RuntimeError("storage backend detail"),
+             ):
+            response = run_async(automation_storage_api.finish_run("run-2", payload))
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["run"]["status"], "failed")
+        self.assertEqual(response["files"], [])
+        self.assertEqual(len(response["warnings"]), 1)
+        self.assertNotIn("storage backend detail", response["warnings"][0])
+
 
 def restore_env(name, value):
     if value is None:
         os.environ.pop(name, None)
     else:
         os.environ[name] = value
+
+
+def build_run_row(run_id, status="running", message="started"):
+    now = datetime(2026, 6, 24, 3, 30, 0)
+    return {
+        "run_id": run_id,
+        "automation_id": "infornexus-auto-add",
+        "module_id": "infornexus-auto-add",
+        "run_name": "debug",
+        "status": status,
+        "message": message,
+        "result_json": None,
+        "started_at": now,
+        "finished_at": now if status != "running" else None,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def run_async(awaitable):
+    import asyncio
+
+    return asyncio.run(awaitable)
 
 
 if __name__ == "__main__":

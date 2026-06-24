@@ -13,8 +13,10 @@ import {
 import {
   collectInfornexusAutoAddSearchDiagnostics,
   formatInfornexusAutoAddSearchDiagnostics,
+  INFORNEXUS_AUTO_ADD_SEARCH_URL,
   getInfornexusAutoAddSearchButton,
   getInfornexusAutoAddSearchInput,
+  openInfornexusAutoAddSearchPage,
 } from "./infornexus-auto-add-page.mjs";
 import { createShipping2ReleasedBulkAutomation } from "./shipping2-released-bulk.mjs";
 import { createShipping2UnreleasedBulkAutomation } from "./shipping2-unreleased-bulk.mjs";
@@ -387,6 +389,7 @@ async function loadConfig() {
     port: Number(process.env.TMS_PLAYWRIGHT_PORT || merged.port || 3003),
     token: String(merged.token || ""),
     loginUrl: String(merged.loginUrl || "https://network.infornexus.com"),
+    autoAddSearchUrl: String(merged.autoAddSearchUrl || INFORNEXUS_AUTO_ADD_SEARCH_URL),
     browser: String(merged.browser || "chromium"),
     headless: Boolean(merged.headless),
     slowMo: Number(merged.slowMo ?? 40),
@@ -422,6 +425,7 @@ function buildHealthPayload() {
     config: {
       version: executorVersion,
       loginUrl: config.loginUrl,
+      autoAddSearchUrl: config.autoAddSearchUrl,
       browser: config.browser,
       headless: config.headless,
       slowMo: config.slowMo,
@@ -668,6 +672,16 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
 
     await ensureLoggedIn(page, credentials);
     await page.waitForTimeout(config.postLoginWaitMs);
+    const autoAddSearchUrl = await openInfornexusAutoAddSearchPage(page, {
+      loginUrl: config.loginUrl,
+      searchUrl: config.autoAddSearchUrl,
+      navigationTimeoutMs: config.navigationTimeoutMs,
+      postLoginWaitMs: config.postLoginWaitMs,
+    });
+    log("Opened Infornexus auto-add search page.", {
+      autoAddSearchUrl,
+      finalUrl: safePageUrl(page),
+    });
     await waitForInfornexusAutoAddSearchReady(page);
 
     for (const idRow of idRows) {

@@ -1,3 +1,11 @@
+const INFORNEXUS_AUTO_ADD_ORIGIN = "https://network.infornexus.com";
+
+export const INFORNEXUS_AUTO_ADD_SEARCH_PATH =
+  "/en/trade/Search.jsp?___bounce=1&userAction=search&unifiedUser=true&TradeSearchCriteria_newSearchParams_searchText=&refSearchUsed=true#searchResults";
+
+export const INFORNEXUS_AUTO_ADD_SEARCH_URL =
+  new URL(INFORNEXUS_AUTO_ADD_SEARCH_PATH, INFORNEXUS_AUTO_ADD_ORIGIN).toString();
+
 export const INFORNEXUS_AUTO_ADD_SEARCH_INPUT_SELECTOR =
   '[name="tradecardForm"] [name="TradeSearchCriteria_newSearchParams_searchText"]';
 
@@ -13,6 +21,48 @@ export function getInfornexusAutoAddSearchInput(page) {
 
 export function getInfornexusAutoAddSearchButton(page) {
   return page.locator(INFORNEXUS_AUTO_ADD_SEARCH_BUTTON_SELECTOR).first();
+}
+
+export function resolveInfornexusAutoAddSearchUrl(loginUrl, searchUrl = "") {
+  const loginOrigin = resolveInfornexusLoginOrigin(loginUrl);
+  const rawSearchUrl = String(searchUrl || INFORNEXUS_AUTO_ADD_SEARCH_PATH).trim();
+  const normalizedSearchUrl = rawSearchUrl === INFORNEXUS_AUTO_ADD_SEARCH_URL
+    ? INFORNEXUS_AUTO_ADD_SEARCH_PATH
+    : rawSearchUrl || INFORNEXUS_AUTO_ADD_SEARCH_PATH;
+  const resolvedUrl = new URL(normalizedSearchUrl, loginOrigin);
+
+  if (resolvedUrl.protocol !== "https:") {
+    throw new Error(`Infornexus auto-add search URL must use https: ${resolvedUrl.toString()}`);
+  }
+  if (resolvedUrl.origin !== loginOrigin) {
+    throw new Error(
+      `Infornexus auto-add search URL must stay on login origin ${loginOrigin}: ${resolvedUrl.toString()}`,
+    );
+  }
+
+  return resolvedUrl.toString();
+}
+
+export async function openInfornexusAutoAddSearchPage(page, options = {}) {
+  const navigationTimeoutMs = Number(options?.navigationTimeoutMs || 45000);
+  const postLoginWaitMs = Number(options?.postLoginWaitMs || 0);
+  const targetUrl = resolveInfornexusAutoAddSearchUrl(options?.loginUrl, options?.searchUrl);
+
+  await page.goto(targetUrl, {
+    waitUntil: "domcontentloaded",
+    timeout: navigationTimeoutMs,
+  });
+
+  if (typeof page.waitForLoadState === "function") {
+    await page
+      .waitForLoadState("domcontentloaded", { timeout: Math.min(navigationTimeoutMs, 5000) })
+      .catch(() => {});
+  }
+  if (postLoginWaitMs > 0 && typeof page.waitForTimeout === "function") {
+    await page.waitForTimeout(postLoginWaitMs);
+  }
+
+  return targetUrl;
 }
 
 export async function collectInfornexusAutoAddSearchDiagnostics(page) {
@@ -88,6 +138,14 @@ export function formatInfornexusAutoAddSearchDiagnostics(diagnostics, screenshot
 
 function formatCandidate(candidate) {
   return `{id=${formatValue(candidate?.id)}, name=${formatValue(candidate?.name)}, placeholder=${formatValue(candidate?.placeholder)}, title=${formatValue(candidate?.title)}, type=${formatValue(candidate?.type)}, form=${formatValue(candidate?.formName)}, visible=${Boolean(candidate?.visible)}}`;
+}
+
+function resolveInfornexusLoginOrigin(loginUrl) {
+  const parsedUrl = new URL(String(loginUrl || INFORNEXUS_AUTO_ADD_ORIGIN).trim() || INFORNEXUS_AUTO_ADD_ORIGIN);
+  if (parsedUrl.protocol !== "https:") {
+    throw new Error(`Infornexus login URL must use https: ${parsedUrl.toString()}`);
+  }
+  return parsedUrl.origin;
 }
 
 function formatValue(value) {
