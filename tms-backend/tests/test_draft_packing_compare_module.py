@@ -196,6 +196,9 @@ class DraftPackingCompareModuleTests(unittest.TestCase):
             return (color.rgb or "").upper()
         return ""
 
+    def _has_fill(self, cell) -> bool:
+        return cell.fill.fill_type is not None
+
     def test_parse_draft_text_keeps_style_and_article_separate_and_uses_attachment_context(self):
         records = self.module.parse_draft_text(DIRECT_AND_ATTACHMENT_DRAFT_TEXT)
 
@@ -284,7 +287,7 @@ class DraftPackingCompareModuleTests(unittest.TestCase):
             self.assertEqual(result["issue_count"], 2)
 
             workbook = openpyxl.load_workbook(result["output_path"])
-            ws = workbook["Draft vs Packing"]
+            ws = workbook["产地证 vs Packing"]
             issues = workbook["Issues"]
 
             self.assertEqual(
@@ -305,7 +308,7 @@ class DraftPackingCompareModuleTests(unittest.TestCase):
                 ],
             )
             self.assertEqual(ws["A2"].value, "0902172742")
-            self.assertEqual(ws["B2"].value, "Draft")
+            self.assertEqual(ws["B2"].value, "产地证")
             self.assertEqual(ws["B3"].value, "Packing List")
             self.assertEqual(ws["C2"].value, "AF26INSPW072")
             self.assertEqual(ws["D2"].value, "KV0625")
@@ -315,8 +318,9 @@ class DraftPackingCompareModuleTests(unittest.TestCase):
             self.assertEqual(ws["J3"].value, "62043290")
             self.assertEqual(ws["K2"].value, "需核对")
             self.assertEqual(ws.max_row, 3)
-            self.assertEqual(self._fill_rgb(ws["J2"]), "FFFFC7CE")
-            self.assertEqual(self._fill_rgb(ws["J3"]), "FFFFC7CE")
+            self.assertEqual(self._fill_rgb(ws["J1"]), "FFD9EAF7")
+            self.assertFalse(self._has_fill(ws["J2"]))
+            self.assertFalse(self._has_fill(ws["J3"]))
             self.assertGreaterEqual(issues.max_row, 2)
             self.assertIn("HS Code / HTS Code", [issues.cell(row=row, column=4).value for row in range(2, issues.max_row + 1)])
 
@@ -328,7 +332,7 @@ class DraftPackingCompareModuleTests(unittest.TestCase):
             result = self.module.process_extracted_data(draft_records, packing_records, folder)
 
             workbook = openpyxl.load_workbook(result["output_path"])
-            ws = workbook["Draft vs Packing"]
+            ws = workbook["产地证 vs Packing"]
 
             self.assertEqual(ws.max_row, 1 + result["group_count"] * 2 + result["group_count"] - 1)
             separator_rows = [4 + group_index * 3 for group_index in range(result["group_count"] - 1)]
@@ -336,11 +340,13 @@ class DraftPackingCompareModuleTests(unittest.TestCase):
             for row_index in separator_rows:
                 values = [ws.cell(row=row_index, column=column_index).value for column_index in range(1, len(self.module.HEADERS) + 1)]
                 self.assertTrue(all(value in (None, "") for value in values))
-                fills = [self._fill_rgb(ws.cell(row=row_index, column=column_index)) for column_index in range(1, len(self.module.HEADERS) + 1)]
-                self.assertTrue(all(fill == "FFEFF6FF" for fill in fills))
+                for column_index in range(1, len(self.module.HEADERS) + 1):
+                    cell = ws.cell(row=row_index, column=column_index)
+                    self.assertEqual(self._fill_rgb(cell), "FFEFF6FF")
 
             self.assertEqual(self._fill_rgb(ws["H4"]), "FFEFF6FF")
             self.assertNotEqual(self._fill_rgb(ws["H4"]), "FFFFC7CE")
+            self.assertEqual(self._fill_rgb(ws["J4"]), "FFEFF6FF")
 
 
 if __name__ == "__main__":

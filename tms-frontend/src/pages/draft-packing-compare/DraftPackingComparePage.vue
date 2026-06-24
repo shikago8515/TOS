@@ -1,7 +1,7 @@
 <template>
   <ExcelProcessPageShell
-    title="Draft & Packing List 核对"
-    subtitle="Draft Form E × Packing List → 字段提取与上下对比 Excel"
+    :title="draftPackingCompareModuleName"
+    subtitle="产地证 × Packing List → 字段提取与上下对比 Excel"
     :stats="pageStats"
     :toolbar-status="toolbarStatus"
     :actions="toolbarActions"
@@ -90,7 +90,7 @@ const { text } = useAppLanguage()
 const uploadFields = computed<ExcelFileField[]>(() => [
   {
     id: 'draft',
-    label: 'Draft Form E PDF',
+    label: '产地证PDF',
     files: draftFiles.value,
     hint: '包含 PO、Article、Style、Cust、Quantity、Cartons、HS Code',
     accept: '.pdf',

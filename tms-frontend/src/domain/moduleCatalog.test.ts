@@ -87,7 +87,7 @@ describe('moduleCatalog', () => {
     )
   })
 
-  it('shows Draft & Packing List compare directly under Jessica after reconciliation', () => {
+  it('shows PDF compare directly under Jessica after reconciliation', () => {
     const draftPackingModule = getModuleById('draft-packing-compare')
     const jessicaModules = getModulesByGroup('jessica')
     const legacyPdfModules = getModulesByGroup('pdf-data-compare')
@@ -97,6 +97,8 @@ describe('moduleCatalog', () => {
       group: 'jessica',
       path: '/draft-packing-compare',
       routeName: 'draft-packing-compare',
+      title: 'PDF核对',
+      navLabel: 'PDF核对',
     })
     expect(moduleIds).toContain('draft-packing-compare')
     expect(legacyPdfModules.map((module) => module.id)).not.toContain('draft-packing-compare')
