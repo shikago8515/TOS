@@ -60,6 +60,37 @@ ARTICLE#:LE8322PO#:0902319250 CUST ORDER#:0306694629
 ]
 
 
+CHINA_PERU_FTA_TEXT = """
+CERTIFICATE OF ORIGIN
+Form for China-Peru FTA
+6.Item 7.Number and kind of 8.HS code 9.Origin 10.Gross 11.Number and 12.Invoiced
+number Packages;description of (Six digit criterion weight,quantity date of invoice value
+(Max goods code) (Quantity Unit)
+20) or other
+measures (liters,
+m³,etc.)
+1 EIGHTEEN (18) CARTONS OF KID'S 620462 PSR 67.04% 252 PIECES 10-04-26-0537 USD
+WOVEN DENIM PANT,MAIN G.WEIGHT MAY.05,2026 22838.65
+MATERIAL:100% COTTON 161.24 KGS
+PO# 0902275914
+ARTICLE NO.: KU8337
+STYLE NO.: OJF26250705
+2 SIXTEEN (16) CARTONS OF KID'S 620462 PSR 67.04% 251 PIECES
+WOVEN DENIM PANT,MAIN G.WEIGHT
+MATERIAL:100% COTTON 107.56 KGS
+PO# 0902275872
+ARTICLE NO.: KU8317
+STYLE NO.: OLKF26250706
+3 THIRTY NINE (39) CARTONS OF 620432 PSR 95.21% 504 PIECES
+KID'S WOVEN DENIM JACKET,MAIN G.WEIGHT
+MATERIAL:100% COTTON 415.23 KGS
+PO# 0902275843
+ARTICLE NO.: KS1734
+STYLE NO.: OJF26250703
+***
+"""
+
+
 class OriginCertificateOcrParserTests(unittest.TestCase):
     def setUp(self) -> None:
         self.parser = OriginCertificateOcrParser()
@@ -120,6 +151,26 @@ class OriginCertificateOcrParserTests(unittest.TestCase):
         self.assertEqual([record.quantity for record in records], [120, 100, 100])
         self.assertEqual(records[2].po_number, "")
         self.assertEqual(records[2].article_number, "")
+
+    def test_parse_china_peru_fta_item_blocks_extracts_records(self):
+        records = self.parser.parse_text(CHINA_PERU_FTA_TEXT)
+
+        self.assertEqual(len(records), 3)
+        self.assertEqual([record.po_number for record in records], ["0902275914", "0902275872", "0902275843"])
+        self.assertEqual([record.article_number for record in records], ["KU8337", "KU8317", "KS1734"])
+        self.assertEqual([record.working_number for record in records], ["OJF26250705", "OLKF26250706", "OJF26250703"])
+        self.assertEqual([record.hs_code for record in records], ["620462", "620462", "620432"])
+        self.assertEqual([record.quantity for record in records], [252, 251, 504])
+        self.assertEqual([record.cartons for record in records], [18, 16, 39])
+        self.assertEqual([record.cartons_in_words for record in records], ["EIGHTEEN", "SIXTEEN", "THIRTY NINE"])
+        self.assertEqual(
+            records[0].goods_description,
+            "KID'S WOVEN DENIM PANT,MAIN MATERIAL:100% COTTON",
+        )
+        self.assertEqual(
+            records[2].goods_description,
+            "KID'S WOVEN DENIM JACKET,MAIN MATERIAL:100% COTTON",
+        )
 
 
 if __name__ == "__main__":

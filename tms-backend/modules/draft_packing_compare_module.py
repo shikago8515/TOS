@@ -17,6 +17,7 @@ from openpyxl.utils import get_column_letter
 
 from modules.origin_certificate_ocr import (
     OriginCertificateOcrUnavailableError,
+    OriginCertificateOcrParser,
     OriginCertificateRecord,
     RapidOriginCertificateOcr,
 )
@@ -152,10 +153,17 @@ class DraftPackingCompareModule:
 
     def __init__(self, origin_certificate_ocr: RapidOriginCertificateOcr | None = None) -> None:
         self.origin_certificate_ocr = origin_certificate_ocr or RapidOriginCertificateOcr()
+        self.origin_certificate_text_parser = OriginCertificateOcrParser()
 
     def parse_origin_certificate_pdf(self, pdf_path: str | os.PathLike[str]) -> list[ExtractedRecord]:
         text = self._extract_pdf_text(pdf_path)
         records = self.parse_draft_text(text)
+        text_records = [
+            self._record_from_origin_certificate(record)
+            for record in self.origin_certificate_text_parser.parse_text(text)
+        ]
+        if text_records and self._records_completeness_score(text_records) > self._records_completeness_score(records):
+            return text_records
         if records:
             return records
 
@@ -192,6 +200,22 @@ class DraftPackingCompareModule:
             extracted.issues.append(f"{self.ORIGIN_CERTIFICATE_SOURCE} PO Number 字段缺失或定位困难")
         self._add_missing_record_issues(extracted, self.ORIGIN_CERTIFICATE_SOURCE)
         return extracted
+
+    def _records_completeness_score(self, records: Sequence[ExtractedRecord]) -> int:
+        score = 0
+        for record in records:
+            fields = (
+                record.po_number,
+                record.working_number,
+                record.article_number,
+                record.customer_number,
+                record.quantity,
+                record.cartons,
+                record.goods_description,
+                record.hs_code,
+            )
+            score += sum(1 for value in fields if value not in (None, ""))
+        return score
 
     def parse_draft_text(self, text: str) -> list[ExtractedRecord]:
         item_matches = list(self.ITEM_HEADER_RE.finditer(text))

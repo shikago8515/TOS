@@ -44,12 +44,18 @@ class OriginCertificateOcrParser:
     CARTONS_NUMBER_RE = re.compile(r"\b(?P<count>\d+)\s*CARTONS?\b", re.IGNORECASE)
     QUANTITY_RE = re.compile(r"\b(?P<quantity>\d{1,6})\s*PIECES?\b", re.IGNORECASE)
     HSCODE_VALUE_RE = re.compile(r"\b(?:\d{2}\.\d{2}(?:\.\d{2})?|\d{4}\.\d{2}|\d{4,8})\b")
+    FTA_ITEM_RE = re.compile(
+        r"(?m)^(?P<item>\d{1,2})\s+(?P<words>[A-Z][A-Z\s-]+?)\s*"
+        r"\((?P<cartons>\d+)\)\s*CARTONS?\s+(?P<tail>.*)$",
+        re.IGNORECASE,
+    )
     LABEL_START_RE = re.compile(
         r"\b(STYLE|ART(?:ICLE)?|PO|CUST(?:OMER)?|HS|H\.S|QUANTITY|QTY)\s*(?:ORDER)?\s*#?\s*:?",
         re.IGNORECASE,
     )
     DETAIL_VALUE_RE = re.compile(
-        r"\b(?P<label>CUST\s*ORDER|STYLE|ARTICLE|ART|PO)\s*#?\s*:?\s*(?P<value>[A-Z0-9][A-Z0-9\-./]*)",
+        r"\b(?P<label>CUST\s*ORDER|STYLE|ARTICLE|ART|PO)\s*"
+        r"(?:(?:NO|NUMBER)\.?)?\s*#?\s*:?\s*(?P<value>[A-Z0-9][A-Z0-9\-./]*)",
         re.IGNORECASE,
     )
 
@@ -61,6 +67,10 @@ class OriginCertificateOcrParser:
         po_matches = list(self.PO_RE.finditer(text))
         if not po_matches:
             return []
+
+        fta_records = self._extract_fta_item_records(text)
+        if fta_records:
+            return fta_records
 
         hs_values = self._extract_hs_values(text)
         quantities = self._extract_quantities(text)
@@ -138,6 +148,68 @@ class OriginCertificateOcrParser:
                 )
             )
         return records
+
+    def _extract_fta_item_records(self, text: str) -> list[OriginCertificateRecord]:
+        if not re.search(r"\bChina-Peru\s+FTA\b", text, re.IGNORECASE):
+            return []
+
+        matches = list(self.FTA_ITEM_RE.finditer(text))
+        records: list[OriginCertificateRecord] = []
+        for index, match in enumerate(matches):
+            next_start = matches[index + 1].start() if index + 1 < len(matches) else self._find_fta_detail_end(text, match.end())
+            block = text[match.start() : next_start]
+            hs_code = self._find_fta_hs_code(match.group("tail"))
+            records.append(
+                OriginCertificateRecord(
+                    po_number=self._find_first_labeled_value(block, (r"PO",)),
+                    working_number=self._find_first_labeled_value(block, (r"STYLE",)),
+                    article_number=self._find_first_labeled_value(block, (r"ARTICLE", r"ART")),
+                    quantity=self._parse_int(self._find_first_quantity(block)),
+                    cartons=self._parse_int(match.group("cartons")),
+                    cartons_in_words=self._normalize_text(match.group("words")).upper(),
+                    goods_description=self._extract_fta_goods_description(block, match),
+                    hs_code=hs_code,
+                )
+            )
+        return [record for record in records if record.po_number]
+
+    def _find_fta_detail_end(self, text: str, start: int) -> int:
+        marker = text.find("***", start)
+        return marker if marker != -1 else len(text)
+
+    def _find_fta_hs_code(self, text: str) -> str:
+        match = re.search(r"\b(?P<hs>\d{6})\b", text)
+        return match.group("hs") if match else ""
+
+    def _extract_fta_goods_description(self, block: str, item_match: re.Match[str]) -> str:
+        block_offset = item_match.start()
+        description_parts: list[str] = []
+        first_line = item_match.group("tail")
+        hs_code = self._find_fta_hs_code(first_line)
+        if hs_code:
+            first_line = first_line.split(hs_code, 1)[0]
+        description_parts.append(first_line)
+
+        remaining = block[item_match.end() - block_offset :]
+        for raw_line in remaining.splitlines():
+            line = self._normalize_text(raw_line)
+            if not line:
+                continue
+            if re.match(r"^(?:PO\s*#|ARTICLE|ART|STYLE|\*\*\*)", line, re.IGNORECASE):
+                break
+            description_parts.append(line)
+
+        cleaned_parts = [self._clean_fta_description_part(part) for part in description_parts]
+        description = self._normalize_text(" ".join(part for part in cleaned_parts if part))
+        description = re.sub(r"^OF\s+", "", description, flags=re.IGNORECASE)
+        return self._normalize_description(description)
+
+    def _clean_fta_description_part(self, text: str) -> str:
+        text = self._normalize_text(text)
+        text = re.split(r"\bG\.?\s*WEIGHT\b", text, maxsplit=1, flags=re.IGNORECASE)[0]
+        text = re.sub(r"\bPSR\b.*$", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\b\d+(?:\.\d+)?\s*KGS?\b.*$", "", text, flags=re.IGNORECASE)
+        return self._normalize_text(text)
 
     def _extract_detail_records(self, text: str) -> list[dict[str, str]]:
         records: list[dict[str, str]] = []
@@ -280,7 +352,7 @@ class OriginCertificateOcrParser:
 
     def _find_labeled_values_with_position(self, text: str, label: str) -> list[tuple[int, str]]:
         pattern = re.compile(
-            r"\b(?:" + label + r")\b\s*#?\s*:?\s*(?P<value>[A-Z0-9][A-Z0-9\-./]*)",
+            r"\b(?:" + label + r")\b\s*(?:(?:NO|NUMBER)\.?)?\s*#?\s*:?\s*(?P<value>[A-Z0-9][A-Z0-9\-./]*)",
             re.IGNORECASE,
         )
         return [
