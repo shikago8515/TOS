@@ -49,12 +49,23 @@ class OriginCertificateOcrParser:
         r"\((?P<cartons>\d+)\)\s*CARTONS?\s+(?P<tail>.*)$",
         re.IGNORECASE,
     )
+    ACFTA_FORM_E_ITEM_RE = re.compile(
+        r"(?m)^(?P<item>\d{1,2})\s+(?:CART\s+NO\.\s*)?"
+        r"(?P<words>[A-Z][A-Z\s-]+?)\s*\((?P<cartons>\d+)\)\s*CARTONS?\s+OF\s+(?P<tail>.*)$",
+        re.IGNORECASE,
+    )
+    RCEP_ITEM_RE = re.compile(
+        r"(?m)^(?P<item>\d{1,2})\s+(?P<prefix>.+?)\s+"
+        r"(?P<hs>\d{6})\s+(?P<criterion>[A-Z]{2,5})\s+CHINA\s+"
+        r"(?P<quantity>\d{1,6})\s*PIECES?\b(?P<tail>.*)$",
+        re.IGNORECASE,
+    )
     LABEL_START_RE = re.compile(
         r"\b(STYLE|ART(?:ICLE)?|PO|CUST(?:OMER)?|HS|H\.S|QUANTITY|QTY)\s*(?:ORDER)?\s*#?\s*:?",
         re.IGNORECASE,
     )
     DETAIL_VALUE_RE = re.compile(
-        r"\b(?P<label>CUST\s*ORDER|STYLE|ARTICLE|ART|PO)\s*"
+        r"\b(?P<label>CUST\s*ORDER|STYLE|ARTICLE|ART|PO)\b(?!\s+DESCRIPTION\b)\s*"
         r"(?:(?:NO|NUMBER)\.?)?\s*#?\s*:?\s*(?P<value>[A-Z0-9][A-Z0-9\-./]*)",
         re.IGNORECASE,
     )
@@ -64,13 +75,25 @@ class OriginCertificateOcrParser:
 
     def parse_pages(self, page_texts: Sequence[str]) -> list[OriginCertificateRecord]:
         text = self._normalize_ocr_text("\n".join(page_texts))
+        form_d_records = self._extract_cambodia_form_d_records(text)
+        if form_d_records:
+            return form_d_records
+
         po_matches = list(self.PO_RE.finditer(text))
         if not po_matches:
             return []
 
+        rcep_records = self._extract_rcep_item_records(text)
+        if rcep_records:
+            return rcep_records
+
         fta_records = self._extract_fta_item_records(text)
         if fta_records:
             return fta_records
+
+        acfta_form_e_records = self._extract_acfta_form_e_item_records(text)
+        if acfta_form_e_records:
+            return acfta_form_e_records
 
         hs_values = self._extract_hs_values(text)
         quantities = self._extract_quantities(text)
@@ -122,6 +145,223 @@ class OriginCertificateOcrParser:
 
         return records
 
+    def _extract_cambodia_form_d_records(self, text: str) -> list[OriginCertificateRecord]:
+        if not re.search(r"\bKINGDOM\s+OF\s+CAMBODIA\b|\bMADE\s+IN\s+CAMBODIA\b", text, re.IGNORECASE):
+            return []
+        if not re.search(r"\bCUST\s+O/N\s*:\s*HS\s+CODE\b", text, re.IGNORECASE):
+            return []
+
+        item_matches = list(
+            re.finditer(
+                r"(?m)^(?P<item>\d{1,2})\b.*?\bHS\s+CODE\s*:?\s*"
+                r"(?P<hs>\d{4,8})\b.*?\b(?P<quantity>\d{1,6})\s*PIECES?\b",
+                text,
+                re.IGNORECASE,
+            )
+        )
+        records: list[OriginCertificateRecord] = []
+        for index, match in enumerate(item_matches):
+            next_start = item_matches[index + 1].start() if index + 1 < len(item_matches) else self._find_form_d_detail_end(text, match.end())
+            block = text[match.start() : next_start]
+            detail_match = self._find_form_d_detail_row(block)
+            if not detail_match:
+                continue
+            records.append(
+                OriginCertificateRecord(
+                    po_number=detail_match.group("po"),
+                    article_number=self._normalize_token(detail_match.group("article")),
+                    customer_number=re.sub(r"\D+", "", detail_match.group("customer")),
+                    quantity=self._parse_int(match.group("quantity")),
+                    cartons=self._parse_int(self._find_form_d_cartons(block)),
+                    goods_description=self._extract_form_d_goods_description(block),
+                    hs_code=self._normalize_hs_code(match.group("hs")),
+                )
+            )
+        return records
+
+    def _find_form_d_detail_end(self, text: str, start: int) -> int:
+        detail_end_match = re.search(
+            r"(?m)^(?:TOTAL\s+\(PIECE\)|THIRD-COUNTRY\s+INVOICING)\b",
+            text[start:],
+            re.IGNORECASE,
+        )
+        return start + detail_end_match.start() if detail_end_match else len(text)
+
+    def _find_form_d_detail_row(self, block: str) -> re.Match[str] | None:
+        return re.search(
+            r"(?m)^(?:SIZE|QTY|N\.W\.|G\.W\.)\s*:?\s*"
+            r"(?P<po>\d{8,12})\s+(?P<article>[A-Z0-9][A-Z0-9\-./]*)\s+"
+            r"(?P<customer>\d{6,12})\b",
+            block,
+            re.IGNORECASE,
+        )
+
+    def _find_form_d_cartons(self, block: str) -> str:
+        for pattern in (
+            r"(?m)^QTY\s*:?\s*(?P<cartons>\d{1,6})\s*CARTONS?\b",
+            r"(?m)^(?P<cartons>\d{1,6})\s*CARTONS?\b",
+        ):
+            match = re.search(pattern, block, re.IGNORECASE)
+            if match:
+                return match.group("cartons")
+        return ""
+
+    def _extract_form_d_goods_description(self, block: str) -> str:
+        parts: list[str] = []
+        for raw_line in block.splitlines():
+            line = self._normalize_text(raw_line)
+            if not line:
+                continue
+            description_part = ""
+            po_line_match = re.match(r"^PO\s+NO\.?\s*:?\s*(?P<description>.+)$", line, re.IGNORECASE)
+            art_line_match = re.match(r"^ART\s+NO\.?\s*:?\s*(?P<description>.+)$", line, re.IGNORECASE)
+            country_line_match = re.match(r"^(?:CAMBODIA|MADE\s+IN\s+CAMBODIA)\s+(?P<description>.+)$", line, re.IGNORECASE)
+            if po_line_match:
+                description_part = po_line_match.group("description")
+            elif art_line_match and "PO NO #" not in line.upper():
+                description_part = art_line_match.group("description")
+            elif country_line_match and "PO NO #" not in line.upper():
+                description_part = country_line_match.group("description")
+
+            description_part = self._clean_form_d_description_part(description_part)
+            if description_part:
+                parts.append(description_part)
+
+        return self._normalize_description(" ".join(parts))
+
+    def _clean_form_d_description_part(self, value: str) -> str:
+        text = self._normalize_text(value)
+        if not text:
+            return ""
+        text = re.sub(r"\b\d{1,2}-[A-Z]{3}-\d{4}\b.*$", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s+\d{2,4}$", "", text)
+        return self._normalize_text(text)
+
+    def _extract_rcep_item_records(self, text: str) -> list[OriginCertificateRecord]:
+        if not re.search(r"\b(?:Form\s+RCEP|REGIONAL\s+COMPREHENSIVE\s+ECONOMIC\s+PARTNERSHIP)\b", text, re.IGNORECASE):
+            return []
+
+        detail_text = self._extract_rcep_detail_text(text)
+        matches = list(self.RCEP_ITEM_RE.finditer(detail_text))
+        if not matches:
+            return []
+
+        records: list[OriginCertificateRecord] = []
+        for index, match in enumerate(matches):
+            next_start = matches[index + 1].start() if index + 1 < len(matches) else len(detail_text)
+            block = detail_text[match.start() : next_start]
+            cartons, cartons_in_words = self._extract_rcep_cartons(block)
+            quantity = self._parse_int(self._find_rcep_labeled_value(block, "PCS")) or self._parse_int(match.group("quantity"))
+            record = OriginCertificateRecord(
+                po_number=self._find_rcep_po_number(block),
+                working_number=self._find_acfta_labeled_value(block, ("STYLE",)),
+                article_number=self._find_acfta_labeled_value(block, ("ARTICLE", "ART")),
+                customer_number=self._find_acfta_customer_number(block),
+                quantity=quantity,
+                cartons=self._parse_int(self._find_rcep_labeled_value(block, "CTNS")) or cartons,
+                cartons_in_words=cartons_in_words,
+                goods_description=self._extract_rcep_goods_description(block),
+                hs_code=self._normalize_hs_code(match.group("hs")),
+            )
+            if record.po_number:
+                records.append(record)
+        return records
+
+    def _extract_rcep_detail_text(self, text: str) -> str:
+        detail_lines: list[str] = []
+        collecting = False
+        for raw_line in text.splitlines():
+            line = self._normalize_text(raw_line)
+            if not line:
+                continue
+            if re.match(r"^OVERLEAF\s+NOTES\b", line, re.IGNORECASE):
+                collecting = False
+                continue
+            if re.search(r"\b6\.Item\b.*\b9\.HS\s+Code\b", line, re.IGNORECASE):
+                collecting = True
+                continue
+            if not collecting:
+                continue
+            if self._is_rcep_detail_end(line):
+                collecting = False
+                continue
+            if self._is_rcep_header_continuation(line):
+                continue
+            detail_lines.append(line)
+        return "\n".join(detail_lines)
+
+    def _is_rcep_detail_end(self, line: str) -> bool:
+        return bool(
+            re.match(
+                r"^(?:14\.Remarks|15\.Declaration|16\.Certification|ADDRESS:|FAX:|TEL:|"
+                r"DALIAN,CHINA|Place and date|Page\s+\d+\s+of\s+\d+)",
+                line,
+                re.IGNORECASE,
+            )
+        )
+
+    def _is_rcep_header_continuation(self, line: str) -> bool:
+        return bool(
+            re.match(
+                r"^(?:number\s+and\s+packages|numbers\s+on\s+goods|packages\s+value|"
+                r"RVC\s+is\s+applied|Certificate\s+No\.|Serial\s+No\.|Continuation\s+Sheet|Original)$",
+                line,
+                re.IGNORECASE,
+            )
+        )
+
+    def _find_rcep_po_number(self, block: str) -> str:
+        match = self.PO_RE.search(block)
+        return match.group("po") if match else ""
+
+    def _find_rcep_labeled_value(self, block: str, label: str) -> str:
+        match = re.search(r"\b" + label + r"\s*:?\s*(?P<value>\d{1,6})\b", block, re.IGNORECASE)
+        return match.group("value") if match else ""
+
+    def _extract_rcep_cartons(self, block: str) -> tuple[int | None, str]:
+        source = self._rcep_carton_description_source(block)
+        match = self.CARTONS_WORDS_RE.search(source)
+        if match:
+            return self._parse_int(match.group("count")), self._normalize_text(match.group("words")).upper()
+
+        ctns = self._parse_int(self._find_rcep_labeled_value(block, "CTNS"))
+        return ctns, ""
+
+    def _extract_rcep_goods_description(self, block: str) -> str:
+        source = self._rcep_carton_description_source(block)
+        carton_match = self.CARTONS_WORDS_RE.search(source) or self.CARTONS_NUMBER_RE.search(source)
+        if not carton_match:
+            return ""
+
+        description = source[carton_match.end() :]
+        description = re.sub(r"^\s*OF\s+", "", description, flags=re.IGNORECASE)
+        description = re.sub(
+            r"\b(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\.?\d{1,2},\d{4}\b",
+            "",
+            description,
+            flags=re.IGNORECASE,
+        )
+        description = re.sub(r"\b\d{2}-\d{2}-\d{2}-\d{4}\b", "", description)
+        description = re.sub(r"\b(?:CTC|PSR|RVC|WO|PE|ACU|DMI|CHINA)\b.*$", "", description, flags=re.IGNORECASE)
+        return self._normalize_description(description)
+
+    def _rcep_carton_description_source(self, block: str) -> str:
+        before_po = re.split(r"\bPO\s*#?\s*:?\s*\d{8,12}\b", block, maxsplit=1, flags=re.IGNORECASE)[0]
+        cleaned_lines: list[str] = []
+        for raw_line in before_po.splitlines():
+            line = self._normalize_text(raw_line)
+            if not line:
+                continue
+            line = re.sub(r"^\d{1,2}\s+", "", line)
+            line = re.sub(
+                r"\b\d{6}\s+(?:CTC|PSR|RVC|WO|PE|ACU|DMI)\s+CHINA\s+\d{1,6}\s*PIECES?\b.*$",
+                "",
+                line,
+                flags=re.IGNORECASE,
+            )
+            cleaned_lines.append(line)
+        return self._normalize_text(" ".join(cleaned_lines))
+
     def _records_from_detail_records(
         self,
         detail_records: Sequence[dict[str, str]],
@@ -172,6 +412,139 @@ class OriginCertificateOcrParser:
                 )
             )
         return [record for record in records if record.po_number]
+
+    def _extract_acfta_form_e_item_records(self, text: str) -> list[OriginCertificateRecord]:
+        if not re.search(r"\b(?:FORM\s+E|ASEAN-CHINA)\b", text, re.IGNORECASE):
+            return []
+
+        matches = list(self.ACFTA_FORM_E_ITEM_RE.finditer(text))
+        if not matches:
+            return []
+
+        records: list[OriginCertificateRecord] = []
+        for index, match in enumerate(matches):
+            next_start = matches[index + 1].start() if index + 1 < len(matches) else self._find_acfta_detail_end(text, match.end())
+            block = text[match.start() : next_start]
+            record = OriginCertificateRecord(
+                po_number=self._find_acfta_po_number(block),
+                working_number=self._find_acfta_labeled_value(block, ("STYLE",)),
+                article_number=self._find_acfta_labeled_value(block, ("ARTICLE", "ART")),
+                customer_number=self._find_acfta_customer_number(block),
+                quantity=self._parse_int(self._find_first_quantity(block)),
+                cartons=self._parse_int(match.group("cartons")),
+                cartons_in_words=self._normalize_text(match.group("words")).upper(),
+                goods_description=self._extract_acfta_goods_description(block, match),
+                hs_code=self._find_acfta_hs_code(block),
+            )
+            if record.po_number:
+                records.append(record)
+        return records
+
+    def _find_acfta_detail_end(self, text: str, start: int) -> int:
+        detail_end_match = re.search(
+            r"(?m)^(?:SAY\s+TOTAL|THIRD\s+PARTY|11\.Declaration|\*\*\*)\b",
+            text[start:],
+            re.IGNORECASE,
+        )
+        return start + detail_end_match.start() if detail_end_match else len(text)
+
+    def _find_acfta_po_number(self, block: str) -> str:
+        match = self.PO_RE.search(block)
+        return match.group("po") if match else ""
+
+    def _find_acfta_labeled_value(self, block: str, labels: Sequence[str]) -> str:
+        values: list[tuple[int, str]] = []
+        for label in labels:
+            if label.upper() in {"ARTICLE", "ART"}:
+                pattern = re.compile(
+                    r"\b(?:" + label + r")\b(?!\s+DESCRIPTION\b)\s*"
+                    r"(?:(?:NO|NUMBER)\.?)?\s*#?\s*:?\s*(?P<value>[A-Z0-9][A-Z0-9\-./]*)",
+                    re.IGNORECASE,
+                )
+            else:
+                pattern = re.compile(
+                    r"\b(?:" + label + r")\b\s*(?:(?:NO|NUMBER)\.?)?\s*#?\s*:?\s*"
+                    r"(?P<value>[A-Z0-9][A-Z0-9\-./]*)",
+                    re.IGNORECASE,
+                )
+            for match in pattern.finditer(block):
+                value = self._normalize_token(match.group("value"))
+                if value and value not in {"NO", "NUMBER", "STYLE", "ARTICLE", "ART", "CUST", "ORDER", "DESCRIPTION"}:
+                    values.append((match.start(), value))
+        if not values:
+            return ""
+        return sorted(values, key=lambda item: item[0])[0][1]
+
+    def _find_acfta_customer_number(self, block: str) -> str:
+        patterns = (
+            r"\bCUST\s+ORDER\s*(?:(?:NO|NUMBER)\.?)?\s*#?\s*:?\s*(?P<value>\d{6,12})",
+            r"\bCUST\s*(?:NO|NUMBER)\.?\s*#?\s*:?\s*(?P<value>\d{6,12})",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, block, re.IGNORECASE)
+            if match:
+                return re.sub(r"\D+", "", match.group("value"))
+        return ""
+
+    def _find_acfta_hs_code(self, block: str) -> str:
+        match = re.search(
+            r"\bH\.?\s*S\.?\s*CODE\s*:?\s*(?P<hs>\d{2}\.\d{2}(?:\.\d{2})?|\d{4}\.\d{2}|\d{4,8})",
+            block,
+            re.IGNORECASE,
+        )
+        return self._normalize_hs_code(match.group("hs")) if match else ""
+
+    def _extract_acfta_goods_description(self, block: str, item_match: re.Match[str]) -> str:
+        block_offset = item_match.start()
+        parts: list[str] = []
+        first_line = self._clean_acfta_description_part(item_match.group("tail"))
+        if first_line:
+            parts.append(first_line)
+
+        remaining = block[item_match.end() - block_offset :]
+        for raw_line in remaining.splitlines():
+            line = self._normalize_text(raw_line)
+            if not line:
+                continue
+            if self._is_acfta_description_boundary(line):
+                break
+            cleaned = self._clean_acfta_description_part(line)
+            if cleaned:
+                parts.append(cleaned)
+
+        description = self._normalize_text(" ".join(parts))
+        description = re.sub(r"^OF\s+", "", description, flags=re.IGNORECASE)
+        description = re.sub(r",\s+", ",", description)
+        return self._normalize_description(description)
+
+    def _is_acfta_description_boundary(self, line: str) -> bool:
+        if re.match(r"^CUST\s+O/N\s+MATERIAL\b", line, re.IGNORECASE):
+            return False
+        return bool(
+            re.match(
+                r"^(?:PO\s*#|ARTICLE|ART\s|STYLE|CUST\s+ORDER|HS|H\.S|MADE IN CHINA|"
+                r"\(SEE ATTACHMENT\)|11\.|5\.Item|SAY\s+TOTAL|THIRD\s+PARTY)",
+                line,
+                re.IGNORECASE,
+            )
+        )
+
+    def _clean_acfta_description_part(self, text: str) -> str:
+        text = self._normalize_text(text)
+        text = re.sub(r"^CUST\s+O/N\s+", "", text, flags=re.IGNORECASE)
+        if re.fullmatch(r"(?:ADIDAS\s+BRAND\s+GARMENT|OF\s+ADIDAS\s+BRAND\s+GARMENT)", text, re.IGNORECASE):
+            return ""
+        text = re.split(r"\b(?:PSR|CTH)\b", text, maxsplit=1, flags=re.IGNORECASE)[0]
+        text = re.split(r"\b\d+\s*PIECES?\b", text, maxsplit=1, flags=re.IGNORECASE)[0]
+        text = re.split(r"\b\d{10,}\b", text, maxsplit=1)[0]
+        text = re.sub(
+            r"\b(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\.?\d{1,2},\d{4}\b.*$",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(r"\b\d+(?:\.\d+)?\s*KGS?\b.*$", "", text, flags=re.IGNORECASE)
+        return self._normalize_text(text)
 
     def _find_fta_detail_end(self, text: str, start: int) -> int:
         marker = text.find("***", start)
@@ -306,18 +679,32 @@ class OriginCertificateOcrParser:
             line = raw_line.strip()
             if not line:
                 continue
+            if self._is_hs_collection_boundary(line):
+                collecting = False
+                continue
             if self._is_standalone_hs_line(line):
                 values.extend(self._extract_hs_values_from_line(line))
                 continue
             if re.search(r"\b(H\.?\s*S\.?\s*CODE|HS\s*CODE)\b", line, re.IGNORECASE):
-                collecting = True
-                values.extend(self._extract_hs_values_from_line(line))
+                line_values = self._extract_hs_values_from_line(line)
+                values.extend(line_values)
+                collecting = not line_values
                 continue
             if collecting and re.search(r"\b(QUANTITY|QTY|STYLE|ARTICLE|ART|PO|CUST)\b", line, re.IGNORECASE):
                 collecting = False
             if collecting:
                 values.extend(self._extract_hs_values_from_line(line))
         return values
+
+    def _is_hs_collection_boundary(self, line: str) -> bool:
+        return bool(
+            re.match(
+                r"^(?:\d{1,2}\s+.*\(\d+\)\s+CARTONS?\b|\(SEE ATTACHMENT\)|11\.|12\.|"
+                r"ADDRESS:|FAX:|TEL:|Place and date|SAY\s+TOTAL|THIRD\s+PARTY)",
+                line,
+                re.IGNORECASE,
+            )
+        )
 
     def _is_standalone_hs_line(self, line: str) -> bool:
         return bool(re.fullmatch(r"(?:\d{2}\.\d{2}(?:\.\d{2})?|\d{4}\.\d{2}|\d{4,8})", line))
@@ -399,6 +786,10 @@ class OriginCertificateOcrParser:
         normalized = text.replace("\r", "\n").replace("\xa0", " ")
         normalized = normalized.replace("＃", "#").replace("：", ":")
         normalized = re.sub(r"\bP[O0]\s*#", "PO#", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\bPO\s+NO\s+PO\s*#", "PO#", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\bART\s+NO\s+ARTICLE\s+NO\.?", "ARTICLE NO.", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\bSIZE\s+ARTICLE\s+NO\.?\s+STYLE\s+NO\.?", "STYLE NO.", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\bQTY\s+STYLE\s+NO\.?\s+CUST\s+ORDER\s+NO\.?", "CUST ORDER NO.", normalized, flags=re.IGNORECASE)
         normalized = re.sub(r"\bCUST\s*[O0]RDER\b", "CUST ORDER", normalized, flags=re.IGNORECASE)
         normalized = re.sub(r"\bCUST\s*[O0]\s*/\s*N\b", "CUST O/N", normalized, flags=re.IGNORECASE)
         normalized = re.sub(

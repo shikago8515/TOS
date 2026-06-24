@@ -29,4 +29,21 @@ describe('DraftPackingComparePage source', () => {
     expect(uploadFieldsBlock).toContain("id: 'packing'")
     expect(uploadFieldsBlock).not.toContain('hint:')
   })
+
+  it('allows multiple origin certificate and packing PDFs', () => {
+    const uploadFieldsBlock = getUploadFieldsBlock()
+
+    expect(pageSource).toContain('badge="每类至少 1 份 PDF"')
+    expect(uploadFieldsBlock).toContain("label: '产地证PDF（可多选）'")
+    expect(uploadFieldsBlock).toContain("label: 'Packing List PDF（可多选）'")
+    expect(uploadFieldsBlock.match(/multiple: true/g)).toHaveLength(2)
+    expect(uploadFieldsBlock).not.toContain('expectedCount: 1')
+  })
+
+  it('sends all selected files to the process API', () => {
+    expect(pageSource).toContain('draftFiles: draftFiles.value')
+    expect(pageSource).toContain('packingFiles: packingFiles.value')
+    expect(pageSource).not.toContain('draftFile: draftFiles.value[0]')
+    expect(pageSource).not.toContain('packingFile: packingFiles.value[0]')
+  })
 })

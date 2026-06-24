@@ -19,7 +19,7 @@
           :processing="processing"
           :progress="progress"
           progress-label="核对进度"
-          badge="2 份 PDF 必传"
+          badge="每类至少 1 份 PDF"
           @update:files="updateUploadFiles"
         >
           <ResultSummary :items="summaryItems" :status="success ? 'success' : 'error'" />
@@ -90,19 +90,19 @@ const { text } = useAppLanguage()
 const uploadFields = computed<ExcelFileField[]>(() => [
   {
     id: 'draft',
-    label: '产地证PDF',
+    label: '产地证PDF（可多选）',
     files: draftFiles.value,
     accept: '.pdf',
     acceptLabel: '支持 .pdf',
-    expectedCount: 1,
+    multiple: true,
   },
   {
     id: 'packing',
-    label: 'Packing List PDF',
+    label: 'Packing List PDF（可多选）',
     files: packingFiles.value,
     accept: '.pdf',
     acceptLabel: '支持 .pdf',
-    expectedCount: 1,
+    multiple: true,
   },
 ])
 
@@ -167,7 +167,7 @@ function updateUploadFiles(fieldId: string, files: File[]): void {
 }
 
 async function startProcess(): Promise<void> {
-  if (!canProcess.value || !draftFiles.value[0] || !packingFiles.value[0]) {
+  if (!canProcess.value || draftFiles.value.length === 0 || packingFiles.value.length === 0) {
     message.value = '请先按预检查提示补齐 PDF 文件'
     success.value = false
     return
@@ -186,8 +186,8 @@ async function startProcess(): Promise<void> {
   try {
     const response = await processDraftPackingCompareFiles(
       {
-        draftFile: draftFiles.value[0],
-        packingFile: packingFiles.value[0],
+        draftFiles: draftFiles.value,
+        packingFiles: packingFiles.value,
       },
       (nextProgress) => {
         progress.value = nextProgress

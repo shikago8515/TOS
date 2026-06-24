@@ -33,6 +33,7 @@ class PackingExtractedPage:
 class ExtractedRecord:
     source: str
     po_number: str
+    invoice_number: str = ""
     working_number: str = ""
     article_number: str = ""
     customer_number: str = ""
@@ -88,15 +89,24 @@ class ComparisonResult:
     missing_field_count: int
 
 
+@dataclass(frozen=True)
+class InvoiceComparisonSheet:
+    invoice_number: str
+    sheet_name: str
+    comparison: ComparisonResult
+
+
 class DraftPackingCompareModule:
     """解析两份 PDF 并生成产地证/Packing 上下对比 Excel。"""
 
     ORIGIN_CERTIFICATE_SOURCE = "产地证"
     OUTPUT_SHEET = "产地证 vs Packing"
     ISSUES_SHEET = "Issues"
+    UNMATCHED_SHEET = "未匹配"
     HEADERS = [
         "PO Number",
         "Source",
+        "INV number",
         "Working Number / Style Number",
         "Article Number",
         "Cust Number / Market PO Number",
@@ -116,14 +126,15 @@ class DraftPackingCompareModule:
         "Issue Type",
         "Detail",
     ]
+    BATCH_ISSUE_HEADERS = ["INV number", "Sheet Name", *ISSUE_HEADERS]
     FIELD_COLUMNS = {
-        "Working Number / Style Number": 3,
-        "Article Number": 4,
-        "Cust Number / Market PO Number": 5,
-        "Quantity": 6,
-        "Cartons": 7,
-        "Goods Description": 9,
-        "HS Code / HTS Code": 10,
+        "Working Number / Style Number": 4,
+        "Article Number": 5,
+        "Cust Number / Market PO Number": 6,
+        "Quantity": 7,
+        "Cartons": 8,
+        "Goods Description": 10,
+        "HS Code / HTS Code": 11,
         "Record": 1,
     }
     NO_CONTENT_FILL_COLUMNS = {FIELD_COLUMNS["HS Code / HTS Code"]}
@@ -146,6 +157,7 @@ class DraftPackingCompareModule:
         r"\b(This document is a summary|The complete document may be accessed on the system|Page\s+\d+\s+of\s+\d+)\b",
         re.IGNORECASE,
     )
+    PACKING_DESCRIPTION_HTS_RE = re.compile(r"\bHTS\s*:\s*(?P<hts>[0-9][0-9.]{3,})", re.IGNORECASE)
     RED_FILL = PatternFill("solid", fgColor="FFFFC7CE")
     YELLOW_FILL = PatternFill("solid", fgColor="FFFFF2CC")
     HEADER_FILL = PatternFill("solid", fgColor="FFD9EAF7")
@@ -251,7 +263,9 @@ class DraftPackingCompareModule:
     def parse_packing_pages(self, pages: Sequence[PackingExtractedPage]) -> list[ExtractedRecord]:
         records: list[ExtractedRecord] = []
         by_key: dict[tuple[str, str, str], ExtractedRecord] = {}
-        detail_totals = self._parse_packing_detail_totals(page.text for page in pages)
+        page_texts = [page.text for page in pages]
+        detail_totals = self._parse_packing_detail_totals(page_texts)
+        invoice_number = self._extract_packing_invoice_number(page_texts)
 
         for page in pages:
             last_record: ExtractedRecord | None = None
@@ -266,6 +280,7 @@ class DraftPackingCompareModule:
                         record = self._record_from_packing_summary_row(normalized_header, row)
                         if not record:
                             continue
+                        record.invoice_number = invoice_number
                         detail_total = detail_totals.get(record.po_number)
                         if detail_total:
                             if record.quantity is None:
@@ -292,11 +307,20 @@ class DraftPackingCompareModule:
         draft_records: Sequence[ExtractedRecord],
         packing_records: Sequence[ExtractedRecord],
     ) -> ComparisonResult:
-        draft_by_key = {record.match_key(): record for record in draft_records}
-        packing_by_key = {record.match_key(): record for record in packing_records}
+        draft_keys = {
+            id(record): self._comparison_key(record, packing_records)
+            for record in draft_records
+        }
+        packing_keys = {
+            id(record): self._comparison_key(record, draft_records)
+            for record in packing_records
+        }
+        draft_record_ids = {id(record) for record in draft_records}
+        draft_by_key = {draft_keys[id(record)]: record for record in draft_records}
+        packing_by_key = {packing_keys[id(record)]: record for record in packing_records}
         ordered_keys: list[tuple[str, str, str]] = []
         for record in list(draft_records) + list(packing_records):
-            key = record.match_key()
+            key = draft_keys[id(record)] if id(record) in draft_record_ids else packing_keys[id(record)]
             if key not in ordered_keys:
                 ordered_keys.append(key)
 
@@ -359,6 +383,25 @@ class DraftPackingCompareModule:
             missing_field_count=missing_field_count,
         )
 
+    def _comparison_key(
+        self,
+        record: ExtractedRecord,
+        counterpart_records: Sequence[ExtractedRecord],
+    ) -> tuple[str, str, str]:
+        strict_key = record.match_key()
+        if strict_key[1] or not strict_key[0] or not strict_key[2]:
+            return strict_key
+
+        partial_matches = {
+            counterpart.match_key()
+            for counterpart in counterpart_records
+            if counterpart.po_number == record.po_number
+            and counterpart.article_number.upper() == record.article_number.upper()
+        }
+        if len(partial_matches) == 1:
+            return next(iter(partial_matches))
+        return strict_key
+
     def process_files(
         self,
         draft_pdf_path: str | os.PathLike[str],
@@ -368,6 +411,76 @@ class DraftPackingCompareModule:
         draft_records = self.parse_origin_certificate_pdf(draft_pdf_path)
         packing_records = self.parse_packing_pdf(packing_pdf_path)
         return self.process_extracted_data(draft_records, packing_records, output_dir)
+
+    def process_file_batches(
+        self,
+        draft_pdf_paths: Sequence[str | os.PathLike[str]],
+        packing_pdf_paths: Sequence[str | os.PathLike[str]],
+        output_dir: str | os.PathLike[str],
+    ) -> dict[str, Any]:
+        draft_records: list[ExtractedRecord] = []
+        packing_records: list[ExtractedRecord] = []
+
+        for packing_pdf_path in packing_pdf_paths:
+            packing_records.extend(self.parse_packing_pdf(packing_pdf_path))
+        for draft_pdf_path in draft_pdf_paths:
+            draft_records.extend(self.parse_origin_certificate_pdf(draft_pdf_path))
+
+        self._assign_origin_invoice_numbers(draft_records, packing_records)
+        invoice_groups = self._group_records_by_invoice(draft_records, packing_records)
+
+        output_root = Path(output_dir)
+        output_root.mkdir(parents=True, exist_ok=True)
+        output_path = output_root / f"draft_packing_compare_{uuid4().hex}.xlsx"
+
+        used_sheet_names: set[str] = set()
+        sheets: list[InvoiceComparisonSheet] = []
+        for invoice_number, grouped_records in invoice_groups:
+            sheet_name = self._make_unique_sheet_title(invoice_number, used_sheet_names)
+            sheets.append(
+                InvoiceComparisonSheet(
+                    invoice_number=invoice_number,
+                    sheet_name=sheet_name,
+                    comparison=self.build_comparison_result(
+                        grouped_records["draft"],
+                        grouped_records["packing"],
+                    ),
+                )
+            )
+
+        self._write_batch_workbook(sheets, output_path)
+
+        group_count = sum(sheet.comparison.group_count for sheet in sheets)
+        issue_count = sum(sheet.comparison.issue_count for sheet in sheets)
+        mismatch_count = sum(sheet.comparison.mismatch_count for sheet in sheets)
+        missing_field_count = sum(
+            sheet.comparison.missing_field_count for sheet in sheets
+        )
+
+        return {
+            "success": True,
+            "message": f"产地证与 Packing List 核对完成，生成 {group_count} 组对比记录，{len(sheets)} 个结果 Sheet",
+            "output_path": str(output_path),
+            "group_count": group_count,
+            "issue_count": issue_count,
+            "mismatch_count": mismatch_count,
+            "missing_field_count": missing_field_count,
+            "draft_count": len(draft_records),
+            "packing_count": len(packing_records),
+            "sheet_count": len(sheets),
+            "draft_file_count": len(draft_pdf_paths),
+            "packing_file_count": len(packing_pdf_paths),
+            "logs": [
+                f"产地证文件数：{len(draft_pdf_paths)}",
+                f"Packing List 文件数：{len(packing_pdf_paths)}",
+                f"产地证识别记录数：{len(draft_records)}",
+                f"Packing List 识别记录数：{len(packing_records)}",
+                f"结果 Sheet 数：{len(sheets)}",
+                f"核对分组数：{group_count}",
+                f"问题数：{issue_count}",
+                f"输出文件：{output_path}",
+            ],
+        }
 
     def process_extracted_data(
         self,
@@ -391,6 +504,9 @@ class DraftPackingCompareModule:
             "missing_field_count": comparison.missing_field_count,
             "draft_count": len(draft_records),
             "packing_count": len(packing_records),
+            "sheet_count": 1,
+            "draft_file_count": 1,
+            "packing_file_count": 1,
             "logs": [
                 f"产地证识别记录数：{len(draft_records)}",
                 f"Packing List 识别记录数：{len(packing_records)}",
@@ -399,6 +515,96 @@ class DraftPackingCompareModule:
                 f"输出文件：{output_path}",
             ],
         }
+
+    def _assign_origin_invoice_numbers(
+        self,
+        draft_records: Sequence[ExtractedRecord],
+        packing_records: Sequence[ExtractedRecord],
+    ) -> None:
+        for draft in draft_records:
+            if draft.invoice_number:
+                continue
+
+            candidate_invoices = {
+                packing.invoice_number
+                for packing in packing_records
+                if packing.invoice_number
+                and self._records_can_share_invoice_group(draft, packing)
+            }
+            if len(candidate_invoices) == 1:
+                draft.invoice_number = next(iter(candidate_invoices))
+                continue
+
+            detail = f"{self.ORIGIN_CERTIFICATE_SOURCE} INV number 缺失，无法唯一匹配 Packing 发票号"
+            if detail not in draft.issues:
+                draft.issues.append(detail)
+
+    def _records_can_share_invoice_group(
+        self,
+        draft: ExtractedRecord,
+        packing: ExtractedRecord,
+    ) -> bool:
+        if not draft.po_number or draft.po_number != packing.po_number:
+            return False
+
+        draft_article = draft.article_number.upper()
+        packing_article = packing.article_number.upper()
+        draft_working = draft.working_number.upper()
+        packing_working = packing.working_number.upper()
+
+        if draft_article and packing_article and draft_article != packing_article:
+            return False
+        if draft_working and packing_working and draft_working != packing_working:
+            return False
+
+        return bool(
+            (draft_article and packing_article)
+            or (draft_working and packing_working)
+        )
+
+    def _group_records_by_invoice(
+        self,
+        draft_records: Sequence[ExtractedRecord],
+        packing_records: Sequence[ExtractedRecord],
+    ) -> list[tuple[str, dict[str, list[ExtractedRecord]]]]:
+        grouped: dict[str, dict[str, list[ExtractedRecord]]] = {}
+        order: list[str] = []
+
+        def group_for(invoice_number: str) -> dict[str, list[ExtractedRecord]]:
+            key = invoice_number or self.UNMATCHED_SHEET
+            if key not in grouped:
+                grouped[key] = {"draft": [], "packing": []}
+                order.append(key)
+            return grouped[key]
+
+        for packing in packing_records:
+            if not packing.invoice_number:
+                detail = "Packing List INV number 字段缺失或定位困难"
+                if detail not in packing.issues:
+                    packing.issues.append(detail)
+            group_for(packing.invoice_number)["packing"].append(packing)
+
+        for draft in draft_records:
+            group_for(draft.invoice_number)["draft"].append(draft)
+
+        return [(invoice_number, grouped[invoice_number]) for invoice_number in order]
+
+    def _make_unique_sheet_title(self, raw_title: str, used_titles: set[str]) -> str:
+        base_title = self._sanitize_sheet_title(raw_title)
+        title = base_title
+        suffix = 2
+        while title.lower() in used_titles:
+            suffix_text = f"_{suffix}"
+            title = f"{base_title[: 31 - len(suffix_text)]}{suffix_text}"
+            suffix += 1
+
+        used_titles.add(title.lower())
+        return title
+
+    def _sanitize_sheet_title(self, raw_title: str) -> str:
+        title = re.sub(r"[\[\]:*?/\\]", "_", self._normalize_text(raw_title))
+        title = title.strip().strip("'") or self.UNMATCHED_SHEET
+        return title[:31] or self.UNMATCHED_SHEET
 
     def _extract_packing_pages(self, pdf_path: str | os.PathLike[str]) -> list[PackingExtractedPage]:
         pages: list[PackingExtractedPage] = []
@@ -474,6 +680,25 @@ class DraftPackingCompareModule:
                 totals[po_number]["quantity"] += detail["quantity"]
                 totals[po_number]["cartons"] += detail["cartons"]
         return totals
+
+    def _extract_packing_invoice_number(self, page_texts: Iterable[str]) -> str:
+        invoice_token_re = re.compile(r"\b[A-Z0-9]*\d[A-Z0-9]*(?:[-./][A-Z0-9]*\d[A-Z0-9]*)+\b", re.IGNORECASE)
+        lines = [self._normalize_text(line) for text in page_texts for line in text.splitlines()]
+        for index, line in enumerate(lines):
+            if not re.search(r"\bInvoice\s+Number\b", line, re.IGNORECASE):
+                continue
+
+            candidate_lines: list[str] = []
+            suffix = re.split(r"\bInvoice\s+Number\b", line, maxsplit=1, flags=re.IGNORECASE)[-1]
+            if suffix.strip():
+                candidate_lines.append(suffix)
+            candidate_lines.extend(lines[index + 1 : index + 6])
+
+            for candidate_line in candidate_lines:
+                match = invoice_token_re.search(candidate_line)
+                if match:
+                    return self._normalize_text(match.group(0))
+        return ""
 
     def _parse_packing_detail_line(self, line: str) -> dict[str, Any] | None:
         tokens = line.split()
@@ -556,6 +781,10 @@ class DraftPackingCompareModule:
         for record in records:
             if record.po_number in descriptions and not record.goods_description:
                 record.goods_description = descriptions[record.po_number]
+            if record.goods_description and not record.hs_code:
+                hts_match = self.PACKING_DESCRIPTION_HTS_RE.search(record.goods_description)
+                if hts_match:
+                    record.hs_code = hts_match.group("hts")
 
     def _add_missing_record_issues(self, record: ExtractedRecord, source: str) -> None:
         checks = [
@@ -658,19 +887,9 @@ class DraftPackingCompareModule:
         ws.title = self.OUTPUT_SHEET
         issues_ws = workbook.create_sheet(self.ISSUES_SHEET)
 
-        ws.append(self.HEADERS)
+        self._write_comparison_sheet(ws, comparison)
         issues_ws.append(self.ISSUE_HEADERS)
-        self._style_header(ws)
         self._style_header(issues_ws)
-
-        for index, group in enumerate(comparison.groups):
-            draft_row = ws.max_row + 1
-            ws.append(self._row_values(group.draft, self.ORIGIN_CERTIFICATE_SOURCE, group))
-            packing_row = ws.max_row + 1
-            ws.append(self._row_values(group.packing, "Packing List", group))
-            self._apply_issue_fills(ws, group, draft_row, packing_row)
-            if index < len(comparison.groups) - 1:
-                self._append_separator_row(ws)
 
         for issue in comparison.issues:
             issues_ws.append(
@@ -684,9 +903,56 @@ class DraftPackingCompareModule:
                 ]
             )
 
-        self._autosize(ws)
         self._autosize(issues_ws)
         workbook.save(output_path)
+
+    def _write_batch_workbook(
+        self,
+        sheets: Sequence[InvoiceComparisonSheet],
+        output_path: Path,
+    ) -> None:
+        workbook = openpyxl.Workbook()
+        workbook.remove(workbook.active)
+
+        for sheet in sheets:
+            ws = workbook.create_sheet(sheet.sheet_name)
+            self._write_comparison_sheet(ws, sheet.comparison)
+
+        issues_ws = workbook.create_sheet(self.ISSUES_SHEET)
+        issues_ws.append(self.BATCH_ISSUE_HEADERS)
+        self._style_header(issues_ws)
+        for sheet in sheets:
+            for issue in sheet.comparison.issues:
+                issues_ws.append(
+                    [
+                        sheet.invoice_number,
+                        sheet.sheet_name,
+                        issue.po_number,
+                        " | ".join(issue.key),
+                        issue.source,
+                        issue.field_name,
+                        issue.issue_type,
+                        issue.detail,
+                    ]
+                )
+
+        self._autosize(issues_ws)
+        workbook.save(output_path)
+
+    def _write_comparison_sheet(self, ws, comparison: ComparisonResult) -> None:
+        ws.append(self.HEADERS)
+        self._style_header(ws)
+
+        for index, group in enumerate(comparison.groups):
+            draft_row = ws.max_row + 1
+            ws.append(self._row_values(group.draft, self.ORIGIN_CERTIFICATE_SOURCE, group))
+            packing_row = ws.max_row + 1
+            ws.append(self._row_values(group.packing, "Packing List", group))
+            self._apply_issue_fills(ws, group, draft_row, packing_row)
+            if index < len(comparison.groups) - 1:
+                self._append_separator_row(ws)
+
+        self._autosize(ws)
 
     def _row_values(
         self,
@@ -694,10 +960,12 @@ class DraftPackingCompareModule:
         source: str,
         group: ComparisonGroup,
     ) -> list[Any]:
+        invoice_number = self._invoice_number_for_group(group)
         if record is None:
             return [
                 group.po_number,
                 source,
+                invoice_number,
                 group.key[1],
                 group.key[2],
                 "",
@@ -713,6 +981,7 @@ class DraftPackingCompareModule:
         return [
             record.po_number,
             source,
+            record.invoice_number or invoice_number,
             record.working_number,
             record.article_number,
             record.customer_number,
@@ -724,6 +993,13 @@ class DraftPackingCompareModule:
             group.status,
             group.issue_detail,
         ]
+
+    def _invoice_number_for_group(self, group: ComparisonGroup) -> str:
+        if group.packing and group.packing.invoice_number:
+            return group.packing.invoice_number
+        if group.draft and group.draft.invoice_number:
+            return group.draft.invoice_number
+        return ""
 
     def _apply_issue_fills(
         self,

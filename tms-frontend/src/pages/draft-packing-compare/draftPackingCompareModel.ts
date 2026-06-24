@@ -35,6 +35,10 @@ export function buildDraftPackingCompareSummary(
       value: String(response.group_count ?? '-'),
     },
     {
+      label: '结果 Sheet',
+      value: String(response.sheet_count ?? '-'),
+    },
+    {
       label: '差异字段',
       value: String(response.mismatch_count ?? '-'),
     },

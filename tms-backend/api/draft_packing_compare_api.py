@@ -63,10 +63,35 @@ def _raise_processing_error(exc: Exception) -> NoReturn:
     raise HTTPException(status_code=500, detail=PROCESSING_ERROR_MESSAGE) from exc
 
 
+def _normalize_uploads(upload_or_uploads: UploadFile | list[UploadFile], label: str) -> list[UploadFile]:
+    uploads = upload_or_uploads if isinstance(upload_or_uploads, list) else [upload_or_uploads]
+    if not uploads:
+        raise HTTPException(status_code=400, detail=f"请选择要上传的 {label}")
+    return uploads
+
+
+def _save_pdf_uploads(
+    uploads: list[UploadFile],
+    work_dir: str,
+    prefix: str,
+    label: str,
+) -> list[str]:
+    paths: list[str] = []
+    multiple_files = len(uploads) > 1
+    for index, upload in enumerate(uploads, start=1):
+        safe_name = _validate_pdf_filename(upload.filename, label)
+        file_prefix = f"{prefix}_{index}_" if multiple_files else f"{prefix}_"
+        file_path = os.path.join(work_dir, f"{file_prefix}{safe_name}")
+        copy_upload_to_path(upload, file_path)
+        paths.append(file_path)
+
+    return paths
+
+
 @router.post("/process")
 async def process_draft_packing_compare(
-    draft_file: UploadFile = File(...),
-    packing_file: UploadFile = File(...),
+    draft_file: list[UploadFile] = File(...),
+    packing_file: list[UploadFile] = File(...),
     output_dir: Optional[str] = Form(None),
 ):
     """处理产地证与 Packing List PDF 核对。"""
@@ -75,18 +100,28 @@ async def process_draft_packing_compare(
     os.makedirs(work_dir, exist_ok=True)
 
     try:
-        draft_name = _validate_pdf_filename(draft_file.filename, "产地证PDF")
-        packing_name = _validate_pdf_filename(packing_file.filename, "Packing List PDF")
-        draft_path = os.path.join(work_dir, f"draft_{draft_name}")
-        packing_path = os.path.join(work_dir, f"packing_{packing_name}")
-        copy_upload_to_path(draft_file, draft_path)
-        copy_upload_to_path(packing_file, packing_path)
-
-        result = draft_packing_compare_module.process_files(
-            draft_pdf_path=draft_path,
-            packing_pdf_path=packing_path,
-            output_dir=output_dir if output_dir else UPLOAD_DIR,
+        draft_uploads = _normalize_uploads(draft_file, "产地证PDF")
+        packing_uploads = _normalize_uploads(packing_file, "Packing List PDF")
+        draft_paths = _save_pdf_uploads(draft_uploads, work_dir, "draft", "产地证PDF")
+        packing_paths = _save_pdf_uploads(
+            packing_uploads,
+            work_dir,
+            "packing",
+            "Packing List PDF",
         )
+
+        if len(draft_paths) == 1 and len(packing_paths) == 1:
+            result = draft_packing_compare_module.process_files(
+                draft_pdf_path=draft_paths[0],
+                packing_pdf_path=packing_paths[0],
+                output_dir=output_dir if output_dir else UPLOAD_DIR,
+            )
+        else:
+            result = draft_packing_compare_module.process_file_batches(
+                draft_pdf_paths=draft_paths,
+                packing_pdf_paths=packing_paths,
+                output_dir=output_dir if output_dir else UPLOAD_DIR,
+            )
         output_path = result["output_path"]
         output_filename = _copy_output_to_upload_dir(output_path)
         public_message = sanitize_output_reference(
@@ -106,6 +141,9 @@ async def process_draft_packing_compare(
             "missing_field_count": result["missing_field_count"],
             "draft_count": result["draft_count"],
             "packing_count": result["packing_count"],
+            "sheet_count": result.get("sheet_count", 1),
+            "draft_file_count": result.get("draft_file_count", len(draft_paths)),
+            "packing_file_count": result.get("packing_file_count", len(packing_paths)),
         }
     except HTTPException:
         raise

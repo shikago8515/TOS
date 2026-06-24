@@ -13,6 +13,7 @@ if BACKEND_ROOT not in sys.path:
     sys.path.insert(0, BACKEND_ROOT)
 
 from api import (
+    draft_packing_compare_api,
     eric_api,
     jane_api,
     jane_bom_compare_api,
@@ -266,6 +267,93 @@ class LegacyApiSecurityTests(unittest.TestCase):
 
         self.assertEqual(context.exception.status_code, 400)
         self.assertIn("Packing List PDF 仅支持 .pdf", context.exception.detail)
+
+    def test_draft_packing_compare_process_accepts_multiple_origin_and_packing_pdfs(self):
+        original_upload_dir = draft_packing_compare_api.UPLOAD_DIR
+        original_module = draft_packing_compare_api.draft_packing_compare_module
+
+        class CapturingDraftPackingModule:
+            def __init__(self):
+                self.draft_paths = None
+                self.packing_paths = None
+
+            def process_file_batches(self, draft_pdf_paths, packing_pdf_paths, output_dir):
+                self.draft_paths = draft_pdf_paths
+                self.packing_paths = packing_pdf_paths
+                output_path = os.path.join(output_dir, "draft-packing-result.xlsx")
+                with open(output_path, "wb") as fp:
+                    fp.write(b"result")
+                return {
+                    "success": True,
+                    "message": f"done: {output_path}",
+                    "logs": [f"result: {output_path}"],
+                    "output_path": output_path,
+                    "group_count": 2,
+                    "issue_count": 0,
+                    "mismatch_count": 0,
+                    "missing_field_count": 0,
+                    "draft_count": 2,
+                    "packing_count": 2,
+                    "sheet_count": 2,
+                    "draft_file_count": 2,
+                    "packing_file_count": 2,
+                }
+
+            def process_files(self, **_kwargs):
+                raise AssertionError("multiple uploads should use process_file_batches")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module = CapturingDraftPackingModule()
+            draft_packing_compare_api.UPLOAD_DIR = temp_dir
+            draft_packing_compare_api.draft_packing_compare_module = module
+            try:
+                response = asyncio.run(
+                    draft_packing_compare_api.process_draft_packing_compare(
+                        draft_file=[
+                            FakeUpload("origin-a.pdf"),
+                            FakeUpload("origin-b.pdf"),
+                        ],
+                        packing_file=[
+                            FakeUpload("packing-a.pdf"),
+                            FakeUpload("packing-b.pdf"),
+                        ],
+                        output_dir=None,
+                    )
+                )
+            finally:
+                draft_packing_compare_api.UPLOAD_DIR = original_upload_dir
+                draft_packing_compare_api.draft_packing_compare_module = original_module
+
+        self.assertEqual(len(module.draft_paths), 2)
+        self.assertEqual(len(module.packing_paths), 2)
+        self.assertTrue(str(module.draft_paths[0]).endswith("draft_1_origin-a.pdf"))
+        self.assertTrue(str(module.packing_paths[1]).endswith("packing_2_packing-b.pdf"))
+        self.assertEqual(response["sheet_count"], 2)
+        self.assertEqual(response["draft_file_count"], 2)
+        self.assertEqual(response["packing_file_count"], 2)
+
+    def test_draft_packing_compare_process_rejects_non_pdf_in_multi_upload(self):
+        original_upload_dir = draft_packing_compare_api.UPLOAD_DIR
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            draft_packing_compare_api.UPLOAD_DIR = temp_dir
+            try:
+                with self.assertRaises(HTTPException) as context:
+                    asyncio.run(
+                        draft_packing_compare_api.process_draft_packing_compare(
+                            draft_file=[
+                                FakeUpload("origin-a.pdf"),
+                                FakeUpload("origin-b.txt"),
+                            ],
+                            packing_file=[FakeUpload("packing-a.pdf")],
+                            output_dir=None,
+                        )
+                    )
+            finally:
+                draft_packing_compare_api.UPLOAD_DIR = original_upload_dir
+
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertIn("产地证PDF 仅支持 .pdf", context.exception.detail)
 
     def test_jane_bom_summary_returns_sanitized_500_detail(self):
         original_upload_dir = jane_bom_summary_api.UPLOAD_DIR
