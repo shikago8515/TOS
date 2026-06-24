@@ -3,6 +3,7 @@
   "port": 3003,
   "token": "local-shipping-automation-72fd26f0f3b54db49c619bbda2be0f8f",
   "loginUrl": "https://network.infornexus.com",
+  "autoAddSearchUrl": "https://network.infornexus.com/en/trade/Search.jsp?___bounce=1&userAction=search&unifiedUser=true&TradeSearchCriteria_newSearchParams_searchText=&refSearchUsed=true#searchResults",
   "browser": "chromium",
   "headless": false,
   "slowMo": 40,

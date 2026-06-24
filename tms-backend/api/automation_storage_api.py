@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from typing import Any
 from urllib.parse import quote
@@ -37,6 +38,7 @@ from utils.mysql_store import (
 
 
 router = APIRouter(prefix="/automation", tags=["Automation Storage"])
+logger = logging.getLogger(__name__)
 
 INFOR_NEXUS_SHARED_CREDENTIAL_IDS = (
     "shipping-automation",
@@ -225,19 +227,24 @@ async def create_run(
     })
 
     files: list[dict[str, Any]] = []
+    warnings: list[str] = []
     if source_file is not None and source_file.filename:
-        files.append(await _store_upload_file(
+        stored_file = await _try_store_upload_file(
             run_id=run_id,
             automation_id=automation_id,
             upload=source_file,
             file_role="source_excel",
             bucket_key="run_files",
-        ))
+            warnings=warnings,
+        )
+        if stored_file:
+            files.append(stored_file)
 
     return {
         "ok": True,
         "run": _run_payload(row),
         "files": files,
+        "warnings": warnings,
     }
 
 
@@ -254,16 +261,22 @@ async def finish_run(run_id: str, payload: RunUpdatePayload) -> dict[str, Any]:
         datetime.utcnow(),
     )
     files: list[dict[str, Any]] = []
+    warnings: list[str] = []
     if payload.result is not None:
-        files.append(_store_result_json(run_id, row["automation_id"], payload.result))
+        result_file = _try_store_result_json(run_id, row["automation_id"], payload.result, warnings)
+        if result_file:
+            files.append(result_file)
 
     for file_payload in payload.resultFiles:
-        files.append(_store_remote_result_file(run_id, row["automation_id"], file_payload))
+        result_file = _try_store_remote_result_file(run_id, row["automation_id"], file_payload, warnings)
+        if result_file:
+            files.append(result_file)
 
     return {
         "ok": True,
         "run": _run_payload(row),
         "files": files,
+        "warnings": warnings,
     }
 
 
@@ -371,6 +384,57 @@ def _run_payload(row: dict[str, Any]) -> dict[str, Any]:
         "createdAt": _format_datetime(row.get("created_at")),
         "updatedAt": _format_datetime(row.get("updated_at")),
     }
+
+
+async def _try_store_upload_file(
+    *,
+    run_id: str,
+    automation_id: str,
+    upload: UploadFile,
+    file_role: str,
+    bucket_key: str,
+    warnings: list[str],
+) -> dict[str, Any] | None:
+    try:
+        return await _store_upload_file(
+            run_id=run_id,
+            automation_id=automation_id,
+            upload=upload,
+            file_role=file_role,
+            bucket_key=bucket_key,
+        )
+    except Exception:
+        logger.exception("Failed to store automation run upload file.")
+        warnings.append("File storage is unavailable; run record was kept without attached source file.")
+        return None
+
+
+def _try_store_result_json(
+    run_id: str,
+    automation_id: str,
+    result: Any,
+    warnings: list[str],
+) -> dict[str, Any] | None:
+    try:
+        return _store_result_json(run_id, automation_id, result)
+    except Exception:
+        logger.exception("Failed to store automation run result JSON.")
+        warnings.append("File storage is unavailable; run result was kept without attached result JSON.")
+        return None
+
+
+def _try_store_remote_result_file(
+    run_id: str,
+    automation_id: str,
+    file_payload: RunFilePayload,
+    warnings: list[str],
+) -> dict[str, Any] | None:
+    try:
+        return _store_remote_result_file(run_id, automation_id, file_payload)
+    except Exception:
+        logger.exception("Failed to store automation run remote result file.")
+        warnings.append("File storage is unavailable; run result was kept without one attached file.")
+        return None
 
 
 async def _store_upload_file(
