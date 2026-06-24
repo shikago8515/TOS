@@ -14,7 +14,6 @@ export type TmsFinanceProcessId = 'internal-reconciliation' | 'work-sales'
 export interface TmsFinanceProcessOption {
   id: TmsFinanceProcessId
   label: string
-  subtitle: string
   badge: string
   icon: string
   requiredGroups: number
@@ -31,8 +30,7 @@ export interface TmsFinanceProcessOption {
 export const tmsFinanceProcessOptions: readonly TmsFinanceProcessOption[] = [
   {
     id: 'internal-reconciliation',
-    label: '内销对账表数据提取',
-    subtitle: 'Sample/Bulk 来源文件 → 内销对账大表尾部追加',
+    label: '内销对账单数据写入',
     badge: '2 组必传',
     icon: 'database',
     requiredGroups: 2,
@@ -47,8 +45,7 @@ export const tmsFinanceProcessOptions: readonly TmsFinanceProcessOption[] = [
   },
   {
     id: 'work-sales',
-    label: 'Work Sales 数据写入',
-    subtitle: 'BULK Sales 导出表 → 写入 TURNOVER Turnover Details',
+    label: 'Turnover数据写入',
     badge: '2 组必传',
     icon: 'bar-chart',
     requiredGroups: 2,

@@ -1051,6 +1051,8 @@ const staticTextTranslations: Record<string, string> = {
   '修复浏览器/服务器模式仍显示桌面安装包更新入口和诊断包按钮的问题。':
     'Fixed browser/server mode still showing desktop installer update controls and the diagnostics package button.',
   TMS财务表格数据处理: 'TMS Finance Spreadsheet Processing',
+  内销对账单数据写入: 'Internal Reconciliation Data Fill',
+  Turnover数据写入: 'Turnover Data Fill',
   'Sample/Bulk 来源文件 → 内销对账大表尾部追加':
     'Sample/Bulk Source Files -> Append to Internal Reconciliation Workbook',
   'BULK Sales 导出表 → TURNOVER Turnover Details 尾部追加':
@@ -1063,11 +1065,13 @@ const staticTextTranslations: Record<string, string> = {
   '追加中...': 'Appending...',
   '写入中...': 'Filling...',
   'BULK Sales 导出表': 'BULK Sales Export',
+  'iPLEX 导出表': 'iPLEX Export Workbook',
   '上传从 iPlex 导出的 bulk sales 表，系统会读取对应列追加到 TURNOVER':
     'Upload the bulk sales export from iPlex; the system reads matching columns and appends them to TURNOVER.',
   '上传从 iPlex 导出的 bulk sales 表，系统会读取对应列写入 TURNOVER':
     'Upload the bulk sales export from iPlex; the system reads matching columns and fills TURNOVER.',
   'TURNOVER 目标表': 'TURNOVER Target Workbook',
+  'Turnover Excel': 'Turnover Workbook',
   '上传要追加 Turnover Details 明细的 TURNOVER 工作簿':
     'Upload the TURNOVER workbook that will receive Turnover Details rows.',
   '上传要重建 Turnover Details 明细的 TURNOVER 工作簿':
@@ -1085,6 +1089,8 @@ const staticTextTranslations: Record<string, string> = {
     'Upload the Sample/Bulk source files and internal reconciliation workbook first.',
   '请先上传 BULK Sales 导出表。': 'Upload the BULK Sales export first.',
   '请先上传 TURNOVER 目标表。': 'Upload the TURNOVER target workbook first.',
+  '请先上传 iPLEX 导出表。': 'Upload the iPLEX export workbook first.',
+  '请先上传 Turnover Excel。': 'Upload the Turnover workbook first.',
   内销对账表数据提取: 'Internal Reconciliation Data Extraction',
   WorkSales数据追加: 'Work Sales Data Append',
   'Work Sales 数据追加': 'Work Sales Data Append',

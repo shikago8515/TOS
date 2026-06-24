@@ -2,7 +2,7 @@ import type { ProcessSummaryItem } from '../../shared/process/processHistory'
 import type { TmsFinanceWorkSalesResponse } from './tmsFinanceWorkSalesApi'
 
 export const tmsFinanceWorkSalesModuleId = 'excel-tms-finance-work-sales'
-export const tmsFinanceWorkSalesModuleName = 'Work Sales 数据写入'
+export const tmsFinanceWorkSalesModuleName = 'Turnover数据写入'
 
 export function buildTmsFinanceWorkSalesSummary(
   response: TmsFinanceWorkSalesResponse,

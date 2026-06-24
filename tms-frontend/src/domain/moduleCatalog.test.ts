@@ -117,13 +117,16 @@ describe('moduleCatalog', () => {
 
     expect(getLocalizedModuleTitle(invoiceModule, 'zh-CN')).toBe('Jason / 发票 PDF 重排序')
     expect(getLocalizedModuleTitle(invoiceModule, 'en-US')).toBe('Jason / Invoice PDF Reorder')
-    expect(getLocalizedModuleTitle(internalReconciliationModule, 'zh-CN')).toBe('内销对账表数据提取')
+    expect(getLocalizedModuleTitle(internalReconciliationModule, 'zh-CN')).toBe('内销对账单数据写入')
     expect(getLocalizedModuleTitle(internalReconciliationModule, 'en-US')).toBe(
-      'Internal Reconciliation Data Extraction',
+      'Internal Reconciliation Data Fill',
     )
-    expect(getLocalizedModuleTitle(workSalesModule, 'zh-CN')).toBe('Work Sales 数据写入')
-    expect(getLocalizedModuleTitle(workSalesModule, 'en-US')).toBe('Work Sales Data Fill')
-    expect(getLocalizedModuleTitle(workSalesModule, 'en-US')).not.toBe(workSalesModule.navLabelEn)
+    expect(internalReconciliationModule.navLabel).toBe('内销对账单数据写入')
+    expect(internalReconciliationModule.navLabelEn).toBe('Internal Reconciliation Data Fill')
+    expect(getLocalizedModuleTitle(workSalesModule, 'zh-CN')).toBe('Turnover数据写入')
+    expect(getLocalizedModuleTitle(workSalesModule, 'en-US')).toBe('Turnover Data Fill')
+    expect(workSalesModule.navLabel).toBe('Turnover数据写入')
+    expect(workSalesModule.navLabelEn).toBe('Turnover Data Fill')
     expect(getLocalizedModuleTitle(iplexModule, 'zh-CN')).toBe('数据核对')
     expect(getLocalizedModuleTitle(iplexModule, 'en-US')).toBe('Data Compare')
     expect(getLocalizedModuleTitle(ericModule, 'zh-CN')).toBe('数据处理')
