@@ -6,7 +6,6 @@ import AdidasMaterialsPage from '../pages/adidas-materials/AdidasMaterialsPage.v
 import BrowserPluginsPage from '../pages/browser-plugins/BrowserPluginsPage.vue'
 import DraftPackingComparePage from '../pages/draft-packing-compare/DraftPackingComparePage.vue'
 import EricPage from '../pages/eric/EricPage.vue'
-import EricInfornexusPage from '../pages/eric-infornexus/EricInfornexusPage.vue'
 import HomePage from '../pages/home/HomePage.vue'
 import IplexDualTableComparePage from '../pages/iplex-dual-table-compare/IplexDualTableComparePage.vue'
 import InfornexusAutoAddPage from '../pages/infornexus-auto-add/InfornexusAutoAddPage.vue'
@@ -49,7 +48,7 @@ const routeComponents: Partial<Record<string, Component>> = {
   'tms-finance-work-sales': TmsFinanceInternalReconciliationPage,
   'iplex-dual-table-compare': IplexDualTableComparePage,
   'jane-sap': JaneSapPage,
-  'eric-infornexus': EricInfornexusPage,
+  'eric-infornexus': InfornexusAutoAddPage,
   'sophia-tina': SophiaTinaPage,
   'browser-plugins': BrowserPluginsPage,
   'web-automation': WebAutomationPage,

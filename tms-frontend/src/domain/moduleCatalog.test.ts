@@ -87,7 +87,7 @@ describe('moduleCatalog', () => {
     )
   })
 
-  it('shows PDF compare directly under Jessica after reconciliation', () => {
+  it('shows origin certificate compare directly under Jessica after reconciliation', () => {
     const draftPackingModule = getModuleById('draft-packing-compare')
     const jessicaModules = getModulesByGroup('jessica')
     const legacyPdfModules = getModulesByGroup('pdf-data-compare')
@@ -97,8 +97,9 @@ describe('moduleCatalog', () => {
       group: 'jessica',
       path: '/draft-packing-compare',
       routeName: 'draft-packing-compare',
-      title: 'PDF核对',
-      navLabel: 'PDF核对',
+      title: '产地证核对',
+      navLabel: '产地证核对',
+      navLabelEn: 'Certificate of Origin Compare',
     })
     expect(moduleIds).toContain('draft-packing-compare')
     expect(legacyPdfModules.map((module) => module.id)).not.toContain('draft-packing-compare')
@@ -110,6 +111,9 @@ describe('moduleCatalog', () => {
     const internalReconciliationModule = getModuleById('tms-finance-internal-reconciliation')
     const workSalesModule = getModuleById('tms-finance-work-sales')
     const iplexModule = getModuleById('iplex-dual-table-compare')
+    const ericModule = getModuleById('eric')
+    const jesscaModule = getModuleById('jessca')
+    const draftPackingModule = getModuleById('draft-packing-compare')
 
     expect(getLocalizedModuleTitle(invoiceModule, 'zh-CN')).toBe('Jason / 发票 PDF 重排序')
     expect(getLocalizedModuleTitle(invoiceModule, 'en-US')).toBe('Jason / Invoice PDF Reorder')
@@ -122,6 +126,14 @@ describe('moduleCatalog', () => {
     expect(getLocalizedModuleTitle(workSalesModule, 'en-US')).not.toBe(workSalesModule.navLabelEn)
     expect(getLocalizedModuleTitle(iplexModule, 'zh-CN')).toBe('数据核对')
     expect(getLocalizedModuleTitle(iplexModule, 'en-US')).toBe('Data Compare')
+    expect(getLocalizedModuleTitle(ericModule, 'zh-CN')).toBe('数据处理')
+    expect(getLocalizedModuleTitle(ericModule, 'en-US')).toBe('Data Processing')
+    expect(getLocalizedModuleTitle(jesscaModule, 'zh-CN')).toBe('Invoice 核对')
+    expect(getLocalizedModuleTitle(jesscaModule, 'en-US')).toBe('Invoice Compare')
+    expect(getLocalizedModuleTitle(draftPackingModule, 'zh-CN')).toBe('产地证核对')
+    expect(getLocalizedModuleTitle(draftPackingModule, 'en-US')).toBe(
+      'Certificate of Origin Compare',
+    )
   })
 
   it('exposes iPlex dual table compare under Eric Excel tools', () => {
