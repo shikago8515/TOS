@@ -19,7 +19,7 @@ Recovered entry files:
 - `assets/index-COwNHm1K.js`
 - `assets/index-eQdTsAfm.css`
 
-Known routes from the recovered bundle:
+Historical routes from the recovered bundle:
 
 - `/` - 首页
 - `/jessca` - 对账核对
@@ -32,6 +32,8 @@ Known routes from the recovered bundle:
 - `/module-a` - 模块 A
 - `/module-b` - 模块 B
 - `/settings` - 系统设置
+
+当前源码路由以 `tms-frontend/src/domain/moduleCatalog.ts` 和 `tms-frontend/src/app/router.ts` 为准。当前已接入的源码入口包括 `/jessca`、`/draft-packing-compare`、`/jason/pdf-reorder`、`/tms-finance-internal-reconciliation`、`/tms-finance-work-sales`、`/iplex/dual-table-compare`、`/jane-infornexus`、`/eric-infornexus`、`/web-automation/scenarios/shipping-automation`、`/web-automation/scenarios/xinlongtai-shipping-automation`、`/web-automation/scenarios/po-auto-download` 和 `/release-updates` 等。旧 `/browser-plugins` 与 `/jessica-infornexus` 只保留兼容重定向；`/module-a`、`/module-b` 不再是当前模块目录入口。
 
 ## Phases
 

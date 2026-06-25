@@ -29,6 +29,9 @@ processing pages.
   and history module ids.
 - Do not change backend APIs, upload field names, route schema, or Electron
   APIs for visual-only parity work.
+- Internal reconciliation is an append/fill workflow: keep Sample/Bulk source
+  uploads separate from the target workbook, and preserve rules such as leaving
+  promotion/extra fee fields blank when backend logic requires it.
 
 ## Verification
 
@@ -36,5 +39,7 @@ processing pages.
   `Sample/Bulk 来源文件`, `内销对账单`, and `开始回填`.
 - `#/tms-finance-work-sales` shows Work Sales labels:
   `iPlix 导出 Excel`, `补充参考表`, and `开始提取`.
+- Backend Work Sales changes should be checked with a real bulk `.XLS` and an
+  empty TURNOVER template through `/api/tms-finance/work-sales/process`.
 - Desktop and mobile checks must confirm no horizontal scrolling, no top-bar
   overlap, and no `.tms-finance-switcher` content block.

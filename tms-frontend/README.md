@@ -31,7 +31,7 @@ npm run build
 npm run preview
 ```
 
-`npm run dev` 和 `npm run dev:server` 使用 server mode，远程后端地址来自 `.env.server` 的公开 `VITE_BACKEND_URL`。`npm run dev:local` 保留本机 FastAPI 联调入口。三者都占用 `5174`，切换模式前先停止旧 Vite 进程；根目录入口矩阵见 `../docs/engineering-entrypoints.md`。
+`npm run dev` 与 `npm run dev:local` 使用本地后端模式，默认连接本机 FastAPI `http://127.0.0.1:8000`。只有 `npm run dev:server` 使用 server mode，并读取 `.env.server` 的公开 `VITE_BACKEND_URL` 连接服务器后端。三者都占用 `5174`，切换模式前先停止旧 Vite 进程；根目录入口矩阵见 `../docs/engineering-entrypoints.md`。
 
 当前端口：
 
@@ -64,18 +64,22 @@ npm run preview
 - `/draft-packing-compare`
 - `/tms-finance-internal-reconciliation`
 - `/tms-finance-work-sales`
+- `/iplex/dual-table-compare`
 - `/web-automation`
+- `/web-automation/scenarios/shipping-automation`
+- `/web-automation/scenarios/xinlongtai-shipping-automation`
 - `/web-automation/scenarios/shipping-automation-2`
 - `/web-automation/scenarios/po-auto-download`
 - `/infornexus`
 - `/jane-sap`
+- `/jane-infornexus`
 - `/eric-infornexus`
 - `/adidas-materials`
 - `/settings`
 - `/release-updates`
 
-`placeholder` 路由使用 `src/pages/RoutePlaceholder.vue`。
-旧 `/#/it-invoice-pdf-reorder` 已作为历史链接重定向到 Jason canonical 路由 `/#/jason/pdf-reorder`。
+当前模块目录不保留隐藏 placeholder 模块；`src/pages/RoutePlaceholder.vue` 只作为路由接线异常时的开发期兜底。
+旧 `/#/it-invoice-pdf-reorder` 已作为历史链接重定向到 Jason canonical 路由 `/#/jason/pdf-reorder`。旧 `/#/browser-plugins` 和 `/#/jessica-infornexus` 已重定向到 `/#/eric-infornexus`，不再作为当前源码页面扩展。
 
 `/web-automation/scenarios/po-auto-download` 使用独立源码目录 `src/pages/po-auto-download/`，不复用通用场景页。页面上传 Excel、选择本机下载目录，并调用本机 `shipping-automation-demo` 执行器的 `/api/run-po-auto-download-file`；Infor Nexus 登录、`InvoicesView.jsp`、`InProgressInvoices` 筛选请求和后续文件下载都留在执行器模块内处理。
 

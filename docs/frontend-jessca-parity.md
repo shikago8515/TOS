@@ -40,3 +40,8 @@
 - Sophia / Jane 的 Excel 上传页应复用本轮新增的文件组、上传、预检查、结果摘要和处理历史组件。
 - 新业务页只在 `src/pages/{module}` 下保留业务差异，不重新实现上传控件。
 - API 封装必须落在页面模块或共享 API 层，页面组件不能直接散写请求 URL。
+
+## 当前维护边界
+
+- 后端 `jessca_module.py` 已承载 invoice 表头解析、参考表诊断归因和 optional packing PDF 逻辑；前端文案或上传字段调整前先核对 `/api/jessca/process` 的表单字段与返回摘要。
+- Jessica 组的产地证核对、shipping 自动化和 PO 自动下载已是独立侧边栏入口，不要在 Jessca 页面内增加跨流程入口卡片。
