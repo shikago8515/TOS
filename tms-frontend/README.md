@@ -64,7 +64,6 @@ npm run preview
 - `/draft-packing-compare`
 - `/tms-finance-internal-reconciliation`
 - `/tms-finance-work-sales`
-- `/browser-plugins`
 - `/web-automation`
 - `/web-automation/scenarios/shipping-automation-2`
 - `/web-automation/scenarios/po-auto-download`

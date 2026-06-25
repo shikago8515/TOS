@@ -123,6 +123,20 @@ describe('router', () => {
     expect(route?.components?.default).not.toBe(RoutePlaceholder)
   })
 
+  it('redirects the removed Jessica Infornexus route to Eric Infornexus', async () => {
+    const { router } = await import('./router')
+    const route = router.getRoutes().find((entry) => entry.path === '/jessica-infornexus')
+
+    expect(route?.redirect).toBe('/eric-infornexus')
+  })
+
+  it('redirects the removed browser plugins route to Eric Infornexus', async () => {
+    const { router } = await import('./router')
+    const route = router.getRoutes().find((entry) => entry.path === '/browser-plugins')
+
+    expect(route?.redirect).toBe('/eric-infornexus')
+  })
+
   it('routes Xinlongtai shipping automation to its standalone scenario page component', async () => {
     const { router } = await import('./router')
     const route = router

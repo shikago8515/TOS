@@ -55,7 +55,7 @@ export const homeMetricTiles = [
     key: 'validation',
     label: '测试模块',
     value: String(validationModules.length),
-    detail: '浏览器插件 / 网页自动化 / ...',
+    detail: '网页自动化 / Infornexus / ...',
     icon: 'workflow',
     tone: 'orange' as const,
     delta: undefined,
@@ -83,7 +83,6 @@ export const homeShortcutModuleIds = [
   'jane-outbound-compare',
   'eric',
   'jason-pdf-reorder',
-  'browser-plugins',
   'web-automation',
   'infornexus',
   'adidas-materials',
@@ -126,7 +125,6 @@ export const homeModuleCards: HomeModuleCard[] = allFunctionalModules.map((mod) 
     'draft-packing-compare': 'files',
     'tms-finance-internal-reconciliation': 'bar-chart',
     'tms-finance-work-sales': 'trending-up',
-    'browser-plugins': 'puzzle',
     'web-automation': 'workflow',
     infornexus: 'external-link',
     'adidas-materials': 'globe-search',
@@ -160,7 +158,7 @@ export const serviceStatusItems = [
   {
     key: 'automation',
     title: '浏览器自动化',
-    subtitle: '浏览器插件 / 网页自动化',
+    subtitle: '网页自动化 / Infornexus',
     status: '业务验证中',
     tone: 'working' as const,
   },
@@ -177,6 +175,5 @@ export const serviceStatusItems = [
 export const homeQuickActions = [
   { icon: 'plus', label: '新建任务', tone: 'green' as const, path: '/jessca' },
   { icon: 'bar-chart', label: '任务监控', tone: 'blue' as const, path: '/web-automation' },
-  { icon: 'file-search', label: '日志查看', tone: 'purple' as const, path: '/browser-plugins' },
   { icon: 'settings', label: '系统设置', tone: 'slate' as const, path: '/settings' },
 ]
