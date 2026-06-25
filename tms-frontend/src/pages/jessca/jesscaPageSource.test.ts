@@ -25,7 +25,9 @@ describe('JesscaPage source', () => {
 
     expect(uploadFieldsBlock).toContain("id: 'invoice'")
     expect(uploadFieldsBlock).toContain("id: 'reference'")
-    expect(uploadFieldsBlock).toContain("id: 'packing'")
+    expect(uploadFieldsBlock).toContain("id: 'tc-invoice'")
+    expect(uploadFieldsBlock).toContain("label: 'TC INV PDF（可多选）'")
+    expect(uploadFieldsBlock).not.toContain('Packing List PDF')
     expect(uploadFieldsBlock).not.toContain('hint:')
   })
 })

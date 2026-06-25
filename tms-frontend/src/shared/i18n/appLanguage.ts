@@ -245,6 +245,7 @@ const staticTextTranslations: Record<string, string> = {
   发票文件: 'Invoice Files',
   '发票文件（可多选）': 'Invoice Files (multiple)',
   参考表文件: 'Reference File',
+  'TC INV PDF（可多选）': 'TC INV PDF (multiple)',
   'Packing List PDF（可多选）': 'Packing List PDF (multiple)',
   TMS文件: 'TMS Files',
   'TMS 文件': 'TMS Files',

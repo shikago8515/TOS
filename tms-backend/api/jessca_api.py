@@ -98,15 +98,17 @@ def _normalize_optional_uploads(
         return []
     if isinstance(upload_or_uploads, list):
         return upload_or_uploads
+    if not hasattr(upload_or_uploads, "filename"):
+        return []
     return [upload_or_uploads]
 
 
-def _save_packing_uploads(files: List[UploadFile], work_dir: str) -> List[str]:
+def _save_tc_invoice_uploads(files: List[UploadFile], work_dir: str) -> List[str]:
     paths = []
     multiple_files = len(files) > 1
     for index, upload in enumerate(files, start=1):
-        safe_name = _validate_pdf_filename(upload.filename, "Packing List PDF")
-        prefix = f"{index}_" if multiple_files else "packing_"
+        safe_name = _validate_pdf_filename(upload.filename, "TC INV PDF")
+        prefix = f"{index}_" if multiple_files else "tc_invoice_"
         file_path = os.path.join(work_dir, f"{prefix}{safe_name}")
         copy_upload_to_path(upload, file_path)
         paths.append(file_path)
@@ -118,6 +120,7 @@ def _save_packing_uploads(files: List[UploadFile], work_dir: str) -> List[str]:
 async def process_jessca(
     invoices: List[UploadFile] = File(...),
     reference_file: UploadFile = File(...),
+    tc_invoice_file: Optional[List[UploadFile]] = File(None),
     packing_file: Optional[List[UploadFile]] = File(None),
     output_dir: Optional[str] = Form(None)
 ):
@@ -132,18 +135,21 @@ async def process_jessca(
         reference_name = _validate_excel_filename(reference_file.filename, "参考文件")
         ref_path = os.path.join(work_dir, reference_name)
         copy_upload_to_path(reference_file, ref_path)
-        packing_paths = _save_packing_uploads(
-            _normalize_optional_uploads(packing_file),
+        tc_uploads = _normalize_optional_uploads(tc_invoice_file)
+        if not tc_uploads:
+            tc_uploads = _normalize_optional_uploads(packing_file)
+        tc_invoice_paths = _save_tc_invoice_uploads(
+            tc_uploads,
             work_dir,
         )
-        packing_path = packing_paths[0] if len(packing_paths) == 1 else None
+        tc_invoice_path = tc_invoice_paths[0] if len(tc_invoice_paths) == 1 else None
 
         result = jessca_module.process_invoices(
             invoice_paths, 
             ref_path, 
             output_dir if output_dir else UPLOAD_DIR,
-            packing_path=packing_path,
-            packing_paths=packing_paths if len(packing_paths) > 1 else None,
+            tc_invoice_path=tc_invoice_path,
+            tc_invoice_paths=tc_invoice_paths if len(tc_invoice_paths) > 1 else None,
         )
         
         # 返回结果
@@ -158,9 +164,9 @@ async def process_jessca(
                 "total_items": result['total_items'],
                 "matches": result['matches'],
                 "diagnostics": result.get('diagnostics', {}),
-                "packing_count": result.get('packing_count', 0),
-                "packing_matched_count": result.get('packing_matched_count', 0),
-                "packing_issue_count": result.get('packing_issue_count', 0),
+                "tc_count": result.get('tc_count', 0),
+                "tc_matched_count": result.get('tc_matched_count', 0),
+                "tc_issue_count": result.get('tc_issue_count', 0),
                 "output_file": output_filename
             }
         else:

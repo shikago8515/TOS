@@ -6,7 +6,7 @@ import {
 export interface JesscaProcessRequest {
   invoiceFiles: File[]
   referenceFile: File
-  packingFiles?: File[]
+  tcInvoiceFiles?: File[]
 }
 
 export interface JesscaProcessResponse {
@@ -19,9 +19,9 @@ export interface JesscaProcessResponse {
   total_items?: number
   matches?: Record<string, number>
   diagnostics?: Record<string, number>
-  packing_count?: number
-  packing_matched_count?: number
-  packing_issue_count?: number
+  tc_count?: number
+  tc_matched_count?: number
+  tc_issue_count?: number
 }
 
 export async function processJesscaFiles(
@@ -34,8 +34,8 @@ export async function processJesscaFiles(
     formData.append('invoices', file)
   })
   formData.append('reference_file', request.referenceFile)
-  request.packingFiles?.forEach((file) => {
-    formData.append('packing_file', file)
+  request.tcInvoiceFiles?.forEach((file) => {
+    formData.append('tc_invoice_file', file)
   })
 
   return postFormData<JesscaProcessResponse>({

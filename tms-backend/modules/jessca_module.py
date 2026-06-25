@@ -73,7 +73,7 @@ class InvoiceDiagnostic:
 
 @dataclass(frozen=True)
 class InvoiceRecord:
-    """发票明细中可用于价格核对和 Packing List 核对的一行。"""
+    """FTY 发票明细中可用于参考表价格核对和 TC INV PDF 核对的一行。"""
 
     invoice_file: str
     invoice_number: str
@@ -83,6 +83,46 @@ class InvoiceRecord:
     style: str
     quantity: Optional[float]
     price: float
+    goods_description: str = ""
+
+
+@dataclass(frozen=True)
+class TcInvoiceExtractedPage:
+    """TC INV PDF 每页抽取出的文本和表格。"""
+
+    text: str
+    tables: List[List[List[Optional[str]]]]
+
+
+@dataclass(frozen=True)
+class TcInvoiceRecord:
+    """TC INV PDF 中按 PO/Article/Working No 提取的一行。"""
+
+    source_file: str
+    po_number: str
+    market_po: str
+    working_number: str
+    article_number: str
+    quantity: Optional[float]
+    goods_description: str
+
+
+@dataclass(frozen=True)
+class TcComparisonRow:
+    """FTY 发票源文件与 TC INV PDF 的核对结果行。"""
+
+    status: str
+    issue_detail: str
+    po_number: str
+    article: str
+    style: str
+    fty_quantity: Optional[float]
+    tc_quantity: Optional[float]
+    fty_goods_description: str
+    tc_goods_description: str
+    market_po: str
+    source_invoice: str
+    source_tc_pdf: str
 
 
 @dataclass(frozen=True)
@@ -170,6 +210,7 @@ class JesscaModule:
         invoice_number, invoice_date = self._extract_invoice_header(adapter)
         data: List[Dict[str, Any]] = []
         pending_items: List[Dict[str, Any]] = []
+        current_goods_description = ""
 
         for row_idx in range(adapter.get_row_count()):
             # 获取第一列值
@@ -185,7 +226,8 @@ class JesscaModule:
                         ),
                         'quantity': self._extract_quantity(adapter, row_idx),
                         'article': None,
-                        'price': price_val
+                        'price': price_val,
+                        'goods_description': current_goods_description,
                     })
 
             # 识别ARTICLE行
@@ -212,7 +254,8 @@ class JesscaModule:
                                 'article': item['article'],
                                 'style': style_val,
                                 'quantity': item['quantity'],
-                                'price': item['price']
+                                'price': item['price'],
+                                'goods_description': item.get('goods_description', ''),
                             })
                         elif item['price'] is not None:
                             data.append({
@@ -223,9 +266,14 @@ class JesscaModule:
                                 'article': '',
                                 'style': style_val,
                                 'quantity': item['quantity'],
-                                'price': item['price']
+                                'price': item['price'],
+                                'goods_description': item.get('goods_description', ''),
                             })
                     pending_items = []
+                    current_goods_description = ""
+
+            elif self._looks_like_invoice_goods_description(col0_val):
+                current_goods_description = self._normalize_goods_description_text(col0_val)
 
         return [
             InvoiceRecord(
@@ -237,9 +285,24 @@ class JesscaModule:
                 style=str(item.get('style') or ""),
                 quantity=item.get('quantity'),
                 price=float(item.get('price') or 0),
+                goods_description=str(item.get('goods_description') or ""),
             )
             for item in data
         ]
+
+    @staticmethod
+    def _looks_like_invoice_goods_description(value: str) -> bool:
+        text = str(value or "").strip()
+        if not text:
+            return False
+        upper_text = text.upper()
+        if upper_text.startswith(("PO", "ARTICLE", "STYLE", "MADE IN", "TOTAL")):
+            return False
+        if "PO NO" in upper_text or "QTY" in upper_text or "UNIT PRICE" in upper_text:
+            return False
+        if set(text) <= {"*"}:
+            return False
+        return bool(re.search(r"[A-Z]", upper_text))
 
     def _extract_invoice_header(self, adapter: ExcelRowAdapter) -> Tuple[str, str]:
         invoice_number = ""
@@ -672,7 +735,7 @@ class JesscaModule:
         if len(candidates) == 1 and article_price_records:
             status = STATUS_REFERENCE_STYLE_SUSPECT if packing_confirmed else STATUS_STYLE_SUSPECT
             message = (
-                "发票与 Packing List 已一致，参考表款号疑似需要维护。"
+                "FTY 发票与 TC INV PDF 已一致，参考表款号疑似需要维护。"
                 if packing_confirmed
                 else "发票 Article 和价格可匹配参考表，发票款号疑似抓取错误。"
             )
@@ -683,7 +746,7 @@ class JesscaModule:
         if len(candidates) == 1 and style_price_records:
             status = STATUS_REFERENCE_ARTICLE_SUSPECT if packing_confirmed else STATUS_ARTICLE_SUSPECT
             message = (
-                "发票与 Packing List 已一致，参考表 Article 疑似需要维护。"
+                "FTY 发票与 TC INV PDF 已一致，参考表 Article 疑似需要维护。"
                 if packing_confirmed
                 else "发票款号和价格可匹配参考表，发票 Article 疑似抓取错误。"
             )
@@ -725,7 +788,7 @@ class JesscaModule:
         suggested_price = suggested_prices[0] / 100 if len(suggested_prices) == 1 else None
         status = STATUS_REFERENCE_MULTI_CANDIDATE if packing_confirmed else STATUS_MULTI_CANDIDATE
         message = (
-            f"发票与 Packing List 已一致，两字段反查命中 {len(candidates)} 条参考记录，需维护参考表。"
+            f"FTY 发票与 TC INV PDF 已一致，两字段反查命中 {len(candidates)} 条参考记录，需维护参考表。"
             if packing_confirmed
             else f"两字段反查命中 {len(candidates)} 条参考记录，需人工确认。"
         )
@@ -858,6 +921,238 @@ class JesscaModule:
         if left is None or right is None:
             return left is right
         return abs(float(left) - float(right)) < 0.0001
+
+    @staticmethod
+    def _normalize_tc_header(value: Any) -> str:
+        return re.sub(r"[^A-Z0-9]+", "", str(value or "").upper())
+
+    @staticmethod
+    def _parse_optional_number(value: Any) -> Optional[float]:
+        if value in (None, ""):
+            return None
+        text = str(value).strip().replace(",", "")
+        if not text:
+            return None
+        try:
+            return float(text)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _normalize_goods_description_text(value: Any) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        text = re.sub(r"\(\s*HTS\s*:[^)]+\)", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bHTS\s*:\s*[0-9.]+", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s+", " ", text)
+        return text.strip(" ;,")
+
+    @staticmethod
+    def _goods_description_key(value: Any) -> str:
+        text = JesscaModule._normalize_goods_description_text(value).upper()
+        return re.sub(r"[^A-Z0-9]+", "", text)
+
+    @staticmethod
+    def _extract_tc_goods_descriptions(text: str) -> List[str]:
+        descriptions: List[str] = []
+        pattern = re.compile(
+            r"Goods Description\s+(?P<description>.*?)(?=\n(?:PO No\b|Total Quantity\b|Total Carton\b|Total Gross Weight\b|Total Net Weight\b|Net Amount\b|Invoice Total\b|For and on behalf\b|Page\s+\d+\s+of\s+\d+\b|Goods Description\b)|\Z)",
+            re.IGNORECASE | re.DOTALL,
+        )
+        for match in pattern.finditer(text or ""):
+            description = JesscaModule._normalize_goods_description_text(match.group("description"))
+            if description:
+                descriptions.append(description)
+        return descriptions
+
+    def read_tc_invoice_records(self, tc_invoice_path: str) -> List[TcInvoiceRecord]:
+        """读取 TC INV PDF 的截图字段：PO、Market PO、Working No、Article、Total Qty、Goods Description。"""
+
+        import pdfplumber
+
+        pages: List[TcInvoiceExtractedPage] = []
+        with pdfplumber.open(tc_invoice_path) as pdf:
+            for page in pdf.pages:
+                pages.append(
+                    TcInvoiceExtractedPage(
+                        text=page.extract_text(x_tolerance=1, y_tolerance=3) or "",
+                        tables=page.extract_tables() or [],
+                    )
+                )
+        return self.parse_tc_invoice_pages(pages, os.path.basename(tc_invoice_path))
+
+    def parse_tc_invoice_pages(
+        self,
+        pages: List[TcInvoiceExtractedPage],
+        source_file: str,
+    ) -> List[TcInvoiceRecord]:
+        records: List[TcInvoiceRecord] = []
+        full_text = "\n".join(page.text for page in pages)
+        descriptions = self._extract_tc_goods_descriptions(full_text)
+
+        for page in pages:
+            for table in page.tables:
+                records.extend(self._parse_tc_invoice_table(table, source_file))
+
+        if not records and full_text.strip():
+            raise ValueError("未在 TC INV PDF 中识别到 PO 明细表")
+
+        return [
+            TcInvoiceRecord(
+                source_file=record.source_file,
+                po_number=record.po_number,
+                market_po=record.market_po,
+                working_number=record.working_number,
+                article_number=record.article_number,
+                quantity=record.quantity,
+                goods_description=descriptions[index] if index < len(descriptions) else record.goods_description,
+            )
+            for index, record in enumerate(records)
+        ]
+
+    def _parse_tc_invoice_table(
+        self,
+        table: List[List[Optional[str]]],
+        source_file: str,
+    ) -> List[TcInvoiceRecord]:
+        if not table:
+            return []
+
+        header_index = -1
+        header_lookup: Dict[str, int] = {}
+        for row_index, row in enumerate(table):
+            lookup = {
+                self._normalize_tc_header(cell): col_index
+                for col_index, cell in enumerate(row)
+                if self._normalize_tc_header(cell)
+            }
+            if {"PONO", "WORKINGNO", "ARTICLENO", "TOTALQTY"}.issubset(lookup.keys()):
+                header_index = row_index
+                header_lookup = lookup
+                break
+
+        if header_index < 0:
+            return []
+
+        records: List[TcInvoiceRecord] = []
+        po_index = header_lookup["PONO"]
+        market_po_index = header_lookup.get("MARKETPONUMBER", header_lookup.get("MARKETPO"))
+        working_index = header_lookup["WORKINGNO"]
+        article_index = header_lookup["ARTICLENO"]
+        quantity_index = header_lookup["TOTALQTY"]
+
+        for row in table[header_index + 1:]:
+            po_number = self._cell_text(row, po_index)
+            working_number = self._cell_text(row, working_index)
+            article_number = self._cell_text(row, article_index)
+            if not po_number or not working_number or not article_number:
+                continue
+            records.append(
+                TcInvoiceRecord(
+                    source_file=source_file,
+                    po_number=po_number,
+                    market_po=self._cell_text(row, market_po_index) if market_po_index is not None else "",
+                    working_number=working_number,
+                    article_number=article_number,
+                    quantity=self._parse_optional_number(self._cell_text(row, quantity_index)),
+                    goods_description="",
+                )
+            )
+        return records
+
+    @staticmethod
+    def _cell_text(row: List[Optional[str]], index: Optional[int]) -> str:
+        if index is None or index >= len(row):
+            return ""
+        value = row[index]
+        return str(value or "").strip()
+
+    def _build_tc_confirmed_invoice_keys(
+        self,
+        invoice_records: List[InvoiceRecord],
+        tc_records: List[TcInvoiceRecord],
+    ) -> Set[Tuple[str, str, str, int]]:
+        tc_by_key: Dict[Tuple[str, str, str], List[TcInvoiceRecord]] = defaultdict(list)
+        for record in tc_records:
+            tc_by_key[self._packing_key(record.po_number, record.article_number, record.working_number)].append(record)
+
+        confirmed_keys: Set[Tuple[str, str, str, int]] = set()
+        for invoice in invoice_records:
+            key = self._packing_key(invoice.po_number, invoice.article, invoice.style)
+            candidates = tc_by_key.get(key, [])
+            if not candidates:
+                continue
+            comparison = self._build_tc_comparison_row(invoice, candidates[0])
+            if comparison.status == STATUS_MATCHED:
+                confirmed_keys.add(
+                    self._invoice_diagnostic_key(
+                        invoice.invoice_file,
+                        invoice.article,
+                        invoice.style,
+                        invoice.price,
+                    )
+                )
+        return confirmed_keys
+
+    def build_tc_invoice_comparison(
+        self,
+        invoice_records: List[InvoiceRecord],
+        tc_records: List[TcInvoiceRecord],
+    ) -> List[TcComparisonRow]:
+        """按 PO + Article + Style/Working No 核对 FTY 发票源文件与 TC INV PDF。"""
+
+        tc_by_key: Dict[Tuple[str, str, str], List[TcInvoiceRecord]] = defaultdict(list)
+        for record in tc_records:
+            tc_by_key[self._packing_key(record.po_number, record.article_number, record.working_number)].append(record)
+
+        rows: List[TcComparisonRow] = []
+        for invoice in invoice_records:
+            key = self._packing_key(invoice.po_number, invoice.article, invoice.style)
+            candidates = tc_by_key.get(key, [])
+            tc_record = candidates.pop(0) if candidates else None
+            rows.append(self._build_tc_comparison_row(invoice, tc_record))
+
+        for remaining_records in tc_by_key.values():
+            for tc_record in remaining_records:
+                rows.append(self._build_tc_comparison_row(None, tc_record))
+
+        return rows
+
+    def _build_tc_comparison_row(
+        self,
+        invoice: Optional[InvoiceRecord],
+        tc_record: Optional[TcInvoiceRecord],
+    ) -> TcComparisonRow:
+        issues: List[str] = []
+        if invoice is None and tc_record is not None:
+            issues.append("FTY 发票缺少该 PO/Article/Working No")
+        elif tc_record is None and invoice is not None:
+            issues.append("TC INV PDF 缺少该 PO/Article/Style")
+        elif invoice is not None and tc_record is not None:
+            if not self._same_number(invoice.quantity, tc_record.quantity):
+                issues.append(f"QTY 不一致：FTY={invoice.quantity or '-'}；TC={tc_record.quantity or '-'}")
+            if self._goods_description_key(invoice.goods_description) != self._goods_description_key(tc_record.goods_description):
+                issues.append(
+                    "Goods Description 不一致："
+                    f"FTY={invoice.goods_description or '-'}；TC={tc_record.goods_description or '-'}"
+                )
+
+        status = "一致" if not issues else ("需核对" if invoice and tc_record else "缺失")
+        return TcComparisonRow(
+            status=status,
+            issue_detail="；".join(issues),
+            po_number=(invoice.po_number if invoice else tc_record.po_number if tc_record else ""),
+            article=(invoice.article if invoice else tc_record.article_number if tc_record else ""),
+            style=(invoice.style if invoice else tc_record.working_number if tc_record else ""),
+            fty_quantity=invoice.quantity if invoice else None,
+            tc_quantity=tc_record.quantity if tc_record else None,
+            fty_goods_description=invoice.goods_description if invoice else "",
+            tc_goods_description=tc_record.goods_description if tc_record else "",
+            market_po=tc_record.market_po if tc_record else "",
+            source_invoice=invoice.invoice_file if invoice else "",
+            source_tc_pdf=tc_record.source_file if tc_record else "",
+        )
 
     def read_packing_list_records(self, packing_path: str) -> List[PackingListRecord]:
         """读取 Packing List PDF，复用 Draft/Packing 模块的表格解析能力。"""
@@ -1038,8 +1333,8 @@ class JesscaModule:
                                 invoice_file_paths: List[str],
                                 ref_df: pd.DataFrame,
                                 output_path: str,
-                                packing_comparison_rows: Optional[List[PackingComparisonRow]] = None,
-                                packing_confirmed_invoice_keys: Optional[Set[Tuple[str, str, str, int]]] = None) -> Dict[str, Any]:
+                                tc_comparison_rows: Optional[List[TcComparisonRow]] = None,
+                                tc_confirmed_invoice_keys: Optional[Set[Tuple[str, str, str, int]]] = None) -> Dict[str, Any]:
         """保存 Excel 结果，包含汇总表"""
 
         wb = openpyxl.Workbook()
@@ -1096,19 +1391,19 @@ class JesscaModule:
             invoice_file_paths,
             ref_df,
             thin_border,
-            packing_confirmed_invoice_keys=packing_confirmed_invoice_keys,
+            packing_confirmed_invoice_keys=tc_confirmed_invoice_keys,
         )
 
-        packing_stats = {
-            'packing_count': 0,
-            'packing_matched_count': 0,
-            'packing_issue_count': 0,
+        tc_stats = {
+            'tc_count': 0,
+            'tc_matched_count': 0,
+            'tc_issue_count': 0,
         }
-        if packing_comparison_rows is not None:
-            ws_packing = wb.create_sheet("Packing List核对")
-            packing_stats = self._write_packing_list_comparison_sheet(
-                ws_packing,
-                packing_comparison_rows,
+        if tc_comparison_rows is not None:
+            ws_tc = wb.create_sheet("TC INV核对")
+            tc_stats = self._write_tc_invoice_comparison_sheet(
+                ws_tc,
+                tc_comparison_rows,
             )
 
         # 自动调整列宽
@@ -1159,7 +1454,110 @@ class JesscaModule:
             'missing_count': summary_stats['missing_count'],
             'data_count': summary_stats['data_count'],
             'diagnostics': summary_stats['diagnostics'],
-            **packing_stats,
+            **tc_stats,
+        }
+
+    def _write_tc_invoice_comparison_sheet(
+        self,
+        ws: openpyxl.worksheet.worksheet.Worksheet,
+        rows: List[TcComparisonRow],
+    ) -> Dict[str, int]:
+        headers = [
+            "Check Status",
+            "Issue Detail",
+            "PO No",
+            "Article No",
+            "Working/Style No",
+            "FTY QTY",
+            "TC Total Qty",
+            "FTY Goods Description",
+            "TC Goods Description",
+            "Market PO",
+            "Source FTY Invoice",
+            "Source TC PDF",
+        ]
+        thin_border = create_thin_border()
+        title_end_col = openpyxl.utils.get_column_letter(len(headers))
+        ws.merge_cells(f"A1:{title_end_col}1")
+        title_cell = ws["A1"]
+        title_cell.value = f"TC INV 核对结果 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        title_cell.font = Font(size=14, bold=True, color="FF1F2937")
+        title_cell.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[1].height = 28
+
+        for col_idx, header in enumerate(headers, 1):
+            cell = ws.cell(row=2, column=col_idx, value=header)
+            cell.font = Font(bold=True, color="FFFFFFFF", size=11)
+            cell.fill = PatternFill(start_color="FF4472C4", end_color="FF4472C4", fill_type="solid")
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = thin_border
+
+        matched_count = 0
+        issue_count = 0
+        status_fills = {
+            "一致": PatternFill(start_color="FFDDFFDD", end_color="FFDDFFDD", fill_type="solid"),
+            "需核对": PatternFill(start_color="FFFFDDDD", end_color="FFFFDDDD", fill_type="solid"),
+            "缺失": PatternFill(start_color="FFFFDDDD", end_color="FFFFDDDD", fill_type="solid"),
+        }
+        for row_idx, row in enumerate(rows, 3):
+            values = [
+                row.status,
+                row.issue_detail,
+                row.po_number,
+                row.article,
+                row.style,
+                row.fty_quantity,
+                row.tc_quantity,
+                row.fty_goods_description,
+                row.tc_goods_description,
+                row.market_po,
+                row.source_invoice,
+                row.source_tc_pdf,
+            ]
+            if row.status == "一致":
+                matched_count += 1
+            else:
+                issue_count += 1
+            for col_idx, value in enumerate(values, 1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                cell.border = thin_border
+                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=col_idx in {2, 8, 9})
+                if col_idx == 1:
+                    fill = status_fills.get(row.status)
+                    if fill:
+                        cell.fill = fill
+                    cell.font = Font(bold=True)
+
+        self._adjust_column_widths(
+            ws,
+            {
+                1: 16,
+                2: 52,
+                3: 16,
+                4: 14,
+                5: 20,
+                8: 52,
+                9: 52,
+                11: 42,
+                12: 42,
+            },
+            {
+                1: 12,
+                2: 24,
+                3: 12,
+                4: 12,
+                5: 14,
+                6: 10,
+                7: 10,
+                8: 24,
+                9: 24,
+            },
+        )
+        ws.freeze_panes = "A3"
+        return {
+            "tc_count": len(rows),
+            "tc_matched_count": matched_count,
+            "tc_issue_count": issue_count,
         }
 
     def _write_packing_list_comparison_sheet(
@@ -1474,6 +1872,8 @@ class JesscaModule:
         output_dir: str = None,
         packing_path: Optional[str] = None,
         packing_paths: Optional[List[str]] = None,
+        tc_invoice_path: Optional[str] = None,
+        tc_invoice_paths: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """主处理流程"""
 
@@ -1484,9 +1884,9 @@ class JesscaModule:
             'total_items': 0,
             'matches': {'一致': 0, '不一致': 0, '未找到': 0},
             'diagnostics': {},
-            'packing_count': 0,
-            'packing_matched_count': 0,
-            'packing_issue_count': 0,
+            'tc_count': 0,
+            'tc_matched_count': 0,
+            'tc_issue_count': 0,
             'output_path': None,
             'logs': []
         }
@@ -1577,39 +1977,43 @@ class JesscaModule:
                 output_dir = os.path.dirname(ref_path)
 
             ensure_dir(output_dir)
-            packing_comparison_rows: Optional[List[PackingComparisonRow]] = None
-            packing_confirmed_invoice_keys: Set[Tuple[str, str, str, int]] = set()
-            effective_packing_paths = packing_paths if packing_paths is not None else (
-                [packing_path] if packing_path else []
+            tc_comparison_rows: Optional[List[TcComparisonRow]] = None
+            tc_confirmed_invoice_keys: Set[Tuple[str, str, str, int]] = set()
+            effective_tc_paths = tc_invoice_paths if tc_invoice_paths is not None else (
+                [tc_invoice_path] if tc_invoice_path else []
             )
-            if effective_packing_paths:
-                log(f"\n📦 正在读取 {len(effective_packing_paths)} 个 Packing List PDF...")
-                packing_records: List[PackingListRecord] = []
-                for index, current_packing_path in enumerate(effective_packing_paths, start=1):
-                    packing_filename = os.path.basename(current_packing_path)
-                    log(f"[{index}/{len(effective_packing_paths)}] 读取 Packing List：{packing_filename}")
-                    packing_records.extend(self.read_packing_list_records(current_packing_path))
-                packing_comparison_rows = self.build_packing_list_comparison(
-                    all_invoice_records,
-                    packing_records,
+            if not effective_tc_paths:
+                effective_tc_paths = packing_paths if packing_paths is not None else (
+                    [packing_path] if packing_path else []
                 )
-                packing_confirmed_invoice_keys = self._build_packing_confirmed_invoice_keys(
+            if effective_tc_paths:
+                log(f"\n📄 正在读取 {len(effective_tc_paths)} 个 TC INV PDF...")
+                tc_records: List[TcInvoiceRecord] = []
+                for index, current_tc_path in enumerate(effective_tc_paths, start=1):
+                    tc_filename = os.path.basename(current_tc_path)
+                    log(f"[{index}/{len(effective_tc_paths)}] 读取 TC INV：{tc_filename}")
+                    tc_records.extend(self.read_tc_invoice_records(current_tc_path))
+                tc_comparison_rows = self.build_tc_invoice_comparison(
                     all_invoice_records,
-                    packing_records,
+                    tc_records,
                 )
-                result['packing_count'] = len(packing_comparison_rows)
-                result['packing_matched_count'] = sum(1 for row in packing_comparison_rows if row.status == "一致")
-                result['packing_issue_count'] = result['packing_count'] - result['packing_matched_count']
+                tc_confirmed_invoice_keys = self._build_tc_confirmed_invoice_keys(
+                    all_invoice_records,
+                    tc_records,
+                )
+                result['tc_count'] = len(tc_comparison_rows)
+                result['tc_matched_count'] = sum(1 for row in tc_comparison_rows if row.status == "一致")
+                result['tc_issue_count'] = result['tc_count'] - result['tc_matched_count']
                 log(
-                    "✅ Packing List 核对完成："
-                    f"{result['packing_count']} 行，异常 {result['packing_issue_count']} 条"
+                    "✅ TC INV 核对完成："
+                    f"{result['tc_count']} 行，异常 {result['tc_issue_count']} 条"
                 )
 
-            if packing_confirmed_invoice_keys:
+            if tc_confirmed_invoice_keys:
                 result_df, matches = self.update_reference_table(
                     ref_df,
                     all_invoice_data,
-                    packing_confirmed_invoice_keys=packing_confirmed_invoice_keys,
+                    packing_confirmed_invoice_keys=tc_confirmed_invoice_keys,
                 )
                 result['matches'] = matches
 
@@ -1629,16 +2033,16 @@ class JesscaModule:
                 invoice_file_paths,
                 ref_df,
                 output_path,
-                packing_comparison_rows=packing_comparison_rows,
-                packing_confirmed_invoice_keys=packing_confirmed_invoice_keys,
+                tc_comparison_rows=tc_comparison_rows,
+                tc_confirmed_invoice_keys=tc_confirmed_invoice_keys,
             )
 
             result['output_path'] = output_path
             result['save_result'] = save_result
             result['diagnostics'] = save_result.get('diagnostics', {})
-            result['packing_count'] = save_result.get('packing_count', result['packing_count'])
-            result['packing_matched_count'] = save_result.get('packing_matched_count', result['packing_matched_count'])
-            result['packing_issue_count'] = save_result.get('packing_issue_count', result['packing_issue_count'])
+            result['tc_count'] = save_result.get('tc_count', result['tc_count'])
+            result['tc_matched_count'] = save_result.get('tc_matched_count', result['tc_matched_count'])
+            result['tc_issue_count'] = save_result.get('tc_issue_count', result['tc_issue_count'])
 
             log(f"\n{'='*80}")
             log(f"✅ 批量核对完成！")
