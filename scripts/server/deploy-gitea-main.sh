@@ -68,7 +68,13 @@ else
 fi
 
 log "Running pre-deploy checks"
-npm run check:quick
+npm run test:server-package
+npm --prefix tms-frontend run typecheck
+npm --prefix tms-frontend run test
+(
+  cd tms-backend
+  ${PYTHON:-python3} -m unittest discover tests/ -v
+)
 npm run server:package:dry-run
 
 log "Creating standard server update package"

@@ -212,7 +212,7 @@ bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
 
 - 从 `http://172.16.48.208:3001/luenthai-ai/TOS.git` 拉取 `main` 到 `~/TOS-source`。
 - 拒绝把 `~/TOS` 当成 Git 仓库更新，避免覆盖服务器专用的 `docker-compose.tos.yml`、`authelia/`、Dockerfile 和备份目录。
-- 运行 `npm run ci:install`、`npm run check:quick`、`npm run server:package:dry-run` 和 `npm run server:package`。
+- 运行服务器部署专用检查：`npm run test:server-package`、前端 `typecheck/test`、后端 `unittest`、`npm run server:package:dry-run` 和 `npm run server:package`。该流程不运行本地开发专用的 `dev:backend:restart` 相关测试。
 - 把生成的 `release/server/tos-server-update-*.tar.gz` 复制到 `~/TOS/.deploy_uploads/`。
 - 解压更新包并调用包内 `deploy/apply-server-update.sh`，完成备份、复制、Docker 重建、启动和本地验证。
 

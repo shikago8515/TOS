@@ -61,7 +61,11 @@ test('Gitea main deployment script packages and applies the standard server upda
   const deployScript = await readFile(new URL('../server/deploy-gitea-main.sh', import.meta.url), 'utf8')
 
   assert.match(deployScript, /npm run ci:install/)
-  assert.match(deployScript, /npm run check:quick/)
+  assert.doesNotMatch(deployScript, /npm run check:quick/)
+  assert.match(deployScript, /npm run test:server-package/)
+  assert.match(deployScript, /npm --prefix tms-frontend run typecheck/)
+  assert.match(deployScript, /npm --prefix tms-frontend run test/)
+  assert.match(deployScript, /\$\{PYTHON:-python3\} -m unittest discover tests\/ -v/)
   assert.match(deployScript, /npm run server:package:dry-run/)
   assert.match(deployScript, /npm run server:package/)
   assert.match(deployScript, /deploy\/apply-server-update\.sh/)
