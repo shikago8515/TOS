@@ -62,6 +62,7 @@
 - commit/merge 自动记录通过 `.githooks` 调用 `scripts/release_update_sync.py`，默认从 `TOS_RELEASE_UPDATES_API_URL` 或 `tms-frontend/.env.server` 解析服务器 `/api/release-updates`，不得提交数据库账号或写入 token。
 - `POST /api/release-updates` 可由服务器环境变量 `TOS_RELEASE_UPDATE_WRITE_TOKEN` 保护；`GET /api/release-updates` 必须保持公开读取，避免版本页不可用。
 - `semantic-release` 只在 GitCode `main` push 后运行；CI 需要配置 `GITCODE_TOKEN`。`main` 作为 `beta.3` prerelease 分支，`stable` 仅作为 semantic-release 要求的稳定 release branch；首次启用前需要在当前基线提交补齐 `v0.9.8-beta.3.28` tag。
+- 普通功能、修复和文档清理不要手工维护 `releaseNotes.json` 或运行 `version:bump`；当前版本说明由 `semantic-release` 根据 Conventional Commits 写入，服务器包生成前只校验其版本和内容是否与发布 commit 匹配。
 
 ## GitCode 远端检查
 

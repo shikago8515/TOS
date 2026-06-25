@@ -18,6 +18,8 @@ git rebase gitcode/main
 
 ## 提交前检查
 
+文档、规则或测试清理默认不修改 `releaseNotes.json`，也不运行 `version:bump`；用户可见版本说明由 `semantic-release` 根据 Conventional Commits 在 GitCode `main` 发布链路生成。
+
 ```powershell
 git status --short --branch
 npm run check:backend-version

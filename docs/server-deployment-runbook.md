@@ -40,6 +40,8 @@ npm run server:package
 
 上传前确认包名包含本次版本和 Git commit 短 SHA。只上传生成的 `.tar.gz`，不要上传源码目录、`node_modules`、`dist` 散文件、Dockerfile、`nginx.conf` 或 `docker-compose.tos.yml`。
 
+服务器更新包只覆盖 `tos-backend`、`tos-frontend` 和 `app-version.json` 等 Docker Compose 部署内容，不包含 `tms-electron-app/automation-apps`、`automation-launcher`、`browser-plugins` 或 `external-apps`。桌面自动化、automation helper 或 Electron 外部应用修复需要走对应桌面发布链路。
+
 ## 上传
 
 把本地生成的更新包上传到：

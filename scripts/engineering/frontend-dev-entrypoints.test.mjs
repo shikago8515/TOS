@@ -39,13 +39,42 @@ test('server frontend entrypoint is the only script that loads .env.server', asy
 
 test('engineering docs keep local frontend dev and release update sync rules current', async () => {
   const readme = await readFile(resolve(repoRoot, 'README.md'), 'utf8')
+  const frontendReadme = await readFile(resolve(repoRoot, 'tms-frontend', 'README.md'), 'utf8')
+  const electronReadme = await readFile(resolve(repoRoot, 'tms-electron-app', 'README.md'), 'utf8')
   const workflow = await readFile(resolve(repoRoot, 'docs', 'tos-ai-workflow.md'), 'utf8')
 
   assert.doesNotMatch(readme, /默认\s+`?dev:frontend`?.*server mode/)
   assert.match(readme, /默认 `dev:frontend` .*本地后端/)
+  assert.doesNotMatch(frontendReadme, /`npm run dev` 和 `npm run dev:server` 使用 server mode/)
+  assert.match(frontendReadme, /`npm run dev`.*本地后端/)
+  assert.doesNotMatch(electronReadme, /默认由 `..\/tms-frontend` 的 server mode 提供/)
+  assert.match(electronReadme, /前端开发态加载：`http:\/\/127\.0\.0\.1:5174`/)
   assert.match(workflow, /release_update_records/)
   assert.match(workflow, /release:updates:pull/)
   assert.match(workflow, /release:updates:push:dry-run/)
+})
+
+test('engineering docs keep removed frontend routes out of current validation targets', async () => {
+  const frontendReadme = await readFile(resolve(repoRoot, 'tms-frontend', 'README.md'), 'utf8')
+  const packagingDoc = await readFile(resolve(repoRoot, 'docs', 'frontend-packaging-switch-test.md'), 'utf8')
+  const rebuildRoadmap = await readFile(resolve(repoRoot, 'docs', 'frontend-rebuild-roadmap.md'), 'utf8')
+
+  assert.match(frontendReadme, /\/eric-infornexus/)
+  assert.match(frontendReadme, /\/web-automation\/scenarios\/shipping-automation/)
+  assert.match(frontendReadme, /\/web-automation\/scenarios\/xinlongtai-shipping-automation/)
+  assert.doesNotMatch(frontendReadme, /^- `\/browser-plugins`$/m)
+  assert.doesNotMatch(frontendReadme, /^- `\/module-a`$/m)
+  assert.doesNotMatch(frontendReadme, /^- `\/module-b`$/m)
+
+  assert.match(packagingDoc, /\/eric-infornexus/)
+  assert.match(packagingDoc, /\/jane-infornexus/)
+  assert.doesNotMatch(packagingDoc, /^- `\/browser-plugins`$/m)
+  assert.doesNotMatch(packagingDoc, /^- `\/module-a`$/m)
+  assert.doesNotMatch(packagingDoc, /^- `\/module-b`$/m)
+
+  assert.match(rebuildRoadmap, /当前源码路由/)
+  assert.match(rebuildRoadmap, /\/eric-infornexus/)
+  assert.match(rebuildRoadmap, /\/jane-infornexus/)
 })
 
 async function readJson(path) {

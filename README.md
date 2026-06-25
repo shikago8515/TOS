@@ -85,6 +85,7 @@ npm run build:win
 - 完整工作流以 `docs/tos-ai-workflow.md` 为准；新任务从最新 `gitcode/main` 创建 `codex/<topic>` 分支。
 - 搜索默认排除 `node_modules`、`dist`、`build`、恢复基线、归档目录和运行数据目录。
 - 前端新增或调整页面时同步 `src/domain/moduleCatalog.ts`、`src/app/routeCatalog.ts`、`src/app/router.ts`。
+- 当前模块入口以 `tms-frontend/src/domain/moduleCatalog.ts` 为准；旧 `/browser-plugins`、`/jessica-infornexus` 仅作为兼容重定向保留，不作为新功能入口。
 - 后端保持 `api/{module}_api.py` + `modules/{module}_module.py` 边界，上传和下载文件名必须做 basename、扩展名和目录边界校验。
 - 未经明确要求，不执行 `git add`、`commit`、`push`、`pull`、`merge`、`rebase`、`reset` 或发布操作。
 

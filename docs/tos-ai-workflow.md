@@ -90,7 +90,7 @@ npm run version:set -- 0.9.8-beta.3.3
 - 纯注释
 - 不影响产品行为的内部脚本整理
 
-更新内容写入：
+当前版本弹窗内容保存在：
 
 ```text
 tms-frontend/src/shared/version/releaseNotes.json
@@ -98,12 +98,11 @@ tms-frontend/src/shared/version/releaseNotes.json
 
 规则：
 
-- 新功能写入 `added`
-- 行为优化写入 `improved`
-- bug 修复写入 `fixed`
-- 至少一个数组非空
-- `version` 必须等于 `app-version.json` 的版本
-- `date` 使用当前发布日期，格式为 `YYYY-MM-DD`
+- 普通用户可见改动通过 Conventional Commits 进入 `semantic-release`，由 GitCode `main` push 后自动生成版本号、`CHANGELOG.md`、Git tag 和当前版本 `releaseNotes.json`。
+- `feat:` 进入 `added`，`fix:` 进入 `fixed`，`perf:`、`refactor:`、`build:`、`ci:` 等进入 `improved`。
+- 文档、测试和规则清理默认不手改 `releaseNotes.json`，也不运行 `version:bump`。
+- 本地需要指定版本时使用 `npm run version:set -- <version>`；指定后必须确认 `releaseNotes.json.version` 等于 `app-version.json`，且当前版本说明不带上一版本遗留条目。
+- 服务器发布包仍会校验 `releaseNotes.json` 至少有一个 `added`、`improved` 或 `fixed` 条目。
 
 模板见 `docs/templates/release-notes.md`。
 
