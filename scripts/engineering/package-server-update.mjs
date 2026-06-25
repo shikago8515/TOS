@@ -190,7 +190,7 @@ async function assertPathExists(absolutePath, relativePath) {
 
 async function readGitInfo(repoRoot) {
   const [remote, branch, commit, shortSha, statusOutput, subject, author] = await Promise.all([
-    readGitValue(repoRoot, ['remote', 'get-url', 'gitcode']).catch(() => ''),
+    readPreferredGitRemote(repoRoot),
     readGitValue(repoRoot, ['branch', '--show-current']),
     readGitValue(repoRoot, ['rev-parse', 'HEAD']),
     readGitValue(repoRoot, ['rev-parse', '--short', 'HEAD']),
@@ -208,6 +208,26 @@ async function readGitInfo(repoRoot) {
     subject,
     author,
   }
+}
+
+async function readPreferredGitRemote(repoRoot) {
+  for (const remoteName of ['gitea', 'gitcode', 'origin']) {
+    const remoteUrl = await readGitValue(repoRoot, ['remote', 'get-url', remoteName]).catch(() => '')
+    if (remoteUrl) {
+      return remoteUrl
+    }
+  }
+
+  const upstreamRef = await readGitValue(
+    repoRoot,
+    ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'],
+  ).catch(() => '')
+  const upstreamRemoteName = upstreamRef.split('/')[0]
+  if (!upstreamRemoteName) {
+    return ''
+  }
+
+  return readGitValue(repoRoot, ['remote', 'get-url', upstreamRemoteName]).catch(() => '')
 }
 
 async function readGitValue(repoRoot, args) {

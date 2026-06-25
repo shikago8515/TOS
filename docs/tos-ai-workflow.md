@@ -1,6 +1,6 @@
 # TOS-AI 完整工作流
 
-本文定义 TOS 项目从开始需求到 GitCode 留痕、CI、服务器部署和回滚的标准流程。服务器 `~/TOS` 不是 Git 仓库，不在服务器执行 `git pull`；服务器发布只接收本地生成的标准更新包。
+本文定义 TOS 项目从开始需求到 Gitea 留痕、验证、服务器部署和回滚的标准流程。服务器 `~/TOS` 不是 Git 仓库，不在 `~/TOS` 执行 `git pull`；服务器发布默认由 `~/TOS-source` 拉取 Gitea `main` 后在服务器本地生成并应用标准更新包。
 
 ## 1. 开始任务
 
@@ -21,21 +21,21 @@ git status --short --branch
 
 摘要可使用 `docs/templates/change-summary.md`。
 
-## 2. 同步 GitCode 主线
+## 2. 同步 Gitea 主线
 
-新任务必须从 GitCode 最新主线开始：
+新任务必须从 Gitea 最新主线开始：
 
 ```powershell
-git fetch gitcode main --prune
-git switch -c codex/<topic> gitcode/main
+git fetch gitea main --prune
+git switch -c codex/<topic> gitea/main
 ```
 
 继续已有 `codex/<topic>` 分支时，先确认工作区 clean：
 
 ```powershell
 git status --short --branch
-git fetch gitcode main --prune
-git rebase gitcode/main
+git fetch gitea main --prune
+git rebase gitea/main
 ```
 
 如果工作区存在未提交改动，不自动 rebase。先确认这些改动是否属于当前任务，再决定继续、提交或另开分支。
@@ -119,7 +119,7 @@ npm run release:updates:pull
 
 版本号、`CHANGELOG.md`、当前版本 `releaseNotes.json` 和 Git tag 默认由 `semantic-release` 在 GitCode `main` push 后自动生成。`main` 当前继续发布 `beta.3` 预发布版本；`stable` 仅作为 semantic-release 要求的稳定 release branch，占位保持在当前基线。首次启用前需要在当前基线提交上补齐 `v0.9.8-beta.3.28` tag，避免自动发布从旧 tag 重新计算历史版本；CI 会在缺少 `stable` 分支时自动创建。
 
-## 5. GitCode 提交与 CI 门禁
+## 5. Gitea 提交与验证门禁
 
 提交前确认状态和验证结果：
 
@@ -136,26 +136,24 @@ npm run check:quick
 ```powershell
 git add <files>
 git commit -m "类型: 描述"
-git push -u gitcode codex/<topic>
-git push -u origin codex/<topic>
+git push -u gitea codex/<topic>
 ```
 
-GitCode CI 位于 `.gitcode/workflows/tos-check.yml`，对 `main`、`codex/**` 分支 push 和面向 `main` 的合并请求运行完整 `npm run check`。
+GitCode CI 位于 `.gitcode/workflows/tos-check.yml`，对 GitCode 的 `main`、`codex/**` 分支 push 和面向 `main` 的合并请求运行完整 `npm run check`。该链路仍用于需要同步 GitCode 或触发 semantic-release 时的远端检查；默认服务器部署不再依赖“先本机打包再上传”。
 
-分支推送后先等 GitCode 分支 CI 通过，再合并进 `main`。合并后在 `main` 运行 `npm run check:quick`，再推送 `main` 到 GitCode；GitCode main CI 通过后，再同步推送到 GitHub。
+分支推送到 Gitea 后，合并进本地 `main`，在 `main` 上运行 `npm run check:quick`，再推送 `main` 到 Gitea。需要同步 GitCode/GitHub 时，另按对应远端要求执行。
 
 服务器正式发布前，必须满足：
 
-- 当前代码已 push 到 GitCode
-- GitCode CI 通过
+- 当前代码已 push 并合并到 Gitea `main`
 - 本地工作区 clean
-- 本地 commit 与准备发布的 GitCode commit 一致
+- 本地 commit 与准备发布的 Gitea `main` commit 一致
 
 检查清单见 `docs/templates/gitcode-checklist.md`。
 
 ## 6. 服务器更新包
 
-服务器发布前从 CI 通过的 clean commit 生成标准包：
+备用上传流程中，可从 clean commit 生成标准包：
 
 ```powershell
 npm run server:package
@@ -199,15 +197,19 @@ docker-compose.tos.yml
 authelia
 ```
 
-## 7. 上传与服务器部署
+## 7. Gitea main 服务器部署
 
-只上传 `tos-server-update-*.tar.gz` 到：
+默认服务器部署流程：
 
-```text
-/home/obito_li/TOS/.deploy_uploads/
+```bash
+cd ~/TOS-source
+git pull --ff-only origin main
+bash scripts/server/deploy-gitea-main.sh
 ```
 
-服务器部署按 `docs/server-deployment-runbook.md` 执行。发布记录使用 `docs/templates/server-release-record.md`。
+脚本会在服务器本地运行部署检查、生成 `tos-server-update-*.tar.gz`，复制到 `~/TOS/.deploy_uploads/`，再部署到 `~/TOS` 并重建重启 `tos-backend`、`tos-frontend`。
+
+只有 Gitea 或服务器拉代码不可用时，才使用备用上传流程：在本机生成 `tos-server-update-*.tar.gz`，手动上传到 `/home/obito_li/TOS/.deploy_uploads/`，再按 `docs/server-deployment-runbook.md` 执行包内脚本。发布记录使用 `docs/templates/server-release-record.md`。
 
 部署后至少验证：
 

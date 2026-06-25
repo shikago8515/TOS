@@ -1,25 +1,27 @@
 # TOS 服务器部署 Runbook
 
-本文记录服务器 `~/TOS` 目录式 Docker Compose 更新流程。完整开发、GitCode、版本和发布门禁见 `docs/tos-ai-workflow.md`；本文只保留服务器实操步骤。
+本文记录服务器 `~/TOS` 目录式 Docker Compose 更新流程。完整开发、Gitea/GitCode、版本和发布门禁见 `docs/tos-ai-workflow.md`；本文只保留服务器实操步骤。
 
 ## 适用边界
 
 - 服务器路径：`/home/obito_li/TOS`
-- 上传目录：`/home/obito_li/TOS/.deploy_uploads/`
+- 包落地目录：`/home/obito_li/TOS/.deploy_uploads/`
 - Compose 文件：`docker-compose.tos.yml`
 - 后端服务：`tos-backend`，本机端口 `127.0.0.1:18000`
 - 前端服务：`tos-frontend`，本机端口 `127.0.0.1:18080`
 - 认证服务：`tos-authelia`，部署 TOS 前后端时不改动
 
-服务器 `~/TOS` 不是 Git 仓库，不能使用 `git pull` 更新。服务器部署方式是：本地从 GitCode CI 已通过的 clean commit 生成标准更新包，通过 MobaXterm SFTP 上传到 `.deploy_uploads/`，再在服务器解压并执行包内脚本。
+服务器 `~/TOS` 不是 Git 仓库，不能在该目录使用 `git pull` 更新。默认部署方式是：本地改完后合并并推送到 Gitea `main`，服务器进入 `~/TOS-source`，执行 `git pull --ff-only origin main`，再运行 `scripts/server/deploy-gitea-main.sh` 在服务器本地生成标准更新包并部署到 `~/TOS`。
+
+只有 Gitea 或服务器拉代码不可用时，才退回旧备用方案：本机从 clean commit 生成标准更新包，通过 MobaXterm SFTP 上传到 `.deploy_uploads/`，再在服务器解压并执行包内脚本。
 
 截图中如存在 `_deploy_uploads` 或 `_source_uploads`，视为历史目录；新流程只使用 `.deploy_uploads`。
 
 服务器部署不等于 Windows Electron 打包。只有发布桌面安装包、自动更新包或正式 Windows 客户端时，才运行 `npm run build:win`。
 
-## 本机准备
+## 备用方案：本机准备
 
-在 Windows PowerShell 执行：
+默认 Gitea main 部署不需要在本机生成 `.tar.gz`。只有 Gitea 或服务器拉代码不可用时，才在 Windows PowerShell 执行：
 
 ```powershell
 cd D:\project\TOS-main
@@ -38,11 +40,11 @@ npm run server:package
 - 生成 `release/server/tos-server-update-v<version>-<yyyyMMddHHmmss>-<gitShortSha>.tar.gz`。
 - 写入包内 `deploy/manifest.json` 和 `deploy/apply-server-update.sh`。
 
-上传前确认包名包含本次版本和 Git commit 短 SHA。只上传生成的 `.tar.gz`，不要上传源码目录、`node_modules`、`dist` 散文件、Dockerfile、`nginx.conf` 或 `docker-compose.tos.yml`。
+备用上传前确认包名包含本次版本和 Git commit 短 SHA。只上传生成的 `.tar.gz`，不要上传源码目录、`node_modules`、`dist` 散文件、Dockerfile、`nginx.conf` 或 `docker-compose.tos.yml`。
 
 服务器更新包只覆盖 `tos-backend`、`tos-frontend` 和 `app-version.json` 等 Docker Compose 部署内容，不包含 `tms-electron-app/automation-apps`、`automation-launcher`、`browser-plugins` 或 `external-apps`。桌面自动化、automation helper 或 Electron 外部应用修复需要走对应桌面发布链路。
 
-## 上传
+## 备用方案：上传
 
 把本地生成的更新包上传到：
 
@@ -56,7 +58,7 @@ npm run server:package
 mkdir -p ~/TOS/.deploy_uploads
 ```
 
-## 服务器更新
+## 备用方案：服务器更新
 
 在服务器终端执行，替换 `PKG` 为实际上传文件名：
 
@@ -185,9 +187,9 @@ https://ai.tomwell.net:56130/tos/tos-desktop-full/download
 https://ai.tomwell.net:56130/tos/automation-helper/download
 ```
 
-## 从 Gitea main 半自动部署
+## 从 Gitea main 默认部署
 
-如果希望“合并到 Gitea `main` 后，在服务器一条命令更新”，仍然不要把 `~/TOS` 改成 Git 仓库。推荐保持两个目录：
+“合并到 Gitea `main` 后，在服务器本地生成发布包并更新”是默认服务器发布流程。仍然不要把 `~/TOS` 改成 Git 仓库，保持两个目录：
 
 ```text
 /home/obito_li/TOS-source   # Git 源码目录，跟踪 Gitea main
@@ -205,12 +207,14 @@ chmod +x ~/TOS-source/scripts/server/deploy-gitea-main.sh
 以后 Gitea 合并到 `main` 后，在服务器执行：
 
 ```bash
-bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
+cd ~/TOS-source
+git pull --ff-only origin main
+bash scripts/server/deploy-gitea-main.sh
 ```
 
 脚本会执行：
 
-- 从 `http://172.16.48.208:3001/luenthai-ai/TOS.git` 拉取 `main` 到 `~/TOS-source`。
+- 确认 `~/TOS-source` 是 clean checkout，并通过 `git pull --ff-only origin main` 对齐 Gitea `main`；如存在未提交改动或无法 fast-forward，直接失败并要求人工处理。
 - 拒绝把 `~/TOS` 当成 Git 仓库更新，避免覆盖服务器专用的 `docker-compose.tos.yml`、`authelia/`、Dockerfile 和备份目录。
 - 运行服务器部署专用检查：`npm run test:server-package`、前端 `typecheck/test`、后端 `unittest`、`npm run server:package:dry-run` 和 `npm run server:package`。该流程不运行本地开发专用的 `dev:backend:restart` 相关测试。
 - 把生成的 `release/server/tos-server-update-*.tar.gz` 复制到 `~/TOS/.deploy_uploads/`。

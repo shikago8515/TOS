@@ -19,8 +19,9 @@
 - 前端开发服务器端口以 `tms-frontend/package.json` 为准，当前是 `127.0.0.1:5174`。
 - Electron 打包默认使用 `tms-frontend/dist`；`TOS_FRONTEND_SOURCE=recovered` 只用于紧急回退。
 - 仓库根目录 `package.json` 提供工程入口 scripts，用于编排前端、后端和 Electron 子项目的现有检查命令。
-- GitCode 远端检查位于 `.gitcode/workflows/tos-check.yml`，默认对 `main`、`codex/**` 分支 push 和面向 `main` 的合并请求运行完整 `npm run check`。
-- 完整 TOS-AI 工作流位于 `docs/tos-ai-workflow.md`，覆盖 GitCode 同步、分支开发、自动版本、更新内容、CI、服务器发布和回滚。
+- Gitea `main` 是当前服务器部署主线；本地改完后优先推送并合并到 Gitea `main`。
+- GitCode 远端检查位于 `.gitcode/workflows/tos-check.yml`，默认对 `main`、`codex/**` 分支 push 和面向 `main` 的合并请求运行完整 `npm run check`；除非用户明确要求同步 GitCode，否则服务器部署不再以 GitCode 为主路径。
+- 完整 TOS-AI 工作流位于 `docs/tos-ai-workflow.md`，覆盖 Gitea 同步、分支开发、自动版本、更新内容、CI、服务器发布和回滚。
 
 ## 默认探索边界
 
@@ -160,12 +161,13 @@
 
 ## 服务器部署规则
 
-1. 服务器 `~/TOS` 目录式 Docker Compose 部署必须遵循 `docs/server-deployment-runbook.md`，不要把服务器当作 Git 仓库直接 `git pull`。
-2. 服务器部署默认只更新 `tos-backend` 和 `tos-frontend`，保留服务器侧 Dockerfile、`nginx.conf`、`docker-compose.tos.yml` 和 `authelia/`。
-3. 服务器部署不等于 Windows Electron 打包；只有发布桌面安装包、自动更新包或正式 Windows 客户端时，才运行 `npm run build:win`。
-4. 服务器发布包必须从 GitCode CI 已通过的 clean commit 生成，使用 `npm run server:package`，并上传到 `/home/obito_li/TOS/.deploy_uploads/`。
-5. 服务器发布包不包含 `tms-electron-app/automation-apps`、`automation-launcher`、`browser-plugins` 或 `external-apps`；桌面自动化修复需要单独走 Electron/automation helper 交付链路。
-6. 截图或服务器中如存在 `_deploy_uploads`、`_source_uploads`，视为历史目录；新流程不写入这些目录。
+1. 服务器 `~/TOS` 目录式 Docker Compose 部署必须遵循 `docs/server-deployment-runbook.md`，不要把 `~/TOS` 当作 Git 仓库直接 `git pull`。
+2. 默认服务器发布流程是：本地合并并推送到 Gitea `main`，服务器进入 `~/TOS-source`，执行 `git pull --ff-only origin main`，再运行 `scripts/server/deploy-gitea-main.sh` 在服务器本地生成发布包并部署到 `~/TOS`。
+3. 服务器部署默认只更新 `tos-backend` 和 `tos-frontend`，保留服务器侧 Dockerfile、`nginx.conf`、`docker-compose.tos.yml` 和 `authelia/`。
+4. 服务器部署不等于 Windows Electron 打包；只有发布桌面安装包、自动更新包或正式 Windows 客户端时，才运行 `npm run build:win`。
+5. `~/TOS/.deploy_uploads/` 仍作为部署脚本内部包落地和应用目录；只有 Gitea 或服务器拉代码不可用时，才退回“本机生成 `.tar.gz` 后手动上传 `.deploy_uploads`”的备用流程。
+6. 服务器发布包不包含 `tms-electron-app/automation-apps`、`automation-launcher`、`browser-plugins` 或 `external-apps`；桌面自动化修复需要单独走 Electron/automation helper 交付链路。
+7. 截图或服务器中如存在 `_deploy_uploads`、`_source_uploads`，视为历史目录；新流程不写入这些目录。
 
 ## 可用检查命令
 
@@ -235,8 +237,8 @@ node scripts/verify-release-package.js
 
 ## Git 规则
 
-1. 默认从 `gitcode/main` 更新主线，除非用户明确要求使用 `origin/main`。
-2. 新任务先执行 `git fetch gitcode main --prune`，再从最新 `gitcode/main` 创建 `codex/<topic>` 分支；继续已有分支时，在工作区 clean 的前提下 `git rebase gitcode/main`。
+1. 默认从 `gitea/main` 更新主线，除非用户明确要求使用 `gitcode/main` 或 `origin/main`。
+2. 新任务先执行 `git fetch gitea main --prune`，再从最新 `gitea/main` 创建 `codex/<topic>` 分支；继续已有分支时，在工作区 clean 的前提下 `git rebase gitea/main`。
 3. 新功能或项目规则改动使用 `codex/` 前缀分支，例如 `codex/update-tos-agents-rules`。
 4. 提交信息使用 `类型: 描述`，例如 `docs: 添加 TOS AI 协作规则`。
 5. 每次提交只包含一个功能或一个明确规则改动。

@@ -52,8 +52,10 @@ test('Gitea main deployment script keeps source and deployment directories separ
   assert.match(deployScript, /SOURCE_DIR="\$\{TOS_SOURCE_DIR:-\$HOME\/TOS-source\}"/)
   assert.match(deployScript, /DEPLOY_ROOT="\$\{TOS_DEPLOY_ROOT:-\$HOME\/TOS\}"/)
   assert.match(deployScript, /git clone --branch "\$BRANCH" "\$REMOTE_URL" "\$SOURCE_DIR"/)
-  assert.match(deployScript, /git fetch "\$REMOTE_NAME" "\$BRANCH"/)
-  assert.match(deployScript, /git reset --hard "\$REMOTE_NAME\/\$BRANCH"/)
+  assert.match(deployScript, /git status --short/)
+  assert.match(deployScript, /git pull --ff-only "\$REMOTE_NAME" "\$BRANCH"/)
+  assert.doesNotMatch(deployScript, /git reset --hard/)
+  assert.doesNotMatch(deployScript, /git clean -fd/)
   assert.doesNotMatch(deployScript, /cd "\$DEPLOY_ROOT"[\s\S]*git pull/)
 })
 
@@ -135,6 +137,29 @@ test('dry-run reports package plan without requiring a clean worktree', async ()
   assert.equal(plan.gitDirty, true)
   assert.equal(plan.archivePath, null)
   assert.equal(plan.archiveName, 'tos-server-update-v0.9.8-beta.3.3-20260612110405-4e1c3e5.tar.gz')
+})
+
+test('dry-run records Gitea origin remote in server source checkouts', async () => {
+  const root = await createFixture()
+  const giteaUrl = 'http://172.16.48.208:3001/luenthai-ai/TOS.git'
+
+  await execFileAsync('git', ['init'], { cwd: root })
+  await execFileAsync('git', ['config', 'user.email', 'test@example.com'], { cwd: root })
+  await execFileAsync('git', ['config', 'user.name', 'Test User'], { cwd: root })
+  await execFileAsync('git', ['config', 'core.autocrlf', 'false'], { cwd: root })
+  await execFileAsync('git', ['add', '.'], { cwd: root })
+  await execFileAsync('git', ['commit', '-m', 'feat: server deploy'], { cwd: root })
+  await execFileAsync('git', ['branch', '-M', 'main'], { cwd: root })
+  await execFileAsync('git', ['remote', 'add', 'origin', giteaUrl], { cwd: root })
+
+  const plan = await createServerPackage({
+    repoRoot: root,
+    dryRun: true,
+    now: new Date('2026-06-12T03:04:05.000Z'),
+  })
+
+  assert.equal(plan.gitRemote, giteaUrl)
+  assert.equal(plan.gitBranch, 'main')
 })
 
 test('creates a server update archive with manifest and only deployable paths', async () => {

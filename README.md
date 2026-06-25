@@ -14,7 +14,8 @@ TOS 是一个 Windows x64 桌面工具，当前源码工作区由三部分组成
 - 前端开发服务器由 `tms-frontend/package.json` 定义，当前是 `http://127.0.0.1:5174`；默认 `dev:frontend` 连接本地后端 `http://127.0.0.1:8000`，服务器联调必须显式使用 `dev:frontend:server`，入口细节见 `docs/engineering-entrypoints.md`。
 - Electron 打包默认使用 `tms-frontend/dist`；`TOS_FRONTEND_SOURCE=recovered` 仅用于紧急回退。
 - 仓库根目录 `package.json` 提供工程入口 scripts，用于编排前端、后端和 Electron 子项目的现有检查命令。
-- GitCode 远端检查位于 `.gitcode/workflows/tos-check.yml`，对 `main`、`codex/**` 分支 push 和面向 `main` 的合并请求运行完整 `npm run check`。
+- Gitea `main` 是当前服务器部署主线；本地改完后优先推送并合并到 Gitea `main`。
+- GitCode 远端检查位于 `.gitcode/workflows/tos-check.yml`，对 `main`、`codex/**` 分支 push 和面向 `main` 的合并请求运行完整 `npm run check`；除非明确要求同步 GitCode，服务器部署不再以 GitCode 为主路径。
 
 ## 文档地图
 
@@ -23,7 +24,7 @@ TOS 是一个 Windows x64 桌面工具，当前源码工作区由三部分组成
 - `docs/frontend-engineering-standards.md`：前端重建工程规范和变更接收检查项。
 - `docs/engineering-entrypoints.md`：根目录工程入口、检查矩阵和命令边界。
 - `docs/engineering-closure-roadmap.md`：未完全工程化部分的优先级、边界和验收标准。
-- `docs/tos-ai-workflow.md`：TOS-AI 从 GitCode 同步、分支开发、版本、CI 到服务器发布的完整工作流。
+- `docs/tos-ai-workflow.md`：TOS-AI 从 Gitea 同步、分支开发、版本、CI 到服务器发布的完整工作流。
 - `docs/server-deployment-runbook.md`：服务器 `~/TOS` 目录式 Docker Compose 更新、备份、验证和回滚流程。
 - `docs/server-deployment-runbook.md` 同时记录桌面安装包在服务器 MinIO Docker volume 中的物理位置、对象 key、旧安装包删除规则和公开下载代理地址。
 - `docs/frontend-tms-finance-parity.md`：TMS 财务页 parity 与复用边界说明。
@@ -45,13 +46,13 @@ npm run server:package:dry-run
 
 `npm run check:quick` 运行工程脚本测试、前端 typecheck/test、后端 unittest 和 Electron script tests；`npm run check` 运行工程脚本测试、完整前端、完整后端和 Electron 脚本检查。
 
-服务器发布包生成使用：
+默认服务器发布在服务器 `~/TOS-source` 中执行 `git pull --ff-only origin main`，再运行 `scripts/server/deploy-gitea-main.sh` 本地生成并应用服务器发布包。备用方案才在本机生成发布包：
 
 ```powershell
 npm run server:package
 ```
 
-正式服务器发布前必须先推送 GitCode 并确认 CI 通过；服务器目录不是 Git 仓库，不在服务器执行 `git pull`。
+正式服务器发布前必须先推送并合并到 Gitea `main`。服务器 `~/TOS` 目录不是 Git 仓库，不在 `~/TOS` 执行 `git pull`；只有 `~/TOS-source` 是跟踪 Gitea `main` 的源码目录。
 
 GitCode CI 使用同一套根目录入口：在 runner 内下载 Node.js 22.11.0，先运行 `npm run ci:install` 安装依赖，再运行 `PYTHON=python3 npm run check`。该远端检查不触发 `npm run pack`、`npm run build:win` 或发布清单写入命令。
 
@@ -82,7 +83,7 @@ npm run build:win
 ## 开发规则摘要
 
 - 开发任务先读取项目级 `AGENTS.md`，再按当前源码和 `package.json` scripts 核实。
-- 完整工作流以 `docs/tos-ai-workflow.md` 为准；新任务从最新 `gitcode/main` 创建 `codex/<topic>` 分支。
+- 完整工作流以 `docs/tos-ai-workflow.md` 为准；新任务从最新 `gitea/main` 创建 `codex/<topic>` 分支。
 - 搜索默认排除 `node_modules`、`dist`、`build`、恢复基线、归档目录和运行数据目录。
 - 前端新增或调整页面时同步 `src/domain/moduleCatalog.ts`、`src/app/routeCatalog.ts`、`src/app/router.ts`。
 - 当前模块入口以 `tms-frontend/src/domain/moduleCatalog.ts` 为准；旧 `/browser-plugins`、`/jessica-infornexus` 仅作为兼容重定向保留，不作为新功能入口。

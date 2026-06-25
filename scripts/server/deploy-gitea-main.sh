@@ -74,10 +74,16 @@ else
   git remote add "$REMOTE_NAME" "$REMOTE_URL"
 fi
 
-git fetch "$REMOTE_NAME" "$BRANCH"
 git checkout "$BRANCH"
-git reset --hard "$REMOTE_NAME/$BRANCH"
-git clean -fd
+
+SOURCE_STATUS="$(git status --short)"
+if [ -n "$SOURCE_STATUS" ]; then
+  echo "Refusing to deploy: source checkout must be clean before git pull --ff-only: $SOURCE_DIR" >&2
+  git status --short >&2
+  exit 1
+fi
+
+git pull --ff-only "$REMOTE_NAME" "$BRANCH"
 
 if [ "${TOS_SKIP_INSTALL:-0}" != "1" ]; then
   log "Installing repository dependencies"
