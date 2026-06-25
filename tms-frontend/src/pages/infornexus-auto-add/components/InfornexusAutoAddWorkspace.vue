@@ -249,7 +249,7 @@ import {
   buildAutomationTemplateDownloadUrl, clearExecutorCredentials, createAutomationRunRecord,
   fetchAutomationApps, fetchAutomationTemplates, fetchExecutorCredentials, finishAutomationRunRecord,
   getAutomationHelperUpdateMessage,
-  hasElectronAutomationSupport, launchAutomationConsole, openAutomationHelperDownload,
+  hasElectronAutomationSupport, launchAutomationConsole, openAutomationHelperDownload, openInfornexusAutoAddSearchPage,
   primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
   recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
@@ -373,8 +373,28 @@ async function startActiveApp(silent: boolean): Promise<void> {
   if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot()
   launching.value = true
   try {
+    const shouldOpenManualSearchPage = !silent && showBrowserView.value
+    const credentialsPayload = shouldOpenManualSearchPage ? await resolveRunCredentialsPayload() : null
     const r = await launchAutomationConsole(entry.appId); if (!r.success) throw new Error(r.error || '启动失败')
     await refreshExecutorState(true)
+    if (shouldOpenManualSearchPage) {
+      const opened = await openInfornexusAutoAddSearchPage({
+        baseUrl: entry.executorBaseUrl,
+        token: entry.localExecutorToken,
+        username: credentialsPayload?.username || '',
+        password: credentialsPayload?.password || '',
+        headless: false,
+      })
+      await refreshExecutorState(true).catch(() => {})
+      const openedMessage = 'Infor Nexus 搜索页已打开，浏览器会停留在搜索结果页面。'
+      lastRawResponse.value = JSON.stringify(opened, null, 2)
+      statusLabel.value = '已打开'
+      statusText.value = openedMessage
+      lastResult.value = { ok: true, message: openedMessage }
+      messageTone.value = 'success'
+      message.value = text(openedMessage)
+      return
+    }
     if (!silent) { messageTone.value = 'success'; message.value = r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') }
   } catch (e) {
     const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.appId, entryId: entry.id, error: m })
