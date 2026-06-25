@@ -163,13 +163,29 @@ export async function requestBackendJson<TResponse>({
     throw new Error(backendConnectionErrorMessage)
   }
   const text = await response.text()
-  const data = text ? JSON.parse(text) as TResponse : {} as TResponse
+  const data = parseBackendJsonResponse<TResponse>(text, response.status, path)
 
   if (!response.ok) {
     throw new Error(readResponseMessage(data, { status: response.status, path }) || `HTTP ${response.status}`)
   }
 
   return data
+}
+
+function parseBackendJsonResponse<TResponse>(
+  text: string,
+  status: number,
+  path: string,
+): TResponse {
+  if (!text) {
+    return {} as TResponse
+  }
+
+  try {
+    return JSON.parse(text) as TResponse
+  } catch (_error) {
+    throw new Error(`后端响应无法解析：HTTP ${status} ${path}`)
+  }
 }
 
 export async function ensureBackendRuntimeVersion(baseUrl?: string): Promise<void> {

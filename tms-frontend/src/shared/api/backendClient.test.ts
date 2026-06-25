@@ -108,6 +108,37 @@ describe('backendClient', () => {
     ).rejects.toThrow('无法连接后端服务，请确认本地后端已启动并已重启到当前版本')
   })
 
+  it('turns malformed successful JSON responses into an actionable backend response message', async () => {
+    stubWindow()
+    const path = '/api/automation/credentials/po-auto-download'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue('null{"ok":true}'),
+    }))
+
+    await expect(
+      requestBackendJson({ method: 'PUT', path, body: { username: 'user', password: 'test-password' } }),
+    ).rejects.toThrow(`后端响应无法解析：HTTP 200 ${path}`)
+    await expect(
+      requestBackendJson({ method: 'PUT', path, body: { username: 'user', password: 'test-password' } }),
+    ).rejects.not.toThrow(/JSON\.parse|unexpected non-whitespace/i)
+  })
+
+  it('reports status and path when an error response is not JSON', async () => {
+    stubWindow()
+    const path = '/api/automation/credentials/po-auto-download'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: vi.fn().mockResolvedValue('upstream temporarily unavailable'),
+    }))
+
+    await expect(
+      requestBackendJson({ method: 'PUT', path, body: { username: 'user', password: 'test-password' } }),
+    ).rejects.toThrow(`后端响应无法解析：HTTP 500 ${path}`)
+  })
+
   it('stops JSON requests when a required local backend version is stale', async () => {
     stubWindow({
       getBackendUrl: vi.fn().mockResolvedValue('http://127.0.0.1:8000/'),

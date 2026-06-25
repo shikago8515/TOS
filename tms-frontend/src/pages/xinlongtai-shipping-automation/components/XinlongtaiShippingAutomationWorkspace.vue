@@ -9,24 +9,6 @@
       </div>
     </transition>
 
-    <transition name="sa-modal-anim">
-      <div v-if="pendingCredentialDeleteKey" class="sa-modal-mask" @click.self="cancelCredentialDelete">
-        <div class="sa-confirm">
-          <div class="sa-confirm__icon"><AppIcon name="trash" /></div>
-          <div class="sa-confirm__body">
-            <h3>{{ text('删除账号档案') }}</h3>
-            <p>{{ text(`确认删除“${credentialDisplayName(pendingCredentialDeleteKey)}”？`) }}</p>
-          </div>
-          <div class="sa-confirm__actions">
-            <button type="button" class="sa-btn" @click="cancelCredentialDelete">{{ text('取消') }}</button>
-            <button type="button" class="sa-btn sa-btn--danger" :disabled="credentialClearing" @click="confirmCredentialDelete">
-              <AppIcon name="trash" />{{ credentialClearing ? text('删除中...') : text('确认删除') }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </transition>
-
     <!-- === EMPTY === -->
     <div v-if="!entry" class="sa-empty">
       <AppIcon name="alert-circle" class="sa-empty__icon" />
@@ -86,77 +68,29 @@
               <span v-else class="sa-chip sa-chip--warn">{{ text('等待执行器') }}</span>
             </div>
 
-            <!-- Credential Notice -->
-            <div v-if="hasStoredCredentials" class="sa-cred-note">
-              <AppIcon name="check-circle" />
-              <span>{{ text('已保存') }} Infor Nexus {{ text('登录账号') }}: {{ selectedCredentialLabel }} / {{ savedCredentialUsername }}</span>
-            </div>
-
             <!-- Credentials -->
             <div class="sa-card__bd">
-              <div class="sa-cred-profile-grid">
-                <div class="sa-field">
-                  <span>{{ text('账号档案') }}</span>
-                  <div class="sa-profile-control-row">
-                    <div class="sa-profile-picker" :class="{ 'sa-profile-picker--open': isCredentialMenuOpen }">
-                      <button type="button" class="sa-profile-trigger" :disabled="credentialOptions.length === 0" @click="toggleCredentialMenu">
-                        <span class="sa-profile-trigger__icon"><AppIcon name="bookmark" /></span>
-                        <span class="sa-profile-trigger__text">
-                          <strong>{{ selectedCredentialLabel }}</strong>
-                          <small>{{ formatInforNexusUserIdForDisplay(selectedCredentialOption?.username || '') || text('暂无已保存账号') }}</small>
-                        </span>
-                        <AppIcon name="chevron-down" class="sa-profile-trigger__chev" />
-                      </button>
-                      <div v-if="isCredentialMenuOpen && credentialOptions.length > 0" class="sa-profile-menu">
-                        <div v-for="option in credentialOptions" :key="option.accountKey" class="sa-profile-option" :class="{ 'sa-profile-option--active': option.accountKey === selectedCredentialKey }">
-                          <button type="button" class="sa-profile-option__main" @click="selectCredentialOption(option.accountKey)">
-                            <span>
-                              <strong>{{ credentialDisplayName(option.accountKey) }}</strong>
-                              <small>{{ formatInforNexusUserIdForDisplay(option.username) }}</small>
-                            </span>
-                            <AppIcon v-if="option.accountKey === selectedCredentialKey" name="check-circle" />
-                          </button>
-                          <button type="button" class="sa-profile-option__delete" :disabled="credentialClearing" :title="text('删除账号档案')" @click.stop="deleteCredentialProfile(option.accountKey)">
-                            <AppIcon name="trash" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <label class="sa-field">
-                  <span>{{ text('保存名称') }}</span>
-                  <div class="sa-inp-wrap">
-                    <AppIcon name="bookmark" class="sa-inp-icon" />
-                    <input v-model.trim="credentialName" type="text" class="sa-inp" :placeholder="text('例如 Lily / user3')" autocomplete="off" />
-                  </div>
-                </label>
-              </div>
-              <div class="sa-cred-grid">
-                <label class="sa-field">
-                  <span>{{ text('User ID') }}</span>
-                  <div class="sa-inp-wrap">
-                    <AppIcon name="user" class="sa-inp-icon" />
-                    <input v-model.trim="shippingUsername" type="text" class="sa-inp" :placeholder="text('请输入 User ID')" autocomplete="username" />
-                  </div>
-                </label>
-                <label class="sa-field">
-                  <span>{{ text('Password') }}</span>
-                  <div class="sa-inp-wrap">
-                    <AppIcon name="shield-check" class="sa-inp-icon" />
-                    <input v-model="shippingPassword" :type="showShippingPassword ? 'text' : 'password'" class="sa-inp" placeholder="Enter password" autocomplete="current-password" />
-                    <button class="sa-inp__btn" @click="showShippingPassword = !showShippingPassword"><AppIcon name="eye" /></button>
-                  </div>
-                </label>
-              </div>
-              <div class="sa-cred-row">
-                <button class="sa-btn sa-btn--pri" :disabled="credentialSaving || !shippingUsername || !shippingPassword" @click="saveCurrentCredentials">
-                  <AppIcon name="shield-check" />{{ credentialSaving ? text('保存中') : text('保存登录账号密码') }}
-                </button>
+              <AutomationCredentialsPanel
+                :username="shippingUsername"
+                v-model:password="shippingPassword"
+                v-model:show-password="showShippingPassword"
+                :has-stored-credentials="hasStoredCredentials"
+                :saved-username="savedCredentialUsername"
+                :saving="credentialSaving"
+                :clearing="credentialClearing"
+                :credential-options="credentialOptions"
+                :selected-credential-key="selectedCredentialKey"
+                @update:username="handleCredentialUsernameUpdate"
+                @select-credential="selectCredentialOption"
+                @save="saveCurrentCredentials"
+                @clear="clearCurrentCredentials"
+              >
+                <template #actions>
                 <button class="sa-btn" :disabled="templateLoading || !primaryTemplate" @click="downloadPrimaryTemplate">
                   <AppIcon name="download" />{{ templateButtonLabel }}
                 </button>
-              </div>
+                </template>
+              </AutomationCredentialsPanel>
             </div>
 
             <!-- File Dropzone -->
@@ -306,6 +240,7 @@ import { useRouter } from 'vue-router'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+import AutomationCredentialsPanel from '../../web-automation/components/AutomationCredentialsPanel.vue'
 import type { AutomationAppInfo } from '../../../types/electronApi'
 import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentialOption, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {
@@ -317,6 +252,7 @@ import {
   recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
+import { buildCredentialAccountKey, findCredentialOptionByUsername, normalizeInforNexusUsername } from '../../web-automation/webAutomationCredentials'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
 
 const XINLONGTAI_SHIPPING_ENTRY_ID = 'xinlongtai-shipping-automation'
@@ -337,9 +273,7 @@ const isHealthLogOpen = ref(false)
 const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
 const shippingUsername = ref(''); const shippingPassword = ref(''); const showShippingPassword = ref(true)
-const selectedCredentialKey = ref('default'); const credentialName = ref('default')
-const isCredentialMenuOpen = ref(false)
-const pendingCredentialDeleteKey = ref('')
+const selectedCredentialKey = ref('default')
 const showBrowserView = ref(true)
 const statusText = ref(''); const statusLabel = ref('待命')
 const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
@@ -364,8 +298,6 @@ const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || exec
 const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
 const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
 const savedCredentialUsername = computed(() => formatInforNexusUserIdForDisplay(executorCredentials.value?.username || ''))
-const selectedCredentialLabel = computed(() => credentialDisplayName(selectedCredentialKey.value))
-const selectedCredentialOption = computed(() => credentialOptions.value.find((option) => option.accountKey === selectedCredentialKey.value) || null)
 const primaryTemplate = computed(() => automationTemplates.value[0] || null)
 const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
 const shippingExecutorRunUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-xinlongtai-shipping-file` : '' })
@@ -406,76 +338,75 @@ async function refreshCredentialOptions(): Promise<void> {
   }
 }
 
-async function refreshExecutorCredentials(accountKey = selectedCredentialKey.value): Promise<void> {
+async function refreshExecutorCredentials(
+  accountKey = selectedCredentialKey.value || buildCredentialAccountKey(shippingUsername.value),
+): Promise<void> {
   if (!entry) return
-  const key = normalizeCredentialKey(accountKey)
-  selectedCredentialKey.value = key
-  credentialName.value = key
   try {
     await refreshCredentialOptions()
-    executorCredentials.value = await fetchExecutorCredentials(entry.id, key)
-    const u = formatInforNexusUserIdForDisplay(executorCredentials.value.username || '')
-    if (u) shippingUsername.value = u
-    if (executorCredentials.value.hasStoredCredentials) {
-      const r = await resolveAutomationCredentials(entry.id, key)
-      shippingUsername.value = formatInforNexusUserIdForDisplay(r.username)
-      shippingPassword.value = r.password
+    const key = normalizeCredentialKey(accountKey)
+    const loaded = await loadCredentialByKey(key)
+    if (loaded) return
+
+    const matchedOption = findCredentialOptionByUsername(credentialOptions.value, shippingUsername.value)
+    if (matchedOption && matchedOption.accountKey !== key) {
+      await loadCredentialByKey(matchedOption.accountKey)
     }
   } catch {
     executorCredentials.value = null
   }
 }
 
-function handleCredentialSelectionChange(): void {
-  void refreshExecutorCredentials(selectedCredentialKey.value)
-}
-
-function toggleCredentialMenu(): void {
-  if (credentialOptions.value.length === 0) return
-  isCredentialMenuOpen.value = !isCredentialMenuOpen.value
-}
-
-function selectCredentialOption(accountKey: string): void {
-  isCredentialMenuOpen.value = false
-  selectedCredentialKey.value = normalizeCredentialKey(accountKey)
-  void refreshExecutorCredentials(selectedCredentialKey.value)
-}
-
-function deleteCredentialProfile(accountKey: string): void {
+async function loadCredentialByKey(accountKey: string): Promise<boolean> {
+  if (!entry) return false
   const key = normalizeCredentialKey(accountKey)
-  isCredentialMenuOpen.value = false
-  pendingCredentialDeleteKey.value = key
+  executorCredentials.value = await fetchExecutorCredentials(entry.id, key)
+  const username = formatInforNexusUserIdForDisplay(executorCredentials.value.username || '')
+  if (username) shippingUsername.value = username
+
+  if (!executorCredentials.value.hasStoredCredentials) {
+    selectedCredentialKey.value = ''
+    return false
+  }
+
+  selectedCredentialKey.value = key
+  const resolved = await resolveAutomationCredentials(entry.id, key)
+  shippingUsername.value = formatInforNexusUserIdForDisplay(resolved.username)
+  shippingPassword.value = resolved.password
+  return true
 }
 
-function cancelCredentialDelete(): void {
-  if (credentialClearing.value) return
-  pendingCredentialDeleteKey.value = ''
+function handleCredentialUsernameUpdate(value: string): void {
+  shippingUsername.value = formatInforNexusUserIdForDisplay(value)
+  const matchedOption = findCredentialOptionByUsername(credentialOptions.value, shippingUsername.value)
+  if (matchedOption) {
+    void selectCredentialOption(matchedOption.accountKey)
+    return
+  }
+
+  selectedCredentialKey.value = ''
+  executorCredentials.value = null
+  shippingPassword.value = ''
 }
 
-function confirmCredentialDelete(): void {
-  const key = pendingCredentialDeleteKey.value
-  if (!key) return
-  void clearCurrentCredentials(key)
+async function selectCredentialOption(accountKey: string): Promise<void> {
+  try {
+    const loaded = await loadCredentialByKey(accountKey)
+    if (!loaded) shippingPassword.value = ''
+  } catch (error) {
+    executorCredentials.value = null
+    shippingPassword.value = ''
+    messageTone.value = 'error'
+    message.value = readErrorMessage(error, text('读取账号密码失败。'))
+  }
 }
 
 function normalizeCredentialKey(value: string): string {
-  const key = String(value || '').trim()
-  return key || 'default'
+  return String(value || '').trim() || 'default'
 }
 
 function formatInforNexusUserIdForDisplay(value: string): string {
-  return String(value || '').trim()
-}
-
-function credentialDisplayName(value: string): string {
-  const key = normalizeCredentialKey(value)
-  return key === 'default' ? text('默认账号') : key
-}
-
-function credentialOptionLabel(option: ExecutorCredentialOption): string {
-  const name = credentialDisplayName(option.accountKey)
-  const username = formatInforNexusUserIdForDisplay(option.username)
-  return username ? `${name} / ${username}` : name
+  return normalizeInforNexusUsername(value)
 }
 
 async function refreshAutomationTemplates(): Promise<void> {
@@ -497,18 +428,17 @@ async function saveCurrentCredentials(): Promise<void> {
   if (!entry || credentialSaving.value) return
   const currentEntry = entry
   const u = formatInforNexusUserIdForDisplay(shippingUsername.value); const p = shippingPassword.value
-  const key = normalizeCredentialKey(credentialName.value || selectedCredentialKey.value)
   if (!u || !p) { messageTone.value = 'warning'; message.value = text('请先填写账号和密码。'); return }
   credentialSaving.value = true
+  const key = buildCredentialAccountKey(u)
   try {
     executorCredentials.value = await saveExecutorCredentials(currentEntry.id, u, p, key)
     shippingUsername.value = u
     selectedCredentialKey.value = key
-    credentialName.value = key
     await refreshExecutorCredentials(key)
     shippingPassword.value = p
     messageTone.value = 'success'
-    message.value = text('已保存账号档案。')
+    message.value = text('已保存。')
     return
   } catch (e) {
     messageTone.value = 'error'
@@ -522,25 +452,15 @@ async function saveCurrentCredentials(): Promise<void> {
 async function clearCurrentCredentials(accountKey = selectedCredentialKey.value): Promise<void> {
   if (!entry || credentialClearing.value) return
   const currentEntry = entry
-  isCredentialMenuOpen.value = false
   credentialClearing.value = true
   try {
-    const key = normalizeCredentialKey(accountKey)
-    const wasSelected = key === selectedCredentialKey.value
+    const key = normalizeCredentialKey(accountKey || buildCredentialAccountKey(shippingUsername.value))
     executorCredentials.value = await clearExecutorCredentials(currentEntry.id, key)
+    selectedCredentialKey.value = ''
+    shippingPassword.value = ''
     await refreshCredentialOptions()
-    const nextKey = wasSelected ? credentialOptions.value[0]?.accountKey || 'default' : selectedCredentialKey.value
-    if (wasSelected) {
-      selectedCredentialKey.value = nextKey
-      credentialName.value = nextKey
-      shippingUsername.value = ''
-      shippingPassword.value = ''
-      if (credentialOptions.value.length > 0) await refreshExecutorCredentials(nextKey)
-      else executorCredentials.value = null
-    }
     messageTone.value = 'info'
-    message.value = text('已清除账号档案。')
-    pendingCredentialDeleteKey.value = ''
+    message.value = text('已清除。')
     return
   } catch (e) {
     messageTone.value = 'error'
@@ -593,17 +513,18 @@ async function resolveRunCredentialsPayload(): Promise<Record<string, string>> {
   if (!entry) return {}
   const currentEntry = entry
   const u = formatInforNexusUserIdForDisplay(shippingUsername.value); const tp = shippingPassword.value
-  const key = normalizeCredentialKey(credentialName.value || selectedCredentialKey.value)
+  const key = selectedCredentialKey.value || buildCredentialAccountKey(u)
   if (tp.trim()) {
     if (!u) throw new Error('请填写账号密码。')
-    executorCredentials.value = await saveExecutorCredentials(currentEntry.id, u, tp, key)
+    const savedKey = buildCredentialAccountKey(u)
+    executorCredentials.value = await saveExecutorCredentials(currentEntry.id, u, tp, savedKey)
     shippingUsername.value = u
-    selectedCredentialKey.value = key
-    credentialName.value = key
-    await refreshExecutorCredentials(key)
+    selectedCredentialKey.value = savedKey
+    await refreshExecutorCredentials(savedKey)
     return { username: u, password: tp }
   }
   const resolved = await resolveAutomationCredentials(currentEntry.id, key)
+  selectedCredentialKey.value = resolved.accountKey
   const displayUsername = formatInforNexusUserIdForDisplay(resolved.username)
   shippingUsername.value = displayUsername
   shippingPassword.value = resolved.password
@@ -855,111 +776,9 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
 }
 
 /* ─── Credential Notice ─── */
-.sa-cred-note {
-  display: flex; align-items: center; gap: 7px;
-  margin: 12px 20px 0; padding: 9px 13px; border-radius: 10px;
-  background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d;
-  font-size: 12px; font-weight: 500;
-  :deep(.app-icon) { font-size: 14px; flex-shrink: 0; }
-}
-.sa-cred-profile-grid { display: grid; grid-template-columns: minmax(180px, .85fr) minmax(220px, 1fr); gap: 12px; }
-.sa-cred-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.sa-cred-row { display: flex; flex-wrap: wrap; gap: 7px; }
-
-/* ─── Fields ─── */
 .sa-field { display: flex; flex-direction: column; gap: 4px;
   > span { font-size: 11px; font-weight: 600; color: var(--ink); }
 }
-.sa-inp-wrap { position: relative; display: flex; align-items: center; }
-.sa-inp-icon { position: absolute; left: 10px; color: var(--mu); font-size: 14px; pointer-events: none; z-index: 1; }
-.sa-inp {
-  flex: 1; min-width: 0; height: 34px; padding: 0 12px 0 32px;
-  border: 1px solid var(--br); border-radius: 8px;
-  background: #f8fafc; color: var(--ink); font-size: 12px;
-  transition: all .2s ease;
-  &::placeholder { color: #94a3b8; }
-  &:focus { outline: none; border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,.1); background: #fff; }
-  &__btn { position: absolute; right: 8px; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: none; border-radius: 6px; background: transparent; color: var(--mu); cursor: pointer; transition: all .15s;
-    :deep(.app-icon) { font-size: 13px; }
-    &:hover { color: var(--a); background: var(--a2); }
-  }
-}
-.sa-cred-profile-grid .sa-inp { height: 46px; }
-.sa-profile-control-row {
-  display: flex; align-items: stretch; gap: 8px; min-width: 0;
-}
-.sa-profile-picker {
-  position: relative; flex: 1; min-width: 0; z-index: 10;
-  &--open { z-index: 40; }
-}
-.sa-profile-trigger {
-  display: flex; align-items: center; gap: 10px;
-  width: 100%; min-width: 0; height: 46px; padding: 0 12px;
-  border: 1px solid var(--br); border-radius: 10px;
-  background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
-  color: var(--ink); cursor: pointer; text-align: left;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.9);
-  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
-  &:hover:not(:disabled) { border-color: #93c5fd; background: #fff; box-shadow: 0 4px 14px rgba(14,165,233,.08); }
-  &:disabled { cursor: not-allowed; color: #94a3b8; background: #f8fafc; }
-  &__icon {
-    display: flex; align-items: center; justify-content: center;
-    width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
-    background: var(--a2); color: var(--a);
-    :deep(.app-icon) { font-size: 14px; }
-  }
-  &__text {
-    display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1;
-    strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 750; }
-    small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; color: var(--mu); }
-  }
-  &__chev { flex-shrink: 0; color: var(--mu); font-size: 14px; transition: transform .18s ease; }
-}
-.sa-profile-picker--open .sa-profile-trigger {
-  border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,.12);
-  .sa-profile-trigger__chev { transform: rotate(180deg); }
-}
-.sa-profile-menu {
-  position: absolute; left: 0; right: 0; top: calc(100% + 6px);
-  max-height: 236px; overflow: auto; padding: 6px;
-  border: 1px solid #dbeafe; border-radius: 12px; background: #fff;
-  box-shadow: 0 16px 34px rgba(15,23,42,.14);
-  animation: sa-menuIn .16s ease-out both;
-}
-.sa-profile-option {
-  display: flex; align-items: center; gap: 6px; border-radius: 9px;
-  & + & { margin-top: 4px; }
-  &--active { background: #eff6ff; }
-}
-.sa-profile-option__main {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  flex: 1; min-width: 0; padding: 9px 8px 9px 10px;
-  border: 0; border-radius: 9px; background: transparent; color: var(--ink);
-  cursor: pointer; text-align: left;
-  &:hover { background: #f8fafc; }
-  span { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
-  strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 750; }
-  small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; color: var(--mu); }
-  :deep(.app-icon) { flex-shrink: 0; font-size: 13px; color: #0ea5e9; }
-}
-.sa-profile-option__delete {
-  display: flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; margin-right: 3px; flex-shrink: 0;
-  border: 1px solid transparent; border-radius: 8px; background: transparent;
-  color: #ef4444; cursor: pointer; transition: all .16s ease;
-  :deep(.app-icon) { font-size: 13px; }
-  &:hover:not(:disabled) { background: #fef2f2; border-color: #fecaca; }
-  &:disabled { opacity: .45; cursor: wait; }
-}
-.sa-select {
-  width: 100%; min-width: 0; height: 34px; padding: 0 32px 0 12px;
-  border: 1px solid var(--br); border-radius: 8px;
-  background: #f8fafc; color: var(--ink); font-size: 12px;
-  &:focus { outline: none; border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,.1); background: #fff; }
-  &:disabled { color: #94a3b8; cursor: not-allowed; }
-}
-
-/* ─── Dropzone ─── */
 .sa-drop {
   position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 8px; min-height: 90px; padding: 20px 14px;
@@ -1142,7 +961,7 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
 
 /* ═══ RESPONSIVE ═══ */
 @media (max-width: 1200px) { .sa-body { grid-template-columns: 1fr 220px; } }
-@media (max-width: 960px) { .sa-body { grid-template-columns: 1fr; } .sa-dock { flex-direction: row; } .sa-dock-card { flex: 1; &--flex { flex: 1; } } .sa-cred-profile-grid, .sa-cred-grid { grid-template-columns: 1fr; } }
+@media (max-width: 960px) { .sa-body { grid-template-columns: 1fr; } .sa-dock { flex-direction: row; } .sa-dock-card { flex: 1; &--flex { flex: 1; } } }
 
 /* 执行器控制双列格栅 */
 .sa-btn-grid {
