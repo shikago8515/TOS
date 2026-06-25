@@ -46,6 +46,29 @@ test('server apply script replaces backend data files from the package', async (
   assert.match(deployScript, /cp -a "\$SRC\/tms-backend\/data" tms-backend\//)
 })
 
+test('Gitea main deployment script keeps source and deployment directories separate', async () => {
+  const deployScript = await readFile(new URL('../server/deploy-gitea-main.sh', import.meta.url), 'utf8')
+
+  assert.match(deployScript, /SOURCE_DIR="\$\{TOS_SOURCE_DIR:-\$HOME\/TOS-source\}"/)
+  assert.match(deployScript, /DEPLOY_ROOT="\$\{TOS_DEPLOY_ROOT:-\$HOME\/TOS\}"/)
+  assert.match(deployScript, /git clone --branch "\$BRANCH" "\$REMOTE_URL" "\$SOURCE_DIR"/)
+  assert.match(deployScript, /git fetch "\$REMOTE_NAME" "\$BRANCH"/)
+  assert.match(deployScript, /git reset --hard "\$REMOTE_NAME\/\$BRANCH"/)
+  assert.doesNotMatch(deployScript, /cd "\$DEPLOY_ROOT"[\s\S]*git pull/)
+})
+
+test('Gitea main deployment script packages and applies the standard server update archive', async () => {
+  const deployScript = await readFile(new URL('../server/deploy-gitea-main.sh', import.meta.url), 'utf8')
+
+  assert.match(deployScript, /npm run ci:install/)
+  assert.match(deployScript, /npm run check:quick/)
+  assert.match(deployScript, /npm run server:package:dry-run/)
+  assert.match(deployScript, /npm run server:package/)
+  assert.match(deployScript, /deploy\/apply-server-update\.sh/)
+  assert.match(deployScript, /curl -fsS http:\/\/127\.0\.0\.1:18000\//)
+  assert.match(deployScript, /curl -fsSI http:\/\/127\.0\.0\.1:18080\//)
+})
+
 test('rejects release notes that are not synced to the app version', async () => {
   const root = await createFixture({
     appVersion: '0.9.8-beta.3.3',

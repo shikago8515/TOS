@@ -185,6 +185,45 @@ https://ai.tomwell.net:56130/tos/tos-desktop-full/download
 https://ai.tomwell.net:56130/tos/automation-helper/download
 ```
 
+## 从 Gitea main 半自动部署
+
+如果希望“合并到 Gitea `main` 后，在服务器一条命令更新”，仍然不要把 `~/TOS` 改成 Git 仓库。推荐保持两个目录：
+
+```text
+/home/obito_li/TOS-source   # Git 源码目录，跟踪 Gitea main
+/home/obito_li/TOS          # Docker Compose 部署目录，不执行 git pull
+```
+
+服务器首次准备：
+
+```bash
+cd ~
+git clone http://172.16.48.208:3001/luenthai-ai/TOS.git TOS-source
+chmod +x ~/TOS-source/scripts/server/deploy-gitea-main.sh
+```
+
+以后 Gitea 合并到 `main` 后，在服务器执行：
+
+```bash
+bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
+```
+
+脚本会执行：
+
+- 从 `http://172.16.48.208:3001/luenthai-ai/TOS.git` 拉取 `main` 到 `~/TOS-source`。
+- 拒绝把 `~/TOS` 当成 Git 仓库更新，避免覆盖服务器专用的 `docker-compose.tos.yml`、`authelia/`、Dockerfile 和备份目录。
+- 运行 `npm run ci:install`、`npm run check:quick`、`npm run server:package:dry-run` 和 `npm run server:package`。
+- 把生成的 `release/server/tos-server-update-*.tar.gz` 复制到 `~/TOS/.deploy_uploads/`。
+- 解压更新包并调用包内 `deploy/apply-server-update.sh`，完成备份、复制、Docker 重建、启动和本地验证。
+
+常用环境变量：
+
+```bash
+TOS_SKIP_INSTALL=1 bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
+TOS_GITEA_REMOTE_URL=http://172.16.48.208:3001/luenthai-ai/TOS.git bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
+TOS_SOURCE_DIR=/home/obito_li/TOS-source TOS_DEPLOY_ROOT=/home/obito_li/TOS bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
+```
+
 ## 回滚
 
 如果重建失败或页面异常，使用本次部署记录的 `DEPLOY_ID` 回滚：
