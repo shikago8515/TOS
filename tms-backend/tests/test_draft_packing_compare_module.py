@@ -707,6 +707,107 @@ class DraftPackingCompareModuleTests(unittest.TestCase):
         self.assertNotIn("This document is a summary", records[0].goods_description)
         self.assertNotIn("Page 6 of 8", records[0].goods_description)
 
+    def test_parse_packing_pages_carries_leading_description_to_previous_page_record(self):
+        page_with_trailing_record = PackingExtractedPage(
+            text="""
+PO Details
+PO No PO Line Working No Article No Article Description Model No Model Name Market PO Number Category Brand QTY Ctn Count
+Aggregator Number
+0902319344 1 RC2613OW003 LE8298 SKIRT BLACK CH594 SKIRT 0306700300 ORIGINALS ADIDAS 371 14
+This document is a summary and does not contain all the terms and conditions applicable to the transaction.
+Page 6 of 8
+""",
+            tables=[
+                [
+                    [
+                        "PO No",
+                        "PO Line",
+                        "Working No",
+                        "Article No",
+                        "Article Description",
+                        "Model No",
+                        "Model Name",
+                        "Market PO Number",
+                        "Category",
+                        "Brand",
+                        "QTY",
+                        "Ctn Count",
+                    ],
+                    [
+                        "0902319344",
+                        "1",
+                        "RC2613OW003",
+                        "LE8298",
+                        "SKIRT BLACK",
+                        "CH594",
+                        "SKIRT",
+                        "0306700300",
+                        "ORIGINALS",
+                        "ADIDAS",
+                        "371",
+                        "14",
+                    ],
+                ],
+            ],
+        )
+        page_with_leading_description = PackingExtractedPage(
+            text="""
+Goods Description
+WOMEN'S WOVEN SKIRT,MAIN MATERIAL: 100% COTTON
+PO No PO Line Working No Article No Article Description Model No Model Name Market PO Number Category Brand QTY Ctn Count
+Aggregator Number
+0902319345 1 RC2613OW004B LF3779 SSTR TT CM626 SSTR TT 0306700311 ORIGINALS ADIDAS 405 23
+Goods Description
+WOMEN'S WOVEN DENIM TRACK TOP,MAIN MATERIAL: 99% COTTON 1% ELASTANE
+""",
+            tables=[
+                [
+                    [
+                        "PO No",
+                        "PO Line",
+                        "Working No",
+                        "Article No",
+                        "Article Description",
+                        "Model No",
+                        "Model Name",
+                        "Market PO Number",
+                        "Category",
+                        "Brand",
+                        "QTY",
+                        "Ctn Count",
+                    ],
+                    [
+                        "0902319345",
+                        "1",
+                        "RC2613OW004B",
+                        "LF3779",
+                        "SSTR TT",
+                        "CM626",
+                        "SSTR TT",
+                        "0306700311",
+                        "ORIGINALS",
+                        "ADIDAS",
+                        "405",
+                        "23",
+                    ],
+                ],
+            ],
+        )
+
+        records = self.module.parse_packing_pages(
+            [page_with_trailing_record, page_with_leading_description]
+        )
+        records_by_po = {record.po_number: record for record in records}
+
+        self.assertEqual(
+            records_by_po["0902319344"].goods_description,
+            "WOMEN'S WOVEN SKIRT,MAIN MATERIAL: 100% COTTON",
+        )
+        self.assertEqual(
+            records_by_po["0902319345"].goods_description,
+            "WOMEN'S WOVEN DENIM TRACK TOP,MAIN MATERIAL: 99% COTTON 1% ELASTANE",
+        )
+
     def test_build_comparison_result_marks_strict_hs_difference(self):
         draft_records = self.module.parse_draft_text(DIRECT_AND_ATTACHMENT_DRAFT_TEXT)
         packing_records = self.module.parse_packing_pages([PACKING_PAGE])

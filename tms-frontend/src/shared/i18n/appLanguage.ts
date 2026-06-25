@@ -104,8 +104,8 @@ const translations = {
     'en-US': 'Excel Processing',
   },
   'app.home.metricExcelDetail': {
-    'zh-CN': 'jessica - 对账核对 / Sophia - 报表合并 / Jane - 表格制作 / Eric',
-    'en-US': 'Reconciliation / Report Merge / Jane Table Making / Eric',
+    'zh-CN': 'jessica - Invoice 核对 / Sophia - 报表合并 / Jane - 表格制作 / Eric',
+    'en-US': 'Invoice Compare / Report Merge / Jane Table Making / Eric',
   },
   'app.home.metricCollector': {
     'zh-CN': '正式采集',
@@ -164,8 +164,8 @@ const translations = {
     'en-US': 'Default Excel module entry',
   },
   'app.home.serviceFilesStatus': {
-    'zh-CN': 'jessica - 对账核对',
-    'en-US': 'Reconciliation',
+    'zh-CN': 'jessica - Invoice 核对',
+    'en-US': 'Invoice Compare',
   },
   'app.module.open': {
     'zh-CN': '打开',
@@ -181,7 +181,9 @@ function normalizeStaticText(value: string): string {
 
 const staticTextTranslations: Record<string, string> = {
   首页: 'Home',
-  'jessica - 对账核对': 'jessica - Reconciliation',
+  'jessica - 对账核对': 'jessica - Invoice Compare',
+  'jessica - Invoice 核对': 'jessica - Invoice Compare',
+  'Invoice 核对': 'Invoice Compare',
   'Sophia - 报表合并': 'Sophia - Report Merge',
   成品表生成: 'Finished Goods Sheet',
   'Jane - BOM汇总': 'Jane BOM Summary',
@@ -303,6 +305,7 @@ const staticTextTranslations: Record<string, string> = {
   核对进度: 'Reconciliation Progress',
   'SAP BTP 自动化流程': 'SAP BTP Automation Flow',
   诊断包: 'Diagnostics Package',
+  Excel处理: 'Excel Processing',
   'Excel 处理': 'Excel Processing',
   桌面Electron环境: 'Desktop Electron Environment',
   '桌面 Electron 环境': 'Desktop Electron Environment',
