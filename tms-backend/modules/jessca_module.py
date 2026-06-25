@@ -193,7 +193,9 @@ class JesscaModule:
                 if adapter.get_col_count(row_idx) > 1:
                     article_val = str(adapter.get_cell_value(row_idx, 1) or "").strip()
                     if pending_items:
-                        pending_items[-1]['article'] = article_val
+                        for item in pending_items:
+                            if item.get('article') in (None, ""):
+                                item['article'] = article_val
 
             # 识别STYLE行
             elif col0_val.upper().startswith("STYLE"):
@@ -1202,7 +1204,7 @@ class JesscaModule:
         status_fills = {
             "一致": PatternFill(start_color="FFDDFFDD", end_color="FFDDFFDD", fill_type="solid"),
             "需核对": PatternFill(start_color="FFFFDDDD", end_color="FFFFDDDD", fill_type="solid"),
-            "缺失": PatternFill(start_color="FFFFFFCC", end_color="FFFFFFCC", fill_type="solid"),
+            "缺失": PatternFill(start_color="FFFFDDDD", end_color="FFFFDDDD", fill_type="solid"),
         }
         for row_idx, row in enumerate(rows, 3):
             values = [

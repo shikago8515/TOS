@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { translateStaticText } from './appLanguage'
+import { translateStaticText, translateText } from './appLanguage'
 
 describe('appLanguage', () => {
+  it('uses Invoice compare labels for the Jessca home overview text', () => {
+    expect(translateText('app.home.metricExcelDetail', 'zh-CN')).toContain('jessica - Invoice 核对')
+    expect(translateText('app.home.serviceFilesStatus', 'zh-CN')).toBe('jessica - Invoice 核对')
+  })
+
   it('translates common upload and automation page text in English mode', () => {
     const phrases = [
       '释放文件',

@@ -166,7 +166,7 @@ export const serviceStatusItems = [
     key: 'files',
     title: '文件准备',
     subtitle: 'Excel 模块默认模板准备',
-    status: 'jessica - 对账核对',
+    status: 'jessica - Invoice 核对',
     tone: 'online' as const,
   },
 ]

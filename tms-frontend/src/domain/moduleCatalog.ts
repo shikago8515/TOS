@@ -63,7 +63,7 @@ export const tosNavGroups = [
 ] as const satisfies readonly TosNavGroupDefinition[]
 
 export const tosModuleCategoryLabels: Record<TosModuleCategory, { label: string; labelEn: string }> = {
-  reconciliation: { label: '对账核对', labelEn: 'Reconciliation' },
+  reconciliation: { label: 'Excel处理', labelEn: 'Excel Processing' },
   excel: { label: 'Excel 处理', labelEn: 'Excel Processing' },
   'browser-automation': { label: '浏览器自动化', labelEn: 'Browser Automation' },
   pdf: { label: 'PDF / 单据处理', labelEn: 'PDF / Document Processing' },
@@ -107,8 +107,8 @@ export const tosModules = [
     routeName: 'jessca',
     title: 'Invoice 核对',
     titleEn: 'Invoice Compare',
-    navLabel: '对账核对',
-    navLabelEn: 'Reconciliation',
+    navLabel: 'Invoice 核对',
+    navLabelEn: 'Invoice Compare',
     group: 'jessica',
     category: 'reconciliation',
     stage: 'production',

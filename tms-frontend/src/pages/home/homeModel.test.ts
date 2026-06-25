@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { homeModuleCards, homeShortcutModules } from './homeModel'
+import { homeModuleCards, homeShortcutModules, serviceStatusItems } from './homeModel'
 
 describe('homeModel', () => {
   it('exposes the Jason PDF reorder shortcut through the canonical route', () => {
@@ -20,5 +20,11 @@ describe('homeModel', () => {
     expect(ericCard?.iconName).toBe('globe')
     expect(jessicaCard).toBeUndefined()
     expect(browserPluginsShortcut).toBeUndefined()
+  })
+
+  it('uses Invoice compare for the Jessca file preparation status', () => {
+    const fileStatus = serviceStatusItems.find((entry) => entry.key === 'files')
+
+    expect(fileStatus?.status).toBe('jessica - Invoice 核对')
   })
 })

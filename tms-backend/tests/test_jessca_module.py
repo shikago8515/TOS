@@ -3,7 +3,7 @@ import sys
 import tempfile
 import unittest
 from datetime import date
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from openpyxl import Workbook, load_workbook
 import pandas as pd
@@ -38,7 +38,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         headers = []
         for row_index, row in enumerate(worksheet.iter_rows(values_only=True), 1):
             row_values = list(row)
-            if "核对状态" in row_values or "状态" in row_values:
+            if "核对状态" in row_values or "状态" in row_values or "Check Status" in row_values:
                 header_row_index = row_index
                 headers = row_values
                 break
@@ -236,6 +236,87 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(records[0].quantity, 200)
         self.assertEqual(records[0].price, 6.6)
 
+    def test_read_invoice_records_applies_trailing_article_to_multiple_po_rows(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            invoice_path = os.path.join(temp_dir, "invoice.xlsx")
+            wb = Workbook()
+            ws = wb.active
+            ws["G4"] = "INV NO.:"
+            ws["H4"] = "10-01-26-0076"
+            ws["G7"] = "DATE:"
+            ws["H7"] = date(2026, 2, 1)
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append(["PO NO.", "STOCK NO.", "COLOR", "DESCRIPTIONS", None, "QTY(PC)", "UNIT PRICE(PC)", None, "FOB"])
+            ws.append(["WOMEN'S WOVEN DENIM SKIRT,MAIN MATERIAL: 100% COTTON"])
+            ws.append(["PO#", "0901792204", None, None, None, 317, "USD", 12.67, "USD", 4016.39])
+            ws.append(["PO#", "0901792050", None, None, None, 313, "USD", 12.67, "USD", 3965.71])
+            ws.append(["ARTICLE NO.:", "KY8114"])
+            ws.append(["STYLE NO.:", "RC2609OW007"])
+            wb.save(invoice_path)
+
+            records = self.module.read_invoice_records(invoice_path)
+
+        self.assertEqual(len(records), 2)
+        self.assertEqual([record.po_number for record in records], ["0901792204", "0901792050"])
+        self.assertEqual([record.article for record in records], ["KY8114", "KY8114"])
+        self.assertEqual([record.style for record in records], ["RC2609OW007", "RC2609OW007"])
+        self.assertEqual([record.price for record in records], [12.67, 12.67])
+
+    def test_update_reference_table_ignores_multi_po_trailing_article_noise(self):
+        ref_df = pd.DataFrame(
+            [
+                {"Price": 12.67, "Style NO.": "RC2609OW007", "Article NO.": "KY8113"},
+                {"Price": 12.67, "Style NO.": "RC2609OW007", "Article NO.": "KY8114"},
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            invoice_path = os.path.join(temp_dir, "0076.xlsx")
+            wb = Workbook()
+            ws = wb.active
+            ws["G4"] = "INV NO.:"
+            ws["H4"] = "10-01-26-0076"
+            ws["G7"] = "DATE:"
+            ws["H7"] = date(2026, 2, 1)
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append(["PO NO.", "STOCK NO.", "COLOR", "DESCRIPTIONS", None, "QTY(PC)", "UNIT PRICE(PC)", None, "FOB"])
+            ws.append(["WOMEN'S WOVEN DENIM SKIRT,MAIN MATERIAL: 100% COTTON"])
+            ws.append(["PO#", "0901792046", None, None, None, 7596, "USD", 12.67, "USD", 96241.32])
+            ws.append(["ARTICLE NO.:", "KY8113"])
+            ws.append(["STYLE NO.:", "RC2609OW007"])
+            ws.append(["WOMEN'S WOVEN DENIM SKIRT,MAIN MATERIAL: 100% COTTON"])
+            ws.append(["PO#", "0901792204", None, None, None, 317, "USD", 12.67, "USD", 4016.39])
+            ws.append(["PO#", "0901792050", None, None, None, 313, "USD", 12.67, "USD", 3965.71])
+            ws.append(["ARTICLE NO.:", "KY8114"])
+            ws.append(["STYLE NO.:", "RC2609OW007"])
+            wb.save(invoice_path)
+
+            invoice_records = self.module.read_invoice_records(invoice_path)
+
+        invoice_data: Dict[Tuple[str, str], Dict[str, float]] = {}
+        for record in invoice_records:
+            invoice_data.setdefault((record.article, record.style), {})[record.invoice_file] = record.price
+
+        result_df, matches = self.module.update_reference_table(ref_df, invoice_data)
+
+        self.assertEqual(matches, {"一致": 2, "不一致": 0, "未找到": 0})
+        self.assertNotIn("字段疑似错误-候选多条", set(result_df["核对状态"]))
+        self.assertEqual(list(result_df["核对状态"]), ["一致", "一致"])
+
     def test_read_invoice_records_extracts_inline_no_and_month_date_header(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             invoice_path = os.path.join(temp_dir, "invoice.xlsx")
@@ -415,6 +496,48 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(packing_sheet["A3"].value, "一致")
         self.assertEqual(packing_sheet["C3"].value, "10-06-26-0712")
         self.assertEqual(packing_sheet["E3"].value, "2026-06-07")
+
+    def test_save_excel_with_summary_marks_missing_packing_rows_red(self):
+        ref_df = pd.DataFrame(
+            [{"Price": 6.6, "Style NO.": "RC2620OW008", "Article NO.": "LG4321"}],
+        )
+        invoice_data = {("LG4321", "RC2620OW008"): {"invoice.xlsx": 6.6}}
+        result_df, _ = self.module.update_reference_table(ref_df, invoice_data)
+        packing_rows = self.module.build_packing_list_comparison(
+            [
+                InvoiceRecord(
+                    invoice_file="invoice.xlsx",
+                    invoice_number="10-06-26-0712",
+                    invoice_date="2026-06-07",
+                    po_number="0902694555",
+                    article="LG4321",
+                    style="RC2620OW008",
+                    quantity=200,
+                    price=6.6,
+                )
+            ],
+            [],
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = os.path.join(temp_dir, "result.xlsx")
+            self.module.save_excel_with_summary(
+                result_df,
+                invoice_data,
+                ["invoice.xlsx"],
+                ["invoice.xlsx"],
+                ref_df,
+                output_path,
+                packing_comparison_rows=packing_rows,
+            )
+            workbook = load_workbook(output_path)
+
+        packing_records = self._sheet_records(workbook["Packing List核对"])
+        missing_record = next(
+            record for record in packing_records
+            if record["values"].get("Check Status") == "缺失"
+        )
+        self.assertEqual(missing_record["cells"]["Check Status"].fill.fgColor.rgb, "FFFFDDDD")
 
     def test_process_invoices_labels_reference_style_when_packing_confirms_invoice(self):
         class VentReferenceJesscaModule(JesscaModule):

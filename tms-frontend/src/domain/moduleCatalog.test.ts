@@ -4,6 +4,7 @@ import {
   getLocalizedModuleTitle,
   getModuleById,
   getModulesByGroup,
+  tosModuleCategoryLabels,
   tosModules,
   tosNavGroups,
 } from './moduleCatalog'
@@ -104,6 +105,19 @@ describe('moduleCatalog', () => {
     expect(moduleIds).toContain('draft-packing-compare')
     expect(legacyPdfModules.map((module) => module.id)).not.toContain('draft-packing-compare')
     expect(moduleIds.indexOf('draft-packing-compare')).toBeGreaterThan(moduleIds.indexOf('jessca'))
+  })
+
+  it('labels Jessca invoice compare under Excel processing in the sidebar', () => {
+    const jesscaModule = getModuleById('jessca')
+
+    expect(tosModuleCategoryLabels.reconciliation).toMatchObject({
+      label: 'Excel处理',
+      labelEn: 'Excel Processing',
+    })
+    expect(jesscaModule).toMatchObject({
+      navLabel: 'Invoice 核对',
+      navLabelEn: 'Invoice Compare',
+    })
   })
 
   it('uses full module titles for page breadcrumbs in both languages', () => {

@@ -266,8 +266,15 @@ class DraftPackingCompareModule:
         page_texts = [page.text for page in pages]
         detail_totals = self._parse_packing_detail_totals(page_texts)
         invoice_number = self._extract_packing_invoice_number(page_texts)
+        pending_description_record: ExtractedRecord | None = None
 
         for page in pages:
+            if pending_description_record:
+                leading_description = self._extract_leading_packing_description(page.text)
+                if leading_description and not pending_description_record.goods_description:
+                    pending_description_record.goods_description = leading_description
+                pending_description_record = None
+
             last_record: ExtractedRecord | None = None
             for table in page.tables:
                 if not table:
@@ -296,6 +303,8 @@ class DraftPackingCompareModule:
                     self._attach_hts_row(last_record, normalized_header, table[1:])
 
             self._attach_packing_descriptions(page.text, records)
+            if last_record and not last_record.goods_description:
+                pending_description_record = last_record
 
         for record in records:
             self._add_missing_record_issues(record, "Packing List")
@@ -785,6 +794,37 @@ class DraftPackingCompareModule:
                 hts_match = self.PACKING_DESCRIPTION_HTS_RE.search(record.goods_description)
                 if hts_match:
                     record.hs_code = hts_match.group("hts")
+
+    def _extract_leading_packing_description(self, text: str) -> str:
+        description_lines: list[str] = []
+        in_description = False
+        for raw_line in str(text).replace("\r", "\n").splitlines():
+            line = self._normalize_text(raw_line)
+            if not line:
+                continue
+
+            if not in_description:
+                if re.fullmatch(r"Goods Description", line, re.IGNORECASE):
+                    in_description = True
+                    continue
+                if self._is_packing_description_boundary(line):
+                    return ""
+                continue
+
+            if self._is_packing_description_boundary(line):
+                break
+            description_lines.append(line)
+
+        return self._normalize_packing_description("\n".join(description_lines))
+
+    def _is_packing_description_boundary(self, line: str) -> bool:
+        if re.match(r"^(PO\s+No\s+PO\s+Line|Total\s+Quantity|For\s+and\s+on\s+behalf)", line, re.IGNORECASE):
+            return True
+        if re.match(r"^\d{10}\s+1\b", line):
+            return True
+        if re.match(r"^\d{4}\s+", line):
+            return True
+        return bool(self.PACKING_DESCRIPTION_FOOTER_RE.search(line))
 
     def _add_missing_record_issues(self, record: ExtractedRecord, source: str) -> None:
         checks = [
