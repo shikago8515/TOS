@@ -55,7 +55,6 @@ const iconMap: Record<string, string> = {
   'jane-bom-compare': 'shield-check',
   'jane-outbound-compare': 'check-circle',
   eric: 'database',
-  'browser-plugins': 'plug',
   'web-automation': 'workflow',
   infornexus: 'external-link',
   'adidas-materials': 'globe-search',

@@ -164,11 +164,15 @@ describe('moduleCatalog', () => {
     )
   })
 
-  it('moves released Bulk automation under Jane Infornexus without moving the Eric auto-add entry', () => {
+  it('keeps released Bulk under Jane and moves auto-add under Eric Infornexus', () => {
     const janeInfornexusModule = getModuleById('jane-infornexus')
+    const ericInfornexusModule = getModuleById('eric-infornexus')
     const janeModules = getModulesByGroup('jane')
+    const jessicaModules = getModulesByGroup('jessica')
     const ericModules = getModulesByGroup('eric')
+    const moduleIds = tosModules.map((module) => String(module.id))
     const janeModuleIds = janeModules.map((module) => module.id)
+    const jessicaModuleIds = jessicaModules.map((module) => module.id)
     const ericModuleIds = ericModules.map((module) => module.id)
 
     expect(janeInfornexusModule).toMatchObject({
@@ -184,7 +188,25 @@ describe('moduleCatalog', () => {
     })
     expect(janeModuleIds).toContain('jane-infornexus')
     expect(janeModuleIds.indexOf('jane-infornexus')).toBeGreaterThan(janeModuleIds.indexOf('jane-sap'))
+    expect(ericInfornexusModule).toMatchObject({
+      group: 'eric',
+      path: '/eric-infornexus',
+      routeName: 'eric-infornexus',
+      title: 'Eric / Infornexus',
+      titleEn: 'Eric / Infornexus',
+      navLabel: 'Infornexus',
+      navLabelEn: 'Infornexus',
+      category: 'browser-automation',
+      stage: 'production',
+    })
     expect(ericModuleIds).toContain('eric-infornexus')
+    expect(ericModuleIds.indexOf('eric-infornexus')).toBeGreaterThan(
+      ericModuleIds.indexOf('iplex-dual-table-compare'),
+    )
+    expect(moduleIds).not.toContain('jessica-infornexus')
+    expect(ericModuleIds).not.toContain('jessica-infornexus')
+    expect(jessicaModuleIds).not.toContain('jessica-infornexus')
+    expect(jessicaModuleIds).not.toContain('eric-infornexus')
   })
 
   it('defines English full titles for every module', () => {
@@ -203,6 +225,7 @@ describe('moduleCatalog', () => {
 
   it('exposes the web automation hub as a visible validation module', () => {
     const webAutomationModule = tosModules.find((module) => module.id === 'web-automation')
+    const moduleIds = tosModules.map((module) => String(module.id))
 
     expect(webAutomationModule).toMatchObject({
       path: '/web-automation',
@@ -211,5 +234,6 @@ describe('moduleCatalog', () => {
       category: 'browser-automation',
       stage: 'validation',
     })
+    expect(moduleIds).not.toContain('browser-plugins')
   })
 })

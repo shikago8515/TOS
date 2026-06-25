@@ -3,7 +3,6 @@ import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-rou
 
 import { tosRouteDefinitions, tosRouteRedirects } from './routeCatalog'
 import AdidasMaterialsPage from '../pages/adidas-materials/AdidasMaterialsPage.vue'
-import BrowserPluginsPage from '../pages/browser-plugins/BrowserPluginsPage.vue'
 import DraftPackingComparePage from '../pages/draft-packing-compare/DraftPackingComparePage.vue'
 import EricPage from '../pages/eric/EricPage.vue'
 import HomePage from '../pages/home/HomePage.vue'
@@ -39,6 +38,7 @@ const routeComponents: Partial<Record<string, Component>> = {
   'jane-outbound-compare': JaneOutboundComparePage,
   'jane-infornexus': JaneInfornexusPage,
   eric: EricPage,
+  'eric-infornexus': InfornexusAutoAddPage,
   'jason-pdf-reorder': JasonPdfReorderPage,
   'web-automation-scenario-shipping-automation': ShippingAutomationPage,
   'web-automation-scenario-xinlongtai-shipping-automation': XinlongtaiShippingAutomationPage,
@@ -48,9 +48,7 @@ const routeComponents: Partial<Record<string, Component>> = {
   'tms-finance-work-sales': TmsFinanceInternalReconciliationPage,
   'iplex-dual-table-compare': IplexDualTableComparePage,
   'jane-sap': JaneSapPage,
-  'eric-infornexus': InfornexusAutoAddPage,
   'sophia-tina': SophiaTinaPage,
-  'browser-plugins': BrowserPluginsPage,
   'web-automation': WebAutomationPage,
   infornexus: InfornexusPage,
   'adidas-materials': AdidasMaterialsPage,

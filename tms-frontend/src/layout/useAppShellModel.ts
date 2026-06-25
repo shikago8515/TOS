@@ -403,7 +403,6 @@ export function useAppShellModel() {
       'xinlongtai-shipping-automation': 'globe',
       'po-auto-download': 'download-cloud',
       'draft-packing-compare': 'file-search',
-      'browser-plugins': 'puzzle',
       'web-automation': 'workflow',
       'infornexus': 'globe',
       'jane-sap': 'server',

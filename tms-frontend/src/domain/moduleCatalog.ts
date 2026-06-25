@@ -327,19 +327,19 @@ export const tosModules = [
     order: 51,
   },
   {
-    id: 'browser-plugins',
-    path: '/browser-plugins',
-    routeName: 'browser-plugins',
-    title: '浏览器插件',
-    titleEn: 'Browser Plugins',
-    navLabel: '浏览器插件',
-    navLabelEn: 'Browser Plugins',
-    group: 'general-tools',
+    id: 'eric-infornexus',
+    path: '/eric-infornexus',
+    routeName: 'eric-infornexus',
+    title: 'Eric / Infornexus',
+    titleEn: 'Eric / Infornexus',
+    navLabel: 'Infornexus',
+    navLabelEn: 'Infornexus',
+    group: 'eric',
     category: 'browser-automation',
-    stage: 'validation',
-    description: '测试阶段：业务网页插件验证',
-    descriptionEn: 'Validation: business web plugin checks',
-    order: 60,
+    stage: 'production',
+    description: '按 Excel 第二列 ID 自动执行 Infor Nexus 搜索、勾选和添加。',
+    descriptionEn: 'Run Infor Nexus search, select and add flow from Excel column B IDs.',
+    order: 55,
   },
   {
     id: 'web-automation',
@@ -402,21 +402,6 @@ export const tosModules = [
     order: 49,
   },
   {
-    id: 'eric-infornexus',
-    path: '/eric-infornexus',
-    routeName: 'eric-infornexus',
-    title: 'Eric / Infornexus',
-    titleEn: 'Eric / Infornexus',
-    navLabel: 'Infornexus',
-    navLabelEn: 'Infornexus',
-    group: 'eric',
-    category: 'browser-automation',
-    stage: 'production',
-    description: 'Infornexus 自动化流程',
-    descriptionEn: 'Infornexus automation workflow',
-    order: 55,
-  },
-  {
     id: 'adidas-materials',
     path: '/adidas-materials',
     routeName: 'adidas-materials',
@@ -452,6 +437,8 @@ export type TosModuleId = (typeof tosModules)[number]['id']
 
 export const routeRedirects = [
   { from: '/it-invoice-pdf-reorder', to: '/jason/pdf-reorder' },
+  { from: '/jessica-infornexus', to: '/eric-infornexus' },
+  { from: '/browser-plugins', to: '/eric-infornexus' },
 ] as const
 
 export function getModulesByGroup(group: TosModuleGroup): TosModuleDefinition[] {

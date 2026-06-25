@@ -3,29 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { translateStaticText } from './appLanguage'
 
 describe('appLanguage', () => {
-  it('translates browser plugin page text in English mode', () => {
-    const phrases = [
-      '浏览器插件管理',
-      '浏览器预览模式',
-      '搜索插件或站点',
-      '刷新',
-      '插件总数',
-      '可启动',
-      '预览模式',
-      '当前为预览模式：可查看插件信息，启动需在桌面 Electron 环境中使用。',
-      'Infornexus 自动搜索并添加',
-      'Chrome 扩展',
-      '预览配置',
-      '在 Infornexus 页面读取 XLS/XLSX 的指定 ID，并自动执行搜索、勾选和添加操作。',
-      '启动',
-      '站点',
-    ]
-
-    for (const phrase of phrases) {
-      expect(translateStaticText(phrase, 'en-US')).not.toBe(phrase)
-    }
-  })
-
   it('translates common upload and automation page text in English mode', () => {
     const phrases = [
       '释放文件',
@@ -50,6 +27,8 @@ describe('appLanguage', () => {
       'Infor Nexus released Bulk 自动化流程',
       '请返回 Jane - Infornexus 页面重新选择场景。',
       '当前入口不存在，请返回 Jane - Infornexus 页面重新进入。',
+      '请返回 Eric - Infornexus 页面重新选择场景。',
+      '当前入口不存在，请返回 Eric - Infornexus 页面重新进入。',
       '先登录 Infor Nexus 并进入 released Bulk 场景，后续页面操作会继续在这个独立场景里扩展。',
       '上传 Excel 后启动可视浏览器，读取第二列 10 位 ID 并在 Infor Nexus 自动搜索、勾选和添加。',
       'Invoice 自动下载',
