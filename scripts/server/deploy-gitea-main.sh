@@ -19,6 +19,25 @@ require_command() {
   fi
 }
 
+wait_for_command() {
+  local label="$1"
+  shift
+  local attempts="${TOS_VERIFY_RETRIES:-30}"
+  local delay="${TOS_VERIFY_DELAY:-2}"
+  local attempt=1
+
+  until "$@"; do
+    if [ "$attempt" -ge "$attempts" ]; then
+      echo "Verification failed for $label after $attempts attempts" >&2
+      return 1
+    fi
+
+    log "Waiting for $label ($attempt/$attempts)"
+    sleep "$delay"
+    attempt=$((attempt + 1))
+  done
+}
+
 require_command git
 require_command npm
 require_command tar
@@ -100,7 +119,7 @@ PKG="$TARGET_PKG" DEPLOY_ID="$DEPLOY_ID" TOS_ROOT="$DEPLOY_ROOT" bash "$WORK/dep
 
 log "Verifying deployed services"
 sudo docker compose -f docker-compose.tos.yml ps
-curl -fsS http://127.0.0.1:18000/
-curl -fsSI http://127.0.0.1:18080/
+wait_for_command "backend API" curl -fsS http://127.0.0.1:18000/
+wait_for_command "frontend static site" curl -fsSI http://127.0.0.1:18080/
 
 log "Deployed $PACKAGE_NAME from $REMOTE_NAME/$BRANCH"

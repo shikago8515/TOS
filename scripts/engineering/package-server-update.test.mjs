@@ -69,8 +69,10 @@ test('Gitea main deployment script packages and applies the standard server upda
   assert.match(deployScript, /npm run server:package:dry-run/)
   assert.match(deployScript, /npm run server:package/)
   assert.match(deployScript, /deploy\/apply-server-update\.sh/)
-  assert.match(deployScript, /curl -fsS http:\/\/127\.0\.0\.1:18000\//)
-  assert.match(deployScript, /curl -fsSI http:\/\/127\.0\.0\.1:18080\//)
+  assert.match(deployScript, /wait_for_command\(\) \{/)
+  assert.match(deployScript, /TOS_VERIFY_RETRIES:-30/)
+  assert.match(deployScript, /wait_for_command "backend API" curl -fsS http:\/\/127\.0\.0\.1:18000\//)
+  assert.match(deployScript, /wait_for_command "frontend static site" curl -fsSI http:\/\/127\.0\.0\.1:18080\//)
 })
 
 test('rejects release notes that are not synced to the app version', async () => {
