@@ -126,7 +126,9 @@ export function summarizeTaskCenterRequestRecords(records) {
     recordCount: normalizedRecords.length,
     candidateCount: candidates.length,
     completeCandidateCount: candidates.filter((item) => item.missingFields.length === 0).length,
-    records: urls.slice(0, 20),
+    endpointGroups: groupRecordsByEndpoint(normalizedRecords),
+    taskDefinitionHints: extractTaskDefinitionHints(normalizedRecords),
+    records: urls,
     candidates: candidates.slice(0, 10).map((item) => ({
       row: item.row,
       missingFields: item.missingFields,
@@ -166,6 +168,81 @@ function collectRecordSourceItems(record) {
   }
 
   return items.filter((item) => RELEVANT_TEXT_PATTERN.test(item.text));
+}
+
+function groupRecordsByEndpoint(records) {
+  const groups = new Map();
+  for (const record of records) {
+    const key = endpointKey(record.url);
+    if (!groups.has(key)) {
+      groups.set(key, {
+        endpoint: key,
+        count: 0,
+        methods: new Set(),
+        statuses: new Set(),
+        exampleUrl: trimUrl(record.url),
+        bodyKinds: new Set(),
+      });
+    }
+
+    const group = groups.get(key);
+    group.count += 1;
+    if (record.method) group.methods.add(record.method);
+    if (record.status) group.statuses.add(record.status);
+    if (record.bodyKind) group.bodyKinds.add(record.bodyKind);
+  }
+
+  return Array.from(groups.values()).map((group) => ({
+    endpoint: group.endpoint,
+    count: group.count,
+    methods: Array.from(group.methods),
+    statuses: Array.from(group.statuses),
+    bodyKinds: Array.from(group.bodyKinds),
+    exampleUrl: group.exampleUrl,
+  })).sort((left, right) => right.count - left.count);
+}
+
+function extractTaskDefinitionHints(records) {
+  const hints = [];
+  for (const record of records) {
+    if (!record?.json || !String(record.url || "").includes("/taskDefinitions")) {
+      continue;
+    }
+
+    const definitions = Array.isArray(record.json) ? record.json : [record.json];
+    for (const definition of definitions) {
+      if (!definition || typeof definition !== "object") {
+        continue;
+      }
+      const customAttributes = Array.isArray(definition.customAttributes)
+        ? definition.customAttributes
+        : [];
+      hints.push({
+        name: definition.name || "",
+        localId: definition.localId || "",
+        definitionId: definition.definitionId || definition.urn || "",
+        customAttributes: customAttributes.map((item) => ({
+          code: item.code || "",
+          name: item.name || "",
+          type: item.type || "",
+          rank: item.rank ?? "",
+        })).filter((item) => item.code || item.name),
+      });
+    }
+  }
+
+  return hints.slice(0, 80);
+}
+
+function endpointKey(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname
+      .replace(/\/urn%3A.+$/i, "/:taskUrn")
+      .replace(/\/urn:sap\..+$/i, "/:taskUrn");
+  } catch {
+    return String(url || "").split("?")[0];
+  }
 }
 
 function walkJson(value, path, items) {

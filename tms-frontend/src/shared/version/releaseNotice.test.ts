@@ -177,6 +177,7 @@ describe('releaseNotice', () => {
       '新龙泰 Shipping 账号档案改为新增 / 编辑弹窗管理，执行前要求选择已保存账号，减少误用临时账号。',
     ])
     expect(releaseNotes.fixed).toEqual([
+      '修复自动化模块热更新时已运行的旧执行器被复用，导致 ticket 归属统计接口返回 Not found 且小助手版本无法识别的问题。',
       '修复自动化接口返回 HTML、空响应或执行器退出时只暴露 JSON.parse / 网络错误的问题。',
       '修复 Infor Nexus Pack-Scan-Ship 未连接 Desktop Utility 时 Shipment Scan 等待超时提示不清晰的问题。',
     ])

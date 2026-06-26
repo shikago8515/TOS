@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.28-fixed-automation-module-running-process-refresh",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "fixed",
+    "pageName": "自动化助手 / 模块热更新",
+    "pagePath": "/web-automation",
+    "title": "修复旧执行器复用导致模块未更新",
+    "description": "修复自动化模块热更新时已运行的旧执行器被复用，导致 ticket 归属统计接口返回 Not found 且小助手版本无法识别的问题。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.28-added-automation-module-hot-update",
     "version": "0.9.8-beta.3.28",
     "releaseDate": "2026-06-26",

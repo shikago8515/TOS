@@ -121,9 +121,13 @@ function requestText(url, timeoutMs = 1500, redirectCount = 0) {
   })
 }
 
-async function requestAutomationAppHealth(automationApp, timeoutMs = 1500) {
+async function requestAutomationAppHealthPayload(automationApp, timeoutMs = 1500) {
   const payload = await requestJson(`${automationApp.url || getAutomationAppUrl(automationApp)}/api/health`, timeoutMs)
-  return Boolean(payload && payload.ok)
+  return payload && payload.ok ? payload : null
+}
+
+async function requestAutomationAppHealth(automationApp, timeoutMs = 1500) {
+  return Boolean(await requestAutomationAppHealthPayload(automationApp, timeoutMs))
 }
 
 async function getAutomationApps(options) {
@@ -196,13 +200,24 @@ async function launchAutomationApp(appId, options) {
     return { success: false, error: `Automation app entry not found: ${automationApp.entryPath}` }
   }
 
-  if (await requestAutomationAppHealth(automationApp)) {
-    return { success: true, alreadyRunning: true, appId, url: automationApp.url }
+  const runningHealth = await requestAutomationAppHealthPayload(automationApp)
+  if (runningHealth) {
+    if (shouldReuseRunningAutomationApp(automationApp, runningHealth)) {
+      return { success: true, alreadyRunning: true, appId, url: automationApp.url }
+    }
+
+    stopAutomationApp(appId, options)
+    await waitForAutomationAppToStop(automationApp)
   }
 
   const tracked = processMap.get(appId)
   if (tracked && tracked.child && !tracked.child.killed) {
-    return { success: true, alreadyRunning: true, appId, url: automationApp.url }
+    if (automationApp.moduleSource !== 'remote-cache') {
+      return { success: true, alreadyRunning: true, appId, url: automationApp.url }
+    }
+
+    stopAutomationApp(appId, options)
+    await waitForAutomationAppToStop(automationApp)
   }
 
   const logDir = path.join(userDataDir, 'logs')
@@ -217,6 +232,9 @@ async function launchAutomationApp(appId, options) {
     ...(options.baseEnv || {}),
     TMS_PLAYWRIGHT_PORT: String(automationApp.port),
     TMS_PLAYWRIGHT_DATA_DIR: dataDir,
+    TOS_AUTOMATION_MODULE_VERSION: String(automationApp.version || ''),
+    TOS_AUTOMATION_MODULE_SOURCE: String(automationApp.moduleSource || automationApp.source || 'bundled'),
+    TOS_AUTOMATION_MODULE_SHA256: String(automationApp.packageSha256 || ''),
   }
   const helperVersion = String(options.helperVersion || env.TOS_AUTOMATION_HELPER_VERSION || '').trim()
   if (helperVersion) {
@@ -295,6 +313,35 @@ function stopAutomationApp(appId, options) {
     // Ignore close failures during explicit stop.
   }
   return { success: true, appId }
+}
+
+async function waitForAutomationAppToStop(automationApp, timeoutMs = 5000) {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    if (!await requestAutomationAppHealth(automationApp, 500)) {
+      return true
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
+  return false
+}
+
+function shouldReuseRunningAutomationApp(automationApp, health) {
+  if ((automationApp.moduleSource || automationApp.source) !== 'remote-cache') {
+    return true
+  }
+
+  const runningModuleVersion = String(
+    health?.moduleVersion
+    || health?.automationModuleVersion
+    || health?.config?.moduleVersion
+    || '',
+  ).trim()
+  if (!runningModuleVersion) {
+    return false
+  }
+
+  return compareVersionStrings(runningModuleVersion, automationApp.version) >= 0
 }
 
 function shutdownAutomationApps(options) {

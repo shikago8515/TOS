@@ -474,10 +474,15 @@ async function loadConfig() {
 
 function buildHealthPayload() {
   const activeRunList = Array.from(activeRuns.values());
+  const moduleVersion = String(process.env.TOS_AUTOMATION_MODULE_VERSION || "").trim();
+  const moduleSource = String(process.env.TOS_AUTOMATION_MODULE_SOURCE || "bundled").trim();
   return {
     ok: true,
     version: executorVersion,
     helperVersion: executorVersion,
+    moduleVersion,
+    moduleSource,
+    moduleSha256: String(process.env.TOS_AUTOMATION_MODULE_SHA256 || "").trim(),
     busy: activeRunList.length > 0,
     activeRun: activeRunList[0] || null,
     activeRuns: activeRunList,
@@ -496,6 +501,8 @@ function buildHealthPayload() {
     },
     config: {
       version: executorVersion,
+      moduleVersion,
+      moduleSource,
       loginUrl: config.loginUrl,
       autoAddSearchUrl: config.autoAddSearchUrl,
       browser: config.browser,

@@ -1,5 +1,6 @@
 const assert = require('assert')
 const fs = require('fs')
+const { spawn } = require('child_process')
 const net = require('net')
 const os = require('os')
 const path = require('path')
@@ -169,6 +170,123 @@ test('automation launcher injects helper version when starting an app', async ()
   }
 })
 
+test('automation launcher restarts an old running app when cached module is newer', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tos-launcher-restart-old-app-'))
+  const automationAppRoot = path.join(root, 'automation-apps')
+  const userDataDir = path.join(root, 'user-data')
+  const bundledAppDir = path.join(automationAppRoot, 'demo-app')
+  const cachedAppDir = path.join(
+    userDataDir,
+    'automation-module-cache',
+    'demo-app',
+    '1.1.0',
+    'app',
+  )
+  const port = await getFreePort()
+  const processMap = new Map()
+  const oldLogFd = fs.openSync(path.join(root, 'old-app.log'), 'a')
+
+  fs.mkdirSync(path.join(bundledAppDir, 'bin'), { recursive: true })
+  fs.writeFileSync(path.join(bundledAppDir, 'bin', 'start.js'), '')
+  fs.writeFileSync(
+    path.join(automationAppRoot, 'registry.json'),
+    JSON.stringify([
+      {
+        id: 'demo-app',
+        name: 'Demo App',
+        version: '1.0.0',
+        appDir: 'demo-app',
+        entry: 'bin/start.js',
+        defaultPort: port,
+      },
+    ], null, 2),
+  )
+
+  fs.mkdirSync(path.join(cachedAppDir, 'bin'), { recursive: true })
+  fs.writeFileSync(
+    path.join(cachedAppDir, 'bin', 'start.js'),
+    [
+      "const fs = require('fs')",
+      "const http = require('http')",
+      "const path = require('path')",
+      "const dataDir = process.env.TMS_PLAYWRIGHT_DATA_DIR",
+      "fs.mkdirSync(dataDir, { recursive: true })",
+      "fs.writeFileSync(path.join(dataDir, 'started-module-version.txt'), process.env.TOS_AUTOMATION_MODULE_VERSION || '')",
+      "const server = http.createServer((req, res) => {",
+      "  if (req.url === '/api/health') {",
+      "    res.writeHead(200, { 'Content-Type': 'application/json' })",
+      "    res.end(JSON.stringify({ ok: true, moduleVersion: process.env.TOS_AUTOMATION_MODULE_VERSION || '' }))",
+      "    return",
+      "  }",
+      "  res.writeHead(404)",
+      "  res.end()",
+      "})",
+      "server.listen(Number(process.env.TMS_PLAYWRIGHT_PORT), '127.0.0.1')",
+      "process.on('SIGTERM', () => server.close(() => process.exit(0)))",
+      "process.on('SIGINT', () => server.close(() => process.exit(0)))",
+    ].join('\n'),
+  )
+  fs.writeFileSync(
+    path.join(userDataDir, 'automation-module-cache', 'demo-app', 'current.json'),
+    JSON.stringify({
+      id: 'demo-app',
+      name: 'Demo App',
+      version: '1.1.0',
+      entry: 'bin/start.js',
+      defaultPort: port,
+      versionSegment: '1.1.0',
+      baseDir: path.join('1.1.0', 'app'),
+      sha256: 'c'.repeat(64),
+      installedAt: '2026-06-26T02:00:00.000Z',
+    }, null, 2),
+  )
+
+  const oldScriptPath = path.join(root, 'old-app.js')
+  fs.writeFileSync(
+    oldScriptPath,
+    [
+      "const http = require('http')",
+      "const server = http.createServer((req, res) => {",
+      "  if (req.url === '/api/health') {",
+      "    res.writeHead(200, { 'Content-Type': 'application/json' })",
+      "    res.end(JSON.stringify({ ok: true }))",
+      "    return",
+      "  }",
+      "  res.writeHead(404)",
+      "  res.end()",
+      "})",
+      "server.listen(Number(process.env.TMS_PLAYWRIGHT_PORT), '127.0.0.1')",
+      "process.on('SIGTERM', () => server.close(() => process.exit(0)))",
+    ].join('\n'),
+  )
+  const oldChild = spawn(process.execPath, [oldScriptPath], {
+    env: { ...process.env, TMS_PLAYWRIGHT_PORT: String(port) },
+    stdio: ['ignore', oldLogFd, oldLogFd],
+  })
+  processMap.set('demo-app', { child: oldChild, logFd: oldLogFd, logPath: path.join(root, 'old-app.log') })
+
+  try {
+    assert.equal(await waitForHealth(`http://127.0.0.1:${port}/api/health`), true)
+    const result = await launchAutomationApp('demo-app', {
+      automationAppRoot,
+      userDataDir,
+      processMap,
+      processExecPath: process.execPath,
+      enableModuleUpdates: false,
+    })
+
+    assert.equal(result.success, true)
+    assert.notEqual(result.alreadyRunning, true)
+    assert.equal(
+      fs.readFileSync(path.join(userDataDir, 'automation-apps', 'demo-app', 'started-module-version.txt'), 'utf8'),
+      '1.1.0',
+    )
+  } finally {
+    shutdownAutomationApps({ processMap })
+    if (!oldChild.killed) oldChild.kill()
+  }
+})
+
 function getFreePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer()
@@ -179,4 +297,18 @@ function getFreePort() {
     })
     server.on('error', reject)
   })
+}
+
+async function waitForHealth(url, timeoutMs = 5000) {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const response = await fetch(url)
+      if (response.ok) return true
+    } catch (_error) {
+      // Keep waiting while the test server starts.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  return false
 }

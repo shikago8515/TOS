@@ -2785,8 +2785,16 @@ async function readJsonIfExists(filePath, fallback) {
 }
 
 function buildHealthPayload() {
+  const helperVersion = String(process.env.TOS_AUTOMATION_HELPER_VERSION || "").trim();
+  const moduleVersion = String(process.env.TOS_AUTOMATION_MODULE_VERSION || "").trim();
+  const moduleSource = String(process.env.TOS_AUTOMATION_MODULE_SOURCE || "bundled").trim();
   return {
     ok: true,
+    version: helperVersion,
+    helperVersion,
+    moduleVersion,
+    moduleSource,
+    moduleSha256: String(process.env.TOS_AUTOMATION_MODULE_SHA256 || "").trim(),
     busy: Boolean(activeRun),
     activeRun,
     lastRun,
@@ -2799,6 +2807,8 @@ function buildHealthPayload() {
       headless: config.headless,
       slowMo: config.slowMo,
       staySignedInAction: config.staySignedInAction,
+      moduleVersion,
+      moduleSource,
       loginUrlPreview: previewUrl(config.loginUrl),
       credentialsSource: "tos-backend-database",
     },

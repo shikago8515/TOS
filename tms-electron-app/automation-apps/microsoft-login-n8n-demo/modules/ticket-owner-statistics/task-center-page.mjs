@@ -57,6 +57,29 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
     const requestRows = requestFirst
       ? extractCompleteRowsFromRequestRecords(requestRecorder.records, maxTicketCount)
       : [];
+    const requestCandidates = requestFirst
+      ? extractTicketOwnerRowsFromRequestRecords(requestRecorder.records)
+      : [];
+
+    if (options.diagnoseOnly) {
+      requestDiagnostics = requestRecorder.summarize();
+      return {
+        ok: true,
+        diagnoseOnly: true,
+        rowCount: 0,
+        failedTicketCount: 0,
+        attemptedTicketCount: 0,
+        selectedTaskTypes,
+        rows: [],
+        ticketResults: [],
+        failedTickets: [],
+        requestFirst: requestDiagnostics,
+        requestCandidates: requestCandidates.slice(0, 30),
+        finalTaskCenterUrl: page.url(),
+        message: `诊断模式已捕获 ${requestDiagnostics.recordCount} 条相关请求，识别 ${requestDiagnostics.candidateCount} 个候选 ticket。`,
+      };
+    }
+
     if (requestRows.length > 0) {
       requestDiagnostics = requestRecorder.summarize();
       return {
