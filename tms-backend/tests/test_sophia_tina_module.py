@@ -853,6 +853,8 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
 
                 self.assertEqual(wb["Ship Method Source"].sheet_state, "hidden")
                 ship_headers = [cell.value for cell in wb["Ship Method Source"][1]]
+                self.assertIn("TMS Amount (USD)", ship_headers)
+                self.assertNotIn("TMS Amount USD)", ship_headers)
                 ship_rows = [
                     {
                         header: wb["Ship Method Source"].cell(row=row_index, column=index + 1).value
@@ -874,7 +876,7 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
                         "Factory",
                         "Development Style Count",
                         "Bulk Style Count",
-                        "Bulk Quantity (Pcs)",
+                        "Bulk Qty (pcs)",
                     ],
                 )
                 s2s_row = {
@@ -883,10 +885,26 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
                 }
                 self.assertEqual(s2s_row["Development Style Count"], 4)
                 self.assertEqual(s2s_row["Bulk Style Count"], 3)
-                self.assertEqual(s2s_row["Bulk Quantity (Pcs)"], 30)
+                self.assertEqual(s2s_row["Bulk Qty (pcs)"], 30)
             finally:
                 wb.close()
 
+            self.assertNotIn(
+                "TMS Amount USD)",
+                _zip_entry_text(result["output_path"], "xl/pivotTables/pivotTable8.xml"),
+            )
+            self.assertIn(
+                "TMS Amount (USD)",
+                _zip_entry_text(result["output_path"], "xl/pivotTables/pivotTable8.xml"),
+            )
+            self.assertIn(
+                "Bulk Qty (pcs)",
+                _zip_entry_text(result["output_path"], "xl/pivotCache/pivotCacheDefinition6.xml"),
+            )
+            self.assertIn(
+                "Bulk Qty (pcs)",
+                _zip_entry_text(result["output_path"], "xl/pivotTables/pivotTable9.xml"),
+            )
             self.assertEqual(
                 _pivot_data_field_names(result["output_path"], "xl/pivotTables/pivotTable9.xml")[:2],
                 ["Development Style Count", "Bulk Style Count"],
