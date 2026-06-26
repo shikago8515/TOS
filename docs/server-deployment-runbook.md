@@ -11,7 +11,7 @@
 - 前端服务：`tos-frontend`，本机端口 `127.0.0.1:18080`
 - 认证服务：`tos-authelia`，部署 TOS 前后端时不改动
 
-服务器 `~/TOS` 不是 Git 仓库，不能在该目录使用 `git pull` 更新。默认部署方式是：本地改完后合并并推送到 Gitea `main`，服务器进入 `~/TOS-source`，执行 `git pull --ff-only origin main`，再运行 `scripts/server/deploy-gitea-main.sh` 在服务器本地生成标准更新包并部署到 `~/TOS`。
+服务器 `~/TOS` 不是 Git 仓库，不能在该目录使用 `git pull` 更新。默认部署方式是：本地改完后合并并推送到 Gitea `main`，服务器执行 `deploy-tos`，通过 Gitea deploy key 免密拉取代码，再在服务器本地生成标准更新包并部署到 `~/TOS`。
 
 只有 Gitea 或服务器拉代码不可用时，才退回旧备用方案：本机从 clean commit 生成标准更新包，通过 MobaXterm SFTP 上传到 `.deploy_uploads/`，再在服务器解压并执行包内脚本。
 
@@ -200,11 +200,43 @@ https://ai.tomwell.net:56130/tos/automation-helper/download
 
 ```bash
 cd ~
-git clone http://172.16.48.208:3001/luenthai-ai/TOS.git TOS-source
+git clone ssh://git@gitea-tos/luenthai-ai/TOS.git TOS-source
 chmod +x ~/TOS-source/scripts/server/deploy-gitea-main.sh
 ```
 
-以后 Gitea 合并到 `main` 后，在服务器执行：
+服务器免密部署约定：
+
+```text
+Gitea SSH clone URL: ssh://git@172.16.48.208:222/luenthai-ai/TOS.git
+SSH host alias: gitea-tos
+部署 wrapper: /home/obito_li/server-scripts/deploy-tos.sh
+快捷命令: deploy-tos
+```
+
+`gitea-tos` 由服务器 `~/.ssh/config` 指向 `172.16.48.208:222`，使用只读 deploy key。不要把私钥、token 或密码写入仓库、remote URL、命令历史或发布记录。
+
+`/home/obito_li/server-scripts/deploy-tos.sh` 内容约定：
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$HOME/TOS-source"
+TOS_GITEA_REMOTE_URL="ssh://git@gitea-tos/luenthai-ai/TOS.git" bash scripts/server/deploy-gitea-main.sh
+```
+
+快捷命令由服务器 shell 配置提供：
+
+```bash
+alias deploy-tos="$HOME/server-scripts/deploy-tos.sh"
+```
+
+以后 Gitea 合并到 `main` 后，优先在服务器执行：
+
+```bash
+deploy-tos
+```
+
+手动排障时可展开执行：
 
 ```bash
 cd ~/TOS-source
@@ -224,7 +256,7 @@ bash scripts/server/deploy-gitea-main.sh
 
 ```bash
 TOS_SKIP_INSTALL=1 bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
-TOS_GITEA_REMOTE_URL=http://172.16.48.208:3001/luenthai-ai/TOS.git bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
+TOS_GITEA_REMOTE_URL=ssh://git@gitea-tos/luenthai-ai/TOS.git bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
 TOS_SOURCE_DIR=/home/obito_li/TOS-source TOS_DEPLOY_ROOT=/home/obito_li/TOS bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
 ```
 

@@ -1,6 +1,6 @@
 # TOS-AI 完整工作流
 
-本文定义 TOS 项目从开始需求到 Gitea 留痕、验证、服务器部署和回滚的标准流程。服务器 `~/TOS` 不是 Git 仓库，不在 `~/TOS` 执行 `git pull`；服务器发布默认由 `~/TOS-source` 拉取 Gitea `main` 后在服务器本地生成并应用标准更新包。
+本文定义 TOS 项目从开始需求到 Gitea 留痕、验证、服务器部署和回滚的标准流程。服务器 `~/TOS` 不是 Git 仓库，不在 `~/TOS` 执行 `git pull`；服务器发布默认执行 `deploy-tos`，由 `~/TOS-source` 通过 Gitea deploy key 拉取 `main` 后在服务器本地生成并应用标准更新包。
 
 ## 1. 开始任务
 
@@ -202,12 +202,18 @@ authelia
 默认服务器部署流程：
 
 ```bash
+deploy-tos
+```
+
+`deploy-tos` 指向 `/home/obito_li/server-scripts/deploy-tos.sh`，通过 `TOS_GITEA_REMOTE_URL=ssh://git@gitea-tos/luenthai-ai/TOS.git` 使用只读 deploy key 免密拉取 Gitea `main`，再调用 `scripts/server/deploy-gitea-main.sh`。脚本会在服务器本地运行部署检查、生成 `tos-server-update-*.tar.gz`，复制到 `~/TOS/.deploy_uploads/`，再部署到 `~/TOS` 并重建重启 `tos-backend`、`tos-frontend`。
+
+手动排障时可展开执行：
+
+```bash
 cd ~/TOS-source
 git pull --ff-only origin main
 bash scripts/server/deploy-gitea-main.sh
 ```
-
-脚本会在服务器本地运行部署检查、生成 `tos-server-update-*.tar.gz`，复制到 `~/TOS/.deploy_uploads/`，再部署到 `~/TOS` 并重建重启 `tos-backend`、`tos-frontend`。
 
 只有 Gitea 或服务器拉代码不可用时，才使用备用上传流程：在本机生成 `tos-server-update-*.tar.gz`，手动上传到 `/home/obito_li/TOS/.deploy_uploads/`，再按 `docs/server-deployment-runbook.md` 执行包内脚本。发布记录使用 `docs/templates/server-release-record.md`。
 

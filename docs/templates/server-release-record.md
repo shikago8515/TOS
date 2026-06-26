@@ -21,6 +21,12 @@
 ## 服务器部署命令
 
 ```bash
+deploy-tos
+```
+
+排障备用命令：
+
+```bash
 cd ~/TOS-source
 git pull --ff-only origin main
 bash scripts/server/deploy-gitea-main.sh
@@ -43,7 +49,9 @@ curl -I http://127.0.0.1:18080/
 
 ## 结果
 
+- `deploy-tos` 已执行：
 - 后端版本：
 - 前端 HTTP 状态：
+- 发布记录同步状态：
 - 页面强刷验证：
 - 是否需要回滚：
