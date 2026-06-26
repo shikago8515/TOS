@@ -1071,14 +1071,18 @@ async function runPoAutoDownload(): Promise<void> {
     await finishBackendRunRecord(runRecord, response.ok && Boolean(json?.ok), json?.message || '', json)
 
     if (!response.ok) {
-      const friendlyMessage = formatAutomationExecutorMessage(json?.message || `HTTP ${response.status}`)
-      if (shouldShowAutomationErrorDialog(json?.message)) showAutomationErrorDialog(friendlyMessage)
+      const friendlyMessage = buildExecutorResponseMessage(response, raw, json)
+      if (shouldShowAutomationErrorDialog(json?.message || friendlyMessage)) showAutomationErrorDialog(friendlyMessage)
       statusLabel.value = '未完成'
       statusText.value = appendFailureExamples(friendlyMessage, json)
       lastResult.value = { ok: false, message: statusText.value }
       messageTone.value = 'error'
       message.value = statusText.value
       return
+    }
+
+    if (!json) {
+      throw new Error('无法解析响应。')
     }
 
     if (json?.ok) {
@@ -1100,11 +1104,12 @@ async function runPoAutoDownload(): Promise<void> {
     messageTone.value = 'warning'
     message.value = text('已触发，结果未确认。')
   } catch (error) {
+    const friendlyMessage = formatAutomationExecutorMessage(readErrorMessage(error, text('网络错误')), '自动化执行异常。')
     statusLabel.value = '异常'
-    statusText.value = readErrorMessage(error, text('网络错误'))
+    statusText.value = friendlyMessage
     lastResult.value = { ok: false, message: statusText.value }
     messageTone.value = 'error'
-    message.value = text('执行异常。')
+    message.value = friendlyMessage
     await finishBackendRunRecord(runRecord, false, statusText.value, { ok: false, message: statusText.value }).catch(() => {})
   } finally {
     stopProgressPolling()
@@ -1201,6 +1206,20 @@ function safeParseJson(raw: string): Record<string, any> | null {
   } catch {
     return null
   }
+}
+
+function buildExecutorResponseMessage(
+  response: Response,
+  raw: string,
+  payload: { message?: unknown } | null,
+  fallback = '自动化执行失败。',
+): string {
+  const rawMessage = typeof payload?.message === 'string' ? payload.message : ''
+  if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback)
+  if (!payload) {
+    return formatAutomationExecutorMessage('JSON.parse: unexpected character at line 1 column 1 of the JSON data', fallback)
+  }
+  return formatAutomationExecutorMessage(`HTTP ${response.status}`, fallback)
 }
 
 function appendFailureExamples(baseMessage: string, payload: Record<string, any> | null): string {

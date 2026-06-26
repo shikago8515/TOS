@@ -470,10 +470,11 @@ async function runShipping(): Promise<void> {
     const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': currentEntry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: currentEntry.localExecutorToken, headless: !showBrowserView.value, ...cp, shipmentScanAction: 'assign-equipment-id' }) })
     const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); updateShippingArtifactLinks(j)
     await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j)
-    if (!res.ok) { const m = formatAutomationExecutorMessage(j?.message || `HTTP ${res.status}`); if (shouldShowAutomationErrorDialog(j?.message)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }
+    if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(j?.message || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }
+    if (!j) throw new Error('无法解析响应。')
     if (j?.ok && j?.shipmentScanOpened) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedPoCount ?? 0}/${j.totalPoCount ?? '?'} 个 PO。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }
     statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。')
-  } catch (e) { statusLabel.value = '异常'; statusText.value = readErrorMessage(e, '网络错误'); lastResult.value = { ok: false }; messageTone.value = 'error'; message.value = text('执行异常。') }
+  } catch (e) { const m = formatAutomationExecutorMessage(readErrorMessage(e, '网络错误'), '自动化执行异常。'); statusLabel.value = '异常'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m }
   finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) }
 }
 
@@ -482,6 +483,7 @@ async function ensureReady(): Promise<boolean> { if (executorHealth.value?.ok) r
 async function fileToBase64(f: File): Promise<string> { const b = await f.arrayBuffer(); return arrayBufferToBase64(b) }
 function arrayBufferToBase64(b: ArrayBuffer): string { const bytes = new Uint8Array(b); const cs = 0x8000; let bin = ''; for (let i = 0; i < bytes.length; i += cs) { const chunk = bytes.subarray(i, i + cs); bin += String.fromCharCode(...chunk) }; return window.btoa(bin) }
 function safeParseJson(r: string): Record<string, any> | null { try { return r ? JSON.parse(r) : null } catch { return null } }
+function buildExecutorResponseMessage(res: Response, _raw: string, payload: Record<string, any> | null, fallback = '自动化执行失败。'): string { const rawMessage = typeof payload?.message === 'string' ? payload.message : ''; if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback); if (!payload) return formatAutomationExecutorMessage('JSON.parse: unexpected character at line 1 column 1 of the JSON data', fallback); return formatAutomationExecutorMessage(`HTTP ${res.status}`, fallback) }
 function updateShippingArtifactLinks(p: Record<string, any> | null): void {
   const u = p?.artifacts?.downloadUrls; const re = buildShippingArtifactUrl(u?.resultExcelUrl)
   if (!re) { shippingArtifactLinks.value = null; return }

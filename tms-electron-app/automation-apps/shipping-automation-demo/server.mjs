@@ -32,6 +32,7 @@ const runtimeConfigPath = path.join(runtimeDataRoot, "executor.config.local.json
 const artifactsDir = path.join(runtimeDataRoot, "run-artifacts");
 const PREPARE_NEXT_PO_DIALOG_TIMEOUT_MS = 3000;
 const XINLONGTAI_SHIPPING_AUTOMATION_ID = "xinlongtai-shipping-automation";
+const DESKTOP_UTILITY_CONNECTION_PATTERN = /taking longer than normal for the desktop to connect|Desktop Utility process is running|version\s+2\.0\.1\.29|re-loading the PackByScan application|Awaiting desktop|PackByScan/i;
 
 const sharedExecutorRoot = path.resolve(appRoot, "..", "playwright-console");
 const sharedPackageJson = path.join(sharedExecutorRoot, "package.json");
@@ -1864,6 +1865,8 @@ async function confirmShipmentScanFilters(page, poNo, shipmentScanAction) {
       await selectShipmentScanAction(shipmentDialog, actionLabel);
       await dialogPause(shipmentDialog, 350);
       await clickShipmentScanOk(shipmentDialog);
+      await page.waitForTimeout(250);
+      await assertNoDesktopUtilityConnectionIssue(page, { poNo });
       log("Confirmed PO No.", {
         poNo: String(poNo || "").trim(),
         shipmentScanAction: actionLabel,
@@ -1914,6 +1917,8 @@ async function waitForShipmentGridRows(page, poNo, shipmentScanAction = "Remove/
   let lastSignature = "";
 
   while (Date.now() - startedAt < timeoutMs) {
+    await assertNoDesktopUtilityConnectionIssue(page, { poNo });
+
     lastDialogError = (await getVisibleDialogErrorText(page)) || lastDialogError;
     if (lastDialogError) {
       throw new Error(`PO No ${poNo}: ${lastDialogError}`);
@@ -1948,6 +1953,7 @@ async function waitForShipmentGridRows(page, poNo, shipmentScanAction = "Remove/
           noDataVisible: state.noDataVisible,
           waitedMs: Date.now() - startedAt,
         });
+        await assertNoDesktopUtilityConnectionIssue(page, { poNo });
         throw new Error(`PO No ${poNo}: no shipment rows were loaded after clicking OK.`);
       }
     } else {
@@ -1961,6 +1967,7 @@ async function waitForShipmentGridRows(page, poNo, shipmentScanAction = "Remove/
           poNo,
           waitedMs: Date.now() - startedAt,
         });
+        await assertNoDesktopUtilityConnectionIssue(page, { poNo });
         throw new Error(`PO No ${poNo}: shipment grid stayed empty after clicking OK.`);
       }
     } else {
@@ -1980,6 +1987,7 @@ async function waitForShipmentGridRows(page, poNo, shipmentScanAction = "Remove/
           waitedMs: Date.now() - startedAt,
           sample: String(state.rowSignature || "").slice(0, 180),
         });
+        await assertNoDesktopUtilityConnectionIssue(page, { poNo });
         throw new Error(`PO No ${poNo}: shipment grid did not switch to rows for this PO.`);
       }
     } else {
@@ -1990,6 +1998,7 @@ async function waitForShipmentGridRows(page, poNo, shipmentScanAction = "Remove/
     await page.waitForTimeout(250);
   }
 
+  await assertNoDesktopUtilityConnectionIssue(page, { poNo });
   throw new Error(`PO No ${poNo}: timed out waiting for shipment rows. State: ${JSON.stringify(lastState || {})}`);
 }
 
@@ -3086,6 +3095,57 @@ async function hasVisibleWindowText(page, pattern) {
   }).catch(() => false);
 }
 
+function buildDesktopUtilityConnectionMessage(metadata = {}) {
+  const poNo = String(metadata?.poNo || "").trim();
+  const poPrefix = poNo ? `PO No ${poNo}: ` : "";
+  return `${poPrefix}Infor Nexus 桌面工具连接超时：页面已进入 Pack-Scan-Ship，但没有连上 Desktop Utility，Shipment Scan 无法加载设备或包裹数据。请确认 Desktop Utility 正在运行且版本不低于 2.0.1.29；可点击左下角 Reconnect to Desktop，或重新加载 PackByScan 后再执行。`;
+}
+
+async function assertNoDesktopUtilityConnectionIssue(page, metadata = {}) {
+  const issue = await getDesktopUtilityConnectionIssue(page);
+  if (!issue?.detected) {
+    return;
+  }
+
+  const error = new Error(buildDesktopUtilityConnectionMessage(metadata));
+  error.code = "INFORNEXUS_DESKTOP_UTILITY_TIMEOUT";
+  error.desktopUtility = issue;
+  throw error;
+}
+
+async function getDesktopUtilityConnectionIssue(page) {
+  return page.evaluate(({ source, flags }) => {
+    const matcher = new RegExp(source, flags);
+    const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+    const isVisible = (element) => {
+      if (!element) {
+        return false;
+      }
+
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none"
+        && style.visibility !== "hidden"
+        && rect.width > 0
+        && rect.height > 0;
+    };
+
+    const candidates = Array.from(document.querySelectorAll("div.x-window, div.x-tip, div.x-layer, div.x-panel, span, td, a"))
+      .filter(isVisible)
+      .map((element) => normalize(element.innerText || element.textContent))
+      .filter(Boolean);
+    const matchedText = candidates.find((text) => matcher.test(text))
+      || (matcher.test(normalize(document.body?.innerText)) ? normalize(document.body?.innerText) : "");
+
+    return matchedText
+      ? { detected: true, text: matchedText.slice(0, 600) }
+      : { detected: false, text: "" };
+  }, {
+    source: DESKTOP_UTILITY_CONNECTION_PATTERN.source,
+    flags: DESKTOP_UTILITY_CONNECTION_PATTERN.flags,
+  }).catch(() => ({ detected: false, text: "" }));
+}
+
 async function getShipmentGridSelectionState(page) {
   return page.evaluate(() => {
     const isVisible = (element) => {
@@ -3873,6 +3933,12 @@ function classifyPoFailureStep(reason) {
 
   if (normalizedReason.includes("change equipment id is empty")) {
     return "Workbook Validation";
+  }
+
+  if (normalizedReason.includes("desktop utility")
+    || normalizedReason.includes("packbyscan")
+    || normalizedReason.includes("桌面工具连接超时")) {
+    return "Desktop Utility Connection";
   }
 
   if (normalizedReason.includes("shipment scan ok button")) {

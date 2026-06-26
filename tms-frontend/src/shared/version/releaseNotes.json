@@ -1,33 +1,44 @@
 {
   "version": "0.9.8-beta.3.28",
-  "date": "2026-06-22",
-  "noticeId": "2026-06-22-tos-package-slimming",
+  "date": "2026-06-26",
+  "noticeId": "2026-06-26-browser-automation-error-handling",
   "showPopup": false,
   "added": [
-    "新增本地构建产物清理命令，可预览或清理桌面端、前端和后端生成物，默认保留依赖目录和上传运行数据。"
+    "新增浏览器自动化模块边界规范，明确后续自动化按业务页面拆分模块，避免新流程继续堆进单个 server.mjs。"
   ],
   "improved": [
-    "桌面安装包后端运行时排除未使用的重型可选包，发布资源不再携带 Infornexus 外部应用运行缓存。",
-    "发布包校验新增重型运行时目录和外部应用 cache 泄漏检查，避免瘦身回退。"
+    "浏览器自动化执行失败时会识别非 JSON 响应、执行器断开、浏览器会话关闭和 Desktop Utility 连接超时，前端改为展示可操作的中文提示。",
+    "新龙泰 Shipping 账号档案改为新增 / 编辑弹窗管理，执行前要求选择已保存账号，减少误用临时账号。"
   ],
   "fixed": [
-    "修复 Windows 环境下打包健康检查用 TOS.exe 运行 Node 脚本被拒绝时无法完成验证的问题。"
+    "修复自动化接口返回 HTML、空响应或执行器退出时只暴露 JSON.parse / 网络错误的问题。",
+    "修复 Infor Nexus Pack-Scan-Ship 未连接 Desktop Utility 时 Shipment Scan 等待超时提示不清晰的问题。"
   ],
   "modules": [
     {
-      "name": "桌面安装包 / 发布校验",
+      "name": "网页自动化 / 本机执行器",
       "improved": [
-        "PyInstaller 打包参数排除 torch、cv2、pyarrow、scipy 和 sklearn 等当前后端未声明使用的可选包。",
-        "Electron extraResources 排除 external-apps 下的 cache 目录，并由发布校验脚本强制检查。"
+        "自动化结果、失败弹窗和批量失败示例会统一格式化底层执行器错误，避免直接暴露 JSON.parse、Target closed 等底层文案。",
+        "后端通用请求客户端会把非 JSON 响应转换成包含 HTTP 状态、接口路径和响应开头的中文诊断信息。"
       ],
       "fixed": [
-        "自动化健康检查遇到 Windows run-as-node 启动拒绝时，会回退到当前 Node runtime 执行同一脚本。"
+        "执行器返回 HTML 错误页、空响应或浏览器会话关闭时，页面会提示重启本机后端或自动化执行器。"
       ]
     },
     {
-      "name": "工程脚本",
+      "name": "Infor Nexus Shipping 自动化",
+      "improved": [
+        "Shipment Scan 等待数据期间会检测 Desktop Utility / PackByScan 连接提示，并把失败归类为 Desktop Utility Connection。",
+        "新龙泰 Shipping 账号档案支持新增和编辑弹窗，页面主区域只保留账号选择、编辑和模板下载入口。"
+      ],
+      "fixed": [
+        "Desktop Utility 未连接时不再长时间等待 shipment grid 空结果，而是直接提示检查工具版本、Reconnect to Desktop 或重新加载 PackByScan。"
+      ]
+    },
+    {
+      "name": "工程规范",
       "added": [
-        "新增 cleanup:local:dry-run 和 cleanup:local，用于清理本地构建产物。"
+        "新增浏览器自动化模块拆分规范，约束新增业务流程进入 modules/<business-module>/ 目录。"
       ]
     }
   ]

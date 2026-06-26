@@ -36,6 +36,26 @@ const automationValidationErrorRules: AutomationValidationErrorRule[] = [
     message: 'Infor Nexus 登录失败：账号或密码错误，请检查 User ID 和 Password。',
   },
   {
+    pattern: /Desktop Utility|PackByScan|taking longer than normal for the desktop to connect|Awaiting desktop|桌面工具连接超时|re-loading the PackByScan application/i,
+    message: 'Infor Nexus 桌面工具连接超时：页面已进入 Pack-Scan-Ship，但没有连上 Desktop Utility，Shipment Scan 无法加载设备或包裹数据。请确认 Desktop Utility 正在运行且版本不低于 2.0.1.29；可点击左下角 Reconnect to Desktop，或重新加载 PackByScan 后再执行。',
+  },
+  {
+    pattern: /JSON\.parse|unexpected character.*JSON data|Unexpected token.*JSON|Unexpected token '<'|Unexpected end of JSON input|无法解析响应/i,
+    message: '自动化执行器返回了无法识别的响应：通常是本机执行器中途退出、接口返回了 HTML/空内容，或浏览器会话被关闭。请重启本机自动化执行器后重新执行；如仍失败，请查看原始响应或执行器日志。',
+  },
+  {
+    pattern: /Failed to fetch|NetworkError|fetch failed|ECONNREFUSED|ERR_CONNECTION_REFUSED|HTTP (502|503|504)/i,
+    message: '本机自动化执行器连接失败：前端没有连上执行器服务，可能是执行器未启动、刚刚退出，或端口被占用。请先在页面点击启动执行器，确认状态为已就绪后再执行。',
+  },
+  {
+    pattern: /Target page.*closed|Target closed|browser.*closed|page.*closed|browser session became unavailable|browser page became unavailable|Execution context was destroyed|浏览器会话已中断/i,
+    message: '自动化浏览器会话已中断：浏览器窗口被关闭、页面崩溃，或本机执行器退出。请保持自动化浏览器窗口打开，重启本机执行器后再执行。',
+  },
+  {
+    pattern: /timed out waiting for shipment rows|no shipment rows were loaded|shipment grid stayed empty|did not switch to rows for this PO/i,
+    message: 'Shipment Scan 没有返回可处理的数据：可能是 PO 不在当前账号权限范围内、筛选条件不匹配，或 Infor Nexus 桌面工具未连接。请先确认页面是否有 Desktop Utility 连接提示，再核对 Excel 中 PO No / Equipment ID 是否正确。',
+  },
+  {
     pattern: /Uploaded workbook does not contain any data rows/i,
     message: '上传的 Excel 只有表头，没有可执行数据。请从第 2 行开始填写至少一条数据后再执行。',
   },
@@ -103,7 +123,8 @@ export function appendAutomationFailureExamples(baseMessage: string, payload: Au
   const failures = results
     .filter((item): item is AutomationFailureItem => Boolean(item && typeof item === 'object' && !((item as AutomationFailureItem).ok)))
     .map((item) => {
-      const error = String(item.error || item.step || '未返回错误详情').trim()
+      const rawError = String(item.error || item.step || '未返回错误详情').trim()
+      const error = formatAutomationExecutorMessage(rawError, rawError || '未返回错误详情')
       const normalizedError = error.toLowerCase()
       if (seenErrors.has(normalizedError)) return ''
       seenErrors.add(normalizedError)

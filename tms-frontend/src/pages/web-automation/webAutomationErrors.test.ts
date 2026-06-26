@@ -71,6 +71,32 @@ describe('webAutomationErrors', () => {
     expect(shouldShowAutomationErrorDialog(rawMessage)).toBe(true)
   })
 
+  it('formats Infor Nexus Desktop Utility connection failures', () => {
+    const rawMessage = 'It is taking longer than normal for the desktop to connect. Please make sure the Desktop Utility process is running.'
+
+    const formattedMessage = formatAutomationExecutorMessage(rawMessage)
+    expect(formattedMessage).toContain('Infor Nexus 桌面工具连接超时')
+    expect(formattedMessage).toContain('Desktop Utility')
+    expect(shouldShowAutomationErrorDialog(rawMessage)).toBe(true)
+  })
+
+  it('formats non-JSON executor responses without exposing JSON.parse', () => {
+    const rawMessage = 'JSON.parse: unexpected character at line 1 column 1 of the JSON data'
+
+    const formattedMessage = formatAutomationExecutorMessage(rawMessage)
+    expect(formattedMessage).toContain('自动化执行器返回了无法识别的响应')
+    expect(formattedMessage).not.toContain('JSON.parse')
+    expect(shouldShowAutomationErrorDialog(rawMessage)).toBe(true)
+  })
+
+  it('formats closed browser session errors', () => {
+    const rawMessage = 'Target page, context or browser has been closed'
+
+    const formattedMessage = formatAutomationExecutorMessage(rawMessage)
+    expect(formattedMessage).toContain('自动化浏览器会话已中断')
+    expect(shouldShowAutomationErrorDialog(rawMessage)).toBe(true)
+  })
+
   it('does not repeat per-row examples for login-stage failures', () => {
     const baseMessage = 'Infor Nexus 登录失败：登录请求返回登录页，未建立下载会话。请检查 User ID / Password，或确认账号是否需要 Access Code。'
     const payload = {

@@ -68,6 +68,14 @@
 13. 前端页面出现“无法连接后端服务”时，先检查 Vite 实际注入的 `import.meta.env`、当前 `5174` 前端启动模式和 `npm run check:backend-version`，不得直接判断为业务模块处理失败。
 14. 运行 `npm run version:bump`、切换分支、拉取同事更新或修改 `tms-backend/app_version.py` 后，先运行 `npm run dev:backend:restart` 和 `npm run check:backend-version`，再刷新本地 `5174` 前端页面，避免旧 `8000` 后端进程继续返回上一版本。
 
+## 浏览器自动化模块边界
+
+1. 新增或中大型改造浏览器自动化前，先读取 `docs/browser-automation-module-standards.md`。
+2. 浏览器自动化按业务页面 / 自动化功能建模块，不按纯技术层先拆。一个页面入口对应一个 `modules/<business-module>/`。
+3. `server.mjs` 只负责启动服务、注册路由和分发模块；不得继续把新业务 Excel 解析、Playwright 页面步骤、业务 selector、错误文案和结果导出堆进单个 `server.mjs`。
+4. 公共能力才放 `shared/`，例如浏览器生命周期、Infor Nexus 登录、ExtJS 弹窗、Desktop Utility 连接检测、运行产物写入；业务专属列名、按钮、失败步骤和结果字段必须留在业务模块内。
+5. 当前 `shipping-automation-demo/server.mjs` 是历史遗留兼容结构。小型故障修复可局部补丁；新增自动化或大块流程调整必须优先新建或迁移到业务模块目录。
+
 ## Jane 模块边界
 
 1. Jane 相关前端源码主要位于：

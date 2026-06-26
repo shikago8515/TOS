@@ -109,7 +109,7 @@ export async function postFormData<TResponse>({
       const text = request.responseText || '{}'
 
       try {
-        const data = JSON.parse(text) as TResponse
+        const data = parseJsonResponse<TResponse>(text, { status: request.status, path })
 
         if (request.status >= 200 && request.status < 300) {
           resolve(data)
@@ -163,7 +163,7 @@ export async function requestBackendJson<TResponse>({
     throw new Error(backendConnectionErrorMessage)
   }
   const text = await response.text()
-  const data = text ? JSON.parse(text) as TResponse : {} as TResponse
+  const data = parseJsonResponse<TResponse>(text, { status: response.status, path })
 
   if (!response.ok) {
     throw new Error(readResponseMessage(data, { status: response.status, path }) || `HTTP ${response.status}`)
@@ -206,6 +206,16 @@ export function readErrorMessage(error: unknown, fallback: string): string {
   }
 
   return fallback
+}
+
+export function buildNonJsonResponseMessage(
+  context: ResponseMessageContext & { preview?: string } = {},
+): string {
+  const statusText = context.status ? `HTTP ${context.status}` : '无状态码'
+  const pathText = context.path ? `，接口：${context.path}` : ''
+  const preview = String(context.preview || '').replace(/\s+/g, ' ').trim().slice(0, 160)
+
+  return `接口返回内容不是系统可识别的 JSON（${statusText}${pathText}）。可能是后端/执行器返回了 HTML 错误页、空响应，或服务已退出。请重启本机后端或自动化执行器后重试${preview ? `。响应开头：${preview}` : '。'}`
 }
 
 export function readResponseMessage(
@@ -251,6 +261,18 @@ function isApiNotFound(data: unknown, context: ResponseMessageContext): boolean 
   }
 
   return (data as { detail?: unknown }).detail === 'Not Found'
+}
+
+function parseJsonResponse<TResponse>(text: string, context: ResponseMessageContext = {}): TResponse {
+  if (!text) {
+    return {} as TResponse
+  }
+
+  try {
+    return JSON.parse(text) as TResponse
+  } catch (_error) {
+    throw new Error(buildNonJsonResponseMessage({ ...context, preview: text }))
+  }
 }
 
 function buildBackendUrl(baseUrl: string, path: string): string {

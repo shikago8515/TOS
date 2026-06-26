@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ElectronApi } from '../../types/electronApi'
 import { fallbackAppVersion } from '../version/appVersion'
 import {
+  buildNonJsonResponseMessage,
   buildBackendDownloadUrl,
   getBackendBaseUrl,
   isBackendVersionMismatchMessage,
@@ -106,6 +107,16 @@ describe('backendClient', () => {
     await expect(
       requestBackendJson({ path }),
     ).rejects.toThrow('无法连接后端服务，请确认本地后端已启动并已重启到当前版本')
+  })
+
+  it('turns non-JSON backend responses into an actionable message', async () => {
+    expect(
+      buildNonJsonResponseMessage({
+        status: 500,
+        path: '/api/run-shipping-file',
+        preview: '<html>executor crashed</html>',
+      }),
+    ).toContain('接口返回内容不是系统可识别的 JSON（HTTP 500，接口：/api/run-shipping-file）')
   })
 
   it('stops JSON requests when a required local backend version is stale', async () => {

@@ -371,8 +371,8 @@ async function startBulkAutomation(id: BulkId): Promise<void> {
     const j = safeParseJson<BulkResult>(raw)
     await finishBulkRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j)
     if (!res.ok || !j?.ok) {
-      const friendlyMessage = formatAutomationExecutorMessage(j?.message || `HTTP ${res.status}`)
-      if (shouldShowAutomationErrorDialog(j?.message)) showAutomationErrorDialog(friendlyMessage)
+      const friendlyMessage = buildExecutorResponseMessage(res, raw, j)
+      if (shouldShowAutomationErrorDialog(j?.message || friendlyMessage)) showAutomationErrorDialog(friendlyMessage)
       throw new Error(friendlyMessage)
     }
     b.result = j
@@ -382,7 +382,7 @@ async function startBulkAutomation(id: BulkId): Promise<void> {
     message.value = b.statusText
   } catch (e) {
     b.tone = 'error'
-    b.statusText = readErrorMessage(e, '启动失败')
+    b.statusText = formatAutomationExecutorMessage(readErrorMessage(e, '启动失败'), '自动化执行异常。')
     messageTone.value = 'error'
     message.value = b.statusText
   } finally {
@@ -397,6 +397,7 @@ function bulkStatusIcon(b: BulkState): string { if (b.running) return 'loader'; 
 function formatSize(b: number): string { if (b < 1024) return `${b} B`; if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`; return `${(b / (1024 * 1024)).toFixed(1)} MB` }
 function createFallbackAutomationApp(t: WebAutomationEntry): AutomationAppInfo { return { id: t.appId, name: t.title, description: t.description, provider: 'Playwright', category: 'Web Automation', version: 'local', available: true, running: false, url: t.executorBaseUrl } }
 function safeParseJson<T>(raw: string): T | null { try { return raw ? JSON.parse(raw) as T : null } catch { return null } }
+function buildExecutorResponseMessage(res: Response, _raw: string, payload: { message?: unknown } | null, fallback = '自动化执行失败。'): string { const rawMessage = typeof payload?.message === 'string' ? payload.message : ''; if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback); if (!payload) return formatAutomationExecutorMessage('JSON.parse: unexpected character at line 1 column 1 of the JSON data', fallback); return formatAutomationExecutorMessage(`HTTP ${res.status}`, fallback) }
 function readErrorMessage(e: unknown, fb: string): string { return e instanceof Error && e.message ? e.message : fb }
 function goBack(): void { void router.push('/jane-infornexus') }
 
