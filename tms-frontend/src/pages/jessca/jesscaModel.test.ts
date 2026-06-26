@@ -19,6 +19,9 @@ describe('jesscaModel', () => {
         tc_count: 2,
         tc_matched_count: 1,
         tc_issue_count: 1,
+        tc_summary_count: 1,
+        tc_summary_issue_count: 1,
+        tc_total_issue_count: 2,
         output_file: 'result.xlsx',
       },
       1,
@@ -29,7 +32,7 @@ describe('jesscaModel', () => {
       expect.arrayContaining([
         expect.objectContaining({ label: 'TC INV PDF', value: '1' }),
         expect.objectContaining({ label: 'TC核对记录', value: '2' }),
-        expect.objectContaining({ label: 'TC异常', value: '1' }),
+        expect.objectContaining({ label: 'TC异常', value: '2' }),
       ]),
     )
   })

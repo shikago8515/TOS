@@ -61,7 +61,7 @@ export function buildJesscaSummary(
       },
       {
         label: 'TC异常',
-        value: String(response.tc_issue_count ?? '-'),
+        value: String(response.tc_total_issue_count ?? response.tc_issue_count ?? '-'),
       },
     )
   }

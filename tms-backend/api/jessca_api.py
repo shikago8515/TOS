@@ -167,6 +167,9 @@ async def process_jessca(
                 "tc_count": result.get('tc_count', 0),
                 "tc_matched_count": result.get('tc_matched_count', 0),
                 "tc_issue_count": result.get('tc_issue_count', 0),
+                "tc_summary_count": result.get('tc_summary_count', 0),
+                "tc_summary_issue_count": result.get('tc_summary_issue_count', 0),
+                "tc_total_issue_count": result.get('tc_total_issue_count', 0),
                 "output_file": output_filename
             }
         else:

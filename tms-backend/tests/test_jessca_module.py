@@ -15,9 +15,11 @@ if BACKEND_ROOT not in sys.path:
 
 from modules.jessca_module import (
     InvoiceRecord,
+    InvoiceSummaryRecord,
     JesscaModule,
     TcInvoiceExtractedPage,
     TcInvoiceRecord,
+    TcInvoiceSummary,
 )
 
 
@@ -240,7 +242,41 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(records[0].style, "RC2620OW008")
         self.assertEqual(records[0].quantity, 200)
         self.assertEqual(records[0].price, 6.6)
+        self.assertEqual(records[0].line_amount, 1320.0)
         self.assertEqual(records[0].goods_description, "WOMEN'S KNITTED SHORT")
+
+    def test_read_invoice_summary_extracts_bottom_total_and_final_total(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            invoice_path = os.path.join(temp_dir, "invoice.xlsx")
+            wb = Workbook()
+            ws = wb.active
+            ws.append(["PO NO.", "STOCK NO.", "COLOR", "DESCRIPTIONS", None, "QTY(PC)", "UNIT PRICE(PC)", None, "FOB"])
+            ws.append(["WOMEN'S 100% POLYESTER WOVEN JACKET"])
+            ws.append(["PO:", "0901889028", None, None, None, 305, "USD", 13.0, "USD", 3965.0])
+            ws.append(["ARTICLE NO.:", "KX1885"])
+            ws.append(["STYLE NO.:", "RC2610OW007"])
+            ws.append(["WOMEN'S 63% POLYESTER WOVEN PANTS"])
+            ws.append(["PO:", "0901937666", None, None, None, 140, "USD", 16.05, "USD", 2247.0])
+            ws.append(["ARTICLE NO.:", "KX1870"])
+            ws.append(["STYLE NO.:", "RC2610OW001"])
+            ws.append([])
+            ws.append([None, None, "Total", None, None, 445, None, None, "USD", 6212.0])
+            ws.append([])
+            ws.append([None, None, "Freight Charge", None, None, None, None, None, "USD", 39.06])
+            ws.append([None, None, "DOCUMENTATION CHARGE", None, None, None, None, None, "USD", 100.0])
+            ws.append([None, None, "Final Total", None, None, None, None, None, "USD", 6351.06])
+            wb.save(invoice_path)
+
+            records = self.module.read_invoice_records(invoice_path)
+            summary = self.module.read_invoice_summary(invoice_path, records)
+
+        self.assertEqual(summary.source_file, "invoice.xlsx")
+        self.assertEqual(summary.total_quantity, 445)
+        self.assertEqual(summary.total_amount, 6212.0)
+        self.assertEqual(summary.freight_charge, 39.06)
+        self.assertEqual(summary.documentation_charge, 100.0)
+        self.assertEqual(summary.final_total_amount, 6351.06)
+        self.assertEqual(summary.currency, "USD")
 
     def test_read_invoice_records_applies_trailing_article_to_multiple_po_rows(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -394,10 +430,28 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                     "Invoice Number\n17-04-26-0914\n"
                     "PO No PO Line Market PO Sales Order No Working No Article No Article Description Gender Category Total Qty\n"
                     "0901937666 1 0305837705 5052174707 RC2610OW001 KX1870 CLASSIC TP CRSK W ORIGINALS 140\n"
+                    "Customer Size XS S M L XL Total Quantity Price Total Amount\n"
+                    "QTY 28 44 36 20 12 140 17.65 2,471.00\n"
                     "Goods Description WOMEN'S 63% POLYESTER (100% RECYCLED) 34% VISCOSE,3% ELASTANE WOVEN PANTS (HTS:6204.63.0000)\n"
+                    "Customer Size Sourcing Size/Manufacturing Size HTS Description Quota Category Export Quota Price Quantity\n"
+                    "XS,S,M,L,XL 32,36,40,44,48 6204630000 WOMENS PANTS,SHORTS,ETC;WOVEN 140\n"
                     "PO No PO Line Market PO Sales Order No Working No Article No Article Description Gender Category Total Qty\n"
                     "0901889028 1 0305837711 5052174713 RC2610OW007 KX1885 STN FB TT LINEN/MAGBEI W ORIGINALS 305\n"
-                    "Goods Description WOMEN'S 100% POLYESTER (100% RECYCLED) WOVEN JACKET(HTS:6202.40.0000)"
+                    "Customer Size XS S M L XL Total Quantity Price Total Amount\n"
+                    "QTY 55 87 83 52 28 305 14.25 4,346.25\n"
+                    "Goods Description WOMEN'S 100% POLYESTER (100% RECYCLED) WOVEN JACKET(HTS:6202.40.0000)\n"
+                    "Customer Size Sourcing Size/Manufacturing Size HTS Description Quota Category Export Quota Price Quantity\n"
+                    "XS,S,M,L,XL 32,36,40,44,48 6202400000 WOMANS ANORAKS,WINDCHEATERS;WOVEN 305\n"
+                    "Total Quantity 445\n"
+                    "Total Carton 19\n"
+                    "Total Gross Weight 200.740 KG\n"
+                    "Total Net Weight 180.860 KG\n"
+                    "Total Net Net Weight 180.670 KG\n"
+                    "Total PO Net Amount 6,817.25\n"
+                    "Additional charge 39.06\n"
+                    "Documentation charge 100.00\n"
+                    "Total VAT 0.00\n"
+                    "Invoice Total 6,817.25"
                 ),
                 tables=[
                     [
@@ -427,6 +481,11 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                         ],
                     ],
                     [
+                        ["Customer Size", "XS", "S", "M", "L", "XL", "Total Quantity", "Price", "Total Amount"],
+                        ["QTY", "28", "44", "36", "20", "12", "140", "17.65", "2,471.00"],
+                        ["", None, None, None, None, None, None, None, "2,471.00"],
+                    ],
+                    [
                         [
                             "PO No",
                             "PO Line\nAggregator",
@@ -452,11 +511,16 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                             "305",
                         ],
                     ],
+                    [
+                        ["Customer Size", "XS", "S", "M", "L", "XL", "Total Quantity", "Price", "Total Amount"],
+                        ["QTY", "55", "87", "83", "52", "28", "305", "14.25", "4,346.25"],
+                    ],
                 ],
             )
         ]
 
         records = self.module.parse_tc_invoice_pages(pages, "tc.pdf")
+        summary = self.module.parse_tc_invoice_summary_pages(pages, "tc.pdf")
 
         self.assertEqual(len(records), 2)
         self.assertEqual(records[0].source_file, "tc.pdf")
@@ -465,15 +529,30 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(records[0].working_number, "RC2610OW001")
         self.assertEqual(records[0].article_number, "KX1870")
         self.assertEqual(records[0].quantity, 140)
+        self.assertEqual(records[0].price, 17.65)
+        self.assertEqual(records[0].total_amount, 2471.0)
         self.assertEqual(
             records[0].goods_description,
             "WOMEN'S 63% POLYESTER (100% RECYCLED) 34% VISCOSE,3% ELASTANE WOVEN PANTS",
         )
         self.assertEqual(records[1].quantity, 305)
+        self.assertEqual(records[1].price, 14.25)
+        self.assertEqual(records[1].total_amount, 4346.25)
         self.assertEqual(
             records[1].goods_description,
             "WOMEN'S 100% POLYESTER (100% RECYCLED) WOVEN JACKET",
         )
+        self.assertEqual(summary.source_file, "tc.pdf")
+        self.assertEqual(summary.total_quantity, 445)
+        self.assertEqual(summary.total_carton, 19)
+        self.assertEqual(summary.total_gross_weight, 200.740)
+        self.assertEqual(summary.total_net_weight, 180.860)
+        self.assertEqual(summary.total_net_net_weight, 180.670)
+        self.assertEqual(summary.total_po_net_amount, 6817.25)
+        self.assertEqual(summary.additional_charge, 39.06)
+        self.assertEqual(summary.documentation_charge, 100.0)
+        self.assertEqual(summary.total_vat, 0)
+        self.assertEqual(summary.invoice_total, 6817.25)
 
     def test_build_tc_invoice_comparison_matches_invoice_and_flags_quantity(self):
         invoice_records = [
@@ -486,6 +565,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 style="RC2620OW008",
                 quantity=200,
                 price=6.6,
+                line_amount=1320.0,
                 goods_description="WOMEN'S 100% POLYESTER (100%RECYCLED) WOVEN JACKET",
             ),
             InvoiceRecord(
@@ -497,6 +577,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 style="RC2620OW008",
                 quantity=200,
                 price=6.6,
+                line_amount=1320.0,
                 goods_description="WOMEN'S KNITTED SHORT MAIN MATERIAL 100% POLYESTER",
             ),
         ]
@@ -508,6 +589,8 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 working_number="RC2620OW008",
                 article_number="LG4321",
                 quantity=200,
+                price=6.6,
+                total_amount=1320.0,
                 goods_description="WOMEN'S 100% POLYESTER (100% RECYCLED) WOVEN JACKET(HTS:6202.40.0000)",
             ),
             TcInvoiceRecord(
@@ -517,6 +600,8 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 working_number="RC2620OW008",
                 article_number="LG4323",
                 quantity=180,
+                price=6.6,
+                total_amount=1188.0,
                 goods_description="WOMEN'S KNITTED SHORT MAIN MATERIAL 100% POLYESTER",
             ),
         ]
@@ -531,6 +616,124 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(rows[1].fty_quantity, 200)
         self.assertEqual(rows[1].tc_quantity, 180)
 
+    def test_build_tc_invoice_comparison_flags_unit_price_and_line_amount(self):
+        invoice_records = [
+            InvoiceRecord(
+                invoice_file="FTY INV.xls",
+                invoice_number="17-04-26-0914",
+                invoice_date="2026-04-04",
+                po_number="0901889028",
+                article="KX1885",
+                style="RC2610OW007",
+                quantity=305,
+                price=13.0,
+                line_amount=3965.0,
+                goods_description="WOMEN'S 100% POLYESTER (100% RECYCLED) WOVEN JACKET",
+            )
+        ]
+        tc_records = [
+            TcInvoiceRecord(
+                source_file="TC INV.pdf",
+                po_number="0901889028",
+                market_po="0305837711",
+                working_number="RC2610OW007",
+                article_number="KX1885",
+                quantity=305,
+                price=14.25,
+                total_amount=4346.25,
+                goods_description="WOMEN'S 100% POLYESTER (100% RECYCLED) WOVEN JACKET",
+            )
+        ]
+
+        rows = self.module.build_tc_invoice_comparison(invoice_records, tc_records)
+
+        self.assertEqual(rows[0].status, "需核对")
+        self.assertIn("Unit Price", rows[0].issue_detail)
+        self.assertIn("Line Amount", rows[0].issue_detail)
+        self.assertEqual(rows[0].fty_price, 13.0)
+        self.assertEqual(rows[0].tc_price, 14.25)
+        self.assertEqual(rows[0].fty_line_amount, 3965.0)
+        self.assertEqual(rows[0].tc_total_amount, 4346.25)
+
+    def test_build_tc_invoice_summary_comparison_flags_total_amounts(self):
+        rows = self.module.build_tc_invoice_summary_comparison(
+            [
+                InvoiceSummaryRecord(
+                    source_file="FTY INV.xls",
+                    total_quantity=445,
+                    total_amount=6212.0,
+                    freight_charge=39.06,
+                    documentation_charge=100.0,
+                    final_total_amount=6212.0,
+                    currency="USD",
+                )
+            ],
+            [
+                TcInvoiceSummary(
+                    source_file="TC INV.pdf",
+                    total_quantity=445,
+                    total_carton=19,
+                    total_gross_weight=200.740,
+                    total_net_weight=180.860,
+                    total_net_net_weight=180.670,
+                    total_po_net_amount=6817.25,
+                    additional_charge=39.06,
+                    documentation_charge=100.0,
+                    total_vat=0,
+                    invoice_total=6817.25,
+                )
+            ],
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].status, "需核对")
+        self.assertIn("Total Amount", rows[0].issue_detail)
+        self.assertIn("Final Total", rows[0].issue_detail)
+        self.assertEqual(rows[0].fty_total_quantity, 445)
+        self.assertEqual(rows[0].tc_total_quantity, 445)
+        self.assertEqual(rows[0].fty_total_amount, 6212.0)
+        self.assertEqual(rows[0].tc_total_po_net_amount, 6817.25)
+        self.assertEqual(rows[0].fty_freight_charge, 39.06)
+        self.assertEqual(rows[0].tc_additional_charge, 39.06)
+        self.assertEqual(rows[0].fty_documentation_charge, 100.0)
+        self.assertEqual(rows[0].tc_documentation_charge, 100.0)
+        self.assertNotIn("Freight/Additional Charge", rows[0].issue_detail)
+        self.assertNotIn("Documentation Charge", rows[0].issue_detail)
+
+    def test_build_tc_invoice_summary_comparison_flags_charge_mismatch(self):
+        rows = self.module.build_tc_invoice_summary_comparison(
+            [
+                InvoiceSummaryRecord(
+                    source_file="FTY INV.xls",
+                    total_quantity=217,
+                    total_amount=3532.0,
+                    freight_charge=39.06,
+                    documentation_charge=100.0,
+                    final_total_amount=3671.06,
+                    currency="USD",
+                )
+            ],
+            [
+                TcInvoiceSummary(
+                    source_file="TC INV.pdf",
+                    total_quantity=217,
+                    total_po_net_amount=3532.0,
+                    additional_charge=40.06,
+                    documentation_charge=90.0,
+                    total_vat=0,
+                    invoice_total=3662.06,
+                )
+            ],
+        )
+
+        self.assertEqual(rows[0].status, "需核对")
+        self.assertIn("Freight/Additional Charge", rows[0].issue_detail)
+        self.assertIn("Documentation Charge", rows[0].issue_detail)
+        self.assertEqual(rows[0].fty_freight_charge, 39.06)
+        self.assertEqual(rows[0].tc_additional_charge, 40.06)
+        self.assertEqual(rows[0].fty_documentation_charge, 100.0)
+        self.assertEqual(rows[0].tc_documentation_charge, 90.0)
+
     def test_build_tc_invoice_comparison_flags_goods_description(self):
         invoice_records = [
             InvoiceRecord(
@@ -542,6 +745,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 style="RC2610OW007",
                 quantity=305,
                 price=13.0,
+                line_amount=3965.0,
                 goods_description="WOMEN'S 100% POLYESTER WOVEN JACKET",
             )
         ]
@@ -553,6 +757,8 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 working_number="RC2610OW007",
                 article_number="KX1885",
                 quantity=305,
+                price=13.0,
+                total_amount=3965.0,
                 goods_description="WOMEN'S 63% POLYESTER WOVEN PANTS",
             )
         ]
@@ -613,14 +819,166 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(save_result["tc_matched_count"], 1)
         self.assertEqual(save_result["tc_issue_count"], 0)
         tc_sheet = workbook["TC INV核对"]
-        headers = [cell.value for cell in tc_sheet[2]]
+        rows = list(tc_sheet.iter_rows(values_only=True))
+        self.assertEqual(tc_sheet["A2"].value, "核对结论")
+        self.assertEqual(tc_sheet["B2"].value, "明细一致")
+        detail_header_index = next(
+            index for index, row in enumerate(rows, 1)
+            if row[:7] == ("PO No", "Article No", "Working/Style No", "差异项", "FTY", "TC", "差额")
+        )
+        headers = list(rows[detail_header_index - 1][:7])
         self.assertIn("PO No", headers)
-        self.assertIn("FTY QTY", headers)
-        self.assertIn("TC Total Qty", headers)
-        self.assertIn("FTY Goods Description", headers)
-        self.assertIn("TC Goods Description", headers)
-        self.assertEqual(tc_sheet["A3"].value, "一致")
-        self.assertEqual(tc_sheet["C3"].value, "0902694555")
+        self.assertIn("差异项", headers)
+        self.assertNotIn("FTY QTY", headers)
+        self.assertIn("明细一致", [value for row in rows for value in row if value])
+
+    def test_save_excel_with_summary_adds_tc_summary_section(self):
+        ref_df = pd.DataFrame(
+            [{"Price": 13.0, "Style NO.": "RC2610OW007", "Article NO.": "KX1885"}],
+        )
+        invoice_data = {("KX1885", "RC2610OW007"): {"FTY INV.xls": 13.0}}
+        result_df, _ = self.module.update_reference_table(ref_df, invoice_data)
+        tc_detail_rows = self.module.build_tc_invoice_comparison(
+            [
+                InvoiceRecord(
+                    invoice_file="FTY INV.xls",
+                    invoice_number="17-04-26-0914",
+                    invoice_date="2026-04-04",
+                    po_number="0901889028",
+                    article="KX1885",
+                    style="RC2610OW007",
+                    quantity=305,
+                    price=13.0,
+                    line_amount=3965.0,
+                    goods_description="WOMEN'S 100% POLYESTER WOVEN JACKET",
+                ),
+                InvoiceRecord(
+                    invoice_file="FTY INV.xls",
+                    invoice_number="17-04-26-0914",
+                    invoice_date="2026-04-04",
+                    po_number="0901937666",
+                    article="KX1870",
+                    style="RC2610OW001",
+                    quantity=140,
+                    price=16.05,
+                    line_amount=2247.0,
+                    goods_description="WOMEN'S 63% POLYESTER 34% VISCOSE 3% ELASTANE WOVEN PANTS",
+                )
+            ],
+            [
+                TcInvoiceRecord(
+                    source_file="TC INV.pdf",
+                    po_number="0901889028",
+                    market_po="0305837711",
+                    working_number="RC2610OW007",
+                    article_number="KX1885",
+                    quantity=305,
+                    price=14.25,
+                    total_amount=4346.25,
+                    goods_description="WOMEN'S 100% POLYESTER WOVEN JACKET",
+                ),
+                TcInvoiceRecord(
+                    source_file="TC INV.pdf",
+                    po_number="0901937666",
+                    market_po="0305837712",
+                    working_number="RC2610OW001",
+                    article_number="KX1870",
+                    quantity=140,
+                    price=17.65,
+                    total_amount=2471.0,
+                    goods_description="WOMEN'S 63% POLYESTER 34% VISCOSE 3% ELASTANE WOVEN PANTS",
+                )
+            ],
+        )
+        tc_summary_rows = self.module.build_tc_invoice_summary_comparison(
+            [
+                InvoiceSummaryRecord(
+                    source_file="FTY INV.xls",
+                    total_quantity=445,
+                    total_amount=6212.0,
+                    freight_charge=39.06,
+                    documentation_charge=100.0,
+                    final_total_amount=6212.0,
+                    currency="USD",
+                )
+            ],
+            [
+                TcInvoiceSummary(
+                    source_file="TC INV.pdf",
+                    total_quantity=445,
+                    total_carton=19,
+                    total_gross_weight=200.740,
+                    total_net_weight=180.860,
+                    total_net_net_weight=180.670,
+                    total_po_net_amount=6817.25,
+                    additional_charge=39.06,
+                    documentation_charge=100.0,
+                    total_vat=0,
+                    invoice_total=6817.25,
+                )
+            ],
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = os.path.join(temp_dir, "result.xlsx")
+            save_result = self.module.save_excel_with_summary(
+                result_df,
+                invoice_data,
+                ["FTY INV.xls"],
+                ["FTY INV.xls"],
+                ref_df,
+                output_path,
+                tc_comparison_rows=tc_detail_rows,
+                tc_summary_rows=tc_summary_rows,
+            )
+            workbook = load_workbook(output_path)
+
+        tc_sheet = workbook["TC INV核对"]
+        rows = list(tc_sheet.iter_rows(values_only=True))
+        labels = {row[0]: row[1] for row in rows if row and row[0] in ("核对结论", "数量", "费用", "金额差额")}
+        self.assertEqual(labels["核对结论"], "金额不一致；数量一致")
+        self.assertEqual(labels["数量"], "FTY=445 / TC=445 / 一致")
+        self.assertEqual(
+            labels["费用"],
+            "Freight/Additional: FTY=39.06 / TC=39.06 / 一致；Documentation: FTY=100 / TC=100 / 一致",
+        )
+        self.assertEqual(labels["金额差额"], 605.25)
+        self.assertIn("汇总差异", [row[0] for row in rows if row and row[0]])
+        summary_header_index = next(
+            index for index, row in enumerate(rows, 1)
+            if row[:5] == ("差异项", "FTY", "TC", "差额", "结果")
+        )
+        summary_diff_rows = [
+            row[:5]
+            for row in rows[summary_header_index:]
+            if row and row[4] == "不一致"
+        ]
+        self.assertIn(("货值合计", 6212.0, 6817.25, 605.25, "不一致"), summary_diff_rows)
+        self.assertIn(("最终总额", 6212.0, 6817.25, 605.25, "不一致"), summary_diff_rows)
+        summary_diff_fields = [
+            row[0]
+            for row in rows[summary_header_index:]
+            if row and row[0] in ("货值合计", "最终总额", "Freight/Additional Charge", "Documentation Charge")
+        ]
+        self.assertNotIn("Freight/Additional Charge", summary_diff_fields)
+        self.assertNotIn("Documentation Charge", summary_diff_fields)
+        detail_header_index = next(
+            index for index, row in enumerate(rows, 1)
+            if row[:7] == ("PO No", "Article No", "Working/Style No", "差异项", "FTY", "TC", "差额")
+        )
+        detail_rows = [
+            row[:7]
+            for row in rows[detail_header_index:]
+            if row and row[3] in ("Unit Price", "Line Amount", "数量")
+        ]
+        self.assertNotIn("数量", [row[3] for row in detail_rows])
+        self.assertIn(("0901889028", "KX1885", "RC2610OW007", "Unit Price", 13.0, 14.25, 1.25), detail_rows)
+        self.assertIn(("0901889028", "KX1885", "RC2610OW007", "Line Amount", 3965.0, 4346.25, 381.25), detail_rows)
+        self.assertIn(("0901937666", "KX1870", "RC2610OW001", "Unit Price", 16.05, 17.65, 1.6), detail_rows)
+        self.assertIn(("0901937666", "KX1870", "RC2610OW001", "Line Amount", 2247.0, 2471.0, 224.0), detail_rows)
+        self.assertEqual(save_result["tc_summary_count"], 1)
+        self.assertEqual(save_result["tc_summary_issue_count"], 1)
+        self.assertEqual(save_result["tc_total_issue_count"], 3)
 
     def test_save_excel_with_summary_marks_missing_tc_rows_red(self):
         ref_df = pd.DataFrame(
@@ -658,12 +1016,12 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
             )
             workbook = load_workbook(output_path)
 
-        tc_records = self._sheet_records(workbook["TC INV核对"])
-        missing_record = next(
-            record for record in tc_records
-            if record["values"].get("Check Status") == "缺失"
+        missing_cells = next(
+            row for row in workbook["TC INV核对"].iter_rows(values_only=False)
+            if len(row) >= 4 and row[3].value == "记录缺失"
         )
-        self.assertEqual(missing_record["cells"]["Check Status"].fill.fgColor.rgb, "FFFFDDDD")
+        self.assertEqual(missing_cells[3].fill.fgColor.rgb, "FFFFDDDD")
+        self.assertEqual(missing_cells[5].value, "TC INV PDF 缺少")
 
     def test_process_invoices_labels_reference_style_when_tc_confirms_invoice(self):
         class VentReferenceJesscaModule(JesscaModule):
