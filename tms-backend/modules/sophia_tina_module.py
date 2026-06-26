@@ -339,7 +339,7 @@ class SophiaTinaModule:
                         "Shipment Method",
                         "Quantity",
                         "Quantity (%)",
-                        "TMS Amount USD)",
+                        "TMS Amount (USD)",
                         "TMS Amount (%)",
                     ],
                     ship_method_rows,
@@ -352,7 +352,7 @@ class SophiaTinaModule:
                         "Factory",
                         "Development Style Count",
                         "Bulk Style Count",
-                        "Bulk Quantity (Pcs)",
+                        "Bulk Qty (pcs)",
                     ],
                     s2s_rows,
                     '<cols><col min="1" max="2" width="18" customWidth="1"/>'
@@ -380,7 +380,7 @@ class SophiaTinaModule:
                     ("Shipment Method", "0"),
                     ("Quantity", "3"),
                     ("Quantity (%)", "10"),
-                    ("TMS Amount USD)", "166"),
+                    ("TMS Amount (USD)", "166"),
                     ("TMS Amount (%)", "10"),
                 ],
             )
@@ -408,7 +408,7 @@ class SophiaTinaModule:
                     ("Factory", "0"),
                     ("Development Style Count", "3"),
                     ("Bulk Style Count", "3"),
-                    ("Bulk Quantity (Pcs)", "3"),
+                    ("Bulk Qty (pcs)", "3"),
                 ],
             )
             replacements["xl/pivotCache/pivotCacheRecords5.xml"] = self._empty_pivot_cache_records_xml()
@@ -449,7 +449,7 @@ class SophiaTinaModule:
                 [
                     ("Quantity (Y)", 4, None, "3"),
                     ("Quantity (%)", 5, None, "10"),
-                    ("TMS Amount USD)", 6, None, "166"),
+                    ("TMS Amount (USD)", 6, None, "166"),
                     ("TMS Amount (%)", 7, None, "10"),
                 ],
                 8,
@@ -462,7 +462,7 @@ class SophiaTinaModule:
                 [
                     ("Development Style Count", 2, None, "3"),
                     ("Bulk Style Count", 3, None, "3"),
-                    ("Bulk Quantity (Pcs)", 4, None, "3"),
+                    ("Bulk Qty (pcs)", 4, None, "3"),
                 ],
                 5,
             )
@@ -1827,7 +1827,7 @@ class SophiaTinaModule:
         ws = wb.create_sheet("S2S Development Analysis")
         self._append_summary_table(
             ws,
-            ["Season", "Factory", "Development Style Count", "Bulk Style Count", "Bulk Quantity (Pcs)"],
+            ["Season", "Factory", "Development Style Count", "Bulk Style Count", "Bulk Qty (pcs)"],
             rows,
             thin_border,
         )

@@ -19,6 +19,7 @@ const allowedDirectRequestFiles = new Set([
   'tms-frontend/src/pages/po-auto-download/components/PoAutoDownloadWorkspace.vue',
   'tms-frontend/src/pages/shipping-automation/components/ShippingAutomationWorkspace.vue',
   'tms-frontend/src/pages/shipping-automation-2/components/ShippingAutomation2Workspace.vue',
+  'tms-frontend/src/pages/tc-inv-automation/components/TcInvAutomationWorkspace.vue',
   'tms-frontend/src/pages/xinlongtai-shipping-automation/components/XinlongtaiShippingAutomationWorkspace.vue',
 ])
 
