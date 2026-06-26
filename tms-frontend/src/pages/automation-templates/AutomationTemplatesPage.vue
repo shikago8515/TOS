@@ -19,27 +19,21 @@
       <div class="editor-row">
         <!-- Custom Dropdown: 自动化页面 -->
         <div class="custom-select" ref="moduleDropdownRef">
-          <button class="select-trigger" ref="moduleTriggerRef" @click="toggleModuleDropdown">
+          <button class="select-trigger" @click="toggleModuleDropdown">
             <span class="trigger-label">{{ moduleLabel(form.moduleId) }}</span>
             <AppIcon name="chevron-down" class="trigger-chevron" :class="{ open: moduleDropdownOpen }" />
           </button>
-          <Teleport to="body">
-            <Transition name="dropdown">
-              <div
-                v-if="moduleDropdownOpen"
-                class="select-menu"
-                :style="moduleMenuStyle"
-              >
-                <button
-                  v-for="module in automationModules"
-                  :key="module.id"
-                  class="select-option"
-                  :class="{ active: form.moduleId === module.id }"
-                  @click="selectModule(module.id)"
-                >{{ module.navLabel }}</button>
-              </div>
-            </Transition>
-          </Teleport>
+          <Transition name="dropdown">
+            <div v-if="moduleDropdownOpen" class="select-menu">
+              <button
+                v-for="module in automationModules"
+                :key="module.id"
+                class="select-option"
+                :class="{ active: form.moduleId === module.id }"
+                @click="selectModule(module.id)"
+              >{{ module.navLabel }}</button>
+            </div>
+          </Transition>
         </div>
 
         <!-- Template Key -->
@@ -182,20 +176,6 @@ const form = reactive({
 // ---- Custom Dropdown State ----
 const moduleDropdownOpen = ref(false)
 const moduleDropdownRef = ref<HTMLElement | null>(null)
-const moduleTriggerRef = ref<HTMLElement | null>(null)
-
-const moduleMenuStyle = computed(() => {
-  const trigger = moduleTriggerRef.value
-  if (!trigger) return { visibility: 'hidden' as const }
-  const rect = trigger.getBoundingClientRect()
-  return {
-    position: 'fixed' as const,
-    top: `${rect.bottom + 4}px`,
-    left: `${rect.left}px`,
-    minWidth: `${rect.width}px`,
-    zIndex: '9999',
-  }
-})
 
 function toggleModuleDropdown() {
   moduleDropdownOpen.value = !moduleDropdownOpen.value
@@ -379,7 +359,7 @@ function shortHash(value: string): string {
   padding: 12px 16px;
   color: var(--slate-900);
   background: linear-gradient(180deg, #f5f8fb 0%, #eef7f6 100%);
-  overflow-y: auto;
+  overflow: visible;
   box-sizing: border-box;
 }
 
@@ -556,10 +536,15 @@ function shortHash(value: string): string {
 }
 .trigger-chevron.open { transform: rotate(180deg); }
 .select-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 1000;
+  min-width: 100%;
   max-height: 260px;
   overflow-y: auto;
-  background: var(--white);
-  border: 1px solid var(--slate-200);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
   border-radius: 10px;
   box-shadow: 0 10px 30px rgba(0,0,0,.1), 0 2px 8px rgba(0,0,0,.06);
   padding: 4px;
@@ -574,18 +559,18 @@ function shortHash(value: string): string {
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
-  color: var(--slate-700);
+  color: #334155;
   cursor: pointer;
   transition: all 0.12s ease;
   white-space: nowrap;
 }
 .select-option:hover {
-  background: var(--teal-50);
-  color: var(--teal);
+  background: #f0fdfa;
+  color: #0d9488;
 }
 .select-option.active {
   background: linear-gradient(135deg, rgba(13,148,136,.1), rgba(59,130,246,.06));
-  color: var(--teal);
+  color: #0d9488;
   font-weight: 700;
 }
 
@@ -709,7 +694,7 @@ function shortHash(value: string): string {
   border: 1px solid var(--slate-200);
   border-radius: var(--radius-lg);
   box-shadow: 0 1px 3px rgba(0,0,0,.03), 0 4px 16px rgba(0,0,0,.02);
-  overflow: visible;
+  overflow: hidden;
   transition: box-shadow 0.3s ease;
   flex: 1;
   animation: fadeInUp 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) 0.1s both;
