@@ -264,7 +264,8 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
             ws.append([])
             ws.append([None, None, "Freight Charge", None, None, None, None, None, "USD", 39.06])
             ws.append([None, None, "DOCUMENTATION CHARGE", None, None, None, None, None, "USD", 100.0])
-            ws.append([None, None, "Final Total", None, None, None, None, None, "USD", 6351.06])
+            ws.append([None, None, "Agreed Discount", None, None, None, None, None, "USD", -50.0])
+            ws.append([None, None, "Final Total", None, None, None, None, None, "USD", 6301.06])
             wb.save(invoice_path)
 
             records = self.module.read_invoice_records(invoice_path)
@@ -275,8 +276,16 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(summary.total_amount, 6212.0)
         self.assertEqual(summary.freight_charge, 39.06)
         self.assertEqual(summary.documentation_charge, 100.0)
-        self.assertEqual(summary.final_total_amount, 6351.06)
+        self.assertEqual(summary.agreed_discount, -50.0)
+        self.assertEqual(summary.final_total_amount, 6301.06)
         self.assertEqual(summary.currency, "USD")
+
+    def test_parse_optional_number_treats_parentheses_as_negative(self):
+        self.assertEqual(self.module._parse_optional_number("(795.31)"), -795.31)
+        self.assertEqual(
+            self.module._extract_labeled_number("Agreed Discount (795.31)", "Agreed Discount"),
+            -795.31,
+        )
 
     def test_read_invoice_records_applies_trailing_article_to_multiple_po_rows(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -448,6 +457,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                     "Total Net Weight 180.860 KG\n"
                     "Total Net Net Weight 180.670 KG\n"
                     "Total PO Net Amount 6,817.25\n"
+                    "Agreed Discount (50.00)\n"
                     "Additional charge 39.06\n"
                     "Documentation charge 100.00\n"
                     "Total VAT 0.00\n"
@@ -549,6 +559,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(summary.total_net_weight, 180.860)
         self.assertEqual(summary.total_net_net_weight, 180.670)
         self.assertEqual(summary.total_po_net_amount, 6817.25)
+        self.assertEqual(summary.agreed_discount, -50.0)
         self.assertEqual(summary.additional_charge, 39.06)
         self.assertEqual(summary.documentation_charge, 100.0)
         self.assertEqual(summary.total_vat, 0)
@@ -734,6 +745,86 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(rows[0].fty_documentation_charge, 100.0)
         self.assertEqual(rows[0].tc_documentation_charge, 90.0)
 
+    def test_tc_invoice_comparison_accepts_matching_agreed_discount_adjustment(self):
+        detail_rows = self.module.build_tc_invoice_comparison(
+            [
+                InvoiceRecord(
+                    invoice_file="FTY INV(2).xls",
+                    invoice_number="10-04-26-0513",
+                    invoice_date="2026-04-30",
+                    po_number="0902319229",
+                    article="LE8319",
+                    style="RC2613OW013",
+                    quantity=751,
+                    price=15.95,
+                    line_amount=11978.45,
+                    goods_description="WOMEN'S KNIT TRACK TOP,MAIN MATERIAL: 100% COTTON",
+                )
+            ],
+            [
+                TcInvoiceRecord(
+                    source_file="TC Invoice 10-04-26-0513.pdf",
+                    po_number="0902319229",
+                    market_po="0306692572",
+                    working_number="RC2613OW013",
+                    article_number="LE8319",
+                    quantity=751,
+                    price=17.65,
+                    total_amount=13255.15,
+                    goods_description="WOMEN'S KNIT TRACK TOP,MAIN MATERIAL: 100% COTTON",
+                )
+            ],
+            suppress_amount_differences=True,
+        )
+        summary_rows = self.module.build_tc_invoice_summary_comparison(
+            [
+                InvoiceSummaryRecord(
+                    source_file="FTY INV(2).xls",
+                    total_quantity=751,
+                    total_amount=11978.45,
+                    freight_charge=135.18,
+                    agreed_discount=-795.31,
+                    final_total_amount=11318.32,
+                    currency="USD",
+                )
+            ],
+            [
+                TcInvoiceSummary(
+                    source_file="TC Invoice 10-04-26-0513.pdf",
+                    total_quantity=751,
+                    total_po_net_amount=13323.27,
+                    agreed_discount=-795.31,
+                    additional_charge=135.18,
+                    total_vat=0,
+                    invoice_total=12663.14,
+                )
+            ],
+        )
+
+        self.assertEqual(detail_rows[0].status, "一致")
+        self.assertEqual(detail_rows[0].issue_detail, "")
+        self.assertEqual(summary_rows[0].status, "一致")
+        self.assertEqual(summary_rows[0].fty_agreed_discount, -795.31)
+        self.assertEqual(summary_rows[0].tc_agreed_discount, -795.31)
+        self.assertNotIn("Total Amount", summary_rows[0].issue_detail)
+        self.assertNotIn("Final Total", summary_rows[0].issue_detail)
+
+        wb = Workbook()
+        ws = wb.active
+        self.module._write_tc_invoice_comparison_sheet(ws, detail_rows, summary_rows)
+        rows = list(ws.iter_rows(values_only=True))
+        self.assertNotIn("核对结论", [row[0] for row in rows if row and row[0]])
+        self.assertNotIn("汇总差异", [row[0] for row in rows if row and row[0]])
+        self.assertEqual(ws["A3"].value, "明细差异")
+        self.assertEqual(
+            tuple(ws.cell(row=4, column=column).value for column in range(1, 6)),
+            ("Invoice Number", "差异项", "来源", "数值", "差额"),
+        )
+        self.assertEqual(
+            tuple(ws.cell(row=5, column=column).value for column in range(1, 6)),
+            ("10-04-26-0513", "明细一致", "-", "-", "-"),
+        )
+
     def test_build_tc_invoice_comparison_flags_goods_description(self):
         invoice_records = [
             InvoiceRecord(
@@ -820,14 +911,17 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(save_result["tc_issue_count"], 0)
         tc_sheet = workbook["TC INV核对"]
         rows = list(tc_sheet.iter_rows(values_only=True))
-        self.assertEqual(tc_sheet["A2"].value, "核对结论")
-        self.assertEqual(tc_sheet["B2"].value, "明细一致")
+        self.assertNotIn("核对结论", [row[0] for row in rows if row and row[0]])
+        self.assertNotIn("汇总差异", [row[0] for row in rows if row and row[0]])
         detail_header_index = next(
             index for index, row in enumerate(rows, 1)
-            if row[:7] == ("PO No", "Article No", "Working/Style No", "差异项", "FTY", "TC", "差额")
+            if row[:5] == ("Invoice Number", "差异项", "来源", "数值", "差额")
         )
-        headers = list(rows[detail_header_index - 1][:7])
-        self.assertIn("PO No", headers)
+        headers = list(rows[detail_header_index - 1][:5])
+        self.assertIn("Invoice Number", headers)
+        self.assertNotIn("PO No", headers)
+        self.assertNotIn("Article No", headers)
+        self.assertNotIn("Working/Style No", headers)
         self.assertIn("差异项", headers)
         self.assertNotIn("FTY QTY", headers)
         self.assertIn("明细一致", [value for row in rows for value in row if value])
@@ -935,47 +1029,39 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
 
         tc_sheet = workbook["TC INV核对"]
         rows = list(tc_sheet.iter_rows(values_only=True))
-        labels = {row[0]: row[1] for row in rows if row and row[0] in ("核对结论", "数量", "费用", "金额差额")}
-        self.assertEqual(labels["核对结论"], "金额不一致；数量一致")
-        self.assertEqual(labels["数量"], "FTY=445 / TC=445 / 一致")
-        self.assertEqual(
-            labels["费用"],
-            "Freight/Additional: FTY=39.06 / TC=39.06 / 一致；Documentation: FTY=100 / TC=100 / 一致",
-        )
-        self.assertEqual(labels["金额差额"], 605.25)
-        self.assertIn("汇总差异", [row[0] for row in rows if row and row[0]])
-        summary_header_index = next(
-            index for index, row in enumerate(rows, 1)
-            if row[:5] == ("差异项", "FTY", "TC", "差额", "结果")
-        )
-        summary_diff_rows = [
-            row[:5]
-            for row in rows[summary_header_index:]
-            if row and row[4] == "不一致"
-        ]
-        self.assertIn(("货值合计", 6212.0, 6817.25, 605.25, "不一致"), summary_diff_rows)
-        self.assertIn(("最终总额", 6212.0, 6817.25, 605.25, "不一致"), summary_diff_rows)
-        summary_diff_fields = [
-            row[0]
-            for row in rows[summary_header_index:]
-            if row and row[0] in ("货值合计", "最终总额", "Freight/Additional Charge", "Documentation Charge")
-        ]
-        self.assertNotIn("Freight/Additional Charge", summary_diff_fields)
-        self.assertNotIn("Documentation Charge", summary_diff_fields)
+        labels = [row[0] for row in rows if row and row[0]]
+        self.assertNotIn("核对结论", labels)
+        self.assertNotIn("数量", labels)
+        self.assertNotIn("费用", labels)
+        self.assertNotIn("金额差额", labels)
+        self.assertNotIn("汇总差异", labels)
+        issue_fill_rgb = "FFFFDDDD"
         detail_header_index = next(
             index for index, row in enumerate(rows, 1)
-            if row[:7] == ("PO No", "Article No", "Working/Style No", "差异项", "FTY", "TC", "差额")
+            if row[:5] == ("Invoice Number", "差异项", "来源", "数值", "差额")
         )
+        self.assertNotIn("PO No", rows[detail_header_index - 1][:5])
+        self.assertNotIn("Article No", rows[detail_header_index - 1][:5])
+        self.assertNotIn("Working/Style No", rows[detail_header_index - 1][:5])
         detail_rows = [
-            row[:7]
+            row[:5]
             for row in rows[detail_header_index:]
-            if row and row[3] in ("Unit Price", "Line Amount", "数量")
+            if row and row[1] in ("Unit Price", "Line Amount", "数量")
         ]
-        self.assertNotIn("数量", [row[3] for row in detail_rows])
-        self.assertIn(("0901889028", "KX1885", "RC2610OW007", "Unit Price", 13.0, 14.25, 1.25), detail_rows)
-        self.assertIn(("0901889028", "KX1885", "RC2610OW007", "Line Amount", 3965.0, 4346.25, 381.25), detail_rows)
-        self.assertIn(("0901937666", "KX1870", "RC2610OW001", "Unit Price", 16.05, 17.65, 1.6), detail_rows)
-        self.assertIn(("0901937666", "KX1870", "RC2610OW001", "Line Amount", 2247.0, 2471.0, 224.0), detail_rows)
+        self.assertNotIn("数量", [row[1] for row in detail_rows])
+        self.assertIn(("17-04-26-0914", "Unit Price", "FTY", 13.0, 1.25), detail_rows)
+        self.assertIn(("17-04-26-0914", "Unit Price", "TC", 14.25, 1.25), detail_rows)
+        self.assertIn(("17-04-26-0914", "Line Amount", "FTY", 3965.0, 381.25), detail_rows)
+        self.assertIn(("17-04-26-0914", "Line Amount", "TC", 4346.25, 381.25), detail_rows)
+        self.assertIn(("17-04-26-0914", "Unit Price", "FTY", 16.05, 1.6), detail_rows)
+        self.assertIn(("17-04-26-0914", "Unit Price", "TC", 17.65, 1.6), detail_rows)
+        self.assertIn(("17-04-26-0914", "Line Amount", "FTY", 2247.0, 224.0), detail_rows)
+        self.assertIn(("17-04-26-0914", "Line Amount", "TC", 2471.0, 224.0), detail_rows)
+        first_detail_diff_row = detail_header_index + 1
+        for column_index in range(1, 4):
+            self.assertNotEqual(tc_sheet.cell(first_detail_diff_row, column_index).fill.fgColor.rgb, issue_fill_rgb)
+        self.assertEqual(tc_sheet.cell(first_detail_diff_row, 4).fill.fgColor.rgb, issue_fill_rgb)
+        self.assertEqual(tc_sheet.cell(first_detail_diff_row, 5).fill.fgColor.rgb, issue_fill_rgb)
         self.assertEqual(save_result["tc_summary_count"], 1)
         self.assertEqual(save_result["tc_summary_issue_count"], 1)
         self.assertEqual(save_result["tc_total_issue_count"], 3)
@@ -1018,10 +1104,12 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
 
         missing_cells = next(
             row for row in workbook["TC INV核对"].iter_rows(values_only=False)
-            if len(row) >= 4 and row[3].value == "记录缺失"
+            if len(row) >= 4 and row[1].value == "记录缺失" and row[2].value == "TC"
         )
+        self.assertEqual(missing_cells[0].value, "10-06-26-0712")
+        self.assertNotEqual(missing_cells[1].fill.fgColor.rgb, "FFFFDDDD")
+        self.assertEqual(missing_cells[3].value, "TC INV PDF 缺少")
         self.assertEqual(missing_cells[3].fill.fgColor.rgb, "FFFFDDDD")
-        self.assertEqual(missing_cells[5].value, "TC INV PDF 缺少")
 
     def test_process_invoices_labels_reference_style_when_tc_confirms_invoice(self):
         class VentReferenceJesscaModule(JesscaModule):
