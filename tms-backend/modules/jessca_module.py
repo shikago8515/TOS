@@ -2132,7 +2132,8 @@ class JesscaModule:
     ) -> Dict[str, int]:
         summary_rows = summary_rows or []
         thin_border = create_thin_border()
-        ws.merge_cells("A1:I1")
+        max_matrix_column = 12
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max_matrix_column)
         title_cell = ws["A1"]
         title_cell.value = f"TC INV 核对结果 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         title_cell.font = Font(size=14, bold=True, color="FF1F2937")
@@ -2151,60 +2152,97 @@ class JesscaModule:
         issue_count = len(rows) - matched_count
         summary_count = len(summary_rows)
         summary_issue_count = sum(1 for row in summary_rows if row.status != STATUS_MATCHED)
-        display_rows = self._build_tc_display_rows(rows, summary_rows)
 
         current_row = 3
-        detail_header_row = current_row
-        self._write_table_header(
-            ws,
-            detail_header_row,
-            ["Invoice Number", "PO No", "Article No", "Working/Style No", "核对项", "来源", "数值", "差额", "结果"],
-            thin_border,
-        )
-        current_row += 1
-        for display_row in display_rows:
-            row_values, issue_columns, matched_columns, row_fill_color = display_row
+        matrix_groups = self._build_tc_matrix_groups(rows, summary_rows)
+        if not matrix_groups:
             self._write_simple_tc_display_row(
                 ws,
                 current_row,
-                row_values,
+                ["无 TC INV 核对记录"],
                 thin_border,
-                separator_fill if row_fill_color else None,
-                {5, 7},
-                issue_fill=issue_fill,
-                issue_columns=issue_columns,
+                None,
+                set(),
                 matched_fill=matched_fill,
-                matched_columns=matched_columns,
+                matched_columns={1},
             )
             current_row += 1
+
+        for group_index, (invoice_number, group_summaries, group_rows) in enumerate(matrix_groups):
+            if group_index > 0:
+                self._write_tc_separator_row(ws, current_row, max_matrix_column, thin_border, separator_fill)
+                current_row += 1
+
+            self._write_tc_group_title(ws, current_row, max_matrix_column, invoice_number, thin_border)
+            current_row += 1
+
+            primary_summary = group_summaries[0] if group_summaries else None
+            if group_rows:
+                for detail_row in group_rows:
+                    current_row = self._write_tc_combined_matrix(
+                        ws,
+                        current_row,
+                        primary_summary,
+                        detail_row,
+                        thin_border,
+                        issue_fill,
+                        matched_fill,
+                    )
+            else:
+                for summary in group_summaries:
+                    current_row = self._write_tc_combined_matrix(
+                        ws,
+                        current_row,
+                        summary,
+                        None,
+                        thin_border,
+                        issue_fill,
+                        matched_fill,
+                    )
+
+            for extra_summary in group_summaries[1:]:
+                current_row = self._write_tc_combined_matrix(
+                    ws,
+                    current_row,
+                    extra_summary,
+                    None,
+                    thin_border,
+                    issue_fill,
+                    matched_fill,
+                )
 
         self._adjust_column_widths(
             ws,
             {
-                1: 22,
+                1: 12,
                 2: 18,
-                3: 18,
-                4: 20,
-                5: 26,
-                6: 10,
-                7: 42,
-                8: 14,
-                9: 12,
+                3: 16,
+                4: 16,
+                5: 24,
+                6: 14,
+                7: 30,
+                8: 24,
+                9: 28,
+                10: 18,
+                11: 28,
+                12: 42,
             },
             {
-                1: 16,
+                1: 10,
                 2: 12,
                 3: 12,
-                4: 14,
-                5: 14,
-                6: 8,
+                4: 12,
+                5: 16,
+                6: 10,
                 7: 18,
-                8: 10,
-                9: 10,
+                8: 16,
+                9: 18,
+                10: 12,
+                11: 18,
+                12: 18,
             },
         )
-        ws.freeze_panes = "A4"
-        ws.auto_filter.ref = f"A{detail_header_row}:I{current_row - 1}"
+        ws.freeze_panes = "A2"
         return {
             "tc_count": len(rows),
             "tc_matched_count": matched_count,
@@ -2213,6 +2251,435 @@ class JesscaModule:
             "tc_summary_issue_count": summary_issue_count,
             "tc_total_issue_count": issue_count + summary_issue_count,
         }
+
+    def _build_tc_matrix_groups(
+        self,
+        rows: List[TcComparisonRow],
+        summary_rows: List[TcSummaryComparisonRow],
+    ) -> List[Tuple[str, List[TcSummaryComparisonRow], List[TcComparisonRow]]]:
+        invoice_numbers: List[str] = []
+        summary_groups: DefaultDict[str, List[TcSummaryComparisonRow]] = defaultdict(list)
+        detail_groups: DefaultDict[str, List[TcComparisonRow]] = defaultdict(list)
+
+        for summary in summary_rows:
+            invoice_number = summary.invoice_number or "-"
+            if invoice_number not in invoice_numbers:
+                invoice_numbers.append(invoice_number)
+            summary_groups[invoice_number].append(summary)
+
+        for row in rows:
+            invoice_number = row.invoice_number or "-"
+            if invoice_number not in invoice_numbers:
+                invoice_numbers.append(invoice_number)
+            detail_groups[invoice_number].append(row)
+
+        return [
+            (invoice_number, summary_groups[invoice_number], detail_groups[invoice_number])
+            for invoice_number in invoice_numbers
+        ]
+
+    def _write_tc_separator_row(
+        self,
+        ws: openpyxl.worksheet.worksheet.Worksheet,
+        row_idx: int,
+        max_column: int,
+        thin_border: Border,
+        separator_fill: PatternFill,
+    ) -> None:
+        for column_index in range(1, max_column + 1):
+            cell = ws.cell(row=row_idx, column=column_index, value="")
+            cell.fill = separator_fill
+            cell.border = thin_border
+        ws.row_dimensions[row_idx].height = 10
+
+    def _write_tc_group_title(
+        self,
+        ws: openpyxl.worksheet.worksheet.Worksheet,
+        row_idx: int,
+        max_column: int,
+        invoice_number: str,
+        thin_border: Border,
+    ) -> None:
+        ws.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=max_column)
+        cell = ws.cell(row=row_idx, column=1, value=f"Invoice Number: {invoice_number or '-'}")
+        cell.font = Font(bold=True, color="FF1F2937", size=12)
+        cell.fill = PatternFill(start_color="FFEAF2FF", end_color="FFEAF2FF", fill_type="solid")
+        cell.alignment = Alignment(horizontal="left", vertical="center")
+        cell.border = thin_border
+        for column_index in range(2, max_column + 1):
+            ws.cell(row=row_idx, column=column_index).border = thin_border
+
+    def _write_tc_combined_matrix(
+        self,
+        ws: openpyxl.worksheet.worksheet.Worksheet,
+        start_row: int,
+        summary: Optional[TcSummaryComparisonRow],
+        row: Optional[TcComparisonRow],
+        thin_border: Border,
+        issue_fill: PatternFill,
+        matched_fill: PatternFill,
+    ) -> int:
+        headers = [
+            "来源",
+            "Invoice Number",
+            "PO No",
+            "Article No",
+            "Working/Style No",
+            "Quantity",
+            "Total Amount / Total PO Net Amount",
+            "Freight/Additional Charge",
+            "Documentation Charge",
+            "Agreed Discount",
+            "Final Total / Invoice Total",
+            "Goods Description",
+        ]
+        fields = self._build_tc_combined_matrix_fields(summary, row)
+        return self._write_tc_matrix_rows(ws, start_row, headers, fields, thin_border, issue_fill, matched_fill)
+
+    def _write_tc_summary_matrix(
+        self,
+        ws: openpyxl.worksheet.worksheet.Worksheet,
+        start_row: int,
+        summary: TcSummaryComparisonRow,
+        thin_border: Border,
+        issue_fill: PatternFill,
+        matched_fill: PatternFill,
+    ) -> int:
+        headers = [
+            "来源",
+            "Invoice Number",
+            "Total Quantity",
+            "Total Amount / Total PO Net Amount",
+            "Freight/Additional Charge",
+            "Documentation Charge",
+            "Agreed Discount",
+            "Final Total / Invoice Total",
+        ]
+        fields = self._build_tc_summary_matrix_fields(summary)
+        return self._write_tc_matrix_rows(ws, start_row, headers, fields, thin_border, issue_fill, matched_fill)
+
+    def _write_tc_detail_matrix(
+        self,
+        ws: openpyxl.worksheet.worksheet.Worksheet,
+        start_row: int,
+        row: TcComparisonRow,
+        thin_border: Border,
+        issue_fill: PatternFill,
+        matched_fill: PatternFill,
+    ) -> int:
+        headers = ["来源", "PO No", "Article No", "Working/Style No", "Quantity", "Goods Description"]
+        fields = self._build_tc_detail_matrix_fields(row)
+        return self._write_tc_matrix_rows(ws, start_row, headers, fields, thin_border, issue_fill, matched_fill)
+
+    def _write_tc_matrix_rows(
+        self,
+        ws: openpyxl.worksheet.worksheet.Worksheet,
+        start_row: int,
+        headers: List[str],
+        fields: List[Tuple[Any, Any, str, bool]],
+        thin_border: Border,
+        issue_fill: PatternFill,
+        matched_fill: PatternFill,
+    ) -> int:
+        self._write_table_header(ws, start_row, headers, thin_border)
+        fty_values = ["FTY"] + [field[0] for field in fields]
+        tc_values = ["TC"] + [field[1] for field in fields]
+        result_values = ["结果"] + [field[2] for field in fields]
+        issue_columns = {index + 2 for index, field in enumerate(fields) if not field[3]}
+        matched_columns = {index + 2 for index, field in enumerate(fields) if field[3]}
+        self._write_simple_tc_display_row(
+            ws,
+            start_row + 1,
+            fty_values,
+            thin_border,
+            None,
+            set(range(1, len(headers) + 1)),
+            issue_fill=issue_fill,
+            issue_columns=issue_columns,
+        )
+        self._write_simple_tc_display_row(
+            ws,
+            start_row + 2,
+            tc_values,
+            thin_border,
+            None,
+            set(range(1, len(headers) + 1)),
+            issue_fill=issue_fill,
+            issue_columns=issue_columns,
+        )
+        self._write_simple_tc_display_row(
+            ws,
+            start_row + 3,
+            result_values,
+            thin_border,
+            None,
+            set(range(1, len(headers) + 1)),
+            issue_fill=issue_fill,
+            issue_columns=issue_columns,
+            matched_fill=matched_fill,
+            matched_columns=matched_columns,
+        )
+        return start_row + 5
+
+    def _build_tc_summary_matrix_fields(
+        self,
+        summary: TcSummaryComparisonRow,
+    ) -> List[Tuple[Any, Any, str, bool]]:
+        missing_side = summary.status == "缺失"
+        agreed_discount_matched = (
+            self._same_charge_amount(summary.fty_agreed_discount, summary.tc_agreed_discount)
+            and not self._same_charge_amount(summary.fty_agreed_discount, None)
+        )
+        fty_invoice = summary.invoice_number if summary.source_invoice else "-"
+        tc_invoice = summary.invoice_number if summary.source_tc_pdf else "-"
+        return [
+            (
+                fty_invoice or "-",
+                tc_invoice or "-",
+                self._tc_matrix_result(not missing_side and self._same_text(fty_invoice, tc_invoice), missing_side),
+                not missing_side and self._same_text(fty_invoice, tc_invoice),
+            ),
+            self._tc_matrix_number_field(
+                summary.fty_total_quantity,
+                summary.tc_total_quantity,
+                self._same_number(summary.fty_total_quantity, summary.tc_total_quantity),
+                missing_side,
+            ),
+            self._tc_matrix_number_field(
+                summary.fty_total_amount,
+                summary.tc_total_po_net_amount,
+                agreed_discount_matched or self._same_number(summary.fty_total_amount, summary.tc_total_po_net_amount),
+                missing_side,
+                self._number_delta(summary.fty_total_amount, summary.tc_total_po_net_amount),
+            ),
+            self._tc_matrix_number_field(
+                summary.fty_freight_charge,
+                summary.tc_additional_charge,
+                self._same_charge_amount(summary.fty_freight_charge, summary.tc_additional_charge),
+                missing_side,
+                self._charge_delta(summary.fty_freight_charge, summary.tc_additional_charge),
+            ),
+            self._tc_matrix_number_field(
+                summary.fty_documentation_charge,
+                summary.tc_documentation_charge,
+                self._same_charge_amount(summary.fty_documentation_charge, summary.tc_documentation_charge),
+                missing_side,
+                self._charge_delta(summary.fty_documentation_charge, summary.tc_documentation_charge),
+            ),
+            self._tc_matrix_number_field(
+                summary.fty_agreed_discount,
+                summary.tc_agreed_discount,
+                self._same_charge_amount(summary.fty_agreed_discount, summary.tc_agreed_discount),
+                missing_side,
+                self._charge_delta(summary.fty_agreed_discount, summary.tc_agreed_discount),
+            ),
+            self._tc_matrix_number_field(
+                summary.fty_final_total_amount,
+                summary.tc_invoice_total,
+                agreed_discount_matched or self._same_number(summary.fty_final_total_amount, summary.tc_invoice_total),
+                missing_side,
+                self._number_delta(summary.fty_final_total_amount, summary.tc_invoice_total),
+            ),
+        ]
+
+    def _build_tc_combined_matrix_fields(
+        self,
+        summary: Optional[TcSummaryComparisonRow],
+        row: Optional[TcComparisonRow],
+    ) -> List[Tuple[Any, Any, str, bool]]:
+        summary_missing = summary.status == "缺失" if summary else False
+        detail_missing = row.status == "缺失" if row else False
+
+        if summary:
+            agreed_discount_matched = (
+                self._same_charge_amount(summary.fty_agreed_discount, summary.tc_agreed_discount)
+                and not self._same_charge_amount(summary.fty_agreed_discount, None)
+            )
+            fty_invoice = summary.invoice_number if summary.source_invoice else "-"
+            tc_invoice = summary.invoice_number if summary.source_tc_pdf else "-"
+        elif row:
+            agreed_discount_matched = False
+            fty_invoice = row.invoice_number if row.source_invoice else "-"
+            tc_invoice = row.invoice_number if row.source_tc_pdf else "-"
+        else:
+            agreed_discount_matched = False
+            fty_invoice = "-"
+            tc_invoice = "-"
+
+        invoice_matched = self._same_text(fty_invoice, tc_invoice) and fty_invoice != "-" and tc_invoice != "-"
+        fields: List[Tuple[Any, Any, str, bool]] = [
+            (
+                fty_invoice or "-",
+                tc_invoice or "-",
+                self._tc_matrix_result(invoice_matched, summary_missing or detail_missing),
+                invoice_matched and not (summary_missing or detail_missing),
+            )
+        ]
+
+        if row:
+            fields.extend(
+                [
+                    self._tc_matrix_text_field(row.fty_po_number, row.tc_po_number, detail_missing),
+                    self._tc_matrix_text_field(row.fty_article, row.tc_article, detail_missing),
+                    self._tc_matrix_text_field(row.fty_style, row.tc_style, detail_missing),
+                    self._tc_matrix_number_field(
+                        row.fty_quantity,
+                        row.tc_quantity,
+                        self._same_number(row.fty_quantity, row.tc_quantity),
+                        detail_missing,
+                        self._number_delta(row.fty_quantity, row.tc_quantity),
+                    ),
+                ]
+            )
+        elif summary:
+            fields.extend(
+                [
+                    self._tc_matrix_blank_field(),
+                    self._tc_matrix_blank_field(),
+                    self._tc_matrix_blank_field(),
+                    self._tc_matrix_number_field(
+                        summary.fty_total_quantity,
+                        summary.tc_total_quantity,
+                        self._same_number(summary.fty_total_quantity, summary.tc_total_quantity),
+                        summary_missing,
+                        self._number_delta(summary.fty_total_quantity, summary.tc_total_quantity),
+                    ),
+                ]
+            )
+        else:
+            fields.extend([self._tc_matrix_blank_field() for _ in range(4)])
+
+        if summary:
+            fields.extend(
+                [
+                    self._tc_matrix_number_field(
+                        summary.fty_total_amount,
+                        summary.tc_total_po_net_amount,
+                        agreed_discount_matched or self._same_number(summary.fty_total_amount, summary.tc_total_po_net_amount),
+                        summary_missing,
+                        self._number_delta(summary.fty_total_amount, summary.tc_total_po_net_amount),
+                    ),
+                    self._tc_matrix_number_field(
+                        summary.fty_freight_charge,
+                        summary.tc_additional_charge,
+                        self._same_charge_amount(summary.fty_freight_charge, summary.tc_additional_charge),
+                        summary_missing,
+                        self._charge_delta(summary.fty_freight_charge, summary.tc_additional_charge),
+                    ),
+                    self._tc_matrix_number_field(
+                        summary.fty_documentation_charge,
+                        summary.tc_documentation_charge,
+                        self._same_charge_amount(summary.fty_documentation_charge, summary.tc_documentation_charge),
+                        summary_missing,
+                        self._charge_delta(summary.fty_documentation_charge, summary.tc_documentation_charge),
+                    ),
+                    self._tc_matrix_number_field(
+                        summary.fty_agreed_discount,
+                        summary.tc_agreed_discount,
+                        self._same_charge_amount(summary.fty_agreed_discount, summary.tc_agreed_discount),
+                        summary_missing,
+                        self._charge_delta(summary.fty_agreed_discount, summary.tc_agreed_discount),
+                    ),
+                    self._tc_matrix_number_field(
+                        summary.fty_final_total_amount,
+                        summary.tc_invoice_total,
+                        agreed_discount_matched or self._same_number(summary.fty_final_total_amount, summary.tc_invoice_total),
+                        summary_missing,
+                        self._number_delta(summary.fty_final_total_amount, summary.tc_invoice_total),
+                    ),
+                ]
+            )
+        else:
+            fields.extend([self._tc_matrix_blank_field() for _ in range(5)])
+
+        if row:
+            goods_matched = (
+                not detail_missing
+                and self._goods_description_key(row.fty_goods_description) == self._goods_description_key(row.tc_goods_description)
+            )
+            fields.append(
+                (
+                    row.fty_goods_description or "-",
+                    row.tc_goods_description or "-",
+                    self._tc_matrix_result(goods_matched, detail_missing),
+                    goods_matched,
+                )
+            )
+        else:
+            fields.append(self._tc_matrix_blank_field())
+
+        return fields
+
+    def _build_tc_detail_matrix_fields(
+        self,
+        row: TcComparisonRow,
+    ) -> List[Tuple[Any, Any, str, bool]]:
+        missing_side = row.status == "缺失"
+        return [
+            self._tc_matrix_text_field(row.fty_po_number, row.tc_po_number, missing_side),
+            self._tc_matrix_text_field(row.fty_article, row.tc_article, missing_side),
+            self._tc_matrix_text_field(row.fty_style, row.tc_style, missing_side),
+            self._tc_matrix_number_field(
+                row.fty_quantity,
+                row.tc_quantity,
+                self._same_number(row.fty_quantity, row.tc_quantity),
+                missing_side,
+                self._number_delta(row.fty_quantity, row.tc_quantity),
+            ),
+            (
+                row.fty_goods_description or "-",
+                row.tc_goods_description or "-",
+                self._tc_matrix_result(
+                    not missing_side
+                    and self._goods_description_key(row.fty_goods_description) == self._goods_description_key(row.tc_goods_description),
+                    missing_side,
+                ),
+                not missing_side
+                and self._goods_description_key(row.fty_goods_description) == self._goods_description_key(row.tc_goods_description),
+            ),
+        ]
+
+    def _tc_matrix_blank_field(self) -> Tuple[str, str, str, bool]:
+        return "-", "-", STATUS_MATCHED, True
+
+    def _tc_matrix_text_field(self, fty_value: Any, tc_value: Any, missing_side: bool) -> Tuple[Any, Any, str, bool]:
+        matched = not missing_side and self._same_text(str(fty_value or ""), str(tc_value or ""))
+        return (
+            fty_value or "-",
+            tc_value or "-",
+            self._tc_matrix_result(matched, missing_side),
+            matched,
+        )
+
+    def _tc_matrix_number_field(
+        self,
+        fty_value: Any,
+        tc_value: Any,
+        matched: bool,
+        missing_side: bool,
+        delta: Optional[float] = None,
+    ) -> Tuple[Any, Any, str, bool]:
+        final_matched = matched and not missing_side
+        return (
+            self._display_optional_number(fty_value),
+            self._display_optional_number(tc_value),
+            self._tc_matrix_result(final_matched, missing_side, delta),
+            final_matched,
+        )
+
+    def _tc_matrix_result(
+        self,
+        matched: bool,
+        missing_side: bool,
+        delta: Optional[float] = None,
+    ) -> str:
+        if missing_side:
+            return "缺失"
+        if matched:
+            return STATUS_MATCHED
+        if delta is not None and delta != "-":
+            return f"不一致；差额 {self._format_optional_number(delta)}"
+        return "不一致"
 
     def _build_tc_display_rows(
         self,
