@@ -157,6 +157,12 @@ export function useAppShellModel() {
       .find((module) => isModuleActive(module))
   
     if (activeModule) {
+      if (activeModule.id === 'automation-runs') {
+        return text('自动化执行档案')
+      }
+      if (activeModule.id === 'automation-templates') {
+        return text('Excel 模板中心')
+      }
       return getLocalizedModuleTitle(activeModule, isEnglish.value ? 'en-US' : 'zh-CN')
     }
   
@@ -180,7 +186,7 @@ export function useAppShellModel() {
   })
   
   function shouldShowInSidebar(module: TosModuleDefinition): boolean {
-    if (module.id === 'settings') {
+    if (module.id === 'settings' || module.id === 'automation-runs' || module.id === 'automation-templates') {
       return false
     }
     return module.stage !== 'placeholder'
@@ -239,6 +245,16 @@ export function useAppShellModel() {
   function openSettingsPage(): void {
     closeProfileMenu()
     void router.push('/settings')
+  }
+
+  function openAutomationRunsPage(): void {
+    closeProfileMenu()
+    void router.push('/automation-runs')
+  }
+
+  function openAutomationTemplatesPage(): void {
+    closeProfileMenu()
+    void router.push('/automation-templates')
   }
 
   function openReleaseUpdatesPage(): void {
@@ -408,6 +424,8 @@ export function useAppShellModel() {
       'jane-sap': 'server',
       'eric-infornexus': 'globe',
       'adidas-materials': 'package',
+      'automation-runs': 'database',
+      'automation-templates': 'files',
     }
     return customIcons[module.id] || getGroupIcon(module.group)
   }
@@ -497,6 +515,8 @@ export function useAppShellModel() {
     isModuleActive,
     isNavGroupExpanded,
     isSidebarHidden,
+    openAutomationRunsPage,
+    openAutomationTemplatesPage,
     openReleaseUpdatesPage,
     openSettingsPage,
     pageTitle,

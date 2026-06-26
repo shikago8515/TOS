@@ -155,6 +155,34 @@
                     <small>{{ text('语言、版本更新与自动化助手') }}</small>
                   </span>
                 </button>
+                <button
+                  class="profile-menu-item"
+                  type="button"
+                  role="menuitem"
+                  @click="openAutomationRunsPage"
+                >
+                  <span class="profile-menu-icon">
+                    <AppIcon name="database" />
+                  </span>
+                  <span>
+                    <strong>{{ text('自动化执行档案') }}</strong>
+                    <small>{{ text('查看执行批次、结果文件和失败说明') }}</small>
+                  </span>
+                </button>
+                <button
+                  class="profile-menu-item"
+                  type="button"
+                  role="menuitem"
+                  @click="openAutomationTemplatesPage"
+                >
+                  <span class="profile-menu-icon">
+                    <AppIcon name="files" />
+                  </span>
+                  <span>
+                    <strong>{{ text('Excel 模板中心') }}</strong>
+                    <small>{{ text('维护各自动化页面使用的模板') }}</small>
+                  </span>
+                </button>
               </div>
             </transition>
           </div>
@@ -262,6 +290,8 @@ const {
   isModuleActive,
   isNavGroupExpanded,
   isSidebarHidden,
+  openAutomationRunsPage,
+  openAutomationTemplatesPage,
   openReleaseUpdatesPage,
   openSettingsPage,
   pageTitle,

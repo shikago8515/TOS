@@ -264,4 +264,24 @@ describe('moduleCatalog', () => {
     expect(moduleIds).not.toContain('browser-plugins')
     expect(moduleIds).not.toContain('infornexus')
   })
+
+  it('exposes automation run records and template management under general tools', () => {
+    const runModule = tosModules.find((module) => module.id === 'automation-runs')
+    const templateModule = tosModules.find((module) => module.id === 'automation-templates')
+    const generalToolIds = getModulesByGroup('general-tools').map((module) => module.id)
+
+    expect(runModule).toMatchObject({
+      path: '/automation-runs',
+      routeName: 'automation-runs',
+      category: 'system',
+      stage: 'production',
+    })
+    expect(templateModule).toMatchObject({
+      path: '/automation-templates',
+      routeName: 'automation-templates',
+      category: 'system',
+      stage: 'production',
+    })
+    expect(generalToolIds).toEqual(expect.arrayContaining(['automation-runs', 'automation-templates']))
+  })
 })

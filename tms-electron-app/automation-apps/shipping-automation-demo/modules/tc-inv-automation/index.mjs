@@ -30,6 +30,7 @@ export function createTcInvAutomation(deps) {
     const workbook = parseTcInvWorkbookPayload(body, deps);
     const inputFileName = normalizeUploadFileName(body);
     const headless = resolveRunHeadless(body, config);
+    const firstInvoiceAdjustments = workbook.adjustmentsByInvoice?.[workbook.firstInvoiceNumber] || null;
     const activeRun = registerActiveRun({
       action: "run-tc-inv-file",
       automationId: moduleDefinition.frontendEntryId,
@@ -39,6 +40,9 @@ export function createTcInvAutomation(deps) {
       inputFileName,
       inputMode: "tc-inv-invoice-search",
       invoiceNumber: workbook.firstInvoiceNumber,
+      poddDate: workbook.firstPoddDate,
+      zaddPlusOtherCost: firstInvoiceAdjustments?.zaddPlusOtherCostInputValue || "",
+      zdoc: firstInvoiceAdjustments?.zdocInputValue || "",
       totalInvoiceCount: workbook.invoiceNumbers.length,
       totalRowCount: workbook.rows.length,
     });
@@ -69,6 +73,18 @@ export function createTcInvAutomation(deps) {
         inputFileName,
         inputMode: "tc-inv-invoice-search",
         invoiceDetailOpened: result.invoiceDetailOpened,
+        cargoHandoverDateFilled: result.cargoHandoverDateFilled,
+        buildStepOpened: result.buildStepOpened,
+        adjustmentChargeSelected: result.adjustmentChargeSelected,
+        previewOpened: result.previewOpened,
+        attemptedInvoiceCount: result.attemptedInvoiceCount,
+        completedInvoiceCount: result.completedInvoiceCount,
+        completedInvoiceNumbers: result.completedInvoiceNumbers,
+        failedInvoiceCount: result.failedInvoiceCount,
+        failedInvoiceNumbers: result.failedInvoiceNumbers,
+        hasInvoiceFailures: result.hasInvoiceFailures,
+        zaddPlusOtherCost: result.buildAdjustmentResult?.zadd?.actualAmount || firstInvoiceAdjustments?.zaddPlusOtherCostInputValue || "",
+        zdoc: result.buildAdjustmentResult?.zdoc?.actualAmount || firstInvoiceAdjustments?.zdocInputValue || "",
         searchedInvoiceNumber: result.searchedInvoiceNumber,
         totalInvoiceCount: workbook.invoiceNumbers.length,
         totalRowCount: result.totalRowCount,
@@ -96,6 +112,7 @@ export function createTcInvAutomation(deps) {
           detail: formatted.detail,
           inputFileName,
           inputMode: "tc-inv-invoice-search",
+          firstPoddDate: workbook.firstPoddDate,
           searchedInvoiceNumber: workbook.firstInvoiceNumber,
           totalInvoiceCount: workbook.invoiceNumbers.length,
           totalRowCount: workbook.rows.length,

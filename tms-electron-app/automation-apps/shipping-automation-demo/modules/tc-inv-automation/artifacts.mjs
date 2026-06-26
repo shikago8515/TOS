@@ -21,7 +21,7 @@ export async function persistTcInvArtifacts(options) {
     },
     resultJsonPath,
     resultExcelPath,
-    failedRowCount: result.ok ? 0 : rows.length,
+    failedRowCount: countFailedTcInvRows(rows, result.failedInvoiceNumbers),
   };
 }
 
@@ -35,6 +35,20 @@ async function writeTcInvResultWorkbook(targetPath, result, rows, xlsx) {
     { 字段: "文件", 值: result.inputFileName || "" },
     { 字段: "查询 Invoice#", 值: result.searchedInvoiceNumber || "" },
     { 字段: "点击结果", 值: result.clickedInvoiceText || "" },
+    { 字段: "PODD", 值: result.firstPoddDate || "" },
+    { 字段: "Cargo handover/FCR date", 值: result.cargoHandoverDateResult?.filled ? "Filled" : result.cargoHandoverDateResult?.skippedReason || "" },
+    { 字段: "Build 页面", 值: result.buildAdjustmentResult?.opened ? "Opened" : result.buildAdjustmentResult?.skippedReason || "" },
+    { 字段: "Adjustment Apply As", 值: result.buildAdjustmentResult?.chargeSelected ? "Charge" : result.buildAdjustmentResult?.selectedLabel || "" },
+    { 字段: "ZADD + Other cost", 值: result.buildAdjustmentResult?.zadd?.actualAmount || result.buildAdjustmentResult?.adjustments?.zaddPlusOtherCostInputValue || "" },
+    { 字段: "ZADD Reason", 值: result.buildAdjustmentResult?.zadd?.reason?.code || "" },
+    { 字段: "ZDOC", 值: result.buildAdjustmentResult?.zdoc?.actualAmount || result.buildAdjustmentResult?.adjustments?.zdocInputValue || "" },
+    { 字段: "ZDOC Reason", 值: result.buildAdjustmentResult?.zdoc?.reason?.code || "" },
+    { 字段: "Preview", 值: result.previewResult?.opened ? "Opened" : result.previewResult?.skippedReason || "" },
+    { 字段: "尝试 Invoice 数", 值: result.attemptedInvoiceCount || 0 },
+    { 字段: "完成 Invoice 数", 值: result.completedInvoiceCount || 0 },
+    { 字段: "完成 Invoice", 值: Array.isArray(result.completedInvoiceNumbers) ? result.completedInvoiceNumbers.join(", ") : "" },
+    { 字段: "失败 Invoice 数", 值: result.failedInvoiceCount || 0 },
+    { 字段: "失败 Invoice", 值: Array.isArray(result.failedInvoiceNumbers) ? result.failedInvoiceNumbers.join(", ") : "" },
     { 字段: "发票总数", 值: Array.isArray(result.invoiceNumbers) ? result.invoiceNumbers.length : 0 },
     { 字段: "数据行数", 值: result.totalRowCount || 0 },
     { 字段: "识别工厂", 值: Array.isArray(result.factories) ? result.factories.join(", ") : "" },
@@ -51,11 +65,35 @@ async function writeTcInvResultWorkbook(targetPath, result, rows, xlsx) {
     xlsx.utils.json_to_sheet(rows.map((row) => ({
       Excel行号: row.rowIndex,
       "Invoice#": row.invoiceNumber || "",
+      分组Invoice: row.groupInvoiceNumber || "",
+      PODD: row.poddDate || "",
+      ZADD: row.zaddAmount || 0,
+      ZDOC: row.zdocAmount || 0,
+      OtherCost: row.otherCostAmount || 0,
       工厂: row.factory || "",
       非空字段数: row.nonEmptyCellCount,
       原始数据: JSON.stringify(row.originalRow),
     }))),
     "上传明细预览",
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet((result.processedInvoiceResults || []).map((item) => ({
+      Invoice: item.invoiceNumber || "",
+      Result: item.ok === false ? "Failed" : "OK",
+      PODD: item.poddDate || "",
+      FCRDateFilled: item.cargoHandoverDateResult?.filled ? "Yes" : "No",
+      ZADDPlusOtherCost: item.buildAdjustmentResult?.zadd?.actualAmount || "",
+      ZADDReason: item.buildAdjustmentResult?.zadd?.reason?.code || "",
+      ZDOC: item.buildAdjustmentResult?.zdoc?.actualAmount || "",
+      ZDOCReason: item.buildAdjustmentResult?.zdoc?.reason?.code || "",
+      PreviewOpened: item.previewResult?.opened ? "Yes" : "No",
+      AlreadyPreview: item.previewResult?.alreadyOpen ? "Yes" : "No",
+      ErrorStage: item.errorStage || "",
+      ErrorMessage: item.errorMessage || "",
+      FinalUrl: item.finalUrl || "",
+    }))),
+    "Invoice执行结果",
   );
 
   const buffer = xlsx.write(workbook, {
@@ -63,6 +101,14 @@ async function writeTcInvResultWorkbook(targetPath, result, rows, xlsx) {
     bookType: "xlsx",
   });
   await writeFile(targetPath, buffer);
+}
+
+function countFailedTcInvRows(rows, failedInvoiceNumbers) {
+  const failedInvoices = new Set(Array.isArray(failedInvoiceNumbers) ? failedInvoiceNumbers.filter(Boolean) : []);
+  if (failedInvoices.size === 0) {
+    return 0;
+  }
+  return rows.filter((row) => failedInvoices.has(row.groupInvoiceNumber || row.invoiceNumber)).length;
 }
 
 function sanitizeFileSegment(value) {

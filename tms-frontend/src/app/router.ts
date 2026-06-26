@@ -3,6 +3,8 @@ import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-rou
 
 import { tosRouteDefinitions, tosRouteRedirects } from './routeCatalog'
 import AdidasMaterialsPage from '../pages/adidas-materials/AdidasMaterialsPage.vue'
+import AutomationRunsPage from '../pages/automation-runs/AutomationRunsPage.vue'
+import AutomationTemplatesPage from '../pages/automation-templates/AutomationTemplatesPage.vue'
 import DraftPackingComparePage from '../pages/draft-packing-compare/DraftPackingComparePage.vue'
 import EricPage from '../pages/eric/EricPage.vue'
 import HomePage from '../pages/home/HomePage.vue'
@@ -52,6 +54,8 @@ const routeComponents: Partial<Record<string, Component>> = {
   'sophia-tina': SophiaTinaPage,
   'web-automation': WebAutomationPage,
   'adidas-materials': AdidasMaterialsPage,
+  'automation-runs': AutomationRunsPage,
+  'automation-templates': AutomationTemplatesPage,
   settings: SettingsPage,
 }
 

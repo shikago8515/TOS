@@ -136,6 +136,8 @@
             </div>
           </div>
 
+          <AutomationRunHistoryPanel :automation-id="entry.id" :refresh-signal="bulkHistorySignal" />
+
           <!-- Credentials -->
           <div class="s2-dock-card s2-dock-card--flex">
             <div class="s2-dock__hd">
@@ -206,8 +208,9 @@ import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
 import { showAppAlert } from '../../../shared/ui/appAlert'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+import AutomationRunHistoryPanel from '../../web-automation/components/AutomationRunHistoryPanel.vue'
 import type { AutomationAppInfo } from '../../../types/electronApi'
-import type { AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
+import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {
   clearExecutorCredentials, createAutomationRunRecord, downloadAutomationTemplate,
   fetchAutomationApps, fetchAutomationTemplates, fetchExecutorCredentials, finishAutomationRunRecord,
@@ -222,7 +225,7 @@ import { releasedBulkDefaultUsername, resolveReleasedBulkCredentialUsername, shi
 
 type BulkId = 'unreleased' | 'released'
 type BulkTone = 'idle' | 'info' | 'success' | 'error'
-interface BulkResult { ok: boolean; runId?: string; message?: string; finalUrl?: string; generatedAt?: string }
+interface BulkResult { ok: boolean; runId?: string; message?: string; finalUrl?: string; generatedAt?: string; artifacts?: { downloadUrls?: Record<string, string>; failedRowCount?: number } }
 interface BulkState { id: BulkId; label: string; file: File | null; dragging: boolean; dragDepth: number; running: boolean; tone: BulkTone; statusText: string; result: BulkResult | null }
 
 const router = useRouter(); const { text } = useAppLanguage()
@@ -254,6 +257,7 @@ const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.h
 const savedCredentialUsername = computed(() => executorCredentials.value?.username || '')
 const credentialStatusText = computed(() => { if (hasStoredCredentials.value) { return savedCredentialUsername.value ? `已保存：${savedCredentialUsername.value}` : '已保存 Infor Nexus 登录账号密码。' }; return '未保存 Infor Nexus 登录账号密码。' })
 const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
+const bulkHistorySignal = computed(() => bulkAreas.value.map((bulk) => `${bulk.id}:${bulk.result?.runId || ''}:${bulk.result?.message || ''}`).join('|'))
 
 onMounted(() => { void initializeScenario() })
 
@@ -337,7 +341,29 @@ function isExcelFile(file: File): boolean { return /\.(xlsx|xls)$/i.test(file.na
 function hasDraggedFiles(e: DragEvent): boolean { return Array.from(e.dataTransfer?.types || []).includes('Files') }
 function isInternalDragMove(e: DragEvent): boolean { const current = e.currentTarget; const related = e.relatedTarget; return current instanceof Node && related instanceof Node && current.contains(related) }
 async function createBulkRunRecord(b: BulkState): Promise<AutomationRunRecord | null> { if (!entry || !b.file) return null; return createAutomationRunRecord(entry.id, b.file, `${entry.title} ${b.label}`) }
-async function finishBulkRunRecord(rr: AutomationRunRecord | null, ok: boolean, msg: string, p: BulkResult | null): Promise<void> { if (!rr?.runId) return; await finishAutomationRunRecord(rr.runId, ok ? 'success' : 'failed', msg || (ok ? 'completed' : 'failed'), p) }
+async function finishBulkRunRecord(rr: AutomationRunRecord | null, ok: boolean, msg: string, p: BulkResult | null, id: BulkId): Promise<void> { if (!rr?.runId) return; await finishAutomationRunRecord(rr.runId, ok ? 'success' : 'failed', msg || (ok ? 'completed' : 'failed'), p, collectBulkResultFiles(p, id)) }
+function collectBulkResultFiles(p: BulkResult | null, id: BulkId): AutomationRunFileInput[] {
+  const u = p?.artifacts?.downloadUrls
+  if (!u || typeof u !== 'object') return []
+  const prefix = `shipping2-${id}`
+  return [
+    bulkRunFileInput(u.resultExcelUrl, 'result_excel', `${prefix}-last-result.xlsx`),
+    bulkRunFileInput(u.resultJsonUrl, 'result_json', `${prefix}-last-result.json`),
+    bulkRunFileInput(u.failedPoExcelUrl || u.failedRowsExcelUrl, 'failed_rows_excel', `${prefix}-last-failed-rows.xlsx`),
+    bulkRunFileInput(u.failedPoJsonUrl || u.failedRowsJsonUrl, 'failed_rows_json', `${prefix}-last-failed-rows.json`),
+  ].filter((item): item is AutomationRunFileInput => Boolean(item))
+}
+function bulkRunFileInput(rawPath: string | undefined, fileRole: string, fileName: string): AutomationRunFileInput | null {
+  const url = buildBulkArtifactUrl(rawPath)
+  return url ? { url, fileRole, fileName } : null
+}
+function buildBulkArtifactUrl(rawPath: string | undefined): string {
+  const normalizedPath = String(rawPath || '').trim()
+  if (!normalizedPath) return ''
+  if (/^https?:\/\//i.test(normalizedPath)) return normalizedPath
+  const baseUrl = String(entry?.executorBaseUrl || '').replace(/\/+$/, '')
+  return baseUrl ? `${baseUrl}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}` : ''
+}
 
 async function startBulkAutomation(id: BulkId): Promise<void> {
   const b = getBulk(id); if (!b || b.running) return
@@ -370,7 +396,7 @@ async function startBulkAutomation(id: BulkId): Promise<void> {
     })
     const raw = await res.text()
     const j = safeParseJson<BulkResult>(raw)
-    await finishBulkRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j)
+    await finishBulkRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j, id)
     if (!res.ok || !j?.ok) {
       const friendlyMessage = buildExecutorResponseMessage(res, raw, j)
       if (shouldShowAutomationErrorDialog(j?.message || friendlyMessage)) showAutomationErrorDialog(friendlyMessage)
