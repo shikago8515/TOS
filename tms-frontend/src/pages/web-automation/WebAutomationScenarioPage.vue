@@ -307,7 +307,7 @@ import BrowserVisibilitySwitch from '../../shared/ui/BrowserVisibilitySwitch.vue
 import AutomationRunHistoryPanel from './components/AutomationRunHistoryPanel.vue'
 import { showAppAlert } from '../../shared/ui/appAlert'
 import type { AutomationAppInfo } from '../../types/electronApi'; import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from './webAutomationApi'
-import { clearExecutorCredentials, createAutomationRunRecord, downloadAutomationTemplate, fetchAutomationTemplates, fetchExecutorCredentials, openAutomationHelperDownload, fetchAutomationApps, finishAutomationRunRecord, getAutomationHelperUpdateMessage, hasElectronAutomationSupport, launchAutomationConsole, primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth, recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole } from './webAutomationApi'
+import { clearExecutorCredentials, createAutomationRunRecord, downloadAutomationTemplate, fetchAutomationTemplates, fetchExecutorCredentials, openAutomationHelperDownload, fetchAutomationApps, finishAutomationRunRecord, getAutomationHelperUpdateMessage, hasElectronAutomationSupport, launchAutomationConsole, primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealthPayload, probeLocalExecutorHealth, recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole } from './webAutomationApi'
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from './webAutomationErrors'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from './webAutomationModel'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
@@ -383,7 +383,8 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
   refreshing.value = true
   const fb = createFallback(entry.value)
   try {
-    launcherReachable.value = electronSupported ? true : await probeLocalAutomationLauncherHealth()
+    const launcherHealth = electronSupported ? null : await probeLocalAutomationLauncherHealthPayload()
+    launcherReachable.value = electronSupported ? true : Boolean(launcherHealth)
     if (electronSupported) {
       try {
         const apps = await fetchAutomationApps()
@@ -406,7 +407,8 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
     executorHealth.value = await probeLocalExecutorHealth(entry.value.executorBaseUrl)
     await refreshExecutorCredentials()
     if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
-    const updateMessage = getAutomationHelperUpdateMessage(executorHealth.value, activeApp.value)
+    const launcherHelperVersion = String(launcherHealth?.helperVersion || launcherHealth?.version || '').trim()
+    const updateMessage = getAutomationHelperUpdateMessage(executorHealth.value, activeApp.value, undefined, launcherHelperVersion)
     if (updateMessage) {
       messageTone.value = 'warning'
       message.value = text(updateMessage)

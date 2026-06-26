@@ -44,6 +44,15 @@ export interface LocalExecutorHealth {
   config?: Record<string, unknown>
 }
 
+export interface LocalAutomationLauncherHealth {
+  ok: boolean
+  version?: string
+  helperVersion?: string
+  host?: string
+  port?: number
+  pid?: number
+}
+
 export interface ExecutorCredentials {
   ok: boolean
   hasStoredCredentials: boolean
@@ -608,7 +617,11 @@ export function buildAutomationRunFileDownloadUrl(file: AutomationRunFileRecord)
 }
 
 export async function probeLocalAutomationLauncherHealth(): Promise<boolean> {
-  return isLauncherReachable()
+  return Boolean(await fetchLocalAutomationLauncherHealth())
+}
+
+export async function probeLocalAutomationLauncherHealthPayload(): Promise<LocalAutomationLauncherHealth | null> {
+  return fetchLocalAutomationLauncherHealth()
 }
 
 async function ensureLocalAutomationLauncher(): Promise<void> {
@@ -624,15 +637,21 @@ async function ensureLocalAutomationLauncher(): Promise<void> {
 }
 
 async function isLauncherReachable(): Promise<boolean> {
+  return Boolean(await fetchLocalAutomationLauncherHealth())
+}
+
+async function fetchLocalAutomationLauncherHealth(): Promise<LocalAutomationLauncherHealth | null> {
   try {
     const response = await fetchWithTimeout(`${launcherBaseUrl}/health`, { method: 'GET' }, localLauncherProbeTimeoutMs)
     if (!response.ok) {
-      return false
+      return null
     }
     const payload = await response.json().catch(() => ({}))
-    return Boolean(payload && payload.ok)
+    return payload && typeof payload === 'object' && (payload as { ok?: unknown }).ok
+      ? payload as LocalAutomationLauncherHealth
+      : null
   } catch {
-    return false
+    return null
   }
 }
 
@@ -713,6 +732,7 @@ async function probeAutomationHelperUpdatePanel(): Promise<'available' | 'unsupp
 export function resolveLocalAutomationHelperVersion(
   health: LocalExecutorHealth | null | undefined,
   activeApp?: AutomationAppInfo | null,
+  fallbackHelperVersion = '',
 ): string {
   const directVersion = String(health?.version || health?.helperVersion || '').trim()
   if (directVersion) return directVersion
@@ -722,6 +742,9 @@ export function resolveLocalAutomationHelperVersion(
     : ''
   if (configVersion) return configVersion
 
+  const fallbackVersion = String(fallbackHelperVersion || '').trim()
+  if (fallbackVersion) return fallbackVersion
+
   return ''
 }
 
@@ -729,11 +752,12 @@ export function getAutomationHelperUpdateMessage(
   health: LocalExecutorHealth | null | undefined,
   activeApp?: AutomationAppInfo | null,
   minimumRequiredVersion = minimumAutomationHelperVersion,
+  fallbackHelperVersion = '',
 ): string {
   const requiredVersion = resolveAutomationHelperRequiredVersion(activeApp, minimumRequiredVersion)
   if (!requiredVersion) return ''
 
-  const current = resolveLocalAutomationHelperVersion(health, activeApp)
+  const current = resolveLocalAutomationHelperVersion(health, activeApp, fallbackHelperVersion)
   if (!current) {
     return `本机自动化助手版本无法识别，当前功能要求小助手版本不低于 ${requiredVersion}，请下载并安装最新小助手后重试。`
   }

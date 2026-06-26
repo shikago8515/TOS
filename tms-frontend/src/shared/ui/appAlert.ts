@@ -5,13 +5,14 @@ export type AppAlertTone = 'info' | 'success' | 'warning' | 'error'
 export type AppAlertOptions = {
   title?: string
   confirmText?: string
+  cancelText?: string
   tone?: AppAlertTone
 }
 
 export type AppAlertRequest = Required<AppAlertOptions> & {
   id: number
   message: string
-  resolve: () => void
+  resolve: (confirmed: boolean) => void
 }
 
 type AppAlertState = {
@@ -38,6 +39,10 @@ export function useAppAlertState(): AppAlertState {
 }
 
 export function showAppAlert(message: string, options: AppAlertOptions = {}): Promise<void> {
+  return showAppConfirm(message, options).then(() => undefined)
+}
+
+export function showAppConfirm(message: string, options: AppAlertOptions = {}): Promise<boolean> {
   const tone = options.tone || 'warning'
   const normalizedMessage = String(message || '').trim() || DEFAULT_TITLES[tone]
 
@@ -48,6 +53,7 @@ export function showAppAlert(message: string, options: AppAlertOptions = {}): Pr
       tone,
       title: options.title || DEFAULT_TITLES[tone],
       confirmText: options.confirmText || '确定',
+      cancelText: options.cancelText || '',
       resolve,
     }
     nextAlertId += 1
@@ -61,13 +67,27 @@ export function showAppAlert(message: string, options: AppAlertOptions = {}): Pr
   })
 }
 
-export function closeAppAlert(): void {
+export function confirmAppAlert(): void {
   const current = appAlertState.current
   if (!current) return
-
   appAlertState.current = null
-  current.resolve()
+  current.resolve(true)
+  dequeueNext()
+}
 
+export function cancelAppAlert(): void {
+  const current = appAlertState.current
+  if (!current) return
+  appAlertState.current = null
+  current.resolve(false)
+  dequeueNext()
+}
+
+export function closeAppAlert(): void {
+  confirmAppAlert()
+}
+
+function dequeueNext(): void {
   if (appAlertState.queue.length > 0) {
     setTimeout(() => {
       if (!appAlertState.current) {

@@ -6,7 +6,7 @@
         class="app-alert"
         role="presentation"
       >
-        <div class="app-alert__backdrop" @click="closeAppAlert" />
+        <div class="app-alert__backdrop" @click="cancelAppAlert" />
         <section
           ref="dialogRef"
           class="app-alert__dialog"
@@ -27,7 +27,15 @@
           </div>
 
           <footer class="app-alert__actions">
-            <button ref="confirmRef" class="app-alert__confirm" type="button" @click="closeAppAlert">
+            <button
+              v-if="current.cancelText"
+              class="app-alert__cancel"
+              type="button"
+              @click="cancelAppAlert"
+            >
+              {{ current.cancelText }}
+            </button>
+            <button ref="confirmRef" class="app-alert__confirm" type="button" @click="confirmAppAlert">
               {{ current.confirmText }}
             </button>
           </footer>
@@ -41,7 +49,7 @@
 import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
 
 import AppIcon from './AppIcon.vue'
-import { closeAppAlert, useAppAlertState } from './appAlert'
+import { confirmAppAlert, cancelAppAlert, useAppAlertState } from './appAlert'
 
 const state = useAppAlertState()
 const current = computed(() => state.current)
@@ -61,13 +69,10 @@ const handleKeyDown = (e: KeyboardEvent) => {
   if (!current.value) return
   if (e.key === 'Escape') {
     e.preventDefault()
-    closeAppAlert()
-  } else if (e.key === 'Tab') {
-    e.preventDefault()
-    confirmRef.value?.focus()
+    cancelAppAlert()
   } else if (e.key === 'Enter') {
     e.preventDefault()
-    closeAppAlert()
+    confirmAppAlert()
   }
 }
 
@@ -209,6 +214,26 @@ watch(current, async (value) => {
   margin-top: 6px;
 }
 
+.app-alert__cancel {
+  min-width: 80px;
+  height: 38px;
+  padding: 0 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 11px;
+  background: #ffffff;
+  color: #475569;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.app-alert__cancel:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
 .app-alert__confirm {
   min-width: 90px;
   height: 38px;
@@ -229,7 +254,8 @@ watch(current, async (value) => {
   box-shadow: var(--confirm-hover-shadow);
 }
 
-.app-alert__confirm:active {
+.app-alert__confirm:active,
+.app-alert__cancel:active {
   transform: translateY(0);
 }
 

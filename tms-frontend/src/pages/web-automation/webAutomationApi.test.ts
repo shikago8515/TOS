@@ -126,6 +126,25 @@ describe('webAutomationApi', () => {
     expect(message).toContain(compatibleHelperVersion)
   })
 
+  it('uses the launcher helper version when executor health omits it', () => {
+    const message = getAutomationHelperUpdateMessage({
+      ok: true,
+    }, createAutomationApp({
+      version: '0.9.8-beta.3.28',
+    }), compatibleHelperVersion, compatibleHelperVersion)
+
+    expect(message).toBe('')
+  })
+
+  it('still warns when the launcher helper version fallback is too old', () => {
+    const message = getAutomationHelperUpdateMessage({
+      ok: true,
+    }, createAutomationApp(), compatibleHelperVersion, '0.9.8-beta.3.18')
+
+    expect(message).toContain('0.9.8-beta.3.18')
+    expect(message).toContain(compatibleHelperVersion)
+  })
+
   it('uses an app-specific helper requirement when present', () => {
     const message = getAutomationHelperUpdateMessage({
       ok: true,
