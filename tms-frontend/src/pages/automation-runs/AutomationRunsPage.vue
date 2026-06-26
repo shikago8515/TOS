@@ -43,57 +43,45 @@
       <div class="toolbar-filters">
         <!-- Custom Dropdown: 自动化页面 -->
         <div class="custom-select" ref="moduleDropdownRef">
-          <button class="select-trigger" ref="moduleTriggerRef" @click="toggleModuleDropdown">
+          <button class="select-trigger" @click="toggleModuleDropdown">
             <span class="trigger-label">{{ filters.automationId ? moduleLabel(filters.automationId) : '全部页面' }}</span>
             <AppIcon name="chevron-down" class="trigger-chevron" :class="{ open: moduleDropdownOpen }" />
           </button>
-          <Teleport to="body">
-            <Transition name="dropdown">
-              <div
-                v-if="moduleDropdownOpen"
-                class="select-menu"
-                :style="moduleMenuStyle"
-              >
-                <button
-                  class="select-option"
-                  :class="{ active: filters.automationId === '' }"
-                  @click="selectModule('')"
-                >全部页面</button>
-                <button
-                  v-for="module in automationModules"
-                  :key="module.id"
-                  class="select-option"
-                  :class="{ active: filters.automationId === module.id }"
-                  @click="selectModule(module.id)"
-                >{{ module.navLabel }}</button>
-              </div>
-            </Transition>
-          </Teleport>
+          <Transition name="dropdown">
+            <div v-if="moduleDropdownOpen" class="select-menu">
+              <button
+                class="select-option"
+                :class="{ active: filters.automationId === '' }"
+                @click="selectModule('')"
+              >全部页面</button>
+              <button
+                v-for="module in automationModules"
+                :key="module.id"
+                class="select-option"
+                :class="{ active: filters.automationId === module.id }"
+                @click="selectModule(module.id)"
+              >{{ module.navLabel }}</button>
+            </div>
+          </Transition>
         </div>
 
         <!-- Custom Dropdown: 状态 -->
         <div class="custom-select" ref="statusDropdownRef">
-          <button class="select-trigger" ref="statusTriggerRef" @click="toggleStatusDropdown">
+          <button class="select-trigger" @click="toggleStatusDropdown">
             <span class="trigger-label">{{ statusLabel(filters.status) || '全部状态' }}</span>
             <AppIcon name="chevron-down" class="trigger-chevron" :class="{ open: statusDropdownOpen }" />
           </button>
-          <Teleport to="body">
-            <Transition name="dropdown">
-              <div
-                v-if="statusDropdownOpen"
-                class="select-menu"
-                :style="statusMenuStyle"
-              >
-                <button
-                  v-for="option in statusOptions"
-                  :key="option.value"
-                  class="select-option"
-                  :class="{ active: filters.status === option.value }"
-                  @click="selectStatus(option.value)"
-                >{{ option.label }}</button>
-              </div>
-            </Transition>
-          </Teleport>
+          <Transition name="dropdown">
+            <div v-if="statusDropdownOpen" class="select-menu">
+              <button
+                v-for="option in statusOptions"
+                :key="option.value"
+                class="select-option"
+                :class="{ active: filters.status === option.value }"
+                @click="selectStatus(option.value)"
+              >{{ option.label }}</button>
+            </div>
+          </Transition>
         </div>
 
         <!-- Keyword Input -->
@@ -260,6 +248,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import { tosModules } from '../../domain/moduleCatalog'
+import { webAutomationEntries } from '../web-automation/webAutomationModel'
 import {
   buildAutomationRunFileDownloadUrl,
   fetchAutomationRunDetail,
@@ -279,13 +268,17 @@ const selectedFiles = ref<AutomationRunFileRecord[]>([])
 const pagination = reactive({ page: 1, pageSize: 30, total: 0 })
 const filters = reactive({ automationId: readAutomationIdQuery(route.query.automationId), status: '', keyword: '' })
 
+interface AutomationRunFilterOption {
+  id: string
+  navLabel: string
+  order: number
+}
+
 // ---- Custom Dropdown State ----
 const moduleDropdownOpen = ref(false)
 const statusDropdownOpen = ref(false)
 const moduleDropdownRef = ref<HTMLElement | null>(null)
 const statusDropdownRef = ref<HTMLElement | null>(null)
-const moduleTriggerRef = ref<HTMLElement | null>(null)
-const statusTriggerRef = ref<HTMLElement | null>(null)
 
 const statusOptions = [
   { value: '', label: '全部状态' },
@@ -295,21 +288,16 @@ const statusOptions = [
   { value: 'canceled', label: '已取消' },
 ]
 
-// Position dropdown menus relative to their triggers (fixed positioning escapes overflow clipping)
-const moduleMenuStyle = computed(() => calcMenuStyle(moduleTriggerRef.value))
-const statusMenuStyle = computed(() => calcMenuStyle(statusTriggerRef.value))
-
-function calcMenuStyle(trigger: HTMLElement | null) {
-  if (!trigger) return { visibility: 'hidden' as const }
-  const rect = trigger.getBoundingClientRect()
-  return {
-    position: 'fixed' as const,
-    top: `${rect.bottom + 4}px`,
-    left: `${rect.left}px`,
-    minWidth: `${rect.width}px`,
-    zIndex: '9999',
-  }
-}
+const automationRunFilterIds = new Set<string>([
+  'shipping-automation',
+  'xinlongtai-shipping-automation',
+  'tc-inv-automation',
+  'po-auto-download',
+  'shipping-automation-2',
+  'infornexus-auto-add',
+  'microsoft-login-n8n',
+  'ticket-owner-statistics',
+])
 
 function toggleModuleDropdown() {
   moduleDropdownOpen.value = !moduleDropdownOpen.value
@@ -348,11 +336,24 @@ onUnmounted(() => {
 })
 
 // ---- Computed ----
-const automationModules = computed(() =>
-  tosModules
-    .filter((module) => module.category === 'browser-automation')
-    .sort((left, right) => left.order - right.order),
-)
+const automationModules = computed<AutomationRunFilterOption[]>(() => {
+  const catalogOptions = tosModules
+    .filter((module) => automationRunFilterIds.has(module.id))
+    .map((module) => ({
+      id: module.id,
+      navLabel: module.navLabel,
+      order: module.order,
+    }))
+  const catalogIds = new Set<string>(catalogOptions.map((module) => module.id))
+  const scenarioOptions = webAutomationEntries
+    .filter((entry) => automationRunFilterIds.has(entry.id) && !catalogIds.has(entry.id))
+    .map((entry, index) => ({
+      id: entry.id,
+      navLabel: entry.title,
+      order: 100 + index,
+    }))
+  return [...catalogOptions, ...scenarioOptions].sort((left, right) => left.order - right.order)
+})
 const visibleSuccessCount = computed(() => runs.value.filter((run) => run.status === 'success').length)
 const visibleFailedCount = computed(() => runs.value.filter((run) => run.status === 'failed').length)
 const visibleRunningCount = computed(() => runs.value.filter((run) => run.status === 'running').length)
@@ -446,7 +447,12 @@ async function downloadFile(file: AutomationRunFileRecord): Promise<void> {
 
 // ---- Helpers ----
 function moduleLabel(automationId: string): string {
-  return tosModules.find((module) => module.id === automationId)?.navLabel || automationId
+  return (
+    automationModules.value.find((module) => module.id === automationId)?.navLabel ||
+    tosModules.find((module) => module.id === automationId)?.navLabel ||
+    webAutomationEntries.find((entry) => entry.id === automationId)?.title ||
+    automationId
+  )
 }
 function statusLabel(status: string): string {
   const map: Record<string, string> = {
@@ -538,7 +544,7 @@ function prettyJson(value: unknown): string {
   padding: 12px 16px;
   color: var(--slate-900);
   background: linear-gradient(180deg, #f5f8fb 0%, #eef7f6 100%);
-  overflow-y: auto;
+  overflow: visible;
   box-sizing: border-box;
 }
 
@@ -778,10 +784,15 @@ function prettyJson(value: unknown): string {
   transform: rotate(180deg);
 }
 .select-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 1000;
+  min-width: 100%;
   max-height: 260px;
   overflow-y: auto;
-  background: var(--white);
-  border: 1px solid var(--slate-200);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
   border-radius: 10px;
   box-shadow: 0 10px 30px rgba(0,0,0,.1), 0 2px 8px rgba(0,0,0,.06);
   padding: 4px;
@@ -796,18 +807,18 @@ function prettyJson(value: unknown): string {
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
-  color: var(--slate-700);
+  color: #334155;
   cursor: pointer;
   transition: all 0.12s ease;
   white-space: nowrap;
 }
 .select-option:hover {
-  background: var(--teal-50);
-  color: var(--teal);
+  background: #f0fdfa;
+  color: #0d9488;
 }
 .select-option.active {
   background: linear-gradient(135deg, rgba(13,148,136,.1), rgba(59,130,246,.06));
-  color: var(--teal);
+  color: #0d9488;
   font-weight: 700;
 }
 
@@ -884,6 +895,7 @@ function prettyJson(value: unknown): string {
   gap: 10px;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
   animation: fadeInUp 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) 0.15s both;
 }
 
@@ -895,7 +907,7 @@ function prettyJson(value: unknown): string {
   border: 1px solid var(--slate-200);
   border-radius: var(--radius-lg);
   box-shadow: 0 1px 3px rgba(0,0,0,.03), 0 4px 16px rgba(0,0,0,.02);
-  overflow: visible;
+  overflow: hidden;
   transition: box-shadow 0.3s ease;
 }
 .card:hover {
