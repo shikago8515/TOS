@@ -1,5 +1,45 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.28-improved-browser-automation-error-handling",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "improved",
+    "pageName": "网页自动化 / 本机执行器",
+    "pagePath": "/web-automation",
+    "title": "优化自动化执行失败提示",
+    "description": "浏览器自动化执行失败时会识别非 JSON 响应、执行器断开、浏览器会话关闭和 Desktop Utility 连接超时，前端改为展示可操作的中文提示。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-fixed-desktop-utility-timeout-message",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "fixed",
+    "pageName": "Infor Nexus Shipping 自动化",
+    "pagePath": "/web-automation",
+    "title": "修复 Desktop Utility 连接超时识别",
+    "description": "Shipment Scan 等待数据期间会检测 Desktop Utility / PackByScan 连接提示，并把失败归类为 Desktop Utility Connection，避免只显示 shipment grid 超时或空数据。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-improved-xinlongtai-credential-editor",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "improved",
+    "pageName": "新龙泰 Shipping 自动化",
+    "pagePath": "/web-automation/scenarios/xinlongtai-shipping-automation",
+    "title": "优化新龙泰账号档案编辑",
+    "description": "新龙泰 Shipping 账号档案改为新增 / 编辑弹窗管理，执行前要求选择已保存账号，页面主区域保留账号选择、编辑和模板下载入口。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-added-browser-automation-module-standards",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "added",
+    "pageName": "工程规范",
+    "pagePath": "/release-updates",
+    "title": "新增浏览器自动化模块边界规范",
+    "description": "新增浏览器自动化模块边界规范，明确后续自动化按业务页面拆分模块，避免新流程继续堆进单个 server.mjs。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.28-improved-desktop-package-slimming",
     "version": "0.9.8-beta.3.28",
     "releaseDate": "2026-06-22",
