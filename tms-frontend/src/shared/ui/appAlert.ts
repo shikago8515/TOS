@@ -65,8 +65,16 @@ export function closeAppAlert(): void {
   const current = appAlertState.current
   if (!current) return
 
-  appAlertState.current = appAlertState.queue.shift() || null
+  appAlertState.current = null
   current.resolve()
+
+  if (appAlertState.queue.length > 0) {
+    setTimeout(() => {
+      if (!appAlertState.current) {
+        appAlertState.current = appAlertState.queue.shift() || null
+      }
+    }, 220)
+  }
 }
 
 export function installAppAlertBridge(): void {

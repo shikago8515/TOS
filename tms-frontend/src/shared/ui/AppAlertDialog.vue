@@ -5,7 +5,6 @@
         v-if="current"
         class="app-alert"
         role="presentation"
-        @keydown.esc.prevent="closeAppAlert"
       >
         <div class="app-alert__backdrop" @click="closeAppAlert" />
         <section
@@ -39,7 +38,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
 
 import AppIcon from './AppIcon.vue'
 import { closeAppAlert, useAppAlertState } from './appAlert'
@@ -56,6 +55,28 @@ const iconName = computed(() => {
   if (current.value?.tone === 'error') return 'stop-circle'
   if (current.value?.tone === 'info') return 'info'
   return 'alert-circle'
+})
+
+const handleKeyDown = (e: KeyboardEvent) => {
+  if (!current.value) return
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    closeAppAlert()
+  } else if (e.key === 'Tab') {
+    e.preventDefault()
+    confirmRef.value?.focus()
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    closeAppAlert()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown, true)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown, true)
 })
 
 watch(current, async (value) => {
@@ -110,6 +131,34 @@ watch(current, async (value) => {
   color: #0284c7;
 }
 
+.app-alert__dialog--info {
+  --confirm-bg: linear-gradient(135deg, #19b7f1, #0d92d1);
+  --confirm-border: rgba(14, 165, 233, 0.2);
+  --confirm-shadow: 0 10px 22px rgba(14, 165, 233, 0.24);
+  --confirm-hover-shadow: 0 14px 26px rgba(14, 165, 233, 0.28);
+}
+
+.app-alert__dialog--success {
+  --confirm-bg: linear-gradient(135deg, #10b981, #059669);
+  --confirm-border: rgba(16, 185, 129, 0.2);
+  --confirm-shadow: 0 10px 22px rgba(16, 185, 129, 0.24);
+  --confirm-hover-shadow: 0 14px 26px rgba(16, 185, 129, 0.28);
+}
+
+.app-alert__dialog--warning {
+  --confirm-bg: linear-gradient(135deg, #f97316, #ea580c);
+  --confirm-border: rgba(249, 115, 22, 0.2);
+  --confirm-shadow: 0 10px 22px rgba(249, 115, 22, 0.24);
+  --confirm-hover-shadow: 0 14px 26px rgba(249, 115, 22, 0.28);
+}
+
+.app-alert__dialog--error {
+  --confirm-bg: linear-gradient(135deg, #ef4444, #dc2626);
+  --confirm-border: rgba(239, 68, 68, 0.2);
+  --confirm-shadow: 0 10px 22px rgba(239, 68, 68, 0.24);
+  --confirm-hover-shadow: 0 14px 26px rgba(239, 68, 68, 0.28);
+}
+
 .app-alert__dialog--success .app-alert__mark {
   background: #dcfce7;
   color: #059669;
@@ -162,22 +211,23 @@ watch(current, async (value) => {
   min-width: 86px;
   height: 40px;
   padding: 0 18px;
-  border: 1px solid rgba(14, 165, 233, 0.2);
+  border: 1px solid var(--confirm-border, rgba(14, 165, 233, 0.2));
   border-radius: 12px;
-  background: linear-gradient(135deg, #19b7f1, #0d92d1);
+  background: var(--confirm-bg, linear-gradient(135deg, #19b7f1, #0d92d1));
   color: #ffffff;
   font-weight: 800;
   cursor: pointer;
-  box-shadow: 0 10px 22px rgba(14, 165, 233, 0.24);
+  box-shadow: var(--confirm-shadow, 0 10px 22px rgba(14, 165, 233, 0.24));
+  transition: all 0.2s ease;
 }
 
 .app-alert__confirm:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 26px rgba(14, 165, 233, 0.28);
+  box-shadow: var(--confirm-hover-shadow, 0 14px 26px rgba(14, 165, 233, 0.28));
 }
 
 .app-alert__confirm:focus-visible {
-  outline: 3px solid rgba(14, 165, 233, 0.2);
+  outline: 3px solid var(--confirm-border, rgba(14, 165, 233, 0.2));
   outline-offset: 3px;
 }
 

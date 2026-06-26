@@ -5,13 +5,16 @@ import {
   resolveTicketOwnerRow,
 } from "./ticket-fields.mjs";
 
-const RELEVANT_URL_PATTERN = /(task|workflow|inbox|bpm|odata|process|ticket|case|gts)/i;
-const RELEVANT_TEXT_PATTERN = /(Provide Feedback|Review Main Ticket Resolution|Review Sub-Ticket Resolution|PO Number|Working Number|Case Number|Task Type|Request)/i;
+const RELEVANT_URL_PATTERN = /(task|workflow|inbox|bpm|odata|process|ticket|case|gts|release|unrelease|factory|price|purchase|po|s4|opu|api)/i;
+const RELEVANT_TEXT_PATTERN = /(Provide Feedback|Review Main Ticket Resolution|Review Sub-Ticket Resolution|PO Number|Working Number|Case Number|Task Type|Request|Release|Unrelease|Factory Price|S4 PO|BTP Ticket|RC\d{4,})/i;
 
 export function createTaskCenterRequestRecorder(page, options = {}) {
   const records = [];
-  const maxBodyChars = Number(options.maxBodyChars || 50000);
-  const maxRecords = Number(options.maxRecords || 80);
+  const maxBodyChars = Number(options.maxBodyChars || 120000);
+  const maxRecords = Number(options.maxRecords || 220);
+  const eventTarget = options.scope === "page"
+    ? page
+    : page.context?.() || page;
 
   async function handleResponse(response) {
     if (records.length >= maxRecords) {
@@ -55,12 +58,12 @@ export function createTaskCenterRequestRecorder(page, options = {}) {
     records.push(record);
   }
 
-  page.on("response", handleResponse);
+  eventTarget.on("response", handleResponse);
 
   return {
     records,
     stop() {
-      page.off("response", handleResponse);
+      eventTarget.off("response", handleResponse);
     },
     summarize() {
       return summarizeTaskCenterRequestRecords(records);
@@ -122,12 +125,23 @@ export function summarizeTaskCenterRequestRecords(records) {
   }
 
   const candidates = extractTicketOwnerRowsFromRequestRecords(normalizedRecords);
+  const taskSamples = extractTaskCenterTasksFromRequestRecords(normalizedRecords);
   return {
     recordCount: normalizedRecords.length,
     candidateCount: candidates.length,
     completeCandidateCount: candidates.filter((item) => item.missingFields.length === 0).length,
     endpointGroups: groupRecordsByEndpoint(normalizedRecords),
     taskDefinitionHints: extractTaskDefinitionHints(normalizedRecords),
+    taskSamples: taskSamples.slice(0, 40),
+    uiLinkSamples: taskSamples
+      .filter((item) => item.uiLink)
+      .slice(0, 20)
+      .map((item) => ({
+        caseNumber: item.caseNumber,
+        taskType: item.taskType,
+        status: item.status,
+        uiLink: item.uiLink,
+      })),
     records: urls,
     candidates: candidates.slice(0, 10).map((item) => ({
       row: item.row,
@@ -137,6 +151,36 @@ export function summarizeTaskCenterRequestRecords(records) {
       sourceSnippet: item.sourceSnippet,
     })),
   };
+}
+
+export function extractTaskCenterTasksFromRequestRecords(records) {
+  const normalizedRecords = Array.isArray(records) ? records : [];
+  const definitionLookup = buildTaskDefinitionLookup(extractTaskDefinitionHints(normalizedRecords));
+  const tasks = [];
+  const seen = new Set();
+
+  for (const record of normalizedRecords) {
+    if (!record?.json || !isTaskListEndpoint(record.url)) {
+      continue;
+    }
+
+    for (const task of collectTaskObjects(record.json)) {
+      const summary = summarizeTaskCenterTask(task, definitionLookup);
+      if (!summary.urn && !summary.subject) {
+        continue;
+      }
+
+      const key = summary.urn || [summary.caseNumber, summary.taskType, summary.uiLink].join("|");
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      tasks.push(summary);
+    }
+  }
+
+  return tasks;
 }
 
 function isRelevantResponse(url, contentType) {
@@ -232,6 +276,228 @@ function extractTaskDefinitionHints(records) {
   }
 
   return hints.slice(0, 80);
+}
+
+function buildTaskDefinitionLookup(hints) {
+  const lookup = new Map();
+  for (const hint of hints) {
+    const keys = [
+      hint.definitionId,
+      hint.localId,
+      hint.name,
+      normalizeDefinitionLocalId(hint.definitionId),
+    ].map((value) => normalizeComparableKey(value)).filter(Boolean);
+
+    for (const key of keys) {
+      lookup.set(key, hint);
+    }
+  }
+  return lookup;
+}
+
+function summarizeTaskCenterTask(task, definitionLookup) {
+  const subject = normalizeText(task.subject || task.title || task.name || task.description);
+  const subjectInfo = extractTaskInfoFromText(subject);
+  const definitionId = normalizeText(task.definitionId || task.taskDefinitionId || task.definition?.id || task.taskDefinition?.id);
+  const definitionLocalId = normalizeDefinitionLocalId(definitionId || task.localId);
+  const definition = findTaskDefinition(definitionLookup, {
+    definitionId,
+    definitionLocalId,
+    name: subjectInfo.taskType || task.definitionName || task.taskDefinitionName,
+  });
+  const codeValues = collectCustomCodeValues(task);
+  const namedCustomAttributes = mapNamedCustomAttributes(codeValues, definition);
+
+  return {
+    urn: normalizeText(task.urn || task.id || task.taskId),
+    localId: normalizeText(task.localId || task.taskLocalId),
+    definitionId,
+    definitionLocalId,
+    status: normalizeText(task.status),
+    subject,
+    caseNumber: subjectInfo.caseNumber,
+    taskType: subjectInfo.taskType || definition?.name || normalizeText(task.definitionName || task.taskDefinitionName),
+    uiLink: normalizeText(task.uiLink || task.applicationLink || task.url || task.link),
+    priority: normalizeText(task.priority),
+    createdAt: normalizeText(task.createdAt),
+    modifiedAt: normalizeText(task.modifiedAt),
+    customCodeValues: Object.fromEntries(Object.entries(codeValues).slice(0, 30)),
+    namedCustomAttributes,
+    requestCandidates: pickNamedValues(namedCustomAttributes, [
+      "Type Of Process",
+      "Request Area",
+      "Request Category",
+      "Task Of Process",
+    ]),
+    poCandidates: pickNamedValues(namedCustomAttributes, [
+      "S4 PO No",
+      "S4 Market PO No",
+      "PO Number",
+    ]),
+  };
+}
+
+function findTaskDefinition(definitionLookup, task) {
+  const keys = [
+    task.definitionId,
+    task.definitionLocalId,
+    task.name,
+  ].map((value) => normalizeComparableKey(value)).filter(Boolean);
+
+  for (const key of keys) {
+    if (definitionLookup.has(key)) {
+      return definitionLookup.get(key);
+    }
+  }
+  return null;
+}
+
+function mapNamedCustomAttributes(codeValues, definition) {
+  const mapped = {};
+  const attributes = Array.isArray(definition?.customAttributes)
+    ? definition.customAttributes
+    : [];
+  const nameByCode = new Map(attributes.map((item) => [item.code, item.name]));
+
+  for (const [code, value] of Object.entries(codeValues)) {
+    const name = nameByCode.get(code) || code;
+    mapped[name] = value;
+  }
+  return mapped;
+}
+
+function pickNamedValues(namedCustomAttributes, names) {
+  const picked = {};
+  for (const name of names) {
+    const value = normalizeText(namedCustomAttributes?.[name]);
+    if (value) {
+      picked[name] = value;
+    }
+  }
+  return picked;
+}
+
+function collectTaskObjects(value, depth = 0) {
+  if (depth > 4 || value == null) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectTaskObjects(item, depth + 1));
+  }
+
+  if (typeof value !== "object") {
+    return [];
+  }
+
+  if (isTaskObject(value)) {
+    return [value];
+  }
+
+  const likelyContainers = [
+    value.value,
+    value.results,
+    value.items,
+    value.tasks,
+    value.data,
+    value.d?.results,
+  ].filter(Boolean);
+
+  return likelyContainers.flatMap((item) => collectTaskObjects(item, depth + 1));
+}
+
+function collectCustomCodeValues(value, values = {}, depth = 0) {
+  if (depth > 6 || value == null) {
+    return values;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (item && typeof item === "object" && /^string\d+$/i.test(String(item.code || ""))) {
+        const directValue = firstScalarValue(
+          item.value,
+          item.displayValue,
+          item.stringValue,
+          item.text,
+          item.label,
+          item.content
+        );
+        if (directValue) {
+          values[item.code] = normalizeText(directValue);
+        }
+      }
+      collectCustomCodeValues(item, values, depth + 1);
+    }
+    return values;
+  }
+
+  if (typeof value !== "object") {
+    return values;
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    if (/^string\d+$/i.test(key)) {
+      const directValue = firstScalarValue(child);
+      if (directValue) {
+        values[key] = normalizeText(directValue);
+      }
+      continue;
+    }
+
+    if (["attributes", "customAttributes", "context", "data", "details"].includes(key)) {
+      collectCustomCodeValues(child, values, depth + 1);
+    }
+  }
+
+  return values;
+}
+
+function firstScalarValue(...values) {
+  for (const value of values) {
+    if (value == null) {
+      continue;
+    }
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      const normalized = normalizeText(value);
+      if (normalized) {
+        return normalized;
+      }
+    }
+    if (typeof value === "object") {
+      const nested = firstScalarValue(value.value, value.displayValue, value.text, value.label, value.content);
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+  return "";
+}
+
+function isTaskListEndpoint(url) {
+  const text = String(url || "");
+  return (
+    text.includes("/task-center-service/v1/tasks") &&
+    !text.includes("/tasks/$count") &&
+    !text.includes("/taskDefinitions")
+  );
+}
+
+function isTaskObject(value) {
+  const urn = String(value?.urn || value?.id || "");
+  return Boolean(
+    (urn.includes("sap.odm.bpm.task") || value?.uiLink || value?.applicationLink) &&
+    (value?.subject || value?.definitionId || value?.taskDefinitionId)
+  );
+}
+
+function normalizeDefinitionLocalId(value) {
+  const text = normalizeText(value);
+  const match = text.match(/:(\d+)$/);
+  return match ? match[1] : text;
+}
+
+function normalizeComparableKey(value) {
+  return normalizeText(value).toLowerCase();
 }
 
 function endpointKey(url) {
