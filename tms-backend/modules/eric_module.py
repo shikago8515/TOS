@@ -93,7 +93,7 @@ YTIC_SP_HEADERS = [
     "SIZE RANGE",
     "UOM",
 ]
-# Eric 要求这些国家在 YTIC_SP_Extract 中整行标浅绿色，便于人工核对。
+# Eric 要求这些国家在 SP_Extract 中整行标浅绿色，便于人工核对。
 ERIC_SP_COUNTRY_HIGHLIGHT_COLOR = "FFEBF1DE"
 ERIC_SP_COUNTRY_HIGHLIGHT_DESTINATIONS = {
     "GERMANY",
@@ -1209,7 +1209,7 @@ class EricModule:
         self.write_table_sheet(
             wb,
             "Size_Check",
-            ["PO Number", "Article Number", "Size", "Final Quantity", "YTIC Quantity", "MARGIN"],
+            ["PO Number", "Article Number", "Size", "Final Data Quantity", "PO Quantity", "MARGIN"],
             size_check_export_rows,
         )
         self.write_table_sheet(
@@ -1256,7 +1256,7 @@ class EricModule:
             ytic_destination_rows.append(export_row)
         self.write_table_sheet(
             wb,
-            "YTIC_Destination_Extract",
+            "Destination1Extract",
             ytic_data["destination_headers"],
             ytic_destination_rows,
         )
@@ -1269,7 +1269,7 @@ class EricModule:
             ytic_sp_rows.append(export_row)
         self.write_table_sheet(
             wb,
-            "YTIC_SP_Extract",
+            "SP_Extract",
             ytic_data["sp_headers"],
             ytic_sp_rows,
             row_fill_resolver=self.build_ytic_sp_row_fill_resolver(ytic_data["sp_headers"]),

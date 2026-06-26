@@ -380,8 +380,8 @@ class EricModuleYticSourceTests(unittest.TestCase):
                     [
                         "Size_Check",
                         "Final_Data",
-                        "YTIC_Destination_Extract",
-                        "YTIC_SP_Extract",
+                        "Destination1Extract",
+                        "SP_Extract",
                         "PO_Text_Compare",
                     ],
                 )
@@ -393,8 +393,8 @@ class EricModuleYticSourceTests(unittest.TestCase):
                             "PO Number",
                             "Article Number",
                             "Size",
-                            "Final Quantity",
-                            "YTIC Quantity",
+                            "Final Data Quantity",
+                            "PO Quantity",
                             "MARGIN",
                         ),
                         ("0902792931", "LI2854", "XS", 32, 32, "=D2-E2"),
@@ -402,20 +402,20 @@ class EricModuleYticSourceTests(unittest.TestCase):
                 )
                 self.assertNotEqual(wb["Size_Check"]["F1"].fill.fgColor.rgb, "FFFFFF00")
                 self.assertNotEqual(wb["Size_Check"]["F2"].fill.fgColor.rgb, "FFFFFF00")
-                self.assertEqual(wb["YTIC_Destination_Extract"]["I2"].value, "=H2-G2")
-                self.assertEqual(wb["YTIC_Destination_Extract"]["I3"].value, "=H3-G3")
-                self.assertIs(wb["YTIC_Destination_Extract"]["O2"].value, True)
-                self.assertIs(wb["YTIC_Destination_Extract"]["O3"].value, False)
-                self.assertEqual(wb["YTIC_SP_Extract"]["J3"].value, "=I3-I4")
-                self.assertIsNone(wb["YTIC_SP_Extract"]["J4"].value)
-                sp_sheet = wb["YTIC_SP_Extract"]
+                self.assertEqual(wb["Destination1Extract"]["I2"].value, "=H2-G2")
+                self.assertEqual(wb["Destination1Extract"]["I3"].value, "=H3-G3")
+                self.assertIs(wb["Destination1Extract"]["O2"].value, True)
+                self.assertIs(wb["Destination1Extract"]["O3"].value, False)
+                self.assertEqual(wb["SP_Extract"]["J3"].value, "=I3-I4")
+                self.assertIsNone(wb["SP_Extract"]["J4"].value)
+                sp_sheet = wb["SP_Extract"]
                 highlighted_fill = "FFEBF1DE"
                 for cell_address in ("A2", "L2", "O2", "A3", "L3", "O3"):
                     self.assertEqual(sp_sheet[cell_address].fill.fgColor.rgb, highlighted_fill)
                 for cell_address in ("A4", "L4", "O4"):
                     self.assertNotEqual(sp_sheet[cell_address].fill.fgColor.rgb, highlighted_fill)
                 self.assertNotEqual(
-                    wb["YTIC_Destination_Extract"]["A2"].fill.fgColor.rgb,
+                    wb["Destination1Extract"]["A2"].fill.fgColor.rgb,
                     highlighted_fill,
                 )
                 rows = list(wb["PO_Text_Compare"].iter_rows(values_only=True))
