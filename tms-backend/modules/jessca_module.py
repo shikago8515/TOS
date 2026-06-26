@@ -83,7 +83,21 @@ class InvoiceRecord:
     style: str
     quantity: Optional[float]
     price: float
+    line_amount: Optional[float] = None
     goods_description: str = ""
+
+
+@dataclass(frozen=True)
+class InvoiceSummaryRecord:
+    """FTY 发票底部 Total / Final Total 汇总字段。"""
+
+    source_file: str
+    total_quantity: Optional[float] = None
+    total_amount: Optional[float] = None
+    freight_charge: Optional[float] = None
+    documentation_charge: Optional[float] = None
+    final_total_amount: Optional[float] = None
+    currency: str = ""
 
 
 @dataclass(frozen=True)
@@ -104,7 +118,26 @@ class TcInvoiceRecord:
     working_number: str
     article_number: str
     quantity: Optional[float]
-    goods_description: str
+    price: Optional[float] = None
+    total_amount: Optional[float] = None
+    goods_description: str = ""
+
+
+@dataclass(frozen=True)
+class TcInvoiceSummary:
+    """TC INV PDF 底部整单汇总字段。"""
+
+    source_file: str
+    total_quantity: Optional[float] = None
+    total_carton: Optional[float] = None
+    total_gross_weight: Optional[float] = None
+    total_net_weight: Optional[float] = None
+    total_net_net_weight: Optional[float] = None
+    total_po_net_amount: Optional[float] = None
+    additional_charge: Optional[float] = None
+    documentation_charge: Optional[float] = None
+    total_vat: Optional[float] = None
+    invoice_total: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -118,9 +151,38 @@ class TcComparisonRow:
     style: str
     fty_quantity: Optional[float]
     tc_quantity: Optional[float]
+    fty_price: Optional[float]
+    tc_price: Optional[float]
+    fty_line_amount: Optional[float]
+    tc_total_amount: Optional[float]
     fty_goods_description: str
     tc_goods_description: str
     market_po: str
+    source_invoice: str
+    source_tc_pdf: str
+
+
+@dataclass(frozen=True)
+class TcSummaryComparisonRow:
+    """FTY 发票与 TC INV PDF 的整单汇总核对结果。"""
+
+    status: str
+    issue_detail: str
+    fty_total_quantity: Optional[float]
+    tc_total_quantity: Optional[float]
+    fty_total_amount: Optional[float]
+    tc_total_po_net_amount: Optional[float]
+    fty_freight_charge: Optional[float]
+    tc_additional_charge: Optional[float]
+    fty_documentation_charge: Optional[float]
+    tc_documentation_charge: Optional[float]
+    fty_final_total_amount: Optional[float]
+    tc_invoice_total: Optional[float]
+    tc_total_carton: Optional[float]
+    tc_total_gross_weight: Optional[float]
+    tc_total_net_weight: Optional[float]
+    tc_total_net_net_weight: Optional[float]
+    tc_total_vat: Optional[float]
     source_invoice: str
     source_tc_pdf: str
 
@@ -194,6 +256,31 @@ class JesscaModule:
             for record in self.read_invoice_records(invoice_path)
         ]
 
+    def read_invoice_summary(
+        self,
+        invoice_path: str,
+        invoice_records: Optional[List[InvoiceRecord]] = None,
+    ) -> InvoiceSummaryRecord:
+        """读取 FTY 发票底部 Total / Final Total；读取失败时回退到明细汇总。"""
+
+        invoice_file = os.path.basename(invoice_path)
+        try:
+            if invoice_path.lower().endswith('.xls'):
+                wb = xlrd.open_workbook(invoice_path, formatting_info=False)
+                sheet = wb.sheet_by_index(0)
+                adapter = XlrdAdapter(wb, sheet)
+            else:
+                wb = openpyxl.load_workbook(invoice_path, data_only=True)
+                ws = wb.active
+                adapter = OpenpyxlAdapter(wb, ws)
+
+            try:
+                return self._parse_invoice_summary(adapter, invoice_file)
+            finally:
+                adapter.close()
+        except Exception:
+            return self._build_invoice_summary_from_records(invoice_file, invoice_records or [])
+
     def _parse_invoice_data(self, adapter: ExcelRowAdapter) -> List[Dict[str, Any]]:
         """核心解析逻辑，使用适配器访问数据"""
         return [
@@ -204,6 +291,61 @@ class JesscaModule:
             }
             for record in self._parse_invoice_records(adapter, "")
         ]
+
+    def _parse_invoice_summary(self, adapter: ExcelRowAdapter, invoice_file: str) -> InvoiceSummaryRecord:
+        total_quantity: Optional[float] = None
+        total_amount: Optional[float] = None
+        freight_charge: Optional[float] = None
+        documentation_charge: Optional[float] = None
+        final_total_amount: Optional[float] = None
+        currency = ""
+
+        for row_idx in range(adapter.get_row_count()):
+            row_texts = [
+                self._normalize_invoice_text(adapter.get_cell_value(row_idx, col_idx))
+                for col_idx in range(adapter.get_col_count(row_idx))
+            ]
+            labels = [text.strip().upper() for text in row_texts]
+            if "TOTAL" in labels:
+                total_quantity = self._extract_total_quantity(adapter, row_idx)
+                total_amount = self._extract_last_numeric_value(adapter, row_idx)
+                currency = currency or self._extract_currency_from_row(adapter, row_idx)
+            if "FREIGHT CHARGE" in labels:
+                freight_charge = self._extract_last_numeric_value(adapter, row_idx)
+                currency = currency or self._extract_currency_from_row(adapter, row_idx)
+            if "DOCUMENTATION CHARGE" in labels:
+                documentation_charge = self._extract_last_numeric_value(adapter, row_idx)
+                currency = currency or self._extract_currency_from_row(adapter, row_idx)
+            if "FINAL TOTAL" in labels:
+                final_total_amount = self._extract_last_numeric_value(adapter, row_idx)
+                currency = currency or self._extract_currency_from_row(adapter, row_idx)
+
+        return InvoiceSummaryRecord(
+            source_file=invoice_file,
+            total_quantity=total_quantity,
+            total_amount=total_amount,
+            freight_charge=freight_charge,
+            documentation_charge=documentation_charge,
+            final_total_amount=final_total_amount,
+            currency=currency,
+        )
+
+    def _build_invoice_summary_from_records(
+        self,
+        invoice_file: str,
+        records: List[InvoiceRecord],
+    ) -> InvoiceSummaryRecord:
+        total_quantity = self._sum_optional_numbers(record.quantity for record in records)
+        total_amount = self._sum_optional_numbers(record.line_amount for record in records)
+        return InvoiceSummaryRecord(
+            source_file=invoice_file,
+            total_quantity=total_quantity,
+            total_amount=total_amount,
+            freight_charge=None,
+            documentation_charge=None,
+            final_total_amount=total_amount,
+            currency="",
+        )
 
     def _parse_invoice_records(self, adapter: ExcelRowAdapter, invoice_file: str) -> List[InvoiceRecord]:
         """核心解析逻辑，使用适配器访问数据。"""
@@ -227,6 +369,7 @@ class JesscaModule:
                         'quantity': self._extract_quantity(adapter, row_idx),
                         'article': None,
                         'price': price_val,
+                        'line_amount': self._extract_line_amount(adapter, row_idx),
                         'goods_description': current_goods_description,
                     })
 
@@ -255,6 +398,7 @@ class JesscaModule:
                                 'style': style_val,
                                 'quantity': item['quantity'],
                                 'price': item['price'],
+                                'line_amount': item.get('line_amount'),
                                 'goods_description': item.get('goods_description', ''),
                             })
                         elif item['price'] is not None:
@@ -267,6 +411,7 @@ class JesscaModule:
                                 'style': style_val,
                                 'quantity': item['quantity'],
                                 'price': item['price'],
+                                'line_amount': item.get('line_amount'),
                                 'goods_description': item.get('goods_description', ''),
                             })
                     pending_items = []
@@ -285,6 +430,7 @@ class JesscaModule:
                 style=str(item.get('style') or ""),
                 quantity=item.get('quantity'),
                 price=float(item.get('price') or 0),
+                line_amount=item.get('line_amount'),
                 goods_description=str(item.get('goods_description') or ""),
             )
             for item in data
@@ -477,6 +623,70 @@ class JesscaModule:
             if candidate is not None and candidate >= 0:
                 return int(candidate) if float(candidate).is_integer() else candidate
         return None
+
+    def _extract_line_amount(self, adapter: ExcelRowAdapter, row_idx: int) -> Optional[float]:
+        """从 PO 行提取 FOB 金额，优先按 FOB 表头定位。"""
+        for col_idx in self._find_fob_amount_columns(adapter, row_idx):
+            candidate = self._parse_price_value(adapter.get_cell_value(row_idx, col_idx))
+            if candidate is not None and candidate >= 0:
+                return candidate
+        return self._extract_last_numeric_value(adapter, row_idx)
+
+    def _find_fob_amount_columns(self, adapter: ExcelRowAdapter, row_idx: int) -> List[int]:
+        amount_cols: List[int] = []
+        search_start = max(0, row_idx - 5)
+        for header_row in range(search_start, row_idx):
+            for col_idx in range(adapter.get_col_count(header_row)):
+                header_text = str(adapter.get_cell_value(header_row, col_idx) or "").strip().upper()
+                if header_text == "FOB":
+                    amount_cols.extend([col_idx, col_idx + 1, col_idx + 2])
+
+        seen = set()
+        ordered_cols: List[int] = []
+        max_cols = adapter.get_col_count(row_idx)
+        for col_idx in amount_cols:
+            if 0 <= col_idx < max_cols and col_idx not in seen:
+                ordered_cols.append(col_idx)
+                seen.add(col_idx)
+        return ordered_cols
+
+    def _extract_total_quantity(self, adapter: ExcelRowAdapter, row_idx: int) -> Optional[float]:
+        for col_idx in self._find_quantity_columns(adapter, row_idx):
+            candidate = self._parse_price_value(adapter.get_cell_value(row_idx, col_idx))
+            if candidate is not None and candidate >= 0:
+                return int(candidate) if float(candidate).is_integer() else candidate
+        for col_idx in range(adapter.get_col_count(row_idx)):
+            candidate = self._parse_price_value(adapter.get_cell_value(row_idx, col_idx))
+            if candidate is not None and candidate >= 0:
+                return int(candidate) if float(candidate).is_integer() else candidate
+        return None
+
+    def _extract_last_numeric_value(self, adapter: ExcelRowAdapter, row_idx: int) -> Optional[float]:
+        numbers: List[float] = []
+        for col_idx in range(adapter.get_col_count(row_idx)):
+            candidate = self._parse_price_value(adapter.get_cell_value(row_idx, col_idx))
+            if candidate is not None:
+                numbers.append(candidate)
+        return numbers[-1] if numbers else None
+
+    @staticmethod
+    def _extract_currency_from_row(adapter: ExcelRowAdapter, row_idx: int) -> str:
+        for col_idx in range(adapter.get_col_count(row_idx)):
+            text = str(adapter.get_cell_value(row_idx, col_idx) or "").strip().upper()
+            if re.fullmatch(r"[A-Z]{3}", text):
+                return text
+        return ""
+
+    @staticmethod
+    def _sum_optional_numbers(values: Any) -> Optional[float]:
+        total = 0.0
+        found = False
+        for value in values:
+            if value is None:
+                continue
+            total += float(value)
+            found = True
+        return total if found else None
 
     def _find_quantity_columns(self, adapter: ExcelRowAdapter, row_idx: int) -> List[int]:
         quantity_cols: List[int] = []
@@ -938,6 +1148,18 @@ class JesscaModule:
         except (TypeError, ValueError):
             return None
 
+    @classmethod
+    def _extract_labeled_number(cls, text: str, label: str) -> Optional[float]:
+        escaped_label = re.escape(label)
+        pattern = re.compile(
+            rf"{escaped_label}\s+([-+]?\d[\d,]*(?:\.\d+)?)",
+            re.IGNORECASE,
+        )
+        matches = list(pattern.finditer(text or ""))
+        if not matches:
+            return None
+        return cls._parse_optional_number(matches[-1].group(1))
+
     @staticmethod
     def _normalize_goods_description_text(value: Any) -> str:
         text = str(value or "").strip()
@@ -957,7 +1179,7 @@ class JesscaModule:
     def _extract_tc_goods_descriptions(text: str) -> List[str]:
         descriptions: List[str] = []
         pattern = re.compile(
-            r"Goods Description\s+(?P<description>.*?)(?=\n(?:PO No\b|Total Quantity\b|Total Carton\b|Total Gross Weight\b|Total Net Weight\b|Net Amount\b|Invoice Total\b|For and on behalf\b|Page\s+\d+\s+of\s+\d+\b|Goods Description\b)|\Z)",
+            r"Goods Description\s+(?P<description>.*?)(?=\n(?:PO No\b|Customer Size\s+Sourcing Size|HTS\s+Description|Total Quantity\b|Total Carton\b|Total Gross Weight\b|Total Net Weight\b|Total PO Net Amount\b|Net Amount\b|Additional charge\b|Documentation charge\b|Total VAT\b|Invoice Total\b|For and on behalf\b|Page\s+\d+\s+of\s+\d+\b|Goods Description\b)|\Z)",
             re.IGNORECASE | re.DOTALL,
         )
         for match in pattern.finditer(text or ""):
@@ -982,18 +1204,44 @@ class JesscaModule:
                 )
         return self.parse_tc_invoice_pages(pages, os.path.basename(tc_invoice_path))
 
+    def read_tc_invoice_summary(
+        self,
+        tc_invoice_path: str,
+        tc_records: Optional[List[TcInvoiceRecord]] = None,
+    ) -> TcInvoiceSummary:
+        """读取 TC INV PDF 底部汇总；读取失败时回退到明细汇总。"""
+
+        import pdfplumber
+
+        source_file = os.path.basename(tc_invoice_path)
+        try:
+            pages: List[TcInvoiceExtractedPage] = []
+            with pdfplumber.open(tc_invoice_path) as pdf:
+                for page in pdf.pages:
+                    pages.append(
+                        TcInvoiceExtractedPage(
+                            text=page.extract_text(x_tolerance=1, y_tolerance=3) or "",
+                            tables=page.extract_tables() or [],
+                        )
+                    )
+            return self.parse_tc_invoice_summary_pages(pages, source_file)
+        except Exception:
+            return self._build_tc_summary_from_records(source_file, tc_records or [])
+
     def parse_tc_invoice_pages(
         self,
         pages: List[TcInvoiceExtractedPage],
         source_file: str,
     ) -> List[TcInvoiceRecord]:
         records: List[TcInvoiceRecord] = []
+        money_rows: List[Tuple[Optional[float], Optional[float]]] = []
         full_text = "\n".join(page.text for page in pages)
         descriptions = self._extract_tc_goods_descriptions(full_text)
 
         for page in pages:
             for table in page.tables:
                 records.extend(self._parse_tc_invoice_table(table, source_file))
+                money_rows.extend(self._parse_tc_invoice_money_table(table))
 
         if not records and full_text.strip():
             raise ValueError("未在 TC INV PDF 中识别到 PO 明细表")
@@ -1006,10 +1254,44 @@ class JesscaModule:
                 working_number=record.working_number,
                 article_number=record.article_number,
                 quantity=record.quantity,
+                price=money_rows[index][0] if index < len(money_rows) else record.price,
+                total_amount=money_rows[index][1] if index < len(money_rows) else record.total_amount,
                 goods_description=descriptions[index] if index < len(descriptions) else record.goods_description,
             )
             for index, record in enumerate(records)
         ]
+
+    def parse_tc_invoice_summary_pages(
+        self,
+        pages: List[TcInvoiceExtractedPage],
+        source_file: str,
+    ) -> TcInvoiceSummary:
+        full_text = "\n".join(page.text for page in pages)
+        return TcInvoiceSummary(
+            source_file=source_file,
+            total_quantity=self._extract_labeled_number(full_text, "Total Quantity"),
+            total_carton=self._extract_labeled_number(full_text, "Total Carton"),
+            total_gross_weight=self._extract_labeled_number(full_text, "Total Gross Weight"),
+            total_net_weight=self._extract_labeled_number(full_text, "Total Net Weight"),
+            total_net_net_weight=self._extract_labeled_number(full_text, "Total Net Net Weight"),
+            total_po_net_amount=self._extract_labeled_number(full_text, "Total PO Net Amount"),
+            additional_charge=self._extract_labeled_number(full_text, "Additional charge"),
+            documentation_charge=self._extract_labeled_number(full_text, "Documentation charge"),
+            total_vat=self._extract_labeled_number(full_text, "Total VAT"),
+            invoice_total=self._extract_labeled_number(full_text, "Invoice Total"),
+        )
+
+    def _build_tc_summary_from_records(
+        self,
+        source_file: str,
+        records: List[TcInvoiceRecord],
+    ) -> TcInvoiceSummary:
+        return TcInvoiceSummary(
+            source_file=source_file,
+            total_quantity=self._sum_optional_numbers(record.quantity for record in records),
+            total_po_net_amount=self._sum_optional_numbers(record.total_amount for record in records),
+            invoice_total=self._sum_optional_numbers(record.total_amount for record in records),
+        )
 
     def _parse_tc_invoice_table(
         self,
@@ -1060,6 +1342,42 @@ class JesscaModule:
                 )
             )
         return records
+
+    def _parse_tc_invoice_money_table(
+        self,
+        table: List[List[Optional[str]]],
+    ) -> List[Tuple[Optional[float], Optional[float]]]:
+        if not table:
+            return []
+
+        header_index = -1
+        header_lookup: Dict[str, int] = {}
+        for row_index, row in enumerate(table):
+            lookup = {
+                self._normalize_tc_header(cell): col_index
+                for col_index, cell in enumerate(row)
+                if self._normalize_tc_header(cell)
+            }
+            if {"TOTALQUANTITY", "PRICE", "TOTALAMOUNT"}.issubset(lookup.keys()):
+                header_index = row_index
+                header_lookup = lookup
+                break
+
+        if header_index < 0:
+            return []
+
+        price_index = header_lookup["PRICE"]
+        amount_index = header_lookup["TOTALAMOUNT"]
+        rows: List[Tuple[Optional[float], Optional[float]]] = []
+        for row in table[header_index + 1:]:
+            first_cell = self._cell_text(row, 0).upper()
+            if first_cell != "QTY":
+                continue
+            price = self._parse_optional_number(self._cell_text(row, price_index))
+            total_amount = self._parse_optional_number(self._cell_text(row, amount_index))
+            if price is not None or total_amount is not None:
+                rows.append((price, total_amount))
+        return rows
 
     @staticmethod
     def _cell_text(row: List[Optional[str]], index: Optional[int]) -> str:
@@ -1119,6 +1437,106 @@ class JesscaModule:
 
         return rows
 
+    def build_tc_invoice_summary_comparison(
+        self,
+        invoice_summaries: List[InvoiceSummaryRecord],
+        tc_summaries: List[TcInvoiceSummary],
+    ) -> List[TcSummaryComparisonRow]:
+        """按本次上传批次聚合比较 FTY 与 TC INV 的整单汇总。"""
+
+        if not invoice_summaries and not tc_summaries:
+            return []
+
+        fty = self._aggregate_invoice_summaries(invoice_summaries)
+        tc = self._aggregate_tc_summaries(tc_summaries)
+        issues: List[str] = []
+        if not invoice_summaries:
+            issues.append("FTY 发票缺少底部汇总")
+        if not tc_summaries:
+            issues.append("TC INV PDF 缺少底部汇总")
+        if invoice_summaries and tc_summaries:
+            if not self._same_number(fty.total_quantity, tc.total_quantity):
+                issues.append(
+                    "Total Quantity 不一致："
+                    f"FTY={self._format_optional_number(fty.total_quantity)}；"
+                    f"TC={self._format_optional_number(tc.total_quantity)}"
+                )
+            if not self._same_number(fty.total_amount, tc.total_po_net_amount):
+                issues.append(
+                    "Total Amount 不一致："
+                    f"FTY={self._format_optional_number(fty.total_amount)}；"
+                    f"TC Total PO Net Amount={self._format_optional_number(tc.total_po_net_amount)}"
+                )
+            if not self._same_charge_amount(fty.freight_charge, tc.additional_charge):
+                issues.append(
+                    "Freight/Additional Charge 不一致："
+                    f"FTY={self._format_optional_number(fty.freight_charge)}；"
+                    f"TC={self._format_optional_number(tc.additional_charge)}"
+                )
+            if not self._same_charge_amount(fty.documentation_charge, tc.documentation_charge):
+                issues.append(
+                    "Documentation Charge 不一致："
+                    f"FTY={self._format_optional_number(fty.documentation_charge)}；"
+                    f"TC={self._format_optional_number(tc.documentation_charge)}"
+                )
+            if not self._same_number(fty.final_total_amount, tc.invoice_total):
+                issues.append(
+                    "Final Total 不一致："
+                    f"FTY={self._format_optional_number(fty.final_total_amount)}；"
+                    f"TC Invoice Total={self._format_optional_number(tc.invoice_total)}"
+                )
+
+        status = STATUS_MATCHED if not issues else ("需核对" if invoice_summaries and tc_summaries else "缺失")
+        return [
+            TcSummaryComparisonRow(
+                status=status,
+                issue_detail="；".join(issues),
+                fty_total_quantity=fty.total_quantity,
+                tc_total_quantity=tc.total_quantity,
+                fty_total_amount=fty.total_amount,
+                tc_total_po_net_amount=tc.total_po_net_amount,
+                fty_freight_charge=fty.freight_charge,
+                tc_additional_charge=tc.additional_charge,
+                fty_documentation_charge=fty.documentation_charge,
+                tc_documentation_charge=tc.documentation_charge,
+                fty_final_total_amount=fty.final_total_amount,
+                tc_invoice_total=tc.invoice_total,
+                tc_total_carton=tc.total_carton,
+                tc_total_gross_weight=tc.total_gross_weight,
+                tc_total_net_weight=tc.total_net_weight,
+                tc_total_net_net_weight=tc.total_net_net_weight,
+                tc_total_vat=tc.total_vat,
+                source_invoice=fty.source_file,
+                source_tc_pdf=tc.source_file,
+            )
+        ]
+
+    def _aggregate_invoice_summaries(self, summaries: List[InvoiceSummaryRecord]) -> InvoiceSummaryRecord:
+        return InvoiceSummaryRecord(
+            source_file=", ".join(summary.source_file for summary in summaries if summary.source_file),
+            total_quantity=self._sum_optional_numbers(summary.total_quantity for summary in summaries),
+            total_amount=self._sum_optional_numbers(summary.total_amount for summary in summaries),
+            freight_charge=self._sum_optional_numbers(summary.freight_charge for summary in summaries),
+            documentation_charge=self._sum_optional_numbers(summary.documentation_charge for summary in summaries),
+            final_total_amount=self._sum_optional_numbers(summary.final_total_amount for summary in summaries),
+            currency=next((summary.currency for summary in summaries if summary.currency), ""),
+        )
+
+    def _aggregate_tc_summaries(self, summaries: List[TcInvoiceSummary]) -> TcInvoiceSummary:
+        return TcInvoiceSummary(
+            source_file=", ".join(summary.source_file for summary in summaries if summary.source_file),
+            total_quantity=self._sum_optional_numbers(summary.total_quantity for summary in summaries),
+            total_carton=self._sum_optional_numbers(summary.total_carton for summary in summaries),
+            total_gross_weight=self._sum_optional_numbers(summary.total_gross_weight for summary in summaries),
+            total_net_weight=self._sum_optional_numbers(summary.total_net_weight for summary in summaries),
+            total_net_net_weight=self._sum_optional_numbers(summary.total_net_net_weight for summary in summaries),
+            total_po_net_amount=self._sum_optional_numbers(summary.total_po_net_amount for summary in summaries),
+            additional_charge=self._sum_optional_numbers(summary.additional_charge for summary in summaries),
+            documentation_charge=self._sum_optional_numbers(summary.documentation_charge for summary in summaries),
+            total_vat=self._sum_optional_numbers(summary.total_vat for summary in summaries),
+            invoice_total=self._sum_optional_numbers(summary.invoice_total for summary in summaries),
+        )
+
     def _build_tc_comparison_row(
         self,
         invoice: Optional[InvoiceRecord],
@@ -1132,6 +1550,21 @@ class JesscaModule:
         elif invoice is not None and tc_record is not None:
             if not self._same_number(invoice.quantity, tc_record.quantity):
                 issues.append(f"QTY 不一致：FTY={invoice.quantity or '-'}；TC={tc_record.quantity or '-'}")
+            if tc_record.price is not None and not self._same_number(invoice.price, tc_record.price):
+                issues.append(
+                    "Unit Price 不一致："
+                    f"FTY={self._format_optional_number(invoice.price)}；"
+                    f"TC={self._format_optional_number(tc_record.price)}"
+                )
+            if (invoice.line_amount is not None or tc_record.total_amount is not None) and not self._same_number(
+                invoice.line_amount,
+                tc_record.total_amount,
+            ):
+                issues.append(
+                    "Line Amount 不一致："
+                    f"FTY={self._format_optional_number(invoice.line_amount)}；"
+                    f"TC={self._format_optional_number(tc_record.total_amount)}"
+                )
             if self._goods_description_key(invoice.goods_description) != self._goods_description_key(tc_record.goods_description):
                 issues.append(
                     "Goods Description 不一致："
@@ -1147,12 +1580,25 @@ class JesscaModule:
             style=(invoice.style if invoice else tc_record.working_number if tc_record else ""),
             fty_quantity=invoice.quantity if invoice else None,
             tc_quantity=tc_record.quantity if tc_record else None,
+            fty_price=invoice.price if invoice else None,
+            tc_price=tc_record.price if tc_record else None,
+            fty_line_amount=invoice.line_amount if invoice else None,
+            tc_total_amount=tc_record.total_amount if tc_record else None,
             fty_goods_description=invoice.goods_description if invoice else "",
             tc_goods_description=tc_record.goods_description if tc_record else "",
             market_po=tc_record.market_po if tc_record else "",
             source_invoice=invoice.invoice_file if invoice else "",
             source_tc_pdf=tc_record.source_file if tc_record else "",
         )
+
+    @staticmethod
+    def _format_optional_number(value: Optional[float]) -> str:
+        if value is None:
+            return "-"
+        number = float(value)
+        if number.is_integer():
+            return str(int(number))
+        return f"{number:.2f}".rstrip("0").rstrip(".")
 
     def read_packing_list_records(self, packing_path: str) -> List[PackingListRecord]:
         """读取 Packing List PDF，复用 Draft/Packing 模块的表格解析能力。"""
@@ -1331,10 +1777,11 @@ class JesscaModule:
                                 all_invoice_data: Dict[Tuple[str, str], Dict[str, float]],
                                 invoice_file_names: List[str],
                                 invoice_file_paths: List[str],
-                                ref_df: pd.DataFrame,
-                                output_path: str,
-                                tc_comparison_rows: Optional[List[TcComparisonRow]] = None,
-                                tc_confirmed_invoice_keys: Optional[Set[Tuple[str, str, str, int]]] = None) -> Dict[str, Any]:
+                                 ref_df: pd.DataFrame,
+                                 output_path: str,
+                                 tc_comparison_rows: Optional[List[TcComparisonRow]] = None,
+                                 tc_summary_rows: Optional[List[TcSummaryComparisonRow]] = None,
+                                 tc_confirmed_invoice_keys: Optional[Set[Tuple[str, str, str, int]]] = None) -> Dict[str, Any]:
         """保存 Excel 结果，包含汇总表"""
 
         wb = openpyxl.Workbook()
@@ -1398,12 +1845,16 @@ class JesscaModule:
             'tc_count': 0,
             'tc_matched_count': 0,
             'tc_issue_count': 0,
+            'tc_summary_count': 0,
+            'tc_summary_issue_count': 0,
+            'tc_total_issue_count': 0,
         }
         if tc_comparison_rows is not None:
             ws_tc = wb.create_sheet("TC INV核对")
             tc_stats = self._write_tc_invoice_comparison_sheet(
                 ws_tc,
                 tc_comparison_rows,
+                tc_summary_rows,
             )
 
         # 自动调整列宽
@@ -1461,104 +1912,380 @@ class JesscaModule:
         self,
         ws: openpyxl.worksheet.worksheet.Worksheet,
         rows: List[TcComparisonRow],
+        summary_rows: Optional[List[TcSummaryComparisonRow]] = None,
     ) -> Dict[str, int]:
-        headers = [
-            "Check Status",
-            "Issue Detail",
-            "PO No",
-            "Article No",
-            "Working/Style No",
-            "FTY QTY",
-            "TC Total Qty",
-            "FTY Goods Description",
-            "TC Goods Description",
-            "Market PO",
-            "Source FTY Invoice",
-            "Source TC PDF",
-        ]
+        summary_rows = summary_rows or []
         thin_border = create_thin_border()
-        title_end_col = openpyxl.utils.get_column_letter(len(headers))
-        ws.merge_cells(f"A1:{title_end_col}1")
+        ws.merge_cells("A1:G1")
         title_cell = ws["A1"]
         title_cell.value = f"TC INV 核对结果 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         title_cell.font = Font(size=14, bold=True, color="FF1F2937")
         title_cell.alignment = Alignment(horizontal="left", vertical="center")
         ws.row_dimensions[1].height = 28
 
+        matched_fill = PatternFill(start_color="FFDDFFDD", end_color="FFDDFFDD", fill_type="solid")
+        issue_fill = PatternFill(start_color="FFFFDDDD", end_color="FFFFDDDD", fill_type="solid")
+        neutral_fill = PatternFill(start_color="FFF3F4F6", end_color="FFF3F4F6", fill_type="solid")
+        section_fill = PatternFill(start_color="FFEAF2FF", end_color="FFEAF2FF", fill_type="solid")
+
+        matched_count = sum(1 for row in rows if row.status == STATUS_MATCHED)
+        issue_count = len(rows) - matched_count
+        summary_count = len(summary_rows)
+        summary_issue_count = sum(1 for row in summary_rows if row.status != STATUS_MATCHED)
+        summary_display_rows = self._build_tc_summary_display_rows(summary_rows)
+        detail_display_rows = self._build_tc_detail_display_rows(rows)
+
+        conclusion, quantity_text, amount_delta = self._build_tc_conclusion(summary_rows, detail_display_rows)
+        charge_text = self._build_tc_charge_text(summary_rows[0]) if summary_rows else "未提供汇总"
+        top_rows = [
+            ("核对结论", conclusion),
+            ("数量", quantity_text),
+            ("金额差额", amount_delta if amount_delta is not None else "-"),
+        ]
+        top_rows.insert(2, ("费用", charge_text))
+        for row_index, (label, value) in enumerate(top_rows, 2):
+            label_cell = ws.cell(row=row_index, column=1, value=label)
+            value_cell = ws.cell(row=row_index, column=2, value=value)
+            label_cell.font = Font(bold=True, color="FF1F2937")
+            label_cell.fill = neutral_fill
+            label_cell.border = thin_border
+            value_cell.border = thin_border
+            value_cell.alignment = Alignment(horizontal="left", vertical="center")
+            has_numeric_issue = label == "金额差额" and isinstance(value, (int, float)) and abs(float(value)) > 0.0001
+            if "不一致" in str(value) or has_numeric_issue:
+                value_cell.fill = issue_fill
+                value_cell.font = Font(bold=True, color="FF991B1B")
+            elif "一致" in str(value):
+                value_cell.fill = matched_fill
+                value_cell.font = Font(bold=True, color="FF166534")
+            if "不一致" in str(value):
+                value_cell.fill = issue_fill
+                value_cell.font = Font(bold=True, color="FF991B1B")
+            elif "一致" in str(value):
+                value_cell.fill = matched_fill
+                value_cell.font = Font(bold=True, color="FF166534")
+
+        current_row = 6
+        ws.cell(row=current_row, column=1, value="汇总差异")
+        ws.cell(row=current_row, column=1).font = Font(bold=True, size=12, color="FF1F2937")
+        ws.cell(row=current_row, column=1).fill = section_fill
+        current_row += 1
+        self._write_table_header(ws, current_row, ["差异项", "FTY", "TC", "差额", "结果"], thin_border)
+        current_row += 1
+        if summary_display_rows:
+            for display_row in summary_display_rows:
+                self._write_simple_tc_display_row(ws, current_row, display_row, thin_border, issue_fill, {1})
+                current_row += 1
+        else:
+            summary_status = "汇总一致" if summary_rows else "未提供汇总"
+            fill = matched_fill if summary_rows else neutral_fill
+            self._write_simple_tc_display_row(
+                ws,
+                current_row,
+                [summary_status, "-", "-", "-", "一致" if summary_rows else "-"],
+                thin_border,
+                fill,
+                {1},
+            )
+            current_row += 1
+
+        current_row += 2
+        ws.cell(row=current_row, column=1, value="明细差异")
+        ws.cell(row=current_row, column=1).font = Font(bold=True, size=12, color="FF1F2937")
+        ws.cell(row=current_row, column=1).fill = section_fill
+        current_row += 1
+
+        detail_header_row = current_row
+        self._write_table_header(
+            ws,
+            detail_header_row,
+            ["PO No", "Article No", "Working/Style No", "差异项", "FTY", "TC", "差额"],
+            thin_border,
+        )
+        current_row += 1
+        if detail_display_rows:
+            for display_row in detail_display_rows:
+                self._write_simple_tc_display_row(ws, current_row, display_row, thin_border, issue_fill, {4, 5, 6})
+                current_row += 1
+        else:
+            self._write_simple_tc_display_row(
+                ws,
+                current_row,
+                ["", "", "", "明细一致", "-", "-", "-"],
+                thin_border,
+                matched_fill,
+                {4},
+            )
+            current_row += 1
+
+        self._adjust_column_widths(
+            ws,
+            {
+                1: 18,
+                2: 18,
+                3: 20,
+                4: 18,
+                5: 28,
+                6: 28,
+                7: 14,
+            },
+            {
+                1: 12,
+                2: 12,
+                3: 14,
+                4: 12,
+                5: 16,
+                6: 16,
+                7: 10,
+            },
+        )
+        ws.freeze_panes = "A8"
+        ws.auto_filter.ref = f"A{detail_header_row}:G{current_row - 1}"
+        return {
+            "tc_count": len(rows),
+            "tc_matched_count": matched_count,
+            "tc_issue_count": issue_count,
+            "tc_summary_count": summary_count,
+            "tc_summary_issue_count": summary_issue_count,
+            "tc_total_issue_count": issue_count + summary_issue_count,
+        }
+
+    def _build_tc_conclusion(
+        self,
+        summary_rows: List[TcSummaryComparisonRow],
+        detail_display_rows: List[List[Any]],
+    ) -> Tuple[str, str, Optional[float]]:
+        if not summary_rows:
+            return ("明细不一致" if detail_display_rows else "明细一致", "未提供汇总", None)
+
+        summary = summary_rows[0]
+        quantity_matched = self._same_number(summary.fty_total_quantity, summary.tc_total_quantity)
+        quantity_status = "一致" if quantity_matched else "不一致"
+        quantity_text = (
+            f"FTY={self._format_optional_number(summary.fty_total_quantity)} / "
+            f"TC={self._format_optional_number(summary.tc_total_quantity)} / {quantity_status}"
+        )
+        amount_delta = self._number_delta(
+            self._preferred_summary_amount(summary, "fty"),
+            self._preferred_summary_amount(summary, "tc"),
+        )
+        if amount_delta is None:
+            amount_status = "金额未提供"
+        else:
+            amount_status = "金额一致" if abs(amount_delta) < 0.0001 else "金额不一致"
+        return f"{amount_status}；数量{quantity_status}", quantity_text, amount_delta
+
+    def _build_tc_charge_text(self, summary: TcSummaryComparisonRow) -> str:
+        freight_status = (
+            "一致"
+            if self._same_charge_amount(summary.fty_freight_charge, summary.tc_additional_charge)
+            else "不一致"
+        )
+        documentation_status = (
+            "一致"
+            if self._same_charge_amount(summary.fty_documentation_charge, summary.tc_documentation_charge)
+            else "不一致"
+        )
+        return (
+            "Freight/Additional: "
+            f"FTY={self._format_optional_number(summary.fty_freight_charge)} / "
+            f"TC={self._format_optional_number(summary.tc_additional_charge)} / "
+            f"{freight_status}；Documentation: "
+            f"FTY={self._format_optional_number(summary.fty_documentation_charge)} / "
+            f"TC={self._format_optional_number(summary.tc_documentation_charge)} / "
+            f"{documentation_status}"
+        )
+
+    def _build_tc_summary_display_rows(self, summary_rows: List[TcSummaryComparisonRow]) -> List[List[Any]]:
+        display_rows: List[List[Any]] = []
+        for summary in summary_rows:
+            if not self._same_number(summary.fty_total_quantity, summary.tc_total_quantity):
+                display_rows.append(
+                    [
+                        "总数量",
+                        self._display_optional_number(summary.fty_total_quantity),
+                        self._display_optional_number(summary.tc_total_quantity),
+                        self._number_delta(summary.fty_total_quantity, summary.tc_total_quantity) or "-",
+                        "不一致",
+                    ]
+                )
+
+            if not self._same_number(summary.fty_total_amount, summary.tc_total_po_net_amount):
+                display_rows.append(
+                    [
+                        "货值合计",
+                        self._display_optional_number(summary.fty_total_amount),
+                        self._display_optional_number(summary.tc_total_po_net_amount),
+                        self._number_delta(summary.fty_total_amount, summary.tc_total_po_net_amount) or "-",
+                        "不一致",
+                    ]
+                )
+            if not self._same_number(summary.fty_final_total_amount, summary.tc_invoice_total):
+                display_rows.append(
+                    [
+                        "最终总额",
+                        self._display_optional_number(summary.fty_final_total_amount),
+                        self._display_optional_number(summary.tc_invoice_total),
+                        self._number_delta(summary.fty_final_total_amount, summary.tc_invoice_total) or "-",
+                        "不一致",
+                    ]
+                )
+            if not self._same_charge_amount(summary.fty_freight_charge, summary.tc_additional_charge):
+                display_rows.append(
+                    [
+                        "Freight/Additional Charge",
+                        self._display_optional_number(summary.fty_freight_charge),
+                        self._display_optional_number(summary.tc_additional_charge),
+                        self._charge_delta(summary.fty_freight_charge, summary.tc_additional_charge),
+                        "不一致",
+                    ]
+                )
+            if not self._same_charge_amount(summary.fty_documentation_charge, summary.tc_documentation_charge):
+                display_rows.append(
+                    [
+                        "Documentation Charge",
+                        self._display_optional_number(summary.fty_documentation_charge),
+                        self._display_optional_number(summary.tc_documentation_charge),
+                        self._charge_delta(summary.fty_documentation_charge, summary.tc_documentation_charge),
+                        "不一致",
+                    ]
+                )
+        return display_rows
+
+    def _build_tc_detail_display_rows(self, rows: List[TcComparisonRow]) -> List[List[Any]]:
+        display_rows: List[List[Any]] = []
+        for row in rows:
+            if row.status == STATUS_MATCHED:
+                continue
+
+            base = [row.po_number, row.article, row.style]
+            if row.status == "缺失":
+                fty_value = row.source_invoice or "FTY 发票缺少"
+                tc_value = row.source_tc_pdf or "TC INV PDF 缺少"
+                display_rows.append([*base, "记录缺失", fty_value, tc_value, "-"])
+                continue
+
+            if not self._same_number(row.fty_quantity, row.tc_quantity):
+                display_rows.append(
+                    [
+                        *base,
+                        "数量",
+                        self._display_optional_number(row.fty_quantity),
+                        self._display_optional_number(row.tc_quantity),
+                        self._number_delta(row.fty_quantity, row.tc_quantity) or "-",
+                    ]
+                )
+            if row.tc_price is not None and not self._same_number(row.fty_price, row.tc_price):
+                display_rows.append(
+                    [
+                        *base,
+                        "Unit Price",
+                        self._display_optional_number(row.fty_price),
+                        self._display_optional_number(row.tc_price),
+                        self._number_delta(row.fty_price, row.tc_price) or "-",
+                    ]
+                )
+            if (row.fty_line_amount is not None or row.tc_total_amount is not None) and not self._same_number(
+                row.fty_line_amount,
+                row.tc_total_amount,
+            ):
+                display_rows.append(
+                    [
+                        *base,
+                        "Line Amount",
+                        self._display_optional_number(row.fty_line_amount),
+                        self._display_optional_number(row.tc_total_amount),
+                        self._number_delta(row.fty_line_amount, row.tc_total_amount) or "-",
+                    ]
+                )
+            if self._goods_description_key(row.fty_goods_description) != self._goods_description_key(row.tc_goods_description):
+                display_rows.append(
+                    [
+                        *base,
+                        "Goods Description",
+                        row.fty_goods_description or "-",
+                        row.tc_goods_description or "-",
+                        "-",
+                    ]
+                )
+        return display_rows
+
+    @staticmethod
+    def _preferred_summary_amount(summary: TcSummaryComparisonRow, side: str) -> Optional[float]:
+        if side == "fty":
+            return summary.fty_final_total_amount if summary.fty_final_total_amount is not None else summary.fty_total_amount
+        return summary.tc_invoice_total if summary.tc_invoice_total is not None else summary.tc_total_po_net_amount
+
+    @staticmethod
+    def _number_delta(left: Optional[float], right: Optional[float]) -> Optional[float]:
+        if left is None or right is None:
+            return None
+        return round(float(right) - float(left), 4)
+
+    @staticmethod
+    def _same_charge_amount(left: Optional[float], right: Optional[float]) -> bool:
+        left_value = 0.0 if left is None else float(left)
+        right_value = 0.0 if right is None else float(right)
+        return abs(left_value - right_value) < 0.0001
+
+    @staticmethod
+    def _charge_delta(left: Optional[float], right: Optional[float]) -> float:
+        left_value = 0.0 if left is None else float(left)
+        right_value = 0.0 if right is None else float(right)
+        return round(right_value - left_value, 4)
+
+    @staticmethod
+    def _display_optional_number(value: Optional[float]) -> Any:
+        return "-" if value is None else value
+
+    def _write_simple_tc_display_row(
+        self,
+        ws: openpyxl.worksheet.worksheet.Worksheet,
+        row_idx: int,
+        values: List[Any],
+        thin_border: Border,
+        fill: PatternFill,
+        wrap_columns: Set[int],
+    ) -> None:
+        for col_idx, value in enumerate(values, 1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.border = thin_border
+            cell.fill = fill
+            cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=col_idx in wrap_columns)
+
+    def _write_table_header(
+        self,
+        ws: openpyxl.worksheet.worksheet.Worksheet,
+        row_idx: int,
+        headers: List[str],
+        thin_border: Border,
+    ) -> None:
         for col_idx, header in enumerate(headers, 1):
-            cell = ws.cell(row=2, column=col_idx, value=header)
+            cell = ws.cell(row=row_idx, column=col_idx, value=header)
             cell.font = Font(bold=True, color="FFFFFFFF", size=11)
             cell.fill = PatternFill(start_color="FF4472C4", end_color="FF4472C4", fill_type="solid")
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             cell.border = thin_border
 
-        matched_count = 0
-        issue_count = 0
-        status_fills = {
-            "一致": PatternFill(start_color="FFDDFFDD", end_color="FFDDFFDD", fill_type="solid"),
-            "需核对": PatternFill(start_color="FFFFDDDD", end_color="FFFFDDDD", fill_type="solid"),
-            "缺失": PatternFill(start_color="FFFFDDDD", end_color="FFFFDDDD", fill_type="solid"),
-        }
-        for row_idx, row in enumerate(rows, 3):
-            values = [
-                row.status,
-                row.issue_detail,
-                row.po_number,
-                row.article,
-                row.style,
-                row.fty_quantity,
-                row.tc_quantity,
-                row.fty_goods_description,
-                row.tc_goods_description,
-                row.market_po,
-                row.source_invoice,
-                row.source_tc_pdf,
-            ]
-            if row.status == "一致":
-                matched_count += 1
-            else:
-                issue_count += 1
-            for col_idx, value in enumerate(values, 1):
-                cell = ws.cell(row=row_idx, column=col_idx, value=value)
-                cell.border = thin_border
-                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=col_idx in {2, 8, 9})
-                if col_idx == 1:
-                    fill = status_fills.get(row.status)
-                    if fill:
-                        cell.fill = fill
-                    cell.font = Font(bold=True)
-
-        self._adjust_column_widths(
-            ws,
-            {
-                1: 16,
-                2: 52,
-                3: 16,
-                4: 14,
-                5: 20,
-                8: 52,
-                9: 52,
-                11: 42,
-                12: 42,
-            },
-            {
-                1: 12,
-                2: 24,
-                3: 12,
-                4: 12,
-                5: 14,
-                6: 10,
-                7: 10,
-                8: 24,
-                9: 24,
-            },
-        )
-        ws.freeze_panes = "A3"
-        return {
-            "tc_count": len(rows),
-            "tc_matched_count": matched_count,
-            "tc_issue_count": issue_count,
-        }
+    def _write_tc_table_row(
+        self,
+        ws: openpyxl.worksheet.worksheet.Worksheet,
+        row_idx: int,
+        values: List[Any],
+        status: str,
+        status_fills: Dict[str, PatternFill],
+        thin_border: Border,
+        wrap_columns: Set[int],
+    ) -> None:
+        for col_idx, value in enumerate(values, 1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.border = thin_border
+            cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=col_idx in wrap_columns)
+            if col_idx == 1:
+                fill = status_fills.get(status)
+                if fill:
+                    cell.fill = fill
+                cell.font = Font(bold=True)
 
     def _write_packing_list_comparison_sheet(
         self,
@@ -1887,6 +2614,9 @@ class JesscaModule:
             'tc_count': 0,
             'tc_matched_count': 0,
             'tc_issue_count': 0,
+            'tc_summary_count': 0,
+            'tc_summary_issue_count': 0,
+            'tc_total_issue_count': 0,
             'output_path': None,
             'logs': []
         }
@@ -1906,6 +2636,7 @@ class JesscaModule:
 
             all_invoice_data: Dict[Tuple[str, str], Dict[str, float]] = {}
             all_invoice_records: List[InvoiceRecord] = []
+            invoice_summaries: List[InvoiceSummaryRecord] = []
             invoice_file_names: List[str] = []
             invoice_file_paths: List[str] = []
 
@@ -1924,6 +2655,7 @@ class JesscaModule:
 
                 try:
                     invoice_records = self.read_invoice_records(invoice_path)
+                    invoice_summaries.append(self.read_invoice_summary(invoice_path, invoice_records))
                     invoice_data = [
                         {
                             'article': record.article,
@@ -1978,6 +2710,7 @@ class JesscaModule:
 
             ensure_dir(output_dir)
             tc_comparison_rows: Optional[List[TcComparisonRow]] = None
+            tc_summary_rows: Optional[List[TcSummaryComparisonRow]] = None
             tc_confirmed_invoice_keys: Set[Tuple[str, str, str, int]] = set()
             effective_tc_paths = tc_invoice_paths if tc_invoice_paths is not None else (
                 [tc_invoice_path] if tc_invoice_path else []
@@ -1989,13 +2722,20 @@ class JesscaModule:
             if effective_tc_paths:
                 log(f"\n📄 正在读取 {len(effective_tc_paths)} 个 TC INV PDF...")
                 tc_records: List[TcInvoiceRecord] = []
+                tc_summaries: List[TcInvoiceSummary] = []
                 for index, current_tc_path in enumerate(effective_tc_paths, start=1):
                     tc_filename = os.path.basename(current_tc_path)
                     log(f"[{index}/{len(effective_tc_paths)}] 读取 TC INV：{tc_filename}")
-                    tc_records.extend(self.read_tc_invoice_records(current_tc_path))
+                    current_tc_records = self.read_tc_invoice_records(current_tc_path)
+                    tc_records.extend(current_tc_records)
+                    tc_summaries.append(self.read_tc_invoice_summary(current_tc_path, current_tc_records))
                 tc_comparison_rows = self.build_tc_invoice_comparison(
                     all_invoice_records,
                     tc_records,
+                )
+                tc_summary_rows = self.build_tc_invoice_summary_comparison(
+                    invoice_summaries,
+                    tc_summaries,
                 )
                 tc_confirmed_invoice_keys = self._build_tc_confirmed_invoice_keys(
                     all_invoice_records,
@@ -2004,9 +2744,14 @@ class JesscaModule:
                 result['tc_count'] = len(tc_comparison_rows)
                 result['tc_matched_count'] = sum(1 for row in tc_comparison_rows if row.status == "一致")
                 result['tc_issue_count'] = result['tc_count'] - result['tc_matched_count']
+                result['tc_summary_count'] = len(tc_summary_rows)
+                result['tc_summary_issue_count'] = sum(1 for row in tc_summary_rows if row.status != "一致")
+                result['tc_total_issue_count'] = result['tc_issue_count'] + result['tc_summary_issue_count']
                 log(
                     "✅ TC INV 核对完成："
-                    f"{result['tc_count']} 行，异常 {result['tc_issue_count']} 条"
+                    f"明细 {result['tc_count']} 行，"
+                    f"汇总 {result['tc_summary_count']} 行，"
+                    f"总异常 {result['tc_total_issue_count']} 条"
                 )
 
             if tc_confirmed_invoice_keys:
@@ -2034,6 +2779,7 @@ class JesscaModule:
                 ref_df,
                 output_path,
                 tc_comparison_rows=tc_comparison_rows,
+                tc_summary_rows=tc_summary_rows,
                 tc_confirmed_invoice_keys=tc_confirmed_invoice_keys,
             )
 
@@ -2043,6 +2789,15 @@ class JesscaModule:
             result['tc_count'] = save_result.get('tc_count', result['tc_count'])
             result['tc_matched_count'] = save_result.get('tc_matched_count', result['tc_matched_count'])
             result['tc_issue_count'] = save_result.get('tc_issue_count', result['tc_issue_count'])
+            result['tc_summary_count'] = save_result.get('tc_summary_count', result['tc_summary_count'])
+            result['tc_summary_issue_count'] = save_result.get(
+                'tc_summary_issue_count',
+                result['tc_summary_issue_count'],
+            )
+            result['tc_total_issue_count'] = save_result.get(
+                'tc_total_issue_count',
+                result['tc_total_issue_count'],
+            )
 
             log(f"\n{'='*80}")
             log(f"✅ 批量核对完成！")

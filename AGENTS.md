@@ -170,12 +170,13 @@
 ## 服务器部署规则
 
 1. 服务器 `~/TOS` 目录式 Docker Compose 部署必须遵循 `docs/server-deployment-runbook.md`，不要把 `~/TOS` 当作 Git 仓库直接 `git pull`。
-2. 默认服务器发布流程是：本地合并并推送到 Gitea `main`，服务器进入 `~/TOS-source`，执行 `git pull --ff-only origin main`，再运行 `scripts/server/deploy-gitea-main.sh` 在服务器本地生成发布包并部署到 `~/TOS`。
+2. 默认服务器发布流程是：本地合并并推送到 Gitea `main`，服务器执行快捷命令 `deploy-tos`。该命令指向 `/home/obito_li/server-scripts/deploy-tos.sh`，通过 `TOS_GITEA_REMOTE_URL=ssh://git@gitea-tos/luenthai-ai/TOS.git` 使用 Gitea deploy key 免密拉取代码，并调用 `scripts/server/deploy-gitea-main.sh` 在服务器本地生成发布包并部署到 `~/TOS`。
 3. 服务器部署默认只更新 `tos-backend` 和 `tos-frontend`，保留服务器侧 Dockerfile、`nginx.conf`、`docker-compose.tos.yml` 和 `authelia/`。
 4. 服务器部署不等于 Windows Electron 打包；只有发布桌面安装包、自动更新包或正式 Windows 客户端时，才运行 `npm run build:win`。
 5. `~/TOS/.deploy_uploads/` 仍作为部署脚本内部包落地和应用目录；只有 Gitea 或服务器拉代码不可用时，才退回“本机生成 `.tar.gz` 后手动上传 `.deploy_uploads`”的备用流程。
 6. 服务器发布包不包含 `tms-electron-app/automation-apps`、`automation-launcher`、`browser-plugins` 或 `external-apps`；桌面自动化修复需要单独走 Electron/automation helper 交付链路。
 7. 截图或服务器中如存在 `_deploy_uploads`、`_source_uploads`，视为历史目录；新流程不写入这些目录。
+8. `~/TOS-source` 仍是源码 Git checkout；`~/TOS` 仍是 Docker Compose 部署目录，不允许在 `~/TOS` 中执行 `git pull`。
 
 ## 可用检查命令
 

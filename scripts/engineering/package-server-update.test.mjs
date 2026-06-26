@@ -35,8 +35,28 @@ test('builds deterministic server archive names', () => {
 
 test('server apply script posts release update records after deploy verification', async () => {
   const deployScript = await readFile(new URL('../server/apply-server-update.sh', import.meta.url), 'utf8')
+  const backendWait = 'wait_for_command "backend API" curl -fsS http://127.0.0.1:18000/'
+  const frontendWait = 'wait_for_command "frontend static site" curl -fsSI http://127.0.0.1:18080/'
+
   assert.match(deployScript, /api\/release-updates/)
   assert.match(deployScript, /releaseUpdateRecord/)
+  assert.match(deployScript, /wait_for_command\(\) \{/)
+  assert.match(deployScript, /TOS_VERIFY_RETRIES:-30/)
+  assert.match(deployScript, /TOS_VERIFY_DELAY:-2/)
+  assert.match(deployScript, /wait_for_command "backend API" curl -fsS http:\/\/127\.0\.0\.1:18000\//)
+  assert.match(deployScript, /wait_for_command "frontend static site" curl -fsSI http:\/\/127\.0\.0\.1:18080\//)
+  assert.doesNotMatch(deployScript, /^curl -fsS http:\/\/127\.0\.0\.1:18000\/$/m)
+  assert.doesNotMatch(deployScript, /^curl -fsSI http:\/\/127\.0\.0\.1:18080\/$/m)
+
+  const backendWaitIndex = deployScript.indexOf(backendWait)
+  const frontendWaitIndex = deployScript.indexOf(frontendWait)
+  const syncCallIndex = deployScript.lastIndexOf('\nsync_release_update_record\n')
+
+  assert(backendWaitIndex > -1)
+  assert(frontendWaitIndex > -1)
+  assert(syncCallIndex > -1)
+  assert(backendWaitIndex < syncCallIndex)
+  assert(frontendWaitIndex < syncCallIndex)
 })
 
 test('server apply script replaces backend data files from the package', async () => {

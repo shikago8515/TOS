@@ -168,19 +168,21 @@ describe('releaseNotice', () => {
 
   it('keeps bundled release notes scoped to the current version changes', () => {
     expect(releaseNotes.added).toEqual([
-      '新增本地构建产物清理命令，可预览或清理桌面端、前端和后端生成物，默认保留依赖目录和上传运行数据。',
+      '新增浏览器自动化模块边界规范，明确后续自动化按业务页面拆分模块，避免新流程继续堆进单个 server.mjs。',
     ])
     expect(releaseNotes.improved).toEqual([
-      '桌面安装包后端运行时排除未使用的重型可选包，发布资源不再携带 Infornexus 外部应用运行缓存。',
-      '发布包校验新增重型运行时目录和外部应用 cache 泄漏检查，避免瘦身回退。',
+      '浏览器自动化执行失败时会识别非 JSON 响应、执行器断开、浏览器会话关闭和 Desktop Utility 连接超时，前端改为展示可操作的中文提示。',
+      '新龙泰 Shipping 账号档案改为新增 / 编辑弹窗管理，执行前要求选择已保存账号，减少误用临时账号。',
     ])
     expect(releaseNotes.fixed).toEqual([
-      '修复 Windows 环境下打包健康检查用 TOS.exe 运行 Node 脚本被拒绝时无法完成验证的问题。',
+      '修复自动化接口返回 HTML、空响应或执行器退出时只暴露 JSON.parse / 网络错误的问题。',
+      '修复 Infor Nexus Pack-Scan-Ship 未连接 Desktop Utility 时 Shipment Scan 等待超时提示不清晰的问题。',
     ])
     expect(releaseNotes.showPopup).toBe(false)
     expect(releaseNotes.modules.map((module) => module.name)).toEqual([
-      '桌面安装包 / 发布校验',
-      '工程脚本',
+      '网页自动化 / 本机执行器',
+      'Infor Nexus Shipping 自动化',
+      '工程规范',
     ])
   })
 })

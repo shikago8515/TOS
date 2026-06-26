@@ -46,13 +46,13 @@ npm run server:package:dry-run
 
 `npm run check:quick` 运行工程脚本测试、前端 typecheck/test、后端 unittest 和 Electron script tests；`npm run check` 运行工程脚本测试、完整前端、完整后端和 Electron 脚本检查。
 
-默认服务器发布在服务器 `~/TOS-source` 中执行 `git pull --ff-only origin main`，再运行 `scripts/server/deploy-gitea-main.sh` 本地生成并应用服务器发布包。备用方案才在本机生成发布包：
+默认服务器发布在服务器执行 `deploy-tos`，通过 Gitea deploy key 免密拉取 `main`，再调用 `scripts/server/deploy-gitea-main.sh` 本地生成并应用服务器发布包。备用方案才在本机生成发布包：
 
 ```powershell
 npm run server:package
 ```
 
-正式服务器发布前必须先推送并合并到 Gitea `main`。服务器 `~/TOS` 目录不是 Git 仓库，不在 `~/TOS` 执行 `git pull`；只有 `~/TOS-source` 是跟踪 Gitea `main` 的源码目录。
+正式服务器发布前必须先推送并合并到 Gitea `main`。服务器 `~/TOS` 目录不是 Git 仓库，不在 `~/TOS` 执行 `git pull`；只有 `~/TOS-source` 是跟踪 Gitea `main` 的源码目录。手动排障时才进入 `~/TOS-source` 执行 `git pull --ff-only origin main` 和 `bash scripts/server/deploy-gitea-main.sh`。
 
 GitCode CI 使用同一套根目录入口：在 runner 内下载 Node.js 22.11.0，先运行 `npm run ci:install` 安装依赖，再运行 `PYTHON=python3 npm run check`。该远端检查不触发 `npm run pack`、`npm run build:win` 或发布清单写入命令。
 

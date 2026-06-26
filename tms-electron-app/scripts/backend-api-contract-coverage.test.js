@@ -13,6 +13,7 @@ const fastApiSourceRoots = [
 ]
 const excludedFrontendPathParts = [
   `${path.sep}web-automation${path.sep}`,
+  `${path.sep}shipping-automation${path.sep}`,
   `${path.sep}shipping-automation-2${path.sep}`,
   `${path.sep}adidas-materials${path.sep}`,
 ]
@@ -24,7 +25,7 @@ function listFrontendSources(directory) {
     if (entry.isDirectory()) {
       return listFrontendSources(fullPath)
     }
-    if (!/\.(ts|vue|html)$/.test(entry.name)) {
+    if (!/\.(ts|vue|html)$/.test(entry.name) || /\.test\.ts$/.test(entry.name)) {
       return []
     }
     if (excludedFrontendPathParts.some((part) => fullPath.includes(part))) {

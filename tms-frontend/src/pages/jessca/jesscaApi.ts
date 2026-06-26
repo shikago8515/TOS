@@ -22,6 +22,9 @@ export interface JesscaProcessResponse {
   tc_count?: number
   tc_matched_count?: number
   tc_issue_count?: number
+  tc_summary_count?: number
+  tc_summary_issue_count?: number
+  tc_total_issue_count?: number
 }
 
 export async function processJesscaFiles(

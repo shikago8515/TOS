@@ -9,6 +9,25 @@ SRC="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 MANIFEST="$SRC/deploy/manifest.json"
 DEPLOY_ID="${DEPLOY_ID:-$(date +%Y%m%d%H%M%S)}"
 
+wait_for_command() {
+  local label="$1"
+  shift
+  local attempts="${TOS_VERIFY_RETRIES:-30}"
+  local delay="${TOS_VERIFY_DELAY:-2}"
+  local attempt=1
+
+  until "$@"; do
+    if [ "$attempt" -ge "$attempts" ]; then
+      echo "Verification failed for $label after $attempts attempts" >&2
+      return 1
+    fi
+
+    echo "Waiting for $label ($attempt/$attempts)" >&2
+    sleep "$delay"
+    attempt=$((attempt + 1))
+  done
+}
+
 test -f "$MANIFEST" || { echo "Missing manifest: $MANIFEST"; exit 1; }
 test -d "$SRC/tms-backend" || { echo "Missing backend source in package"; exit 1; }
 test -d "$SRC/tms-frontend" || { echo "Missing frontend source in package"; exit 1; }
@@ -50,8 +69,8 @@ sudo docker compose -f docker-compose.tos.yml build --no-cache tos-backend tos-f
 sudo docker compose -f docker-compose.tos.yml up -d tos-backend tos-frontend
 sudo docker compose -f docker-compose.tos.yml ps
 
-curl -fsS http://127.0.0.1:18000/
-curl -fsSI http://127.0.0.1:18080/
+wait_for_command "backend API" curl -fsS http://127.0.0.1:18000/
+wait_for_command "frontend static site" curl -fsSI http://127.0.0.1:18080/
 
 sync_release_update_record() {
   if ! command -v python3 >/dev/null 2>&1; then
