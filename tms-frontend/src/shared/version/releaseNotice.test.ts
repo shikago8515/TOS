@@ -168,9 +168,11 @@ describe('releaseNotice', () => {
 
   it('keeps bundled release notes scoped to the current version changes', () => {
     expect(releaseNotes.added).toEqual([
+      '新增自动化模块热更新链路，小助手和桌面端可按服务器 manifest 自动下载、校验并缓存 Shipping、Invoice、TC INV 等自动化模块包。',
       '新增浏览器自动化模块边界规范，明确后续自动化按业务页面拆分模块，避免新流程继续堆进单个 server.mjs。',
     ])
     expect(releaseNotes.improved).toEqual([
+      '自动化模块发布支持在服务器直接构建 zip 并上传 MinIO，后续修复可通过模块包下发，减少用户反复重装小助手。',
       '浏览器自动化执行失败时会识别非 JSON 响应、执行器断开、浏览器会话关闭和 Desktop Utility 连接超时，前端改为展示可操作的中文提示。',
       '新龙泰 Shipping 账号档案改为新增 / 编辑弹窗管理，执行前要求选择已保存账号，减少误用临时账号。',
     ])
@@ -180,6 +182,7 @@ describe('releaseNotice', () => {
     ])
     expect(releaseNotes.showPopup).toBe(false)
     expect(releaseNotes.modules.map((module) => module.name)).toEqual([
+      '自动化助手 / 模块热更新',
       '网页自动化 / 本机执行器',
       'Infor Nexus Shipping 自动化',
       '工程规范',
