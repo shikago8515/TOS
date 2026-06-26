@@ -1,5 +1,6 @@
 import {
   createTaskCenterRequestRecorder,
+  extractTaskCenterTasksFromRequestRecords,
   extractTicketOwnerRowsFromRequestRecords,
   summarizeTaskCenterRequestRecords,
 } from "./request-first.mjs";
@@ -11,6 +12,7 @@ import {
   normalizeText,
   resolveTicketOwnerRow,
 } from "./ticket-fields.mjs";
+import { buildTicketOwnerRowsFromTaskCenterTasks } from "./odata-lookups.mjs";
 
 const TASK_CENTER_TILE_SELECTORS = [
   "#__tile32",
@@ -45,7 +47,9 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
   );
   const requestFirst = options.requestFirst !== false;
   const requestRecorder = requestFirst
-    ? createTaskCenterRequestRecorder(page)
+    ? createTaskCenterRequestRecorder(page, {
+        maxRecords: options.diagnoseOnly ? 320 : 180,
+      })
     : null;
 
   let requestDiagnostics = null;
@@ -60,6 +64,24 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
     const requestCandidates = requestFirst
       ? extractTicketOwnerRowsFromRequestRecords(requestRecorder.records)
       : [];
+    const taskCenterTasks = requestFirst
+      ? extractTaskCenterTasksFromRequestRecords(requestRecorder.records)
+      : [];
+    const appSourceDiagnostics = options.diagnoseOnly && options.diagnoseAppSources
+      ? await inspectBusinessAppSources(page)
+      : [];
+    const odataLookup = requestFirst && !options.diagnoseSkipODataLookup
+      ? await buildTicketOwnerRowsFromTaskCenterTasks(page, taskCenterTasks, {
+        maxTicketCount,
+        maxTaskLookupCount: maxAttemptCount,
+        workflowTaskOnly: options.diagnoseWorkflowTaskOnly === true,
+      })
+      : null;
+
+    let uiLinkDiagnostics = [];
+    if (options.diagnoseOnly && options.diagnoseOpenUiLinks) {
+      uiLinkDiagnostics = await inspectTaskUiLinks(page, requestRecorder.records, options, timeoutMs);
+    }
 
     if (options.diagnoseOnly) {
       requestDiagnostics = requestRecorder.summarize();
@@ -74,9 +96,30 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
         ticketResults: [],
         failedTickets: [],
         requestFirst: requestDiagnostics,
+        odataLookup,
+        uiLinkDiagnostics,
+        appSourceDiagnostics,
         requestCandidates: requestCandidates.slice(0, 30),
         finalTaskCenterUrl: page.url(),
         message: `诊断模式已捕获 ${requestDiagnostics.recordCount} 条相关请求，识别 ${requestDiagnostics.candidateCount} 个候选 ticket。`,
+      };
+    }
+
+    if (odataLookup?.rows?.length > 0) {
+      requestDiagnostics = requestRecorder.summarize();
+      return {
+        ok: true,
+        rowCount: odataLookup.rows.length,
+        failedTicketCount: odataLookup.failedTickets.length,
+        attemptedTicketCount: odataLookup.rows.length + odataLookup.failedTickets.length,
+        selectedTaskTypes,
+        rows: odataLookup.rows,
+        ticketResults: odataLookup.ticketResults,
+        failedTickets: odataLookup.failedTickets,
+        requestFirst: requestDiagnostics,
+        odataLookup,
+        finalTaskCenterUrl: page.url(),
+        message: `已通过 Task Center + OData 请求生成 ${odataLookup.rows.length} 条 Ticket ownership 记录。`,
       };
     }
 
@@ -226,6 +269,206 @@ function extractCompleteRowsFromRequestRecords(records, maxTicketCount) {
     .filter((candidate) => candidate.missingFields.length === 0)
     .map((candidate) => candidate.row)
     .slice(0, maxTicketCount);
+}
+
+async function inspectTaskUiLinks(page, records, options, timeoutMs) {
+  const maxLinks = normalizePositiveInteger(options.diagnoseUiLinkCount, 3);
+  const tasks = pickDiagnosticUiLinkTasks(
+    extractTaskCenterTasksFromRequestRecords(records)
+      .filter((task) => task.uiLink && isTicketOwnerCandidate(task)),
+    maxLinks
+  );
+  const inspected = [];
+
+  for (const task of tasks) {
+    const appPage = await page.context().newPage();
+    try {
+      await appPage.goto(task.uiLink, {
+        waitUntil: "domcontentloaded",
+        timeout: Math.max(timeoutMs, 60000),
+      });
+      await appPage.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+      await pageWait(appPage, Number(options.diagnoseUiLinkWaitMs || 2500));
+      const sectionClicks = await clickDiagnosticSections(appPage);
+
+      inspected.push({
+        ok: true,
+        caseNumber: task.caseNumber,
+        taskType: task.taskType,
+        status: task.status,
+        uiLink: task.uiLink,
+        finalUrl: appPage.url(),
+        title: await safeTitle(appPage),
+        sectionClicks,
+        bodyTextSnippet: normalizeText(await readAllBodyText(appPage).catch(() => "")).slice(0, 1200),
+      });
+    } catch (error) {
+      inspected.push({
+        ok: false,
+        caseNumber: task.caseNumber,
+        taskType: task.taskType,
+        status: task.status,
+        uiLink: task.uiLink,
+        finalUrl: appPage.url(),
+        title: await safeTitle(appPage),
+        message: error?.message || "uiLink diagnostic failed",
+      });
+    } finally {
+      await appPage.close().catch(() => {});
+      await page.bringToFront().catch(() => {});
+    }
+  }
+
+  return inspected;
+}
+
+function pickDiagnosticUiLinkTasks(tasks, maxLinks) {
+  const picked = [];
+  const preferred = [
+    "provide feedback",
+    "review main ticket resolution",
+    "review sub-ticket resolution",
+  ];
+
+  for (const taskType of preferred) {
+    const task = tasks.find((item) => normalizeComparable(item.taskType).includes(taskType));
+    if (task && !picked.includes(task)) {
+      picked.push(task);
+    }
+    if (picked.length >= maxLinks) {
+      return picked;
+    }
+  }
+
+  for (const task of tasks) {
+    if (!picked.includes(task)) {
+      picked.push(task);
+    }
+    if (picked.length >= maxLinks) {
+      break;
+    }
+  }
+
+  return picked;
+}
+
+async function clickDiagnosticSections(page) {
+  const labels = [
+    "Release",
+    "Unrelease",
+    "Factory Price",
+    "PO Information",
+    "Customer Information",
+    "Product Information",
+    "Information",
+  ];
+  const results = [];
+
+  for (const label of labels) {
+    const clicked = await clickFirstVisibleText(page, label);
+    if (clicked) {
+      await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+      await pageWait(page, 800);
+    }
+    results.push({ label, clicked });
+  }
+
+  return results;
+}
+
+async function inspectBusinessAppSources(page) {
+  const appRoots = [
+    "/zscpoadecfs.comadidasproductsupplyzscpoadecfs/",
+    "/zscmnggtstkfs.comadidasproductsupplyzscmnggtstkfs/",
+  ];
+  const sourceFiles = [
+    "Component-preload.js",
+    "Component.js",
+    "manifest.json",
+  ];
+  const needles = [
+    "workingNumber",
+    "_RequestID",
+    "RequestID",
+    "userTaskId",
+    "currentStepCode",
+    "getCurrentTaskSettings",
+    "currentTaskSettings",
+    "startupParameters",
+    "CustomAttribute",
+    "customAttributes",
+    "PurchaseOrders",
+    "PurchaseOrderItems",
+    "ProcessRequests_Head",
+    "ProcessRequests_Items",
+    "ProcessRequests_Details_AggregationTree",
+    "MainAndSubProcessRequestItems",
+    "DetailsWithSingleItem",
+    "read(",
+    ".bind",
+    "bindList",
+  ];
+  const diagnostics = [];
+
+  for (const root of appRoots) {
+    for (const file of sourceFiles) {
+      const path = `${root}${file}`;
+      const source = await fetchTextFromPage(page, path);
+      diagnostics.push({
+        path,
+        ok: source.ok,
+        status: source.status,
+        length: source.text.length,
+        error: source.error || "",
+        hits: collectSourceHits(source.text, needles),
+      });
+    }
+  }
+
+  return diagnostics;
+}
+
+async function fetchTextFromPage(page, path) {
+  return page.evaluate(async (path) => {
+    const url = new URL(path, window.location.origin);
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      credentials: "include",
+      headers: {
+        accept: "text/javascript, application/javascript, application/json, text/plain, */*",
+      },
+    });
+    const text = await response.text();
+    return {
+      ok: response.ok,
+      status: response.status,
+      text: text.slice(0, 1200000),
+    };
+  }, path).catch((error) => ({
+    ok: false,
+    status: 0,
+    text: "",
+    error: error?.message || "fetch failed",
+  }));
+}
+
+function collectSourceHits(source, needles) {
+  const text = String(source || "");
+  const hits = [];
+  for (const needle of needles) {
+    let index = text.indexOf(needle);
+    let count = 0;
+    while (index >= 0 && count < 5) {
+      hits.push({
+        needle,
+        index,
+        snippet: normalizeText(text.slice(Math.max(0, index - 360), index + 780)),
+      });
+      index = text.indexOf(needle, index + needle.length);
+      count += 1;
+    }
+  }
+  return hits;
 }
 
 async function openTaskCenter(page, timeoutMs) {

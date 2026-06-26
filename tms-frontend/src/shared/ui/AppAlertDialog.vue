@@ -91,33 +91,34 @@ watch(current, async (value) => {
   position: fixed;
   inset: 0;
   z-index: 4000;
-  display: grid;
-  place-items: start center;
-  padding: 86px 20px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
 }
 
 .app-alert__backdrop {
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(180deg, rgba(248, 251, 255, 0.68), rgba(241, 246, 252, 0.42)),
-    rgba(15, 23, 42, 0.18);
-  backdrop-filter: blur(4px);
+  background: rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(6px);
 }
 
 .app-alert__dialog {
   position: relative;
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
-  gap: 14px;
-  width: min(520px, calc(100vw - 32px));
-  padding: 20px;
-  border: 1px solid rgba(203, 213, 225, 0.92);
-  border-radius: 18px;
-  background: #ffffff;
+  gap: 16px;
+  width: min(500px, calc(100vw - 32px));
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
   box-shadow:
-    0 24px 60px rgba(15, 23, 42, 0.18),
-    0 1px 2px rgba(15, 23, 42, 0.08);
+    0 4px 24px -1px rgba(15, 23, 42, 0.06),
+    0 25px 50px -12px rgba(15, 23, 42, 0.16),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
   color: #1e293b;
 }
 
@@ -127,51 +128,51 @@ watch(current, async (value) => {
   height: 42px;
   place-items: center;
   border-radius: 14px;
-  background: #e0f2fe;
-  color: #0284c7;
+  background: #f0f9ff;
+  color: #0ea5e9;
 }
 
 .app-alert__dialog--info {
-  --confirm-bg: linear-gradient(135deg, #19b7f1, #0d92d1);
-  --confirm-border: rgba(14, 165, 233, 0.2);
-  --confirm-shadow: 0 10px 22px rgba(14, 165, 233, 0.24);
-  --confirm-hover-shadow: 0 14px 26px rgba(14, 165, 233, 0.28);
+  --confirm-bg: linear-gradient(135deg, #38bdf8, #0284c7);
+  --confirm-border: rgba(14, 165, 233, 0.15);
+  --confirm-shadow: 0 8px 20px rgba(14, 165, 233, 0.22);
+  --confirm-hover-shadow: 0 12px 24px rgba(14, 165, 233, 0.28);
 }
 
 .app-alert__dialog--success {
-  --confirm-bg: linear-gradient(135deg, #10b981, #059669);
-  --confirm-border: rgba(16, 185, 129, 0.2);
-  --confirm-shadow: 0 10px 22px rgba(16, 185, 129, 0.24);
-  --confirm-hover-shadow: 0 14px 26px rgba(16, 185, 129, 0.28);
+  --confirm-bg: linear-gradient(135deg, #34d399, #059669);
+  --confirm-border: rgba(16, 185, 129, 0.15);
+  --confirm-shadow: 0 8px 20px rgba(16, 185, 129, 0.22);
+  --confirm-hover-shadow: 0 12px 24px rgba(16, 185, 129, 0.28);
 }
 
 .app-alert__dialog--warning {
-  --confirm-bg: linear-gradient(135deg, #f97316, #ea580c);
-  --confirm-border: rgba(249, 115, 22, 0.2);
-  --confirm-shadow: 0 10px 22px rgba(249, 115, 22, 0.24);
-  --confirm-hover-shadow: 0 14px 26px rgba(249, 115, 22, 0.28);
+  --confirm-bg: linear-gradient(135deg, #ff822d, #e05e00);
+  --confirm-border: rgba(249, 115, 22, 0.15);
+  --confirm-shadow: 0 8px 20px rgba(249, 115, 22, 0.22);
+  --confirm-hover-shadow: 0 12px 24px rgba(249, 115, 22, 0.28);
 }
 
 .app-alert__dialog--error {
-  --confirm-bg: linear-gradient(135deg, #ef4444, #dc2626);
-  --confirm-border: rgba(239, 68, 68, 0.2);
-  --confirm-shadow: 0 10px 22px rgba(239, 68, 68, 0.24);
-  --confirm-hover-shadow: 0 14px 26px rgba(239, 68, 68, 0.28);
+  --confirm-bg: linear-gradient(135deg, #f43f5e, #dc2626);
+  --confirm-border: rgba(239, 68, 68, 0.15);
+  --confirm-shadow: 0 8px 20px rgba(239, 68, 68, 0.22);
+  --confirm-hover-shadow: 0 12px 24px rgba(239, 68, 68, 0.28);
 }
 
 .app-alert__dialog--success .app-alert__mark {
-  background: #dcfce7;
-  color: #059669;
+  background: #ecfdf5;
+  color: #10b981;
 }
 
 .app-alert__dialog--warning .app-alert__mark {
   background: #fff7ed;
-  color: #ea580c;
+  color: #f97316;
 }
 
 .app-alert__dialog--error .app-alert__mark {
-  background: #fee2e2;
-  color: #dc2626;
+  background: #fff5f5;
+  color: #ef4444;
 }
 
 .app-alert__mark :deep(.app-icon) {
@@ -185,17 +186,18 @@ watch(current, async (value) => {
 
 .app-alert__title {
   margin: 0;
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 800;
   line-height: 1.35;
   color: #0f172a;
+  letter-spacing: -0.01em;
 }
 
 .app-alert__message {
   margin: 8px 0 0;
   color: #475569;
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.65;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -204,41 +206,46 @@ watch(current, async (value) => {
   grid-column: 1 / -1;
   display: flex;
   justify-content: flex-end;
-  margin-top: 2px;
+  margin-top: 6px;
 }
 
 .app-alert__confirm {
-  min-width: 86px;
-  height: 40px;
-  padding: 0 18px;
-  border: 1px solid var(--confirm-border, rgba(14, 165, 233, 0.2));
-  border-radius: 12px;
-  background: var(--confirm-bg, linear-gradient(135deg, #19b7f1, #0d92d1));
+  min-width: 90px;
+  height: 38px;
+  padding: 0 20px;
+  border: 1px solid var(--confirm-border);
+  border-radius: 11px;
+  background: var(--confirm-bg);
   color: #ffffff;
-  font-weight: 800;
+  font-weight: 700;
+  font-size: 13.5px;
   cursor: pointer;
-  box-shadow: var(--confirm-shadow, 0 10px 22px rgba(14, 165, 233, 0.24));
-  transition: all 0.2s ease;
+  box-shadow: var(--confirm-shadow);
+  transition: all 0.22s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .app-alert__confirm:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--confirm-hover-shadow, 0 14px 26px rgba(14, 165, 233, 0.28));
+  transform: translateY(-1.5px);
+  box-shadow: var(--confirm-hover-shadow);
+}
+
+.app-alert__confirm:active {
+  transform: translateY(0);
 }
 
 .app-alert__confirm:focus-visible {
-  outline: 3px solid var(--confirm-border, rgba(14, 165, 233, 0.2));
+  outline: 3px solid var(--confirm-border);
   outline-offset: 3px;
 }
 
 .app-alert-enter-active,
 .app-alert-leave-active {
-  transition: opacity 0.18s ease;
+  transition: opacity 0.2s ease;
 }
 
 .app-alert-enter-active .app-alert__dialog,
 .app-alert-leave-active .app-alert__dialog {
-  transition: transform 0.18s ease, opacity 0.18s ease;
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
 }
 
 .app-alert-enter-from,
@@ -246,28 +253,32 @@ watch(current, async (value) => {
   opacity: 0;
 }
 
-.app-alert-enter-from .app-alert__dialog,
+.app-alert-enter-from .app-alert__dialog {
+  opacity: 0;
+  transform: scale(0.95) translateY(10px);
+}
+
 .app-alert-leave-to .app-alert__dialog {
   opacity: 0;
-  transform: translateY(-10px);
+  transform: scale(0.97) translateY(-8px);
 }
 
 @media (max-width: 640px) {
   .app-alert {
-    padding-top: 72px;
+    padding: 16px;
   }
 
   .app-alert__dialog {
     grid-template-columns: 36px minmax(0, 1fr);
     gap: 12px;
-    padding: 16px;
+    padding: 18px;
     border-radius: 16px;
   }
 
   .app-alert__mark {
     width: 36px;
     height: 36px;
-    border-radius: 12px;
+    border-radius: 11px;
   }
 }
 </style>

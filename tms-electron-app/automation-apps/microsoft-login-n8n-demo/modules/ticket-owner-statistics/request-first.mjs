@@ -133,6 +133,8 @@ export function summarizeTaskCenterRequestRecords(records) {
     endpointGroups: groupRecordsByEndpoint(normalizedRecords),
     taskDefinitionHints: extractTaskDefinitionHints(normalizedRecords),
     taskSamples: taskSamples.slice(0, 40),
+    manifestHints: extractManifestHints(normalizedRecords),
+    odataMetadataHints: extractODataMetadataHints(normalizedRecords),
     uiLinkSamples: taskSamples
       .filter((item) => item.uiLink)
       .slice(0, 20)
@@ -276,6 +278,94 @@ function extractTaskDefinitionHints(records) {
   }
 
   return hints.slice(0, 80);
+}
+
+function extractManifestHints(records) {
+  const hints = [];
+  for (const record of records) {
+    if (!record?.json || !String(record.url || "").includes("manifest.json")) {
+      continue;
+    }
+
+    const app = record.json["sap.app"] || {};
+    const ui5 = record.json["sap.ui5"] || {};
+    const dataSources = app.dataSources || {};
+    hints.push({
+      url: trimUrl(record.url),
+      appId: app.id || "",
+      title: app.title || "",
+      applicationVersion: app.applicationVersion?.version || "",
+      componentName: ui5.componentName || "",
+      dataSources: Object.entries(dataSources).map(([name, source]) => ({
+        name,
+        uri: source?.uri || "",
+        type: source?.type || "",
+        odataVersion: source?.settings?.odataVersion || "",
+        localUri: source?.settings?.localUri || "",
+      })),
+      models: Object.entries(ui5.models || {}).map(([name, model]) => ({
+        name,
+        dataSource: model?.dataSource || "",
+        type: model?.type || "",
+      })),
+    });
+  }
+
+  return hints.slice(0, 40);
+}
+
+function extractODataMetadataHints(records) {
+  const hints = [];
+  for (const record of records) {
+    if (!String(record?.url || "").includes("$metadata")) {
+      continue;
+    }
+
+    const text = record.bodySnippet || "";
+    hints.push({
+      url: trimUrl(record.url),
+      entitySets: uniqueMatches(text, /<EntitySet\s+Name="([^"]+)"/g).slice(0, 80),
+      entityTypes: uniqueMatches(text, /<EntityType\s+Name="([^"]+)"/g).slice(0, 80),
+      entityDetails: extractMetadataEntityDetails(text),
+      functionImports: uniqueMatches(text, /<FunctionImport\s+Name="([^"]+)"/g).slice(0, 80),
+      actionImports: uniqueMatches(text, /<ActionImport\s+Name="([^"]+)"/g).slice(0, 80),
+      singletons: uniqueMatches(text, /<Singleton\s+Name="([^"]+)"/g).slice(0, 80),
+    });
+  }
+
+  return hints.slice(0, 40);
+}
+
+function extractMetadataEntityDetails(text) {
+  const wantedPattern = /(ProcessRequests|ProcessRequest|PurchaseOrder|POs|Decision|Feedback|History|Item|Head|Detail|Ticket|BusinessPartner)/i;
+  const details = [];
+  const entityRegex = /<EntityType\s+Name="([^"]+)"[^>]*>([\s\S]*?)<\/EntityType>/g;
+  for (const match of String(text || "").matchAll(entityRegex)) {
+    const name = normalizeText(match[1]);
+    if (!wantedPattern.test(name)) {
+      continue;
+    }
+
+    const body = match[2] || "";
+    details.push({
+      name,
+      keys: uniqueMatches(body, /<PropertyRef\s+Name="([^"]+)"/g).slice(0, 20),
+      properties: Array.from(body.matchAll(/<Property\s+Name="([^"]+)"\s+Type="([^"]+)"/g))
+        .map((propertyMatch) => ({
+          name: normalizeText(propertyMatch[1]),
+          type: normalizeText(propertyMatch[2]),
+        }))
+        .slice(0, 80),
+      navigationProperties: Array.from(body.matchAll(/<NavigationProperty\s+Name="([^"]+)"\s+[^>]*Type="([^"]+)"/g))
+        .map((navigationMatch) => ({
+          name: normalizeText(navigationMatch[1]),
+          type: normalizeText(navigationMatch[2]),
+        }))
+        .slice(0, 50),
+    });
+  }
+
+  return details.slice(0, 80);
 }
 
 function buildTaskDefinitionLookup(hints) {
@@ -576,6 +666,14 @@ function looksLikeJson(text) {
     (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
     (trimmed.startsWith("[") && trimmed.endsWith("]"))
   );
+}
+
+function uniqueMatches(text, regex) {
+  return Array.from(new Set(
+    Array.from(String(text || "").matchAll(regex))
+      .map((match) => normalizeText(match[1]))
+      .filter(Boolean)
+  ));
 }
 
 function trimUrl(url) {
