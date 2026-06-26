@@ -4,8 +4,11 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const componentPath = fileURLToPath(new URL('./components/AutomationCredentialsPanel.vue', import.meta.url))
+const accountProfileManagerPath = fileURLToPath(new URL('./components/AutomationAccountProfileManager.vue', import.meta.url))
+const accountProfileManagerSource = readWorkspaceSource('./components/AutomationAccountProfileManager.vue')
 const poAutoDownloadSource = readWorkspaceSource('../po-auto-download/components/PoAutoDownloadWorkspace.vue')
 const shippingAutomationSource = readWorkspaceSource('../shipping-automation/components/ShippingAutomationWorkspace.vue')
+const tcInvAutomationSource = readWorkspaceSource('../tc-inv-automation/components/TcInvAutomationWorkspace.vue')
 const xinlongtaiShippingSource = readWorkspaceSource('../xinlongtai-shipping-automation/components/XinlongtaiShippingAutomationWorkspace.vue')
 
 function readWorkspaceSource(relativePath: string): string {
@@ -17,30 +20,52 @@ describe('AutomationCredentialsPanel source integration', () => {
     expect(existsSync(componentPath)).toBe(true)
   })
 
-  it('uses the shared credentials panel in the adopted Jessica automation pages', () => {
-    for (const source of [
-      poAutoDownloadSource,
-      shippingAutomationSource,
-    ]) {
-      expect(source).toContain('AutomationCredentialsPanel')
-    }
+  it('provides a shared account profile manager component', () => {
+    expect(existsSync(accountProfileManagerPath)).toBe(true)
+    expect(accountProfileManagerSource).toContain('账号档案')
+    expect(accountProfileManagerSource).toContain('保存名称')
+    expect(accountProfileManagerSource).toContain('profileCaches')
+    expect(accountProfileManagerSource).toContain('resolveCredentials')
   })
 
-  it('keeps the standalone Xinlongtai account profile controls', () => {
-    expect(xinlongtaiShippingSource).toContain('账号档案')
-    expect(xinlongtaiShippingSource).toContain('保存名称')
-    expect(xinlongtaiShippingSource).toContain('deleteCredentialProfile')
-    expect(xinlongtaiShippingSource).toContain('pendingCredentialDeleteKey')
-    expect(xinlongtaiShippingSource).toContain('sa-cred-profile-grid')
-    expect(xinlongtaiShippingSource).toContain('sa-profile-')
+  it('uses the shared credentials panel in the adopted Jessica shipping automation page', () => {
+    expect(shippingAutomationSource).toContain('AutomationCredentialsPanel')
   })
 
-  it('loads selectable credential options in Wandai and Xinlongtai shipping pages', () => {
-    for (const source of [shippingAutomationSource, xinlongtaiShippingSource]) {
-      expect(source).toContain('fetchExecutorCredentialOptions')
-      expect(source).toContain('selectCredentialOption')
-      expect(source).toContain('credentialOptions')
-      expect(source).toContain('selectedCredentialKey')
+  it('uses the shared account profile manager in Invoice, Xinlongtai, and TC INV pages', () => {
+    for (const source of [poAutoDownloadSource, xinlongtaiShippingSource, tcInvAutomationSource]) {
+      expect(source).toContain('AutomationAccountProfileManager')
+      expect(source).toContain('credentialProfileRef')
+      expect(source).toContain('handleCredentialState')
+      expect(source).not.toContain('saveCredentialEditor')
+      expect(source).not.toContain('deleteCredentialProfile')
+      expect(source).not.toContain('pendingCredentialDeleteKey')
     }
+    expect(poAutoDownloadSource).not.toContain('AutomationCredentialsPanel')
+  })
+
+  it('loads selectable credential options through shared account profile manager', () => {
+    expect(accountProfileManagerSource).toContain('fetchExecutorCredentialOptions')
+    expect(accountProfileManagerSource).toContain('selectCredentialOption')
+    expect(accountProfileManagerSource).toContain('credentialOptions')
+    expect(accountProfileManagerSource).toContain('selectedCredentialKey')
+    expect(shippingAutomationSource).toContain('fetchExecutorCredentialOptions')
+  })
+
+  it('checks PO template availability before opening the download endpoint', () => {
+    expect(poAutoDownloadSource).toContain('/api/system/config/po-auto-download/template/status')
+    expect(poAutoDownloadSource).toContain('/api/system/config/po-auto-download/template/download')
+    expect(poAutoDownloadSource.indexOf('TEMPLATE_STATUS_PATH')).toBeLessThan(
+      poAutoDownloadSource.indexOf('TEMPLATE_DOWNLOAD_PATH'),
+    )
+  })
+
+  it('does not resolve encrypted passwords while merely switching account profiles', () => {
+    const applyStart = accountProfileManagerSource.indexOf('async function applyCredentialKey')
+    const applyEnd = accountProfileManagerSource.indexOf('function applyResolvedCredential')
+    expect(applyStart).toBeGreaterThan(-1)
+    expect(applyEnd).toBeGreaterThan(applyStart)
+    const applyCredentialKeySource = accountProfileManagerSource.slice(applyStart, applyEnd)
+    expect(applyCredentialKeySource).not.toContain('resolveAutomationCredentials')
   })
 })

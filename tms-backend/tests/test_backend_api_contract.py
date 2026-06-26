@@ -62,6 +62,18 @@ class BackendApiContractTests(unittest.TestCase):
                 "responses"
             ]["200"]["content"],
         )
+        self.assertIn(
+            "$ref",
+            paths["/api/system/config/automation-modules"]["get"]["responses"]["200"][
+                "content"
+            ]["application/json"]["schema"],
+        )
+        self.assertIn(
+            "application/zip",
+            paths["/api/system/config/automation-modules/{module_id}/download"]["get"][
+                "responses"
+            ]["200"]["content"],
+        )
 
 
 if __name__ == "__main__":

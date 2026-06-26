@@ -4,9 +4,11 @@
   "noticeId": "2026-06-26-browser-automation-error-handling",
   "showPopup": false,
   "added": [
+    "新增自动化模块热更新链路，小助手和桌面端可按服务器 manifest 自动下载、校验并缓存 Shipping、Invoice、TC INV 等自动化模块包。",
     "新增浏览器自动化模块边界规范，明确后续自动化按业务页面拆分模块，避免新流程继续堆进单个 server.mjs。"
   ],
   "improved": [
+    "自动化模块发布支持在服务器直接构建 zip 并上传 MinIO，后续修复可通过模块包下发，减少用户反复重装小助手。",
     "浏览器自动化执行失败时会识别非 JSON 响应、执行器断开、浏览器会话关闭和 Desktop Utility 连接超时，前端改为展示可操作的中文提示。",
     "新龙泰 Shipping 账号档案改为新增 / 编辑弹窗管理，执行前要求选择已保存账号，减少误用临时账号。"
   ],
@@ -15,6 +17,15 @@
     "修复 Infor Nexus Pack-Scan-Ship 未连接 Desktop Utility 时 Shipment Scan 等待超时提示不清晰的问题。"
   ],
   "modules": [
+    {
+      "name": "自动化助手 / 模块热更新",
+      "added": [
+        "新增服务器自动化模块 manifest、下载接口和本地缓存加载能力。"
+      ],
+      "improved": [
+        "自动化模块包支持独立版本号，服务器可发布高于安装包内置版本的模块更新。"
+      ]
+    },
     {
       "name": "网页自动化 / 本机执行器",
       "improved": [

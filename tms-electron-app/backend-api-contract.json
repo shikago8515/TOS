@@ -33,6 +33,8 @@
     "/api/release-updates",
     "/api/sophia-tina/download/{filename}",
     "/api/sophia-tina/process",
+    "/api/system/config/automation-modules",
+    "/api/system/config/automation-modules/{module_id}/download",
     "/api/system/config/automation-helper/download",
     "/api/system/config/automation-helper/payload",
     "/api/system/config/automation-helper/payload/{payload_sha256}",

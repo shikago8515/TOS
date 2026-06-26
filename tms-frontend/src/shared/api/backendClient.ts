@@ -12,6 +12,7 @@ export interface JsonRequestOptions {
   path: string
   body?: unknown
   requireRuntimeVersion?: boolean
+  timeoutMs?: number
 }
 
 export interface ResponseMessageContext {
@@ -139,6 +140,7 @@ export async function requestBackendJson<TResponse>({
   path,
   body,
   requireRuntimeVersion = false,
+  timeoutMs = 20000,
 }: JsonRequestOptions): Promise<TResponse> {
   const baseUrl = await getBackendBaseUrl()
   if (requireRuntimeVersion) {
@@ -153,14 +155,28 @@ export async function requestBackendJson<TResponse>({
   }
 
   let response: Response
+  const controller = Number.isFinite(timeoutMs) && timeoutMs > 0
+    ? new AbortController()
+    : undefined
+  const timeoutId = controller
+    ? globalThis.setTimeout(() => controller.abort(), timeoutMs)
+    : undefined
   try {
-    response = await fetch(buildBackendUrl(baseUrl, path), {
+    const requestInit: RequestInit = {
       method,
       headers,
       body: requestBody,
-    })
+    }
+    if (controller) {
+      requestInit.signal = controller.signal
+    }
+    response = await fetch(buildBackendUrl(baseUrl, path), requestInit)
   } catch (_error) {
     throw new Error(backendConnectionErrorMessage)
+  } finally {
+    if (timeoutId !== undefined) {
+      globalThis.clearTimeout(timeoutId)
+    }
   }
   const text = await response.text()
   const data = parseJsonResponse<TResponse>(text, { status: response.status, path })

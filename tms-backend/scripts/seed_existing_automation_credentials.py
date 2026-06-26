@@ -25,6 +25,7 @@ INFOR_NEXUS_AUTOMATION_IDS = [
 ]
 MICROSOFT_AUTOMATION_IDS = [
     "microsoft-login-n8n",
+    "ticket-owner-statistics",
 ]
 
 LEGACY_SECRET_CANDIDATES = [

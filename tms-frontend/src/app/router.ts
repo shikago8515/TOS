@@ -8,7 +8,6 @@ import EricPage from '../pages/eric/EricPage.vue'
 import HomePage from '../pages/home/HomePage.vue'
 import IplexDualTableComparePage from '../pages/iplex-dual-table-compare/IplexDualTableComparePage.vue'
 import InfornexusAutoAddPage from '../pages/infornexus-auto-add/InfornexusAutoAddPage.vue'
-import InfornexusPage from '../pages/infornexus/InfornexusPage.vue'
 import JasonPdfReorderPage from '../pages/jason-pdf-reorder/JasonPdfReorderPage.vue'
 import JaneBomComparePage from '../pages/jane-bom-compare/JaneBomComparePage.vue'
 import JaneBomSummaryPage from '../pages/jane-bom-summary/JaneBomSummaryPage.vue'
@@ -22,6 +21,7 @@ import ReleaseUpdatesPage from '../pages/release-updates/ReleaseUpdatesPage.vue'
 import SettingsPage from '../pages/settings/SettingsPage.vue'
 import ShippingAutomationPage from '../pages/shipping-automation/ShippingAutomationPage.vue'
 import ShippingAutomation2Page from '../pages/shipping-automation-2/ShippingAutomation2Page.vue'
+import TcInvAutomationPage from '../pages/tc-inv-automation/TcInvAutomationPage.vue'
 import XinlongtaiShippingAutomationPage from '../pages/xinlongtai-shipping-automation/XinlongtaiShippingAutomationPage.vue'
 import PoAutoDownloadPage from '../pages/po-auto-download/PoAutoDownloadPage.vue'
 import SophiaTinaPage from '../pages/sophia-tina/SophiaTinaPage.vue'
@@ -42,6 +42,7 @@ const routeComponents: Partial<Record<string, Component>> = {
   'jason-pdf-reorder': JasonPdfReorderPage,
   'web-automation-scenario-shipping-automation': ShippingAutomationPage,
   'web-automation-scenario-xinlongtai-shipping-automation': XinlongtaiShippingAutomationPage,
+  'web-automation-scenario-tc-inv-automation': TcInvAutomationPage,
   'web-automation-scenario-po-auto-download': PoAutoDownloadPage,
   'draft-packing-compare': DraftPackingComparePage,
   'tms-finance-internal-reconciliation': TmsFinanceInternalReconciliationPage,
@@ -50,7 +51,6 @@ const routeComponents: Partial<Record<string, Component>> = {
   'jane-sap': JaneSapPage,
   'sophia-tina': SophiaTinaPage,
   'web-automation': WebAutomationPage,
-  infornexus: InfornexusPage,
   'adidas-materials': AdidasMaterialsPage,
   settings: SettingsPage,
 }
@@ -87,6 +87,14 @@ const scenarioRoutes: RouteRecordRaw[] = [
     component: XinlongtaiShippingAutomationPage,
     meta: {
       title: '新龙泰-shipping 自动化',
+    },
+  },
+  {
+    path: '/web-automation/scenarios/tc-inv-automation',
+    name: 'web-automation-scenario-tc-inv-automation',
+    component: TcInvAutomationPage,
+    meta: {
+      title: 'TC INV 自动化',
     },
   },
   {

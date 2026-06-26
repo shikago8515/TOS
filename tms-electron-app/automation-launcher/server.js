@@ -23,6 +23,10 @@ const installerVersionsUrl = process.env.TOS_INSTALLER_VERSIONS_URL
   || 'https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/installer-versions'
 const helperInstallerDownloadUrl = process.env.TOS_AUTOMATION_HELPER_DOWNLOAD_URL
   || 'https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/automation-helper/download'
+const automationModuleManifestUrl = process.env.TOS_AUTOMATION_MODULE_MANIFEST_URL
+  || process.env.TMS_AUTOMATION_MODULE_MANIFEST_URL
+  || 'https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/automation-modules'
+const enableModuleUpdates = process.env.TOS_AUTOMATION_MODULE_UPDATES !== '0'
 const automationAppRoot = process.env.TMS_AUTOMATION_APP_ROOT
   ? path.resolve(process.env.TMS_AUTOMATION_APP_ROOT)
   : path.resolve(__dirname, '..', 'automation-apps')
@@ -37,6 +41,8 @@ const sharedOptions = {
   processMap,
   userDataDir,
   helperVersion,
+  automationModuleManifestUrl,
+  enableModuleUpdates,
   baseEnv: helperVersion
     ? { TOS_AUTOMATION_HELPER_VERSION: helperVersion }
     : {},
@@ -69,6 +75,8 @@ const server = http.createServer(async (req, res) => {
         pid: process.pid,
         automationAppRoot,
         userDataDir,
+        automationModuleManifestUrl,
+        enableModuleUpdates,
         trackedAppCount: processMap.size,
       })
       return

@@ -41,6 +41,7 @@ describe('moduleCatalog', () => {
   it('exposes Jessica browser automation entries directly in the sidebar', () => {
     const shippingModule = getModuleById('shipping-automation')
     const xinlongtaiModule = getModuleById('xinlongtai-shipping-automation')
+    const tcInvModule = getModuleById('tc-inv-automation')
     const poAutoDownloadModule = getModuleById('po-auto-download')
     const jessicaModules = getModulesByGroup('jessica')
     const jasonModules = getModulesByGroup('jason')
@@ -69,10 +70,19 @@ describe('moduleCatalog', () => {
       navLabel: 'Invoice 自动下载',
       category: 'browser-automation',
     })
+    expect(tcInvModule).toMatchObject({
+      group: 'jessica',
+      path: '/web-automation/scenarios/tc-inv-automation',
+      routeName: 'web-automation-scenario-tc-inv-automation',
+      title: 'Jessica / TC INV 自动化',
+      navLabel: 'TC INV 自动化',
+      category: 'browser-automation',
+    })
     expect(jessicaModuleIds).toEqual(
       expect.arrayContaining([
         'shipping-automation',
         'xinlongtai-shipping-automation',
+        'tc-inv-automation',
         'po-auto-download',
       ]),
     )
@@ -84,6 +94,9 @@ describe('moduleCatalog', () => {
       jessicaModuleIds.indexOf('shipping-automation'),
     )
     expect(jessicaModuleIds.indexOf('po-auto-download')).toBeGreaterThan(
+      jessicaModuleIds.indexOf('tc-inv-automation'),
+    )
+    expect(jessicaModuleIds.indexOf('tc-inv-automation')).toBeGreaterThan(
       jessicaModuleIds.indexOf('xinlongtai-shipping-automation'),
     )
   })
@@ -249,5 +262,6 @@ describe('moduleCatalog', () => {
       stage: 'validation',
     })
     expect(moduleIds).not.toContain('browser-plugins')
+    expect(moduleIds).not.toContain('infornexus')
   })
 })

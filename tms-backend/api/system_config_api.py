@@ -10,8 +10,9 @@ from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
 from app_version import APP_VERSION
+from utils.automation_module_manifest import read_automation_module_manifest
 from utils.installer_manifest import read_installer_manifest
-from utils.minio_storage import get_minio_bucket, get_object_response
+from utils.minio_storage import get_minio_bucket, get_object_response, object_exists
 from utils.settings import get_settings, get_settings_summary, resolve_settings_path
 
 
@@ -44,6 +45,34 @@ PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_BUCKET_KEY = "templates"
 PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_OBJECT_KEY = "po-auto-download/po-auto-download-template.xls"
 PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_FILENAME = "PO 自动下载模板.XLS"
 PO_AUTO_DOWNLOAD_TEMPLATE_CONTENT_TYPE = "application/vnd.ms-excel"
+AUTOMATION_MODULE_DEFAULT_BUCKET_KEY = "downloads"
+AUTOMATION_MODULE_CONTENT_TYPE = "application/zip"
+
+
+def _po_auto_download_template_config() -> dict[str, str]:
+    template_config = (
+        get_settings()
+        .get("downloads", {})
+        .get("po_auto_download_template", {})
+    )
+    return {
+        "bucket": str(
+            template_config.get("bucket")
+            or get_minio_bucket(PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_BUCKET_KEY)
+        ),
+        "object_key": str(
+            template_config.get("object_key")
+            or PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_OBJECT_KEY
+        ),
+        "filename": str(
+            template_config.get("filename")
+            or PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_FILENAME
+        ),
+        "content_type": str(
+            template_config.get("content_type")
+            or PO_AUTO_DOWNLOAD_TEMPLATE_CONTENT_TYPE
+        ),
+    }
 
 
 def _versioned_download_filename(configured_filename: Any, legacy_filename: str, versioned_filename: str) -> str:
@@ -118,6 +147,35 @@ class InstallerVersionsResponse(BaseModel):
     packages: list[InstallerPackageInfo]
 
 
+class AutomationModuleInfo(BaseModel):
+    id: str
+    name: str
+    provider: str = ""
+    category: str = "Web Automation"
+    version: str
+    requiredHelperVersion: str = ""
+    description: str = ""
+    appDir: str
+    entry: str = "bin/start.js"
+    defaultPort: int = 3100
+    filename: str
+    downloadPath: str
+    bucket: str
+    objectKey: str
+    contentType: str
+    fileSize: int | None = None
+    sha256: str | None = None
+    updatedAt: str | None = None
+    source: str = "manifest"
+
+
+class AutomationModulesResponse(BaseModel):
+    ok: bool
+    version: str
+    manifestUpdatedAt: str | None = None
+    modules: list[AutomationModuleInfo]
+
+
 HELPER_INSTALLER_RESPONSE = {
     "description": "TOS automation helper installer download.",
     "content": {HELPER_CONTENT_TYPE: {}},
@@ -141,6 +199,10 @@ TOS_DESKTOP_PAYLOAD_RESPONSE = {
 PO_AUTO_DOWNLOAD_TEMPLATE_RESPONSE = {
     "description": "PO auto download Excel template.",
     "content": {PO_AUTO_DOWNLOAD_TEMPLATE_CONTENT_TYPE: {}},
+}
+AUTOMATION_MODULE_RESPONSE = {
+    "description": "TOS automation module package download.",
+    "content": {AUTOMATION_MODULE_CONTENT_TYPE: {}},
 }
 
 
@@ -176,6 +238,57 @@ async def installer_versions() -> dict[str, Any]:
             fallback_packages["automation-helper"],
         ],
     }
+
+
+@router.get("/automation-modules", response_model=AutomationModulesResponse)
+async def automation_modules() -> dict[str, Any]:
+    manifest = read_automation_module_manifest()
+    modules = [
+        _normalize_automation_module(module_id, module)
+        for module_id, module in _automation_module_entries(manifest).items()
+    ]
+    return {
+        "ok": True,
+        "version": str(manifest.get("version") or manifest.get("appVersion") or APP_VERSION),
+        "manifestUpdatedAt": manifest.get("updatedAt"),
+        "modules": modules,
+    }
+
+
+@router.get(
+    "/automation-modules/{module_id}/download",
+    response_class=StreamingResponse,
+    responses={200: AUTOMATION_MODULE_RESPONSE},
+)
+async def automation_module_download(module_id: str) -> StreamingResponse:
+    module = _automation_module_entries(read_automation_module_manifest()).get(module_id)
+    if not module:
+        raise HTTPException(status_code=404, detail=f"Automation module not found: {module_id}")
+
+    normalized = _normalize_automation_module(module_id, module)
+    try:
+        response = get_object_response(normalized["bucket"], normalized["objectKey"])
+    except Exception as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Automation module package has not been uploaded to MinIO: {module_id}",
+        ) from exc
+
+    fallback_filename = f"{module_id}.zip"
+    encoded_filename = quote(normalized["filename"])
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="{fallback_filename}"; '
+            f"filename*=UTF-8''{encoded_filename}"
+        ),
+        "Cache-Control": "no-store",
+    }
+    return StreamingResponse(
+        response.stream(64 * 1024),
+        media_type=normalized["contentType"],
+        headers=headers,
+        background=BackgroundTask(response.close),
+    )
 
 
 @router.get(
@@ -479,32 +592,30 @@ async def tos_desktop_versioned_payload_download(
     )
 
 
+@router.get("/po-auto-download/template/status")
+async def po_auto_download_template_status() -> dict[str, Any]:
+    config = _po_auto_download_template_config()
+    available = object_exists(config["bucket"], config["object_key"])
+    return {
+        "ok": True,
+        "available": available,
+        "bucket": config["bucket"],
+        "objectKey": config["object_key"],
+        "filename": config["filename"],
+        "message": "" if available else "PO 自动下载模板未上传，请先上传到 MinIO。",
+    }
+
+
 @router.get(
     "/po-auto-download/template/download",
     response_class=StreamingResponse,
     responses={200: PO_AUTO_DOWNLOAD_TEMPLATE_RESPONSE},
 )
 async def po_auto_download_template_download() -> StreamingResponse:
-    template_config = (
-        get_settings()
-        .get("downloads", {})
-        .get("po_auto_download_template", {})
-    )
-    bucket = str(
-        template_config.get("bucket")
-        or get_minio_bucket(PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_BUCKET_KEY)
-    )
-    object_key = str(
-        template_config.get("object_key")
-        or PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_OBJECT_KEY
-    )
-    filename = str(
-        template_config.get("filename")
-        or PO_AUTO_DOWNLOAD_TEMPLATE_DEFAULT_FILENAME
-    )
+    template_config = _po_auto_download_template_config()
 
     try:
-        response = get_object_response(bucket, object_key)
+        response = get_object_response(template_config["bucket"], template_config["object_key"])
     except Exception as exc:
         raise HTTPException(
             status_code=404,
@@ -512,7 +623,7 @@ async def po_auto_download_template_download() -> StreamingResponse:
         ) from exc
 
     fallback_filename = "PO-auto-download-template.xls"
-    encoded_filename = quote(filename)
+    encoded_filename = quote(template_config["filename"])
     headers = {
         "Content-Disposition": (
             f'attachment; filename="{fallback_filename}"; '
@@ -522,12 +633,75 @@ async def po_auto_download_template_download() -> StreamingResponse:
     }
     return StreamingResponse(
         response.stream(64 * 1024),
-        media_type=str(
-            template_config.get("content_type") or PO_AUTO_DOWNLOAD_TEMPLATE_CONTENT_TYPE
-        ),
+        media_type=template_config["content_type"],
         headers=headers,
         background=BackgroundTask(response.close),
     )
+
+
+def _automation_module_entries(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    modules = manifest.get("modules")
+    if isinstance(modules, dict):
+        return {
+            str(module_id): module
+            for module_id, module in modules.items()
+            if isinstance(module, dict)
+        }
+
+    if isinstance(modules, list):
+        entries: dict[str, dict[str, Any]] = {}
+        for module in modules:
+            if not isinstance(module, dict):
+                continue
+            module_id = str(module.get("id") or "").strip()
+            if module_id:
+                entries[module_id] = module
+        return entries
+
+    return {}
+
+
+def _normalize_automation_module(module_id: str, module: dict[str, Any]) -> dict[str, Any]:
+    safe_module_id = str(module_id or module.get("id") or "").strip()
+    version = str(module.get("version") or APP_VERSION)
+    filename = str(
+        module.get("filename")
+        or f"{safe_module_id}.{version}.zip"
+    )
+    bucket = str(
+        module.get("bucket")
+        or get_minio_bucket(AUTOMATION_MODULE_DEFAULT_BUCKET_KEY)
+    )
+    object_key = str(
+        module.get("objectKey")
+        or module.get("object_key")
+        or f"automation-modules/{safe_module_id}/{filename}"
+    )
+    download_path = str(
+        module.get("downloadPath")
+        or f"/api/system/config/automation-modules/{quote(safe_module_id, safe='')}/download"
+    )
+    return {
+        "id": safe_module_id,
+        "name": str(module.get("name") or safe_module_id),
+        "provider": str(module.get("provider") or ""),
+        "category": str(module.get("category") or "Web Automation"),
+        "version": version,
+        "requiredHelperVersion": str(module.get("requiredHelperVersion") or ""),
+        "description": str(module.get("description") or ""),
+        "appDir": str(module.get("appDir") or safe_module_id),
+        "entry": str(module.get("entry") or "bin/start.js"),
+        "defaultPort": int(module.get("defaultPort") or module.get("port") or 3100),
+        "filename": filename,
+        "downloadPath": download_path,
+        "bucket": bucket,
+        "objectKey": object_key,
+        "contentType": str(module.get("contentType") or AUTOMATION_MODULE_CONTENT_TYPE),
+        "fileSize": module.get("fileSize") or module.get("file_size"),
+        "sha256": module.get("sha256") or module.get("packageSha256"),
+        "updatedAt": module.get("updatedAt"),
+        "source": str(module.get("source") or "manifest"),
+    }
 
 
 def _build_fallback_installer_packages() -> dict[str, dict[str, Any]]:

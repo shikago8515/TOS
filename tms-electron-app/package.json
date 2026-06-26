@@ -13,6 +13,7 @@
     "shipping:web:debug:stop": "powershell -ExecutionPolicy Bypass -File scripts/stop-shipping-web-debug.ps1",
     "clean:update-artifacts": "node scripts/clean-update-artifacts.js",
     "build:backend-runtime": "node scripts/build-backend-runtime.js",
+    "build:automation-modules": "node scripts/build-automation-module-packages.js",
     "verify:renderer-package": "node scripts/verify-renderer-package.js",
     "verify:release-package": "node scripts/verify-release-package.js",
     "write:update-changelog": "node scripts/write-update-changelog.js",

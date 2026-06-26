@@ -1,5 +1,25 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.28-added-automation-module-hot-update",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "added",
+    "pageName": "自动化助手 / 模块热更新",
+    "pagePath": "/settings",
+    "title": "新增自动化模块热更新链路",
+    "description": "小助手和桌面端支持读取服务器 automation-modules manifest，按版本下载、校验并缓存自动化模块 zip；后续 Shipping、Invoice、TC INV 等自动化修复可通过服务器模块包下发。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-improved-server-module-package-release",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "improved",
+    "pageName": "服务器发布 / MinIO",
+    "pagePath": "/settings",
+    "title": "优化服务器模块包发布",
+    "description": "服务器源码支持直接构建自动化模块 zip，并通过后端容器上传到 MinIO 的 automation-modules 目录，减少本地上传大文件和用户重复安装。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.28-improved-desktop-package-slimming",
     "version": "0.9.8-beta.3.28",
     "releaseDate": "2026-06-22",

@@ -4,6 +4,14 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import {
+  createSapBtpLoginHandler,
+  moduleDefinition as sapBtpLoginModule,
+} from "./modules/sap-btp-login/index.mjs";
+import {
+  createTicketOwnerStatisticsHandler,
+  moduleDefinition as ticketOwnerStatisticsModule,
+} from "./modules/ticket-owner-statistics/index.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,6 +38,30 @@ const config = await loadConfig();
 let activeRun = null;
 let lastRun = null;
 
+const moduleRouteHandlers = new Map();
+const moduleDeps = {
+  artifactsDir,
+  authorize,
+  extractRowsFromWorkbookPayload,
+  getActiveRun: () => activeRun,
+  normalizeRunOptions,
+  normalizeUploadFileName,
+  persistRunArtifacts,
+  readJsonBody,
+  runLogin,
+  sendJson,
+  setActiveRun: (run) => {
+    activeRun = run;
+  },
+  setLastRun: (run) => {
+    lastRun = run;
+  },
+  xlsx,
+};
+
+registerModuleRoutes(sapBtpLoginModule, createSapBtpLoginHandler(moduleDeps));
+registerModuleRoutes(ticketOwnerStatisticsModule, createTicketOwnerStatisticsHandler(moduleDeps));
+
 const server = http.createServer(async (req, res) => {
   try {
     setCorsHeaders(res);
@@ -51,6 +83,14 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET") {
+      const artifact = resolveArtifactDownload(requestPath);
+      if (artifact) {
+        await sendDownload(res, artifact);
+        return;
+      }
+    }
+
     if (req.method === "GET" && (requestPath === "/credentials" || requestPath === "/api/credentials")) {
       sendJson(res, 410, buildCredentialsPayload());
       return;
@@ -63,6 +103,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "DELETE" && (requestPath === "/credentials" || requestPath === "/api/credentials")) {
       sendJson(res, 410, buildCredentialsPayload());
+      return;
+    }
+
+    const moduleHandler = moduleRouteHandlers.get(requestPath);
+    if (req.method === "POST" && moduleHandler) {
+      await moduleHandler(req, res);
       return;
     }
 
@@ -89,50 +135,6 @@ const server = http.createServer(async (req, res) => {
 
       try {
         const result = await runLogin(rows, runOptions);
-        result.artifacts = await persistRunArtifacts(result, rows);
-        lastRun = {
-          startedAt: activeRun.startedAt,
-          finishedAt: result.generatedAt,
-          loginSuccess: result.loginSuccess,
-          uploadedRowCount: result.uploadedRowCount,
-          finalUrl: result.finalUrl,
-          searchedCaseCount: result.taskCenter?.searchedCaseCount ?? 0,
-        };
-        sendJson(res, result.ok ? 200 : 500, result);
-      } finally {
-        activeRun = null;
-      }
-      return;
-    }
-
-    if (req.method === "POST" && (req.url === "/run-login-file" || req.url === "/api/run-login-file")) {
-      const body = await readJsonBody(req);
-      authorize(req, body);
-
-      if (activeRun) {
-        sendJson(res, 409, {
-          ok: false,
-          message: "Executor is busy with another run.",
-          activeRun,
-        });
-        return;
-      }
-
-      const rows = extractRowsFromWorkbookPayload(body);
-      const runOptions = normalizeRunOptions(body);
-      const inputFileName = normalizeUploadFileName(body);
-      activeRun = {
-        startedAt: new Date().toISOString(),
-        totalRows: rows.length,
-        browser: runOptions.browser,
-        inputFileName,
-        inputMode: "local-file",
-      };
-
-      try {
-        const result = await runLogin(rows, runOptions);
-        result.inputFileName = inputFileName;
-        result.inputMode = "local-file";
         result.artifacts = await persistRunArtifacts(result, rows);
         lastRun = {
           startedAt: activeRun.startedAt,
@@ -222,6 +224,37 @@ async function sendFile(res, filePath, contentType) {
   res.end(fileBuffer);
 }
 
+async function sendDownload(res, artifact) {
+  if (!existsSync(artifact.filePath)) {
+    sendJson(res, 404, {
+      ok: false,
+      message: "Artifact file was not found.",
+    });
+    return;
+  }
+
+  const fileBuffer = await readFile(artifact.filePath);
+  res.writeHead(200, {
+    "Content-Type": artifact.contentType,
+    "Content-Disposition": `attachment; filename="${String(artifact.downloadName || "artifact").replace(/"/g, "")}"`,
+    "Cache-Control": "no-store",
+  });
+  res.end(fileBuffer);
+}
+
+function registerModuleRoutes(moduleDefinition, handler) {
+  const routePaths = Array.isArray(moduleDefinition?.routePaths)
+    ? moduleDefinition.routePaths
+    : [];
+  if (!routePaths.length) {
+    throw new Error(`Automation module has no route paths: ${moduleDefinition?.id || "unknown"}`);
+  }
+
+  for (const routePath of routePaths) {
+    moduleRouteHandlers.set(routePath, handler);
+  }
+}
+
 async function persistRunArtifacts(result, rows) {
   await mkdir(artifactsDir, { recursive: true });
 
@@ -253,6 +286,36 @@ async function persistRunArtifacts(result, rows) {
     latestFailedXlsxPath: xlsxExportError ? "" : latestFailedXlsxPath,
     failedRowCount: failedRows.length,
     xlsxExportError,
+  };
+}
+
+function resolveArtifactDownload(requestPath) {
+  const normalizedPath = String(requestPath || "");
+  const dynamicMatch = normalizedPath.match(/^\/(?:api\/)?artifacts\/([A-Za-z0-9._-]+\.(?:json|xlsx|csv|png))$/);
+  if (!dynamicMatch) {
+    return null;
+  }
+
+  const downloadName = dynamicMatch[1];
+  const artifactRoot = path.resolve(artifactsDir);
+  const filePath = path.resolve(artifactRoot, downloadName);
+  if (!filePath.startsWith(artifactRoot + path.sep)) {
+    return null;
+  }
+
+  const ext = path.extname(downloadName).toLowerCase();
+  const contentType = ext === ".xlsx"
+    ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    : ext === ".csv"
+      ? "text/csv; charset=utf-8"
+      : ext === ".png"
+        ? "image/png"
+        : "application/json; charset=utf-8";
+
+  return {
+    filePath,
+    contentType,
+    downloadName,
   };
 }
 
@@ -549,14 +612,19 @@ async function runLogin(rows, options) {
     const loginState = await capturePageState(page);
     const loginSuccess = detectLoginSuccess(loginState);
 
+    const workflowMode = String(options.workflowMode || "task-center-po-decisions");
     let taskCenter = null;
-    if (loginSuccess) {
+    let workflowResult = null;
+    if (loginSuccess && typeof options.afterLogin === "function") {
+      workflowResult = await options.afterLogin(page, options);
+    } else if (loginSuccess && workflowMode !== "login-only") {
       taskCenter = await runTaskCenterSearchFlow(page, rows, options);
     }
 
     const finalState = await capturePageState(page);
+    const workflowOk = workflowResult ? workflowResult.ok !== false : true;
     return {
-      ok: loginSuccess,
+      ok: loginSuccess && workflowOk,
       loginSuccess,
       uploadedRowCount: rows.length,
       generatedAt: new Date().toISOString(),
@@ -566,16 +634,20 @@ async function runLogin(rows, options) {
       visibleError: finalState.visibleError,
       rowsPreview: rows.slice(0, 3),
       taskCenter,
+      workflowResult,
+      workflowMode,
+      workflowLabel: options.workflowLabel || "",
       message: loginSuccess
-        ? "Microsoft login completed successfully."
+        ? options.successMessage || "Microsoft login completed successfully."
         : "Microsoft login did not reach a confirmed signed-in state.",
     };
   } catch (error) {
     runFailed = true;
     const finalState = await capturePageState(page);
+    const loginSuccess = page ? detectLoginSuccess(finalState) : false;
     return {
       ok: false,
-      loginSuccess: false,
+      loginSuccess,
       uploadedRowCount: rows.length,
       generatedAt: new Date().toISOString(),
       finalUrl: finalState.url,
@@ -584,6 +656,9 @@ async function runLogin(rows, options) {
       visibleError: finalState.visibleError,
       rowsPreview: rows.slice(0, 3),
       taskCenter: null,
+      workflowResult: null,
+      workflowMode: String(options.workflowMode || "task-center-po-decisions"),
+      workflowLabel: options.workflowLabel || "",
       message: error.message || "Login run failed.",
     };
   } finally {

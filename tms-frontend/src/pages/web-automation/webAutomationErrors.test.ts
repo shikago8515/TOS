@@ -80,6 +80,13 @@ describe('webAutomationErrors', () => {
     expect(shouldShowAutomationErrorDialog(rawMessage)).toBe(true)
   })
 
+  it('keeps executor-provided Desktop Utility stage details', () => {
+    const rawMessage = 'Create Shipment 222: Infor Nexus 桌面工具连接超时：页面已进入 Create Shipment，但没有连上 Desktop Utility，Create Shipment 无法加载所需设备/包裹数据。'
+
+    expect(formatAutomationExecutorMessage(rawMessage)).toBe(rawMessage)
+    expect(shouldShowAutomationErrorDialog(rawMessage)).toBe(true)
+  })
+
   it('formats non-JSON executor responses without exposing JSON.parse', () => {
     const rawMessage = 'JSON.parse: unexpected character at line 1 column 1 of the JSON data'
 

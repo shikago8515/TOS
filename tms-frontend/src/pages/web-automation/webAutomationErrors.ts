@@ -1,3 +1,5 @@
+import { showAppAlert } from '../../shared/ui/appAlert'
+
 interface AutomationValidationErrorRule {
   pattern: RegExp
   message: string
@@ -37,7 +39,7 @@ const automationValidationErrorRules: AutomationValidationErrorRule[] = [
   },
   {
     pattern: /Desktop Utility|PackByScan|taking longer than normal for the desktop to connect|Awaiting desktop|桌面工具连接超时|re-loading the PackByScan application/i,
-    message: 'Infor Nexus 桌面工具连接超时：页面已进入 Pack-Scan-Ship，但没有连上 Desktop Utility，Shipment Scan 无法加载设备或包裹数据。请确认 Desktop Utility 正在运行且版本不低于 2.0.1.29；可点击左下角 Reconnect to Desktop，或重新加载 PackByScan 后再执行。',
+    message: 'Infor Nexus 桌面工具连接超时：页面已进入 Pack-Scan-Ship，但没有连上 Desktop Utility，当前自动化无法加载所需设备/包裹数据。请确认 Desktop Utility 正在运行且版本不低于 2.0.1.29；可点击左下角 Reconnect to Desktop，或重新加载 PackByScan 后再执行。',
   },
   {
     pattern: /JSON\.parse|unexpected character.*JSON data|Unexpected token.*JSON|Unexpected token '<'|Unexpected end of JSON input|无法解析响应/i,
@@ -100,6 +102,10 @@ const automationValidationErrorRules: AutomationValidationErrorRule[] = [
 export function formatAutomationExecutorMessage(message: string | undefined, fallback = '执行失败。'): string {
   const rawMessage = String(message || '').trim()
 
+  if (/桌面工具连接超时/.test(rawMessage)) {
+    return rawMessage
+  }
+
   const validationRule = findAutomationValidationErrorRule(rawMessage)
   if (validationRule) {
     return validationRule.message
@@ -144,7 +150,7 @@ export function shouldShowAutomationErrorDialog(message: string | undefined): bo
 }
 
 export function showAutomationErrorDialog(message: string): void {
-  window.alert(message)
+  void showAppAlert(message, { tone: 'error' })
 }
 
 function findAutomationValidationErrorRule(message: string): AutomationValidationErrorRule | undefined {

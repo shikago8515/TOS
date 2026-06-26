@@ -6,6 +6,7 @@ const path = require('path')
 const test = require('node:test')
 
 const {
+  getAutomationAppById,
   getAutomationApps,
   launchAutomationApp,
   shutdownAutomationApps,
@@ -39,6 +40,68 @@ test('automation launcher app info includes required helper version', async () =
 
   assert.equal(apps.length, 1)
   assert.equal(apps[0].requiredHelperVersion, '0.9.8-beta.3.27')
+})
+
+test('automation launcher prefers cached automation module over bundled app', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tos-launcher-module-cache-'))
+  const automationAppRoot = path.join(root, 'automation-apps')
+  const userDataDir = path.join(root, 'user-data')
+  const bundledAppDir = path.join(automationAppRoot, 'demo-app')
+  const cachedAppDir = path.join(
+    userDataDir,
+    'automation-module-cache',
+    'demo-app',
+    '1.1.0',
+    'app',
+  )
+
+  fs.mkdirSync(path.join(bundledAppDir, 'bin'), { recursive: true })
+  fs.writeFileSync(path.join(bundledAppDir, 'bin', 'start.js'), '')
+  fs.writeFileSync(
+    path.join(automationAppRoot, 'registry.json'),
+    JSON.stringify([
+      {
+        id: 'demo-app',
+        name: 'Demo App',
+        version: '1.0.0',
+        appDir: 'demo-app',
+        entry: 'bin/start.js',
+        defaultPort: 3999,
+      },
+    ], null, 2),
+  )
+
+  fs.mkdirSync(path.join(cachedAppDir, 'bin'), { recursive: true })
+  fs.writeFileSync(path.join(cachedAppDir, 'bin', 'start.js'), '')
+  fs.writeFileSync(
+    path.join(userDataDir, 'automation-module-cache', 'demo-app', 'current.json'),
+    JSON.stringify({
+      id: 'demo-app',
+      name: 'Demo App',
+      version: '1.1.0',
+      entry: 'bin/start.js',
+      defaultPort: 3999,
+      versionSegment: '1.1.0',
+      baseDir: path.join('1.1.0', 'app'),
+      sha256: 'b'.repeat(64),
+      installedAt: '2026-06-26T02:00:00.000Z',
+    }, null, 2),
+  )
+
+  const options = {
+    automationAppRoot,
+    userDataDir,
+    processMap: new Map(),
+  }
+  const apps = await getAutomationApps(options)
+  const app = getAutomationAppById('demo-app', options)
+
+  assert.equal(apps.length, 1)
+  assert.equal(apps[0].version, '1.1.0')
+  assert.equal(apps[0].moduleSource, 'remote-cache')
+  assert.equal(app.version, '1.1.0')
+  assert.equal(app.moduleSource, 'remote-cache')
+  assert(app.entryPath.includes(path.join('automation-module-cache', 'demo-app', '1.1.0', 'app')))
 })
 
 test('automation launcher injects helper version when starting an app', async () => {

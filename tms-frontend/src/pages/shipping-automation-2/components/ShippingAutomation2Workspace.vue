@@ -204,6 +204,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
+import { showAppAlert } from '../../../shared/ui/appAlert'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 import type { AutomationAppInfo } from '../../../types/electronApi'
 import type { AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
@@ -349,7 +350,7 @@ async function startBulkAutomation(id: BulkId): Promise<void> {
     if (!(await ensureExecutorReady())) {
       b.tone = 'error'
       b.statusText = '执行器未就绪。'
-      window.alert(text('本机执行器尚未就绪，请先启动执行器后再试。'))
+      void showAppAlert(text('本机执行器尚未就绪，请先启动执行器后再试。'), { tone: 'warning' })
       return
     }
     const rr = await createBulkRunRecord(b)
@@ -409,7 +410,7 @@ function showRunRequirementDialog(rawMessage: string, bulk?: BulkState): false {
     bulk.tone = 'error'
     bulk.statusText = localized
   }
-  window.alert(localized)
+  void showAppAlert(localized, { tone: 'warning' })
   return false
 }
 

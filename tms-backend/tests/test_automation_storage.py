@@ -88,6 +88,14 @@ class AutomationStorageTests(unittest.TestCase):
         self.assertIn("shipping-automation", released_bulk_lookup_ids)
         self.assertIn("po-auto-download", released_bulk_lookup_ids)
 
+    def test_ticket_owner_statistics_can_read_shared_microsoft_credentials(self):
+        lookup_ids = _credential_lookup_ids("ticket-owner-statistics")
+        microsoft_lookup_ids = _credential_lookup_ids("microsoft-login-n8n")
+
+        self.assertEqual(lookup_ids[0], "ticket-owner-statistics")
+        self.assertIn("microsoft-login-n8n", lookup_ids)
+        self.assertIn("ticket-owner-statistics", microsoft_lookup_ids)
+
     def test_credential_account_key_is_normalized_for_saved_profiles(self):
         self.assertEqual(_normalize_account_key("  Lily  "), "Lily")
         self.assertEqual(_normalize_account_key(""), "default")

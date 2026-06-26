@@ -96,6 +96,17 @@ networkDuringInstall: false
 
 `networkDuringInstall: false` 表示安装阶段解压内置 `TOS-Desktop-Payload.zip`，不会去 MinIO 下载 payload；应用启动后的业务 API 仍然连接远程 TOS 服务器后端。
 
+## Automation module hot updates
+
+The desktop app and the web automation helper now keep the helper shell stable and load automation modules from a remote manifest when a newer module package is available.
+
+- Local bundled modules still live under `automation-apps/` and are used when the server manifest is unavailable.
+- Remote module manifest defaults to `https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/automation-modules`.
+- Downloaded modules are cached under the user data directory in `automation-module-cache/<module-id>/<version>/app`.
+- A module package is accepted only after the zip is downloaded, sha256 is verified when present, and the configured entry file exists after extraction.
+- Build module packages with `npm run build:automation-modules -- --version <module-version>`; upload them with `python tms-backend/scripts/upload_automation_modules.py`.
+- This is separate from the full/offline installer: users still install TOS normally, but future Shipping/Invoice/TC INV automation fixes can be shipped by updating module zip packages in MinIO.
+
 上传服务器前必须先做本地安装校验：
 
 ```powershell

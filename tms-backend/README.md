@@ -43,11 +43,12 @@ npm run check:backend
 | TMS Finance Internal Reconciliation | `api/tms_finance_internal_reconciliation_api.py` | `modules/tms_finance_internal_reconciliation_module.py` |
 | TMS Finance Work Sales | `api/tms_finance_work_sales_api.py` | `modules/tms_finance_work_sales_module.py` |
 | Automation Storage | `api/automation_storage_api.py` | `utils/mysql_store.py`, `utils/minio_storage.py` |
-| System Config / Downloads | `api/system_config_api.py` | `utils/settings.py`, `utils/minio_storage.py` |
+| System Config / Downloads | `api/system_config_api.py` | `utils/settings.py`, `utils/minio_storage.py`, `utils/automation_module_manifest.py` |
 | Release Updates | `api/release_updates_api.py` | `utils/mysql_store.py` |
 
 ## API Compatibility
 
+- Automation module hot updates use `/api/system/config/automation-modules` and `/api/system/config/automation-modules/{module_id}/download`; the manifest and zip packages are stored in MinIO under the downloads bucket.
 - Jason 的 canonical API prefix 是 `/api/jason/pdf-reorder/*`。
 - 旧 `/api/it-invoice-pdf-reorder/*` 和 legacy `/api/preview-invoice`、`/api/preview-po`、`/api/extract-numbers`、`/api/process` 继续保留兼容。
 - 系统配置下载接口包含自动化助手、TOS 轻量在线安装器、完整安装包、payload 和 PO 自动下载模板下载路径，例如 `/api/system/config/tos-desktop/download`、`/api/system/config/tos-desktop-full/download` 与 `/api/system/config/po-auto-download/template/download`。

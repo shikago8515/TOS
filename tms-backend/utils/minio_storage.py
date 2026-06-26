@@ -49,6 +49,15 @@ def get_object_response(bucket: str, object_key: str) -> Any:
     return client.get_object(bucket, object_key)
 
 
+def object_exists(bucket: str, object_key: str) -> bool:
+    client = _build_minio_client()
+    try:
+        client.stat_object(bucket, object_key)
+    except Exception:
+        return False
+    return True
+
+
 def download_url_bytes(url: str, timeout: int = 30) -> tuple[bytes, str]:
     request = Request(url, headers={"User-Agent": "TOS-Backend/1.0"})
     with urlopen(request, timeout=timeout) as response:

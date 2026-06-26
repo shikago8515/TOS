@@ -78,20 +78,15 @@
             </div>
 
             <div class="pad-card__body">
-              <AutomationCredentialsPanel
-                :username="shippingUsername"
+              <AutomationAccountProfileManager
+                ref="credentialProfileRef"
+                v-model:selected-key="selectedCredentialKey"
+                v-model:username="shippingUsername"
                 v-model:password="shippingPassword"
-                v-model:show-password="showShippingPassword"
-                :has-stored-credentials="hasStoredCredentials"
-                :saved-username="savedCredentialUsername"
-                :saving="credentialSaving"
-                :clearing="credentialClearing"
-                :credential-options="credentialOptions"
-                :selected-credential-key="selectedCredentialKey"
-                @update:username="handleCredentialUsernameUpdate"
-                @select-credential="selectCredentialOption"
-                @save="saveCurrentCredentials"
-                @clear="clearCurrentCredentials"
+                :automation-id="entry.id"
+                :default-username="DEFAULT_INFOR_NEXUS_USERNAME"
+                @state="handleCredentialState"
+                @notice="handleCredentialNotice"
               />
             </div>
 
@@ -276,16 +271,14 @@ import { useRouter } from 'vue-router'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
-import AutomationCredentialsPanel from '../../web-automation/components/AutomationCredentialsPanel.vue'
+import { showAppAlert } from '../../../shared/ui/appAlert'
+import AutomationAccountProfileManager from '../../web-automation/components/AutomationAccountProfileManager.vue'
 import { buildBackendDownloadUrl } from '../../../shared/api/backendClient'
 import type { AutomationAppInfo } from '../../../types/electronApi'
-import type { AutomationRunRecord, ExecutorCredentialOption, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
+import type { AutomationRunRecord, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {
-  clearExecutorCredentials,
   createAutomationRunRecord,
   fetchAutomationApps,
-  fetchExecutorCredentialOptions,
-  fetchExecutorCredentials,
   finishAutomationRunRecord,
   getAutomationHelperUpdateMessage,
   hasElectronAutomationSupport,
@@ -295,22 +288,26 @@ import {
   probeLocalAutomationLauncherHealth,
   probeLocalExecutorHealth,
   recordWebAutomationEvent,
-  resolveAutomationCredentials,
-  saveExecutorCredentials,
   stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
 import { appendAutomationFailureExamples, formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
 import {
-  buildCredentialAccountKey,
   DEFAULT_INFOR_NEXUS_USERNAME,
-  findCredentialOptionByUsername,
   normalizeInforNexusUsername,
 } from '../../web-automation/webAutomationCredentials'
 import { getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
 
 const ENTRY_ID = 'po-auto-download'
 const DOWNLOAD_DIR_STORAGE_KEY = 'tos-po-auto-download-directory'
+const TEMPLATE_STATUS_PATH = '/api/system/config/po-auto-download/template/status'
 const TEMPLATE_DOWNLOAD_PATH = '/api/system/config/po-auto-download/template/download'
+
+type CredentialProfileRef = {
+  refresh: (accountKey?: string) => Promise<void>
+  resolveCredentials: () => Promise<{ username: string; password: string; accountKey: string }>
+}
+type CredentialProfileState = { hasStoredCredentials: boolean; username: string; accountKey: string }
+type CredentialNotice = { tone: WebAutomationNoticeTone; message: string }
 
 const router = useRouter()
 const { text } = useAppLanguage()
@@ -319,12 +316,9 @@ const electronSupported = hasElectronAutomationSupport()
 
 const activeApp = ref<AutomationAppInfo | null>(null)
 const executorHealth = ref<LocalExecutorHealth | null>(null)
-const executorCredentials = ref<ExecutorCredentials | null>(null)
 const launcherReachable = ref(false)
 const launching = ref(false)
 const refreshing = ref(false)
-const credentialSaving = ref(false)
-const credentialClearing = ref(false)
 const sending = ref(false)
 const templateDownloading = ref(false)
 const directorySelecting = ref(false)
@@ -337,9 +331,9 @@ const isDragging = ref(false)
 const dragDepth = ref(0)
 const shippingUsername = ref(DEFAULT_INFOR_NEXUS_USERNAME)
 const shippingPassword = ref('')
-const showShippingPassword = ref(false)
-const credentialOptions = ref<ExecutorCredentialOption[]>([])
 const selectedCredentialKey = ref('default')
+const hasStoredCredentials = ref(false)
+const credentialProfileRef = ref<CredentialProfileRef | null>(null)
 const showBrowserView = ref(true)
 const saveDirectory = ref('')
 const statusLabel = ref('待命')
@@ -365,8 +359,6 @@ const executorDirectorySelectUrl = computed(() => {
   const base = String(entry?.executorBaseUrl || '').replace(/\/+$/, '')
   return base ? `${base}/api/select-download-directory` : ''
 })
-const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
-const savedCredentialUsername = computed(() => normalizePoAutoDownloadUsername(executorCredentials.value?.username || ''))
 const canSelectDirectory = computed(() => Boolean(window.electronAPI?.selectDirectory || executorDirectorySelectUrl.value))
 const executorSupportsDirectoryPicker = computed(() => Boolean(
   window.electronAPI?.selectDirectory
@@ -434,7 +426,7 @@ onBeforeUnmount(() => {
 async function initializeScenario(): Promise<void> {
   statusLabel.value = '待命'
   statusText.value = text('等待上传 Excel 并填写下载保存目录。')
-  await refreshExecutorCredentials()
+  await refreshCredentialProfile()
   await refreshExecutorState(true)
   if (electronSupported && activeApp.value?.available && !activeApp.value.running) {
     await startActiveApp(true)
@@ -477,7 +469,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
     }
 
     executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl)
-    await refreshExecutorCredentials()
+    await refreshCredentialProfile()
     if (activeApp.value) {
       activeApp.value = { ...activeApp.value, running: true }
     }
@@ -558,82 +550,19 @@ function formatRunProgress(progress: Record<string, any>): string {
   return current ? `${phase} · ${countText}，当前 ${current}` : `${phase} · ${countText}`
 }
 
-async function refreshCredentialOptions(): Promise<void> {
-  if (!entry) return
-  try {
-    credentialOptions.value = await fetchExecutorCredentialOptions(entry.id)
-  } catch {
-    credentialOptions.value = []
-  }
+async function refreshCredentialProfile(): Promise<void> {
+  await credentialProfileRef.value?.refresh(selectedCredentialKey.value)
 }
 
-async function refreshExecutorCredentials(
-  accountKey = selectedCredentialKey.value || buildCredentialAccountKey(shippingUsername.value),
-): Promise<void> {
-  if (!entry) return
-  try {
-    await refreshCredentialOptions()
-    const key = normalizeCredentialKey(accountKey)
-    const loaded = await loadCredentialByKey(key)
-    if (loaded) return
-
-    const matchingOption = findCredentialOptionByUsername(credentialOptions.value, shippingUsername.value)
-    if (matchingOption && matchingOption.accountKey !== key) {
-      await loadCredentialByKey(matchingOption.accountKey)
-    }
-  } catch {
-    executorCredentials.value = null
-  }
+function handleCredentialState(state: CredentialProfileState): void {
+  hasStoredCredentials.value = state.hasStoredCredentials
+  selectedCredentialKey.value = state.accountKey
+  if (state.username) shippingUsername.value = state.username
 }
 
-async function loadCredentialByKey(accountKey: string): Promise<boolean> {
-  if (!entry) return false
-  const key = normalizeCredentialKey(accountKey)
-  executorCredentials.value = await fetchExecutorCredentials(entry.id, key)
-  const username = normalizePoAutoDownloadUsername(executorCredentials.value.username || '')
-  if (username) shippingUsername.value = username
-
-  if (!executorCredentials.value.hasStoredCredentials) {
-    selectedCredentialKey.value = ''
-    return false
-  }
-
-  selectedCredentialKey.value = key
-  const resolved = await resolveAutomationCredentials(entry.id, key)
-  shippingUsername.value = normalizePoAutoDownloadUsername(resolved.username)
-  shippingPassword.value = resolved.password
-  return true
-}
-
-function normalizeCredentialKey(value: string): string {
-  return String(value || '').trim() || 'default'
-}
-
-function handleCredentialUsernameUpdate(value: string): void {
-  shippingUsername.value = value.trim()
-  const matchedOption = findCredentialOptionByUsername(credentialOptions.value, shippingUsername.value)
-  if (matchedOption) {
-    void selectCredentialOption(matchedOption.accountKey)
-    return
-  }
-
-  selectedCredentialKey.value = ''
-  executorCredentials.value = null
-  shippingPassword.value = ''
-}
-
-async function selectCredentialOption(accountKey: string): Promise<void> {
-  try {
-    const loaded = await loadCredentialByKey(accountKey)
-    if (!loaded) {
-      shippingPassword.value = ''
-    }
-  } catch (error) {
-    executorCredentials.value = null
-    shippingPassword.value = ''
-    messageTone.value = 'error'
-    message.value = readErrorMessage(error, text('读取账号密码失败。'))
-  }
+function handleCredentialNotice(notice: CredentialNotice): void {
+  messageTone.value = notice.tone
+  message.value = notice.message
 }
 
 async function startActiveApp(silent: boolean): Promise<void> {
@@ -688,49 +617,6 @@ function bootLocalHelper(): void {
   messageTone.value = 'info'
   message.value = text('已尝试启动本机自动化助手。')
   window.setTimeout(() => { void refreshExecutorState(true) }, 1200)
-}
-
-async function saveCurrentCredentials(): Promise<void> {
-  if (!entry || credentialSaving.value) return
-  const username = normalizePoAutoDownloadUsername(shippingUsername.value)
-  const password = shippingPassword.value
-  if (!username || !password) return
-  shippingUsername.value = username
-  const accountKey = selectedCredentialKey.value || buildCredentialAccountKey(username)
-  credentialSaving.value = true
-  try {
-    executorCredentials.value = await saveExecutorCredentials(entry.id, username, password, accountKey)
-    selectedCredentialKey.value = accountKey
-    await refreshCredentialOptions()
-    await loadCredentialByKey(accountKey)
-    shippingPassword.value = password
-    messageTone.value = 'success'
-    message.value = text('登录账号密码已保存。')
-  } catch (error) {
-    messageTone.value = 'error'
-    message.value = readErrorMessage(error, text('保存登录账号密码失败。'))
-  } finally {
-    credentialSaving.value = false
-  }
-}
-
-async function clearCurrentCredentials(): Promise<void> {
-  if (!entry || credentialClearing.value) return
-  const accountKey = selectedCredentialKey.value || buildCredentialAccountKey(shippingUsername.value)
-  credentialClearing.value = true
-  try {
-    executorCredentials.value = await clearExecutorCredentials(entry.id, accountKey)
-    await refreshCredentialOptions()
-    selectedCredentialKey.value = ''
-    shippingPassword.value = ''
-    messageTone.value = 'success'
-    message.value = text('登录账号密码已清除。')
-  } catch (error) {
-    messageTone.value = 'error'
-    message.value = readErrorMessage(error, text('清除登录账号密码失败。'))
-  } finally {
-    credentialClearing.value = false
-  }
 }
 
 async function selectSaveDirectory(): Promise<void> {
@@ -824,18 +710,50 @@ async function downloadTemplate(): Promise<void> {
   if (templateDownloading.value) return
   templateDownloading.value = true
   try {
+    const statusUrl = await buildBackendDownloadUrl(TEMPLATE_STATUS_PATH)
+    const statusResponse = await fetch(statusUrl)
+    const statusPayload = safeParseJson(await statusResponse.text())
+    if (!statusResponse.ok || statusPayload?.available !== true) {
+      const errorMessage = readDownloadStatusMessage(
+        statusPayload,
+        statusResponse.status,
+        text('PO 自动下载模板未上传，请先上传到 MinIO。'),
+      )
+      messageTone.value = 'warning'
+      message.value = errorMessage
+      void showAppAlert(errorMessage, { tone: 'warning' })
+      return
+    }
+
     const downloadUrl = await buildBackendDownloadUrl(TEMPLATE_DOWNLOAD_PATH)
+    const response = await fetch(downloadUrl)
+    const contentType = response.headers.get('content-type') || ''
+    if (!response.ok || contentType.includes('application/json')) {
+      const raw = await response.text()
+      const errorMessage = readDownloadErrorMessage(raw, response.status, text('模板下载失败。'))
+      messageTone.value = 'warning'
+      message.value = errorMessage
+      void showAppAlert(errorMessage, { tone: 'warning' })
+      return
+    }
+
+    const blob = await response.blob()
+    const objectUrl = URL.createObjectURL(blob)
     const link = document.createElement('a')
-    link.href = downloadUrl
+    link.href = objectUrl
     link.rel = 'noopener'
+    link.download = readDownloadFilename(response) || 'po-auto-download-template.xlsx'
     document.body.appendChild(link)
     link.click()
     link.remove()
+    URL.revokeObjectURL(objectUrl)
     messageTone.value = 'success'
     message.value = text('模板下载已开始。')
   } catch (error) {
+    const errorMessage = readErrorMessage(error, text('模板下载失败。'))
     messageTone.value = 'error'
-    message.value = readErrorMessage(error, text('模板下载失败。'))
+    message.value = errorMessage
+    void showAppAlert(errorMessage, { tone: 'error' })
   } finally {
     templateDownloading.value = false
   }
@@ -897,7 +815,7 @@ function showRunRequirementDialog(rawMessage: string): false {
   message.value = localized
   statusLabel.value = '待命'
   statusText.value = localized
-  window.alert(localized)
+  void showAppAlert(localized, { tone: 'warning' })
   return false
 }
 
@@ -929,7 +847,7 @@ async function runPoAutoDownload(): Promise<void> {
   if (!validatePoDownloadInputs()) return
   if (!await ensureReady()) {
     setNotReady()
-    window.alert(statusText.value)
+    void showAppAlert(statusText.value, { tone: 'warning' })
     return
   }
   const currentEntry = entry
@@ -1037,10 +955,15 @@ async function buildCredentialPayload(): Promise<{ username: string; password: s
       password: shippingPassword.value,
     }
   }
-  const accountKey = selectedCredentialKey.value || buildCredentialAccountKey(shippingUsername.value)
-  const resolved = await resolveAutomationCredentials(entry.id, accountKey)
+  const resolved = await credentialProfileRef.value?.resolveCredentials()
+  if (!resolved) {
+    throw new Error(text('请先新增并保存 Infor Nexus 登录账号密码。'))
+  }
+  selectedCredentialKey.value = resolved.accountKey
+  shippingUsername.value = normalizePoAutoDownloadUsername(resolved.username)
+  shippingPassword.value = resolved.password
   return {
-    username: normalizePoAutoDownloadUsername(resolved.username),
+    username: shippingUsername.value,
     password: resolved.password,
   }
 }
@@ -1113,6 +1036,37 @@ function safeParseJson(raw: string): Record<string, any> | null {
   } catch {
     return null
   }
+}
+
+function readDownloadErrorMessage(raw: string, status: number, fallback: string): string {
+  const payload = safeParseJson(raw)
+  const detail = payload?.detail
+  if (typeof detail === 'string' && detail.trim()) return detail.trim()
+  const message = payload?.message
+  if (typeof message === 'string' && message.trim()) return message.trim()
+  return status > 0 ? `${fallback} HTTP ${status}` : fallback
+}
+
+function readDownloadStatusMessage(payload: Record<string, any> | null, status: number, fallback: string): string {
+  const message = payload?.message
+  if (typeof message === 'string' && message.trim()) return message.trim()
+  const detail = payload?.detail
+  if (typeof detail === 'string' && detail.trim()) return detail.trim()
+  return status > 0 && status !== 200 ? `${fallback} HTTP ${status}` : fallback
+}
+
+function readDownloadFilename(response: Response): string {
+  const disposition = response.headers.get('content-disposition') || ''
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim())
+    } catch {
+      return utf8Match[1].trim()
+    }
+  }
+  const plainMatch = disposition.match(/filename="?([^"]+)"?/i)
+  return plainMatch?.[1]?.trim() || ''
 }
 
 function buildExecutorResponseMessage(

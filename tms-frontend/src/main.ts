@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 
 import App from './App.vue'
 import { router } from './app/router'
+import { installAppAlertBridge } from './shared/ui/appAlert'
 import './styles/base.css'
 
 function isFileDragEvent(event: DragEvent): boolean {
@@ -22,5 +23,7 @@ function guardWindowFileDrop(event: DragEvent): void {
 window.addEventListener('dragenter', guardWindowFileDrop, true)
 window.addEventListener('dragover', guardWindowFileDrop, true)
 window.addEventListener('drop', guardWindowFileDrop, true)
+
+installAppAlertBridge()
 
 createApp(App).use(router).mount('#app')

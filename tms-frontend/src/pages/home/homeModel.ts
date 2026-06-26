@@ -84,7 +84,6 @@ export const homeShortcutModuleIds = [
   'eric',
   'jason-pdf-reorder',
   'web-automation',
-  'infornexus',
   'adidas-materials',
 ] as const satisfies readonly TosModuleId[]
 
@@ -126,7 +125,6 @@ export const homeModuleCards: HomeModuleCard[] = allFunctionalModules.map((mod) 
     'tms-finance-internal-reconciliation': 'bar-chart',
     'tms-finance-work-sales': 'trending-up',
     'web-automation': 'workflow',
-    infornexus: 'external-link',
     'adidas-materials': 'globe-search',
   }
 

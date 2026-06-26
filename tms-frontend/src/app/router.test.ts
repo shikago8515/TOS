@@ -9,6 +9,7 @@ import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
 import ReleaseUpdatesPage from '../pages/release-updates/ReleaseUpdatesPage.vue'
 import PoAutoDownloadPage from '../pages/po-auto-download/PoAutoDownloadPage.vue'
 import ShippingAutomationPage from '../pages/shipping-automation/ShippingAutomationPage.vue'
+import TcInvAutomationPage from '../pages/tc-inv-automation/TcInvAutomationPage.vue'
 import WebAutomationPage from '../pages/web-automation/WebAutomationPage.vue'
 import XinlongtaiShippingAutomationPage from '../pages/xinlongtai-shipping-automation/XinlongtaiShippingAutomationPage.vue'
 
@@ -78,6 +79,13 @@ describe('router', () => {
     expect(route?.components?.default).not.toBe(RoutePlaceholder)
   })
 
+  it('does not expose the removed external Infornexus sub-app page', async () => {
+    const { router } = await import('./router')
+    const route = router.getRoutes().find((entry) => entry.path === '/infornexus')
+
+    expect(route).toBeUndefined()
+  })
+
   it('routes PO auto download to its standalone scenario page component', async () => {
     const { router } = await import('./router')
     const route = router.getRoutes().find((entry) => entry.path === '/web-automation/scenarios/po-auto-download')
@@ -145,6 +153,17 @@ describe('router', () => {
 
     expect(route?.name).toBe('web-automation-scenario-xinlongtai-shipping-automation')
     expect(route?.components?.default).toBe(XinlongtaiShippingAutomationPage)
+    expect(route?.components?.default).not.toBe(RoutePlaceholder)
+  })
+
+  it('routes TC INV automation to its standalone scenario page component', async () => {
+    const { router } = await import('./router')
+    const route = router
+      .getRoutes()
+      .find((entry) => entry.path === '/web-automation/scenarios/tc-inv-automation')
+
+    expect(route?.name).toBe('web-automation-scenario-tc-inv-automation')
+    expect(route?.components?.default).toBe(TcInvAutomationPage)
     expect(route?.components?.default).not.toBe(RoutePlaceholder)
   })
 

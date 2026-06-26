@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -132,10 +133,12 @@ def _seed_value(
 
 
 DEFAULT_RELEASE_UPDATE_RECORDS: list[dict[str, Any]] = load_default_release_update_records()
+_release_update_seed_lock = threading.Lock()
+_release_update_seeded = False
 
 
 @router.get("", response_model=ReleaseUpdatesResponse)
-async def read_release_updates(limit: int = Query(100, ge=1, le=300)) -> dict[str, Any]:
+def read_release_updates(limit: int = Query(100, ge=1, le=300)) -> dict[str, Any]:
     seed_default_release_updates()
     records = [_record_payload(row) for row in list_release_update_records(limit)]
     latest_record_version = records[0]["version"] if records else APP_VERSION
@@ -148,7 +151,7 @@ async def read_release_updates(limit: int = Query(100, ge=1, le=300)) -> dict[st
 
 
 @router.post("", response_model=ReleaseUpdateSaveResponse)
-async def save_release_update(
+def save_release_update(
     payload: ReleaseUpdatePayload,
     x_release_update_token: str | None = Header(default=None, alias="X-Release-Update-Token"),
 ) -> dict[str, Any]:
@@ -171,8 +174,19 @@ async def save_release_update(
 
 
 def seed_default_release_updates() -> None:
-    for record in DEFAULT_RELEASE_UPDATE_RECORDS:
-        insert_release_update_record_once(record)
+    global _release_update_seeded
+
+    if _release_update_seeded:
+        return
+
+    with _release_update_seed_lock:
+        if _release_update_seeded:
+            return
+
+        for record in DEFAULT_RELEASE_UPDATE_RECORDS:
+            insert_release_update_record_once(record)
+
+        _release_update_seeded = True
 
 
 def _validate_release_update_write_token(token: str | None) -> None:

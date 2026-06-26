@@ -12,6 +12,8 @@ export interface WebAutomationEntry {
   executorBaseUrl: string
   localExecutorToken: string
   webhookUrl: string
+  directRunPath?: string
+  requiresExcel?: boolean
   routePath: string
   tags: readonly string[]
   status: 'online' | 'soon' | 'offline'
@@ -29,6 +31,21 @@ export const webAutomationEntries: WebAutomationEntry[] = [
     webhookUrl: 'http://127.0.0.1:5678/webhook/microsoft-login-excel-demo',
     routePath: '/web-automation/scenarios/microsoft-login-n8n',
     tags: ['Excel', 'n8n', 'Playwright'],
+    status: 'online',
+  },
+  {
+    id: 'ticket-owner-statistics',
+    title: '统计 ticket 归属 自动化',
+    subtitle: 'SAP BTP Ticket 归属统计',
+    description: '登录 SAP BTP 后从 Task Center 采集 ticket 信息，并生成 Ticket ownership Excel。',
+    appId: 'microsoft-login-n8n-demo',
+    executorBaseUrl: 'http://127.0.0.1:3002',
+    localExecutorToken: 'local-ms-login-5f1d3d6d4bda4b2db7d54c8ce8c71e91',
+    webhookUrl: 'http://127.0.0.1:5678/webhook/microsoft-login-excel-demo',
+    directRunPath: '/api/run-ticket-owner-statistics',
+    requiresExcel: false,
+    routePath: '/web-automation/scenarios/ticket-owner-statistics',
+    tags: ['SAP BTP', 'Ticket', 'Excel Export'],
     status: 'online',
   },
   {
@@ -55,6 +72,19 @@ export const webAutomationEntries: WebAutomationEntry[] = [
     webhookUrl: 'https://network.infornexus.com',
     routePath: '/web-automation/scenarios/xinlongtai-shipping-automation',
     tags: ['Shipping', 'InforNexus'],
+    status: 'online',
+  },
+  {
+    id: 'tc-inv-automation',
+    title: 'TC INV 自动化',
+    subtitle: 'TC INV 出货明细与费用录入自动化',
+    description: 'SLT、VENT、XO 工厂支持自动上传出货明细表，系统自动上传运费表，并同步录入货物交期、各项费用等信息。',
+    appId: 'shipping-automation-demo',
+    executorBaseUrl: 'http://127.0.0.1:3003',
+    localExecutorToken: 'local-shipping-automation-72fd26f0f3b54db49c619bbda2be0f8f',
+    webhookUrl: 'https://network.infornexus.com',
+    routePath: '/web-automation/scenarios/tc-inv-automation',
+    tags: ['TC INV', 'SLT', 'VENT', 'XO'],
     status: 'online',
   },
   {

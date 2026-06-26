@@ -21,6 +21,10 @@ import {
 } from "./infornexus-auto-add-page.mjs";
 import { createShipping2ReleasedBulkAutomation } from "./shipping2-released-bulk.mjs";
 import { createShipping2UnreleasedBulkAutomation } from "./shipping2-unreleased-bulk.mjs";
+import {
+  createTcInvAutomation,
+  isTcInvAutomationRoute,
+} from "./modules/tc-inv-automation/index.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -100,6 +104,22 @@ const poAutoDownloadAutomation = createPoAutoDownloadAutomation({
   unregisterActiveRun: (runId) => activeRuns.delete(runId),
   xlsx,
 });
+const tcInvAutomation = createTcInvAutomation({
+  artifactsDir,
+  browserEngines,
+  buildVisibleBrowserLaunchOptions,
+  config,
+  ensureLoggedIn,
+  log,
+  normalizeUploadFileName,
+  recordCompletedRun,
+  registerActiveRun,
+  resolveCredentials,
+  safePageTitle,
+  safePageUrl,
+  unregisterActiveRun: (runId) => activeRuns.delete(runId),
+  xlsx,
+});
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -148,6 +168,14 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       authorize(req, body);
       const result = await poAutoDownloadAutomation.handleRequest(body);
+      sendJson(res, result.statusCode, result.body);
+      return;
+    }
+
+    if (req.method === "POST" && isTcInvAutomationRoute(requestPath)) {
+      const body = await readJsonBody(req);
+      authorize(req, body);
+      const result = await tcInvAutomation.handleRequest(body);
       sendJson(res, result.statusCode, result.body);
       return;
     }
@@ -464,6 +492,7 @@ function buildHealthPayload() {
       poAutoDownload: true,
       poAutoDownloadDirectoryPicker: true,
       poAutoDownloadRequestDownload: true,
+      tcInvAutomation: true,
     },
     config: {
       version: executorVersion,
@@ -1908,7 +1937,11 @@ async function confirmShipmentScanFilters(page, poNo, shipmentScanAction) {
       await dialogPause(shipmentDialog, 350);
       await clickShipmentScanOk(shipmentDialog);
       await page.waitForTimeout(250);
-      await assertNoDesktopUtilityConnectionIssue(page, { poNo });
+      await assertNoDesktopUtilityConnectionIssue(page, {
+        poNo,
+        stage: "Shipment Scan",
+        operation: "Shipment Scan",
+      });
       log("Confirmed PO No.", {
         poNo: String(poNo || "").trim(),
         shipmentScanAction: actionLabel,
@@ -1959,7 +1992,11 @@ async function waitForShipmentGridRows(page, poNo, shipmentScanAction = "Remove/
   let lastSignature = "";
 
   while (Date.now() - startedAt < timeoutMs) {
-    await assertNoDesktopUtilityConnectionIssue(page, { poNo });
+    await assertNoDesktopUtilityConnectionIssue(page, {
+      poNo,
+      stage: "Shipment Scan",
+      operation: "Shipment Scan",
+    });
 
     lastDialogError = (await getVisibleDialogErrorText(page)) || lastDialogError;
     if (lastDialogError) {
@@ -1995,7 +2032,11 @@ async function waitForShipmentGridRows(page, poNo, shipmentScanAction = "Remove/
           noDataVisible: state.noDataVisible,
           waitedMs: Date.now() - startedAt,
         });
-        await assertNoDesktopUtilityConnectionIssue(page, { poNo });
+        await assertNoDesktopUtilityConnectionIssue(page, {
+          poNo,
+          stage: "Shipment Scan",
+          operation: "Shipment Scan",
+        });
         throw new Error(`PO No ${poNo}: no shipment rows were loaded after clicking OK.`);
       }
     } else {
@@ -2009,7 +2050,11 @@ async function waitForShipmentGridRows(page, poNo, shipmentScanAction = "Remove/
           poNo,
           waitedMs: Date.now() - startedAt,
         });
-        await assertNoDesktopUtilityConnectionIssue(page, { poNo });
+        await assertNoDesktopUtilityConnectionIssue(page, {
+          poNo,
+          stage: "Shipment Scan",
+          operation: "Shipment Scan",
+        });
         throw new Error(`PO No ${poNo}: shipment grid stayed empty after clicking OK.`);
       }
     } else {
@@ -2029,7 +2074,11 @@ async function waitForShipmentGridRows(page, poNo, shipmentScanAction = "Remove/
           waitedMs: Date.now() - startedAt,
           sample: String(state.rowSignature || "").slice(0, 180),
         });
-        await assertNoDesktopUtilityConnectionIssue(page, { poNo });
+        await assertNoDesktopUtilityConnectionIssue(page, {
+          poNo,
+          stage: "Shipment Scan",
+          operation: "Shipment Scan",
+        });
         throw new Error(`PO No ${poNo}: shipment grid did not switch to rows for this PO.`);
       }
     } else {
@@ -2040,7 +2089,11 @@ async function waitForShipmentGridRows(page, poNo, shipmentScanAction = "Remove/
     await page.waitForTimeout(250);
   }
 
-  await assertNoDesktopUtilityConnectionIssue(page, { poNo });
+  await assertNoDesktopUtilityConnectionIssue(page, {
+    poNo,
+    stage: "Shipment Scan",
+    operation: "Shipment Scan",
+  });
   throw new Error(`PO No ${poNo}: timed out waiting for shipment rows. State: ${JSON.stringify(lastState || {})}`);
 }
 
@@ -2473,7 +2526,18 @@ async function processCreateShipmentEquipmentId(page, createShipmentBatch) {
   await clearCreateShipmentPoNumber(dialog);
   await fillCreateShipmentBrowseDays(dialog, "601");
   await fillCreateShipmentEquipmentId(dialog, normalizedChangeEquipmentId);
+  await assertNoDesktopUtilityConnectionIssue(page, {
+    changeEquipmentId: normalizedChangeEquipmentId,
+    stage: "Create Shipment",
+    operation: "Create Shipment",
+  });
   await clickDialogOk(dialog, "Create Shipment Filter");
+  await page.waitForTimeout(250);
+  await assertNoDesktopUtilityConnectionIssue(page, {
+    changeEquipmentId: normalizedChangeEquipmentId,
+    stage: "Create Shipment",
+    operation: "Create Shipment",
+  });
   await waitForCreateShipmentGridRows(page, createShipmentBatch);
   const selectionSummary = await selectCreateShipmentGridRows(page, createShipmentBatch);
   if (!selectionSummary?.selectedTargetRowCount) {
@@ -2756,6 +2820,12 @@ async function waitForCreateShipmentGridRows(page, createShipmentBatch) {
   let lastNonMatchingSignature = "";
 
   while (Date.now() - startedAt < timeoutMs) {
+    await assertNoDesktopUtilityConnectionIssue(page, {
+      changeEquipmentId,
+      stage: "Create Shipment",
+      operation: "Create Shipment",
+    });
+
     const errorText = await getVisibleDialogErrorText(page);
     if (errorText) {
       throw new Error(errorText);
@@ -2785,6 +2855,11 @@ async function waitForCreateShipmentGridRows(page, createShipmentBatch) {
     if (state.rowCount === 0) {
       noDataSince = noDataSince || Date.now();
       if (state.noDataVisible && Date.now() - noDataSince >= 1000) {
+        await assertNoDesktopUtilityConnectionIssue(page, {
+          changeEquipmentId,
+          stage: "Create Shipment",
+          operation: "Create Shipment",
+        });
         throw new Error(`Create Shipment ${changeEquipmentId}: no rows were loaded after confirming filters.`);
       }
     } else {
@@ -2798,6 +2873,11 @@ async function waitForCreateShipmentGridRows(page, createShipmentBatch) {
         : Date.now();
       lastNonMatchingSignature = currentSignature;
       if (Date.now() - staleNonMatchingSince >= 1800) {
+        await assertNoDesktopUtilityConnectionIssue(page, {
+          changeEquipmentId,
+          stage: "Create Shipment",
+          operation: "Create Shipment",
+        });
         throw new Error(`Create Shipment ${changeEquipmentId}: grid did not switch to rows for this equipment number.`);
       }
     } else {
@@ -2808,6 +2888,11 @@ async function waitForCreateShipmentGridRows(page, createShipmentBatch) {
     await page.waitForTimeout(250);
   }
 
+  await assertNoDesktopUtilityConnectionIssue(page, {
+    changeEquipmentId,
+    stage: "Create Shipment",
+    operation: "Create Shipment",
+  });
   throw new Error(`Create Shipment ${changeEquipmentId}: timed out waiting for filtered grid rows. State: ${JSON.stringify(lastState || {})}`);
 }
 
@@ -3139,8 +3224,15 @@ async function hasVisibleWindowText(page, pattern) {
 
 function buildDesktopUtilityConnectionMessage(metadata = {}) {
   const poNo = String(metadata?.poNo || "").trim();
-  const poPrefix = poNo ? `PO No ${poNo}: ` : "";
-  return `${poPrefix}Infor Nexus 桌面工具连接超时：页面已进入 Pack-Scan-Ship，但没有连上 Desktop Utility，Shipment Scan 无法加载设备或包裹数据。请确认 Desktop Utility 正在运行且版本不低于 2.0.1.29；可点击左下角 Reconnect to Desktop，或重新加载 PackByScan 后再执行。`;
+  const changeEquipmentId = String(metadata?.changeEquipmentId || "").trim();
+  const stage = String(metadata?.stage || "Pack-Scan-Ship").trim();
+  const operation = String(metadata?.operation || "当前自动化").trim();
+  const prefix = poNo
+    ? `PO No ${poNo}: `
+    : changeEquipmentId
+      ? `Create Shipment ${changeEquipmentId}: `
+      : "";
+  return `${prefix}Infor Nexus 桌面工具连接超时：页面已进入 ${stage}，但没有连上 Desktop Utility，${operation} 无法加载所需设备/包裹数据。请确认 Desktop Utility 正在运行且版本不低于 2.0.1.29；可点击左下角 Reconnect to Desktop，或重新加载 PackByScan 后再执行。`;
 }
 
 async function assertNoDesktopUtilityConnectionIssue(page, metadata = {}) {

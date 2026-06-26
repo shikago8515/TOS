@@ -9,6 +9,9 @@ database:
     username: "root"
     password: ""
     charset: "utf8mb4"
+    connect_timeout: 8
+    read_timeout: 15
+    write_timeout: 15
 
 storage:
   minio:

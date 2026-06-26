@@ -3,7 +3,7 @@ import { fallbackAppVersion } from '../../shared/version/appVersion'
 import bundledReleaseHistory from '../../shared/version/releaseHistory.json'
 
 export type ReleaseUpdateCategory = 'added' | 'improved' | 'fixed' | string
-export type ReleaseUpdatesSource = 'backend' | 'bundled'
+export type ReleaseUpdatesSource = 'backend' | 'cache' | 'bundled'
 
 export interface ReleaseUpdateRecord {
   id: number
@@ -29,6 +29,7 @@ export interface ReleaseUpdatesResponse {
 }
 
 const defaultReleaseUpdatesBackendUrl = 'https://ai.tomwell.net:56130/tos/desktop-api'
+const releaseUpdatesCacheKey = 'tos.releaseUpdates.cache.v1'
 const releaseUpdatesRequestTimeoutMs = 6000
 
 interface BundledReleaseHistoryRecord {
@@ -48,21 +49,41 @@ export async function fetchReleaseUpdates(limit = 120): Promise<ReleaseUpdatesRe
 
   const remotePayload = await requestRemoteReleaseUpdates(path)
   if (remotePayload) {
-    return normalizeReleaseUpdatesPayload(remotePayload, 'backend')
+    const normalized = normalizeReleaseUpdatesPayload(remotePayload, 'backend')
+    writeReleaseUpdatesCache(normalized)
+    return normalized
   }
 
   try {
     const payload = await requestBackendJson<ReleaseUpdatesResponse>({
       path,
+      timeoutMs: releaseUpdatesRequestTimeoutMs,
     })
-    return normalizeReleaseUpdatesPayload(payload, 'backend')
+    const normalized = normalizeReleaseUpdatesPayload(payload, 'backend')
+    writeReleaseUpdatesCache(normalized)
+    return normalized
   } catch (error) {
     if (isRecoverableReleaseUpdatesError(error)) {
-      return buildBundledReleaseUpdates(safeLimit)
+      return readCachedReleaseUpdates(safeLimit)
     }
 
     throw error
   }
+}
+
+export function readCachedReleaseUpdates(limit = 120): ReleaseUpdatesResponse {
+  const safeLimit = Math.max(1, Math.min(limit, 300))
+  const cachedPayload = readReleaseUpdatesCache()
+  if (cachedPayload) {
+    return sliceReleaseUpdatesPayload(cachedPayload, safeLimit, 'cache')
+  }
+
+  return buildBundledReleaseUpdates(safeLimit)
+}
+
+export function readBundledReleaseUpdates(limit = 120): ReleaseUpdatesResponse {
+  const safeLimit = Math.max(1, Math.min(limit, 300))
+  return buildBundledReleaseUpdates(safeLimit)
 }
 
 async function requestRemoteReleaseUpdates(
@@ -168,13 +189,82 @@ function buildBundledRecord(record: BundledReleaseHistoryRecord): ReleaseUpdateR
   }
 }
 
+function readReleaseUpdatesCache(): ReleaseUpdatesResponse | undefined {
+  const storage = getLocalStorage()
+  if (!storage) {
+    return undefined
+  }
+
+  try {
+    const rawValue = storage.getItem(releaseUpdatesCacheKey)
+    if (!rawValue) {
+      return undefined
+    }
+
+    const payload = JSON.parse(rawValue) as Partial<ReleaseUpdatesResponse>
+    if (!Array.isArray(payload.records) || payload.records.length === 0) {
+      return undefined
+    }
+
+    return normalizeReleaseUpdatesPayload(payload, 'cache')
+  } catch (_error) {
+    storage.removeItem(releaseUpdatesCacheKey)
+    return undefined
+  }
+}
+
+function writeReleaseUpdatesCache(payload: ReleaseUpdatesResponse): void {
+  const storage = getLocalStorage()
+  if (!storage || payload.records.length === 0) {
+    return
+  }
+
+  try {
+    storage.setItem(
+      releaseUpdatesCacheKey,
+      JSON.stringify({
+        ok: true,
+        source: 'backend',
+        version: payload.version,
+        records: payload.records,
+        total: payload.records.length,
+      }),
+    )
+  } catch (_error) {
+    // Local cache is an optimization only.
+  }
+}
+
+function sliceReleaseUpdatesPayload(
+  payload: ReleaseUpdatesResponse,
+  limit: number,
+  source: ReleaseUpdatesSource,
+): ReleaseUpdatesResponse {
+  const records = payload.records.slice(0, limit)
+  return {
+    ok: true,
+    source,
+    version: payload.version || fallbackAppVersion,
+    records,
+    total: records.length,
+  }
+}
+
+function getLocalStorage(): Storage | undefined {
+  try {
+    return globalThis.localStorage
+  } catch (_error) {
+    return undefined
+  }
+}
+
 function isRecoverableReleaseUpdatesError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false
   }
 
   return (
-    error.message === '无法连接后端服务'
+    error.message.includes('无法连接后端服务')
     || error.message === 'Failed to fetch'
     || error.message.includes('缺少此接口')
   )

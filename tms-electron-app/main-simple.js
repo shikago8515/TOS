@@ -7,6 +7,7 @@ const os = require('os');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const { registerAdidasMaterialsCollector } = require('./adidas-materials-main');
+const automationLauncherCore = require('./automation-launcher/core');
 const { normalizeAllowedExternalUrl } = require('./external-url-allowlist');
 const {
   describeBackendCompatibilityFailure,
@@ -1122,6 +1123,47 @@ function stopAutomationApp(appId) {
   return { success: true, appId };
 }
 
+function getCoreAutomationOptions() {
+  const helperVersion = readAutomationHelperVersion();
+  return {
+    automationAppRoot: getAutomationAppRoot(),
+    processMap: automationAppProcesses,
+    userDataDir: app.getPath('userData'),
+    helperVersion,
+    processExecPath: process.execPath,
+    windowsHide: true,
+    markElectronRunAsNode: Boolean(process.versions.electron),
+    automationModuleManifestUrl: process.env.TOS_AUTOMATION_MODULE_MANIFEST_URL
+      || process.env.TMS_AUTOMATION_MODULE_MANIFEST_URL
+      || automationLauncherCore.DEFAULT_AUTOMATION_MODULE_MANIFEST_URL,
+    enableModuleUpdates: process.env.TOS_AUTOMATION_MODULE_UPDATES !== '0',
+    baseEnv: helperVersion
+      ? { TOS_AUTOMATION_HELPER_VERSION: helperVersion }
+      : {},
+  };
+}
+
+async function getCoreAutomationApps() {
+  return automationLauncherCore.getAutomationApps(getCoreAutomationOptions());
+}
+
+async function launchCoreAutomationApp(appId) {
+  const result = await automationLauncherCore.launchAutomationApp(appId, getCoreAutomationOptions());
+  if (!result.success && /^Unknown automation app:/i.test(String(result.error || ''))) {
+    const registry = loadAutomationAppRegistry();
+    const knownApps = registry.map((item) => item.id).filter(Boolean).join(', ') || '(none)';
+    return {
+      ...result,
+      error: `${result.error}. Registry: ${getAutomationRegistryPath()}. Known apps: ${knownApps}`,
+    };
+  }
+  return result;
+}
+
+function stopCoreAutomationApp(appId) {
+  return automationLauncherCore.stopAutomationApp(appId, getCoreAutomationOptions());
+}
+
 function getAutomationLauncherRoot() {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'automation-launcher')
@@ -1237,6 +1279,10 @@ async function ensureAutomationLauncher() {
       TMS_AUTOMATION_LAUNCHER_DATA_DIR: app.getPath('userData'),
       TMS_AUTOMATION_APP_NAME: APP_DISPLAY_NAME,
       TOS_AUTOMATION_HELPER_VERSION_FILE: getAutomationHelperVersionPath(),
+      TOS_AUTOMATION_MODULE_MANIFEST_URL: process.env.TOS_AUTOMATION_MODULE_MANIFEST_URL
+        || process.env.TMS_AUTOMATION_MODULE_MANIFEST_URL
+        || automationLauncherCore.DEFAULT_AUTOMATION_MODULE_MANIFEST_URL,
+      TOS_AUTOMATION_MODULE_UPDATES: process.env.TOS_AUTOMATION_MODULE_UPDATES || '1',
       ELECTRON_RUN_AS_NODE: '1',
     };
     if (helperVersion) {
@@ -1431,7 +1477,7 @@ async function buildDiagnosticsManifest() {
       automationAppRoot,
       browserPluginRoot
     },
-    automationApps: await getAutomationApps(),
+    automationApps: await getCoreAutomationApps(),
     browserPlugins: getBrowserPlugins().map((plugin) => ({
       id: plugin.id,
       name: plugin.name,
@@ -1903,14 +1949,14 @@ function registerIpcHandlers() {
     return result;
   });
 
-  ipcMain.handle('get-automation-apps', () => getAutomationApps());
+  ipcMain.handle('get-automation-apps', () => getCoreAutomationApps());
 
   ipcMain.handle('launch-automation-app', async (_event, appId) => {
     if (typeof appId !== 'string' || !appId) {
       return { success: false, error: 'Invalid automation app id' };
     }
     writeDiagnosticEvent('web-automation', 'launch-start', { appId });
-    const result = await launchAutomationApp(appId);
+    const result = await launchCoreAutomationApp(appId);
     writeDiagnosticEvent('web-automation', result.success ? 'launch-success' : 'launch-failure', { appId, result });
     return result;
   });
@@ -1919,7 +1965,7 @@ function registerIpcHandlers() {
     if (typeof appId !== 'string' || !appId) {
       return { success: false, error: 'Invalid automation app id' };
     }
-    const result = await stopAutomationApp(appId);
+    const result = await stopCoreAutomationApp(appId);
     writeDiagnosticEvent('web-automation', result.success ? 'stop-success' : 'stop-failure', { appId, result });
     return result;
   });

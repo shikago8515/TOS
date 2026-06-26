@@ -239,6 +239,7 @@ import { useRouter } from 'vue-router'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+import { showAppAlert } from '../../../shared/ui/appAlert'
 import AutomationCredentialsPanel from '../../web-automation/components/AutomationCredentialsPanel.vue'
 import type { AutomationAppInfo } from '../../../types/electronApi'
 import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentialOption, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
@@ -504,7 +505,7 @@ function showRunRequirementDialog(rawMessage: string): false {
   statusLabel.value = '待命'
   statusText.value = localized
   lastResult.value = { ok: false, message: localized }
-  window.alert(localized)
+  void showAppAlert(localized, { tone: 'warning' })
   return false
 }
 
@@ -521,7 +522,7 @@ function validateShippingInputs(): boolean {
 async function runShipping(): Promise<void> {
   if (sending.value) return
   if (!validateShippingInputs()) return
-  if (!(await ensureReady())) { setNotReady(); window.alert(statusText.value); return }
+  if (!(await ensureReady())) { setNotReady(); void showAppAlert(statusText.value, { tone: 'warning' }); return }
   const currentEntry = entry
   if (!currentEntry) { showRunRequirementDialog('当前入口不存在，请返回 Eric - Infornexus 页面重新进入。'); return }
   const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''

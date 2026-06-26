@@ -49,6 +49,11 @@ INFOR_NEXUS_SHARED_CREDENTIAL_IDS = (
     "released-bulk-automation",
 )
 
+MICROSOFT_SHARED_CREDENTIAL_IDS = (
+    "microsoft-login-n8n",
+    "ticket-owner-statistics",
+)
+
 
 class CredentialPayload(BaseModel):
     username: str = Field(min_length=1)
@@ -71,7 +76,7 @@ class RunUpdatePayload(BaseModel):
 
 
 @router.get("/credentials/{automation_id}/accounts")
-async def list_credentials(automation_id: str) -> dict[str, Any]:
+def list_credentials(automation_id: str) -> dict[str, Any]:
     accounts: list[dict[str, Any]] = []
     seen_account_keys: set[str] = set()
     for source_automation_id in _credential_lookup_ids(automation_id):
@@ -90,14 +95,14 @@ async def list_credentials(automation_id: str) -> dict[str, Any]:
 
 
 @router.get("/credentials/{automation_id}")
-async def read_credentials(automation_id: str, accountKey: str = Query("default")) -> dict[str, Any]:
+def read_credentials(automation_id: str, accountKey: str = Query("default")) -> dict[str, Any]:
     account_key = _normalize_account_key(accountKey)
     row, source_automation_id = _get_credentials_with_alias(automation_id, account_key)
     return _credential_public_payload(automation_id, account_key, row, source_automation_id)
 
 
 @router.put("/credentials/{automation_id}")
-async def save_credentials(automation_id: str, payload: CredentialPayload) -> dict[str, Any]:
+def save_credentials(automation_id: str, payload: CredentialPayload) -> dict[str, Any]:
     username = payload.username.strip()
     password = payload.password
     account_key = _normalize_account_key(payload.accountKey)
@@ -114,7 +119,7 @@ async def save_credentials(automation_id: str, payload: CredentialPayload) -> di
 
 
 @router.delete("/credentials/{automation_id}")
-async def clear_credentials(automation_id: str, accountKey: str = Query("default")) -> dict[str, Any]:
+def clear_credentials(automation_id: str, accountKey: str = Query("default")) -> dict[str, Any]:
     account_key = _normalize_account_key(accountKey)
     row, source_automation_id = _get_credentials_with_alias(automation_id, account_key)
     delete_automation_credentials(source_automation_id if row else automation_id, account_key)
@@ -122,23 +127,40 @@ async def clear_credentials(automation_id: str, accountKey: str = Query("default
 
 
 @router.post("/credentials/{automation_id}/resolve")
-async def resolve_credentials(automation_id: str, accountKey: str = Query("default")) -> dict[str, Any]:
+def resolve_credentials(automation_id: str, accountKey: str = Query("default")) -> dict[str, Any]:
     account_key = _normalize_account_key(accountKey)
     row, source_automation_id = _get_credentials_with_alias(automation_id, account_key)
     if not row:
         raise HTTPException(status_code=404, detail="未保存当前网站登录账号密码。请先填写并保存。")
+    try:
+        password = decrypt_secret(row["password_ciphertext"])
+    except ValueError as exc:
+        logger.warning(
+            "Automation credential decrypt failed: automation_id=%s source_automation_id=%s account_key=%s",
+            automation_id,
+            source_automation_id,
+            account_key,
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "已找到该 Infor Nexus 账号记录，但本机后端无法解密密码。"
+                "请确认本机 tms-backend/config/settings.yaml 中的 security.credential_key "
+                "与保存该密码时使用的后端一致；如果当前连接的是远程数据库，请使用服务器同一套凭据密钥。"
+            ),
+        ) from exc
     return {
         "ok": True,
         "automationId": automation_id,
         "sourceAutomationId": source_automation_id,
         "accountKey": account_key,
         "username": row["username"],
-        "password": decrypt_secret(row["password_ciphertext"]),
+        "password": password,
     }
 
 
 @router.get("/templates")
-async def read_templates(moduleId: str = Query(...)) -> dict[str, Any]:
+def read_templates(moduleId: str = Query(...)) -> dict[str, Any]:
     templates = [_template_payload(row) for row in list_excel_templates(moduleId)]
     return {
         "ok": True,
@@ -188,7 +210,7 @@ async def upload_template(
 
 
 @router.get("/templates/{template_id}/download")
-async def download_template(template_id: int):
+def download_template(template_id: int):
     row = get_excel_template(template_id)
     if not row:
         raise HTTPException(status_code=404, detail="Template was not found.")
@@ -281,7 +303,7 @@ async def finish_run(run_id: str, payload: RunUpdatePayload) -> dict[str, Any]:
 
 
 @router.get("/runs")
-async def read_runs(
+def read_runs(
     automationId: str | None = Query(None),
     limit: int = Query(30, ge=1, le=100),
 ) -> dict[str, Any]:
@@ -344,6 +366,12 @@ def _credential_lookup_ids(automation_id: str) -> list[str]:
         lookup_ids.extend(
             candidate_id
             for candidate_id in INFOR_NEXUS_SHARED_CREDENTIAL_IDS
+            if candidate_id not in lookup_ids
+        )
+    if automation_id in MICROSOFT_SHARED_CREDENTIAL_IDS:
+        lookup_ids.extend(
+            candidate_id
+            for candidate_id in MICROSOFT_SHARED_CREDENTIAL_IDS
             if candidate_id not in lookup_ids
         )
     return lookup_ids

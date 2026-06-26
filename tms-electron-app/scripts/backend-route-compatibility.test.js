@@ -40,6 +40,8 @@ test('backend API contract includes release and system config routes', () => {
       '/api/system/config/automation-helper/download',
       '/api/system/config/automation-helper/payload',
       '/api/system/config/automation-helper/payload/{payload_sha256}',
+      '/api/system/config/automation-modules',
+      '/api/system/config/automation-modules/{module_id}/download',
       '/api/system/config/installer-versions',
       '/api/system/config/summary',
       '/api/system/config/tos-desktop-full/download',

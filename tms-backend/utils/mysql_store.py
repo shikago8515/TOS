@@ -45,6 +45,9 @@ def mysql_connection(*, database: str | None | object = _DEFAULT_DATABASE) -> It
         password=config["password"],
         database=selected_database,
         charset=config["charset"],
+        connect_timeout=int(config["connect_timeout"]),
+        read_timeout=int(config["read_timeout"]),
+        write_timeout=int(config["write_timeout"]),
         autocommit=False,
         cursorclass=pymysql.cursors.DictCursor,
     )
@@ -63,6 +66,9 @@ def get_mysql_config() -> dict[str, Any]:
         "username": mysql.get("username", "root"),
         "password": mysql.get("password", ""),
         "charset": mysql.get("charset", "utf8mb4"),
+        "connect_timeout": int(mysql.get("connect_timeout", 8)),
+        "read_timeout": int(mysql.get("read_timeout", 15)),
+        "write_timeout": int(mysql.get("write_timeout", 15)),
     }
 
 

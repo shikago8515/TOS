@@ -88,7 +88,7 @@
       </div>
     </transition>
 
-    <div v-if="!loading && filteredRecords.length > 0" class="ru-timeline">
+    <div v-if="filteredRecords.length > 0" class="ru-timeline">
       <article
         v-for="record in filteredRecords"
         :key="record.id || record.recordKey"
@@ -135,13 +135,14 @@ import { computed, onMounted, ref } from 'vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import { readErrorMessage } from '../../shared/api/backendClient'
-import { fetchReleaseUpdates, type ReleaseUpdateRecord } from './releaseUpdatesApi'
+import { fetchReleaseUpdates, readCachedReleaseUpdates, type ReleaseUpdateRecord } from './releaseUpdatesApi'
 
 type FilterValue = 'all' | 'added' | 'improved' | 'fixed'
 
 const { text } = useAppLanguage()
-const records = ref<ReleaseUpdateRecord[]>([])
-const runtimeVersion = ref('')
+const initialReleaseUpdates = readCachedReleaseUpdates(160)
+const records = ref<ReleaseUpdateRecord[]>(initialReleaseUpdates.records)
+const runtimeVersion = ref(initialReleaseUpdates.version)
 const loading = ref(false)
 const errorMessage = ref('')
 const usingBundledFallback = ref(false)

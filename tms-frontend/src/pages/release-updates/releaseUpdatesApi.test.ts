@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { requestBackendJson } from '../../shared/api/backendClient'
 import { fallbackAppVersion } from '../../shared/version/appVersion'
-import { fetchReleaseUpdates } from './releaseUpdatesApi'
+import { fetchReleaseUpdates, readBundledReleaseUpdates, readCachedReleaseUpdates } from './releaseUpdatesApi'
 
 vi.mock('../../shared/api/backendClient', () => ({
   requestBackendJson: vi.fn(),
@@ -153,4 +153,116 @@ describe('releaseUpdatesApi', () => {
     expect(payload.records).toHaveLength(3)
     expect(payload.total).toBe(3)
   })
+
+  it('can provide bundled records synchronously for the first paint', () => {
+    const payload = readBundledReleaseUpdates(3)
+
+    expect(payload).toMatchObject({
+      ok: true,
+      source: 'bundled',
+      version: fallbackAppVersion,
+      total: 3,
+    })
+    expect(payload.records).toHaveLength(3)
+  })
+
+  it('caches successful backend records for the next first paint', async () => {
+    const storage = createStorageMock()
+    vi.stubGlobal('localStorage', storage)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      text: vi.fn().mockResolvedValue(JSON.stringify({
+        ok: true,
+        version: '0.9.8-beta.3.28',
+        total: 1,
+        records: [
+          {
+            id: 1,
+            recordKey: 'remote-latest',
+            version: '0.9.8-beta.3.28',
+            releaseDate: '2026-06-26',
+            category: 'fixed',
+            pageName: 'System Log',
+            pagePath: '/release-updates',
+            title: 'Remote latest record',
+            description: 'Loaded from remote database',
+            createdBy: 'git',
+            createdAt: '',
+            updatedAt: '',
+          },
+        ],
+      })),
+    }))
+
+    await fetchReleaseUpdates(160)
+    const cachedPayload = readCachedReleaseUpdates(160)
+
+    expect(cachedPayload).toMatchObject({
+      source: 'cache',
+      version: '0.9.8-beta.3.28',
+      records: [
+        {
+          recordKey: 'remote-latest',
+          title: 'Remote latest record',
+        },
+      ],
+    })
+  })
+
+  it('falls back to cached records before bundled records when backends are unavailable', async () => {
+    const storage = createStorageMock()
+    storage.setItem('tos.releaseUpdates.cache.v1', JSON.stringify({
+      ok: true,
+      version: '0.9.8-beta.3.28',
+      total: 1,
+      records: [
+        {
+          id: 2,
+          recordKey: 'cached-latest',
+          version: '0.9.8-beta.3.28',
+          releaseDate: '2026-06-26',
+          category: 'improved',
+          pageName: 'System Log',
+          pagePath: '/release-updates',
+          title: 'Cached latest record',
+          description: 'Loaded from local cache',
+          createdBy: 'cache',
+          createdAt: '',
+          updatedAt: '',
+        },
+      ],
+    }))
+    vi.stubGlobal('localStorage', storage)
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('remote unavailable')))
+    vi.mocked(requestBackendJson).mockRejectedValue(new Error('Failed to fetch'))
+
+    const payload = await fetchReleaseUpdates(160)
+
+    expect(payload).toMatchObject({
+      source: 'cache',
+      records: [
+        {
+          recordKey: 'cached-latest',
+          title: 'Cached latest record',
+        },
+      ],
+    })
+  })
 })
+
+function createStorageMock(): Storage {
+  const values = new Map<string, string>()
+
+  return {
+    get length() {
+      return values.size
+    },
+    clear: vi.fn(() => values.clear()),
+    getItem: vi.fn((key: string) => values.get(key) ?? null),
+    key: vi.fn((index: number) => Array.from(values.keys())[index] ?? null),
+    removeItem: vi.fn((key: string) => values.delete(key)),
+    setItem: vi.fn((key: string, value: string) => {
+      values.set(key, value)
+    }),
+  }
+}
