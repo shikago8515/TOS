@@ -20,6 +20,36 @@
     "description": "新增 Excel 模板中心，可集中上传、编辑、停用和下载各自动化页面使用的模板文件，页面下载入口会同步使用最新模板。"
   },
   {
+    "recordKey": "builtin-0.9.8-beta.3.28-improved-automation-template-selection-flow",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "improved",
+    "pageName": "Excel 模板中心",
+    "pagePath": "/automation-templates",
+    "title": "优化模板选择后再操作",
+    "description": "Excel 模板中心改为先点击模板左侧小圆点选中模板，再在顶部执行替换文件、保存名称、下载、停用或启用，减少重复按钮和误操作。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-improved-app-alert-confirm-dialog",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "improved",
+    "pageName": "通用弹窗",
+    "pagePath": "/automation-templates",
+    "title": "新增可取消确认弹窗",
+    "description": "通用提示弹窗支持取消和确认按钮，模板停用等危险操作可先确认再执行，不再依赖浏览器原生确认框。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-fixed-ticket-owner-helper-version-fallback",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "fixed",
+    "pageName": "统计 ticket 归属自动化",
+    "pagePath": "/web-automation/scenarios/ticket-owner-statistics",
+    "title": "修复小助手版本误判",
+    "description": "统计 ticket 归属自动化在 Microsoft 执行器 health 未返回版本字段时，会使用本机小助手启动器版本兜底判断，避免误报小助手版本无法识别。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.28-improved-tc-inv-batch-loop",
     "version": "0.9.8-beta.3.28",
     "releaseDate": "2026-06-26",
