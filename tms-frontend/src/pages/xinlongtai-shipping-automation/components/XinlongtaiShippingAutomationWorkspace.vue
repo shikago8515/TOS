@@ -169,6 +169,8 @@
             </div>
           </div>
 
+          <AutomationRunHistoryPanel :automation-id="entry.id" :refresh-signal="lastRawResponse" />
+
           <!-- Steps -->
           <div class="sa-dock-card sa-dock-card--flex">
             <div class="sa-dock__hd">
@@ -235,6 +237,7 @@ import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.
 import { showAppAlert } from '../../../shared/ui/appAlert'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 import AutomationAccountProfileManager from '../../web-automation/components/AutomationAccountProfileManager.vue'
+import AutomationRunHistoryPanel from '../../web-automation/components/AutomationRunHistoryPanel.vue'
 import type { AutomationAppInfo } from '../../../types/electronApi'
 import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {

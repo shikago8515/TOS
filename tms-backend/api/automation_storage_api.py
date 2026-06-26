@@ -368,25 +368,34 @@ def read_runs(
     pageSize: int = Query(30, ge=1, le=100),
     limit: int | None = Query(None, ge=1, le=100),
 ) -> dict[str, Any]:
-    effective_page_size = limit or pageSize
-    offset = (page - 1) * effective_page_size
-    total = count_automation_runs(
-        automationId,
-        module_id=moduleId,
-        status=status,
-        keyword=keyword,
-    )
-    runs = [
-        _run_payload(row)
-        for row in list_automation_runs(
+    try:
+        effective_page_size = limit or pageSize
+        offset = (page - 1) * effective_page_size
+        total = count_automation_runs(
             automationId,
-            effective_page_size,
             module_id=moduleId,
             status=status,
             keyword=keyword,
-            offset=offset,
         )
-    ]
+        runs = [
+            _run_payload(row)
+            for row in list_automation_runs(
+                automationId,
+                effective_page_size,
+                module_id=moduleId,
+                status=status,
+                keyword=keyword,
+                offset=offset,
+            )
+        ]
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to read automation run records.")
+        raise HTTPException(
+            status_code=503,
+            detail="无法读取自动化执行记录：远程 MySQL 数据库暂时不可用或连接被服务器断开。请确认 172.16.48.208 的 MySQL 服务正常后重试。",
+        ) from exc
     return {
         "ok": True,
         "runs": runs,

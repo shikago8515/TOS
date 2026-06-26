@@ -222,6 +222,8 @@
             </div>
           </div>
 
+          <AutomationRunHistoryPanel :automation-id="entry.id" :refresh-signal="lastRawResponse" />
+
           <!-- Steps -->
           <div class="sa-dock-card sa-dock-card--flex">
             <div class="sa-dock__hd">
@@ -302,6 +304,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'; import { useRoute, useRouter } from 'vue-router'; import AppIcon from '../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../shared/ui/BrowserVisibilitySwitch.vue'
+import AutomationRunHistoryPanel from './components/AutomationRunHistoryPanel.vue'
 import { showAppAlert } from '../../shared/ui/appAlert'
 import type { AutomationAppInfo } from '../../types/electronApi'; import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from './webAutomationApi'
 import { clearExecutorCredentials, createAutomationRunRecord, downloadAutomationTemplate, fetchAutomationTemplates, fetchExecutorCredentials, openAutomationHelperDownload, fetchAutomationApps, finishAutomationRunRecord, getAutomationHelperUpdateMessage, hasElectronAutomationSupport, launchAutomationConsole, primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth, recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole } from './webAutomationApi'

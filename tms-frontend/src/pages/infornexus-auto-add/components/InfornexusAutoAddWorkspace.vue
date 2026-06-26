@@ -179,6 +179,8 @@
             </div>
           </div>
 
+          <AutomationRunHistoryPanel :automation-id="entry.id" :refresh-signal="lastRawResponse" />
+
           <!-- Steps -->
           <div class="iaa-dock-card iaa-dock-card--flex">
             <div class="iaa-dock__hd">
@@ -244,6 +246,7 @@ import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
 import { showAppAlert } from '../../../shared/ui/appAlert'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+import AutomationRunHistoryPanel from '../../web-automation/components/AutomationRunHistoryPanel.vue'
 import type { AutomationAppInfo } from '../../../types/electronApi'
 import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {

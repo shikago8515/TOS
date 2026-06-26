@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
+import AutomationRunsPage from '../pages/automation-runs/AutomationRunsPage.vue'
+import AutomationTemplatesPage from '../pages/automation-templates/AutomationTemplatesPage.vue'
 import DraftPackingComparePage from '../pages/draft-packing-compare/DraftPackingComparePage.vue'
 import IplexDualTableComparePage from '../pages/iplex-dual-table-compare/IplexDualTableComparePage.vue'
 import InfornexusAutoAddPage from '../pages/infornexus-auto-add/InfornexusAutoAddPage.vue'
@@ -174,5 +176,18 @@ describe('router', () => {
     expect(route?.name).toBe('release-updates')
     expect(route?.components?.default).toBe(ReleaseUpdatesPage)
     expect(route?.components?.default).not.toBe(RoutePlaceholder)
+  })
+
+  it('routes automation run records and template management to real page components', async () => {
+    const { router } = await import('./router')
+    const runsRoute = router.getRoutes().find((entry) => entry.path === '/automation-runs')
+    const templatesRoute = router.getRoutes().find((entry) => entry.path === '/automation-templates')
+
+    expect(runsRoute?.name).toBe('automation-runs')
+    expect(runsRoute?.components?.default).toBe(AutomationRunsPage)
+    expect(runsRoute?.components?.default).not.toBe(RoutePlaceholder)
+    expect(templatesRoute?.name).toBe('automation-templates')
+    expect(templatesRoute?.components?.default).toBe(AutomationTemplatesPage)
+    expect(templatesRoute?.components?.default).not.toBe(RoutePlaceholder)
   })
 })

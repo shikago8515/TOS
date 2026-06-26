@@ -209,6 +209,8 @@
             </div>
           </section>
 
+          <AutomationRunHistoryPanel :automation-id="entry.id" :refresh-signal="lastRawResponse" />
+
           <section class="pad-dock-card pad-dock-card--grow">
             <div class="pad-dock-card__head">
               <AppIcon name="workflow" />
@@ -273,6 +275,7 @@ import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
 import { showAppAlert } from '../../../shared/ui/appAlert'
 import AutomationAccountProfileManager from '../../web-automation/components/AutomationAccountProfileManager.vue'
+import AutomationRunHistoryPanel from '../../web-automation/components/AutomationRunHistoryPanel.vue'
 import { buildBackendDownloadUrl } from '../../../shared/api/backendClient'
 import type { AutomationAppInfo } from '../../../types/electronApi'
 import type { AutomationRunRecord, LocalExecutorHealth } from '../../web-automation/webAutomationApi'

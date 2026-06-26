@@ -15,6 +15,8 @@ from api.automation_storage_api import (
     _attachment_content_disposition,
     _credential_lookup_ids,
     _normalize_account_key,
+    _run_file_payload,
+    _template_payload,
 )
 from scripts.seed_automation_templates import AUTOMATION_TEMPLATES, read_template_content
 
@@ -181,6 +183,88 @@ class AutomationStorageTests(unittest.TestCase):
         self.assertEqual(response["files"], [])
         self.assertEqual(len(response["warnings"]), 1)
         self.assertNotIn("storage backend detail", response["warnings"][0])
+
+    def test_template_payload_exposes_management_fields(self):
+        row = {
+            "id": 7,
+            "module_id": "tc-inv-automation",
+            "template_key": "default",
+            "display_name": "TC INV 模板",
+            "original_filename": "tc-inv.xlsx",
+            "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "file_size": 1200,
+            "sha256": "a" * 64,
+            "is_active": 0,
+            "created_at": datetime(2026, 6, 26, 8, 0, 0),
+            "updated_at": datetime(2026, 6, 26, 9, 0, 0),
+        }
+
+        payload = _template_payload(row)
+
+        self.assertEqual(payload["id"], 7)
+        self.assertFalse(payload["isActive"])
+        self.assertEqual(payload["downloadPath"], "/api/automation/templates/7/download")
+        self.assertIn("2026-06-26", payload["updatedAt"])
+
+    def test_run_file_payload_exposes_download_path(self):
+        row = {
+            "id": 11,
+            "run_id": "run-11",
+            "file_role": "result_excel",
+            "bucket": "tos-results",
+            "object_key": "results/run-11/result.xlsx",
+            "original_filename": "result.xlsx",
+            "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "file_size": 4096,
+            "sha256": "b" * 64,
+            "created_at": datetime(2026, 6, 26, 10, 0, 0),
+        }
+
+        payload = _run_file_payload(row)
+
+        self.assertEqual(payload["id"], 11)
+        self.assertEqual(payload["fileRole"], "result_excel")
+        self.assertEqual(payload["downloadPath"], "/api/automation/run-files/11/download")
+
+    def test_read_templates_can_list_all_modules_for_management(self):
+        rows = [
+            {
+                "id": 1,
+                "module_id": "shipping-automation",
+                "template_key": "default",
+                "display_name": "万代模板",
+                "original_filename": "wandai.xlsx",
+                "content_type": "",
+                "file_size": 1,
+                "sha256": "",
+                "is_active": 1,
+                "created_at": None,
+                "updated_at": None,
+            },
+            {
+                "id": 2,
+                "module_id": "tc-inv-automation",
+                "template_key": "default",
+                "display_name": "TC INV 模板",
+                "original_filename": "tc-inv.xlsx",
+                "content_type": "",
+                "file_size": 1,
+                "sha256": "",
+                "is_active": 1,
+                "created_at": None,
+                "updated_at": None,
+            },
+        ]
+
+        with patch.object(automation_storage_api, "list_excel_templates", return_value=rows) as list_templates:
+            response = automation_storage_api.read_templates(moduleId=None, includeInactive=True, limit=500)
+
+        list_templates.assert_called_once_with(None, include_inactive=True, limit=500)
+        self.assertEqual(response["moduleId"], "")
+        self.assertEqual([item["moduleId"] for item in response["templates"]], [
+            "shipping-automation",
+            "tc-inv-automation",
+        ])
 
 
 def restore_env(name, value):
