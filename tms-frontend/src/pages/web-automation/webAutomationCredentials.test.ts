@@ -52,6 +52,7 @@ describe('webAutomationCredentials', () => {
 
   it('uses the normalized user id as the saved credential account key', () => {
     expect(buildCredentialAccountKey(' user3@tmsfashion ')).toBe(DEFAULT_INFOR_NEXUS_USERNAME)
+    expect(buildCredentialAccountKey(' jessicaliu@tmsfashion.com ')).toBe('jessicaliu@tmsfashion.com')
     expect(buildCredentialAccountKey('  ')).toBe('default')
   })
 
@@ -74,6 +75,7 @@ describe('webAutomationCredentials', () => {
     ]
 
     expect(findCredentialOptionByUsername(options, 'user3@tmsfashion')).toBe(options[0])
+    expect(findCredentialOptionByUsername(options, ' foreign ')).toBe(options[1])
     expect(findCredentialOptionByUsername(options, ' missing ')).toBeNull()
   })
 

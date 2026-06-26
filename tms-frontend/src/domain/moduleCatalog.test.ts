@@ -4,6 +4,7 @@ import {
   getLocalizedModuleTitle,
   getModuleById,
   getModulesByGroup,
+  tosModuleCategoryLabels,
   tosModules,
   tosNavGroups,
 } from './moduleCatalog'
@@ -87,7 +88,7 @@ describe('moduleCatalog', () => {
     )
   })
 
-  it('shows PDF compare directly under Jessica after reconciliation', () => {
+  it('shows origin certificate compare directly under Jessica after reconciliation', () => {
     const draftPackingModule = getModuleById('draft-packing-compare')
     const jessicaModules = getModulesByGroup('jessica')
     const legacyPdfModules = getModulesByGroup('pdf-data-compare')
@@ -97,12 +98,26 @@ describe('moduleCatalog', () => {
       group: 'jessica',
       path: '/draft-packing-compare',
       routeName: 'draft-packing-compare',
-      title: 'PDF核对',
-      navLabel: 'PDF核对',
+      title: '产地证核对',
+      navLabel: '产地证核对',
+      navLabelEn: 'Certificate of Origin Compare',
     })
     expect(moduleIds).toContain('draft-packing-compare')
     expect(legacyPdfModules.map((module) => module.id)).not.toContain('draft-packing-compare')
     expect(moduleIds.indexOf('draft-packing-compare')).toBeGreaterThan(moduleIds.indexOf('jessca'))
+  })
+
+  it('labels Jessca invoice compare under Excel processing in the sidebar', () => {
+    const jesscaModule = getModuleById('jessca')
+
+    expect(tosModuleCategoryLabels.reconciliation).toMatchObject({
+      label: 'Excel处理',
+      labelEn: 'Excel Processing',
+    })
+    expect(jesscaModule).toMatchObject({
+      navLabel: 'Invoice 核对',
+      navLabelEn: 'Invoice Compare',
+    })
   })
 
   it('uses full module titles for page breadcrumbs in both languages', () => {
@@ -110,18 +125,32 @@ describe('moduleCatalog', () => {
     const internalReconciliationModule = getModuleById('tms-finance-internal-reconciliation')
     const workSalesModule = getModuleById('tms-finance-work-sales')
     const iplexModule = getModuleById('iplex-dual-table-compare')
+    const ericModule = getModuleById('eric')
+    const jesscaModule = getModuleById('jessca')
+    const draftPackingModule = getModuleById('draft-packing-compare')
 
     expect(getLocalizedModuleTitle(invoiceModule, 'zh-CN')).toBe('Jason / 发票 PDF 重排序')
     expect(getLocalizedModuleTitle(invoiceModule, 'en-US')).toBe('Jason / Invoice PDF Reorder')
-    expect(getLocalizedModuleTitle(internalReconciliationModule, 'zh-CN')).toBe('内销对账表数据提取')
+    expect(getLocalizedModuleTitle(internalReconciliationModule, 'zh-CN')).toBe('内销对账单数据写入')
     expect(getLocalizedModuleTitle(internalReconciliationModule, 'en-US')).toBe(
-      'Internal Reconciliation Data Extraction',
+      'Internal Reconciliation Data Fill',
     )
-    expect(getLocalizedModuleTitle(workSalesModule, 'zh-CN')).toBe('Work Sales 数据写入')
-    expect(getLocalizedModuleTitle(workSalesModule, 'en-US')).toBe('Work Sales Data Fill')
-    expect(getLocalizedModuleTitle(workSalesModule, 'en-US')).not.toBe(workSalesModule.navLabelEn)
+    expect(internalReconciliationModule.navLabel).toBe('内销对账单数据写入')
+    expect(internalReconciliationModule.navLabelEn).toBe('Internal Reconciliation Data Fill')
+    expect(getLocalizedModuleTitle(workSalesModule, 'zh-CN')).toBe('Turnover数据写入')
+    expect(getLocalizedModuleTitle(workSalesModule, 'en-US')).toBe('Turnover Data Fill')
+    expect(workSalesModule.navLabel).toBe('Turnover数据写入')
+    expect(workSalesModule.navLabelEn).toBe('Turnover Data Fill')
     expect(getLocalizedModuleTitle(iplexModule, 'zh-CN')).toBe('数据核对')
     expect(getLocalizedModuleTitle(iplexModule, 'en-US')).toBe('Data Compare')
+    expect(getLocalizedModuleTitle(ericModule, 'zh-CN')).toBe('数据处理')
+    expect(getLocalizedModuleTitle(ericModule, 'en-US')).toBe('Data Processing')
+    expect(getLocalizedModuleTitle(jesscaModule, 'zh-CN')).toBe('Invoice 核对')
+    expect(getLocalizedModuleTitle(jesscaModule, 'en-US')).toBe('Invoice Compare')
+    expect(getLocalizedModuleTitle(draftPackingModule, 'zh-CN')).toBe('产地证核对')
+    expect(getLocalizedModuleTitle(draftPackingModule, 'en-US')).toBe(
+      'Certificate of Origin Compare',
+    )
   })
 
   it('exposes iPlex dual table compare under Eric Excel tools', () => {
@@ -149,11 +178,15 @@ describe('moduleCatalog', () => {
     )
   })
 
-  it('moves released Bulk automation under Jane Infornexus without moving the Eric auto-add entry', () => {
+  it('keeps released Bulk under Jane and moves auto-add under Eric Infornexus', () => {
     const janeInfornexusModule = getModuleById('jane-infornexus')
+    const ericInfornexusModule = getModuleById('eric-infornexus')
     const janeModules = getModulesByGroup('jane')
+    const jessicaModules = getModulesByGroup('jessica')
     const ericModules = getModulesByGroup('eric')
+    const moduleIds = tosModules.map((module) => String(module.id))
     const janeModuleIds = janeModules.map((module) => module.id)
+    const jessicaModuleIds = jessicaModules.map((module) => module.id)
     const ericModuleIds = ericModules.map((module) => module.id)
 
     expect(janeInfornexusModule).toMatchObject({
@@ -169,7 +202,25 @@ describe('moduleCatalog', () => {
     })
     expect(janeModuleIds).toContain('jane-infornexus')
     expect(janeModuleIds.indexOf('jane-infornexus')).toBeGreaterThan(janeModuleIds.indexOf('jane-sap'))
+    expect(ericInfornexusModule).toMatchObject({
+      group: 'eric',
+      path: '/eric-infornexus',
+      routeName: 'eric-infornexus',
+      title: 'Eric / Infornexus',
+      titleEn: 'Eric / Infornexus',
+      navLabel: 'Infornexus',
+      navLabelEn: 'Infornexus',
+      category: 'browser-automation',
+      stage: 'production',
+    })
     expect(ericModuleIds).toContain('eric-infornexus')
+    expect(ericModuleIds.indexOf('eric-infornexus')).toBeGreaterThan(
+      ericModuleIds.indexOf('iplex-dual-table-compare'),
+    )
+    expect(moduleIds).not.toContain('jessica-infornexus')
+    expect(ericModuleIds).not.toContain('jessica-infornexus')
+    expect(jessicaModuleIds).not.toContain('jessica-infornexus')
+    expect(jessicaModuleIds).not.toContain('eric-infornexus')
   })
 
   it('defines English full titles for every module', () => {
@@ -188,6 +239,7 @@ describe('moduleCatalog', () => {
 
   it('exposes the web automation hub as a visible validation module', () => {
     const webAutomationModule = tosModules.find((module) => module.id === 'web-automation')
+    const moduleIds = tosModules.map((module) => String(module.id))
 
     expect(webAutomationModule).toMatchObject({
       path: '/web-automation',
@@ -196,5 +248,6 @@ describe('moduleCatalog', () => {
       category: 'browser-automation',
       stage: 'validation',
     })
+    expect(moduleIds).not.toContain('browser-plugins')
   })
 })

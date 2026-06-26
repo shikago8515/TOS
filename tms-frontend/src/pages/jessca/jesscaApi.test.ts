@@ -13,7 +13,7 @@ describe('jesscaApi', () => {
     vi.mocked(postFormData).mockReset()
   })
 
-  it('keeps the original two-file request when packing PDF is not provided', async () => {
+  it('keeps the original two-file request when TC INV PDF is not provided', async () => {
     vi.mocked(postFormData).mockResolvedValue({ success: true, message: 'ok' })
     const invoiceFile = new File(['invoice'], 'invoice.xls', { type: 'application/vnd.ms-excel' })
     const referenceFile = new File(['reference'], 'reference.xlsx')
@@ -31,48 +31,50 @@ describe('jesscaApi', () => {
     expect(request?.requireRuntimeVersion).toBe(true)
     expect(request?.formData.getAll('invoices')).toEqual([invoiceFile])
     expect(request?.formData.get('reference_file')).toBe(referenceFile)
+    expect(request?.formData.has('tc_invoice_file')).toBe(false)
     expect(request?.formData.has('packing_file')).toBe(false)
   })
 
-  it('posts one optional packing PDF when provided', async () => {
+  it('posts one optional TC INV PDF when provided', async () => {
     vi.mocked(postFormData).mockResolvedValue({ success: true, message: 'ok' })
     const invoiceFile = new File(['invoice'], 'invoice.xls', { type: 'application/vnd.ms-excel' })
     const referenceFile = new File(['reference'], 'reference.xlsx')
-    const packingFile = new File(['packing'], 'packing.pdf', { type: 'application/pdf' })
+    const tcInvoiceFile = new File(['tc'], 'tc.pdf', { type: 'application/pdf' })
 
     await processJesscaFiles(
       {
         invoiceFiles: [invoiceFile],
         referenceFile,
-        packingFiles: [packingFile],
+        tcInvoiceFiles: [tcInvoiceFile],
       },
       () => undefined,
     )
 
     const request = vi.mocked(postFormData).mock.calls[0]?.[0]
-    expect(request?.formData.getAll('packing_file')).toEqual([packingFile])
+    expect(request?.formData.getAll('tc_invoice_file')).toEqual([tcInvoiceFile])
+    expect(request?.formData.has('packing_file')).toBe(false)
   })
 
-  it('posts multiple optional packing PDFs with repeated packing_file fields', async () => {
+  it('posts multiple optional TC INV PDFs with repeated tc_invoice_file fields', async () => {
     vi.mocked(postFormData).mockResolvedValue({ success: true, message: 'ok' })
     const invoiceFile = new File(['invoice'], 'invoice.xls', { type: 'application/vnd.ms-excel' })
     const referenceFile = new File(['reference'], 'reference.xlsx')
-    const firstPackingFile = new File(['packing-a'], 'packing-a.pdf', { type: 'application/pdf' })
-    const secondPackingFile = new File(['packing-b'], 'packing-b.pdf', { type: 'application/pdf' })
+    const firstTcFile = new File(['tc-a'], 'tc-a.pdf', { type: 'application/pdf' })
+    const secondTcFile = new File(['tc-b'], 'tc-b.pdf', { type: 'application/pdf' })
 
     await processJesscaFiles(
       {
         invoiceFiles: [invoiceFile],
         referenceFile,
-        packingFiles: [firstPackingFile, secondPackingFile],
+        tcInvoiceFiles: [firstTcFile, secondTcFile],
       },
       () => undefined,
     )
 
     const request = vi.mocked(postFormData).mock.calls[0]?.[0]
-    expect(request?.formData.getAll('packing_file')).toEqual([
-      firstPackingFile,
-      secondPackingFile,
+    expect(request?.formData.getAll('tc_invoice_file')).toEqual([
+      firstTcFile,
+      secondTcFile,
     ])
   })
 })

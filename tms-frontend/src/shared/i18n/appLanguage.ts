@@ -104,8 +104,8 @@ const translations = {
     'en-US': 'Excel Processing',
   },
   'app.home.metricExcelDetail': {
-    'zh-CN': 'jessica - 对账核对 / Sophia - 报表合并 / Jane - 表格制作 / Eric',
-    'en-US': 'Reconciliation / Report Merge / Jane Table Making / Eric',
+    'zh-CN': 'jessica - Invoice 核对 / Sophia - 报表合并 / Jane - 表格制作 / Eric',
+    'en-US': 'Invoice Compare / Report Merge / Jane Table Making / Eric',
   },
   'app.home.metricCollector': {
     'zh-CN': '正式采集',
@@ -148,8 +148,8 @@ const translations = {
     'en-US': 'Browser Automation',
   },
   'app.home.serviceAutomationDesc': {
-    'zh-CN': '浏览器插件 / 网页自动化',
-    'en-US': 'Browser plugins / Web automation',
+    'zh-CN': '网页自动化 / Infornexus',
+    'en-US': 'Web automation / Infornexus',
   },
   'app.home.serviceAutomationStatus': {
     'zh-CN': '业务验证中',
@@ -164,8 +164,8 @@ const translations = {
     'en-US': 'Default Excel module entry',
   },
   'app.home.serviceFilesStatus': {
-    'zh-CN': 'jessica - 对账核对',
-    'en-US': 'Reconciliation',
+    'zh-CN': 'jessica - Invoice 核对',
+    'en-US': 'Invoice Compare',
   },
   'app.module.open': {
     'zh-CN': '打开',
@@ -181,7 +181,9 @@ function normalizeStaticText(value: string): string {
 
 const staticTextTranslations: Record<string, string> = {
   首页: 'Home',
-  'jessica - 对账核对': 'jessica - Reconciliation',
+  'jessica - 对账核对': 'jessica - Invoice Compare',
+  'jessica - Invoice 核对': 'jessica - Invoice Compare',
+  'Invoice 核对': 'Invoice Compare',
   'Sophia - 报表合并': 'Sophia - Report Merge',
   成品表生成: 'Finished Goods Sheet',
   'Jane - BOM汇总': 'Jane BOM Summary',
@@ -243,6 +245,7 @@ const staticTextTranslations: Record<string, string> = {
   发票文件: 'Invoice Files',
   '发票文件（可多选）': 'Invoice Files (multiple)',
   参考表文件: 'Reference File',
+  'TC INV PDF（可多选）': 'TC INV PDF (multiple)',
   'Packing List PDF（可多选）': 'Packing List PDF (multiple)',
   TMS文件: 'TMS Files',
   'TMS 文件': 'TMS Files',
@@ -303,62 +306,29 @@ const staticTextTranslations: Record<string, string> = {
   核对进度: 'Reconciliation Progress',
   'SAP BTP 自动化流程': 'SAP BTP Automation Flow',
   诊断包: 'Diagnostics Package',
+  Excel处理: 'Excel Processing',
   'Excel 处理': 'Excel Processing',
-  浏览器插件管理: 'Browser Plugin Management',
-  浏览器预览模式: 'Browser Preview Mode',
   桌面Electron环境: 'Desktop Electron Environment',
   '桌面 Electron 环境': 'Desktop Electron Environment',
-  搜索插件或站点: 'Search plugins or sites',
   刷新: 'Refresh',
   '刷新中...': 'Refreshing...',
-  插件总数: 'Total Plugins',
-  可启动: 'Launch Ready',
-  预览模式: 'Preview Mode',
-  '当前为预览模式：可查看插件信息，启动需在桌面 Electron 环境中使用。':
-    'Preview mode: plugin information is visible, but launching requires the desktop Electron environment.',
   'Infornexus 自动搜索并添加': 'Infornexus Auto Search and Add',
-  Chrome扩展: 'Chrome Extension',
-  'Chrome 扩展': 'Chrome Extension',
   业务网页: 'Business Web Page',
-  预览配置: 'Preview Config',
-  真实执行: 'Live Execution',
   '在 Infornexus 页面读取 XLS/XLSX 的指定 ID，并自动执行搜索、勾选和添加操作。':
     'Read specified IDs from XLS/XLSX on Infornexus, then automatically search, select, and add them.',
-  插件缺失: 'Plugin Missing',
-  可执行: 'Executable',
-  浏览器未就绪: 'Browser Not Ready',
   启动: 'Launch',
   启动中: 'Launching',
   站点: 'Site',
-  暂无浏览器插件: 'No browser plugins',
-  请确认桌面端插件注册结果或切换到具备浏览器桥接能力的环境:
-    'Check the desktop plugin registry, or switch to an environment with browser bridge support.',
-  '请确认桌面端插件注册结果，或切换到具备浏览器桥接能力的环境。':
-    'Check the desktop plugin registry, or switch to an environment with browser bridge support.',
   未读取到插件注册表请检查桌面端插件清单: 'No plugin registry was found. Check the desktop plugin manifest.',
   '未读取到插件注册表，请检查桌面端插件清单。': 'No plugin registry was found. Check the desktop plugin manifest.',
   浏览器: 'Browser',
-  已启动插件已加载到目标环境: 'started. The plugin has been loaded into the target environment.',
-  '已启动，插件已加载到目标环境。': 'started. The plugin has been loaded into the target environment.',
-  启动浏览器插件失败: 'Failed to launch browser plugin',
-  打开目标站点失败: 'Failed to open target site',
   功能受限: 'Limited Feature',
   '导出诊断包功能需要在桌面客户端中使用，当前浏览器预览环境不支持。':
     'Exporting diagnostics requires the desktop client and is not supported in the current browser preview environment.',
-  当前运行环境不支持启动浏览器插件: 'The current runtime does not support launching browser plugins',
   当前运行环境不支持打开外部网页: 'The current runtime does not support opening external pages',
-  读取浏览器插件失败: 'Failed to load browser plugins',
   序号: 'No.',
-  插件信息: 'Plugin',
-  目标站点: 'Target Site',
-  执行模式: 'Mode',
   状态: 'Status',
   操作: 'Actions',
-  暂无可展示的浏览器插件: 'No browser plugins to display',
-  请先确认桌面端插件注册结果或切换到具备浏览器桥接能力的运行环境:
-    'Check the desktop plugin registry, or switch to an environment with browser bridge support.',
-  '请先确认桌面端插件注册结果，或切换到具备浏览器桥接能力的运行环境。':
-    'Check the desktop plugin registry, or switch to an environment with browser bridge support.',
   释放文件: 'Release files',
   文件上传: 'File Upload',
   处理进度: 'Progress',
@@ -646,6 +616,8 @@ const staticTextTranslations: Record<string, string> = {
   '请返回 Jane - Infornexus 页面重新选择场景。': 'Return to the Jane - Infornexus page and choose a scenario again.',
   '当前入口不存在，请返回 Jane - Infornexus 页面重新进入。':
     'The current entry does not exist. Return to the Jane - Infornexus page and open the scenario again.',
+  '当前入口不存在，请返回 Eric - Infornexus 页面重新进入。':
+    'The current entry does not exist. Return to the Eric - Infornexus page and open the scenario again.',
   选择Bulk类型: 'Select Bulk Type',
   '选择 Bulk 类型': 'Select Bulk Type',
   'Unreleased Bulk 和 released Bulk 会进入不同的浏览器自动化逻辑。':
@@ -1051,6 +1023,8 @@ const staticTextTranslations: Record<string, string> = {
   '修复浏览器/服务器模式仍显示桌面安装包更新入口和诊断包按钮的问题。':
     'Fixed browser/server mode still showing desktop installer update controls and the diagnostics package button.',
   TMS财务表格数据处理: 'TMS Finance Spreadsheet Processing',
+  内销对账单数据写入: 'Internal Reconciliation Data Fill',
+  Turnover数据写入: 'Turnover Data Fill',
   'Sample/Bulk 来源文件 → 内销对账大表尾部追加':
     'Sample/Bulk Source Files -> Append to Internal Reconciliation Workbook',
   'BULK Sales 导出表 → TURNOVER Turnover Details 尾部追加':
@@ -1063,11 +1037,13 @@ const staticTextTranslations: Record<string, string> = {
   '追加中...': 'Appending...',
   '写入中...': 'Filling...',
   'BULK Sales 导出表': 'BULK Sales Export',
+  'iPLEX 导出表': 'iPLEX Export Workbook',
   '上传从 iPlex 导出的 bulk sales 表，系统会读取对应列追加到 TURNOVER':
     'Upload the bulk sales export from iPlex; the system reads matching columns and appends them to TURNOVER.',
   '上传从 iPlex 导出的 bulk sales 表，系统会读取对应列写入 TURNOVER':
     'Upload the bulk sales export from iPlex; the system reads matching columns and fills TURNOVER.',
   'TURNOVER 目标表': 'TURNOVER Target Workbook',
+  'Turnover Excel': 'Turnover Workbook',
   '上传要追加 Turnover Details 明细的 TURNOVER 工作簿':
     'Upload the TURNOVER workbook that will receive Turnover Details rows.',
   '上传要重建 Turnover Details 明细的 TURNOVER 工作簿':
@@ -1085,6 +1061,8 @@ const staticTextTranslations: Record<string, string> = {
     'Upload the Sample/Bulk source files and internal reconciliation workbook first.',
   '请先上传 BULK Sales 导出表。': 'Upload the BULK Sales export first.',
   '请先上传 TURNOVER 目标表。': 'Upload the TURNOVER target workbook first.',
+  '请先上传 iPLEX 导出表。': 'Upload the iPLEX export workbook first.',
+  '请先上传 Turnover Excel。': 'Upload the Turnover workbook first.',
   内销对账表数据提取: 'Internal Reconciliation Data Extraction',
   WorkSales数据追加: 'Work Sales Data Append',
   'Work Sales 数据追加': 'Work Sales Data Append',

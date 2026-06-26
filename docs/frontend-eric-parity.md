@@ -34,3 +34,8 @@
 Eric 不再通过运行时脚本动态修改 DOM 和注入全局样式，而是改为路由组件和 scoped CSS。接口请求封装在 `ericApi.ts`，页面静态文案与统计映射放在 `ericModel.ts`，避免后续继续扩展时把页面逻辑、接口协议和展示模型混在一个文件里。
 
 正式 Electron 打包入口已切到新 Vue 源码；recovered frontend 仅作为回退参考保留。
+
+## 后续入口边界
+
+- `/iplex/dual-table-compare` 属于 Eric 组的 Excel 核对入口，不属于 Lucia/TMS Finance。
+- `/eric-infornexus` 是 Eric Infornexus 的当前入口，复用 `src/pages/infornexus-auto-add/` 页面；旧 `/browser-plugins` 和 `/jessica-infornexus` 只保留重定向，不再作为当前页面扩展点。

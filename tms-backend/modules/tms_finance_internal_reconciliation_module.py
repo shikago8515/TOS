@@ -150,7 +150,6 @@ class TmsFinanceInternalReconciliationModule:
         "delivery_date",
         "mr",
         "commercial_invoice",
-        "promo_fee",
     ]
     MONEY_FIELDS = {"purchase_amount", "sales_amount", "promo_fee"}
     VENDOR_CODE_MAP = {
@@ -535,7 +534,6 @@ class TmsFinanceInternalReconciliationModule:
         )
         purchase_amount = self._read_purchase_amount(values_ws, row, columns)
         sales_amount = self._read_sales_amount(values_ws, formula_ws, row, columns)
-        promo_fee = self._money_or_blank(values_ws.cell(row, columns.promo_fee).value)
         quantity = self._number_for_cell(values_ws.cell(row, columns.quantity).value)
         values = {
             "remark": remark,
@@ -553,7 +551,7 @@ class TmsFinanceInternalReconciliationModule:
             "delivery_date": values_ws.cell(row, columns.delivery_date).value,
             "mr": self._clean_text(values_ws.cell(row, columns.mr).value),
             "commercial_invoice": commercial_invoice,
-            "promo_fee": promo_fee,
+            "promo_fee": "",
         }
         return ExtractedRow(
             source_file=os.path.basename(workbook_path),

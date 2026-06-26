@@ -4,7 +4,7 @@ import type { TmsFinanceInternalReconciliationResponse } from './tmsFinanceInter
 export const tmsFinanceInternalReconciliationModuleId =
   'excel-tms-finance-internal-reconciliation'
 export const tmsFinanceInternalReconciliationModuleName =
-  '内销对账表数据提取'
+  '内销对账单数据写入'
 
 export function buildTmsFinanceInternalReconciliationSummary(
   response: TmsFinanceInternalReconciliationResponse,

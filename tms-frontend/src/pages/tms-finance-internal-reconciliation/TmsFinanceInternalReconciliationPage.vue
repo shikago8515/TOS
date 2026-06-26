@@ -1,7 +1,6 @@
 <template>
   <ExcelProcessPageShell
-    title="TMS财务表格数据处理"
-    :subtitle="activeProcess.subtitle"
+    :title="activeProcess.label"
     :stats="pageStats"
     :toolbar-status="toolbarStatus"
     :actions="toolbarActions"
@@ -287,14 +286,14 @@ async function startInternalReconciliationProcess(): Promise<void> {
 async function startWorkSalesProcess(): Promise<void> {
   if (!workSalesBulkSalesFiles.value[0]) {
     messageTone.value = 'warning'
-    message.value = '请先上传 BULK Sales 导出表。'
+    message.value = '请先上传 iPLEX 导出表。'
     success.value = false
     return
   }
 
   if (!workSalesTurnoverFiles.value[0]) {
     messageTone.value = 'warning'
-    message.value = '请先上传 TURNOVER 目标表。'
+    message.value = '请先上传 Turnover Excel。'
     success.value = false
     return
   }

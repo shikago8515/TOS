@@ -13,6 +13,7 @@ if BACKEND_ROOT not in sys.path:
     sys.path.insert(0, BACKEND_ROOT)
 
 from api import (
+    draft_packing_compare_api,
     eric_api,
     jane_api,
     jane_bom_compare_api,
@@ -106,7 +107,7 @@ class LegacyApiSecurityTests(unittest.TestCase):
         self.assertNotIn("secret", context.exception.detail)
         self.assertIn("Jane processing failed", "\n".join(logs.output))
 
-    def test_jessca_process_accepts_optional_packing_pdf(self):
+    def test_jessca_process_accepts_optional_tc_invoice_pdf(self):
         original_upload_dir = jessca_api.UPLOAD_DIR
         original_module = jessca_api.jessca_module
 
@@ -117,8 +118,8 @@ class LegacyApiSecurityTests(unittest.TestCase):
 
         class CapturingJesscaModule:
             def __init__(self):
-                self.packing_path = None
-                self.packing_paths = None
+                self.tc_invoice_path = None
+                self.tc_invoice_paths = None
 
             def process_invoices(
                 self,
@@ -127,9 +128,11 @@ class LegacyApiSecurityTests(unittest.TestCase):
                 output_dir=None,
                 packing_path=None,
                 packing_paths=None,
+                tc_invoice_path=None,
+                tc_invoice_paths=None,
             ):
-                self.packing_path = packing_path
-                self.packing_paths = packing_paths
+                self.tc_invoice_path = tc_invoice_path
+                self.tc_invoice_paths = tc_invoice_paths
                 output_path = os.path.join(output_dir, "jessca-result.xlsx")
                 with open(output_path, "wb") as fp:
                     fp.write(b"result")
@@ -141,9 +144,9 @@ class LegacyApiSecurityTests(unittest.TestCase):
                     "total_items": 1,
                     "matches": {"一致": 1, "不一致": 0, "未找到": 0},
                     "diagnostics": {},
-                    "packing_count": 1,
-                    "packing_matched_count": 1,
-                    "packing_issue_count": 0,
+                    "tc_count": 1,
+                    "tc_matched_count": 1,
+                    "tc_issue_count": 0,
                     "output_path": output_path,
                 }
 
@@ -156,7 +159,7 @@ class LegacyApiSecurityTests(unittest.TestCase):
                     jessca_api.process_jessca(
                         invoices=[FakeUpload("invoice.xls")],
                         reference_file=FakeUpload("reference.xlsx"),
-                        packing_file=FakeUpload("packing.pdf"),
+                        tc_invoice_file=FakeUpload("tc.pdf"),
                         output_dir=None,
                     )
                 )
@@ -164,13 +167,13 @@ class LegacyApiSecurityTests(unittest.TestCase):
                 jessca_api.UPLOAD_DIR = original_upload_dir
                 jessca_api.jessca_module = original_module
 
-        self.assertIsNotNone(module.packing_path)
-        self.assertTrue(str(module.packing_path).endswith("packing_packing.pdf"))
-        self.assertEqual(response["packing_count"], 1)
-        self.assertEqual(response["packing_matched_count"], 1)
-        self.assertEqual(response["packing_issue_count"], 0)
+        self.assertIsNotNone(module.tc_invoice_path)
+        self.assertTrue(str(module.tc_invoice_path).endswith("tc_invoice_tc.pdf"))
+        self.assertEqual(response["tc_count"], 1)
+        self.assertEqual(response["tc_matched_count"], 1)
+        self.assertEqual(response["tc_issue_count"], 0)
 
-    def test_jessca_process_accepts_multiple_optional_packing_pdfs(self):
+    def test_jessca_process_accepts_multiple_optional_tc_invoice_pdfs(self):
         original_upload_dir = jessca_api.UPLOAD_DIR
         original_module = jessca_api.jessca_module
 
@@ -181,8 +184,8 @@ class LegacyApiSecurityTests(unittest.TestCase):
 
         class CapturingJesscaModule:
             def __init__(self):
-                self.packing_path = None
-                self.packing_paths = None
+                self.tc_invoice_path = None
+                self.tc_invoice_paths = None
 
             def process_invoices(
                 self,
@@ -191,9 +194,11 @@ class LegacyApiSecurityTests(unittest.TestCase):
                 output_dir=None,
                 packing_path=None,
                 packing_paths=None,
+                tc_invoice_path=None,
+                tc_invoice_paths=None,
             ):
-                self.packing_path = packing_path
-                self.packing_paths = packing_paths
+                self.tc_invoice_path = tc_invoice_path
+                self.tc_invoice_paths = tc_invoice_paths
                 output_path = os.path.join(output_dir, "jessca-result.xlsx")
                 with open(output_path, "wb") as fp:
                     fp.write(b"result")
@@ -205,9 +210,9 @@ class LegacyApiSecurityTests(unittest.TestCase):
                     "total_items": 1,
                     "matches": {"same": 1, "different": 0, "missing": 0},
                     "diagnostics": {},
-                    "packing_count": 2,
-                    "packing_matched_count": 2,
-                    "packing_issue_count": 0,
+                    "tc_count": 2,
+                    "tc_matched_count": 2,
+                    "tc_issue_count": 0,
                     "output_path": output_path,
                 }
 
@@ -220,9 +225,9 @@ class LegacyApiSecurityTests(unittest.TestCase):
                     jessca_api.process_jessca(
                         invoices=[FakeUpload("invoice.xls")],
                         reference_file=FakeUpload("reference.xlsx"),
-                        packing_file=[
-                            FakeUpload("packing-a.pdf"),
-                            FakeUpload("packing-b.pdf"),
+                        tc_invoice_file=[
+                            FakeUpload("tc-a.pdf"),
+                            FakeUpload("tc-b.pdf"),
                         ],
                         output_dir=None,
                     )
@@ -231,15 +236,77 @@ class LegacyApiSecurityTests(unittest.TestCase):
                 jessca_api.UPLOAD_DIR = original_upload_dir
                 jessca_api.jessca_module = original_module
 
-        self.assertIsNone(module.packing_path)
-        self.assertEqual(len(module.packing_paths), 2)
-        self.assertTrue(str(module.packing_paths[0]).endswith("1_packing-a.pdf"))
-        self.assertTrue(str(module.packing_paths[1]).endswith("2_packing-b.pdf"))
-        self.assertEqual(response["packing_count"], 2)
-        self.assertEqual(response["packing_matched_count"], 2)
-        self.assertEqual(response["packing_issue_count"], 0)
+        self.assertIsNone(module.tc_invoice_path)
+        self.assertEqual(len(module.tc_invoice_paths), 2)
+        self.assertTrue(str(module.tc_invoice_paths[0]).endswith("1_tc-a.pdf"))
+        self.assertTrue(str(module.tc_invoice_paths[1]).endswith("2_tc-b.pdf"))
+        self.assertEqual(response["tc_count"], 2)
+        self.assertEqual(response["tc_matched_count"], 2)
+        self.assertEqual(response["tc_issue_count"], 0)
 
-    def test_jessca_process_rejects_non_pdf_packing_file(self):
+    def test_jessca_process_accepts_legacy_packing_field_as_tc_invoice_pdf_alias(self):
+        original_upload_dir = jessca_api.UPLOAD_DIR
+        original_module = jessca_api.jessca_module
+
+        class FakeUpload:
+            def __init__(self, filename: str):
+                self.filename = filename
+                self.file = io.BytesIO(b"content")
+
+        class CapturingJesscaModule:
+            def __init__(self):
+                self.tc_invoice_path = None
+
+            def process_invoices(
+                self,
+                _invoice_paths,
+                _ref_path,
+                output_dir=None,
+                packing_path=None,
+                packing_paths=None,
+                tc_invoice_path=None,
+                tc_invoice_paths=None,
+            ):
+                self.tc_invoice_path = tc_invoice_path
+                output_path = os.path.join(output_dir, "jessca-result.xlsx")
+                with open(output_path, "wb") as fp:
+                    fp.write(b"result")
+                return {
+                    "success": True,
+                    "message": "ok",
+                    "logs": [],
+                    "invoice_count": 1,
+                    "total_items": 1,
+                    "matches": {"一致": 1, "不一致": 0, "未找到": 0},
+                    "diagnostics": {},
+                    "tc_count": 1,
+                    "tc_matched_count": 1,
+                    "tc_issue_count": 0,
+                    "output_path": output_path,
+                }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module = CapturingJesscaModule()
+            jessca_api.UPLOAD_DIR = temp_dir
+            jessca_api.jessca_module = module
+            try:
+                response = asyncio.run(
+                    jessca_api.process_jessca(
+                        invoices=[FakeUpload("invoice.xls")],
+                        reference_file=FakeUpload("reference.xlsx"),
+                        packing_file=FakeUpload("legacy-tc.pdf"),
+                        output_dir=None,
+                    )
+                )
+            finally:
+                jessca_api.UPLOAD_DIR = original_upload_dir
+                jessca_api.jessca_module = original_module
+
+        self.assertIsNotNone(module.tc_invoice_path)
+        self.assertTrue(str(module.tc_invoice_path).endswith("tc_invoice_legacy-tc.pdf"))
+        self.assertEqual(response["tc_count"], 1)
+
+    def test_jessca_process_rejects_non_pdf_tc_invoice_file(self):
         class FakeUpload:
             def __init__(self, filename: str):
                 self.filename = filename
@@ -254,9 +321,9 @@ class LegacyApiSecurityTests(unittest.TestCase):
                         jessca_api.process_jessca(
                             invoices=[FakeUpload("invoice.xls")],
                             reference_file=FakeUpload("reference.xlsx"),
-                            packing_file=[
-                                FakeUpload("packing.pdf"),
-                                FakeUpload("packing.txt"),
+                            tc_invoice_file=[
+                                FakeUpload("tc.pdf"),
+                                FakeUpload("tc.txt"),
                             ],
                             output_dir=None,
                         )
@@ -265,7 +332,94 @@ class LegacyApiSecurityTests(unittest.TestCase):
                 jessca_api.UPLOAD_DIR = original_upload_dir
 
         self.assertEqual(context.exception.status_code, 400)
-        self.assertIn("Packing List PDF 仅支持 .pdf", context.exception.detail)
+        self.assertIn("TC INV PDF 仅支持 .pdf", context.exception.detail)
+
+    def test_draft_packing_compare_process_accepts_multiple_origin_and_packing_pdfs(self):
+        original_upload_dir = draft_packing_compare_api.UPLOAD_DIR
+        original_module = draft_packing_compare_api.draft_packing_compare_module
+
+        class CapturingDraftPackingModule:
+            def __init__(self):
+                self.draft_paths = None
+                self.packing_paths = None
+
+            def process_file_batches(self, draft_pdf_paths, packing_pdf_paths, output_dir):
+                self.draft_paths = draft_pdf_paths
+                self.packing_paths = packing_pdf_paths
+                output_path = os.path.join(output_dir, "draft-packing-result.xlsx")
+                with open(output_path, "wb") as fp:
+                    fp.write(b"result")
+                return {
+                    "success": True,
+                    "message": f"done: {output_path}",
+                    "logs": [f"result: {output_path}"],
+                    "output_path": output_path,
+                    "group_count": 2,
+                    "issue_count": 0,
+                    "mismatch_count": 0,
+                    "missing_field_count": 0,
+                    "draft_count": 2,
+                    "packing_count": 2,
+                    "sheet_count": 2,
+                    "draft_file_count": 2,
+                    "packing_file_count": 2,
+                }
+
+            def process_files(self, **_kwargs):
+                raise AssertionError("multiple uploads should use process_file_batches")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module = CapturingDraftPackingModule()
+            draft_packing_compare_api.UPLOAD_DIR = temp_dir
+            draft_packing_compare_api.draft_packing_compare_module = module
+            try:
+                response = asyncio.run(
+                    draft_packing_compare_api.process_draft_packing_compare(
+                        draft_file=[
+                            FakeUpload("origin-a.pdf"),
+                            FakeUpload("origin-b.pdf"),
+                        ],
+                        packing_file=[
+                            FakeUpload("packing-a.pdf"),
+                            FakeUpload("packing-b.pdf"),
+                        ],
+                        output_dir=None,
+                    )
+                )
+            finally:
+                draft_packing_compare_api.UPLOAD_DIR = original_upload_dir
+                draft_packing_compare_api.draft_packing_compare_module = original_module
+
+        self.assertEqual(len(module.draft_paths), 2)
+        self.assertEqual(len(module.packing_paths), 2)
+        self.assertTrue(str(module.draft_paths[0]).endswith("draft_1_origin-a.pdf"))
+        self.assertTrue(str(module.packing_paths[1]).endswith("packing_2_packing-b.pdf"))
+        self.assertEqual(response["sheet_count"], 2)
+        self.assertEqual(response["draft_file_count"], 2)
+        self.assertEqual(response["packing_file_count"], 2)
+
+    def test_draft_packing_compare_process_rejects_non_pdf_in_multi_upload(self):
+        original_upload_dir = draft_packing_compare_api.UPLOAD_DIR
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            draft_packing_compare_api.UPLOAD_DIR = temp_dir
+            try:
+                with self.assertRaises(HTTPException) as context:
+                    asyncio.run(
+                        draft_packing_compare_api.process_draft_packing_compare(
+                            draft_file=[
+                                FakeUpload("origin-a.pdf"),
+                                FakeUpload("origin-b.txt"),
+                            ],
+                            packing_file=[FakeUpload("packing-a.pdf")],
+                            output_dir=None,
+                        )
+                    )
+            finally:
+                draft_packing_compare_api.UPLOAD_DIR = original_upload_dir
+
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertIn("产地证PDF 仅支持 .pdf", context.exception.detail)
 
     def test_jane_bom_summary_returns_sanitized_500_detail(self):
         original_upload_dir = jane_bom_summary_api.UPLOAD_DIR

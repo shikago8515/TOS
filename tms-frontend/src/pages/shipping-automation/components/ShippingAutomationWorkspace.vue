@@ -68,42 +68,29 @@
               <span v-else class="sa-chip sa-chip--warn">{{ text('等待执行器') }}</span>
             </div>
 
-            <!-- Credential Notice -->
-            <div v-if="hasStoredCredentials" class="sa-cred-note">
-              <AppIcon name="check-circle" />
-              <span>{{ text('已保存') }} Infor Nexus {{ text('登录账号') }}: {{ savedCredentialUsername }}</span>
-            </div>
-
             <!-- Credentials -->
             <div class="sa-card__bd">
-              <div class="sa-cred-grid">
-                <label class="sa-field">
-                  <span>{{ text('User ID') }}</span>
-                  <div class="sa-inp-wrap">
-                    <AppIcon name="user" class="sa-inp-icon" />
-                    <input v-model.trim="shippingUsername" type="text" class="sa-inp" :placeholder="text('请输入 User ID')" autocomplete="username" />
-                  </div>
-                </label>
-                <label class="sa-field">
-                  <span>{{ text('Password') }}</span>
-                  <div class="sa-inp-wrap">
-                    <AppIcon name="shield-check" class="sa-inp-icon" />
-                    <input v-model="shippingPassword" :type="showShippingPassword ? 'text' : 'password'" class="sa-inp" placeholder="Enter password" autocomplete="current-password" />
-                    <button class="sa-inp__btn" @click="showShippingPassword = !showShippingPassword"><AppIcon name="eye" /></button>
-                  </div>
-                </label>
-              </div>
-              <div class="sa-cred-row">
-                <button class="sa-btn sa-btn--pri" :disabled="credentialSaving || !shippingUsername || !shippingPassword" @click="saveCurrentCredentials">
-                  <AppIcon name="shield-check" />{{ credentialSaving ? text('保存中') : text('保存登录账号密码') }}
-                </button>
-                <button class="sa-btn" :disabled="credentialClearing || !hasStoredCredentials" @click="clearCurrentCredentials">
-                  <AppIcon name="stop-circle" />{{ text('清除') }}
-                </button>
+              <AutomationCredentialsPanel
+                :username="shippingUsername"
+                v-model:password="shippingPassword"
+                v-model:show-password="showShippingPassword"
+                :has-stored-credentials="hasStoredCredentials"
+                :saved-username="savedCredentialUsername"
+                :saving="credentialSaving"
+                :clearing="credentialClearing"
+                :credential-options="credentialOptions"
+                :selected-credential-key="selectedCredentialKey"
+                @update:username="handleCredentialUsernameUpdate"
+                @select-credential="selectCredentialOption"
+                @save="saveCurrentCredentials"
+                @clear="clearCurrentCredentials"
+              >
+                <template #actions>
                 <button class="sa-btn" :disabled="templateLoading || !primaryTemplate" @click="downloadPrimaryTemplate">
                   <AppIcon name="download" />{{ templateButtonLabel }}
                 </button>
-              </div>
+                </template>
+              </AutomationCredentialsPanel>
             </div>
 
             <!-- File Dropzone -->
@@ -252,17 +239,19 @@ import { useRouter } from 'vue-router'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+import AutomationCredentialsPanel from '../../web-automation/components/AutomationCredentialsPanel.vue'
 import type { AutomationAppInfo } from '../../../types/electronApi'
-import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
+import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentialOption, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {
   buildAutomationTemplateDownloadUrl, clearExecutorCredentials, createAutomationRunRecord,
-  fetchAutomationApps, fetchAutomationTemplates, fetchExecutorCredentials, finishAutomationRunRecord,
+  fetchAutomationApps, fetchAutomationTemplates, fetchExecutorCredentialOptions, fetchExecutorCredentials, finishAutomationRunRecord,
   getAutomationHelperUpdateMessage,
   hasElectronAutomationSupport, launchAutomationConsole, openAutomationHelperDownload,
   primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
   recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
+import { buildCredentialAccountKey, findCredentialOptionByUsername, normalizeInforNexusUsername } from '../../web-automation/webAutomationCredentials'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
 
 const SHIPPING_ENTRY_ID = 'shipping-automation'
@@ -282,6 +271,8 @@ const isHealthLogOpen = ref(false)
 const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
 const shippingUsername = ref(''); const shippingPassword = ref(''); const showShippingPassword = ref(true)
+const credentialOptions = ref<ExecutorCredentialOption[]>([])
+const selectedCredentialKey = ref('default')
 const showBrowserView = ref(true)
 const statusText = ref(''); const statusLabel = ref('待命')
 const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
@@ -337,18 +328,84 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
   } finally { refreshing.value = false }
 }
 
-async function refreshExecutorCredentials(): Promise<void> {
+async function refreshCredentialOptions(): Promise<void> {
   if (!entry) return
   try {
-    executorCredentials.value = await fetchExecutorCredentials(entry.id)
-    const u = formatInforNexusUserIdForDisplay(executorCredentials.value.username || '')
-    if (u) shippingUsername.value = u
-    if (executorCredentials.value.hasStoredCredentials) { const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = formatInforNexusUserIdForDisplay(r.username); shippingPassword.value = r.password }
-  } catch { executorCredentials.value = null }
+    credentialOptions.value = await fetchExecutorCredentialOptions(entry.id)
+  } catch {
+    credentialOptions.value = []
+  }
+}
+
+async function refreshExecutorCredentials(
+  accountKey = selectedCredentialKey.value || buildCredentialAccountKey(shippingUsername.value),
+): Promise<void> {
+  if (!entry) return
+  try {
+    await refreshCredentialOptions()
+    const key = normalizeCredentialKey(accountKey)
+    const loaded = await loadCredentialByKey(key)
+    if (loaded) return
+
+    const matchedOption = findCredentialOptionByUsername(credentialOptions.value, shippingUsername.value)
+    if (matchedOption && matchedOption.accountKey !== key) {
+      await loadCredentialByKey(matchedOption.accountKey)
+    }
+  } catch {
+    executorCredentials.value = null
+  }
+}
+
+async function loadCredentialByKey(accountKey: string): Promise<boolean> {
+  if (!entry) return false
+  const key = normalizeCredentialKey(accountKey)
+  executorCredentials.value = await fetchExecutorCredentials(entry.id, key)
+  const username = formatInforNexusUserIdForDisplay(executorCredentials.value.username || '')
+  if (username) shippingUsername.value = username
+
+  if (!executorCredentials.value.hasStoredCredentials) {
+    selectedCredentialKey.value = ''
+    return false
+  }
+
+  selectedCredentialKey.value = key
+  const resolved = await resolveAutomationCredentials(entry.id, key)
+  shippingUsername.value = formatInforNexusUserIdForDisplay(resolved.username)
+  shippingPassword.value = resolved.password
+  return true
+}
+
+function normalizeCredentialKey(value: string): string {
+  return String(value || '').trim() || 'default'
+}
+
+function handleCredentialUsernameUpdate(value: string): void {
+  shippingUsername.value = formatInforNexusUserIdForDisplay(value)
+  const matchedOption = findCredentialOptionByUsername(credentialOptions.value, shippingUsername.value)
+  if (matchedOption) {
+    void selectCredentialOption(matchedOption.accountKey)
+    return
+  }
+
+  selectedCredentialKey.value = ''
+  executorCredentials.value = null
+  shippingPassword.value = ''
+}
+
+async function selectCredentialOption(accountKey: string): Promise<void> {
+  try {
+    const loaded = await loadCredentialByKey(accountKey)
+    if (!loaded) shippingPassword.value = ''
+  } catch (error) {
+    executorCredentials.value = null
+    shippingPassword.value = ''
+    messageTone.value = 'error'
+    message.value = readErrorMessage(error, text('读取账号密码失败。'))
+  }
 }
 
 function formatInforNexusUserIdForDisplay(value: string): string {
-  return String(value || '').trim()
+  return normalizeInforNexusUsername(value)
 }
 
 async function refreshAutomationTemplates(): Promise<void> {
@@ -371,14 +428,16 @@ async function saveCurrentCredentials(): Promise<void> {
   const u = formatInforNexusUserIdForDisplay(shippingUsername.value); const p = shippingPassword.value
   if (!u || !p) { messageTone.value = 'warning'; message.value = text('请先填写账号和密码。'); return }
   credentialSaving.value = true
-  try { executorCredentials.value = await saveExecutorCredentials(entry.id, u, p); shippingUsername.value = u; await refreshExecutorCredentials(); shippingPassword.value = p; messageTone.value = 'success'; message.value = text('已保存。') }
+  const accountKey = buildCredentialAccountKey(u)
+  try { executorCredentials.value = await saveExecutorCredentials(entry.id, u, p, accountKey); selectedCredentialKey.value = accountKey; shippingUsername.value = u; await refreshExecutorCredentials(accountKey); shippingPassword.value = p; messageTone.value = 'success'; message.value = text('已保存。') }
   catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('保存失败。')) }
   finally { credentialSaving.value = false }
 }
 
 async function clearCurrentCredentials(): Promise<void> {
   if (!entry || credentialClearing.value) return; credentialClearing.value = true
-  try { executorCredentials.value = await clearExecutorCredentials(entry.id); messageTone.value = 'info'; message.value = text('已清除。') }
+  const accountKey = selectedCredentialKey.value || buildCredentialAccountKey(shippingUsername.value)
+  try { executorCredentials.value = await clearExecutorCredentials(entry.id, accountKey); selectedCredentialKey.value = ''; shippingPassword.value = ''; await refreshCredentialOptions(); messageTone.value = 'info'; message.value = text('已清除。') }
   catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('清除失败。')) }
   finally { credentialClearing.value = false }
 }
@@ -424,8 +483,9 @@ function formatSize(b: number): string { if (b < 1024) return `${b} B`; if (b < 
 async function resolveRunCredentialsPayload(): Promise<Record<string, string>> {
   if (!entry) return {}
   const u = formatInforNexusUserIdForDisplay(shippingUsername.value); const tp = shippingPassword.value
-  if (tp.trim()) { if (!u) throw new Error('请填写账号密码。'); executorCredentials.value = await saveExecutorCredentials(entry.id, u, tp); shippingUsername.value = u; await refreshExecutorCredentials(); return { username: u, password: tp } }
-  const r = await resolveAutomationCredentials(entry.id); const displayUsername = formatInforNexusUserIdForDisplay(r.username); shippingUsername.value = displayUsername; shippingPassword.value = r.password; return { username: displayUsername, password: r.password }
+  const accountKey = selectedCredentialKey.value || buildCredentialAccountKey(u)
+  if (tp.trim()) { if (!u) throw new Error('请填写账号密码。'); const savedKey = buildCredentialAccountKey(u); executorCredentials.value = await saveExecutorCredentials(entry.id, u, tp, savedKey); selectedCredentialKey.value = savedKey; shippingUsername.value = u; await refreshExecutorCredentials(savedKey); return { username: u, password: tp } }
+  const r = await resolveAutomationCredentials(entry.id, accountKey); selectedCredentialKey.value = r.accountKey; const displayUsername = formatInforNexusUserIdForDisplay(r.username); shippingUsername.value = displayUsername; shippingPassword.value = r.password; return { username: displayUsername, password: r.password }
 }
 
 function readErrorMessage(e: unknown, fb: string): string { return e instanceof Error && e.message ? e.message : fb }
@@ -631,36 +691,9 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
 }
 
 /* ─── Credential Notice ─── */
-.sa-cred-note {
-  display: flex; align-items: center; gap: 7px;
-  margin: 12px 20px 0; padding: 9px 13px; border-radius: 10px;
-  background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d;
-  font-size: 12px; font-weight: 500;
-  :deep(.app-icon) { font-size: 14px; flex-shrink: 0; }
-}
-.sa-cred-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.sa-cred-row { display: flex; flex-wrap: wrap; gap: 7px; }
-
-/* ─── Fields ─── */
 .sa-field { display: flex; flex-direction: column; gap: 4px;
   > span { font-size: 11px; font-weight: 600; color: var(--ink); }
 }
-.sa-inp-wrap { position: relative; display: flex; align-items: center; }
-.sa-inp-icon { position: absolute; left: 10px; color: var(--mu); font-size: 14px; pointer-events: none; z-index: 1; }
-.sa-inp {
-  flex: 1; min-width: 0; height: 34px; padding: 0 12px 0 32px;
-  border: 1px solid var(--br); border-radius: 8px;
-  background: #f8fafc; color: var(--ink); font-size: 12px;
-  transition: all .2s ease;
-  &::placeholder { color: #94a3b8; }
-  &:focus { outline: none; border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,.1); background: #fff; }
-  &__btn { position: absolute; right: 8px; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: none; border-radius: 6px; background: transparent; color: var(--mu); cursor: pointer; transition: all .15s;
-    :deep(.app-icon) { font-size: 13px; }
-    &:hover { color: var(--a); background: var(--a2); }
-  }
-}
-
-/* ─── Dropzone ─── */
 .sa-drop {
   position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 8px; min-height: 90px; padding: 20px 14px;
@@ -842,7 +875,7 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
 
 /* ═══ RESPONSIVE ═══ */
 @media (max-width: 1200px) { .sa-body { grid-template-columns: 1fr 220px; } }
-@media (max-width: 960px) { .sa-body { grid-template-columns: 1fr; } .sa-dock { flex-direction: row; } .sa-dock-card { flex: 1; &--flex { flex: 1; } } .sa-cred-grid { grid-template-columns: 1fr; } }
+@media (max-width: 960px) { .sa-body { grid-template-columns: 1fr; } .sa-dock { flex-direction: row; } .sa-dock-card { flex: 1; &--flex { flex: 1; } } }
 
 /* 执行器控制双列格栅 */
 .sa-btn-grid {

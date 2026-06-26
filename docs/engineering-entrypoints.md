@@ -20,7 +20,7 @@
 | `npm run release:updates:push:dry-run` | 版本记录写入预览 | 预览当前 commit 将写入的记录，不 POST |
 | `npm run release:updates:dry-run` | 版本记录同步预览 | 预览服务器记录与本地缓存合并结果，不写文件、不 POST |
 | `npm run server:package:dry-run` | 服务器包计划检查 | 校验版本、更新内容和包清单，不生成正式包 |
-| `npm run server:package` | 服务器更新包生成 | 校验 clean worktree，构建服务器前端，生成 `release/server/tos-server-update-*.tar.gz` |
+| `npm run server:package` | 服务器更新包生成 | 校验 clean worktree，构建服务器前端，生成 `release/server/tos-server-update-*.tar.gz`；默认由服务器 Gitea 部署脚本调用，本机手动运行只用于备用上传流程 |
 
 ## 开发入口
 
@@ -45,7 +45,7 @@
 
 - 根目录入口不运行 `npm run pack`、`npm run build:win`、`verify:renderer-package`、`verify:release-package`、`write:update-changelog` 或 `write:manual-downloads`。
 - 发布、打包、更新清单和安装包校验仍按 `tms-electron-app/README.md` 与 `AGENTS.md` 的发布敏感规则单独执行。
-- `server:package` 只生成服务器 Docker Compose 部署用更新包，不生成 Windows Electron 安装包，也不上传服务器。
+- `server:package` 只生成服务器 Docker Compose 部署用更新包，不生成 Windows Electron 安装包。默认服务器发布由 `scripts/server/deploy-gitea-main.sh` 在服务器 `~/TOS-source` 内调用；本机生成后手动上传只作为 Gitea 或服务器拉代码不可用时的备用流程。
 - 子项目原生命令仍然可用；根目录入口只是日常开发检查的统一编排层。
 
 ## 请求边界
@@ -62,6 +62,7 @@
 - commit/merge 自动记录通过 `.githooks` 调用 `scripts/release_update_sync.py`，默认从 `TOS_RELEASE_UPDATES_API_URL` 或 `tms-frontend/.env.server` 解析服务器 `/api/release-updates`，不得提交数据库账号或写入 token。
 - `POST /api/release-updates` 可由服务器环境变量 `TOS_RELEASE_UPDATE_WRITE_TOKEN` 保护；`GET /api/release-updates` 必须保持公开读取，避免版本页不可用。
 - `semantic-release` 只在 GitCode `main` push 后运行；CI 需要配置 `GITCODE_TOKEN`。`main` 作为 `beta.3` prerelease 分支，`stable` 仅作为 semantic-release 要求的稳定 release branch；首次启用前需要在当前基线提交补齐 `v0.9.8-beta.3.28` tag。
+- 普通功能、修复和文档清理不要手工维护 `releaseNotes.json` 或运行 `version:bump`；当前版本说明由 `semantic-release` 根据 Conventional Commits 写入，服务器包生成前只校验其版本和内容是否与发布 commit 匹配。
 
 ## GitCode 远端检查
 

@@ -22,18 +22,34 @@
 
 ## 当前验证范围
 
-试验包用于验证以下路由不白屏并能打开：
+试验包用于验证当前源码前端真实路由不白屏并能打开：
 
 - `/`
 - `/jessca`
 - `/sophia-tina`
 - `/jane`
+- `/jane-bom-summary`
+- `/jane-bom-compare`
+- `/jane-outbound-compare`
+- `/jane-sap`
+- `/jane-infornexus`
 - `/eric`
-- `/browser-plugins`
+- `/iplex/dual-table-compare`
+- `/eric-infornexus`
 - `/web-automation`
+- `/web-automation/scenarios/shipping-automation`
+- `/web-automation/scenarios/xinlongtai-shipping-automation`
+- `/web-automation/scenarios/shipping-automation-2`
+- `/web-automation/scenarios/po-auto-download`
+- `/jason/pdf-reorder`
+- `/draft-packing-compare`
+- `/tms-finance-internal-reconciliation`
+- `/tms-finance-work-sales`
+- `/infornexus`
 - `/adidas-materials`
-- `/module-a`
-- `/module-b`
 - `/settings`
+- `/release-updates`
+
+旧 `/browser-plugins` 和 `/jessica-infornexus` 只验证能重定向到 `/eric-infornexus`；旧 `/module-a`、`/module-b` 已不属于当前模块目录。
 
 默认 `pack` 已切换到 source frontend。后续只在生产回归发现阻断问题时使用 recovered fallback。

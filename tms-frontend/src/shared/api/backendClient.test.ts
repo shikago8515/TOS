@@ -119,6 +119,37 @@ describe('backendClient', () => {
     ).toContain('接口返回内容不是系统可识别的 JSON（HTTP 500，接口：/api/run-shipping-file）')
   })
 
+  it('turns malformed successful JSON responses into an actionable backend response message', async () => {
+    stubWindow()
+    const path = '/api/automation/credentials/po-auto-download'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue('null{"ok":true}'),
+    }))
+
+    await expect(
+      requestBackendJson({ method: 'PUT', path, body: { username: 'user', password: 'test-password' } }),
+    ).rejects.toThrow(`接口返回内容不是系统可识别的 JSON（HTTP 200，接口：${path}）`)
+    await expect(
+      requestBackendJson({ method: 'PUT', path, body: { username: 'user', password: 'test-password' } }),
+    ).rejects.not.toThrow(/JSON\.parse|unexpected non-whitespace/i)
+  })
+
+  it('reports status and path when an error response is not JSON', async () => {
+    stubWindow()
+    const path = '/api/automation/credentials/po-auto-download'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: vi.fn().mockResolvedValue('upstream temporarily unavailable'),
+    }))
+
+    await expect(
+      requestBackendJson({ method: 'PUT', path, body: { username: 'user', password: 'test-password' } }),
+    ).rejects.toThrow(`接口返回内容不是系统可识别的 JSON（HTTP 500，接口：${path}）`)
+  })
+
   it('stops JSON requests when a required local backend version is stale', async () => {
     stubWindow({
       getBackendUrl: vi.fn().mockResolvedValue('http://127.0.0.1:8000/'),

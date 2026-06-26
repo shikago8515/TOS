@@ -2,12 +2,12 @@ import type { ProcessSummaryItem } from '../../shared/process/processHistory'
 import type { JesscaProcessResponse } from './jesscaApi'
 
 export const jesscaModuleId = 'excel-jessca'
-export const jesscaModuleName = 'jessica - 对账核对'
+export const jesscaModuleName = 'Invoice 核对'
 
 export function buildJesscaSummary(
   response: JesscaProcessResponse,
   invoiceFileCount: number,
-  packingFileCount = 0,
+  tcInvoiceFileCount = 0,
 ): ProcessSummaryItem[] {
   const matchedCount = response.matches
     ? Object.values(response.matches).reduce((sum, value) => sum + Number(value || 0), 0)
@@ -47,21 +47,21 @@ export function buildJesscaSummary(
     },
   ]
 
-  if (packingFileCount > 0 || response.packing_count !== undefined) {
+  if (tcInvoiceFileCount > 0 || response.tc_count !== undefined) {
     items.splice(
       4,
       0,
       {
-        label: 'Packing List PDF',
-        value: String(packingFileCount),
+        label: 'TC INV PDF',
+        value: String(tcInvoiceFileCount),
       },
       {
-        label: '箱单核对记录',
-        value: String(response.packing_count ?? '-'),
+        label: 'TC核对记录',
+        value: String(response.tc_count ?? '-'),
       },
       {
-        label: '箱单异常',
-        value: String(response.packing_issue_count ?? '-'),
+        label: 'TC异常',
+        value: String(response.tc_issue_count ?? '-'),
       },
     )
   }

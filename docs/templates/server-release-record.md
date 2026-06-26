@@ -5,9 +5,10 @@
 - 发布版本：
 - Git 分支：
 - Git commit：
-- GitCode CI 状态：
+- Gitea main 状态：
+- GitCode/GitHub 同步状态（如适用）：
 - 发布包：
-- 上传目录：`/home/obito_li/TOS/.deploy_uploads/`
+- 包落地目录：`/home/obito_li/TOS/.deploy_uploads/`
 - deployId：
 - 发布时间：
 
@@ -18,6 +19,14 @@
 ```
 
 ## 服务器部署命令
+
+```bash
+cd ~/TOS-source
+git pull --ff-only origin main
+bash scripts/server/deploy-gitea-main.sh
+```
+
+备用上传流程：
 
 ```bash
 cd ~/TOS
@@ -38,4 +47,3 @@ curl -I http://127.0.0.1:18080/
 - 前端 HTTP 状态：
 - 页面强刷验证：
 - 是否需要回滚：
-

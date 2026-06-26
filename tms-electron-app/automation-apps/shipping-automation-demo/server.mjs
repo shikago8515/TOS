@@ -14,6 +14,7 @@ import {
   collectInfornexusAutoAddSearchDiagnostics,
   formatInfornexusAutoAddSearchDiagnostics,
   INFORNEXUS_AUTO_ADD_SEARCH_URL,
+  createInfornexusAutoAddManualSessionManager,
   getInfornexusAutoAddSearchButton,
   getInfornexusAutoAddSearchInput,
   openInfornexusAutoAddSearchPage,
@@ -74,6 +75,15 @@ const {
 const activeRuns = new Map();
 let lastRun = null;
 const recentRuns = [];
+const autoAddManualSessionManager = createInfornexusAutoAddManualSessionManager({
+  browserEngines,
+  buildVisibleBrowserLaunchOptions,
+  config,
+  ensureLoggedIn,
+  log,
+  safePageTitle,
+  safePageUrl,
+});
 const poAutoDownloadAutomation = createPoAutoDownloadAutomation({
   browserEngines,
   buildVisibleBrowserLaunchOptions,
@@ -262,6 +272,36 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "POST" && (requestPath === "/open-infornexus-auto-add-search" || requestPath === "/api/open-infornexus-auto-add-search")) {
+      const body = await readJsonBody(req);
+      authorize(req, body);
+
+      const credentials = resolveCredentials(body);
+      const headless = toBoolean(body?.headless, false);
+      const activeRun = registerActiveRun({
+        action: "open-infornexus-auto-add-search",
+        browser: config.browser,
+        headless,
+      });
+
+      try {
+        const result = await autoAddManualSessionManager.open(credentials, { headless });
+        recordCompletedRun({
+          runId: activeRun.runId,
+          startedAt: activeRun.startedAt,
+          finishedAt: result.generatedAt,
+          ok: result.ok,
+          finalUrl: result.finalUrl,
+          searchOpened: result.searchOpened,
+          manualSessionId: result.manualSessionId,
+        });
+        sendJson(res, result.ok ? 200 : 500, result);
+      } finally {
+        activeRuns.delete(activeRun.runId);
+      }
+      return;
+    }
+
     if (req.method === "POST" && (requestPath === "/run-infornexus-auto-add-file" || requestPath === "/api/run-infornexus-auto-add-file")) {
       const body = await readJsonBody(req);
       authorize(req, body);
@@ -414,11 +454,13 @@ function buildHealthPayload() {
     activeRun: activeRunList[0] || null,
     activeRuns: activeRunList,
     activeRunCount: activeRunList.length,
+    manualSession: autoAddManualSessionManager.getSessionSummary(),
     lastRun,
     recentRuns,
     dataDir: runtimeDataRoot,
     runtimeConfigPath,
     capabilities: {
+      infornexusAutoAddManualSearch: true,
       poAutoDownload: true,
       poAutoDownloadDirectoryPicker: true,
       poAutoDownloadRequestDownload: true,
@@ -4657,6 +4699,7 @@ async function readJsonIfExists(filePath, fallbackValue) {
 }
 
 async function shutdown() {
+  await autoAddManualSessionManager.close("shutdown").catch(() => {});
   await new Promise((resolve) => server.close(resolve));
   process.exit(0);
 }

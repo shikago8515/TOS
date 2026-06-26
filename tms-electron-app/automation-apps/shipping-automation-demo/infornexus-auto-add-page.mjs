@@ -65,6 +65,194 @@ export async function openInfornexusAutoAddSearchPage(page, options = {}) {
   return targetUrl;
 }
 
+export function createInfornexusAutoAddManualSessionManager(dependencies = {}) {
+  let currentSession = null;
+  const log = typeof dependencies.log === "function" ? dependencies.log : () => {};
+  const createManualSessionId = typeof dependencies.createManualSessionId === "function"
+    ? dependencies.createManualSessionId
+    : () => `manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+  async function open(credentials, options = {}) {
+    await close("replaced");
+
+    const config = dependencies.config || {};
+    const browserName = String(config.browser || "chromium");
+    const engine = dependencies.browserEngines?.[browserName] || dependencies.browserEngines?.chromium;
+    if (!engine?.launch) {
+      throw new Error(`Unsupported Infornexus manual browser engine: ${browserName}`);
+    }
+
+    const launchOptions = {
+      slowMo: config.slowMo,
+      ...(config.launchOptions || {}),
+      headless: Boolean(options.headless),
+    };
+    const browserLaunchOptions = typeof dependencies.buildVisibleBrowserLaunchOptions === "function"
+      ? dependencies.buildVisibleBrowserLaunchOptions(launchOptions, browserName)
+      : launchOptions;
+
+    const manualSessionId = createManualSessionId();
+    const startedAt = new Date().toISOString();
+    let browser = null;
+    let context = null;
+    let page = null;
+
+    try {
+      browser = await engine.launch(browserLaunchOptions);
+      context = await browser.newContext({
+        viewport: null,
+      });
+      page = await context.newPage();
+
+      if (typeof page.setDefaultTimeout === "function") {
+        page.setDefaultTimeout(Number(config.navigationTimeoutMs || 45000));
+      }
+      if (typeof page.setDefaultNavigationTimeout === "function") {
+        page.setDefaultNavigationTimeout(Number(config.navigationTimeoutMs || 45000));
+      }
+
+      const session = {
+        autoAddSearchUrl: "",
+        browser,
+        closed: false,
+        context,
+        finalUrl: "",
+        manualSessionId,
+        page,
+        startedAt,
+        title: "",
+      };
+      bindSessionLifecycle(session);
+      currentSession = session;
+
+      await page.goto(config.loginUrl || INFORNEXUS_AUTO_ADD_ORIGIN, {
+        waitUntil: "domcontentloaded",
+        timeout: Number(config.navigationTimeoutMs || 45000),
+      });
+      if (typeof dependencies.ensureLoggedIn !== "function") {
+        throw new Error("Infornexus manual session requires ensureLoggedIn.");
+      }
+      await dependencies.ensureLoggedIn(page, credentials);
+      if (Number(config.postLoginWaitMs || 0) > 0 && typeof page.waitForTimeout === "function") {
+        await page.waitForTimeout(Number(config.postLoginWaitMs || 0));
+      }
+
+      const autoAddSearchUrl = await openInfornexusAutoAddSearchPage(page, {
+        loginUrl: config.loginUrl,
+        navigationTimeoutMs: Number(config.navigationTimeoutMs || 45000),
+        postLoginWaitMs: Number(config.postLoginWaitMs || 0),
+        searchUrl: config.autoAddSearchUrl,
+      });
+      session.autoAddSearchUrl = autoAddSearchUrl;
+      session.finalUrl = getSafePageUrl(page);
+      session.title = await getSafePageTitle(page);
+
+      log("Opened Infornexus auto-add manual search session.", {
+        autoAddSearchUrl,
+        finalUrl: session.finalUrl,
+        manualSessionId,
+      });
+
+      return {
+        ok: true,
+        loginSuccess: true,
+        searchOpened: true,
+        manualSessionId,
+        autoAddSearchUrl,
+        finalUrl: session.finalUrl,
+        title: session.title,
+        message: "Infor Nexus auto-add search page opened successfully.",
+        generatedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      if (currentSession?.manualSessionId === manualSessionId) {
+        currentSession = null;
+      }
+      await context?.close?.().catch(() => {});
+      await browser?.close?.().catch(() => {});
+      throw error;
+    }
+  }
+
+  async function close(reason = "manual-close") {
+    const session = currentSession;
+    if (!session) {
+      return null;
+    }
+
+    currentSession = null;
+    session.closed = true;
+    session.closedAt = new Date().toISOString();
+    session.closeReason = reason;
+    await session.context?.close?.().catch(() => {});
+    await session.browser?.close?.().catch(() => {});
+    log("Closed Infornexus auto-add manual search session.", {
+      manualSessionId: session.manualSessionId,
+      reason,
+    });
+    return {
+      manualSessionId: session.manualSessionId,
+      reason,
+    };
+  }
+
+  function getSessionSummary() {
+    if (!currentSession) {
+      return null;
+    }
+
+    if (currentSession.page?.isClosed?.()) {
+      markSessionClosed(currentSession, "page-closed");
+      return null;
+    }
+
+    currentSession.finalUrl = getSafePageUrl(currentSession.page) || currentSession.finalUrl;
+    return {
+      manualSessionId: currentSession.manualSessionId,
+      startedAt: currentSession.startedAt,
+      autoAddSearchUrl: currentSession.autoAddSearchUrl,
+      finalUrl: currentSession.finalUrl,
+      title: currentSession.title,
+    };
+  }
+
+  function bindSessionLifecycle(session) {
+    session.page?.on?.("close", () => markSessionClosed(session, "page-close"));
+    session.page?.on?.("crash", () => markSessionClosed(session, "page-crash"));
+    session.context?.on?.("close", () => markSessionClosed(session, "context-close"));
+    session.browser?.on?.("disconnected", () => markSessionClosed(session, "browser-disconnected"));
+  }
+
+  function markSessionClosed(session, reason) {
+    session.closed = true;
+    session.closedAt = new Date().toISOString();
+    session.closeReason = reason;
+    if (currentSession?.manualSessionId === session.manualSessionId) {
+      currentSession = null;
+    }
+  }
+
+  function getSafePageUrl(page) {
+    if (typeof dependencies.safePageUrl === "function") {
+      return String(dependencies.safePageUrl(page) || "");
+    }
+    return safePageUrl(page);
+  }
+
+  async function getSafePageTitle(page) {
+    if (typeof dependencies.safePageTitle === "function") {
+      return String(await dependencies.safePageTitle(page) || "");
+    }
+    return safePageTitle(page);
+  }
+
+  return {
+    close,
+    getSessionSummary,
+    open,
+  };
+}
+
 export async function collectInfornexusAutoAddSearchDiagnostics(page) {
   const [title, pageState] = await Promise.all([
     safePageTitle(page),

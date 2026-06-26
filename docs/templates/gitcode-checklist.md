@@ -1,22 +1,24 @@
-# GitCode Checklist Template
+# Gitea Checklist Template
 
 ## 分支准备
 
 ```powershell
 git status --short --branch
-git fetch gitcode main --prune
-git switch -c codex/<topic> gitcode/main
+git fetch gitea main --prune
+git switch -c codex/<topic> gitea/main
 ```
 
 继续已有分支时：
 
 ```powershell
 git status --short --branch
-git fetch gitcode main --prune
-git rebase gitcode/main
+git fetch gitea main --prune
+git rebase gitea/main
 ```
 
 ## 提交前检查
+
+文档、规则或测试清理默认不修改 `releaseNotes.json`，也不运行 `version:bump`；用户可见版本说明由 `semantic-release` 根据 Conventional Commits 在 GitCode `main` 发布链路生成，服务器部署默认以 Gitea `main` 为准。
 
 ```powershell
 git status --short --branch
@@ -40,16 +42,14 @@ npm run check:quick
 ```powershell
 git add <files>
 git commit -m "feat: 描述"
-git push -u gitcode codex/<topic>
-git push -u origin codex/<topic>
+git push -u gitea codex/<topic>
 ```
 
 ## CI 门禁
 
-- GitCode 分支：
+- Gitea 分支：
 - Commit：
-- CI 状态：
-- CI 链接：
+- 本地验证状态：
 - `check:backend-version`：
 - 版本记录 dry-run：
 - 业务回归：
@@ -57,11 +57,11 @@ git push -u origin codex/<topic>
 
 ## 合并 main 前
 
-- GitCode 分支 CI 已通过：
+- Gitea 分支已推送：
 - 本地 `main` 已合并目标分支：
 - `main` 上 `npm run check:quick` 已通过：
-- `main` 推送后允许 `semantic-release` 自动生成版本提交、tag 和 GitCode Release：
-- GitCode CI 已配置 `GITCODE_TOKEN`，且当前基线已有 `v0.9.8-beta.3.28` tag：
-- `main` 已推送 GitCode：
-- GitCode main CI 已通过：
-- `main` 已同步 GitHub：
+- `main` 已推送 Gitea：
+- 服务器 `~/TOS-source` 可 `git pull --ff-only origin main`：
+- 服务器 `scripts/server/deploy-gitea-main.sh` 已执行：
+- 后端版本和前端 HTTP 200 已验证：
+- 如需同步 GitCode/GitHub，已按对应远端规则执行：

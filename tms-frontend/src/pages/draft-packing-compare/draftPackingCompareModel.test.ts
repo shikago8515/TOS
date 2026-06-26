@@ -6,8 +6,8 @@ import {
 } from './draftPackingCompareModel'
 
 describe('draftPackingCompareModel', () => {
-  it('uses the short PDF compare name for history records', () => {
-    expect(draftPackingCompareModuleName).toBe('PDF核对')
+  it('uses the origin certificate compare name for history records', () => {
+    expect(draftPackingCompareModuleName).toBe('产地证核对')
   })
 
   it('uses origin certificate labels in result summaries', () => {
@@ -18,6 +18,7 @@ describe('draftPackingCompareModel', () => {
         draft_count: 2,
         packing_count: 2,
         group_count: 2,
+        sheet_count: 2,
         issue_count: 0,
         mismatch_count: 0,
         missing_field_count: 0,
@@ -31,6 +32,7 @@ describe('draftPackingCompareModel', () => {
 
     expect(summary.map((item) => item.label)).toContain('产地证PDF')
     expect(summary.map((item) => item.label)).toContain('产地证记录')
+    expect(summary).toContainEqual({ label: '结果 Sheet', value: '2' })
     expect(summary.map((item) => item.label)).not.toContain('Draft Form E PDF')
     expect(summary.map((item) => item.label)).not.toContain('Draft 记录')
   })

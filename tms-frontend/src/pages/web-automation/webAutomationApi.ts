@@ -17,6 +17,14 @@ const localHealthProbeTimeoutMs = 650
 const localLauncherProbeTimeoutMs = 650
 export const minimumAutomationHelperVersion = '0.9.8-beta.3.19'
 
+export interface InfornexusAutoAddManualSessionSummary {
+  manualSessionId: string
+  startedAt?: string
+  autoAddSearchUrl?: string
+  finalUrl?: string
+  title?: string
+}
+
 export interface LocalExecutorHealth {
   ok: boolean
   version?: string
@@ -27,6 +35,7 @@ export interface LocalExecutorHealth {
   activeRunCount?: number
   lastRun?: unknown
   recentRuns?: unknown[]
+  manualSession?: InfornexusAutoAddManualSessionSummary | null
   dataDir?: string
   runtimeConfigPath?: string
   runtimeSecretPath?: string
@@ -94,6 +103,26 @@ export interface AutomationRunFileInput {
 export type AutomationHelperPanelOpenResult =
   | { status: 'opened'; message: string }
   | { status: 'not-running' | 'unsupported' | 'error'; message: string }
+
+export interface InfornexusAutoAddSearchOpenRequest {
+  baseUrl: string
+  token: string
+  username: string
+  password: string
+  headless?: boolean
+}
+
+export interface InfornexusAutoAddSearchOpenResult {
+  ok: boolean
+  loginSuccess: boolean
+  searchOpened: boolean
+  manualSessionId: string
+  autoAddSearchUrl: string
+  finalUrl: string
+  title: string
+  message: string
+  generatedAt: string
+}
 
 export function hasElectronAutomationSupport(): boolean {
   return Boolean(window.electronAPI?.getAutomationApps)
@@ -186,6 +215,24 @@ export async function launchAutomationConsole(appId: string): Promise<ElectronAc
     result,
   })
   return result
+}
+
+export async function openInfornexusAutoAddSearchPage(
+  request: InfornexusAutoAddSearchOpenRequest,
+): Promise<InfornexusAutoAddSearchOpenResult> {
+  return requestExecutorJson<InfornexusAutoAddSearchOpenResult>(
+    'POST',
+    request.baseUrl,
+    '/api/open-infornexus-auto-add-search',
+    {
+      token: request.token,
+      username: request.username,
+      password: request.password,
+      headless: Boolean(request.headless),
+    },
+    request.token,
+    60000,
+  )
 }
 
 export function formatAutomationLauncherErrorMessage(message: string, appId?: string): string {
@@ -550,6 +597,7 @@ async function requestExecutorJson<T = Record<string, unknown>>(
   pathname: string,
   body?: Record<string, unknown>,
   token?: string,
+  timeoutMs = 5000,
 ): Promise<T> {
   const normalizedUrl = String(baseUrl || '').replace(/\/+$/, '')
   const headers: Record<string, string> = {}
@@ -567,7 +615,7 @@ async function requestExecutorJson<T = Record<string, unknown>>(
     method,
     headers,
     body: requestBody,
-  }, 5000)
+  }, timeoutMs)
   const rawText = await response.text()
   const payload = safeParseJson(rawText)
 
@@ -598,7 +646,7 @@ async function fetchWithTimeout(
   const timer = window.setTimeout(() => controller.abort(), timeoutMs)
 
   try {
-    return await fetch(input, {
+    return await window.fetch(input, {
       ...init,
       signal: controller.signal,
     })

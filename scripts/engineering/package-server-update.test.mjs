@@ -46,6 +46,37 @@ test('server apply script replaces backend data files from the package', async (
   assert.match(deployScript, /cp -a "\$SRC\/tms-backend\/data" tms-backend\//)
 })
 
+test('Gitea main deployment script keeps source and deployment directories separate', async () => {
+  const deployScript = await readFile(new URL('../server/deploy-gitea-main.sh', import.meta.url), 'utf8')
+
+  assert.match(deployScript, /SOURCE_DIR="\$\{TOS_SOURCE_DIR:-\$HOME\/TOS-source\}"/)
+  assert.match(deployScript, /DEPLOY_ROOT="\$\{TOS_DEPLOY_ROOT:-\$HOME\/TOS\}"/)
+  assert.match(deployScript, /git clone --branch "\$BRANCH" "\$REMOTE_URL" "\$SOURCE_DIR"/)
+  assert.match(deployScript, /git status --short/)
+  assert.match(deployScript, /git pull --ff-only "\$REMOTE_NAME" "\$BRANCH"/)
+  assert.doesNotMatch(deployScript, /git reset --hard/)
+  assert.doesNotMatch(deployScript, /git clean -fd/)
+  assert.doesNotMatch(deployScript, /cd "\$DEPLOY_ROOT"[\s\S]*git pull/)
+})
+
+test('Gitea main deployment script packages and applies the standard server update archive', async () => {
+  const deployScript = await readFile(new URL('../server/deploy-gitea-main.sh', import.meta.url), 'utf8')
+
+  assert.match(deployScript, /npm run ci:install/)
+  assert.doesNotMatch(deployScript, /npm run check:quick/)
+  assert.match(deployScript, /npm run test:server-package/)
+  assert.match(deployScript, /npm --prefix tms-frontend run typecheck/)
+  assert.match(deployScript, /npm --prefix tms-frontend run test/)
+  assert.match(deployScript, /\$\{PYTHON:-python3\} -m unittest discover tests\/ -v/)
+  assert.match(deployScript, /npm run server:package:dry-run/)
+  assert.match(deployScript, /npm run server:package/)
+  assert.match(deployScript, /deploy\/apply-server-update\.sh/)
+  assert.match(deployScript, /wait_for_command\(\) \{/)
+  assert.match(deployScript, /TOS_VERIFY_RETRIES:-30/)
+  assert.match(deployScript, /wait_for_command "backend API" curl -fsS http:\/\/127\.0\.0\.1:18000\//)
+  assert.match(deployScript, /wait_for_command "frontend static site" curl -fsSI http:\/\/127\.0\.0\.1:18080\//)
+})
+
 test('rejects release notes that are not synced to the app version', async () => {
   const root = await createFixture({
     appVersion: '0.9.8-beta.3.3',
@@ -106,6 +137,29 @@ test('dry-run reports package plan without requiring a clean worktree', async ()
   assert.equal(plan.gitDirty, true)
   assert.equal(plan.archivePath, null)
   assert.equal(plan.archiveName, 'tos-server-update-v0.9.8-beta.3.3-20260612110405-4e1c3e5.tar.gz')
+})
+
+test('dry-run records Gitea origin remote in server source checkouts', async () => {
+  const root = await createFixture()
+  const giteaUrl = 'http://172.16.48.208:3001/luenthai-ai/TOS.git'
+
+  await execFileAsync('git', ['init'], { cwd: root })
+  await execFileAsync('git', ['config', 'user.email', 'test@example.com'], { cwd: root })
+  await execFileAsync('git', ['config', 'user.name', 'Test User'], { cwd: root })
+  await execFileAsync('git', ['config', 'core.autocrlf', 'false'], { cwd: root })
+  await execFileAsync('git', ['add', '.'], { cwd: root })
+  await execFileAsync('git', ['commit', '-m', 'feat: server deploy'], { cwd: root })
+  await execFileAsync('git', ['branch', '-M', 'main'], { cwd: root })
+  await execFileAsync('git', ['remote', 'add', 'origin', giteaUrl], { cwd: root })
+
+  const plan = await createServerPackage({
+    repoRoot: root,
+    dryRun: true,
+    now: new Date('2026-06-12T03:04:05.000Z'),
+  })
+
+  assert.equal(plan.gitRemote, giteaUrl)
+  assert.equal(plan.gitBranch, 'main')
 })
 
 test('creates a server update archive with manifest and only deployable paths', async () => {

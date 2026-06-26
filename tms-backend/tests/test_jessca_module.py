@@ -3,7 +3,7 @@ import sys
 import tempfile
 import unittest
 from datetime import date
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from openpyxl import Workbook, load_workbook
 import pandas as pd
@@ -13,7 +13,12 @@ BACKEND_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if BACKEND_ROOT not in sys.path:
     sys.path.insert(0, BACKEND_ROOT)
 
-from modules.jessca_module import InvoiceRecord, JesscaModule, PackingListRecord
+from modules.jessca_module import (
+    InvoiceRecord,
+    JesscaModule,
+    TcInvoiceExtractedPage,
+    TcInvoiceRecord,
+)
 
 
 class JesscaModuleReferenceTableTests(unittest.TestCase):
@@ -38,7 +43,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         headers = []
         for row_index, row in enumerate(worksheet.iter_rows(values_only=True), 1):
             row_values = list(row)
-            if "核对状态" in row_values or "状态" in row_values:
+            if "核对状态" in row_values or "状态" in row_values or "Check Status" in row_values:
                 header_row_index = row_index
                 headers = row_values
                 break
@@ -235,8 +240,242 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(records[0].style, "RC2620OW008")
         self.assertEqual(records[0].quantity, 200)
         self.assertEqual(records[0].price, 6.6)
+        self.assertEqual(records[0].goods_description, "WOMEN'S KNITTED SHORT")
 
-    def test_build_packing_list_comparison_matches_invoice_and_flags_quantity(self):
+    def test_read_invoice_records_applies_trailing_article_to_multiple_po_rows(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            invoice_path = os.path.join(temp_dir, "invoice.xlsx")
+            wb = Workbook()
+            ws = wb.active
+            ws["G4"] = "INV NO.:"
+            ws["H4"] = "10-01-26-0076"
+            ws["G7"] = "DATE:"
+            ws["H7"] = date(2026, 2, 1)
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append(["PO NO.", "STOCK NO.", "COLOR", "DESCRIPTIONS", None, "QTY(PC)", "UNIT PRICE(PC)", None, "FOB"])
+            ws.append(["WOMEN'S WOVEN DENIM SKIRT,MAIN MATERIAL: 100% COTTON"])
+            ws.append(["PO#", "0901792204", None, None, None, 317, "USD", 12.67, "USD", 4016.39])
+            ws.append(["PO#", "0901792050", None, None, None, 313, "USD", 12.67, "USD", 3965.71])
+            ws.append(["ARTICLE NO.:", "KY8114"])
+            ws.append(["STYLE NO.:", "RC2609OW007"])
+            wb.save(invoice_path)
+
+            records = self.module.read_invoice_records(invoice_path)
+
+        self.assertEqual(len(records), 2)
+        self.assertEqual([record.po_number for record in records], ["0901792204", "0901792050"])
+        self.assertEqual([record.article for record in records], ["KY8114", "KY8114"])
+        self.assertEqual([record.style for record in records], ["RC2609OW007", "RC2609OW007"])
+        self.assertEqual([record.price for record in records], [12.67, 12.67])
+
+    def test_update_reference_table_ignores_multi_po_trailing_article_noise(self):
+        ref_df = pd.DataFrame(
+            [
+                {"Price": 12.67, "Style NO.": "RC2609OW007", "Article NO.": "KY8113"},
+                {"Price": 12.67, "Style NO.": "RC2609OW007", "Article NO.": "KY8114"},
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            invoice_path = os.path.join(temp_dir, "0076.xlsx")
+            wb = Workbook()
+            ws = wb.active
+            ws["G4"] = "INV NO.:"
+            ws["H4"] = "10-01-26-0076"
+            ws["G7"] = "DATE:"
+            ws["H7"] = date(2026, 2, 1)
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append(["PO NO.", "STOCK NO.", "COLOR", "DESCRIPTIONS", None, "QTY(PC)", "UNIT PRICE(PC)", None, "FOB"])
+            ws.append(["WOMEN'S WOVEN DENIM SKIRT,MAIN MATERIAL: 100% COTTON"])
+            ws.append(["PO#", "0901792046", None, None, None, 7596, "USD", 12.67, "USD", 96241.32])
+            ws.append(["ARTICLE NO.:", "KY8113"])
+            ws.append(["STYLE NO.:", "RC2609OW007"])
+            ws.append(["WOMEN'S WOVEN DENIM SKIRT,MAIN MATERIAL: 100% COTTON"])
+            ws.append(["PO#", "0901792204", None, None, None, 317, "USD", 12.67, "USD", 4016.39])
+            ws.append(["PO#", "0901792050", None, None, None, 313, "USD", 12.67, "USD", 3965.71])
+            ws.append(["ARTICLE NO.:", "KY8114"])
+            ws.append(["STYLE NO.:", "RC2609OW007"])
+            wb.save(invoice_path)
+
+            invoice_records = self.module.read_invoice_records(invoice_path)
+
+        invoice_data: Dict[Tuple[str, str], Dict[str, float]] = {}
+        for record in invoice_records:
+            invoice_data.setdefault((record.article, record.style), {})[record.invoice_file] = record.price
+
+        result_df, matches = self.module.update_reference_table(ref_df, invoice_data)
+
+        self.assertEqual(matches, {"一致": 2, "不一致": 0, "未找到": 0})
+        self.assertNotIn("字段疑似错误-候选多条", set(result_df["核对状态"]))
+        self.assertEqual(list(result_df["核对状态"]), ["一致", "一致"])
+
+    def test_read_invoice_records_extracts_inline_no_and_month_date_header(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            invoice_path = os.path.join(temp_dir, "invoice.xlsx")
+            wb = Workbook()
+            ws = wb.active
+            ws["J4"] = "NO: 17-05-26-1190"
+            ws["J7"] = "DATE: MAY 25 2026"
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([" PO NO.", "STOCK NO.", "COLOR", "DESCRIPTIONS", None, "QTY(PC)", "UNIT PRICE(PC)", None, "FOB"])
+            ws.append(["WOMEN'S WOVEN TRACK TOP"])
+            ws.append(["PO:", "0902590165", None, None, None, 100, "USD", 15.55, "USD", 1555.0])
+            ws.append(["ARTICLE NO.:", "LD5339"])
+            ws.append(["STYLE NO.:", "RC2613OW007"])
+            wb.save(invoice_path)
+
+            records = self.module.read_invoice_records(invoice_path)
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].invoice_number, "17-05-26-1190")
+        self.assertEqual(records[0].invoice_date, "2026-05-25")
+        self.assertEqual(records[0].po_number, "0902590165")
+        self.assertEqual(records[0].article, "LD5339")
+        self.assertEqual(records[0].style, "RC2613OW007")
+
+    def test_read_invoice_records_extracts_split_inv_no_label_header(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            invoice_path = os.path.join(temp_dir, "invoice.xlsx")
+            wb = Workbook()
+            ws = wb.active
+            ws["G4"] = "INV NO.:"
+            ws["H4"] = "10-04-26-0460"
+            ws["G7"] = "DATE:"
+            ws["H7"] = date(2026, 4, 15)
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([])
+            ws.append([" PO NO.", "STOCK NO.", "COLOR", "DESCRIPTIONS", None, "QTY(PC)", "UNIT PRICE(PC)", None, "FOB"])
+            ws.append(["WOMEN'S WOVEN ST DNM WSH JACKET"])
+            ws.append(["PO#", "0902187227", None, None, None, 342, "USD", 21.8, "USD", 7455.6])
+            ws.append(["ARTICLE NO.:", "KV0625"])
+            ws.append(["STYLE NO.:", "AF26INSPW072"])
+            wb.save(invoice_path)
+
+            records = self.module.read_invoice_records(invoice_path)
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].invoice_number, "10-04-26-0460")
+        self.assertEqual(records[0].invoice_date, "2026-04-15")
+        self.assertEqual(records[0].po_number, "0902187227")
+        self.assertEqual(records[0].article, "KV0625")
+        self.assertEqual(records[0].style, "AF26INSPW072")
+
+    def test_parse_tc_invoice_pages_extracts_rows_and_goods_descriptions(self):
+        pages = [
+            TcInvoiceExtractedPage(
+                text=(
+                    "Invoice Number\n17-04-26-0914\n"
+                    "PO No PO Line Market PO Sales Order No Working No Article No Article Description Gender Category Total Qty\n"
+                    "0901937666 1 0305837705 5052174707 RC2610OW001 KX1870 CLASSIC TP CRSK W ORIGINALS 140\n"
+                    "Goods Description WOMEN'S 63% POLYESTER (100% RECYCLED) 34% VISCOSE,3% ELASTANE WOVEN PANTS (HTS:6204.63.0000)\n"
+                    "PO No PO Line Market PO Sales Order No Working No Article No Article Description Gender Category Total Qty\n"
+                    "0901889028 1 0305837711 5052174713 RC2610OW007 KX1885 STN FB TT LINEN/MAGBEI W ORIGINALS 305\n"
+                    "Goods Description WOMEN'S 100% POLYESTER (100% RECYCLED) WOVEN JACKET(HTS:6202.40.0000)"
+                ),
+                tables=[
+                    [
+                        [
+                            "PO No",
+                            "PO Line\nAggregator",
+                            "Market PO\nNumber",
+                            "Sales Order No",
+                            "Working No",
+                            "Article No",
+                            "Article Description",
+                            "Gender",
+                            "Category",
+                            "Total\nQty",
+                        ],
+                        [
+                            "0901937666",
+                            "1",
+                            "0305837705",
+                            "5052174707",
+                            "RC2610OW001",
+                            "KX1870",
+                            "CLASSIC TP CRSK",
+                            "W",
+                            "ORIGINALS",
+                            "140",
+                        ],
+                    ],
+                    [
+                        [
+                            "PO No",
+                            "PO Line\nAggregator",
+                            "Market PO\nNumber",
+                            "Sales Order No",
+                            "Working No",
+                            "Article No",
+                            "Article Description",
+                            "Gender",
+                            "Category",
+                            "Total\nQty",
+                        ],
+                        [
+                            "0901889028",
+                            "1",
+                            "0305837711",
+                            "5052174713",
+                            "RC2610OW007",
+                            "KX1885",
+                            "STN FB TT LINEN/MAGBEI",
+                            "W",
+                            "ORIGINALS",
+                            "305",
+                        ],
+                    ],
+                ],
+            )
+        ]
+
+        records = self.module.parse_tc_invoice_pages(pages, "tc.pdf")
+
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0].source_file, "tc.pdf")
+        self.assertEqual(records[0].po_number, "0901937666")
+        self.assertEqual(records[0].market_po, "0305837705")
+        self.assertEqual(records[0].working_number, "RC2610OW001")
+        self.assertEqual(records[0].article_number, "KX1870")
+        self.assertEqual(records[0].quantity, 140)
+        self.assertEqual(
+            records[0].goods_description,
+            "WOMEN'S 63% POLYESTER (100% RECYCLED) 34% VISCOSE,3% ELASTANE WOVEN PANTS",
+        )
+        self.assertEqual(records[1].quantity, 305)
+        self.assertEqual(
+            records[1].goods_description,
+            "WOMEN'S 100% POLYESTER (100% RECYCLED) WOVEN JACKET",
+        )
+
+    def test_build_tc_invoice_comparison_matches_invoice_and_flags_quantity(self):
         invoice_records = [
             InvoiceRecord(
                 invoice_file="invoice.xlsx",
@@ -247,6 +486,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 style="RC2620OW008",
                 quantity=200,
                 price=6.6,
+                goods_description="WOMEN'S 100% POLYESTER (100%RECYCLED) WOVEN JACKET",
             ),
             InvoiceRecord(
                 invoice_file="invoice.xlsx",
@@ -257,48 +497,78 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 style="RC2620OW008",
                 quantity=200,
                 price=6.6,
+                goods_description="WOMEN'S KNITTED SHORT MAIN MATERIAL 100% POLYESTER",
             ),
         ]
-        packing_records = [
-            PackingListRecord(
-                invoice_number="10-06-26-0712",
-                ex_factory_date="2026-06-07",
+        tc_records = [
+            TcInvoiceRecord(
+                source_file="tc-a.pdf",
                 po_number="0902694555",
+                market_po="0307073961",
                 working_number="RC2620OW008",
                 article_number="LG4321",
-                customer_number="0307073961",
                 quantity=200,
-                cartons=7,
+                goods_description="WOMEN'S 100% POLYESTER (100% RECYCLED) WOVEN JACKET(HTS:6202.40.0000)",
             ),
-            PackingListRecord(
-                invoice_number="10-06-26-0712",
-                ex_factory_date="2026-06-07",
+            TcInvoiceRecord(
+                source_file="tc-a.pdf",
                 po_number="0902694557",
+                market_po="0307073963",
                 working_number="RC2620OW008",
                 article_number="LG4323",
-                customer_number="0307073963",
                 quantity=180,
-                cartons=7,
+                goods_description="WOMEN'S KNITTED SHORT MAIN MATERIAL 100% POLYESTER",
             ),
         ]
 
-        rows = self.module.build_packing_list_comparison(invoice_records, packing_records)
+        rows = self.module.build_tc_invoice_comparison(invoice_records, tc_records)
 
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0].status, "一致")
         self.assertEqual(rows[0].issue_detail, "")
         self.assertEqual(rows[1].status, "需核对")
         self.assertIn("QTY", rows[1].issue_detail)
-        self.assertEqual(rows[1].invoice_quantity, 200)
-        self.assertEqual(rows[1].packing_quantity, 180)
+        self.assertEqual(rows[1].fty_quantity, 200)
+        self.assertEqual(rows[1].tc_quantity, 180)
 
-    def test_save_excel_with_summary_adds_packing_list_sheet_when_rows_exist(self):
+    def test_build_tc_invoice_comparison_flags_goods_description(self):
+        invoice_records = [
+            InvoiceRecord(
+                invoice_file="invoice.xlsx",
+                invoice_number="17-04-26-0914",
+                invoice_date="2026-04-04",
+                po_number="0901889028",
+                article="KX1885",
+                style="RC2610OW007",
+                quantity=305,
+                price=13.0,
+                goods_description="WOMEN'S 100% POLYESTER WOVEN JACKET",
+            )
+        ]
+        tc_records = [
+            TcInvoiceRecord(
+                source_file="tc.pdf",
+                po_number="0901889028",
+                market_po="0305837711",
+                working_number="RC2610OW007",
+                article_number="KX1885",
+                quantity=305,
+                goods_description="WOMEN'S 63% POLYESTER WOVEN PANTS",
+            )
+        ]
+
+        rows = self.module.build_tc_invoice_comparison(invoice_records, tc_records)
+
+        self.assertEqual(rows[0].status, "需核对")
+        self.assertIn("Goods Description", rows[0].issue_detail)
+
+    def test_save_excel_with_summary_adds_tc_invoice_sheet_when_rows_exist(self):
         ref_df = pd.DataFrame(
             [{"Price": 6.6, "Style NO.": "RC2620OW008", "Article NO.": "LG4321"}],
         )
         invoice_data = {("LG4321", "RC2620OW008"): {"invoice.xlsx": 6.6}}
         result_df, _ = self.module.update_reference_table(ref_df, invoice_data)
-        packing_rows = self.module.build_packing_list_comparison(
+        tc_rows = self.module.build_tc_invoice_comparison(
             [
                 InvoiceRecord(
                     invoice_file="invoice.xlsx",
@@ -309,18 +579,18 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                     style="RC2620OW008",
                     quantity=200,
                     price=6.6,
+                    goods_description="WOMEN'S 100% POLYESTER (100%RECYCLED) WOVEN JACKET",
                 )
             ],
             [
-                PackingListRecord(
-                    invoice_number="10-06-26-0712",
-                    ex_factory_date="2026-06-07",
+                TcInvoiceRecord(
+                    source_file="tc.pdf",
                     po_number="0902694555",
+                    market_po="0307073961",
                     working_number="RC2620OW008",
                     article_number="LG4321",
-                    customer_number="0307073961",
                     quantity=200,
-                    cartons=7,
+                    goods_description="WOMEN'S 100% POLYESTER (100% RECYCLED) WOVEN JACKET",
                 )
             ],
         )
@@ -334,25 +604,175 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 ["invoice.xlsx"],
                 ref_df,
                 output_path,
-                packing_comparison_rows=packing_rows,
+                tc_comparison_rows=tc_rows,
             )
             workbook = load_workbook(output_path)
 
-        self.assertIn("Packing List核对", workbook.sheetnames)
-        self.assertEqual(save_result["packing_count"], 1)
-        self.assertEqual(save_result["packing_matched_count"], 1)
-        self.assertEqual(save_result["packing_issue_count"], 0)
-        packing_sheet = workbook["Packing List核对"]
-        headers = [cell.value for cell in packing_sheet[2]]
+        self.assertIn("TC INV核对", workbook.sheetnames)
+        self.assertEqual(save_result["tc_count"], 1)
+        self.assertEqual(save_result["tc_matched_count"], 1)
+        self.assertEqual(save_result["tc_issue_count"], 0)
+        tc_sheet = workbook["TC INV核对"]
+        headers = [cell.value for cell in tc_sheet[2]]
         self.assertIn("PO No", headers)
-        self.assertIn("Packing QTY", headers)
-        self.assertEqual(packing_sheet["A3"].value, "一致")
+        self.assertIn("FTY QTY", headers)
+        self.assertIn("TC Total Qty", headers)
+        self.assertIn("FTY Goods Description", headers)
+        self.assertIn("TC Goods Description", headers)
+        self.assertEqual(tc_sheet["A3"].value, "一致")
+        self.assertEqual(tc_sheet["C3"].value, "0902694555")
 
-    def test_process_invoices_merges_multiple_packing_pdf_records(self):
-        class MultiPackingJesscaModule(JesscaModule):
+    def test_save_excel_with_summary_marks_missing_tc_rows_red(self):
+        ref_df = pd.DataFrame(
+            [{"Price": 6.6, "Style NO.": "RC2620OW008", "Article NO.": "LG4321"}],
+        )
+        invoice_data = {("LG4321", "RC2620OW008"): {"invoice.xlsx": 6.6}}
+        result_df, _ = self.module.update_reference_table(ref_df, invoice_data)
+        tc_rows = self.module.build_tc_invoice_comparison(
+            [
+                InvoiceRecord(
+                    invoice_file="invoice.xlsx",
+                    invoice_number="10-06-26-0712",
+                    invoice_date="2026-06-07",
+                    po_number="0902694555",
+                    article="LG4321",
+                    style="RC2620OW008",
+                    quantity=200,
+                    price=6.6,
+                    goods_description="WOMEN'S 100% POLYESTER WOVEN JACKET",
+                )
+            ],
+            [],
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = os.path.join(temp_dir, "result.xlsx")
+            self.module.save_excel_with_summary(
+                result_df,
+                invoice_data,
+                ["invoice.xlsx"],
+                ["invoice.xlsx"],
+                ref_df,
+                output_path,
+                tc_comparison_rows=tc_rows,
+            )
+            workbook = load_workbook(output_path)
+
+        tc_records = self._sheet_records(workbook["TC INV核对"])
+        missing_record = next(
+            record for record in tc_records
+            if record["values"].get("Check Status") == "缺失"
+        )
+        self.assertEqual(missing_record["cells"]["Check Status"].fill.fgColor.rgb, "FFFFDDDD")
+
+    def test_process_invoices_labels_reference_style_when_tc_confirms_invoice(self):
+        class VentReferenceJesscaModule(JesscaModule):
+            def read_invoice_records(self, _invoice_path: str) -> List[InvoiceRecord]:
+                return [
+                    InvoiceRecord(
+                        invoice_file="0490.xls",
+                        invoice_number="10-04-26-0490",
+                        invoice_date="2026-04-23",
+                        po_number="0902107846",
+                        article="KQ6747",
+                        style="F2625W617",
+                        quantity=357,
+                        price=31.82,
+                        goods_description="WOMEN'S WOVEN JACKET",
+                    )
+                ]
+
+            def read_tc_invoice_records(self, _tc_path: str) -> List[TcInvoiceRecord]:
+                return [
+                    TcInvoiceRecord(
+                        source_file="tc.pdf",
+                        po_number="0902107846",
+                        market_po="0306326640",
+                        working_number="F2625W617",
+                        article_number="KQ6747",
+                        quantity=357,
+                        goods_description="WOMEN'S WOVEN JACKET",
+                    )
+                ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ref_path = os.path.join(temp_dir, "reference.xlsx")
+            pd.DataFrame(
+                [{"Price": 31.82, "Style NO.": "F2625W167", "Article NO.": "KQ6747"}]
+            ).to_excel(ref_path, index=False)
+
+            module = VentReferenceJesscaModule()
+            result = module.process_invoices(
+                [os.path.join(temp_dir, "0490.xls")],
+                ref_path,
+                temp_dir,
+                tc_invoice_paths=[os.path.join(temp_dir, "tc.pdf")],
+            )
+            workbook = load_workbook(result["output_path"])
+
+        self.assertTrue(result["success"])
+        summary_records = self._sheet_records(workbook["汇总表"])
+        summary_record = next(
+            record for record in summary_records
+            if record["values"].get("来源发票") == "0490.xls"
+        )
+        self.assertEqual(summary_record["values"]["状态"], "参考表款号疑似错误")
+        self.assertEqual(summary_record["values"]["异常文件"], "参考表")
+        self.assertEqual(summary_record["values"]["建议参考款号"], "F2625W167")
+        self.assertEqual(summary_record["cells"]["状态"].fill.fgColor.rgb, "FFFFDDDD")
+
+        main_records = self._sheet_records(workbook["核对结果"])
+        main_record = next(
+            record for record in main_records
+            if record["values"].get("Article NO.") == "KQ6747"
+        )
+        self.assertEqual(main_record["values"]["核对状态"], "参考表款号疑似错误")
+
+    def test_process_invoices_keeps_invoice_style_suspect_without_tc_confirmation(self):
+        class VentReferenceJesscaModule(JesscaModule):
+            def read_invoice_records(self, _invoice_path: str) -> List[InvoiceRecord]:
+                return [
+                    InvoiceRecord(
+                        invoice_file="0490.xls",
+                        invoice_number="10-04-26-0490",
+                        invoice_date="2026-04-23",
+                        po_number="0902107846",
+                        article="KQ6747",
+                        style="F2625W617",
+                        quantity=357,
+                        price=31.82,
+                        goods_description="WOMEN'S WOVEN JACKET",
+                    )
+                ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ref_path = os.path.join(temp_dir, "reference.xlsx")
+            pd.DataFrame(
+                [{"Price": 31.82, "Style NO.": "F2625W167", "Article NO.": "KQ6747"}]
+            ).to_excel(ref_path, index=False)
+
+            module = VentReferenceJesscaModule()
+            result = module.process_invoices(
+                [os.path.join(temp_dir, "0490.xls")],
+                ref_path,
+                temp_dir,
+            )
+            workbook = load_workbook(result["output_path"])
+
+        self.assertTrue(result["success"])
+        summary_records = self._sheet_records(workbook["汇总表"])
+        summary_record = next(
+            record for record in summary_records
+            if record["values"].get("来源发票") == "0490.xls"
+        )
+        self.assertEqual(summary_record["values"]["状态"], "发票款号疑似错误")
+        self.assertNotEqual(summary_record["values"]["异常文件"], "参考表")
+
+    def test_process_invoices_merges_multiple_tc_invoice_pdf_records(self):
+        class MultiTcJesscaModule(JesscaModule):
             def __init__(self):
                 super().__init__()
-                self.read_packing_paths: List[str] = []
+                self.read_tc_paths: List[str] = []
 
             def read_invoice_records(self, _invoice_path: str) -> List[InvoiceRecord]:
                 return [
@@ -365,6 +785,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                         style="RC2620OW008",
                         quantity=200,
                         price=6.6,
+                        goods_description="WOMEN'S 100% POLYESTER WOVEN JACKET",
                     ),
                     InvoiceRecord(
                         invoice_file="invoice.xlsx",
@@ -375,35 +796,34 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                         style="RC2620OW008",
                         quantity=180,
                         price=7.1,
+                        goods_description="WOMEN'S KNITTED SHORT",
                     ),
                 ]
 
-            def read_packing_list_records(self, packing_path: str) -> List[PackingListRecord]:
-                self.read_packing_paths.append(packing_path)
-                if packing_path.endswith("packing-a.pdf"):
+            def read_tc_invoice_records(self, tc_path: str) -> List[TcInvoiceRecord]:
+                self.read_tc_paths.append(tc_path)
+                if tc_path.endswith("tc-a.pdf"):
                     return [
-                        PackingListRecord(
-                            invoice_number="10-06-26-0712",
-                            ex_factory_date="2026-06-07",
+                        TcInvoiceRecord(
+                            source_file="tc-a.pdf",
                             po_number="0902694555",
+                            market_po="0307073961",
                             working_number="RC2620OW008",
                             article_number="LG4321",
-                            customer_number="0307073961",
                             quantity=200,
-                            cartons=7,
+                            goods_description="WOMEN'S 100% POLYESTER WOVEN JACKET",
                         )
                     ]
 
                 return [
-                    PackingListRecord(
-                        invoice_number="10-06-26-0712",
-                        ex_factory_date="2026-06-07",
+                    TcInvoiceRecord(
+                        source_file="tc-b.pdf",
                         po_number="0902694557",
+                        market_po="0307073963",
                         working_number="RC2620OW008",
                         article_number="LG4323",
-                        customer_number="0307073963",
                         quantity=180,
-                        cartons=5,
+                        goods_description="WOMEN'S KNITTED SHORT",
                     )
                 ]
 
@@ -416,22 +836,22 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 ]
             ).to_excel(ref_path, index=False)
 
-            module = MultiPackingJesscaModule()
+            module = MultiTcJesscaModule()
             result = module.process_invoices(
                 [os.path.join(temp_dir, "invoice.xlsx")],
                 ref_path,
                 temp_dir,
-                packing_paths=[
-                    os.path.join(temp_dir, "packing-a.pdf"),
-                    os.path.join(temp_dir, "packing-b.pdf"),
+                tc_invoice_paths=[
+                    os.path.join(temp_dir, "tc-a.pdf"),
+                    os.path.join(temp_dir, "tc-b.pdf"),
                 ],
             )
 
         self.assertTrue(result["success"])
-        self.assertEqual(len(module.read_packing_paths), 2)
-        self.assertEqual(result["packing_count"], 2)
-        self.assertEqual(result["packing_matched_count"], 2)
-        self.assertEqual(result["packing_issue_count"], 0)
+        self.assertEqual(len(module.read_tc_paths), 2)
+        self.assertEqual(result["tc_count"], 2)
+        self.assertEqual(result["tc_matched_count"], 2)
+        self.assertEqual(result["tc_issue_count"], 0)
 
 
 if __name__ == "__main__":

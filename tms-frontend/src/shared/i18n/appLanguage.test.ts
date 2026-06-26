@@ -1,29 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { translateStaticText } from './appLanguage'
+import { translateStaticText, translateText } from './appLanguage'
 
 describe('appLanguage', () => {
-  it('translates browser plugin page text in English mode', () => {
-    const phrases = [
-      '浏览器插件管理',
-      '浏览器预览模式',
-      '搜索插件或站点',
-      '刷新',
-      '插件总数',
-      '可启动',
-      '预览模式',
-      '当前为预览模式：可查看插件信息，启动需在桌面 Electron 环境中使用。',
-      'Infornexus 自动搜索并添加',
-      'Chrome 扩展',
-      '预览配置',
-      '在 Infornexus 页面读取 XLS/XLSX 的指定 ID，并自动执行搜索、勾选和添加操作。',
-      '启动',
-      '站点',
-    ]
-
-    for (const phrase of phrases) {
-      expect(translateStaticText(phrase, 'en-US')).not.toBe(phrase)
-    }
+  it('uses Invoice compare labels for the Jessca home overview text', () => {
+    expect(translateText('app.home.metricExcelDetail', 'zh-CN')).toContain('jessica - Invoice 核对')
+    expect(translateText('app.home.serviceFilesStatus', 'zh-CN')).toBe('jessica - Invoice 核对')
   })
 
   it('translates common upload and automation page text in English mode', () => {
@@ -50,6 +32,8 @@ describe('appLanguage', () => {
       'Infor Nexus released Bulk 自动化流程',
       '请返回 Jane - Infornexus 页面重新选择场景。',
       '当前入口不存在，请返回 Jane - Infornexus 页面重新进入。',
+      '请返回 Eric - Infornexus 页面重新选择场景。',
+      '当前入口不存在，请返回 Eric - Infornexus 页面重新进入。',
       '先登录 Infor Nexus 并进入 released Bulk 场景，后续页面操作会继续在这个独立场景里扩展。',
       '上传 Excel 后启动可视浏览器，读取第二列 10 位 ID 并在 Infor Nexus 自动搜索、勾选和添加。',
       'Invoice 自动下载',
@@ -105,21 +89,17 @@ describe('appLanguage', () => {
       '包含 Result Set 的 TMS 报表',
       'SAP BTP 自动化流程',
       '数据核对',
-      'TMS财务表格数据处理',
-      'Sample/Bulk 来源文件 → 内销对账大表尾部追加',
-      'BULK Sales 导出表 → 写入 TURNOVER Turnover Details',
+      '内销对账单数据写入',
+      'Turnover数据写入',
       '追加进度',
       '写入进度',
       '写入中...',
       '追加中...',
-      'BULK Sales 导出表',
-      '上传从 iPlex 导出的 bulk sales 表，系统会读取对应列写入 TURNOVER',
-      'TURNOVER 目标表',
-      '上传要重建 Turnover Details 明细的 TURNOVER 工作簿',
+      'iPLEX 导出表',
+      'Turnover Excel',
       'Sample/Bulk 来源文件',
       '可一次上传多个合并Sample、合并BULK工作簿，按上传顺序追加缺失行',
       '内销对账单',
-      '上传要追加缺失数据的内销对账大表',
       '外部 Electron 子应用',
       '刷新状态',
       '启动应用',
@@ -168,8 +148,8 @@ describe('appLanguage', () => {
       '打开 adidas 外部浏览器失败',
       'adidas 外部浏览器已在运行',
       'adidas 外部浏览器已打开',
-      '内销对账表数据提取',
-      'Work Sales 数据写入',
+      '内销对账单数据写入',
+      'Turnover数据写入',
       '来源提取行',
       'Sample 行',
       'Bulk 行',

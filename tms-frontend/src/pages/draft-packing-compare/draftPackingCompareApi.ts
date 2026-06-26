@@ -4,8 +4,8 @@ import {
 } from '../../shared/api/backendClient'
 
 export interface DraftPackingCompareProcessRequest {
-  draftFile: File
-  packingFile: File
+  draftFiles: File[]
+  packingFiles: File[]
 }
 
 export interface DraftPackingCompareProcessResponse {
@@ -18,6 +18,9 @@ export interface DraftPackingCompareProcessResponse {
   missing_field_count?: number
   draft_count?: number
   packing_count?: number
+  sheet_count?: number
+  draft_file_count?: number
+  packing_file_count?: number
   logs?: string[]
 }
 
@@ -27,8 +30,12 @@ export async function processDraftPackingCompareFiles(
 ): Promise<DraftPackingCompareProcessResponse> {
   const formData = new FormData()
 
-  formData.append('draft_file', request.draftFile)
-  formData.append('packing_file', request.packingFile)
+  request.draftFiles.forEach((file) => {
+    formData.append('draft_file', file)
+  })
+  request.packingFiles.forEach((file) => {
+    formData.append('packing_file', file)
+  })
 
   return postFormData<DraftPackingCompareProcessResponse>({
     path: '/api/draft-packing-compare/process',

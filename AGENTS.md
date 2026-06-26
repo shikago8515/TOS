@@ -19,8 +19,9 @@
 - 前端开发服务器端口以 `tms-frontend/package.json` 为准，当前是 `127.0.0.1:5174`。
 - Electron 打包默认使用 `tms-frontend/dist`；`TOS_FRONTEND_SOURCE=recovered` 只用于紧急回退。
 - 仓库根目录 `package.json` 提供工程入口 scripts，用于编排前端、后端和 Electron 子项目的现有检查命令。
-- GitCode 远端检查位于 `.gitcode/workflows/tos-check.yml`，默认对 `main`、`codex/**` 分支 push 和面向 `main` 的合并请求运行完整 `npm run check`。
-- 完整 TOS-AI 工作流位于 `docs/tos-ai-workflow.md`，覆盖 GitCode 同步、分支开发、自动版本、更新内容、CI、服务器发布和回滚。
+- Gitea `main` 是当前服务器部署主线；本地改完后优先推送并合并到 Gitea `main`。
+- GitCode 远端检查位于 `.gitcode/workflows/tos-check.yml`，默认对 `main`、`codex/**` 分支 push 和面向 `main` 的合并请求运行完整 `npm run check`；除非用户明确要求同步 GitCode，否则服务器部署不再以 GitCode 为主路径。
+- 完整 TOS-AI 工作流位于 `docs/tos-ai-workflow.md`，覆盖 Gitea 同步、分支开发、自动版本、更新内容、CI、服务器发布和回滚。
 
 ## 默认探索边界
 
@@ -76,6 +77,14 @@
 4. 公共能力才放 `shared/`，例如浏览器生命周期、Infor Nexus 登录、ExtJS 弹窗、Desktop Utility 连接检测、运行产物写入；业务专属列名、按钮、失败步骤和结果字段必须留在业务模块内。
 5. 当前 `shipping-automation-demo/server.mjs` 是历史遗留兼容结构。小型故障修复可局部补丁；新增自动化或大块流程调整必须优先新建或迁移到业务模块目录。
 
+## Jessica / Jessca 模块边界
+
+1. Jessica 组当前包含 `/#/jessca`、`/#/draft-packing-compare`、`/#/web-automation/scenarios/shipping-automation`、`/#/web-automation/scenarios/xinlongtai-shipping-automation` 和 `/#/web-automation/scenarios/po-auto-download` 等入口；分组与排序以 `tms-frontend/src/domain/moduleCatalog.ts` 为准。
+2. Jessca 发票核对前端主要位于 `tms-frontend/src/pages/jessca/`，后端主要位于 `tms-backend/api/jessca_api.py` 和 `tms-backend/modules/jessca_module.py`；修改 invoice 表头、参考表诊断或 optional packing PDF 逻辑时必须同步核对前后端契约和 `tms-backend/tests/test_jessca_module.py`。
+3. 产地证核对前端位于 `tms-frontend/src/pages/draft-packing-compare/`，后端位于 `tms-backend/api/draft_packing_compare_api.py`、`tms-backend/modules/draft_packing_compare_module.py` 和 `tms-backend/modules/origin_certificate_ocr.py`；修改 PDF 解析、多文件批量、Form D/Form E 或 Packing List 表格规则时至少运行 `python -m unittest tests.test_draft_packing_compare_module -v`。
+4. Jessica browser automation 场景的业务入口已直接出现在侧边栏；不要重新引入只作为中转的大卡片入口。旧 `/browser-plugins` 和 `/jessica-infornexus` 不再是当前模块入口，前端只保留兼容重定向到 `/eric-infornexus`。
+5. PO 自动下载前端位于 `tms-frontend/src/pages/po-auto-download/`，执行器逻辑位于 `tms-electron-app/automation-apps/shipping-automation-demo/po-auto-download/`；模板下载走后端 `/api/system/config/po-auto-download/template/download`，不要把模板固定放进前端 public 目录。
+
 ## Jane 模块边界
 
 1. Jane 相关前端源码主要位于：
@@ -103,6 +112,20 @@
 2. `it-invoice-pdf-reorder` 是历史兼容技术标识；旧前端路由、旧 API prefix 和 legacy `/api/preview-invoice`、`/api/preview-po`、`/api/extract-numbers`、`/api/process` 在未确认历史包无调用前不得删除。
 3. Jason 前端源码主要位于 `tms-frontend/src/pages/jason-pdf-reorder/`；后端 API 仍位于 `tms-backend/api/it_invoice_pdf_reorder_api.py`，响应 schema 位于 `tms-backend/api/jason_pdf_reorder_schemas.py`。
 4. 修改 Jason 模块时不得改动业务字段名 `invoice_pdf`、`po_pdf`、下载 URL 形状或旧接口响应字段，除非明确进行 breaking change。
+
+## Eric / Infornexus 模块边界
+
+1. Eric Excel 数据处理前端主要位于 `tms-frontend/src/pages/eric/`，后端主要位于 `tms-backend/api/eric_api.py` 和 `tms-backend/modules/eric_module.py`。
+2. iPlex 双表核对前端位于 `tms-frontend/src/pages/iplex-dual-table-compare/`，属于 Eric 组，不属于 Lucia/TMS Finance 组。
+3. Eric Infornexus canonical 前端入口是 `/#/eric-infornexus`，页面组件位于 `tms-frontend/src/pages/infornexus-auto-add/`；旧 `/browser-plugins`、`/jessica-infornexus` 仅保留历史重定向，不得作为新功能入口继续扩展。
+4. 修改 Infornexus 本地自动化直连时，先核对 `scripts/engineering/frontend-direct-fetch-boundary.test.mjs` 白名单、`tms-frontend/src/pages/web-automation/` 共享执行器约束、`tms-electron-app/automation-apps/registry.json` 和对应执行器 README/启动脚本。
+
+## Lucia / TMS Finance 模块边界
+
+1. Lucia 组当前包含 `/#/tms-finance-internal-reconciliation` 与 `/#/tms-finance-work-sales`，前端共享 `tms-frontend/src/pages/tms-finance-internal-reconciliation/TmsFinanceInternalReconciliationPage.vue`，具体流程由 `tmsFinancePageModel.ts` 按 route name 解析。
+2. 内销对账后端位于 `tms-backend/api/tms_finance_internal_reconciliation_api.py` 和 `tms-backend/modules/tms_finance_internal_reconciliation_module.py`；修改 Sample/Bulk 来源行写入、附加费列或目标 workbook 格式时运行 `python -m unittest tests.test_tms_finance_internal_reconciliation_module -v`。
+3. Work Sales 后端位于 `tms-backend/api/tms_finance_work_sales_api.py` 和 `tms-backend/modules/tms_finance_work_sales_module.py`；修改 TURNOVER 写入逻辑时用真实 bulk `.XLS` 和空 TURNOVER 模板做接口级回归，至少覆盖写入数量和空模板边界。
+4. Lucia 前端只保留业务字段、按钮文案、API 参数映射、结果摘要转换和历史 module id 等差异；不要恢复内容区大卡片流程切换器。
 
 ## Sophia/Tina 模块边界
 
@@ -146,11 +169,13 @@
 
 ## 服务器部署规则
 
-1. 服务器 `~/TOS` 目录式 Docker Compose 部署必须遵循 `docs/server-deployment-runbook.md`，不要把服务器当作 Git 仓库直接 `git pull`。
-2. 服务器部署默认只更新 `tos-backend` 和 `tos-frontend`，保留服务器侧 Dockerfile、`nginx.conf`、`docker-compose.tos.yml` 和 `authelia/`。
-3. 服务器部署不等于 Windows Electron 打包；只有发布桌面安装包、自动更新包或正式 Windows 客户端时，才运行 `npm run build:win`。
-4. 服务器发布包必须从 GitCode CI 已通过的 clean commit 生成，使用 `npm run server:package`，并上传到 `/home/obito_li/TOS/.deploy_uploads/`。
-5. 截图或服务器中如存在 `_deploy_uploads`、`_source_uploads`，视为历史目录；新流程不写入这些目录。
+1. 服务器 `~/TOS` 目录式 Docker Compose 部署必须遵循 `docs/server-deployment-runbook.md`，不要把 `~/TOS` 当作 Git 仓库直接 `git pull`。
+2. 默认服务器发布流程是：本地合并并推送到 Gitea `main`，服务器进入 `~/TOS-source`，执行 `git pull --ff-only origin main`，再运行 `scripts/server/deploy-gitea-main.sh` 在服务器本地生成发布包并部署到 `~/TOS`。
+3. 服务器部署默认只更新 `tos-backend` 和 `tos-frontend`，保留服务器侧 Dockerfile、`nginx.conf`、`docker-compose.tos.yml` 和 `authelia/`。
+4. 服务器部署不等于 Windows Electron 打包；只有发布桌面安装包、自动更新包或正式 Windows 客户端时，才运行 `npm run build:win`。
+5. `~/TOS/.deploy_uploads/` 仍作为部署脚本内部包落地和应用目录；只有 Gitea 或服务器拉代码不可用时，才退回“本机生成 `.tar.gz` 后手动上传 `.deploy_uploads`”的备用流程。
+6. 服务器发布包不包含 `tms-electron-app/automation-apps`、`automation-launcher`、`browser-plugins` 或 `external-apps`；桌面自动化修复需要单独走 Electron/automation helper 交付链路。
+7. 截图或服务器中如存在 `_deploy_uploads`、`_source_uploads`，视为历史目录；新流程不写入这些目录。
 
 ## 可用检查命令
 
@@ -172,8 +197,8 @@ npm run server:package
 
 GitCode CI 在 runner 内下载 Node.js 22.11.0，通过 `npm run ci:install` 安装依赖，并用 `PYTHON=python3 npm run check` 做远端完整检查。修改 `.gitcode/workflows/tos-check.yml` 时不得顺手加入 `pack`、`build:win`、发布清单写入、上传或正式发布步骤。
 
-用户可见改动默认由 `semantic-release` 根据 Conventional Commits 自动判断版本并维护 `tms-frontend/src/shared/version/releaseNotes.json`；本地需要手动指定版本时使用 `npm run version:set -- <version>`，临时手工递增仍可用 `npm run version:bump`。
-`releaseNotes.json` 只描述当前版本变更；自动发布会重写 `added`、`improved`、`fixed` 数组，手工运行 `version:bump` 后必须移除上一版本遗留条目。
+用户可见改动默认由 `semantic-release` 根据 Conventional Commits 自动判断版本并维护 `tms-frontend/src/shared/version/releaseNotes.json`。普通功能、修复和文档清理不要手改 `releaseNotes.json` 或运行 `version:bump`；只有用户明确指定本地版本时才使用 `npm run version:set -- <version>`。
+`releaseNotes.json` 只描述当前版本变更；自动发布会重写 `added`、`improved`、`fixed` 数组。若确实手工指定版本，必须确认 `releaseNotes.json.version` 与 `app-version.json` 一致，并移除上一版本遗留条目。
 `/release-updates` 的内置历史时间线由 `tms-frontend/src/shared/version/releaseHistory.json` 和后端默认 seed 同步维护；新增历史条目时必须用测试校验前后端内容一致。
 
 ### 前端
@@ -220,8 +245,8 @@ node scripts/verify-release-package.js
 
 ## Git 规则
 
-1. 默认从 `gitcode/main` 更新主线，除非用户明确要求使用 `origin/main`。
-2. 新任务先执行 `git fetch gitcode main --prune`，再从最新 `gitcode/main` 创建 `codex/<topic>` 分支；继续已有分支时，在工作区 clean 的前提下 `git rebase gitcode/main`。
+1. 默认从 `gitea/main` 更新主线，除非用户明确要求使用 `gitcode/main` 或 `origin/main`。
+2. 新任务先执行 `git fetch gitea main --prune`，再从最新 `gitea/main` 创建 `codex/<topic>` 分支；继续已有分支时，在工作区 clean 的前提下 `git rebase gitea/main`。
 3. 新功能或项目规则改动使用 `codex/` 前缀分支，例如 `codex/update-tos-agents-rules`。
 4. 提交信息使用 `类型: 描述`，例如 `docs: 添加 TOS AI 协作规则`。
 5. 每次提交只包含一个功能或一个明确规则改动。
