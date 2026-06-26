@@ -248,6 +248,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import { tosModules } from '../../domain/moduleCatalog'
+import { webAutomationEntries } from '../web-automation/webAutomationModel'
 import {
   buildAutomationRunFileDownloadUrl,
   fetchAutomationRunDetail,
@@ -267,6 +268,12 @@ const selectedFiles = ref<AutomationRunFileRecord[]>([])
 const pagination = reactive({ page: 1, pageSize: 30, total: 0 })
 const filters = reactive({ automationId: readAutomationIdQuery(route.query.automationId), status: '', keyword: '' })
 
+interface AutomationRunFilterOption {
+  id: string
+  navLabel: string
+  order: number
+}
+
 // ---- Custom Dropdown State ----
 const moduleDropdownOpen = ref(false)
 const statusDropdownOpen = ref(false)
@@ -280,6 +287,17 @@ const statusOptions = [
   { value: 'failed', label: '失败' },
   { value: 'canceled', label: '已取消' },
 ]
+
+const automationRunFilterIds = new Set<string>([
+  'shipping-automation',
+  'xinlongtai-shipping-automation',
+  'tc-inv-automation',
+  'po-auto-download',
+  'shipping-automation-2',
+  'infornexus-auto-add',
+  'microsoft-login-n8n',
+  'ticket-owner-statistics',
+])
 
 function toggleModuleDropdown() {
   moduleDropdownOpen.value = !moduleDropdownOpen.value
@@ -318,11 +336,24 @@ onUnmounted(() => {
 })
 
 // ---- Computed ----
-const automationModules = computed(() =>
-  tosModules
-    .filter((module) => module.category === 'browser-automation')
-    .sort((left, right) => left.order - right.order),
-)
+const automationModules = computed<AutomationRunFilterOption[]>(() => {
+  const catalogOptions = tosModules
+    .filter((module) => automationRunFilterIds.has(module.id))
+    .map((module) => ({
+      id: module.id,
+      navLabel: module.navLabel,
+      order: module.order,
+    }))
+  const catalogIds = new Set<string>(catalogOptions.map((module) => module.id))
+  const scenarioOptions = webAutomationEntries
+    .filter((entry) => automationRunFilterIds.has(entry.id) && !catalogIds.has(entry.id))
+    .map((entry, index) => ({
+      id: entry.id,
+      navLabel: entry.title,
+      order: 100 + index,
+    }))
+  return [...catalogOptions, ...scenarioOptions].sort((left, right) => left.order - right.order)
+})
 const visibleSuccessCount = computed(() => runs.value.filter((run) => run.status === 'success').length)
 const visibleFailedCount = computed(() => runs.value.filter((run) => run.status === 'failed').length)
 const visibleRunningCount = computed(() => runs.value.filter((run) => run.status === 'running').length)
@@ -416,7 +447,12 @@ async function downloadFile(file: AutomationRunFileRecord): Promise<void> {
 
 // ---- Helpers ----
 function moduleLabel(automationId: string): string {
-  return tosModules.find((module) => module.id === automationId)?.navLabel || automationId
+  return (
+    automationModules.value.find((module) => module.id === automationId)?.navLabel ||
+    tosModules.find((module) => module.id === automationId)?.navLabel ||
+    webAutomationEntries.find((entry) => entry.id === automationId)?.title ||
+    automationId
+  )
 }
 function statusLabel(status: string): string {
   const map: Record<string, string> = {
