@@ -76,6 +76,39 @@ class AutomationStorageTests(unittest.TestCase):
         self.assertIn("filename*=UTF-8''", header)
         self.assertIn("%E6%96%B0%E9%BE%99%E6%B3%B0", header)
 
+    def test_template_download_reports_missing_minio_object(self):
+        class MissingObjectError(Exception):
+            code = "NoSuchKey"
+
+        row = {
+            "bucket": "tos-templates",
+            "object_key": "templates/missing.xlsx",
+            "original_filename": "template.xlsx",
+            "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }
+        with patch.object(automation_storage_api, "get_excel_template", return_value=row), \
+             patch.object(automation_storage_api, "get_object_response", side_effect=MissingObjectError()):
+            with self.assertRaises(automation_storage_api.HTTPException) as context:
+                automation_storage_api.download_template(1)
+
+        self.assertEqual(context.exception.status_code, 404)
+        self.assertIn("模板文件不存在", context.exception.detail)
+
+    def test_template_download_reports_storage_unavailable(self):
+        row = {
+            "bucket": "tos-templates",
+            "object_key": "templates/template.xlsx",
+            "original_filename": "template.xlsx",
+            "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }
+        with patch.object(automation_storage_api, "get_excel_template", return_value=row), \
+             patch.object(automation_storage_api, "get_object_response", side_effect=RuntimeError("storage down")):
+            with self.assertRaises(automation_storage_api.HTTPException) as context:
+                automation_storage_api.download_template(1)
+
+        self.assertEqual(context.exception.status_code, 503)
+        self.assertIn("MinIO", context.exception.detail)
+
     def test_shipping_executor_id_can_read_shared_infor_nexus_credentials(self):
         lookup_ids = _credential_lookup_ids("shipping-automation-demo")
         released_bulk_lookup_ids = _credential_lookup_ids("shipping-automation-2")

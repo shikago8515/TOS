@@ -148,36 +148,53 @@ def delete_automation_credentials(automation_id: str, account_key: str = "defaul
     return deleted
 
 
-def list_excel_templates(module_id: str) -> list[dict[str, Any]]:
+def list_excel_templates(
+    module_id: str | None = None,
+    *,
+    include_inactive: bool = False,
+    limit: int = 500,
+) -> list[dict[str, Any]]:
     ensure_schema()
+    safe_limit = max(1, min(int(limit or 500), 1000))
+    conditions: list[str] = []
+    params: list[Any] = []
+    if module_id:
+        conditions.append("module_id = %s")
+        params.append(module_id)
+    if not include_inactive:
+        conditions.append("is_active = 1")
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    params.append(safe_limit)
     with mysql_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT id, module_id, template_key, display_name, bucket, object_key,
                        original_filename, content_type, file_size, sha256,
-                       created_at, updated_at
+                       is_active, created_at, updated_at
                 FROM excel_templates
-                WHERE module_id = %s AND is_active = 1
-                ORDER BY display_name ASC, id ASC
+                {where_clause}
+                ORDER BY module_id ASC, display_name ASC, id ASC
+                LIMIT %s
                 """,
-                (module_id,),
+                tuple(params),
             )
             rows = cursor.fetchall()
     return rows or []
 
 
-def get_excel_template(template_id: int) -> dict[str, Any] | None:
+def get_excel_template(template_id: int, *, include_inactive: bool = False) -> dict[str, Any] | None:
     ensure_schema()
+    active_clause = "" if include_inactive else "AND is_active = 1"
     with mysql_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT id, module_id, template_key, display_name, bucket, object_key,
                        original_filename, content_type, file_size, sha256,
-                       created_at, updated_at
+                       is_active, created_at, updated_at
                 FROM excel_templates
-                WHERE id = %s AND is_active = 1
+                WHERE id = %s {active_clause}
                 LIMIT 1
                 """,
                 (template_id,),
@@ -223,7 +240,7 @@ def upsert_excel_template(template: dict[str, Any]) -> dict[str, Any]:
                 """
                 SELECT id, module_id, template_key, display_name, bucket, object_key,
                        original_filename, content_type, file_size, sha256,
-                       created_at, updated_at
+                       is_active, created_at, updated_at
                 FROM excel_templates
                 WHERE module_id = %s AND template_key = %s
                 LIMIT 1
@@ -233,6 +250,58 @@ def upsert_excel_template(template: dict[str, Any]) -> dict[str, Any]:
             row = cursor.fetchone()
         connection.commit()
     return row or {}
+
+
+def update_excel_template(template_id: int, updates: dict[str, Any]) -> dict[str, Any] | None:
+    ensure_schema()
+    allowed_fields = {
+        "module_id": "module_id",
+        "template_key": "template_key",
+        "display_name": "display_name",
+        "is_active": "is_active",
+    }
+    assignments: list[str] = []
+    params: list[Any] = []
+    for key, column in allowed_fields.items():
+        if key not in updates:
+            continue
+        assignments.append(f"{column} = %s")
+        params.append(updates[key])
+
+    if not assignments:
+        return get_excel_template(template_id, include_inactive=True)
+
+    assignments.append("updated_at = CURRENT_TIMESTAMP")
+    params.append(template_id)
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                UPDATE excel_templates
+                SET {', '.join(assignments)}
+                WHERE id = %s
+                """,
+                tuple(params),
+            )
+        connection.commit()
+    return get_excel_template(template_id, include_inactive=True)
+
+
+def delete_excel_template(template_id: int) -> bool:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE excel_templates
+                SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                """,
+                (template_id,),
+            )
+            deleted = cursor.rowcount > 0
+        connection.commit()
+    return deleted
 
 
 def create_automation_run(run: dict[str, Any]) -> dict[str, Any]:
@@ -277,36 +346,94 @@ def get_automation_run(run_id: str) -> dict[str, Any] | None:
     return row
 
 
-def list_automation_runs(automation_id: str | None = None, limit: int = 30) -> list[dict[str, Any]]:
+def list_automation_runs(
+    automation_id: str | None = None,
+    limit: int = 30,
+    *,
+    module_id: str | None = None,
+    status: str | None = None,
+    keyword: str | None = None,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
     ensure_schema()
-    safe_limit = max(1, min(int(limit or 30), 100))
+    safe_limit = max(1, min(int(limit or 30), 300))
+    safe_offset = max(0, int(offset or 0))
+    where_clause, params = _build_automation_run_filters(
+        automation_id=automation_id,
+        module_id=module_id,
+        status=status,
+        keyword=keyword,
+    )
+    params.extend([safe_limit, safe_offset])
     with mysql_connection() as connection:
         with connection.cursor() as cursor:
-            if automation_id:
-                cursor.execute(
-                    """
-                    SELECT run_id, automation_id, module_id, run_name, status, message,
-                           result_json, started_at, finished_at, created_at, updated_at
-                    FROM automation_runs
-                    WHERE automation_id = %s
-                    ORDER BY created_at DESC
-                    LIMIT %s
-                    """,
-                    (automation_id, safe_limit),
-                )
-            else:
-                cursor.execute(
-                    """
-                    SELECT run_id, automation_id, module_id, run_name, status, message,
-                           result_json, started_at, finished_at, created_at, updated_at
-                    FROM automation_runs
-                    ORDER BY created_at DESC
-                    LIMIT %s
-                    """,
-                    (safe_limit,),
-                )
+            cursor.execute(
+                f"""
+                SELECT run_id, automation_id, module_id, run_name, status, message,
+                       result_json, started_at, finished_at, created_at, updated_at
+                FROM automation_runs
+                {where_clause}
+                ORDER BY created_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                tuple(params),
+            )
             rows = cursor.fetchall()
     return rows or []
+
+
+def count_automation_runs(
+    automation_id: str | None = None,
+    *,
+    module_id: str | None = None,
+    status: str | None = None,
+    keyword: str | None = None,
+) -> int:
+    ensure_schema()
+    where_clause, params = _build_automation_run_filters(
+        automation_id=automation_id,
+        module_id=module_id,
+        status=status,
+        keyword=keyword,
+    )
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT COUNT(*) AS total
+                FROM automation_runs
+                {where_clause}
+                """,
+                tuple(params),
+            )
+            row = cursor.fetchone() or {}
+    return int(row.get("total") or 0)
+
+
+def _build_automation_run_filters(
+    *,
+    automation_id: str | None = None,
+    module_id: str | None = None,
+    status: str | None = None,
+    keyword: str | None = None,
+) -> tuple[str, list[Any]]:
+    conditions: list[str] = []
+    params: list[Any] = []
+    if automation_id:
+        conditions.append("automation_id = %s")
+        params.append(automation_id)
+    if module_id:
+        conditions.append("module_id = %s")
+        params.append(module_id)
+    if status:
+        conditions.append("status = %s")
+        params.append(status)
+    if keyword:
+        pattern = f"%{keyword}%"
+        conditions.append("(run_id LIKE %s OR run_name LIKE %s OR message LIKE %s)")
+        params.extend([pattern, pattern, pattern])
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    return where_clause, params
 
 
 def update_automation_run(
@@ -372,6 +499,42 @@ def insert_automation_run_file(file_record: dict[str, Any]) -> dict[str, Any]:
             row = cursor.fetchone()
         connection.commit()
     return row or {}
+
+
+def list_automation_run_files(run_id: str) -> list[dict[str, Any]]:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, run_id, file_role, bucket, object_key, original_filename,
+                       content_type, file_size, sha256, created_at
+                FROM automation_run_files
+                WHERE run_id = %s
+                ORDER BY created_at ASC, id ASC
+                """,
+                (run_id,),
+            )
+            rows = cursor.fetchall()
+    return rows or []
+
+
+def get_automation_run_file(file_id: int) -> dict[str, Any] | None:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, run_id, file_role, bucket, object_key, original_filename,
+                       content_type, file_size, sha256, created_at
+                FROM automation_run_files
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (file_id,),
+            )
+            row = cursor.fetchone()
+    return row
 
 
 def list_release_update_records(limit: int = 100) -> list[dict[str, Any]]:

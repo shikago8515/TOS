@@ -6,6 +6,7 @@ import type {
 import {
   buildBackendDownloadUrl,
   postFormData,
+  readResponseMessage,
   requestBackendJson,
 } from '../../shared/api/backendClient'
 
@@ -81,7 +82,10 @@ export interface AutomationTemplate {
   contentType: string
   fileSize: number
   sha256: string
+  isActive?: boolean
   downloadPath: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface AutomationRunRecord {
@@ -91,6 +95,25 @@ export interface AutomationRunRecord {
   runName: string
   status: string
   message: string
+  result?: unknown
+  startedAt?: string
+  finishedAt?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface AutomationRunFileRecord {
+  id: number
+  runId: string
+  fileRole: string
+  bucket: string
+  objectKey: string
+  originalFilename: string
+  contentType: string
+  fileSize: number
+  sha256: string
+  createdAt: string
+  downloadPath: string
 }
 
 export interface AutomationRunFileInput {
@@ -389,8 +412,99 @@ export async function fetchAutomationTemplates(moduleId: string): Promise<Automa
   return Array.isArray(payload.templates) ? payload.templates : []
 }
 
+export async function fetchAllAutomationTemplates(includeInactive = false): Promise<AutomationTemplate[]> {
+  const payload = await requestBackendJson<{ templates?: AutomationTemplate[] }>({
+    path: `/api/automation/templates?includeInactive=${includeInactive ? 'true' : 'false'}`,
+  })
+  return Array.isArray(payload.templates) ? payload.templates : []
+}
+
+export async function uploadAutomationTemplate(input: {
+  moduleId: string
+  templateKey: string
+  displayName: string
+  file: File
+}): Promise<AutomationTemplate> {
+  const formData = new FormData()
+  formData.append('module_id', input.moduleId)
+  formData.append('template_key', input.templateKey || 'default')
+  formData.append('display_name', input.displayName || input.file.name)
+  formData.append('file', input.file)
+
+  const payload = await postFormData<{ template?: AutomationTemplate }>({
+    path: '/api/automation/templates',
+    formData,
+  })
+  if (!payload.template) {
+    throw new Error('模板上传完成，但后端未返回模板记录。')
+  }
+  return payload.template
+}
+
+export async function updateAutomationTemplate(
+  templateId: number,
+  input: {
+    moduleId?: string
+    templateKey?: string
+    displayName?: string
+    isActive?: boolean
+  },
+): Promise<AutomationTemplate> {
+  const payload = await requestBackendJson<{ template?: AutomationTemplate }>({
+    method: 'PATCH',
+    path: `/api/automation/templates/${encodeURIComponent(String(templateId))}`,
+    body: input,
+  })
+  if (!payload.template) {
+    throw new Error('模板更新完成，但后端未返回模板记录。')
+  }
+  return payload.template
+}
+
+export async function deleteAutomationTemplate(templateId: number): Promise<void> {
+  await requestBackendJson({
+    method: 'DELETE',
+    path: `/api/automation/templates/${encodeURIComponent(String(templateId))}`,
+  })
+}
+
 export async function buildAutomationTemplateDownloadUrl(template: AutomationTemplate): Promise<string> {
   return buildBackendDownloadUrl(template.downloadPath)
+}
+
+export async function downloadAutomationTemplate(template: AutomationTemplate | null | undefined): Promise<void> {
+  if (!template) {
+    throw new Error('当前模块还没有配置 Excel 模板，请联系管理员上传模板后再下载。')
+  }
+
+  const url = await buildAutomationTemplateDownloadUrl(template)
+  let response: Response
+  try {
+    response = await fetch(url, { method: 'GET' })
+  } catch (_error) {
+    throw new Error('无法连接后端服务，模板下载失败。请确认本地后端或服务器后端正在运行。')
+  }
+
+  const contentType = response.headers.get('content-type') || ''
+  if (!response.ok || isTemplateErrorContentType(contentType)) {
+    const rawText = await response.text().catch(() => '')
+    throw new Error(readTemplateDownloadErrorMessage(rawText, response.status, template.downloadPath))
+  }
+
+  const blob = await response.blob()
+  if (blob.size === 0) {
+    throw new Error('模板文件为空，请联系管理员重新上传模板。')
+  }
+
+  const objectUrl = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = objectUrl
+  anchor.rel = 'noopener'
+  anchor.download = readTemplateDownloadFilename(response, template)
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(objectUrl)
 }
 
 export async function createAutomationRunRecord(
@@ -431,6 +545,68 @@ export async function finishAutomationRunRecord(
   })
 }
 
+export async function fetchAutomationRuns(params: {
+  automationId?: string
+  moduleId?: string
+  status?: string
+  keyword?: string
+  page?: number
+  pageSize?: number
+} = {}): Promise<{ runs: AutomationRunRecord[]; pagination: { page: number; pageSize: number; total: number } }> {
+  const query = new URLSearchParams()
+  if (params.automationId) query.set('automationId', params.automationId)
+  if (params.moduleId) query.set('moduleId', params.moduleId)
+  if (params.status) query.set('status', params.status)
+  if (params.keyword) query.set('keyword', params.keyword)
+  query.set('page', String(params.page || 1))
+  query.set('pageSize', String(params.pageSize || 30))
+
+  const payload = await requestBackendJson<{
+    runs?: AutomationRunRecord[]
+    pagination?: { page?: number; pageSize?: number; total?: number }
+  }>({
+    path: `/api/automation/runs?${query.toString()}`,
+  })
+  return {
+    runs: Array.isArray(payload.runs) ? payload.runs : [],
+    pagination: {
+      page: Number(payload.pagination?.page || params.page || 1),
+      pageSize: Number(payload.pagination?.pageSize || params.pageSize || 30),
+      total: Number(payload.pagination?.total || 0),
+    },
+  }
+}
+
+export async function fetchAutomationRunDetail(runId: string): Promise<{
+  run: AutomationRunRecord
+  files: AutomationRunFileRecord[]
+}> {
+  const payload = await requestBackendJson<{
+    run?: AutomationRunRecord
+    files?: AutomationRunFileRecord[]
+  }>({
+    path: `/api/automation/runs/${encodeURIComponent(runId)}`,
+  })
+  if (!payload.run) {
+    throw new Error('执行记录不存在。')
+  }
+  return {
+    run: payload.run,
+    files: Array.isArray(payload.files) ? payload.files : [],
+  }
+}
+
+export async function fetchAutomationRunFiles(runId: string): Promise<AutomationRunFileRecord[]> {
+  const payload = await requestBackendJson<{ files?: AutomationRunFileRecord[] }>({
+    path: `/api/automation/runs/${encodeURIComponent(runId)}/files`,
+  })
+  return Array.isArray(payload.files) ? payload.files : []
+}
+
+export function buildAutomationRunFileDownloadUrl(file: AutomationRunFileRecord): Promise<string> {
+  return buildBackendDownloadUrl(file.downloadPath)
+}
+
 export async function probeLocalAutomationLauncherHealth(): Promise<boolean> {
   return isLauncherReachable()
 }
@@ -458,6 +634,64 @@ async function isLauncherReachable(): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+function isTemplateErrorContentType(contentType: string): boolean {
+  const normalized = contentType.toLowerCase()
+  return normalized.includes('application/json')
+    || normalized.includes('text/html')
+    || normalized.includes('text/plain')
+}
+
+function readTemplateDownloadErrorMessage(rawText: string, status: number, path: string): string {
+  const trimmed = String(rawText || '').trim()
+  if (trimmed) {
+    try {
+      const payload = JSON.parse(trimmed) as unknown
+      const apiMessage = readResponseMessage(payload, { status, path })
+      if (apiMessage) {
+        return apiMessage
+      }
+    } catch {
+      // Fall through and show a short plain-text preview.
+    }
+  }
+
+  if (status === 404) {
+    return '当前模块的 Excel 模板未配置，或模板文件已经从 MinIO 删除，请联系管理员重新上传模板。'
+  }
+
+  if (status >= 500) {
+    return '模板文件暂时无法下载，可能是 MinIO 文件缺失或后端存储连接异常，请联系管理员检查模板配置。'
+  }
+
+  const plainText = trimmed
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160)
+  return plainText
+    ? `模板下载失败：${plainText}`
+    : `模板下载失败（HTTP ${status || '未知'}）。`
+}
+
+function readTemplateDownloadFilename(response: Response, template: AutomationTemplate): string {
+  const disposition = response.headers.get('content-disposition') || ''
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim())
+    } catch {
+      return utf8Match[1].trim()
+    }
+  }
+
+  const asciiMatch = disposition.match(/filename="?([^";]+)"?/i)
+  if (asciiMatch?.[1]) {
+    return asciiMatch[1].trim()
+  }
+
+  return template.originalFilename || `${template.templateKey || 'template'}.xlsx`
 }
 
 async function probeAutomationHelperUpdatePanel(): Promise<'available' | 'unsupported' | 'not-running'> {

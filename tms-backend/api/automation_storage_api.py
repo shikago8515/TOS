@@ -22,16 +22,21 @@ from utils.minio_storage import (
     sha256_bytes,
 )
 from utils.mysql_store import (
+    count_automation_runs,
     create_automation_run,
     delete_automation_credentials,
+    delete_excel_template,
+    get_automation_run_file,
     get_automation_credentials,
     get_automation_run,
     get_excel_template,
     insert_automation_run_file,
     list_automation_credentials,
+    list_automation_run_files,
     list_automation_runs,
     list_excel_templates,
     update_automation_run,
+    update_excel_template,
     upsert_automation_credentials,
     upsert_excel_template,
 )
@@ -73,6 +78,13 @@ class RunUpdatePayload(BaseModel):
     message: str = ""
     result: Any = None
     resultFiles: list[RunFilePayload] = Field(default_factory=list)
+
+
+class TemplateUpdatePayload(BaseModel):
+    moduleId: str | None = None
+    templateKey: str | None = None
+    displayName: str | None = None
+    isActive: bool | None = None
 
 
 @router.get("/credentials/{automation_id}/accounts")
@@ -160,11 +172,18 @@ def resolve_credentials(automation_id: str, accountKey: str = Query("default")) 
 
 
 @router.get("/templates")
-def read_templates(moduleId: str = Query(...)) -> dict[str, Any]:
-    templates = [_template_payload(row) for row in list_excel_templates(moduleId)]
+def read_templates(
+    moduleId: str | None = Query(None),
+    includeInactive: bool = Query(False),
+    limit: int = Query(500, ge=1, le=1000),
+) -> dict[str, Any]:
+    templates = [
+        _template_payload(row)
+        for row in list_excel_templates(moduleId, include_inactive=includeInactive, limit=limit)
+    ]
     return {
         "ok": True,
-        "moduleId": moduleId,
+        "moduleId": moduleId or "",
         "templates": templates,
     }
 
@@ -209,13 +228,50 @@ async def upload_template(
     }
 
 
+@router.patch("/templates/{template_id}")
+def update_template(template_id: int, payload: TemplateUpdatePayload) -> dict[str, Any]:
+    if not get_excel_template(template_id, include_inactive=True):
+        raise HTTPException(status_code=404, detail="模板记录不存在。")
+
+    updates: dict[str, Any] = {}
+    if payload.moduleId is not None:
+        updates["module_id"] = payload.moduleId.strip()
+    if payload.templateKey is not None:
+        updates["template_key"] = payload.templateKey.strip() or "default"
+    if payload.displayName is not None:
+        updates["display_name"] = payload.displayName.strip() or "Excel 模板"
+    if payload.isActive is not None:
+        updates["is_active"] = 1 if payload.isActive else 0
+
+    row = update_excel_template(template_id, updates)
+    if not row:
+        raise HTTPException(status_code=404, detail="模板记录不存在。")
+    return {
+        "ok": True,
+        "template": _template_payload(row),
+    }
+
+
+@router.delete("/templates/{template_id}")
+def delete_template(template_id: int) -> dict[str, Any]:
+    if not delete_excel_template(template_id):
+        raise HTTPException(status_code=404, detail="模板记录不存在或已经删除。")
+    return {
+        "ok": True,
+        "templateId": template_id,
+    }
+
+
 @router.get("/templates/{template_id}/download")
 def download_template(template_id: int):
     row = get_excel_template(template_id)
     if not row:
-        raise HTTPException(status_code=404, detail="Template was not found.")
+        raise HTTPException(status_code=404, detail="当前模块的 Excel 模板未配置，请联系管理员上传模板。")
 
-    response = get_object_response(row["bucket"], row["object_key"])
+    try:
+        response = get_object_response(row["bucket"], row["object_key"])
+    except Exception as exc:
+        _raise_template_storage_error(template_id, row, exc)
     filename = row.get("original_filename") or f"template-{template_id}.xlsx"
     headers = {
         "Content-Disposition": _attachment_content_disposition(filename),
@@ -305,13 +361,97 @@ async def finish_run(run_id: str, payload: RunUpdatePayload) -> dict[str, Any]:
 @router.get("/runs")
 def read_runs(
     automationId: str | None = Query(None),
-    limit: int = Query(30, ge=1, le=100),
+    moduleId: str | None = Query(None),
+    status: str | None = Query(None),
+    keyword: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(30, ge=1, le=100),
+    limit: int | None = Query(None, ge=1, le=100),
 ) -> dict[str, Any]:
-    runs = [_run_payload(row) for row in list_automation_runs(automationId, limit)]
+    effective_page_size = limit or pageSize
+    offset = (page - 1) * effective_page_size
+    total = count_automation_runs(
+        automationId,
+        module_id=moduleId,
+        status=status,
+        keyword=keyword,
+    )
+    runs = [
+        _run_payload(row)
+        for row in list_automation_runs(
+            automationId,
+            effective_page_size,
+            module_id=moduleId,
+            status=status,
+            keyword=keyword,
+            offset=offset,
+        )
+    ]
     return {
         "ok": True,
         "runs": runs,
+        "pagination": {
+            "page": page,
+            "pageSize": effective_page_size,
+            "total": total,
+        },
     }
+
+
+@router.get("/runs/{run_id}")
+def read_run_detail(run_id: str) -> dict[str, Any]:
+    row = get_automation_run(run_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Automation run was not found.")
+    return {
+        "ok": True,
+        "run": _run_payload(row),
+        "files": [_run_file_payload(file_row) for file_row in list_automation_run_files(run_id)],
+    }
+
+
+@router.get("/runs/{run_id}/files")
+def read_run_files(run_id: str) -> dict[str, Any]:
+    if not get_automation_run(run_id):
+        raise HTTPException(status_code=404, detail="Automation run was not found.")
+    return {
+        "ok": True,
+        "runId": run_id,
+        "files": [_run_file_payload(row) for row in list_automation_run_files(run_id)],
+    }
+
+
+@router.get("/run-files/{file_id}/download")
+def download_run_file(file_id: int):
+    row = get_automation_run_file(file_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="执行文件不存在。")
+
+    try:
+        response = get_object_response(row["bucket"], row["object_key"])
+    except Exception as exc:
+        logger.exception(
+            "Failed to download automation run file: file_id=%s bucket=%s object_key=%s",
+            file_id,
+            row.get("bucket"),
+            row.get("object_key"),
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="执行文件暂时无法下载，请联系管理员检查 MinIO 存储连接。",
+        ) from exc
+
+    filename = row.get("original_filename") or f"automation-file-{file_id}"
+    headers = {
+        "Content-Disposition": _attachment_content_disposition(filename),
+        "Cache-Control": "no-store",
+    }
+    return StreamingResponse(
+        response.stream(32 * 1024),
+        media_type=row.get("content_type") or "application/octet-stream",
+        headers=headers,
+        background=None,
+    )
 
 
 def _credential_public_payload(
@@ -387,7 +527,10 @@ def _template_payload(row: dict[str, Any]) -> dict[str, Any]:
         "contentType": row.get("content_type", ""),
         "fileSize": row.get("file_size", 0),
         "sha256": row.get("sha256", ""),
+        "isActive": bool(row.get("is_active", 1)),
         "downloadPath": f"/api/automation/templates/{row['id']}/download",
+        "createdAt": _format_datetime(row.get("created_at")),
+        "updatedAt": _format_datetime(row.get("updated_at")),
     }
 
 
@@ -411,6 +554,22 @@ def _run_payload(row: dict[str, Any]) -> dict[str, Any]:
         "finishedAt": _format_datetime(row.get("finished_at")),
         "createdAt": _format_datetime(row.get("created_at")),
         "updatedAt": _format_datetime(row.get("updated_at")),
+    }
+
+
+def _run_file_payload(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "runId": row["run_id"],
+        "fileRole": row["file_role"],
+        "bucket": row["bucket"],
+        "objectKey": row["object_key"],
+        "originalFilename": row.get("original_filename", ""),
+        "contentType": row.get("content_type", ""),
+        "fileSize": row.get("file_size", 0),
+        "sha256": row.get("sha256", ""),
+        "createdAt": _format_datetime(row.get("created_at")),
+        "downloadPath": f"/api/automation/run-files/{row['id']}/download",
     }
 
 
@@ -463,6 +622,33 @@ def _try_store_remote_result_file(
         logger.exception("Failed to store automation run remote result file.")
         warnings.append("File storage is unavailable; run result was kept without one attached file.")
         return None
+
+
+def _raise_template_storage_error(template_id: int, row: dict[str, Any], exc: Exception) -> None:
+    error_code = str(getattr(exc, "code", "") or getattr(exc, "response", "") or "")
+    if error_code in {"NoSuchKey", "NoSuchBucket", "NoSuchObject"}:
+        logger.warning(
+            "Automation template object missing: template_id=%s bucket=%s object_key=%s code=%s",
+            template_id,
+            row.get("bucket"),
+            row.get("object_key"),
+            error_code,
+        )
+        raise HTTPException(
+            status_code=404,
+            detail="模板文件不存在或已从 MinIO 删除，请联系管理员重新上传模板。",
+        ) from exc
+
+    logger.exception(
+        "Failed to download automation template: template_id=%s bucket=%s object_key=%s",
+        template_id,
+        row.get("bucket"),
+        row.get("object_key"),
+    )
+    raise HTTPException(
+        status_code=503,
+        detail="模板文件暂时无法下载，请联系管理员检查 MinIO 存储连接和模板对象。",
+    ) from exc
 
 
 async def _store_upload_file(

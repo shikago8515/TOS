@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.28-fixed-automation-template-download-error-dialog",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "fixed",
+    "pageName": "浏览器自动化 / Excel 模板下载",
+    "pagePath": "/web-automation",
+    "title": "修复模板下载失败跳转错误页",
+    "description": "自动化页面下载 Excel 模板时改为先校验后端响应，模板未配置、MinIO 文件缺失或后端存储异常时停留在当前页面并弹窗提示，不再跳转到 Internal Server Error 页面。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.28-fixed-automation-module-running-process-refresh",
     "version": "0.9.8-beta.3.28",
     "releaseDate": "2026-06-26",

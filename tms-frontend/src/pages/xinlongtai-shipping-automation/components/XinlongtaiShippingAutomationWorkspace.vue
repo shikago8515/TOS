@@ -78,7 +78,7 @@
                 :automation-id="entry.id"
                 :extra-action-label="templateButtonLabel"
                 extra-action-icon="download"
-                :extra-action-disabled="templateLoading || !primaryTemplate"
+                :extra-action-disabled="templateLoading"
                 :extra-action-loading="templateLoading"
                 @state="handleCredentialState"
                 @notice="handleCredentialNotice"
@@ -238,7 +238,7 @@ import AutomationAccountProfileManager from '../../web-automation/components/Aut
 import type { AutomationAppInfo } from '../../../types/electronApi'
 import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {
-  buildAutomationTemplateDownloadUrl, createAutomationRunRecord,
+  createAutomationRunRecord, downloadAutomationTemplate,
   fetchAutomationApps, fetchAutomationTemplates, finishAutomationRunRecord,
   getAutomationHelperUpdateMessage,
   hasElectronAutomationSupport, launchAutomationConsole, openAutomationHelperDownload,
@@ -349,9 +349,8 @@ async function refreshAutomationTemplates(): Promise<void> {
 }
 
 async function downloadPrimaryTemplate(): Promise<void> {
-  const t = primaryTemplate.value; if (!t) return
-  try { const u = await buildAutomationTemplateDownloadUrl(t); const a = document.createElement('a'); a.href = u; a.download = t.originalFilename || `${t.templateKey || 'template'}.xlsx`; a.rel = 'noopener'; document.body.append(a); a.click(); a.remove() }
-  catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('下载失败。')) }
+  try { await downloadAutomationTemplate(primaryTemplate.value); messageTone.value = 'success'; message.value = text('模板下载已开始。') }
+  catch (e) { const m = readErrorMessage(e, text('模板下载失败。')); messageTone.value = 'warning'; message.value = m; void showAppAlert(m, { tone: 'warning' }) }
 }
 
 function downloadAutomationHelper(): void { void openAutomationHelperDownload() }

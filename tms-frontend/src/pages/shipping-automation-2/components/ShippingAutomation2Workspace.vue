@@ -72,7 +72,7 @@
                 <span v-else-if="bulk.running" class="s2-chip s2-chip--busy"><AppIcon name="loader" class="s2-spin" />{{ text('运行中') }}</span>
               </div>
               <div class="s2-bulk__body">
-                <button class="s2-btn s2-btn--ghost" :disabled="templateLoading || !bulkTemplate(bulk.id)" @click="downloadBulkTemplate(bulk.id)">
+                <button class="s2-btn s2-btn--ghost" :disabled="templateLoading" @click="downloadBulkTemplate(bulk.id)">
                   <AppIcon name="download" />{{ bulkTemplate(bulk.id) ? text('下载模板') : text('暂无模板') }}
                 </button>
                 <div class="s2-drop" :class="{ 's2-drop--on': bulk.file, 's2-drop--over': bulk.dragging }"
@@ -209,7 +209,7 @@ import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 import type { AutomationAppInfo } from '../../../types/electronApi'
 import type { AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {
-  buildAutomationTemplateDownloadUrl, clearExecutorCredentials, createAutomationRunRecord,
+  clearExecutorCredentials, createAutomationRunRecord, downloadAutomationTemplate,
   fetchAutomationApps, fetchAutomationTemplates, fetchExecutorCredentials, finishAutomationRunRecord,
   getAutomationHelperUpdateMessage,
   hasElectronAutomationSupport, launchAutomationConsole, openAutomationHelperDownload,
@@ -312,7 +312,7 @@ async function clearCurrentCredentials(): Promise<void> { if (!entry || credenti
 
 async function resolveRunCredentialsPayload(): Promise<Record<string, string>> { if (!entry) return {}; const u = shippingUsername.value.trim(); const tp = shippingPassword.value; if (tp.trim()) { if (!u) throw new Error('请填写 Infor Nexus 登录账号密码。'); executorCredentials.value = await saveExecutorCredentials(entry.id, u, tp); await refreshExecutorCredentials(); return { username: u, password: tp } }; const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = r.username; shippingPassword.value = r.password; return { username: r.username, password: r.password } }
 function bulkTemplate(id: BulkId): AutomationTemplate | null { return automationTemplates.value.find((t) => t.templateKey === id) || automationTemplates.value.find((t) => t.templateKey === 'default') || automationTemplates.value[0] || null }
-async function downloadBulkTemplate(id: BulkId): Promise<void> { const t = bulkTemplate(id); if (!t) return; try { const u = await buildAutomationTemplateDownloadUrl(t); const a = document.createElement('a'); a.href = u; a.download = t.originalFilename || `${t.templateKey || 'template'}.xlsx`; a.rel = 'noopener'; document.body.append(a); a.click(); a.remove() } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, '下载模板失败。') } }
+async function downloadBulkTemplate(id: BulkId): Promise<void> { try { await downloadAutomationTemplate(bulkTemplate(id)); messageTone.value = 'success'; message.value = text('模板下载已开始。') } catch (e) { const m = readErrorMessage(e, text('模板下载失败。')); messageTone.value = 'warning'; message.value = m; void showAppAlert(m, { tone: 'warning' }) } }
 function downloadAutomationHelper(): void { void openAutomationHelperDownload() }
 function bootLocalHelper(): void { primeLocalAutomationLauncherBoot(); messageTone.value = 'info'; message.value = text('已尝试启动本机自动化助手。'); window.setTimeout(() => { void refreshExecutorState(true) }, 1200) }
 
