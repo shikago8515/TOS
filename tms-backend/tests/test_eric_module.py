@@ -223,6 +223,27 @@ class EricModuleYticSourceTests(unittest.TestCase):
 
         self.assertEqual([row[:3] for row in rows], [list(key) for key in ytic_order])
 
+    def test_build_size_check_rows_uses_check_scope_when_order_is_provided(self):
+        final_map = {
+            ("0902791698", "KY5192", "A/XS"): 238,
+            ("0902788658", "KY5192", "A/XS"): 160,
+            ("0902830623", "KY5193", "A/2XS"): 57,
+        }
+        ytic_map = {
+            ("0902810812", "KY5192", "A/XS"): 224,
+            ("0902791698", "KY5192", "A/XS"): 238,
+            ("0902788658", "KY5192", "A/XS"): 160,
+        }
+        check_order = [
+            ("0902810812", "KY5192", "A/XS"),
+            ("0902791698", "KY5192", "A/XS"),
+            ("0902788658", "KY5192", "A/XS"),
+        ]
+
+        rows = self.module.build_size_check_rows(final_map, ytic_map, check_order)
+
+        self.assertEqual([row[:3] for row in rows], [list(key) for key in check_order])
+
     def test_normalize_ship_mode_matches_ytic_destination_rules(self):
         self.assertEqual(self.module.normalize_ship_mode("By Sea"), "Ocean")
         self.assertEqual(self.module.normalize_ship_mode("By Courier"), "Air Express")
@@ -393,11 +414,11 @@ class EricModuleYticSourceTests(unittest.TestCase):
                             "PO Number",
                             "Article Number",
                             "Size",
-                            "Final Data Quantity",
                             "PO Quantity",
-                            "MARGIN",
+                            "Final Quantity",
+                            "margin",
                         ),
-                        ("0902792931", "LI2854", "XS", 32, 32, "=D2-E2"),
+                        ("0902792931", "LI2854", "XS", 32, 32, "=E2-D2"),
                     ],
                 )
                 self.assertNotEqual(wb["Size_Check"]["F1"].fill.fgColor.rgb, "FFFFFF00")
