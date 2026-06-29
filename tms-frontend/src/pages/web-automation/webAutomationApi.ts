@@ -560,7 +560,7 @@ export async function downloadAutomationTemplate(template: AutomationTemplate | 
 
 export async function createAutomationRunRecord(
   automationId: string,
-  sourceFile: File,
+  sourceFile: File | null,
   runName = '',
 ): Promise<AutomationRunRecord | null> {
   const formData = new FormData()
@@ -568,7 +568,7 @@ export async function createAutomationRunRecord(
   formData.append('module_id', automationId)
   formData.append('run_name', runName || automationId)
   formData.append('message', 'started')
-  formData.append('source_file', sourceFile)
+  if (sourceFile) formData.append('source_file', sourceFile)
 
   const payload = await postFormData<{ run?: AutomationRunRecord }>({
     path: '/api/automation/runs',
@@ -583,8 +583,12 @@ export async function finishAutomationRunRecord(
   message: string,
   result: unknown,
   resultFiles: AutomationRunFileInput[] = [],
-): Promise<void> {
-  await requestBackendJson({
+): Promise<{ run?: AutomationRunRecord; files: AutomationRunFileRecord[]; warnings: string[] }> {
+  const payload = await requestBackendJson<{
+    run?: AutomationRunRecord
+    files?: AutomationRunFileRecord[]
+    warnings?: string[]
+  }>({
     method: 'PATCH',
     path: `/api/automation/runs/${encodeURIComponent(runId)}`,
     body: {
@@ -594,6 +598,11 @@ export async function finishAutomationRunRecord(
       resultFiles,
     },
   })
+  return {
+    run: payload.run,
+    files: Array.isArray(payload.files) ? payload.files : [],
+    warnings: Array.isArray(payload.warnings) ? payload.warnings : [],
+  }
 }
 
 export async function fetchAutomationRuns(params: {

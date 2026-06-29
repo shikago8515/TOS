@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { AutomationAppInfo } from '../../types/electronApi'
 import {
+  createAutomationRunRecord,
   downloadAutomationRunFile,
+  finishAutomationRunRecord,
   formatAutomationLauncherErrorMessage,
   getAutomationHelperUpdateMessage,
   isLocalExecutorBusy,
@@ -220,6 +222,149 @@ describe('webAutomationApi', () => {
     expect(isLocalExecutorBusy({ ok: true, activeRunCount: 1 })).toBe(true)
     expect(isLocalExecutorBusy({ ok: true, busy: true })).toBe(true)
     expect(isLocalExecutorBusy({ ok: true, activeRuns: [{}] })).toBe(true)
+  })
+
+  it('creates an automation run record without requiring a source Excel file', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const originalXMLHttpRequest = globalThis.XMLHttpRequest
+    const requests: Array<{ method: string; url: string; fields: Record<string, string>; hasSourceFile: boolean }> = []
+
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location: { pathname: '/' },
+      },
+    })
+    class MockXMLHttpRequest {
+      status = 200
+      responseText = JSON.stringify({
+        run: {
+          runId: 'run-ticket-1',
+          automationId: 'ticket-owner-statistics',
+          moduleId: 'ticket-owner-statistics',
+          runName: '统计 ticket 归属 自动化',
+          status: 'running',
+          message: 'started',
+        },
+      })
+      upload = { onprogress: null as null | ((event: ProgressEvent) => void) }
+      onload: null | (() => void) = null
+      onerror: null | (() => void) = null
+      private method = ''
+      private url = ''
+
+      open(method: string, url: string): void {
+        this.method = method
+        this.url = url
+      }
+
+      send(formData: FormData): void {
+        const fields: Record<string, string> = {}
+        let hasSourceFile = false
+        for (const [key, value] of formData.entries()) {
+          if (key === 'source_file') {
+            hasSourceFile = true
+          } else {
+            fields[key] = String(value)
+          }
+        }
+        requests.push({ method: this.method, url: this.url, fields, hasSourceFile })
+        this.onload?.()
+      }
+    }
+    globalThis.XMLHttpRequest = MockXMLHttpRequest as unknown as typeof XMLHttpRequest
+
+    try {
+      const run = await createAutomationRunRecord('ticket-owner-statistics', null, '统计 ticket 归属 自动化')
+
+      expect(run?.runId).toBe('run-ticket-1')
+      expect(requests).toHaveLength(1)
+      expect(requests[0]).toMatchObject({
+        method: 'POST',
+        fields: {
+          automation_id: 'ticket-owner-statistics',
+          module_id: 'ticket-owner-statistics',
+          run_name: '统计 ticket 归属 自动化',
+          message: 'started',
+        },
+        hasSourceFile: false,
+      })
+      expect(requests[0].url).toContain('/api/automation/runs')
+    } finally {
+      globalThis.XMLHttpRequest = originalXMLHttpRequest
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
+  })
+
+  it('returns persisted MinIO run files when finishing a run record', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const originalFetch = globalThis.fetch
+    const requests: Array<{ method: string; url: string; body: any }> = []
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location: { pathname: '/' },
+      },
+    })
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        method: String(init?.method || 'GET'),
+        url: String(input),
+        body: JSON.parse(String(init?.body || '{}')),
+      })
+      return new Response(JSON.stringify({
+        run: { runId: 'run-ticket-1', status: 'success' },
+        files: [{
+          id: 172,
+          runId: 'run-ticket-1',
+          fileRole: 'result_excel',
+          bucket: 'tos-run-files',
+          objectKey: 'automation/runs/run-ticket-1/result.xlsx',
+          originalFilename: 'Ticket ownership.xlsx',
+          contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          fileSize: 1024,
+          sha256: 'abc123',
+          createdAt: '2026-06-29T00:00:00.000Z',
+          downloadPath: '/api/automation/run-files/172/download',
+        }],
+        warnings: [],
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      })
+    }) as typeof fetch
+
+    try {
+      const payload = await finishAutomationRunRecord('run-ticket-1', 'success', 'done', { ok: true }, [{
+        url: 'http://127.0.0.1:3002/artifacts/result.xlsx',
+        fileRole: 'result_excel',
+        fileName: 'Ticket ownership.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }])
+
+      expect(payload.files).toHaveLength(1)
+      expect(payload.files[0].downloadPath).toBe('/api/automation/run-files/172/download')
+      expect(requests).toHaveLength(1)
+      expect(requests[0].method).toBe('PATCH')
+      expect(requests[0].url).toContain('/api/automation/runs/run-ticket-1')
+      expect(requests[0].body.resultFiles).toEqual([{
+        url: 'http://127.0.0.1:3002/artifacts/result.xlsx',
+        fileRole: 'result_excel',
+        fileName: 'Ticket ownership.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }])
+    } finally {
+      globalThis.fetch = originalFetch
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
   })
 
   it('surfaces run file download errors from the backend response', async () => {
