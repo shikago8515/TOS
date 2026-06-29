@@ -12,7 +12,6 @@ const allowedDirectRequestFiles = new Set([
   'tms-frontend/src/shared/api/backendClient.ts',
   'tms-frontend/src/pages/settings/settingsApi.ts',
   'tms-frontend/src/pages/adidas-materials/adidasMaterialsApi.ts',
-  'tms-frontend/src/pages/release-updates/releaseUpdatesApi.ts',
   'tms-frontend/src/pages/web-automation/webAutomationApi.ts',
   'tms-frontend/src/pages/web-automation/WebAutomationScenarioPage.vue',
   'tms-frontend/src/pages/infornexus-auto-add/components/InfornexusAutoAddWorkspace.vue',
