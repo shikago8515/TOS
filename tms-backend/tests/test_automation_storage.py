@@ -295,7 +295,8 @@ class AutomationStorageTests(unittest.TestCase):
              patch.object(automation_storage_api, "_store_remote_result_file") as remote_store:
             response = run_async(automation_storage_api.finish_run("run-ticket", payload))
 
-        self.assertEqual([file["file_role"] for file in response["files"]], ["result_json", "result_excel"])
+        self.assertEqual([file["fileRole"] for file in response["files"]], ["result_json", "result_excel"])
+        self.assertEqual(response["files"][1]["downloadPath"], "/api/automation/run-files/22/download")
         remote_store.assert_not_called()
         excel_content = put_object.call_args.kwargs["content"]
         workbook = load_workbook(BytesIO(excel_content))

@@ -342,7 +342,7 @@ async def create_run(
     return {
         "ok": True,
         "run": _run_payload(row),
-        "files": files,
+        "files": [_run_file_payload(file_row) for file_row in files],
         "warnings": warnings,
     }
 
@@ -386,7 +386,7 @@ async def finish_run(run_id: str, payload: RunUpdatePayload) -> dict[str, Any]:
     return {
         "ok": True,
         "run": _run_payload(row),
-        "files": files,
+        "files": [_run_file_payload(file_row) for file_row in files],
         "warnings": warnings,
     }
 
