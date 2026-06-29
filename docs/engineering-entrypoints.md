@@ -28,11 +28,11 @@
 
 | 命令 | 等价子项目命令 |
 | --- | --- |
-| `npm run dev:frontend` | `npm --prefix tms-frontend run dev`，默认本地后端模式 |
-| `npm run dev:frontend:server` | `npm --prefix tms-frontend run dev:server`，显式服务器联调模式 |
-| `npm run dev:frontend:local` | `npm --prefix tms-frontend run dev:local`，显式本地后端模式 |
-| `npm run preview:frontend` | `npm --prefix tms-frontend run preview` |
-| `npm run dev:electron` | `npm --prefix tms-electron-app run dev` |
+| `npm run dev:frontend` | `node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev`，默认本地后端模式 |
+| `npm run dev:frontend:server` | `node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev:server`，显式服务器联调模式 |
+| `npm run dev:frontend:local` | `node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev:local`，显式本地后端模式 |
+| `npm run preview:frontend` | `node scripts/engineering/run-npm.mjs --prefix tms-frontend run preview` |
+| `npm run dev:electron` | `node scripts/engineering/run-npm.mjs --prefix tms-electron-app run dev` |
 
 排查页面提示“无法连接后端服务”时，先确认：
 
