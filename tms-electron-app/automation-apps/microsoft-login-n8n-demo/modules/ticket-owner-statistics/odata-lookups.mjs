@@ -29,6 +29,8 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
   const ticketResults = [];
   const failedTickets = [];
   const lookupDiagnostics = [];
+  const expectedTicketCount = normalizePositiveInteger(options.expectedTicketCount, maxTicketCount);
+  let attemptedCount = 0;
 
   for (const task of Array.isArray(tasks) ? tasks : []) {
     if (rows.length >= maxTicketCount) {
@@ -41,7 +43,21 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
       continue;
     }
 
+    attemptedCount += 1;
     const base = taskToBaseFields(task);
+    await reportLookupProgress(options, {
+      phase: "request-lookup",
+      message: `正在请求第 ${attemptedCount} 个工单数据`,
+      percent: estimateLookupProgress(rows.length, expectedTicketCount),
+      totalCount: expectedTicketCount,
+      completedCount: rows.length,
+      successCount: rows.length,
+      failedCount: failedTickets.length,
+      attemptedCount,
+      activeCount: 1,
+      pendingCount: Math.max(0, expectedTicketCount - rows.length),
+      currentTickets: [base.caseNumber].filter(Boolean),
+    });
     const lookup = await resolveTicketLookup(page, base, task, lookupCache, options);
     lookupDiagnostics.push({
       caseNumber: base.caseNumber,
@@ -49,6 +65,7 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
       poNumber: base.poNumber,
       resolvedPoNumber: lookup.poNumber,
       workingNumber: lookup.workingNumber,
+      factoryCode: lookup.factoryCode,
       requestId: lookup.requestId,
       userTaskId: lookup.userTaskId,
       source: lookup.source,
@@ -61,6 +78,7 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
       request: base.request,
       poNumber: lookup.poNumber || base.poNumber,
       workingNumber: lookup.workingNumber || base.workingNumber,
+      factoryCode: lookup.factoryCode || base.factoryCode,
     });
     const missingFields = collectMissingRequiredFields(row);
 
@@ -74,6 +92,18 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
         poNumber: lookup.poNumber || base.poNumber,
         missingFields,
         message: `request-first OData lookup missing: ${missingFields.join(", ")}`,
+      });
+      await reportLookupProgress(options, {
+        phase: "request-lookup",
+        message: "当前工单请求数据不完整，继续下一条",
+        percent: estimateLookupProgress(rows.length, expectedTicketCount),
+        totalCount: expectedTicketCount,
+        completedCount: rows.length,
+        successCount: rows.length,
+        failedCount: failedTickets.length,
+        attemptedCount,
+        activeCount: 0,
+        pendingCount: Math.max(0, expectedTicketCount - rows.length),
       });
       continue;
     }
@@ -92,6 +122,18 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
       workingNumber: row["Working Number"],
       source: lookup.source,
       warnings: [],
+    });
+    await reportLookupProgress(options, {
+      phase: "request-lookup",
+      message: "已获取当前工单数据",
+      percent: estimateLookupProgress(rows.length, expectedTicketCount),
+      totalCount: expectedTicketCount,
+      completedCount: rows.length,
+      successCount: rows.length,
+      failedCount: failedTickets.length,
+      attemptedCount,
+      activeCount: 0,
+      pendingCount: Math.max(0, expectedTicketCount - rows.length),
     });
   }
 
@@ -114,6 +156,7 @@ export async function lookupTicketOwnerFields(page, task, detail = {}, options =
     request: pickFirstValue(detail.request, task?.request),
     poNumber: pickFirstValue(detail.poNumber, task?.poNumber),
     workingNumber: pickFirstValue(detail.workingNumber, task?.workingNumber),
+    factoryCode: pickFirstValue(detail.factoryCode, detail.factory, task?.factoryCode, task?.factory),
   };
   const lookup = await resolveTicketLookup(page, base, task || {}, cache, options);
   return lookup;
@@ -128,6 +171,7 @@ async function resolveTicketLookup(page, base, task, cache, options = {}) {
   const attempts = [];
   let poNumber = base.poNumber;
   let workingNumber = base.workingNumber;
+  let factoryCode = base.factoryCode;
   let source = "";
   let requestId = base.requestId;
   let userTaskId = base.userTaskId;
@@ -143,6 +187,7 @@ async function resolveTicketLookup(page, base, task, cache, options = {}) {
     const result = {
       poNumber,
       workingNumber,
+      factoryCode,
       requestId,
       userTaskId,
       source,
@@ -156,6 +201,7 @@ async function resolveTicketLookup(page, base, task, cache, options = {}) {
     const requestLookup = await lookupDecisionRequestItems(page, requestId, userTaskId, poNumber, attempts);
     poNumber = requestLookup.poNumber || poNumber;
     workingNumber = requestLookup.workingNumber || workingNumber;
+    factoryCode = requestLookup.factoryCode || factoryCode;
     source = requestLookup.source || source;
   }
 
@@ -163,18 +209,21 @@ async function resolveTicketLookup(page, base, task, cache, options = {}) {
     const ticketLookup = await lookupTicketPoAndWorkingNumber(page, base.caseNumber, attempts);
     poNumber = ticketLookup.poNumber || poNumber;
     workingNumber = ticketLookup.workingNumber || workingNumber;
+    factoryCode = ticketLookup.factoryCode || factoryCode;
     source = ticketLookup.source || source;
   }
 
-  if (requestId && poNumber && !workingNumber) {
+  if (poNumber && (!workingNumber || !factoryCode)) {
     const poLookup = await lookupWorkingNumberByPo(page, poNumber, attempts);
     workingNumber = poLookup.workingNumber || workingNumber;
+    factoryCode = poLookup.factoryCode || factoryCode;
     source = poLookup.source || source;
   }
 
   const result = {
     poNumber,
     workingNumber,
+    factoryCode,
     requestId,
     userTaskId,
     source,
@@ -291,17 +340,24 @@ async function lookupDecisionRequestItems(page, requestId, userTaskId, preferred
     selected?.WorkingNumber,
     head?.workingNumber
   );
-  if (poNumber || workingNumber) {
+  const factoryCode = pickFirstValue(
+    selected?.factoryCode,
+    selected?.FactoryCode,
+    head?.factoryCode,
+    head?.FactoryCode
+  );
+  if (poNumber || workingNumber || factoryCode) {
     return {
       poNumber,
       workingNumber,
+      factoryCode,
       source: "ProcessRequests_Head/Items",
     };
   }
 
   const itemResponse = await odataGet(page, DECISIONS_SERVICE_BASE, "ProcessRequests_Items", {
     "$filter": `RequestID eq guid'${escapeODataString(requestId)}'`,
-    "$select": "RequestID,POContractNumber,POContractItem,workingNumber",
+    "$select": "RequestID,POContractNumber,POContractItem,workingNumber,factoryCode",
     "$top": "20",
     userTaskId,
   });
@@ -311,6 +367,7 @@ async function lookupDecisionRequestItems(page, requestId, userTaskId, preferred
   return {
     poNumber: pickFirstValue(item?.POContractNumber, item?.s4PONumber, item?.s4marketPoNumber),
     workingNumber: pickFirstValue(item?.workingNumber, item?.WorkingNumber),
+    factoryCode: pickFirstValue(item?.factoryCode, item?.FactoryCode),
     source: item ? "ProcessRequests_Items" : "",
   };
 }
@@ -320,7 +377,7 @@ async function lookupRequestDetails(page, requestId, mainRequestId, attempts) {
   const entities = [
     {
       entitySet: "ProcessRequests_Details_AggregationTree",
-      select: "RequestID,POContractNumber,marketPurchaseOrderNumber,workingNumber",
+      select: "RequestID,POContractNumber,marketPurchaseOrderNumber,workingNumber,factoryCode",
     },
     {
       entitySet: "MainAndSubProcessRequestItems",
@@ -355,10 +412,12 @@ async function lookupRequestDetails(page, requestId, mainRequestId, attempts) {
           item?.contractNumber
         );
         const workingNumber = normalizeODataValue(item?.workingNumber);
-        if (poNumber || workingNumber) {
+        const factoryCode = pickFirstValue(item?.factoryCode, item?.FactoryCode);
+        if (poNumber || workingNumber || factoryCode) {
           return {
             poNumber,
             workingNumber,
+            factoryCode,
             source: `${entity.entitySet}:${field}`,
           };
         }
@@ -369,6 +428,7 @@ async function lookupRequestDetails(page, requestId, mainRequestId, attempts) {
   return {
     poNumber: "",
     workingNumber: "",
+    factoryCode: "",
     source: "",
   };
 }
@@ -386,7 +446,7 @@ async function lookupWorkingNumberByPo(page, poNumber, attempts) {
     {
       base: MAIN_SERVICE_BASE,
       entitySet: "PurchaseOrders",
-      select: "POContractNumber,purchaseOrderNumber,marketPurchaseOrderNumber,purchaseOrderOrMarketPurchaseOrderNumber,workingNumber",
+      select: "POContractNumber,purchaseOrderNumber,marketPurchaseOrderNumber,purchaseOrderOrMarketPurchaseOrderNumber,workingNumber,factoryCode",
     },
     {
       base: MAIN_SERVICE_BASE,
@@ -396,7 +456,7 @@ async function lookupWorkingNumberByPo(page, poNumber, attempts) {
     {
       base: MAIN_SERVICE_BASE,
       entitySet: "PurchaseOrderItems",
-      select: "POContractNumber,POContractItem,workingNumber",
+      select: "POContractNumber,POContractItem,workingNumber,factoryCode",
     },
     {
       base: MAIN_SERVICE_BASE,
@@ -406,12 +466,12 @@ async function lookupWorkingNumberByPo(page, poNumber, attempts) {
     {
       base: DECISIONS_SERVICE_BASE,
       entitySet: "PurchaseOrders",
-      select: "POContractNumber,purchaseOrderNumber,marketPurchaseOrderNumber,purchaseOrderOrMarketPurchaseOrderNumber,workingNumber",
+      select: "POContractNumber,purchaseOrderNumber,marketPurchaseOrderNumber,purchaseOrderOrMarketPurchaseOrderNumber,workingNumber,factoryCode",
     },
     {
       base: DECISIONS_SERVICE_BASE,
       entitySet: "PurchaseOrderItems",
-      select: "POContractNumber,POContractItem,workingNumber",
+      select: "POContractNumber,POContractItem,workingNumber,factoryCode",
     },
   ];
 
@@ -425,9 +485,11 @@ async function lookupWorkingNumberByPo(page, poNumber, attempts) {
       attempts.push(summarizeODataAttempt("po-working", target.entitySet, filter, response));
       const item = firstODataResult(response);
       const workingNumber = normalizeODataValue(item?.workingNumber);
-      if (workingNumber) {
+      const factoryCode = pickFirstValue(item?.factoryCode, item?.FactoryCode);
+      if (workingNumber || factoryCode) {
         return {
           workingNumber,
+          factoryCode,
           source: `${target.entitySet}:${filter}`,
         };
       }
@@ -436,6 +498,7 @@ async function lookupWorkingNumberByPo(page, poNumber, attempts) {
 
   return {
     workingNumber: "",
+    factoryCode: "",
     source: "",
   };
 }
@@ -596,6 +659,7 @@ function taskToBaseFields(task) {
       named.marketPurchaseOrderNumber
     ),
     workingNumber: pickFirstValue(named.workingNumber, named["Working Number"]),
+    factoryCode: pickFirstValue(named.factoryCode, named.FactoryCode, named.Factory, named["Factory Code"]),
   };
 }
 
@@ -742,6 +806,19 @@ function collectMissingRequiredFields(row) {
 
 function escapeODataString(value) {
   return String(value || "").replace(/'/g, "''");
+}
+
+async function reportLookupProgress(options, progress) {
+  if (typeof options?.reportProgress !== "function") {
+    return;
+  }
+  await options.reportProgress(progress);
+}
+
+function estimateLookupProgress(completedCount, totalCount) {
+  const total = Math.max(1, Number(totalCount) || 1);
+  const completed = Math.max(0, Number(completedCount) || 0);
+  return Math.min(94, 18 + Math.round((completed / total) * 72));
 }
 
 function normalizePositiveInteger(value, fallback) {

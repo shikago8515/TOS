@@ -24,6 +24,21 @@ export function createDirectRouteHandler(deps, options) {
       browser: runOptions.browser,
       inputMode: "browser-export",
       moduleId: options.moduleDefinition.id,
+      progress: {
+        phase: "starting",
+        message: "正在启动自动化执行器",
+        percent: 2,
+        totalCount: 0,
+        completedCount: 0,
+        successCount: 0,
+        failedCount: 0,
+        attemptedCount: 0,
+        diagnosticFailedCount: 0,
+        activeCount: 0,
+        pendingCount: 0,
+        currentTickets: [],
+        updatedAt: new Date().toISOString(),
+      },
     });
 
     try {
@@ -31,6 +46,13 @@ export function createDirectRouteHandler(deps, options) {
         body,
         runOptions,
         startedAt,
+        reportProgress: (progress) => {
+          if (typeof deps.updateActiveRun === "function") {
+            deps.updateActiveRun({
+              progress: normalizeProgress(progress),
+            });
+          }
+        },
       });
       result.moduleId = options.moduleDefinition.id;
       result.inputMode = "browser-export";
@@ -63,6 +85,40 @@ function assertDeps(deps) {
       throw new Error(`direct route dependency is missing: ${name}`);
     }
   }
+}
+
+function normalizeProgress(progress) {
+  const input = progress && typeof progress === "object" ? progress : {};
+  return {
+    phase: String(input.phase || "running"),
+    message: String(input.message || "正在执行"),
+    percent: clampPercent(input.percent),
+    totalCount: toNonNegativeInteger(input.totalCount),
+    completedCount: toNonNegativeInteger(input.completedCount),
+    successCount: toNonNegativeInteger(input.successCount),
+    failedCount: toNonNegativeInteger(input.failedCount),
+    attemptedCount: toNonNegativeInteger(input.attemptedCount),
+    diagnosticFailedCount: toNonNegativeInteger(input.diagnosticFailedCount),
+    activeCount: toNonNegativeInteger(input.activeCount),
+    pendingCount: toNonNegativeInteger(input.pendingCount),
+    currentTickets: Array.isArray(input.currentTickets)
+      ? input.currentTickets.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 6)
+      : [],
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function clampPercent(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, Math.round(parsed)));
+}
+
+function toNonNegativeInteger(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
 }
 
 function assertOptions(options) {

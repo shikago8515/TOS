@@ -6,7 +6,7 @@ import {
   enrichTicketOwnerRowsWithExcelLookups,
 } from "./excel-lookups.mjs";
 
-export async function runTicketOwnerStatisticsWorkflow(deps, { runOptions, body, moduleDefinition }) {
+export async function runTicketOwnerStatisticsWorkflow(deps, { runOptions, body, moduleDefinition, reportProgress }) {
   const excelLookups = buildTicketOwnerExcelLookups(deps.xlsx, body);
 
   if (body?.simulate === true) {
@@ -30,6 +30,8 @@ export async function runTicketOwnerStatisticsWorkflow(deps, { runOptions, body,
     ...runOptions,
     maxTicketCount: normalizePositiveInteger(body?.maxTicketCount, 200),
     maxTicketAttemptCount: normalizePositiveInteger(body?.maxTicketAttemptCount, undefined),
+    detailConcurrency: normalizePositiveInteger(body?.detailConcurrency, 3),
+    detailPageTimeoutMs: normalizePositiveInteger(body?.detailPageTimeoutMs, 18000),
     requestFirst: body?.requestFirst !== false,
     diagnoseOnly: body?.diagnoseOnly === true,
     diagnoseOpenUiLinks: body?.diagnoseOpenUiLinks === true,
@@ -38,9 +40,10 @@ export async function runTicketOwnerStatisticsWorkflow(deps, { runOptions, body,
     diagnoseWorkflowTaskOnly: body?.diagnoseWorkflowTaskOnly === true,
     diagnoseUiLinkCount: normalizePositiveInteger(body?.diagnoseUiLinkCount, undefined),
     diagnoseUiLinkWaitMs: normalizePositiveInteger(body?.diagnoseUiLinkWaitMs, undefined),
-    detailFirst: body?.detailFirst !== false,
+    detailFirst: body?.detailFirst === true,
     sampleAcrossBranches: body?.sampleAcrossBranches === true,
     excelLookups,
+    reportProgress,
     workflowMode: "ticket-owner-statistics",
     workflowLabel: moduleDefinition.title,
     successMessage: "已完成 SAP BTP ticket 归属采集，并生成 Ticket ownership Excel。",

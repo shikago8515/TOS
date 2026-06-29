@@ -77,6 +77,23 @@ const moduleDeps = {
   setActiveRun: (run) => {
     activeRun = run;
   },
+  updateActiveRun: (patch) => {
+    if (!activeRun || !patch || typeof patch !== "object") {
+      return;
+    }
+    const nextProgress = patch.progress && typeof patch.progress === "object"
+      ? {
+          ...(activeRun.progress && typeof activeRun.progress === "object" ? activeRun.progress : {}),
+          ...patch.progress,
+          updatedAt: new Date().toISOString(),
+        }
+      : activeRun.progress;
+    activeRun = {
+      ...activeRun,
+      ...patch,
+      ...(nextProgress ? { progress: nextProgress } : {}),
+    };
+  },
   setLastRun: (run) => {
     lastRun = run;
   },
@@ -2847,6 +2864,7 @@ function buildHealthPayload() {
     },
     busy: Boolean(activeRun),
     activeRun,
+    activeRunCount: activeRun ? 1 : 0,
     lastRun,
     dataDir: runtimeDataRoot,
     runtimeConfigPath,

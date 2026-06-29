@@ -45,6 +45,9 @@ const TASK_ROW_SELECTOR = [
   ".sapMListTblRow",
 ].join(", ");
 
+const DEFAULT_DETAIL_CONCURRENCY = 3;
+const DEFAULT_DETAIL_PAGE_TIMEOUT_MS = 18000;
+
 export async function collectTicketOwnerStatistics(page, options = {}) {
   const timeoutMs = Number(options.navigationTimeoutMs || 45000);
   const maxTicketCount = normalizePositiveInteger(options.maxTicketCount, 200);
@@ -63,9 +66,17 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
   let requestDiagnostics = null;
   try {
     await openTaskCenter(page, timeoutMs);
-    await showTicketOwnerProgress(page, "正在筛选任务类型", 10);
+    await reportTicketOwnerProgress(page, options, {
+      phase: "filtering",
+      message: "正在筛选任务类型",
+      percent: 10,
+    });
     const selectedTaskTypes = await configureTicketOwnerTaskTypeFilter(page, timeoutMs);
-    await showTicketOwnerProgress(page, "正在读取工单列表", 16);
+    await reportTicketOwnerProgress(page, options, {
+      phase: "queue",
+      message: "正在读取工单列表",
+      percent: 16,
+    });
     await pageWait(page, 1200);
 
     const requestRows = requestFirst
@@ -77,6 +88,7 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
     const taskCenterTasks = requestFirst
       ? extractTaskCenterTasksFromRequestRecords(requestRecorder.records)
       : [];
+    const expectedTicketCount = estimateExpectedTicketCount(taskCenterTasks, maxTicketCount);
     const appSourceDiagnostics = options.diagnoseOnly && options.diagnoseAppSources
       ? await inspectBusinessAppSources(page)
       : [];
@@ -84,6 +96,10 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
       ? await buildTicketOwnerRowsFromTaskCenterTasks(page, taskCenterTasks, {
         maxTicketCount,
         maxTaskLookupCount: maxAttemptCount,
+        expectedTicketCount,
+        reportProgress: async (progress) => {
+          await reportTicketOwnerProgress(page, options, progress);
+        },
         workflowTaskOnly: options.diagnoseWorkflowTaskOnly === true,
       })
       : null;
@@ -115,8 +131,39 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
       };
     }
 
+    if (options.detailFirst !== true && odataLookup?.rows?.length > 0) {
+      await reportTicketOwnerProgress(page, options, {
+        phase: "export",
+        message: "正在生成 Excel",
+        percent: 96,
+        totalCount: Math.min(expectedTicketCount, odataLookup.rows.length + odataLookup.failedTickets.length),
+        completedCount: odataLookup.rows.length,
+        successCount: odataLookup.rows.length,
+        failedCount: odataLookup.failedTickets.length,
+        attemptedCount: odataLookup.rows.length + odataLookup.failedTickets.length,
+      });
+      requestDiagnostics = requestRecorder.summarize();
+      return {
+        ok: true,
+        rowCount: odataLookup.rows.length,
+        failedTicketCount: odataLookup.failedTickets.length,
+        attemptedTicketCount: odataLookup.rows.length + odataLookup.failedTickets.length,
+        selectedTaskTypes,
+        rows: enrichTicketOwnerRowsWithExcelLookups(odataLookup.rows, excelLookups),
+        ticketResults: odataLookup.ticketResults,
+        failedTickets: odataLookup.failedTickets,
+        requestFirst: requestDiagnostics,
+        odataLookup,
+        detailFirst: null,
+        excelLookup: excelLookups?.summary || null,
+        finalTaskCenterUrl: page.url(),
+        message: `已通过 Task Center + OData 请求生成 ${odataLookup.rows.length} 条 Ticket ownership 记录。`,
+      };
+    }
+
     const detailFirstCollection = options.detailFirst !== false
       ? await collectTicketOwnerRowsFromDetailPages(page, taskCenterTasks, {
+        ...options,
         maxTicketCount,
         maxAttemptCount,
         sampleAcrossBranches: options.sampleAcrossBranches === true,
@@ -126,19 +173,30 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
       : null;
 
     if (detailFirstCollection?.rows?.length > 0) {
-      await showTicketOwnerProgress(page, "正在生成 Excel", 96);
+      await reportTicketOwnerProgress(page, options, {
+        phase: "export",
+        message: "正在生成 Excel",
+        percent: 96,
+        totalCount: Math.min(maxTicketCount, detailFirstCollection.rows.length),
+        completedCount: detailFirstCollection.rows.length,
+        successCount: detailFirstCollection.rows.length,
+        failedCount: 0,
+        attemptedCount: detailFirstCollection.attemptedTicketCount,
+        diagnosticFailedCount: detailFirstCollection.failedTickets.length,
+      });
       requestDiagnostics = requestRecorder.summarize();
       return {
         ok: true,
         rowCount: detailFirstCollection.rows.length,
-        failedTicketCount: detailFirstCollection.failedTickets.length,
+        failedTicketCount: 0,
         attemptedTicketCount: detailFirstCollection.attemptedTicketCount,
         selectedTaskTypes,
         rows: detailFirstCollection.rows,
         ticketResults: detailFirstCollection.ticketResults,
-        failedTickets: detailFirstCollection.failedTickets,
+        failedTickets: [],
         requestFirst: requestDiagnostics,
         odataLookup,
+        detailFirst: detailFirstCollection,
         excelLookup: excelLookups?.summary || null,
         finalTaskCenterUrl: page.url(),
         message: `已按 ticket 详情页 A/B/C 规则生成 ${detailFirstCollection.rows.length} 条 Ticket ownership 记录。`,
@@ -146,20 +204,27 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
     }
 
     if (odataLookup?.rows?.length > 0) {
-      await showTicketOwnerProgress(page, "正在生成 Excel", 96);
+      await reportTicketOwnerProgress(page, options, {
+        phase: "export",
+        message: "正在生成 Excel",
+        percent: 96,
+        totalCount: Math.min(maxTicketCount, odataLookup.rows.length + odataLookup.failedTickets.length),
+        completedCount: odataLookup.rows.length,
+        successCount: odataLookup.rows.length,
+        failedCount: odataLookup.failedTickets.length,
+        attemptedCount: odataLookup.rows.length + odataLookup.failedTickets.length,
+        diagnosticFailedCount: detailFirstCollection?.failedTickets?.length || 0,
+      });
       requestDiagnostics = requestRecorder.summarize();
       return {
         ok: true,
         rowCount: odataLookup.rows.length,
-        failedTicketCount: odataLookup.failedTickets.length + (detailFirstCollection?.failedTickets?.length || 0),
-        attemptedTicketCount: odataLookup.rows.length + odataLookup.failedTickets.length + (detailFirstCollection?.attemptedTicketCount || 0),
+        failedTicketCount: odataLookup.failedTickets.length,
+        attemptedTicketCount: odataLookup.rows.length + odataLookup.failedTickets.length,
         selectedTaskTypes,
         rows: enrichTicketOwnerRowsWithExcelLookups(odataLookup.rows, excelLookups),
         ticketResults: odataLookup.ticketResults,
-        failedTickets: [
-          ...(detailFirstCollection?.failedTickets || []),
-          ...odataLookup.failedTickets,
-        ],
+        failedTickets: odataLookup.failedTickets,
         requestFirst: requestDiagnostics,
         odataLookup,
         detailFirst: detailFirstCollection,
@@ -170,7 +235,15 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
     }
 
     if (requestRows.length > 0) {
-      await showTicketOwnerProgress(page, "正在生成 Excel", 96);
+      await reportTicketOwnerProgress(page, options, {
+        phase: "export",
+        message: "正在生成 Excel",
+        percent: 96,
+        totalCount: maxTicketCount,
+        completedCount: requestRows.length,
+        successCount: requestRows.length,
+        failedCount: 0,
+      });
       requestDiagnostics = requestRecorder.summarize();
       return {
         ok: true,
@@ -773,75 +846,151 @@ async function collectVisibleTaskRows(page, limit) {
 async function collectTicketOwnerRowsFromDetailPages(page, taskCenterTasks, options = {}) {
   const maxTicketCount = normalizePositiveInteger(options.maxTicketCount, 200);
   const maxAttemptCount = normalizePositiveInteger(options.maxAttemptCount, Math.max(maxTicketCount * 8, 25));
-  const timeoutMs = Number(options.timeoutMs || 45000);
+  const timeoutMs = Number(options.detailPageTimeoutMs || DEFAULT_DETAIL_PAGE_TIMEOUT_MS);
+  const concurrency = Math.min(
+    DEFAULT_DETAIL_CONCURRENCY,
+    normalizePositiveInteger(options.detailConcurrency, DEFAULT_DETAIL_CONCURRENCY)
+  );
   const rows = [];
   const ticketResults = [];
   const failedTickets = [];
   const processedKeys = new Set();
-  const taskCenterUrl = page.url();
   const queue = buildDetailTaskQueue(taskCenterTasks, {
     sampleAcrossBranches: options.sampleAcrossBranches === true,
   }).slice(0, maxAttemptCount);
-  const plannedCount = Math.max(1, Math.min(queue.length || maxTicketCount, maxTicketCount));
+  const plannedCount = Math.max(1, Math.min(maxTicketCount, queue.length || maxTicketCount));
+  const progressState = {
+    totalCount: plannedCount,
+    completedCount: 0,
+    successCount: 0,
+    failedCount: 0,
+    attemptedCount: 0,
+    diagnosticFailedCount: 0,
+    active: new Map(),
+  };
+  let nextIndex = 0;
 
-  for (const task of queue) {
-    if (rows.length >= maxTicketCount || processedKeys.size >= maxAttemptCount) {
-      break;
-    }
+  await emitDetailProgress(page, options, progressState, "正在准备详情页队列", 18);
 
-    const taskKey = buildTaskKey(task);
-    if (processedKeys.has(taskKey)) {
-      continue;
-    }
-    processedKeys.add(taskKey);
-
-    let taskPage = null;
-    let openInApp = null;
-    let openedFromCurrentTaskCenter = false;
-    let claim = { clicked: false, reason: "Task was opened from Task Center uiLink." };
-    try {
-      await showTicketOwnerProgress(
-        page,
-        `正在打开第 ${processedKeys.size} 个工单`,
-        estimateTicketProgress(rows.length, plannedCount)
-      );
-      const focused = await focusTaskRow(page, task);
-      if (!focused && !task.uiLink) {
-        throw new Error(`Task Center API 没有提供可打开的详情链接：${summarizeTask(task)}`);
+  async function worker(workerIndex) {
+    while (rows.length < maxTicketCount && processedKeys.size < maxAttemptCount) {
+      const task = queue[nextIndex];
+      nextIndex += 1;
+      if (!task) {
+        return;
       }
 
-      if (focused) {
-        taskPage = page;
-        openedFromCurrentTaskCenter = true;
-        claim = { clicked: false, reason: "Task was selected from the visible Task Center list." };
-      } else {
-      await showTicketOwnerProgress(page, `正在打开第 ${processedKeys.size} 个工单详情`, estimateTicketProgress(rows.length, plannedCount) + 1);
-        taskPage = await openTaskCenterTaskLink(page, task.uiLink, timeoutMs);
+      const taskKey = buildTaskKey(task);
+      if (processedKeys.has(taskKey)) {
+        continue;
       }
-    await showTicketOwnerProgress(taskPage, "正在认领并打开详情页", estimateTicketProgress(rows.length, plannedCount) + 2);
-      claim = await claimTaskIfAvailable(taskPage);
-      openInApp = await openSelectedTaskInApp(taskPage, timeoutMs);
-      await showTicketOwnerProgress(openInApp.appPage, "正在采集 A/B/C 字段", estimateTicketProgress(rows.length, plannedCount) + 4);
-      const detail = await readTicketDetail(openInApp.appPage, task, timeoutMs, openInApp.detailFrame);
-      const resolved = await resolveOwnerRowFromDetailPage(openInApp.appPage, task, detail, {
-        excelLookups: options.excelLookups || null,
+      processedKeys.add(taskKey);
+      progressState.attemptedCount = processedKeys.size;
+
+      const displayName = task.caseNumber || task.subject || `worker-${workerIndex + 1}`;
+      progressState.active.set(taskKey, displayName);
+      await emitDetailProgress(page, options, progressState, `正在打开第 ${processedKeys.size} 个工单详情`, estimateTicketProgress(progressState.completedCount, plannedCount));
+
+      const result = await processTicketOwnerDetailTask(page, task, {
+        ...options,
+        taskKey,
+        timeoutMs,
+        progressState,
       });
-      const ownerRow = resolved.row;
-      const missingRequiredFields = collectMissingRequiredOwnerFields(ownerRow);
 
-      if (ownerRow.branchId === "UNKNOWN") {
-        throw new Error(`当前 ticket 详情页不属于 PPT 中 A/B/C 三类：${summarizeTask(task)}`);
-      }
-      if (missingRequiredFields.length > 0) {
-        throw new Error(
-          `ticket 明细缺少关键字段：${missingRequiredFields.join(", ")}。` +
-          `当前页面片段：${detail.rawTextSnippet.slice(0, 500)}`
-        );
-      }
+      progressState.active.delete(taskKey);
 
-      rows.push(ownerRow);
-      await showTicketOwnerProgress(page, `已完成 ${rows.length} 条，正在继续下一条`, estimateTicketProgress(rows.length, plannedCount));
-      ticketResults.push({
+      if (result.ok) {
+        if (rows.length < maxTicketCount) {
+          rows.push(result.ownerRow);
+          ticketResults.push(result.ticketResult);
+        }
+      } else {
+        failedTickets.push(result.failedTicket);
+      }
+      progressState.completedCount = rows.length;
+      progressState.successCount = rows.length;
+      progressState.failedCount = 0;
+      progressState.diagnosticFailedCount = failedTickets.length;
+
+      await emitDetailProgress(
+        page,
+        options,
+        progressState,
+        rows.length >= maxTicketCount ? "已达到目标数量，正在整理结果" : "当前工单已处理，继续下一条",
+        estimateTicketProgress(progressState.completedCount, plannedCount)
+      );
+    }
+  }
+
+  const workerCount = Math.max(1, Math.min(concurrency, queue.length || 1));
+  await Promise.all(Array.from({ length: workerCount }, (_, index) => worker(index)));
+
+  return {
+    rows,
+    ticketResults,
+    failedTickets,
+    attemptedTicketCount: processedKeys.size,
+  };
+}
+
+function estimateExpectedTicketCount(taskCenterTasks, maxTicketCount) {
+  const supportedCount = (Array.isArray(taskCenterTasks) ? taskCenterTasks : [])
+    .filter((task) => isTicketOwnerCandidate(task))
+    .length;
+  const fallback = normalizePositiveInteger(maxTicketCount, 200);
+  return Math.max(1, Math.min(fallback, supportedCount || fallback));
+}
+
+async function processTicketOwnerDetailTask(taskCenterPage, task, options = {}) {
+  const timeoutMs = Number(options.timeoutMs || DEFAULT_DETAIL_PAGE_TIMEOUT_MS);
+  const taskKey = options.taskKey || buildTaskKey(task);
+  let taskPage = null;
+  let openInApp = null;
+  let claim = { clicked: false, reason: "Task was opened from Task Center uiLink." };
+
+  try {
+    if (!task.uiLink) {
+      throw new Error(`Task Center API 没有提供可打开的详情链接：${summarizeTask(task)}`);
+    }
+
+    taskPage = await openTaskCenterTaskLink(taskCenterPage, task.uiLink, timeoutMs);
+    await showTicketOwnerProgress(
+      taskPage,
+      formatProgressMessage("正在认领并打开详情页", options.progressState),
+      estimateTicketProgress(options.progressState?.completedCount || 0, options.progressState?.totalCount || 1) + 2,
+      progressDetailsFromState(options.progressState)
+    );
+    claim = await claimTaskIfAvailable(taskPage);
+    openInApp = await openSelectedTaskInApp(taskPage, timeoutMs);
+    await showTicketOwnerProgress(
+      openInApp.appPage,
+      formatProgressMessage("正在采集 A/B/C 字段", options.progressState),
+      estimateTicketProgress(options.progressState?.completedCount || 0, options.progressState?.totalCount || 1) + 4,
+      progressDetailsFromState(options.progressState)
+    );
+
+    const detail = await readTicketDetail(openInApp.appPage, task, timeoutMs, openInApp.detailFrame);
+    const resolved = await resolveOwnerRowFromDetailPage(openInApp.appPage, task, detail, {
+      excelLookups: options.excelLookups || null,
+    });
+    const ownerRow = resolved.row;
+    const missingRequiredFields = collectMissingRequiredOwnerFields(ownerRow);
+
+    if (ownerRow.branchId === "UNKNOWN") {
+      throw new Error(`当前 ticket 详情页不属于 PPT 中 A/B/C 三类：${summarizeTask(task)}`);
+    }
+    if (missingRequiredFields.length > 0) {
+      throw new Error(
+        `ticket 明细缺少关键字段：${missingRequiredFields.join(", ")}。` +
+        `当前页面片段：${detail.rawTextSnippet.slice(0, 500)}`
+      );
+    }
+
+    return {
+      ok: true,
+      ownerRow,
+      ticketResult: {
         ok: true,
         detailFirst: true,
         taskKey,
@@ -857,9 +1006,12 @@ async function collectTicketOwnerRowsFromDetailPages(page, taskCenterTasks, opti
         openInApp: openInApp.summary,
         detailTextSnippet: detail.rawTextSnippet,
         lookupAttempts: resolved.lookup?.attempts || [],
-      });
-    } catch (error) {
-      failedTickets.push({
+      },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      failedTicket: {
         ok: false,
         detailFirst: true,
         taskKey,
@@ -867,22 +1019,11 @@ async function collectTicketOwnerRowsFromDetailPages(page, taskCenterTasks, opti
         taskType: task.taskType,
         request: task.request,
         message: error?.message || "ticket 详情页采集失败。",
-      });
-    } finally {
-      if (openedFromCurrentTaskCenter) {
-        await recoverTaskCenter(page, taskCenterUrl, timeoutMs).catch(() => {});
-      } else {
-        await closeDetailPages(page, taskPage, openInApp);
-      }
-    }
+      },
+    };
+  } finally {
+    await closeDetailPages(taskCenterPage, taskPage, openInApp);
   }
-
-  return {
-    rows,
-    ticketResults,
-    failedTickets,
-    attemptedTicketCount: processedKeys.size,
-  };
 }
 
 function buildDetailTaskQueue(taskCenterTasks, options = {}) {
@@ -929,7 +1070,7 @@ async function openTaskCenterTaskLink(page, uiLink, timeoutMs) {
   const taskPage = await page.context().newPage();
   await taskPage.goto(uiLink, {
     waitUntil: "domcontentloaded",
-    timeout: Math.min(Math.max(timeoutMs, 30000), 90000),
+    timeout: Math.min(Math.max(timeoutMs, 12000), 30000),
   });
   await waitForTaskInboxDetailReady(taskPage, timeoutMs);
   return taskPage;
@@ -1136,7 +1277,7 @@ async function openSelectedTaskInApp(page, timeoutMs) {
 async function waitForOpenInAppTarget(page, beforePages, beforeUrl, timeoutMs) {
   const context = page.context();
   const startedAt = Date.now();
-  while (Date.now() - startedAt < Math.min(timeoutMs, 30000)) {
+  while (Date.now() - startedAt < Math.min(Math.max(timeoutMs, 12000), 25000)) {
     const livePages = context.pages().filter((candidate) => !candidate.isClosed());
     for (const candidate of livePages) {
       const detailFrame = await findTicketBusinessFrame(candidate);
@@ -1165,13 +1306,14 @@ async function waitForOpenInAppTarget(page, beforePages, beforeUrl, timeoutMs) {
 }
 
 async function waitForTaskInboxDetailReady(page, timeoutMs) {
+  const waitMs = Math.min(Math.max(timeoutMs, 12000), 25000);
   const ready = await waitFor(async () => await anyVisible(page, [
     "#application-taskcenter-display-component---detail--openTaskButton",
     "button:has-text(\"Open in App\")",
     "[role='button']:has-text(\"Open in App\")",
     "button:has-text(\"Claim\")",
     "button:has-text(\"Release\")",
-  ]), Math.max(timeoutMs, 60000), 500).then(() => true).catch(() => false);
+  ]), waitMs, 350).then(() => true).catch(() => false);
 
   if (!ready) {
     const debug = await collectPageDebug(page);
@@ -1182,10 +1324,11 @@ async function waitForTaskInboxDetailReady(page, timeoutMs) {
 
 async function waitForBusinessDetailReady(page, timeoutMs) {
   let detailFrame = null;
+  const waitMs = Math.min(Math.max(timeoutMs, 12000), 30000);
   const ready = await waitFor(async () => {
     detailFrame = await findTicketBusinessFrame(page);
     return Boolean(detailFrame);
-  }, Math.max(timeoutMs, 90000), 500).then(() => true).catch(() => false);
+  }, waitMs, 350).then(() => true).catch(() => false);
 
   if (!ready || !detailFrame) {
     const debug = await collectPageDebug(page);
@@ -1868,7 +2011,93 @@ function estimateTicketProgress(completedCount, totalCount) {
   return Math.min(94, 18 + Math.round((completed / total) * 74));
 }
 
-async function showTicketOwnerProgress(target, message, percent = 0) {
+async function reportTicketOwnerProgress(target, options, progress = {}) {
+  const normalized = normalizeTicketOwnerProgress(progress);
+  if (typeof options?.reportProgress === "function") {
+    options.reportProgress(normalized);
+  }
+  await showTicketOwnerProgress(target, formatProgressMessage(normalized.message, normalized), normalized.percent, normalized);
+}
+
+async function emitDetailProgress(target, options, state, message, percent) {
+  await reportTicketOwnerProgress(target, options, {
+    phase: "detail-pages",
+    message,
+    percent,
+    ...progressDetailsFromState(state),
+  });
+}
+
+function progressDetailsFromState(state = {}) {
+  const currentTickets = Array.from(state?.active?.values?.() || [])
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  return {
+    totalCount: toProgressCount(state.totalCount),
+    completedCount: toProgressCount(state.completedCount),
+    successCount: toProgressCount(state.successCount),
+    failedCount: toProgressCount(state.failedCount),
+    attemptedCount: toProgressCount(state.attemptedCount),
+    diagnosticFailedCount: toProgressCount(state.diagnosticFailedCount),
+    activeCount: currentTickets.length,
+    pendingCount: Math.max(0, toProgressCount(state.totalCount) - toProgressCount(state.completedCount)),
+    currentTickets,
+  };
+}
+
+function normalizeTicketOwnerProgress(progress) {
+  const input = progress && typeof progress === "object" ? progress : {};
+  return {
+    phase: String(input.phase || "running"),
+    message: String(input.message || "正在执行"),
+    percent: Math.max(0, Math.min(100, Math.round(Number(input.percent) || 0))),
+    totalCount: toProgressCount(input.totalCount),
+    completedCount: toProgressCount(input.completedCount),
+    successCount: toProgressCount(input.successCount),
+    failedCount: toProgressCount(input.failedCount),
+    attemptedCount: toProgressCount(input.attemptedCount),
+    diagnosticFailedCount: toProgressCount(input.diagnosticFailedCount),
+    activeCount: toProgressCount(input.activeCount),
+    pendingCount: toProgressCount(input.pendingCount),
+    currentTickets: Array.isArray(input.currentTickets)
+      ? input.currentTickets.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 6)
+      : [],
+  };
+}
+
+function toProgressCount(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+}
+
+function formatProgressMessage(message, progress = {}) {
+  const details = normalizeTicketOwnerProgress({
+    ...progress,
+    message,
+  });
+  const parts = [String(message || "正在执行")];
+  if (details.totalCount > 0) {
+    parts.push(`已生成 ${details.completedCount}/${details.totalCount}`);
+  }
+  if (details.attemptedCount > 0) {
+    parts.push(`已尝试 ${details.attemptedCount}`);
+  }
+  if (details.failedCount > 0) {
+    parts.push(`最终未获取 ${details.failedCount}`);
+  }
+  if (details.activeCount > 0) {
+    const current = details.currentTickets.length
+      ? `：${details.currentTickets.join("、")}`
+      : "";
+    parts.push(`正在处理 ${details.activeCount} 个${current}`);
+  }
+  if (details.pendingCount > 0) {
+    parts.push(`待处理 ${details.pendingCount}`);
+  }
+  return parts.join(" · ");
+}
+
+async function showTicketOwnerProgress(target, message, percent = 0, details = {}) {
   if (!target || typeof target.evaluate !== "function") {
     return;
   }
@@ -1878,11 +2107,11 @@ async function showTicketOwnerProgress(target, message, percent = 0) {
     targets.push(...target.frames());
   }
 
-  await Promise.all(targets.map((progressTarget) => injectTicketOwnerProgress(progressTarget, message, safePercent)));
+  await Promise.all(targets.map((progressTarget) => injectTicketOwnerProgress(progressTarget, message, safePercent, details)));
 }
 
-async function injectTicketOwnerProgress(target, message, percent) {
-  await target.evaluate(({ message: progressMessage, percent: progressPercent }) => {
+async function injectTicketOwnerProgress(target, message, percent, details = {}) {
+  await target.evaluate(({ message: progressMessage, percent: progressPercent, details: progressDetails }) => {
     const id = "tos-ticket-owner-progress";
     let root = document.getElementById(id);
     if (!root) {
@@ -1923,6 +2152,10 @@ async function injectTicketOwnerProgress(target, message, percent) {
       messageNode.setAttribute("data-tos-progress-message", "true");
       messageNode.style.cssText = "font-size:13px;color:#334155;margin-bottom:10px;word-break:break-word;";
 
+      const metaNode = document.createElement("div");
+      metaNode.setAttribute("data-tos-progress-meta", "true");
+      metaNode.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;font-size:12px;color:#075985;";
+
       const track = document.createElement("div");
       track.style.cssText = "height:7px;border-radius:999px;background:#dbeafe;overflow:hidden;";
       const bar = document.createElement("div");
@@ -1930,14 +2163,37 @@ async function injectTicketOwnerProgress(target, message, percent) {
       bar.style.cssText = "height:100%;width:0%;background:#0284c7;border-radius:999px;transition:width .28s ease;";
       track.appendChild(bar);
 
-      root.append(title, messageNode, track);
+      root.append(title, messageNode, metaNode, track);
       document.documentElement.appendChild(root);
     }
 
     const messageNode = root.querySelector("[data-tos-progress-message]");
+    const metaNode = root.querySelector("[data-tos-progress-meta]");
     const barNode = root.querySelector("[data-tos-progress-bar]");
     if (messageNode) {
       messageNode.textContent = progressMessage;
+    }
+    if (metaNode) {
+      const total = Number(progressDetails?.totalCount || 0);
+      const completed = Number(progressDetails?.completedCount || 0);
+      const attempted = Number(progressDetails?.attemptedCount || 0);
+      const failed = Number(progressDetails?.failedCount || 0);
+      const active = Number(progressDetails?.activeCount || 0);
+      const parts = [];
+      if (total > 0) {
+        parts.push(`已生成 ${completed}/${total}`);
+      }
+      if (attempted > 0) {
+        parts.push(`已尝试 ${attempted}`);
+      }
+      if (failed > 0) {
+        parts.push(`最终未获取 ${failed}`);
+      }
+      if (active > 0) {
+        parts.push(`并发 ${active}`);
+      }
+      metaNode.textContent = parts.join("｜");
+      metaNode.style.display = metaNode.textContent ? "flex" : "none";
     }
     if (barNode) {
       barNode.style.width = `${progressPercent}%`;
@@ -1945,6 +2201,7 @@ async function injectTicketOwnerProgress(target, message, percent) {
   }, {
     message: String(message || ""),
     percent,
+    details,
   }).catch(() => {});
 }
 

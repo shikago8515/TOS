@@ -488,7 +488,10 @@ function syncActiveRunViewFromHealth(): void {
     lastResult.value = null
     statusLabel.value = '执行中'
     statusText.value = buildActiveRunStatusText(activeRun)
-    if (isTicketOwnerStatisticsScenario.value && ticketOwnerProgressTimer === null) startTicketOwnerProgress()
+    if (isTicketOwnerStatisticsScenario.value) {
+      const hasRealProgress = applyTicketOwnerProgressFromRun(activeRun)
+      if (!hasRealProgress && ticketOwnerProgressTimer === null) startTicketOwnerProgress()
+    }
     if (!message.value) {
       messageTone.value = 'info'
       message.value = text('检测到当前自动化仍在后台运行，已恢复页面状态。')
@@ -512,7 +515,7 @@ function startActiveRunStatePolling(): void {
   if (activeRunStateTimer !== null) return
   activeRunStateTimer = window.setInterval(() => {
     void refreshExecutorState(true)
-  }, 3500)
+  }, 1500)
 }
 function stopActiveRunStatePolling(): void {
   if (activeRunStateTimer === null) return
@@ -555,10 +558,46 @@ function doesActiveRunBelongToCurrentScenario(run: Record<string, any>): boolean
 function buildActiveRunStatusText(run: Record<string, any>): string {
   const inputFileName = String(run.inputFileName || '').trim()
   const startedAt = String(run.startedAt || '').trim()
-  if (isTicketOwnerStatisticsScenario.value) return '正在统计 ticket 归属，请保持浏览器窗口打开；切换页面不会中断采集。'
+  if (isTicketOwnerStatisticsScenario.value) return formatTicketOwnerProgressText(getRunProgress(run)) || '正在统计 ticket 归属，请保持浏览器窗口打开；切换页面不会中断采集。'
   if (inputFileName) return `执行器仍在处理 ${inputFileName}，请勿重复启动。`
   if (startedAt) return `执行器任务仍在运行，开始时间 ${formatRunTime(startedAt)}。`
   return '执行器任务仍在运行，请勿重复启动。'
+}
+function getRunProgress(run: Record<string, any> | null | undefined): Record<string, any> | null {
+  const progress = run?.progress
+  return progress && typeof progress === 'object' ? progress as Record<string, any> : null
+}
+function applyTicketOwnerProgressFromRun(run: Record<string, any> | null | undefined): boolean {
+  const progress = getRunProgress(run)
+  if (!progress) return false
+  if (ticketOwnerProgressTimer) {
+    window.clearInterval(ticketOwnerProgressTimer)
+    ticketOwnerProgressTimer = null
+  }
+  const percent = Number(progress.percent || 0)
+  ticketOwnerProgressPercent.value = Number.isFinite(percent) ? Math.max(0, Math.min(100, Math.round(percent))) : 0
+  ticketOwnerProgressText.value = formatTicketOwnerProgressText(progress) || String(progress.message || '正在统计 ticket 归属')
+  return true
+}
+function formatTicketOwnerProgressText(progress: Record<string, any> | null): string {
+  if (!progress) return ''
+  const message = String(progress.message || '正在统计 ticket 归属')
+  const total = Number(progress.totalCount || 0)
+  const completed = Number(progress.completedCount || 0)
+  const failed = Number(progress.failedCount || 0)
+  const attempted = Number(progress.attemptedCount || 0)
+  const active = Number(progress.activeCount || 0)
+  const pending = Number(progress.pendingCount || 0)
+  const currentTickets = Array.isArray(progress.currentTickets)
+    ? progress.currentTickets.map((item: unknown) => String(item || '').trim()).filter(Boolean).slice(0, 3)
+    : []
+  const parts = [message]
+  if (total > 0) parts.push(`已生成 ${completed}/${total}`)
+  if (attempted > 0) parts.push(`已尝试 ${attempted}`)
+  if (failed > 0) parts.push(`最终未获取 ${failed}`)
+  if (active > 0) parts.push(`正在处理 ${active} 个${currentTickets.length ? `：${currentTickets.join('、')}` : ''}`)
+  if (pending > 0) parts.push(`待处理 ${pending}`)
+  return parts.join(' · ')
 }
 function formatRunTime(value: string): string {
   const date = new Date(value)
