@@ -97,12 +97,58 @@ PY
     return 0
   fi
 
-  if ! curl -fsS -X POST http://127.0.0.1:18000/api/release-updates -H 'Content-Type: application/json' --data-binary "$payload" >/dev/null; then
+  local curl_headers=(-H 'Content-Type: application/json')
+  if [ -n "${TOS_RELEASE_UPDATE_WRITE_TOKEN:-}" ]; then
+    curl_headers+=(-H "X-Release-Update-Token: ${TOS_RELEASE_UPDATE_WRITE_TOKEN}")
+  fi
+
+  if ! curl -fsS -X POST http://127.0.0.1:18000/api/release-updates "${curl_headers[@]}" --data-binary "$payload" >/dev/null; then
     echo "Warning: failed to sync release update record" >&2
   fi
 }
 
 sync_release_update_record
+
+sync_release_announcement() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "Warning: python3 not found; skipped release announcement sync" >&2
+    return 0
+  fi
+
+  local payload
+  if ! payload="$(python3 - "$MANIFEST" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    manifest = json.load(handle)
+
+announcement = manifest.get("releaseAnnouncement")
+if not isinstance(announcement, dict) or not announcement.get("noticeId"):
+    raise SystemExit(0)
+
+print(json.dumps(announcement, ensure_ascii=False))
+PY
+)"; then
+    echo "Warning: failed to sync release announcement" >&2
+    return 0
+  fi
+
+  if [ -z "$payload" ]; then
+    return 0
+  fi
+
+  local curl_headers=(-H 'Content-Type: application/json')
+  if [ -n "${TOS_RELEASE_UPDATE_WRITE_TOKEN:-}" ]; then
+    curl_headers+=(-H "X-Release-Update-Token: ${TOS_RELEASE_UPDATE_WRITE_TOKEN}")
+  fi
+
+  if ! curl -fsS -X POST http://127.0.0.1:18000/api/release-announcements "${curl_headers[@]}" --data-binary "$payload" >/dev/null; then
+    echo "Warning: failed to sync release announcement" >&2
+  fi
+}
+
+sync_release_announcement
 
 if [ -n "${PKG:-}" ] && [ -f "$PKG" ]; then
   mv "$PKG" ".deploy_uploads/applied/"

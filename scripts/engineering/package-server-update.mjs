@@ -100,6 +100,10 @@ export async function createServerPackage({
       gitInfo: resolvedGitInfo,
       now,
     }),
+    releaseAnnouncement: buildReleaseAnnouncement({
+      version: releaseMetadata.version,
+      releaseManifest: releaseMetadata.releaseManifest,
+    }),
     archivePath: dryRun ? null : archivePath,
     stagingRoot: null,
     includedPaths: [...deployablePaths],
@@ -372,6 +376,66 @@ function buildManifestReleaseUpdateRecord({ version, releaseNotes, releaseManife
     description: `${detailParts.join('. ')}.`,
     createdBy: 'release:semantic-release',
   }
+}
+
+function buildReleaseAnnouncement({ version, releaseManifest }) {
+  if (!releaseManifest?.announcement) {
+    return null
+  }
+
+  const announcement = releaseManifest.announcement
+  if (announcement.version && announcement.version !== version) {
+    throw new Error(`releaseManifest.json announcement version mismatch: expected ${version}, got ${announcement.version}`)
+  }
+
+  const noticeId = String(announcement.noticeId || '').trim()
+  if (!noticeId) {
+    throw new Error('releaseManifest.json announcement.noticeId is required')
+  }
+
+  return {
+    noticeId,
+    version,
+    releaseDate: normalizeReleaseDate(announcement.releaseDate)
+      || normalizeReleaseDate(releaseManifest.releaseDate)
+      || normalizeReleaseDate(releaseManifest.releaseNotes?.date),
+    showPopup: Boolean(announcement.showPopup),
+    level: String(announcement.level || 'maintenance').trim() || 'maintenance',
+    title: String(announcement.title || '本次更新内容').trim() || '本次更新内容',
+    groups: normalizeAnnouncementGroups(announcement.groups),
+  }
+}
+
+function normalizeAnnouncementGroups(groups) {
+  if (!Array.isArray(groups)) {
+    return []
+  }
+
+  return groups
+    .map((group) => {
+      const title = String(group?.title || '').trim()
+      const icon = String(group?.icon || '').trim()
+      const items = normalizeAnnouncementItems(group?.items)
+      if (!title || items.length === 0) {
+        return null
+      }
+      return {
+        title,
+        icon: icon || 'sparkles',
+        items,
+      }
+    })
+    .filter(Boolean)
+}
+
+function normalizeAnnouncementItems(items) {
+  if (!Array.isArray(items)) {
+    return []
+  }
+
+  return items
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
 }
 
 function normalizeReleaseDate(value) {

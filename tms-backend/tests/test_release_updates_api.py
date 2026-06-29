@@ -86,6 +86,7 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
     def setUp(self) -> None:
         app = FastAPI()
         app.include_router(release_updates_api.router, prefix="/api")
+        app.include_router(release_updates_api.announcements_router, prefix="/api")
         self.client = TestClient(app)
 
     def test_read_release_updates_returns_stable_response_shape(self) -> None:
@@ -189,6 +190,152 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
 
         self.assertIn("$ref", get_schema)
         self.assertIn("$ref", post_schema)
+
+    def test_read_latest_release_announcement_returns_null_when_missing(self) -> None:
+        with patch.object(
+            release_updates_api,
+            "get_latest_release_announcement",
+            return_value=None,
+            create=True,
+        ):
+            response = self.client.get("/api/release-announcements/latest")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "ok": True,
+                "version": release_updates_api.APP_VERSION,
+                "announcement": None,
+            },
+        )
+
+    def test_read_latest_release_announcement_returns_stable_response_shape(self) -> None:
+        with patch.object(
+            release_updates_api,
+            "get_latest_release_announcement",
+            return_value=self._release_announcement_row(1, "0.9.8-beta.3.29"),
+            create=True,
+        ):
+            response = self.client.get("/api/release-announcements/latest")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "ok": True,
+                "version": "0.9.8-beta.3.29",
+                "announcement": {
+                    "noticeId": "v0.9.8-beta.3.29",
+                    "version": "0.9.8-beta.3.29",
+                    "releaseDate": "2026-06-29",
+                    "showPopup": True,
+                    "level": "feature",
+                    "title": "本次更新内容",
+                    "groups": [
+                        {
+                            "title": "新增",
+                            "icon": "sparkles",
+                            "items": ["新增服务器驱动版本公告"],
+                        }
+                    ],
+                },
+            },
+        )
+
+    def test_save_release_announcement_accepts_correct_write_token(self) -> None:
+        expected_row = self._release_announcement_row(2, "0.9.8-beta.3.29")
+
+        with patch.dict(os.environ, {"TOS_RELEASE_UPDATE_WRITE_TOKEN": "secret-token"}), patch.object(
+            release_updates_api,
+            "upsert_release_announcement",
+            return_value=expected_row,
+            create=True,
+        ) as upsert_announcement:
+            response = self.client.post(
+                "/api/release-announcements",
+                headers={"X-Release-Update-Token": "secret-token"},
+                json={
+                    "noticeId": " v0.9.8-beta.3.29 ",
+                    "version": " 0.9.8-beta.3.29 ",
+                    "releaseDate": "2026-06-29",
+                    "showPopup": True,
+                    "level": " feature ",
+                    "title": " 本次更新内容 ",
+                    "groups": [
+                        {
+                            "title": "新增",
+                            "icon": "sparkles",
+                            "items": ["新增服务器驱动版本公告"],
+                        }
+                    ],
+                    "createdBy": " deploy ",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        upsert_announcement.assert_called_once_with(
+            {
+                "notice_id": "v0.9.8-beta.3.29",
+                "version": "0.9.8-beta.3.29",
+                "release_date": "2026-06-29",
+                "show_popup": True,
+                "level": "feature",
+                "title": "本次更新内容",
+                "groups": [
+                    {
+                        "title": "新增",
+                        "icon": "sparkles",
+                        "items": ["新增服务器驱动版本公告"],
+                    }
+                ],
+                "created_by": "deploy",
+            }
+        )
+        self.assertEqual(response.json()["announcement"]["noticeId"], "v0.9.8-beta.3.29")
+
+    def test_save_release_announcement_rejects_wrong_token(self) -> None:
+        with patch.dict(os.environ, {"TOS_RELEASE_UPDATE_WRITE_TOKEN": "secret-token"}), patch.object(
+            release_updates_api,
+            "upsert_release_announcement",
+            create=True,
+        ) as upsert_announcement:
+            response = self.client.post(
+                "/api/release-announcements",
+                json={
+                    "noticeId": "v0.9.8-beta.3.29",
+                    "version": "0.9.8-beta.3.29",
+                    "releaseDate": "2026-06-29",
+                    "showPopup": True,
+                    "level": "feature",
+                    "title": "本次更新内容",
+                    "groups": [{"title": "新增", "icon": "sparkles", "items": ["公告"]}],
+                    "createdBy": "test",
+                },
+            )
+
+        self.assertEqual(response.status_code, 401)
+        upsert_announcement.assert_not_called()
+
+    def test_openapi_exposes_release_announcement_response_schemas(self) -> None:
+        openapi = self.client.app.openapi()["paths"]
+
+        get_schema = openapi["/api/release-announcements/latest"]["get"]["responses"]["200"]["content"][
+            "application/json"
+        ]["schema"]
+        post_schema = openapi["/api/release-announcements"]["post"]["responses"]["200"]["content"][
+            "application/json"
+        ]["schema"]
+
+        self.assertIn("$ref", get_schema)
+        self.assertIn("$ref", post_schema)
+
+    def test_schema_ddl_includes_release_announcements_table(self) -> None:
+        ddl = "\n".join(mysql_store.SCHEMA_DDL)
+
+        self.assertIn("CREATE TABLE IF NOT EXISTS release_announcements", ddl)
+        self.assertIn("UNIQUE KEY uq_release_announcements_notice_id", ddl)
+        self.assertIn("KEY idx_release_announcements_latest", ddl)
 
     def test_default_records_keep_unique_historical_versions(self) -> None:
         records = release_updates_api.DEFAULT_RELEASE_UPDATE_RECORDS
@@ -428,6 +575,31 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
             "title": f"Record {version}",
             "description": "",
             "created_by": "system",
+            "created_at": "",
+            "updated_at": "",
+        }
+
+    @staticmethod
+    def _release_announcement_row(row_id: int, version: str) -> dict[str, object]:
+        return {
+            "id": row_id,
+            "notice_id": f"v{version}",
+            "version": version,
+            "release_date": "2026-06-29",
+            "show_popup": 1,
+            "level": "feature",
+            "title": "本次更新内容",
+            "groups_json": json.dumps(
+                [
+                    {
+                        "title": "新增",
+                        "icon": "sparkles",
+                        "items": ["新增服务器驱动版本公告"],
+                    }
+                ],
+                ensure_ascii=False,
+            ),
+            "created_by": "deploy",
             "created_at": "",
             "updated_at": "",
         }

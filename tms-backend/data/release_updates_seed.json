@@ -1,5 +1,85 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.28-added-koi-admin-shell-tabs-cache",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-29",
+    "category": "added",
+    "pageName": "后台工作台",
+    "pagePath": "/home",
+    "title": "新增 Koi 风格后台壳能力",
+    "description": "新增 Pinia 全局状态、顶部标签页缓存、keep-alive 页面缓存、右键标签操作和路由顶部加载进度条，页面切换会保留真实导航状态。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-added-element-plus-foundation",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-29",
+    "category": "added",
+    "pageName": "全局组件体系",
+    "pagePath": "/home",
+    "title": "接入 Element Plus 组件体系",
+    "description": "系统接入 Element Plus、Element Plus 图标和全局语言包，后续页面统一使用 Element Plus 表单、按钮、弹窗、抽屉、标签和图标控件。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-improved-settings-koi-workbench",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-29",
+    "category": "improved",
+    "pageName": "系统设置",
+    "pagePath": "/settings",
+    "title": "重构系统设置下载工作台",
+    "description": "系统设置页重构为 Koi 风格下载与更新工作台，包含当前版本、下载中心、更新管理、运行参数和安装包版本信息，并适配子页面满屏布局。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-improved-theme-language-global",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-29",
+    "category": "improved",
+    "pageName": "主题与语言",
+    "pagePath": "/settings",
+    "title": "完善暗黑模式与语言切换",
+    "description": "暗黑 / 白色模式会同步覆盖 layout 子页面、自动化页面和 Element Plus 控件；中英文切换会刷新菜单、面包屑、标签页、首页、设置页和 Element Plus 内置文案。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-improved-settings-update-export",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-29",
+    "category": "improved",
+    "pageName": "系统设置",
+    "pagePath": "/settings",
+    "title": "优化检查更新与运行参数导出",
+    "description": "浏览器模式点击检查更新会刷新运行参数和服务器安装包信息，桌面模式继续调用桌面更新桥接；运行参数可导出为 JSON 便于排查。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-added-packing-list-auto-download",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-29",
+    "category": "added",
+    "pageName": "Packing List 自动下载",
+    "pagePath": "/packing-list-auto-download",
+    "title": "新增 Packing List 自动下载模块",
+    "description": "新增 Packing List 自动下载页面和本机自动化模块目录，可作为独立业务模块构建、发布和调用。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-added-ticket-owner-excel-lookups",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-29",
+    "category": "added",
+    "pageName": "统计 ticket 归属自动化",
+    "pagePath": "/web-automation/scenarios/ticket-owner-statistics",
+    "title": "新增 Excel 查询辅助能力",
+    "description": "统计 ticket 归属自动化新增 Excel 查询辅助模块，支持本机执行器读取 Excel 映射数据参与 ticket 归属统计。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-fixed-settings-layout-details",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-29",
+    "category": "fixed",
+    "pageName": "系统设置",
+    "pagePath": "/settings",
+    "title": "修复设置页视觉细节",
+    "description": "修复版本号区域字号过大、下载卡片图片与按钮未对齐、小助手卡片按钮上下不齐和浏览器模式检查更新缺少刷新反馈的问题。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.28-added-automation-run-archive-center",
     "version": "0.9.8-beta.3.28",
     "releaseDate": "2026-06-26",

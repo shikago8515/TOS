@@ -5,9 +5,11 @@ import releaseNotes from './releaseNotes.json'
 import {
   buildReleaseNoticeGroups,
   buildReleaseNoticeState,
+  buildReleaseNoticeStateFromServerOrStorage,
   markReleaseNoticeSeen,
   releaseNoticeSeenKeyStorageKey,
   releaseNoticeStorageKey,
+  type LatestReleaseAnnouncementResponse,
   type ReleaseNotes,
   type StorageLike,
 } from './releaseNotice'
@@ -120,6 +122,88 @@ describe('releaseNotice', () => {
       seenVersion: storage.getItem(releaseNoticeStorageKey),
     })
     expect(secondState.visible).toBe(false)
+  })
+
+  it('prefers the latest server release announcement over bundled notes', async () => {
+    const storage = new MemoryStorage()
+    const state = await buildReleaseNoticeStateFromServerOrStorage({
+      storage,
+      fallbackReleaseNotes: createNotes({ noticeId: 'local-notice' }),
+      fetchLatestAnnouncement: async (): Promise<LatestReleaseAnnouncementResponse> => ({
+        ok: true,
+        version: currentVersion,
+        announcement: {
+          noticeId: 'server-notice',
+          version: currentVersion,
+          releaseDate: '2026-06-29',
+          showPopup: true,
+          level: 'feature',
+          title: 'Server announcement',
+          groups: [
+            { title: 'Server', icon: 'sparkles', items: ['server driven popup'] },
+          ],
+        },
+      }),
+    })
+
+    expect(state.visible).toBe(true)
+    expect(state.releaseNotes?.noticeId).toBe('server-notice')
+    expect(buildReleaseNoticeGroups(state.releaseNotes as ReleaseNotes)).toEqual([
+      { key: 'announcement-0', title: 'Server', icon: 'sparkles', items: ['server driven popup'] },
+    ])
+  })
+
+  it('does not show the same server noticeId twice', async () => {
+    const storage = new MemoryStorage()
+    storage.setItem(releaseNoticeSeenKeyStorageKey, 'server-notice')
+
+    const state = await buildReleaseNoticeStateFromServerOrStorage({
+      storage,
+      fetchLatestAnnouncement: async (): Promise<LatestReleaseAnnouncementResponse> => ({
+        ok: true,
+        announcement: {
+          noticeId: 'server-notice',
+          version: currentVersion,
+          releaseDate: '2026-06-29',
+          showPopup: true,
+          level: 'feature',
+          title: 'Server announcement',
+          groups: [
+            { title: 'Server', icon: 'sparkles', items: ['server driven popup'] },
+          ],
+        },
+      }),
+    })
+
+    expect(state.visible).toBe(false)
+    expect(state.releaseNotes).toBeNull()
+  })
+
+  it('does not fall back to bundled notes when the server returns no announcement', async () => {
+    const state = await buildReleaseNoticeStateFromServerOrStorage({
+      storage: new MemoryStorage(),
+      fallbackReleaseNotes: createNotes({ noticeId: 'local-notice', showPopup: true }),
+      fetchLatestAnnouncement: async (): Promise<LatestReleaseAnnouncementResponse> => ({
+        ok: true,
+        announcement: null,
+      }),
+    })
+
+    expect(state.visible).toBe(false)
+    expect(state.releaseNotes).toBeNull()
+  })
+
+  it('falls back to bundled release notes when the server announcement request fails', async () => {
+    const state = await buildReleaseNoticeStateFromServerOrStorage({
+      storage: new MemoryStorage(),
+      fallbackReleaseNotes: createNotes({ noticeId: 'local-fallback', showPopup: true }),
+      fetchLatestAnnouncement: async (): Promise<LatestReleaseAnnouncementResponse> => {
+        throw new Error('network unavailable')
+      },
+    })
+
+    expect(state.visible).toBe(true)
+    expect(state.releaseNotes?.noticeId).toBe('local-fallback')
   })
 
   it('builds release notice groups by module when module notes exist', () => {

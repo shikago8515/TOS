@@ -654,6 +654,76 @@ def get_release_update_record(record_key: str) -> dict[str, Any] | None:
     return row
 
 
+def get_latest_release_announcement() -> dict[str, Any] | None:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, notice_id, version, release_date, show_popup, level,
+                       title, groups_json, created_by, created_at, updated_at
+                FROM release_announcements
+                ORDER BY release_date DESC, id DESC
+                LIMIT 1
+                """,
+            )
+            row = cursor.fetchone()
+    return row
+
+
+def get_release_announcement(notice_id: str) -> dict[str, Any] | None:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, notice_id, version, release_date, show_popup, level,
+                       title, groups_json, created_by, created_at, updated_at
+                FROM release_announcements
+                WHERE notice_id = %s
+                LIMIT 1
+                """,
+                (notice_id,),
+            )
+            row = cursor.fetchone()
+    return row
+
+
+def upsert_release_announcement(announcement: dict[str, Any]) -> dict[str, Any]:
+    ensure_schema()
+    groups_json = json.dumps(announcement.get("groups") or [], ensure_ascii=False)
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO release_announcements
+                  (notice_id, version, release_date, show_popup, level,
+                   title, groups_json, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                  version = VALUES(version),
+                  release_date = VALUES(release_date),
+                  show_popup = VALUES(show_popup),
+                  level = VALUES(level),
+                  title = VALUES(title),
+                  groups_json = VALUES(groups_json),
+                  created_by = VALUES(created_by)
+                """,
+                (
+                    announcement["notice_id"],
+                    announcement["version"],
+                    announcement.get("release_date"),
+                    1 if announcement.get("show_popup") else 0,
+                    announcement.get("level", "info"),
+                    announcement["title"],
+                    groups_json,
+                    announcement.get("created_by", "release"),
+                ),
+            )
+        connection.commit()
+    return get_release_announcement(announcement["notice_id"]) or {}
+
+
 def insert_release_update_record_once(record: dict[str, Any]) -> dict[str, Any]:
     ensure_schema()
     with mysql_connection() as connection:
@@ -841,6 +911,23 @@ SCHEMA_DDL = [
       UNIQUE KEY uq_release_update_record_key (record_key),
       KEY idx_release_update_records_release (release_date, id),
       KEY idx_release_update_records_page (page_path)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS release_announcements (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      notice_id VARCHAR(160) NOT NULL,
+      version VARCHAR(64) NOT NULL,
+      release_date DATE NULL,
+      show_popup TINYINT(1) NOT NULL DEFAULT 0,
+      level VARCHAR(32) NOT NULL DEFAULT 'info',
+      title VARCHAR(255) NOT NULL,
+      groups_json JSON NOT NULL,
+      created_by VARCHAR(96) NOT NULL DEFAULT 'release',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_release_announcements_notice_id (notice_id),
+      KEY idx_release_announcements_latest (release_date, id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     """,
 ]
