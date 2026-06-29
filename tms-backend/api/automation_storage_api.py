@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import logging
 from datetime import datetime
@@ -71,6 +73,7 @@ class RunFilePayload(BaseModel):
     fileName: str = ""
     fileRole: str = "result_file"
     contentType: str = ""
+    contentBase64: str = ""
 
 
 class RunUpdatePayload(BaseModel):
@@ -713,12 +716,43 @@ def _store_result_json(run_id: str, automation_id: str, result: Any) -> dict[str
 
 
 def _store_remote_result_file(run_id: str, automation_id: str, file_payload: RunFilePayload) -> dict[str, Any]:
+    if file_payload.contentBase64:
+        return _store_result_file_content(run_id, automation_id, file_payload)
+
     if not file_payload.url.lower().startswith(("http://127.0.0.1:", "http://localhost:")):
         raise HTTPException(status_code=400, detail="Only local executor artifact URLs can be stored.")
 
     content, detected_content_type = download_url_bytes(file_payload.url)
     filename = sanitize_object_segment(file_payload.fileName or file_payload.url.split("/")[-1] or "result-file")
     content_type = file_payload.contentType or detected_content_type or "application/octet-stream"
+    bucket = get_minio_bucket("results")
+    object_key = build_object_key("results", automation_id, run_id, file_payload.fileRole, filename)
+    storage_record = put_object_bytes(
+        bucket=bucket,
+        object_key=object_key,
+        content=content,
+        content_type=content_type,
+    )
+    return insert_automation_run_file({
+        "run_id": run_id,
+        "file_role": file_payload.fileRole,
+        "bucket": bucket,
+        "object_key": object_key,
+        "original_filename": filename,
+        "content_type": content_type,
+        "file_size": storage_record["file_size"],
+        "sha256": storage_record["sha256"] or sha256_bytes(content),
+    })
+
+
+def _store_result_file_content(run_id: str, automation_id: str, file_payload: RunFilePayload) -> dict[str, Any]:
+    try:
+        content = base64.b64decode(file_payload.contentBase64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid base64 result file content.") from exc
+
+    filename = sanitize_object_segment(file_payload.fileName or file_payload.url.split("/")[-1] or "result-file")
+    content_type = file_payload.contentType or "application/octet-stream"
     bucket = get_minio_bucket("results")
     object_key = build_object_key("results", automation_id, run_id, file_payload.fileRole, filename)
     storage_record = put_object_bytes(

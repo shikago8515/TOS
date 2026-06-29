@@ -1,4 +1,5 @@
 import os
+import base64
 import tempfile
 import unittest
 from datetime import datetime
@@ -11,11 +12,13 @@ from utils import credential_crypto
 from utils.credential_crypto import decrypt_secret, encrypt_secret
 from utils.mysql_store import SCHEMA_DDL
 from api.automation_storage_api import (
+    RunFilePayload,
     RunUpdatePayload,
     _attachment_content_disposition,
     _credential_lookup_ids,
     _normalize_account_key,
     _run_file_payload,
+    _store_remote_result_file,
     _template_payload,
 )
 from scripts.seed_automation_templates import AUTOMATION_TEMPLATES, read_template_content
@@ -183,6 +186,42 @@ class AutomationStorageTests(unittest.TestCase):
         self.assertEqual(response["files"], [])
         self.assertEqual(len(response["warnings"]), 1)
         self.assertNotIn("storage backend detail", response["warnings"][0])
+
+    def test_result_file_can_be_stored_from_base64_content(self):
+        payload = RunFilePayload(
+            url="http://127.0.0.1:3002/artifacts/result.xlsx",
+            fileName="Ticket ownership.xlsx",
+            fileRole="result_excel",
+            contentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            contentBase64=base64.b64encode(b"excel-bytes").decode("ascii"),
+        )
+        inserted_row = {
+            "id": 12,
+            "run_id": "run-12",
+            "file_role": "result_excel",
+            "bucket": "tos-results",
+            "object_key": "results/ticket-owner-statistics/run-12/result.xlsx",
+            "original_filename": "Ticket ownership.xlsx",
+            "content_type": payload.contentType,
+            "file_size": len(b"excel-bytes"),
+            "sha256": "c" * 64,
+            "created_at": datetime(2026, 6, 29, 12, 0, 0),
+        }
+
+        with patch.object(automation_storage_api, "get_minio_bucket", return_value="tos-results"), \
+             patch.object(automation_storage_api, "build_object_key", return_value=inserted_row["object_key"]), \
+             patch.object(automation_storage_api, "put_object_bytes", return_value={
+                 "file_size": len(b"excel-bytes"),
+                 "sha256": "c" * 64,
+             }) as put_object, \
+             patch.object(automation_storage_api, "download_url_bytes") as download_url, \
+             patch.object(automation_storage_api, "insert_automation_run_file", return_value=inserted_row):
+            row = _store_remote_result_file("run-12", "ticket-owner-statistics", payload)
+
+        self.assertEqual(row["id"], 12)
+        put_object.assert_called_once()
+        self.assertEqual(put_object.call_args.kwargs["content"], b"excel-bytes")
+        download_url.assert_not_called()
 
     def test_template_payload_exposes_management_fields(self):
         row = {

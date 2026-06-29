@@ -701,21 +701,22 @@ function applyCredUser(u: string): void { if (!u) return; if (isInfornexusDirect
 async function createBackendRunRecord(f: File | null = null): Promise<AutomationRunRecord | null> { if (!entry.value) return null; return createAutomationRunRecord(entry.value.id, f, entry.value.title) }
 async function finishBackendRunRecord(r: AutomationRunRecord | null, ok: boolean, msg: string, p: Record<string, any> | null): Promise<AutomationRunFileRecord[]> {
   if (!r?.runId) return []
-  const payload = await finishAutomationRunRecord(r.runId, ok ? 'success' : 'failed', msg || (ok ? 'completed' : 'failed'), p, collectResultFiles(p))
+  const payload = await finishAutomationRunRecord(r.runId, ok ? 'success' : 'failed', msg || (ok ? 'completed' : 'failed'), p, await collectResultFiles(p))
   await applyPersistedArtifactLinks(payload.files)
   return payload.files
 }
-function collectResultFiles(p: Record<string, any> | null): AutomationRunFileInput[] {
+async function collectResultFiles(p: Record<string, any> | null): Promise<AutomationRunFileInput[]> {
   const u = p?.artifacts?.downloadUrls
   if (!u || typeof u !== 'object') return []
   const resultExcelName = isTicketOwnerStatisticsScenario.value ? 'Ticket ownership.xlsx' : 'shipping-last-result.xlsx'
   const resultJsonName = isTicketOwnerStatisticsScenario.value ? 'ticket-ownership-result.json' : 'shipping-last-result.json'
-  return [
+  const files = [
     bfi(u.resultExcelUrl, 'result_excel', resultExcelName),
     bfi(u.resultJsonUrl, 'result_json', resultJsonName),
     bfi(u.failedPoExcelUrl, 'failed_rows_excel', 'shipping-last-failed-po-rows.xlsx'),
     bfi(u.failedPoJsonUrl, 'failed_rows_json', 'shipping-last-failed-po-rows.json'),
   ].filter((x): x is AutomationRunFileInput => Boolean(x))
+  return Promise.all(files.map(attachArtifactContent))
 }
 function bfi(rp: string, fr: string, fn: string): AutomationRunFileInput | null {
   const u = buildShippingArtifactUrl(rp)
@@ -728,6 +729,32 @@ function bfi(rp: string, fr: string, fn: string): AutomationRunFileInput | null 
       ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       : 'application/json; charset=utf-8',
   }
+}
+async function attachArtifactContent(file: AutomationRunFileInput): Promise<AutomationRunFileInput> {
+  try {
+    const response = await fetch(file.url)
+    if (!response.ok) return file
+    const blob = await response.blob()
+    if (!blob.size) return file
+    return {
+      ...file,
+      contentType: file.contentType || blob.type || 'application/octet-stream',
+      contentBase64: await blobToBase64(blob),
+    }
+  } catch {
+    return file
+  }
+}
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const value = String(reader.result || '')
+      resolve(value.includes(',') ? value.split(',').pop() || '' : value)
+    }
+    reader.onerror = () => reject(reader.error || new Error('无法读取结果文件。'))
+    reader.readAsDataURL(blob)
+  })
 }
 async function applyPersistedArtifactLinks(files: AutomationRunFileRecord[]): Promise<void> {
   if (!shippingArtifactLinks.value || files.length === 0) return

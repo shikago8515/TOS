@@ -169,6 +169,7 @@ export interface AutomationRunFileInput {
   fileName: string
   fileRole: string
   contentType?: string
+  contentBase64?: string
 }
 
 export type AutomationHelperPanelOpenResult =
