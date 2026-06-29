@@ -6,8 +6,8 @@ import { syncVersion } from './sync-version.mjs'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const defaultRepoRoot = resolve(scriptDir, '..', '..')
-const defaultGitCodeApiBaseUrl = 'https://api.gitcode.com/api/v5'
-const defaultRepository = 'shikago8515/TOS'
+const defaultGiteaApiBaseUrl = 'http://172.16.48.208:3001/api/v1'
+const defaultRepository = 'luenthai-ai/TOS'
 
 const releaseTypeMap = {
   feat: 'added',
@@ -38,24 +38,32 @@ export async function prepare(pluginConfig = {}, context = {}) {
     commits: context.commits || [],
   })
   await writeReleaseNotes(repoRoot, releaseNotes)
+  await writeReleaseManifest(repoRoot, buildTosReleaseManifest({
+    version,
+    tag: context.nextRelease?.gitTag || `v${version}`,
+    gitSha: context.nextRelease?.gitHead || process.env.GITEA_SHA || process.env.GITHUB_SHA || '',
+    releaseDate,
+    channel: pluginConfig.channel || context.branch?.channel || context.branch?.prerelease || '',
+    releaseNotes,
+  }))
   context.logger?.log?.(`Synced TOS version and release notes for ${version}.`)
 }
 
 export async function publish(pluginConfig = {}, context = {}) {
-  const token = pluginConfig.gitCodeToken || process.env.GITCODE_TOKEN
-  const repository = pluginConfig.repository || process.env.GITCODE_REPOSITORY || defaultRepository
+  const token = pluginConfig.giteaToken || process.env.GITEA_TOKEN || process.env.TOS_GITEA_TOKEN
+  const repository = pluginConfig.repository || process.env.GITEA_REPOSITORY || defaultRepository
   const fetchImpl = pluginConfig.fetchImpl || globalThis.fetch
 
   if (!token) {
-    context.logger?.warn?.('GITCODE_TOKEN is not configured; skipping GitCode Release creation.')
+    context.logger?.warn?.('GITEA_TOKEN is not configured; skipping Gitea Release creation.')
     return
   }
   if (typeof fetchImpl !== 'function') {
     throw new Error('Global fetch is unavailable; use Node.js 18+ or pass fetchImpl.')
   }
 
-  const request = buildGitCodeReleaseRequest({
-    apiBaseUrl: pluginConfig.gitCodeApiBaseUrl || process.env.GITCODE_API_BASE_URL || defaultGitCodeApiBaseUrl,
+  const request = buildGiteaReleaseRequest({
+    apiBaseUrl: pluginConfig.giteaApiBaseUrl || process.env.GITEA_API_BASE_URL || defaultGiteaApiBaseUrl,
     repository,
     token,
     nextRelease: context.nextRelease,
@@ -69,10 +77,10 @@ export async function publish(pluginConfig = {}, context = {}) {
   const text = await response.text()
 
   if (!response.ok) {
-    throw new Error(`GitCode Release creation failed: HTTP ${response.status} ${sanitizeResponseText(text)}`)
+    throw new Error(`Gitea Release creation failed: HTTP ${response.status} ${sanitizeResponseText(text)}`)
   }
 
-  context.logger?.log?.(`Created GitCode Release ${request.body.tag_name}.`)
+  context.logger?.log?.(`Created Gitea Release ${request.body.tag_name}.`)
 }
 
 export function buildTosReleaseNotes({
@@ -111,14 +119,39 @@ export function buildTosReleaseNotes({
   return notes
 }
 
-export function buildGitCodeReleaseRequest({
-  apiBaseUrl = defaultGitCodeApiBaseUrl,
+export function buildTosReleaseManifest({
+  version,
+  tag,
+  gitSha = '',
+  releaseDate = currentShanghaiDate(),
+  channel = '',
+  releaseNotes,
+}) {
+  return {
+    schemaVersion: 1,
+    version,
+    tag: tag || `v${version}`,
+    gitSha,
+    releaseDate,
+    channel,
+    releaseNotes,
+    artifacts: {
+      serverPackage: null,
+      desktopInstaller: null,
+      desktopFullInstaller: null,
+      automationHelper: null,
+    },
+  }
+}
+
+export function buildGiteaReleaseRequest({
+  apiBaseUrl = defaultGiteaApiBaseUrl,
   repository = defaultRepository,
   token,
   nextRelease,
 }) {
   if (!token) {
-    throw new Error('Missing GitCode token.')
+    throw new Error('Missing Gitea token.')
   }
   if (!nextRelease?.gitTag) {
     throw new Error('semantic-release did not provide nextRelease.gitTag.')
@@ -129,7 +162,7 @@ export function buildGitCodeReleaseRequest({
   return {
     url: `${normalizedBaseUrl}/repos/${normalizedRepository}/releases`,
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `token ${token}`,
       'Content-Type': 'application/json',
     },
     body: {
@@ -181,6 +214,18 @@ async function writeReleaseNotes(repoRoot, releaseNotes) {
     ...releaseNotes,
   }
   await writeFile(releaseNotesPath, `${JSON.stringify(next, null, 2)}\n`)
+}
+
+async function writeReleaseManifest(repoRoot, releaseManifest) {
+  const releaseManifestPath = resolve(
+    repoRoot,
+    'tms-frontend',
+    'src',
+    'shared',
+    'version',
+    'releaseManifest.json',
+  )
+  await writeFile(releaseManifestPath, `${JSON.stringify(releaseManifest, null, 2)}\n`)
 }
 
 function currentShanghaiDate() {

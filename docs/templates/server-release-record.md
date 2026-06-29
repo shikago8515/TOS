@@ -6,7 +6,7 @@
 - Git 分支：
 - Git commit：
 - Gitea main 状态：
-- GitCode/GitHub 同步状态（如适用）：
+- 其他历史远端同步状态（如适用）：
 - 发布包：
 - 包落地目录：`/home/obito_li/TOS/.deploy_uploads/`
 - deployId：

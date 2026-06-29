@@ -1,6 +1,6 @@
 # TOS 服务器部署 Runbook
 
-本文记录服务器 `~/TOS` 目录式 Docker Compose 更新流程。完整开发、Gitea/GitCode、版本和发布门禁见 `docs/tos-ai-workflow.md`；本文只保留服务器实操步骤。
+本文记录服务器 `~/TOS` 目录式 Docker Compose 更新流程。完整开发、Gitea、版本和发布门禁见 `docs/tos-ai-workflow.md`；本文只保留服务器实操步骤。
 
 ## 适用边界
 

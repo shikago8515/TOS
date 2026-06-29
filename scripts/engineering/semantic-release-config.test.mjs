@@ -6,6 +6,7 @@ const require = createRequire(import.meta.url)
 const config = require('../../release.config.cjs')
 
 test('semantic-release keeps main on the current beta.3 prerelease channel', () => {
+  assert.equal(config.repositoryUrl, 'http://172.16.48.208:3001/luenthai-ai/TOS.git')
   assert.deepEqual(config.branches, [
     'stable',
     {
@@ -31,6 +32,7 @@ test('semantic-release updates TOS version files before committing release asset
     'app-version.json',
     'tms-backend/app_version.py',
     'tms-frontend/src/shared/version/appVersion.ts',
+    'tms-frontend/src/shared/version/releaseManifest.json',
     'tms-frontend/src/shared/version/releaseNotes.json',
     'tms-electron-app/package.json',
     'tms-electron-app/package-lock.json',
