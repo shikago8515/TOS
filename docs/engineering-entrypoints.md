@@ -6,8 +6,8 @@
 
 | 命令 | 覆盖范围 | 会运行 |
 | --- | --- | --- |
-| `npm run check:quick` | 快速检查 | 工程脚本测试、前端 `typecheck`、前端 `test`、后端 `unittest`、Electron script tests |
-| `npm run check:frontend` | 前端完整检查 | `npm run typecheck`、`npm run test`、`npm run build` |
+| `npm run check:quick` | 快速检查 | 工程脚本测试、前端 `lint`、前端 `typecheck`、前端 `test`、后端 `unittest`、Electron script tests |
+| `npm run check:frontend` | 前端完整检查 | `npm run lint`、`npm run typecheck`、`npm run test`、`npm run build` |
 | `npm run check:backend` | 后端完整检查 | `python -m unittest discover tests/ -v`、`python -m compileall .` |
 | `npm run check:electron` | Electron 脚本测试 | 自动发现 `tms-electron-app/scripts/*.test.js` 并运行 `node --test` |
 | `npm run check` | 完整工程检查 | 工程脚本测试、前端完整检查、后端完整检查、Electron 脚本测试 |

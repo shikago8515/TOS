@@ -36,6 +36,10 @@ const commandGroups = {
       '--test',
       'scripts/engineering/frontend-dev-entrypoints.test.mjs',
     ]),
+    command('frontend-lint-gate-test', '.', process.execPath, [
+      '--test',
+      'scripts/engineering/frontend-lint-gate.test.mjs',
+    ]),
     command('restart-local-backend-test', '.', process.execPath, [
       '--test',
       'scripts/engineering/restart-local-backend.test.mjs',
@@ -53,11 +57,13 @@ const commandGroups = {
     ]),
   ],
   frontendFull: [
+    command('frontend:lint', 'tms-frontend', npmBin, ['run', 'lint'], npmShell),
     command('frontend:typecheck', 'tms-frontend', npmBin, ['run', 'typecheck'], npmShell),
     command('frontend:test', 'tms-frontend', npmBin, ['run', 'test'], npmShell),
     command('frontend:build', 'tms-frontend', npmBin, ['run', 'build'], npmShell),
   ],
   frontendQuick: [
+    command('frontend:lint', 'tms-frontend', npmBin, ['run', 'lint'], npmShell),
     command('frontend:typecheck', 'tms-frontend', npmBin, ['run', 'typecheck'], npmShell),
     command('frontend:test', 'tms-frontend', npmBin, ['run', 'test'], npmShell),
   ],
