@@ -33,6 +33,9 @@ class _FakeCursor:
     def fetchall(self) -> list[dict[str, object]]:
         return self._rows
 
+    def fetchone(self) -> dict[str, object] | None:
+        return self._rows[0] if self._rows else None
+
 
 class _FakeConnection:
     def __init__(self, rows: list[dict[str, object]]) -> None:
@@ -90,6 +93,10 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
             release_updates_api,
             "list_release_update_records",
             return_value=[self._release_update_row(1, "0.9.8-beta.3.15")],
+        ), patch.object(
+            release_updates_api,
+            "count_release_update_records",
+            return_value=7,
         ):
             response = self.client.get("/api/release-updates?limit=1")
 
@@ -115,7 +122,7 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
                         "updatedAt": "",
                     }
                 ],
-                "total": 1,
+                "total": 7,
             },
         )
 
@@ -252,6 +259,10 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
             return_value=[expected_row],
         ), patch.object(
             release_updates_api,
+            "count_release_update_records",
+            return_value=1,
+        ), patch.object(
+            release_updates_api,
             "upsert_release_update_record",
         ) as upsert_record:
             get_response = self.client.get("/api/release-updates?limit=1")
@@ -325,6 +336,16 @@ class ReleaseUpdatesApiTest(unittest.TestCase):
                 "0.9.8-beta.3.11",
             ],
         )
+
+    def test_count_release_update_records_returns_database_total(self) -> None:
+        with patch.object(mysql_store, "ensure_schema"), patch.object(
+            mysql_store,
+            "mysql_connection",
+            return_value=_FakeConnection([{"total": 238}]),
+        ):
+            total = mysql_store.count_release_update_records()
+
+        self.assertEqual(total, 238)
 
     def test_upsert_release_update_record_does_not_refresh_updated_at(self) -> None:
         cursor = _CaptureCursor()

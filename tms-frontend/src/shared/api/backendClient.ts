@@ -55,11 +55,7 @@ function readBrowserBackendUrl(): string {
     return '/tos/desktop-api'
   }
 
-  if (import.meta.env.DEV) {
-    return localDevBackendUrl
-  }
-
-  return remoteBackendUrl
+  return localDevBackendUrl
 }
 
 async function ensureBackendReady(): Promise<string | undefined> {

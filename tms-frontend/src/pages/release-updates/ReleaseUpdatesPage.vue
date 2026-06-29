@@ -22,7 +22,7 @@
         <div class="ru-stat__icon"><AppIcon name="database" /></div>
         <div class="ru-stat__info">
           <span>{{ text('总计记录数') }}</span>
-          <strong>{{ records.length }}</strong>
+          <strong>{{ totalRecords }}</strong>
         </div>
       </article>
       <article class="ru-stat ru-stat--teal">
@@ -143,6 +143,7 @@ type FilterValue = 'all' | 'added' | 'improved' | 'fixed'
 const { text } = useAppLanguage()
 const initialReleaseUpdates = readCachedReleaseUpdates(160)
 const records = ref<ReleaseUpdateRecord[]>(initialReleaseUpdates.records)
+const totalRecords = ref(initialReleaseUpdates.total)
 const runtimeVersion = ref(initialReleaseUpdates.version)
 const loading = ref(false)
 const errorMessage = ref('')
@@ -184,6 +185,7 @@ async function loadRecords(): Promise<void> {
     const payload = await fetchReleaseUpdates(160)
     runtimeVersion.value = payload.version
     records.value = payload.records
+    totalRecords.value = payload.total
     usingBundledFallback.value = payload.source === 'bundled'
   } catch (error) {
     usingBundledFallback.value = false

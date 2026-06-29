@@ -599,6 +599,24 @@ def list_release_update_records(limit: int = 100) -> list[dict[str, Any]]:
     return sorted_rows[:safe_limit]
 
 
+def count_release_update_records() -> int:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS total
+                FROM release_update_records
+                WHERE NOT (
+                  record_key LIKE 'git-%%'
+                  AND title = 'chore: 鍚屾鐗堟湰鏇存柊缂撳瓨'
+                )
+                """,
+            )
+            row = cursor.fetchone() or {}
+    return int(row.get("total") or 0)
+
+
 def _release_update_sort_key(row: dict[str, Any]) -> tuple[tuple[int, ...], str, int]:
     return (
         _version_sort_key(row.get("version")),

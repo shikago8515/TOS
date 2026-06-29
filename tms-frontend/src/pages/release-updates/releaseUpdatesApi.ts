@@ -28,7 +28,6 @@ export interface ReleaseUpdatesResponse {
   total: number
 }
 
-const defaultReleaseUpdatesBackendUrl = 'https://ai.tomwell.net:56130/tos/desktop-api'
 const releaseUpdatesCacheKey = 'tos.releaseUpdates.cache.v1'
 const releaseUpdatesRequestTimeoutMs = 6000
 
@@ -46,13 +45,6 @@ interface BundledReleaseHistoryRecord {
 export async function fetchReleaseUpdates(limit = 120): Promise<ReleaseUpdatesResponse> {
   const safeLimit = Math.max(1, Math.min(limit, 300))
   const path = `/api/release-updates?limit=${safeLimit}`
-
-  const remotePayload = await requestRemoteReleaseUpdates(path)
-  if (remotePayload) {
-    const normalized = normalizeReleaseUpdatesPayload(remotePayload, 'backend')
-    writeReleaseUpdatesCache(normalized)
-    return normalized
-  }
 
   try {
     const payload = await requestBackendJson<ReleaseUpdatesResponse>({
@@ -86,75 +78,17 @@ export function readBundledReleaseUpdates(limit = 120): ReleaseUpdatesResponse {
   return buildBundledReleaseUpdates(safeLimit)
 }
 
-async function requestRemoteReleaseUpdates(
-  path: string,
-): Promise<Partial<ReleaseUpdatesResponse> | undefined> {
-  for (const baseUrl of readReleaseUpdatesBackendUrls()) {
-    try {
-      return await requestReleaseUpdatesFromUrl(baseUrl, path)
-    } catch (_error) {
-      // Try the next configured release-update backend before falling back.
-    }
-  }
-
-  return undefined
-}
-
-function readReleaseUpdatesBackendUrls(): string[] {
-  const urls: string[] = []
-  const configuredUrl = import.meta.env.VITE_RELEASE_UPDATES_BACKEND_URL
-
-  if (typeof configuredUrl === 'string' && configuredUrl.trim()) {
-    urls.push(configuredUrl.trim())
-  }
-
-  if (
-    typeof window !== 'undefined'
-    && window.location?.pathname?.startsWith('/tos')
-  ) {
-    urls.push('/tos/desktop-api')
-  }
-
-  urls.push(defaultReleaseUpdatesBackendUrl)
-
-  return Array.from(new Set(urls.map((url) => url.replace(/\/$/, ''))))
-}
-
-async function requestReleaseUpdatesFromUrl(
-  baseUrl: string,
-  path: string,
-): Promise<Partial<ReleaseUpdatesResponse>> {
-  const controller = new AbortController()
-  const timeout = globalThis.setTimeout(() => controller.abort(), releaseUpdatesRequestTimeoutMs)
-
-  try {
-    const response = await fetch(`${baseUrl}${path}`, {
-      method: 'GET',
-      signal: controller.signal,
-    })
-    const text = await response.text()
-    const data = text ? JSON.parse(text) as Partial<ReleaseUpdatesResponse> : {}
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
-    }
-
-    return data
-  } finally {
-    globalThis.clearTimeout(timeout)
-  }
-}
-
 function normalizeReleaseUpdatesPayload(
   payload: Partial<ReleaseUpdatesResponse>,
   source: ReleaseUpdatesSource,
 ): ReleaseUpdatesResponse {
+  const records = Array.isArray(payload.records) ? payload.records : []
   return {
     ok: Boolean(payload.ok),
     source,
     version: String(payload.version || ''),
-    records: Array.isArray(payload.records) ? payload.records : [],
-    total: Number(payload.total || 0),
+    records,
+    total: normalizeTotal(payload.total, records.length),
   }
 }
 
@@ -227,7 +161,7 @@ function writeReleaseUpdatesCache(payload: ReleaseUpdatesResponse): void {
         source: 'backend',
         version: payload.version,
         records: payload.records,
-        total: payload.records.length,
+        total: normalizeTotal(payload.total, payload.records.length),
       }),
     )
   } catch (_error) {
@@ -246,8 +180,16 @@ function sliceReleaseUpdatesPayload(
     source,
     version: payload.version || fallbackAppVersion,
     records,
-    total: records.length,
+    total: normalizeTotal(payload.total, payload.records.length),
   }
+}
+
+function normalizeTotal(value: unknown, fallback: number): number {
+  const total = Number(value)
+  if (Number.isFinite(total) && total >= fallback) {
+    return total
+  }
+  return fallback
 }
 
 function getLocalStorage(): Storage | undefined {

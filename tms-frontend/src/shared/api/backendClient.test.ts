@@ -59,11 +59,11 @@ describe('backendClient', () => {
     await expect(getBackendBaseUrl()).resolves.toBe('http://127.0.0.1:9000')
   })
 
-  it('uses the public server backend URL in production browser mode by default', async () => {
+  it('uses the local Python backend URL in production browser mode by default', async () => {
     vi.stubEnv('DEV', false)
     stubWindow()
 
-    await expect(getBackendBaseUrl()).resolves.toBe('https://ai.tomwell.net:56130/tos/desktop-api')
+    await expect(getBackendBaseUrl()).resolves.toBe('http://127.0.0.1:8000')
   })
 
   it('uses the same-origin TOS desktop API backend when the browser app is served under /tos', async () => {

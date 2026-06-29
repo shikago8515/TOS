@@ -14,52 +14,50 @@ describe('releaseUpdatesApi', () => {
     vi.mocked(requestBackendJson).mockReset()
   })
 
-  it('reads release records from the remote server backend first', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      text: vi.fn().mockResolvedValue(JSON.stringify({
-        ok: true,
-        version: '0.9.8-beta.3.8',
-        total: 1,
-        records: [
-          {
-            id: 1,
-            recordKey: 'git-remote',
-            version: '0.9.8-beta.3.7',
-            releaseDate: '2026-06-13',
-            category: 'fixed',
-            pageName: 'Release updates',
-            pagePath: '/release-updates',
-            title: 'Remote database record',
-            description: 'Server database record',
-            createdBy: 'git',
-            createdAt: '',
-            updatedAt: '',
-          },
-        ],
-      })),
-    })
+  it('reads release records through the local backend client', async () => {
+    const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
+    vi.mocked(requestBackendJson).mockResolvedValue({
+      ok: true,
+      version: '0.9.8-beta.3.8',
+      total: 238,
+      records: [
+        {
+          id: 1,
+          recordKey: 'git-local',
+          version: '0.9.8-beta.3.7',
+          releaseDate: '2026-06-13',
+          category: 'fixed',
+          pageName: 'Release updates',
+          pagePath: '/release-updates',
+          title: 'Local backend record',
+          description: 'Local Python backend record',
+          createdBy: 'git',
+          createdAt: '',
+          updatedAt: '',
+        },
+      ],
+    })
 
     await expect(fetchReleaseUpdates(160)).resolves.toMatchObject({
       source: 'backend',
       version: '0.9.8-beta.3.8',
+      total: 238,
       records: [
         {
           version: '0.9.8-beta.3.7',
-          title: 'Remote database record',
+          title: 'Local backend record',
         },
       ],
     })
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://ai.tomwell.net:56130/tos/desktop-api/api/release-updates?limit=160',
-      expect.objectContaining({ method: 'GET' }),
-    )
-    expect(requestBackendJson).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(requestBackendJson).toHaveBeenCalledWith({
+      path: '/api/release-updates?limit=160',
+      timeoutMs: 6000,
+    })
   })
 
   it('keeps the backend runtime version separate from record history versions', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('remote unavailable')))
     vi.mocked(requestBackendJson).mockResolvedValue({
       ok: true,
       version: '0.9.8-beta.3.8',
@@ -94,8 +92,7 @@ describe('releaseUpdatesApi', () => {
     })
   })
 
-  it('falls back to bundled release notes when remote and local backends are unavailable', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('remote unavailable')))
+  it('falls back to bundled release notes when the backend is unavailable', async () => {
     vi.mocked(requestBackendJson).mockRejectedValue(new Error('Failed to fetch'))
 
     const payload = await fetchReleaseUpdates(160)
@@ -108,7 +105,6 @@ describe('releaseUpdatesApi', () => {
   })
 
   it('falls back to bundled release notes when the backend cannot be reached', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('remote unavailable')))
     vi.mocked(requestBackendJson).mockRejectedValue(new Error('Failed to fetch'))
 
     const payload = await fetchReleaseUpdates(160)
@@ -135,7 +131,6 @@ describe('releaseUpdatesApi', () => {
   })
 
   it('does not fall back to bundled release notes when the backend version is stale', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('remote unavailable')))
     vi.mocked(requestBackendJson).mockRejectedValue(
       new Error(`当前后端版本未更新：后端为 0.9.8-beta.3.17，前端为 ${fallbackAppVersion}，请重启本地后端。`),
     )
@@ -144,7 +139,6 @@ describe('releaseUpdatesApi', () => {
   })
 
   it('applies the requested limit to bundled history records', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('remote unavailable')))
     vi.mocked(requestBackendJson).mockRejectedValue(new Error('Failed to fetch'))
 
     const payload = await fetchReleaseUpdates(3)
@@ -169,30 +163,27 @@ describe('releaseUpdatesApi', () => {
   it('caches successful backend records for the next first paint', async () => {
     const storage = createStorageMock()
     vi.stubGlobal('localStorage', storage)
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    vi.mocked(requestBackendJson).mockResolvedValue({
       ok: true,
-      text: vi.fn().mockResolvedValue(JSON.stringify({
-        ok: true,
-        version: '0.9.8-beta.3.28',
-        total: 1,
-        records: [
-          {
-            id: 1,
-            recordKey: 'remote-latest',
-            version: '0.9.8-beta.3.28',
-            releaseDate: '2026-06-26',
-            category: 'fixed',
-            pageName: 'System Log',
-            pagePath: '/release-updates',
-            title: 'Remote latest record',
-            description: 'Loaded from remote database',
-            createdBy: 'git',
-            createdAt: '',
-            updatedAt: '',
-          },
-        ],
-      })),
-    }))
+      version: '0.9.8-beta.3.28',
+      total: 238,
+      records: [
+        {
+          id: 1,
+          recordKey: 'local-latest',
+          version: '0.9.8-beta.3.28',
+          releaseDate: '2026-06-26',
+          category: 'fixed',
+          pageName: 'System Log',
+          pagePath: '/release-updates',
+          title: 'Local latest record',
+          description: 'Loaded from local Python backend',
+          createdBy: 'git',
+          createdAt: '',
+          updatedAt: '',
+        },
+      ],
+    })
 
     await fetchReleaseUpdates(160)
     const cachedPayload = readCachedReleaseUpdates(160)
@@ -200,10 +191,11 @@ describe('releaseUpdatesApi', () => {
     expect(cachedPayload).toMatchObject({
       source: 'cache',
       version: '0.9.8-beta.3.28',
+      total: 238,
       records: [
         {
-          recordKey: 'remote-latest',
-          title: 'Remote latest record',
+          recordKey: 'local-latest',
+          title: 'Local latest record',
         },
       ],
     })
@@ -214,7 +206,7 @@ describe('releaseUpdatesApi', () => {
     storage.setItem('tos.releaseUpdates.cache.v1', JSON.stringify({
       ok: true,
       version: '0.9.8-beta.3.28',
-      total: 1,
+      total: 9,
       records: [
         {
           id: 2,
@@ -233,13 +225,13 @@ describe('releaseUpdatesApi', () => {
       ],
     }))
     vi.stubGlobal('localStorage', storage)
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('remote unavailable')))
     vi.mocked(requestBackendJson).mockRejectedValue(new Error('Failed to fetch'))
 
     const payload = await fetchReleaseUpdates(160)
 
     expect(payload).toMatchObject({
       source: 'cache',
+      total: 9,
       records: [
         {
           recordKey: 'cached-latest',
@@ -248,7 +240,45 @@ describe('releaseUpdatesApi', () => {
       ],
     })
   })
+
+  it('keeps the cached total when slicing cached records for first paint', () => {
+    const storage = createStorageMock()
+    storage.setItem('tos.releaseUpdates.cache.v1', JSON.stringify({
+      ok: true,
+      version: '0.9.8-beta.3.28',
+      total: 12,
+      records: [
+        buildCachedRecord(1),
+        buildCachedRecord(2),
+        buildCachedRecord(3),
+      ],
+    }))
+    vi.stubGlobal('localStorage', storage)
+
+    const payload = readCachedReleaseUpdates(2)
+
+    expect(payload.source).toBe('cache')
+    expect(payload.records).toHaveLength(2)
+    expect(payload.total).toBe(12)
+  })
 })
+
+function buildCachedRecord(id: number) {
+  return {
+    id,
+    recordKey: `cached-${id}`,
+    version: '0.9.8-beta.3.28',
+    releaseDate: '2026-06-26',
+    category: 'improved',
+    pageName: 'System Log',
+    pagePath: '/release-updates',
+    title: `Cached record ${id}`,
+    description: 'Loaded from local cache',
+    createdBy: 'cache',
+    createdAt: '',
+    updatedAt: '',
+  }
+}
 
 function createStorageMock(): Storage {
   const values = new Map<string, string>()

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from app_version import APP_VERSION
 from utils.mysql_store import (
+    count_release_update_records,
     insert_release_update_record_once,
     list_release_update_records,
     upsert_release_update_record,
@@ -141,12 +142,13 @@ _release_update_seeded = False
 def read_release_updates(limit: int = Query(100, ge=1, le=300)) -> dict[str, Any]:
     seed_default_release_updates()
     records = [_record_payload(row) for row in list_release_update_records(limit)]
+    total = count_release_update_records()
     latest_record_version = records[0]["version"] if records else APP_VERSION
     return {
         "ok": True,
         "version": latest_record_version,
         "records": records,
-        "total": len(records),
+        "total": total,
     }
 
 
