@@ -20,12 +20,20 @@ git rebase gitea/main
 
 文档、规则或测试清理默认不修改 `releaseNotes.json`，也不运行 `version:bump`；用户可见版本说明由 `semantic-release` 根据 Conventional Commits 在 Gitea `main` 发布链路生成，服务器部署默认以 Gitea `main` 为准。
 
+普通小改按 `AGENTS.md` 的验证分层记录最接近的真实检查；前端小改优先前端 `lint`、`typecheck` 和相关 `vitest`，后端单模块小改优先对应 `python -m unittest tests.test_xxx -v`。涉及公共工具、前后端契约、版本发布、CI/CD、部署、打包、合并 `main` 或准备推送 Gitea 主线时，必须运行 `npm run check:quick`。
+
+基础状态检查：
+
 ```powershell
 git status --short --branch
+```
+
+涉及版本记录、发布、部署、CI/CD、打包、主线合并或准备推送 Gitea 主线时补充：
+
+```powershell
 npm run check:backend-version
 npm run release:updates:dry-run
 npm run release:updates:push:dry-run
-npm run check:quick
 ```
 
 业务回归按改动范围补充，例如 Work Sales 改动需要用真实 bulk `.XLS` 和空 TURNOVER 模板调用 `/api/tms-finance/work-sales/process`，确认写入数量符合预期。
