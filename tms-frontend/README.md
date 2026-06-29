@@ -16,8 +16,9 @@
 - Vue Router
 - Sass
 - Vitest
+- ESLint
 
-当前项目未配置 ESLint 或 Prettier，不要在交付说明中声称已运行这些命令。
+当前项目已配置低侵入 ESLint 静态门禁；尚未配置 Prettier，不要在交付说明中声称已运行不存在的格式化命令。
 
 ## 命令
 
@@ -25,6 +26,7 @@
 npm run dev
 npm run dev:server
 npm run dev:local
+npm run lint
 npm run typecheck
 npm run test
 npm run build
