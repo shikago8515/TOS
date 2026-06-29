@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1 --port 5174 --strictPort",
     "dev:server": "vite --mode server --host 127.0.0.1 --port 5174 --strictPort",
     "dev:local": "vite --host 127.0.0.1 --port 5174 --strictPort",
+    "lint": "eslint \"src/**/*.{ts,vue}\" \"vite.config.ts\"",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
     "build": "vue-tsc --noEmit && vite build",
@@ -22,13 +23,21 @@
     "vue-router": "4.6.4"
   },
   "devDependencies": {
+    "@eslint/js": "9.36.0",
     "@types/node": "^22.10.4",
     "@types/nprogress": "^0.2.3",
+    "@typescript-eslint/eslint-plugin": "8.46.3",
+    "@typescript-eslint/parser": "8.46.3",
     "@vitejs/plugin-vue": "5.2.4",
+    "eslint": "9.36.0",
+    "eslint-plugin-vue": "10.5.1",
+    "globals": "16.3.0",
     "sass": "^1.99.0",
     "typescript": "5.9.3",
+    "typescript-eslint": "8.46.3",
     "vite": "6.4.2",
     "vitest": "^3.2.4",
+    "vue-eslint-parser": "10.2.0",
     "vue-tsc": "2.2.12"
   }
 }

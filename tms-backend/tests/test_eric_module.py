@@ -223,6 +223,27 @@ class EricModuleYticSourceTests(unittest.TestCase):
 
         self.assertEqual([row[:3] for row in rows], [list(key) for key in ytic_order])
 
+    def test_build_size_check_rows_uses_check_scope_when_order_is_provided(self):
+        final_map = {
+            ("0902791698", "KY5192", "A/XS"): 238,
+            ("0902788658", "KY5192", "A/XS"): 160,
+            ("0902830623", "KY5193", "A/2XS"): 57,
+        }
+        ytic_map = {
+            ("0902810812", "KY5192", "A/XS"): 224,
+            ("0902791698", "KY5192", "A/XS"): 238,
+            ("0902788658", "KY5192", "A/XS"): 160,
+        }
+        check_order = [
+            ("0902810812", "KY5192", "A/XS"),
+            ("0902791698", "KY5192", "A/XS"),
+            ("0902788658", "KY5192", "A/XS"),
+        ]
+
+        rows = self.module.build_size_check_rows(final_map, ytic_map, check_order)
+
+        self.assertEqual([row[:3] for row in rows], [list(key) for key in check_order])
+
     def test_normalize_ship_mode_matches_ytic_destination_rules(self):
         self.assertEqual(self.module.normalize_ship_mode("By Sea"), "Ocean")
         self.assertEqual(self.module.normalize_ship_mode("By Courier"), "Air Express")
@@ -380,8 +401,8 @@ class EricModuleYticSourceTests(unittest.TestCase):
                     [
                         "Size_Check",
                         "Final_Data",
-                        "YTIC_Destination_Extract",
-                        "YTIC_SP_Extract",
+                        "Destination1Extract",
+                        "SP_Extract",
                         "PO_Text_Compare",
                     ],
                 )
@@ -393,29 +414,29 @@ class EricModuleYticSourceTests(unittest.TestCase):
                             "PO Number",
                             "Article Number",
                             "Size",
+                            "PO Quantity",
                             "Final Quantity",
-                            "YTIC Quantity",
-                            "MARGIN",
+                            "margin",
                         ),
-                        ("0902792931", "LI2854", "XS", 32, 32, "=D2-E2"),
+                        ("0902792931", "LI2854", "XS", 32, 32, "=E2-D2"),
                     ],
                 )
                 self.assertNotEqual(wb["Size_Check"]["F1"].fill.fgColor.rgb, "FFFFFF00")
                 self.assertNotEqual(wb["Size_Check"]["F2"].fill.fgColor.rgb, "FFFFFF00")
-                self.assertEqual(wb["YTIC_Destination_Extract"]["I2"].value, "=H2-G2")
-                self.assertEqual(wb["YTIC_Destination_Extract"]["I3"].value, "=H3-G3")
-                self.assertIs(wb["YTIC_Destination_Extract"]["O2"].value, True)
-                self.assertIs(wb["YTIC_Destination_Extract"]["O3"].value, False)
-                self.assertEqual(wb["YTIC_SP_Extract"]["J3"].value, "=I3-I4")
-                self.assertIsNone(wb["YTIC_SP_Extract"]["J4"].value)
-                sp_sheet = wb["YTIC_SP_Extract"]
+                self.assertEqual(wb["Destination1Extract"]["I2"].value, "=H2-G2")
+                self.assertEqual(wb["Destination1Extract"]["I3"].value, "=H3-G3")
+                self.assertIs(wb["Destination1Extract"]["O2"].value, True)
+                self.assertIs(wb["Destination1Extract"]["O3"].value, False)
+                self.assertEqual(wb["SP_Extract"]["J3"].value, "=I3-I4")
+                self.assertIsNone(wb["SP_Extract"]["J4"].value)
+                sp_sheet = wb["SP_Extract"]
                 highlighted_fill = "FFEBF1DE"
                 for cell_address in ("A2", "L2", "O2", "A3", "L3", "O3"):
                     self.assertEqual(sp_sheet[cell_address].fill.fgColor.rgb, highlighted_fill)
                 for cell_address in ("A4", "L4", "O4"):
                     self.assertNotEqual(sp_sheet[cell_address].fill.fgColor.rgb, highlighted_fill)
                 self.assertNotEqual(
-                    wb["YTIC_Destination_Extract"]["A2"].fill.fgColor.rgb,
+                    wb["Destination1Extract"]["A2"].fill.fgColor.rgb,
                     highlighted_fill,
                 )
                 rows = list(wb["PO_Text_Compare"].iter_rows(values_only=True))

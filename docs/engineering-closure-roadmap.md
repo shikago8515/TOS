@@ -8,7 +8,8 @@
 - 第一阶段入口一致性已收口：`/web-automation` 作为真实模块入口接入模块目录、侧边栏、首页快捷入口和 Vue 页面组件。
 - Jason / 发票 PDF 重排序已经完成前端源码化：真实 Vue 页面、typed API/model 层和 source guard 测试替代了 raw HTML + `new Function` 包装。
 - Jason 已完成 canonical 前后端命名：`/#/jason/pdf-reorder` 和 `/api/jason/pdf-reorder/*` 是当前主入口；`it-invoice-pdf-reorder` 是历史兼容技术标识，只作为旧路由和旧 API alias 保留。
-- Jason 后端 response schema 已先行补齐；`release-updates`、`system-config` 等系统接口仍需要继续 schema 化并纳入桌面后端契约。
+- Jason、`release-updates`、`system-config` 等接口已先行补齐 response schema，并纳入桌面后端契约测试；后续 schema 化应继续推广到高频业务接口。
+- 前端已接入低侵入 ESLint 静态门禁，`check:quick` 与 `check:frontend` 会运行 `npm run lint`；Prettier 暂未引入，避免制造全仓格式化 diff。
 - 系统设置页已接入 TOS 轻量在线安装器和完整安装包下载链路；相关 MinIO 下载接口仍属于发布敏感链路。
 - `recovered-frontend` 仍作为回退和视觉参考保留；没有移除或更改回退开关。
 
@@ -19,10 +20,10 @@
 | P0 | 前端入口一致性 | 已有页面源码必须有真实模块入口，不能落到 `RoutePlaceholder` | 模块目录、路由和首页入口一致；前端测试覆盖 `/web-automation` 主入口 |
 | P1 | Jason / 发票 PDF 重排序源码化 | 将 raw HTML + `new Function` 包装迁移为 Vue 组件 | 已完成；页面状态、上传、预览、处理、下载流程与当前行为一致 |
 | P1 | Jason 前后端 canonical 命名 | 新增 `/#/jason/pdf-reorder` 和 `/api/jason/pdf-reorder/*`，旧入口保留 alias | 已完成；新旧路由/API 均有契约测试；前端只调用 canonical API；旧下载 URL 继续可用 |
-| P1 | 后端 API schema 化 | 为高频业务接口逐步补 typed request/response models | Jason 已完成；下一批优先收口 `release-updates`、`system-config` 和桌面后端契约 |
+| P1 | 后端 API schema 化 | 为高频业务接口逐步补 typed request/response models | Jason、`release-updates`、`system-config` 已完成；下一批优先收口 Jessca、Jane、Eric、Draft/Packing、Finance |
 | P2 | 安全硬化 | 收紧桌面场景下的 CORS、外链打开和本地 executor token 管理 | Electron 外链使用 allowlist；CORS 使用本地 allowlist；executor token 从本机配置或安全存储读取；敏感配置不进入 Git 或发行包 |
 | P2 | 发布验收自动化 | 补齐浏览器 smoke、Electron 启动和外部二进制供应链验证 | 发布前验证脚本能发现缺失外部资源、前端入口异常和关键页面加载失败 |
-| P2 | 前端静态门禁 | 评估并引入 ESLint/Prettier 或等价规则 | 与现有 Vue/TypeScript 风格兼容；CI 使用真实脚本，不声称运行不存在命令 |
+| P2 | 前端静态门禁 | 已接入低侵入 ESLint；Prettier 暂缓 | `npm run lint` 已纳入 `check:quick` 和 `check:frontend`；后续逐步收紧自动化响应类型相关规则 |
 
 ## 执行边界
 

@@ -1,5 +1,85 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.28-added-automation-run-archive-center",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "added",
+    "pageName": "自动化执行档案",
+    "pagePath": "/automation-runs",
+    "title": "新增自动化执行档案",
+    "description": "新增统一的自动化执行档案页面和页面内执行记录抽屉，可查看执行批次、状态、失败说明，并下载上传文件、结果 Excel、结果 JSON 等归档文件。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-added-automation-template-center",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "added",
+    "pageName": "Excel 模板中心",
+    "pagePath": "/automation-templates",
+    "title": "新增自动化模板管理",
+    "description": "新增 Excel 模板中心，可集中上传、编辑、停用和下载各自动化页面使用的模板文件，页面下载入口会同步使用最新模板。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-improved-automation-template-selection-flow",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "improved",
+    "pageName": "Excel 模板中心",
+    "pagePath": "/automation-templates",
+    "title": "优化模板选择后再操作",
+    "description": "Excel 模板中心改为先点击模板左侧小圆点选中模板，再在顶部执行替换文件、保存名称、下载、停用或启用，减少重复按钮和误操作。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-improved-app-alert-confirm-dialog",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "improved",
+    "pageName": "通用弹窗",
+    "pagePath": "/automation-templates",
+    "title": "新增可取消确认弹窗",
+    "description": "通用提示弹窗支持取消和确认按钮，模板停用等危险操作可先确认再执行，不再依赖浏览器原生确认框。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-fixed-ticket-owner-helper-version-fallback",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "fixed",
+    "pageName": "统计 ticket 归属自动化",
+    "pagePath": "/web-automation/scenarios/ticket-owner-statistics",
+    "title": "修复小助手版本误判",
+    "description": "统计 ticket 归属自动化在 Microsoft 执行器 health 未返回版本字段时，会使用本机小助手启动器版本兜底判断，避免误报小助手版本无法识别。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-improved-tc-inv-batch-loop",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "improved",
+    "pageName": "TC INV 自动化",
+    "pagePath": "/web-automation/scenarios/tc-inv-automation",
+    "title": "优化多张 Invoice 批量循环",
+    "description": "TC INV 自动化会按 Excel 中识别到的 Invoice# 顺序循环处理；已处于 Preview 的发票直接记录完成并继续下一张，查不到的发票记录失败后继续后续发票。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-fixed-tc-inv-reason-popup-and-no-result",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "fixed",
+    "pageName": "TC INV 自动化",
+    "pagePath": "/web-automation/scenarios/tc-inv-automation",
+    "title": "修复原因弹窗和无结果中断",
+    "description": "修复选择 ZADD / ZDOC 后 Adjustment Reason 弹窗反复停留、已进入 Preview 后循环中断、以及 Invoice 搜索无结果导致整批失败的问题。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.28-fixed-automation-runs-database-message",
+    "version": "0.9.8-beta.3.28",
+    "releaseDate": "2026-06-26",
+    "category": "fixed",
+    "pageName": "自动化执行档案",
+    "pagePath": "/automation-runs",
+    "title": "优化执行记录读取失败提示",
+    "description": "自动化执行记录接口在远程 MySQL 暂时不可用或连接被服务器断开时，会返回可读的中文诊断提示，避免页面只显示底层数据库异常。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.28-fixed-automation-template-download-error-dialog",
     "version": "0.9.8-beta.3.28",
     "releaseDate": "2026-06-26",

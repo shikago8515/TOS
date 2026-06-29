@@ -93,7 +93,7 @@ YTIC_SP_HEADERS = [
     "SIZE RANGE",
     "UOM",
 ]
-# Eric 要求这些国家在 YTIC_SP_Extract 中整行标浅绿色，便于人工核对。
+# Eric 要求这些国家在 SP_Extract 中整行标浅绿色，便于人工核对。
 ERIC_SP_COUNTRY_HIGHLIGHT_COLOR = "FFEBF1DE"
 ERIC_SP_COUNTRY_HIGHLIGHT_DESTINATIONS = {
     "GERMANY",
@@ -992,11 +992,14 @@ class EricModule:
         all_keys = set(final_quantity_map) | set(ytic_quantity_map)
         ordered_keys: List[QuantityKey] = []
         seen_keys = set()
-        for key in preferred_order or []:
-            if key in all_keys and key not in seen_keys:
-                ordered_keys.append(key)
-                seen_keys.add(key)
-        ordered_keys.extend(sorted(all_keys - seen_keys))
+        if preferred_order is not None:
+            # reconciliation 主表以 Check Excel 的尺寸行作为范围，Final_Data 独有项留给 PO 诊断表。
+            for key in preferred_order:
+                if key in all_keys and key not in seen_keys:
+                    ordered_keys.append(key)
+                    seen_keys.add(key)
+        else:
+            ordered_keys.extend(sorted(all_keys))
 
         for key in ordered_keys:
             final_qty = final_quantity_map.get(key)
@@ -1200,16 +1203,16 @@ class EricModule:
                 row[0],
                 row[1],
                 row[2],
-                row[3],
                 row[4],
-                f"=D{row_index}-E{row_index}",
+                row[3],
+                f"=E{row_index}-D{row_index}",
             ]
             for row_index, row in enumerate(size_check_rows, start=2)
         ]
         self.write_table_sheet(
             wb,
             "Size_Check",
-            ["PO Number", "Article Number", "Size", "Final Quantity", "YTIC Quantity", "MARGIN"],
+            ["PO Number", "Article Number", "Size", "PO Quantity", "Final Quantity", "margin"],
             size_check_export_rows,
         )
         self.write_table_sheet(
@@ -1256,7 +1259,7 @@ class EricModule:
             ytic_destination_rows.append(export_row)
         self.write_table_sheet(
             wb,
-            "YTIC_Destination_Extract",
+            "Destination1Extract",
             ytic_data["destination_headers"],
             ytic_destination_rows,
         )
@@ -1269,7 +1272,7 @@ class EricModule:
             ytic_sp_rows.append(export_row)
         self.write_table_sheet(
             wb,
-            "YTIC_SP_Extract",
+            "SP_Extract",
             ytic_data["sp_headers"],
             ytic_sp_rows,
             row_fill_resolver=self.build_ytic_sp_row_fill_resolver(ytic_data["sp_headers"]),
@@ -1313,7 +1316,7 @@ class EricModule:
                 size_check_rows = self.build_size_check_rows(
                     final_data["quantity_map"],
                     ytic_data["quantity_map"],
-                    ytic_data.get("quantity_order", []) + final_data.get("quantity_order", []),
+                    ytic_data.get("quantity_order", []),
                 )
                 po_check_rows = self.build_po_text_compare_rows(final_data, ytic_data)
 
