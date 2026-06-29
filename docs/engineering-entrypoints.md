@@ -22,14 +22,25 @@
 | `npm run server:package:dry-run` | 服务器包计划检查 | 校验版本、更新内容和包清单，不生成正式包 |
 | `npm run server:package` | 服务器更新包生成 | 校验 clean worktree，构建服务器前端，生成 `release/server/tos-server-update-*.tar.gz`；默认由服务器 Gitea 部署脚本调用，本机手动运行只用于备用上传流程 |
 
+## 验证分层
+
+日常开发按风险选择最小真实检查，避免把 `npm run check:quick` 变成所有普通改动的默认成本：
+
+- 前端 UI、文案或局部路由小改：运行 `cd tms-frontend && npm run lint`、`npm run typecheck` 和相关 `vitest`；需要确认构建产物时再运行 `npm run build`。
+- 后端单模块小改：运行对应 `python -m unittest tests.test_xxx -v`、class 或 method；涉及导入边界时再补 `python -m compileall .`。
+- 公共工具、前后端契约、版本发布、CI/CD、服务器部署、Electron 打包、合并 `main` 或推送 Gitea 主线前：运行 `npm run check:quick`。
+- 正式大版本、Windows 打包发布、自动更新或安装器链路：运行 `npm run check` 或 `AGENTS.md` 要求的发布专项验证。
+- `npm run check:quick` 若超过 12-15 分钟，应定位慢测试或重复覆盖，不直接移除安全、契约、发布、部署关键测试。
+
 ## 开发入口
 
-日常前端开发默认使用本地后端模式：`npm run dev:frontend` 必须连接 `http://127.0.0.1:8000`，不得读取 `tms-frontend/.env.server`。远程服务器联调必须显式使用 `npm run dev:frontend:server`，该模式才会读取 `tms-frontend/.env.server` 的公开 `VITE_BACKEND_URL`；该文件不保存密钥或内部凭据。`dev:frontend`、`dev:frontend:server` 和 `dev:frontend:local` 都占用 `http://127.0.0.1:5174`，同一时间只能运行一种模式；切换 server/local 前先停止旧 Vite 进程。
+日常前端开发默认使用本地后端模式：`npm run dev:frontend` 必须连接 `http://127.0.0.1:8000`，不得读取 `tms-frontend/.env.server`。远程服务器联调必须显式使用 `npm run dev:frontend:server`，该模式才会读取 `tms-frontend/.env.server` 的公开 `VITE_BACKEND_URL`；Hybrid 联调必须显式使用 `npm run dev:frontend:hybrid`，用于“服务器共享数据接口 + 本地执行接口”的混合场景，具体分流规则见 `docs/development-hybrid-backend.md`。这些模式都占用 `http://127.0.0.1:5174`，同一时间只能运行一种模式；切换模式前先停止旧 Vite 进程。
 
 | 命令 | 等价子项目命令 |
 | --- | --- |
 | `npm run dev:frontend` | `node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev`，默认本地后端模式 |
 | `npm run dev:frontend:server` | `node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev:server`，显式服务器联调模式 |
+| `npm run dev:frontend:hybrid` | `node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev:hybrid`，显式 Hybrid 联调模式 |
 | `npm run dev:frontend:local` | `node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev:local`，显式本地后端模式 |
 | `npm run preview:frontend` | `node scripts/engineering/run-npm.mjs --prefix tms-frontend run preview` |
 | `npm run dev:electron` | `node scripts/engineering/run-npm.mjs --prefix tms-electron-app run dev` |
@@ -38,7 +49,7 @@
 
 1. `Invoke-RestMethod http://127.0.0.1:8000/` 能返回当前 `app-version.json` 版本。
 2. `npm run check:backend-version` 通过。
-3. Vite 实际输出的 `import.meta.env` 不包含服务器 `VITE_BACKEND_URL`，除非正在显式使用 `dev:frontend:server`。
+3. Vite 实际输出的 `import.meta.env` 是否符合当前启动模式；只有 `dev:frontend:server` 和 `dev:frontend:hybrid` 会读取服务器后端相关公开配置。
 4. `netstat -ano | Select-String -Pattern ':5174|:8000'` 显示当前本地前后端进程符合预期。
 
 ## 边界

@@ -66,8 +66,9 @@
 10. 当前前端已配置低侵入 ESLint 静态门禁，命令以 `tms-frontend/package.json` 为准，当前有 `npm run lint`、`npm run typecheck`、`npm run test` 和 `npm run build`；尚未配置 Prettier，不要在规则或报告中声称已经运行不存在的格式化命令。
 11. 本地开发默认前端入口 `npm run dev:frontend` 必须连接本机后端 `http://127.0.0.1:8000`；不得让默认 `dev` 脚本加载 `--mode server` 或 `tms-frontend/.env.server`。
 12. 只有显式运行 `npm run dev:frontend:server` 时，才允许读取 `tms-frontend/.env.server` 中的公开 `VITE_BACKEND_URL` 连接服务器后端；切换 local/server 模式前必须停止旧的 `5174` Vite 进程。
-13. 前端页面出现“无法连接后端服务”时，先检查 Vite 实际注入的 `import.meta.env`、当前 `5174` 前端启动模式和 `npm run check:backend-version`，不得直接判断为业务模块处理失败。
-14. 运行 `npm run version:bump`、切换分支、拉取同事更新或修改 `tms-backend/app_version.py` 后，先运行 `npm run dev:backend:restart` 和 `npm run check:backend-version`，再刷新本地 `5174` 前端页面，避免旧 `8000` 后端进程继续返回上一版本。
+13. 只有显式运行 `npm run dev:frontend:hybrid` 时，才使用“服务器共享数据接口 + 本地执行接口”的混合联调模式；入口和分流规则以 `docs/development-hybrid-backend.md` 为准。
+14. 前端页面出现“无法连接后端服务”时，先检查 Vite 实际注入的 `import.meta.env`、当前 `5174` 前端启动模式和 `npm run check:backend-version`，不得直接判断为业务模块处理失败。
+15. 运行 `npm run version:bump`、切换分支、拉取同事更新或修改 `tms-backend/app_version.py` 后，先运行 `npm run dev:backend:restart` 和 `npm run check:backend-version`，再刷新本地 `5174` 前端页面，避免旧 `8000` 后端进程继续返回上一版本。
 
 ## 浏览器自动化模块边界
 
@@ -196,6 +197,16 @@ npm run server:package
 ```
 
 `npm run check:quick` 运行工程脚本测试、前端 lint/typecheck/test、后端 unittest 和 Electron script tests；`npm run check` 运行工程脚本测试、完整前端、完整后端和 Electron 脚本检查。根目录入口不运行 `npm run pack`、`npm run build:win` 或发布清单写入命令。
+
+### 日常开发验证分层
+
+日常开发验证按风险分层选择，不把 `npm run check:quick` 作为所有普通改动的默认门禁：
+
+1. 小范围前端 UI、文案或局部路由改动，优先运行 `cd tms-frontend && npm run lint`、`npm run typecheck` 和相关 `vitest`；必要时再补 `npm run build`。
+2. 小范围后端单模块改动，优先运行对应 `python -m unittest tests.test_xxx -v`、相关 class 或相关 method；涉及语法或导入边界时再补 `python -m compileall .`。
+3. 涉及公共工具、前后端契约、版本发布、CI/CD、服务器部署、Electron 打包、合并 `main` 或推送 Gitea 主线前，必须运行 `npm run check:quick`。
+4. 正式大版本、Windows 桌面打包发布、自动更新或安装器链路改动，按发布敏感规则运行 `npm run check` 或发布专项验证。
+5. 若 `npm run check:quick` 超过 12-15 分钟，应先定位慢测试和重复覆盖，不得简单删除安全、契约、发布或部署关键测试。
 
 Gitea 检查环境通过 `npm run ci:install` 安装依赖，并用 `PYTHON=python3 npm run check` 做远端完整检查。远端检查不得顺手加入 `pack`、`build:win`、发布清单写入、上传或正式发布步骤；历史旧远端工作流不作为当前发布路径。
 
