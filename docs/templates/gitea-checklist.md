@@ -18,7 +18,7 @@ git rebase gitea/main
 
 ## 提交前检查
 
-文档、规则或测试清理默认不修改 `releaseNotes.json`，也不运行 `version:bump`；用户可见版本说明由 `semantic-release` 根据 Conventional Commits 在 GitCode `main` 发布链路生成，服务器部署默认以 Gitea `main` 为准。
+文档、规则或测试清理默认不修改 `releaseNotes.json`，也不运行 `version:bump`；用户可见版本说明由 `semantic-release` 根据 Conventional Commits 在 Gitea `main` 发布链路生成，服务器部署默认以 Gitea `main` 为准。
 
 ```powershell
 git status --short --branch
@@ -64,4 +64,4 @@ git push -u gitea codex/<topic>
 - 服务器 `~/TOS-source` 可 `git pull --ff-only origin main`：
 - 服务器 `scripts/server/deploy-gitea-main.sh` 已执行：
 - 后端版本和前端 HTTP 200 已验证：
-- 如需同步 GitCode/GitHub，已按对应远端规则执行：
+- 如需同步其他历史远端，已按对应远端规则执行：

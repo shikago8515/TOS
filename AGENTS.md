@@ -20,7 +20,7 @@
 - Electron 打包默认使用 `tms-frontend/dist`；`TOS_FRONTEND_SOURCE=recovered` 只用于紧急回退。
 - 仓库根目录 `package.json` 提供工程入口 scripts，用于编排前端、后端和 Electron 子项目的现有检查命令。
 - Gitea `main` 是当前服务器部署主线；本地改完后优先推送并合并到 Gitea `main`。
-- GitCode 远端检查位于 `.gitcode/workflows/tos-check.yml`，默认对 `main`、`codex/**` 分支 push 和面向 `main` 的合并请求运行完整 `npm run check`；除非用户明确要求同步 GitCode，否则服务器部署不再以 GitCode 为主路径。
+- Gitea 是当前唯一主线远端；服务器部署、远端检查和自动版本发布都以 Gitea `main` 为准。历史旧远端工作流仅保留为旧流程参考，不作为当前检查或发布路径。
 - 完整 TOS-AI 工作流位于 `docs/tos-ai-workflow.md`，覆盖 Gitea 同步、分支开发、自动版本、更新内容、CI、服务器发布和回滚。
 
 ## 默认探索边界
@@ -147,10 +147,11 @@
 ## 版本更新记录边界
 
 1. `/release-updates` 页面从后端 `/api/release-updates` 读取记录，后端不可用时使用 `tms-frontend/src/shared/version/releaseHistory.json` 作为本地 fallback。
-2. 服务器 MySQL `release_update_records` 是版本更新记录主源；本地 `releaseHistory.json` 和后端默认 seed 是可再生成缓存，使用 `npm run release:updates:pull` 从服务器拉取合并。
-3. 写入版本更新记录默认通过服务器 `/api/release-updates`，使用 `npm run release:updates:push:dry-run` 预览、`npm run release:updates:push` 写入；禁止提交数据库账号、写入 token 或连接串。
-4. 后端默认 seed 位于 `tms-backend/data/release_updates_seed.json`，必须与 `releaseHistory.json` 保持同步；新增历史条目时运行相关一致性测试。
-5. 服务器发布包会生成 `releaseUpdateRecord` 并在部署脚本中同步到后端记录接口；修改该链路时必须同时核对 `scripts/engineering/package-server-update.mjs`、`scripts/server/apply-server-update.sh` 和相关测试。
+2. 版本发布事实以 `semantic-release` 生成的 Git tag、`tms-frontend/src/shared/version/releaseManifest.json` 和服务器包 `deploy/manifest.json` 为准；本地 Git hook 记录只作为辅助，不作为正式发布事实来源。
+3. 服务器 MySQL `release_update_records` 是版本更新页面查询主源；本地 `releaseHistory.json` 和后端默认 seed 是可再生成缓存，使用 `npm run release:updates:pull` 从服务器拉取合并。
+4. 写入版本更新记录默认通过服务器 `/api/release-updates`，使用 `npm run release:updates:push:dry-run` 预览、`npm run release:updates:push` 写入；禁止提交数据库账号、写入 token 或连接串。
+5. 后端默认 seed 位于 `tms-backend/data/release_updates_seed.json`，必须与 `releaseHistory.json` 保持同步；新增历史条目时运行相关一致性测试。
+6. 服务器发布包优先使用 release manifest 生成 `releaseUpdateRecord` 并在部署脚本中同步到后端记录接口；修改该链路时必须同时核对 `scripts/engineering/package-server-update.mjs`、`scripts/server/apply-server-update.sh` 和相关测试。
 
 ## Electron、自动化和发布规则
 
@@ -160,7 +161,7 @@
 4. 正式 Windows 本地发行入口是 `cd tms-electron-app && npm run build:win`；`npm run pack` 不是正式发行入口。
 5. 修改 `electron-builder`、`backend-runtime`、`extraResources`、`afterPack`、更新清单、TOS 桌面安装器脚本或发行校验脚本时，必须成套运行 `verify-renderer-package` 和 `verify-release-package`。
 6. `app.asar` 必须保持瘦身校验，不得包含 `backend-runtime/`、`automation-apps/`、`automation-launcher/`、`browser-plugins/`、`external-apps/`、旧 `dist*` 或嵌套 `app.asar`。
-7. 本地发行产物默认只保留在 `tms-electron-app/dist`，不上传 GitCode/GitHub Release，除非用户明确要求。
+7. 本地发行产物默认只保留在 `tms-electron-app/dist`，不上传 Gitea/GitHub Release，除非用户明确要求。
 8. 发行完成后报告 installer、免安装 zip、`app.asar`、`backend-runtime`、`external-apps` 的实际大小。
 9. `backend-runtime` 依赖瘦身是独立优化项；不要在普通打包修复里顺手移除 `torch`、`cv2`、`pyarrow`、`scipy` 等大依赖。
 10. `automation-apps/`、`automation-launcher/`、`browser-plugins/`、`external-apps/` 是独立运行边界。修改时先读对应 README、registry 和启动脚本。
@@ -196,11 +197,11 @@ npm run server:package
 
 `npm run check:quick` 运行工程脚本测试、前端 lint/typecheck/test、后端 unittest 和 Electron script tests；`npm run check` 运行工程脚本测试、完整前端、完整后端和 Electron 脚本检查。根目录入口不运行 `npm run pack`、`npm run build:win` 或发布清单写入命令。
 
-GitCode CI 在 runner 内下载 Node.js 22.11.0，通过 `npm run ci:install` 安装依赖，并用 `PYTHON=python3 npm run check` 做远端完整检查。修改 `.gitcode/workflows/tos-check.yml` 时不得顺手加入 `pack`、`build:win`、发布清单写入、上传或正式发布步骤。
+Gitea 检查环境通过 `npm run ci:install` 安装依赖，并用 `PYTHON=python3 npm run check` 做远端完整检查。远端检查不得顺手加入 `pack`、`build:win`、发布清单写入、上传或正式发布步骤；历史旧远端工作流不作为当前发布路径。
 
-用户可见改动默认由 `semantic-release` 根据 Conventional Commits 自动判断版本并维护 `tms-frontend/src/shared/version/releaseNotes.json`。普通功能、修复和文档清理不要手改 `releaseNotes.json` 或运行 `version:bump`；只有用户明确指定本地版本时才使用 `npm run version:set -- <version>`。
+用户可见改动默认由 `semantic-release` 根据 Conventional Commits 自动判断版本，并维护 `tms-frontend/src/shared/version/releaseNotes.json` 与 `tms-frontend/src/shared/version/releaseManifest.json`。普通功能、修复和文档清理不要手改 `releaseNotes.json` 或运行 `version:bump`；只有用户明确指定本地版本时才使用 `npm run version:set -- <version>`。
 `releaseNotes.json` 只描述当前版本变更；自动发布会重写 `added`、`improved`、`fixed` 数组。若确实手工指定版本，必须确认 `releaseNotes.json.version` 与 `app-version.json` 一致，并移除上一版本遗留条目。
-`/release-updates` 的内置历史时间线由 `tms-frontend/src/shared/version/releaseHistory.json` 和后端默认 seed 同步维护；新增历史条目时必须用测试校验前后端内容一致。
+`releaseManifest.json` 是当前版本发布档案，包含版本、tag、commit、通道、发布日期、当前 release notes 和构建产物占位；服务器包存在该文件时优先用它生成部署记录。`/release-updates` 的内置历史时间线由 `tms-frontend/src/shared/version/releaseHistory.json` 和后端默认 seed 同步维护；新增历史条目时必须用测试校验前后端内容一致。
 
 ### 前端
 
@@ -247,7 +248,7 @@ node scripts/verify-release-package.js
 
 ## Git 规则
 
-1. 默认从 `gitea/main` 更新主线，除非用户明确要求使用 `gitcode/main` 或 `origin/main`。
+1. 默认从 `gitea/main` 更新主线，除非用户明确要求处理历史远端，否则不以其他远端作为主线。
 2. 新任务先执行 `git fetch gitea main --prune`，再从最新 `gitea/main` 创建 `codex/<topic>` 分支；继续已有分支时，在工作区 clean 的前提下 `git rebase gitea/main`。
 3. 新功能或项目规则改动使用 `codex/` 前缀分支，例如 `codex/update-tos-agents-rules`。
 4. 提交信息使用 `类型: 描述`，例如 `docs: 添加 TOS AI 协作规则`。

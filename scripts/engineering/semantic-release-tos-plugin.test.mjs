@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 
 import {
-  buildGitCodeReleaseRequest,
+  buildGiteaReleaseRequest,
   buildTosReleaseNotes,
   prepare,
   publish,
@@ -14,6 +14,7 @@ import {
 const nextRelease = {
   version: '0.9.8-beta.3.29',
   gitTag: 'v0.9.8-beta.3.29',
+  gitHead: 'abc123semanticrelease',
   notes: '## 0.9.8-beta.3.29\n\n* feat: 添加自动发布\n',
 }
 
@@ -45,7 +46,7 @@ test('prepare syncs TOS version files and current release notes', async () => {
 
   await prepare(
     { repoRoot: root, releaseDate: '2026-06-22' },
-    { nextRelease, commits, logger: silentLogger },
+    { nextRelease, commits, branch: { channel: 'beta.3' }, logger: silentLogger },
   )
 
   assert.equal(
@@ -81,25 +82,40 @@ test('prepare syncs TOS version files and current release notes', async () => {
   assert.deepEqual(releaseNotes.added, ['添加自动发布链路'])
   assert.deepEqual(releaseNotes.fixed, ['修复版本记录读取'])
   assert.deepEqual(releaseNotes.improved, ['优化发布包生成'])
+  const releaseManifest = JSON.parse(
+    await readFile(join(root, 'tms-frontend', 'src', 'shared', 'version', 'releaseManifest.json'), 'utf8'),
+  )
+  assert.equal(releaseManifest.version, nextRelease.version)
+  assert.equal(releaseManifest.tag, nextRelease.gitTag)
+  assert.equal(releaseManifest.gitSha, 'abc123semanticrelease')
+  assert.equal(releaseManifest.releaseDate, '2026-06-22')
+  assert.equal(releaseManifest.channel, 'beta.3')
+  assert.equal(releaseManifest.releaseNotes.version, nextRelease.version)
+  assert.deepEqual(releaseManifest.artifacts, {
+    serverPackage: null,
+    desktopInstaller: null,
+    desktopFullInstaller: null,
+    automationHelper: null,
+  })
 })
 
-test('builds GitCode release request without leaking token into the body', () => {
-  const request = buildGitCodeReleaseRequest({
-    apiBaseUrl: 'https://api.gitcode.com/api/v5',
-    repository: 'shikago8515/TOS',
+test('builds Gitea release request without leaking token into the body', () => {
+  const request = buildGiteaReleaseRequest({
+    apiBaseUrl: 'http://172.16.48.208:3001/api/v1',
+    repository: 'luenthai-ai/TOS',
     token: 'secret-token',
     nextRelease,
   })
 
-  assert.equal(request.url, 'https://api.gitcode.com/api/v5/repos/shikago8515/TOS/releases')
-  assert.equal(request.headers.Authorization, 'Bearer secret-token')
+  assert.equal(request.url, 'http://172.16.48.208:3001/api/v1/repos/luenthai-ai/TOS/releases')
+  assert.equal(request.headers.Authorization, 'token secret-token')
   assert.equal(request.body.tag_name, nextRelease.gitTag)
   assert.equal(request.body.name, nextRelease.gitTag)
   assert.equal(request.body.body, nextRelease.notes)
   assert.equal(JSON.stringify(request.body).includes('secret-token'), false)
 })
 
-test('publish posts a GitCode release when token and repository are configured', async () => {
+test('publish posts a Gitea release when token and repository are configured', async () => {
   const requests = []
   const fetchImpl = async (url, options) => {
     requests.push({ url, options })
@@ -112,15 +128,15 @@ test('publish posts a GitCode release when token and repository are configured',
 
   await publish(
     {
-      gitCodeToken: 'secret-token',
-      repository: 'shikago8515/TOS',
+      giteaToken: 'secret-token',
+      repository: 'luenthai-ai/TOS',
       fetchImpl,
     },
     { nextRelease, logger: silentLogger },
   )
 
   assert.equal(requests.length, 1)
-  assert.equal(requests[0].url, 'https://api.gitcode.com/api/v5/repos/shikago8515/TOS/releases')
+  assert.equal(requests[0].url, 'http://172.16.48.208:3001/api/v1/repos/luenthai-ai/TOS/releases')
   assert.equal(JSON.parse(requests[0].options.body).tag_name, nextRelease.gitTag)
 })
 

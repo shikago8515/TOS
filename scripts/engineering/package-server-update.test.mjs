@@ -15,7 +15,7 @@ import {
 const execFileAsync = promisify(execFile)
 
 const gitInfo = {
-  remote: 'https://gitcode.com/shikago8515/TOS.git',
+  remote: 'http://172.16.48.208:3001/luenthai-ai/TOS.git',
   branch: 'codex/tos-ai-workflow',
   commit: '4e1c3e5b8f0d6123456789012345678901234567',
   shortSha: '4e1c3e5',
@@ -142,6 +142,48 @@ test('accepts module-scoped release notes for batched popup summaries', async ()
   })
   assert.match(plan.releaseUpdateRecord.description, /iPlex 双表核对：修复：总计行不再写公式/)
   assert.match(plan.releaseUpdateRecord.description, /Work Sales：优化：合并导出流程/)
+})
+
+test('uses the semantic-release manifest as the server release update source when present', async () => {
+  const root = await createFixture()
+  await writeJson(join(root, 'tms-frontend', 'src', 'shared', 'version', 'releaseManifest.json'), {
+    version: '0.9.8-beta.3.3',
+    tag: 'v0.9.8-beta.3.3',
+    gitSha: 'abc123semanticrelease',
+    releaseDate: '2026-06-13',
+    channel: 'beta.3',
+    releaseNotes: {
+      version: '0.9.8-beta.3.3',
+      date: '2026-06-13',
+      added: ['Add version manifest'],
+      improved: [],
+      fixed: ['Fix release record source'],
+      modules: [],
+    },
+    artifacts: {
+      serverPackage: null,
+      desktopInstaller: null,
+      desktopFullInstaller: null,
+      automationHelper: null,
+    },
+  })
+
+  const plan = await createServerPackage({
+    repoRoot: root,
+    dryRun: true,
+    gitInfo: { ...gitInfo, subject: 'fix: local deploy follow-up', author: 'Deploy Bot' },
+    now: new Date('2026-06-12T03:04:05.000Z'),
+  })
+
+  assert.equal(plan.releaseManifest.version, '0.9.8-beta.3.3')
+  assert.equal(plan.releaseUpdateRecord.recordKey, 'release-v0.9.8-beta.3.3')
+  assert.equal(plan.releaseUpdateRecord.version, '0.9.8-beta.3.3')
+  assert.equal(plan.releaseUpdateRecord.releaseDate, '2026-06-13')
+  assert.equal(plan.releaseUpdateRecord.pageName, 'Version Release')
+  assert.equal(plan.releaseUpdateRecord.title, 'Release v0.9.8-beta.3.3')
+  assert.equal(plan.releaseUpdateRecord.createdBy, 'release:semantic-release')
+  assert.match(plan.releaseUpdateRecord.description, /Add version manifest/)
+  assert.match(plan.releaseUpdateRecord.description, /abc123semanticrelease/)
 })
 
 test('dry-run reports package plan without requiring a clean worktree', async () => {

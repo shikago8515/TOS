@@ -26,7 +26,7 @@ tms-frontend/src/shared/version/releaseNotes.json
 
 ## 版本规则
 
-- 用户可见改动默认由 `semantic-release` 在 GitCode `main` push 后自动更新版本和当前版本说明；本地预演使用 `npm run release:dry-run`。
+- 用户可见改动默认由 `semantic-release` 在 Gitea `main` push 后自动更新版本和当前版本说明；本地预演使用 `npm run release:dry-run`。
 - 普通功能、修复、测试或文档清理不手改 `releaseNotes.json`，也不运行 `version:bump`。
 - 只有用户明确要求指定本地版本时运行 `npm run version:set -- <version>`。
 - `releaseNotes.json.version` 必须等于 `app-version.json.version`。

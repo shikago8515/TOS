@@ -62,7 +62,7 @@ npm run check:quick
 
 ## 4. 自动版本与更新内容
 
-用户可见改动默认使用 Conventional Commits，由 GitCode `main` push 后的 `semantic-release` 自动递增版本；开发阶段可先预演：
+用户可见改动默认使用 Conventional Commits，由 Gitea `main` push 后的 `semantic-release` 自动递增版本；开发阶段可先预演：
 
 ```powershell
 npm run release:dry-run
@@ -98,7 +98,8 @@ tms-frontend/src/shared/version/releaseNotes.json
 
 规则：
 
-- 普通用户可见改动通过 Conventional Commits 进入 `semantic-release`，由 GitCode `main` push 后自动生成版本号、`CHANGELOG.md`、Git tag 和当前版本 `releaseNotes.json`。
+- 普通用户可见改动通过 Conventional Commits 进入 `semantic-release`，由 Gitea `main` push 后自动生成版本号、`CHANGELOG.md`、Git tag 和当前版本 `releaseNotes.json`。
+- `semantic-release` 同时生成当前版本发布档案 `tms-frontend/src/shared/version/releaseManifest.json`，记录 version、tag、gitSha、releaseDate、channel、releaseNotes 和构建产物占位。
 - `feat:` 进入 `added`，`fix:` 进入 `fixed`，`perf:`、`refactor:`、`build:`、`ci:` 等进入 `improved`。
 - 文档、测试和规则清理默认不手改 `releaseNotes.json`，也不运行 `version:bump`。
 - 本地需要指定版本时使用 `npm run version:set -- <version>`；指定后必须确认 `releaseNotes.json.version` 等于 `app-version.json`，且当前版本说明不带上一版本遗留条目。
@@ -106,7 +107,7 @@ tms-frontend/src/shared/version/releaseNotes.json
 
 模板见 `docs/templates/release-notes.md`。
 
-版本更新历史以服务器 MySQL `release_update_records` 为主源，本地 `tms-frontend/src/shared/version/releaseHistory.json` 和 `tms-backend/data/release_updates_seed.json` 只是可再生成缓存。更新版本记录时使用：
+版本发布事实以 Git tag、`releaseManifest.json` 和服务器包 `deploy/manifest.json` 为准；版本更新历史页面以服务器 MySQL `release_update_records` 为查询主源，本地 `tms-frontend/src/shared/version/releaseHistory.json` 和 `tms-backend/data/release_updates_seed.json` 只是可再生成缓存。更新版本记录时使用：
 
 ```powershell
 npm run release:updates:push:dry-run
@@ -115,9 +116,9 @@ npm run release:updates:dry-run
 npm run release:updates:pull
 ```
 
-`release:updates:push` 通过服务器 `/api/release-updates` 写入记录，不直连数据库账号；`release:updates:pull` 从服务器拉取并合并更新本地缓存。同步缓存类提交如需避免 post-commit 再次写入服务器，可以临时设置 `TOS_RELEASE_UPDATES_SKIP=1`。
+`release:updates:push` 通过服务器 `/api/release-updates` 写入记录，不直连数据库账号；`release:updates:pull` 从服务器拉取并合并更新本地缓存。同步缓存类提交如需避免 post-commit 再次写入服务器，可以临时设置 `TOS_RELEASE_UPDATES_SKIP=1`。本地 commit/merge hook 只用于辅助记录或预览，不作为正式版本发布事实来源。
 
-版本号、`CHANGELOG.md`、当前版本 `releaseNotes.json` 和 Git tag 默认由 `semantic-release` 在 GitCode `main` push 后自动生成。`main` 当前继续发布 `beta.3` 预发布版本；`stable` 仅作为 semantic-release 要求的稳定 release branch，占位保持在当前基线。首次启用前需要在当前基线提交上补齐 `v0.9.8-beta.3.28` tag，避免自动发布从旧 tag 重新计算历史版本；CI 会在缺少 `stable` 分支时自动创建。
+版本号、`CHANGELOG.md`、当前版本 `releaseNotes.json`、`releaseManifest.json` 和 Git tag 默认由 `semantic-release` 在 Gitea `main` push 后自动生成。`main` 当前继续发布 `beta.3` 预发布版本；`stable` 仅作为 semantic-release 要求的稳定 release branch，占位保持在当前基线。首次启用前需要在当前基线提交上补齐 `v0.9.8-beta.3.28` tag，避免自动发布从旧 tag 重新计算历史版本；Gitea 发布环境会在缺少 `stable` 分支时自动创建。
 
 ## 5. Gitea 提交与验证门禁
 
@@ -139,9 +140,9 @@ git commit -m "类型: 描述"
 git push -u gitea codex/<topic>
 ```
 
-GitCode CI 位于 `.gitcode/workflows/tos-check.yml`，对 GitCode 的 `main`、`codex/**` 分支 push 和面向 `main` 的合并请求运行完整 `npm run check`。该链路仍用于需要同步 GitCode 或触发 semantic-release 时的远端检查；默认服务器部署不再依赖“先本机打包再上传”。
+Gitea 远端检查以 Gitea `main` 和 `codex/**` 分支为准，远端检查运行完整 `npm run check`。触发正式自动版本发布时，在 Gitea 发布环境运行 `npm run release`；默认服务器部署不再依赖“先本机打包再上传”。
 
-分支推送到 Gitea 后，合并进本地 `main`，在 `main` 上运行 `npm run check:quick`，再推送 `main` 到 Gitea。需要同步 GitCode/GitHub 时，另按对应远端要求执行。
+分支推送到 Gitea 后，合并进本地 `main`，在 `main` 上运行 `npm run check:quick`，再推送 `main` 到 Gitea。
 
 服务器正式发布前，必须满足：
 
@@ -149,7 +150,7 @@ GitCode CI 位于 `.gitcode/workflows/tos-check.yml`，对 GitCode 的 `main`、
 - 本地工作区 clean
 - 本地 commit 与准备发布的 Gitea `main` commit 一致
 
-检查清单见 `docs/templates/gitcode-checklist.md`。
+检查清单见 `docs/templates/gitea-checklist.md`。
 
 ## 6. 服务器更新包
 

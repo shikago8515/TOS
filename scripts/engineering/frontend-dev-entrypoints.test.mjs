@@ -52,6 +52,8 @@ test('engineering docs keep local frontend dev and release update sync rules cur
   assert.match(workflow, /release_update_records/)
   assert.match(workflow, /release:updates:pull/)
   assert.match(workflow, /release:updates:push:dry-run/)
+  assert.match(workflow, /Gitea `main` push/)
+  assert.doesNotMatch(workflow, /GitCode `main` push/)
 })
 
 test('engineering docs keep removed frontend routes out of current validation targets', async () => {

@@ -1,5 +1,5 @@
 module.exports = {
-  repositoryUrl: 'https://gitcode.com/shikago8515/TOS.git',
+  repositoryUrl: 'http://172.16.48.208:3001/luenthai-ai/TOS.git',
   tagFormat: 'v${version}',
   branches: [
     'stable',
@@ -42,7 +42,7 @@ module.exports = {
     [
       './scripts/engineering/semantic-release-tos-plugin.mjs',
       {
-        repository: 'shikago8515/TOS',
+        repository: 'luenthai-ai/TOS',
       },
     ],
     [
@@ -53,6 +53,7 @@ module.exports = {
           'app-version.json',
           'tms-backend/app_version.py',
           'tms-frontend/src/shared/version/appVersion.ts',
+          'tms-frontend/src/shared/version/releaseManifest.json',
           'tms-frontend/src/shared/version/releaseNotes.json',
           'tms-electron-app/package.json',
           'tms-electron-app/package-lock.json',

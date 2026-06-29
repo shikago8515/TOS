@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 基础工程入口已经存在：根目录 `npm run check:*`、GitCode CI、服务器包 dry-run、Electron 包校验脚本。
+- 基础工程入口已经存在：根目录 `npm run check:*`、Gitea 远端检查、服务器包 dry-run、Electron 包校验脚本。
 - 第一阶段入口一致性已收口：`/web-automation` 作为真实模块入口接入模块目录、侧边栏、首页快捷入口和 Vue 页面组件。
 - Jason / 发票 PDF 重排序已经完成前端源码化：真实 Vue 页面、typed API/model 层和 source guard 测试替代了 raw HTML + `new Function` 包装。
 - Jason 已完成 canonical 前后端命名：`/#/jason/pdf-reorder` 和 `/api/jason/pdf-reorder/*` 是当前主入口；`it-invoice-pdf-reorder` 是历史兼容技术标识，只作为旧路由和旧 API alias 保留。
@@ -40,4 +40,4 @@
 3. 完成 Jason canonical 路由/API 和 response schema 化，新旧路径并行验证后再推广到其他模块。
 4. 为 `release-updates` 与 `system-config` 补充 response schema，并把系统接口纳入桌面后端契约。
 5. 单独处理 Electron 外链 allowlist、CORS 本地 allowlist 和 executor token 配置化，补 secret hygiene 测试。
-6. 在发布脚本中增加可选 smoke 验证，覆盖 `/release-updates`、TOS 桌面下载入口和关键业务页面，先本地跑通，再考虑纳入 GitCode CI。
+6. 在发布脚本中增加可选 smoke 验证，覆盖 `/release-updates`、TOS 桌面下载入口和关键业务页面，先本地跑通，再考虑纳入 Gitea 远端检查。

@@ -37,11 +37,13 @@ export function buildArchiveName({ version, stamp, gitShortSha }) {
 }
 
 export async function validateReleaseMetadata(repoRoot = defaultRepoRoot) {
-  const appVersion = await readJson(resolve(repoRoot, 'app-version.json'))
+  const root = resolve(repoRoot)
+  const appVersion = await readJson(resolve(root, 'app-version.json'))
   const releaseNotes = await readJson(
-    resolve(repoRoot, 'tms-frontend', 'src', 'shared', 'version', 'releaseNotes.json'),
+    resolve(root, 'tms-frontend', 'src', 'shared', 'version', 'releaseNotes.json'),
   )
   const version = validateAppVersion(appVersion.version)
+  const releaseManifest = await readOptionalReleaseManifest(root, version)
 
   if (releaseNotes.version !== version) {
     throw new Error(
@@ -53,7 +55,7 @@ export async function validateReleaseMetadata(repoRoot = defaultRepoRoot) {
     throw new Error('releaseNotes.json must contain at least one added, improved, or fixed item')
   }
 
-  return { version, releaseNotes }
+  return { version, releaseNotes, releaseManifest }
 }
 
 export async function createServerPackage({
@@ -90,9 +92,11 @@ export async function createServerPackage({
     gitDirty: resolvedGitInfo.dirty,
     backendUrl,
     archiveName,
+    releaseManifest: releaseMetadata.releaseManifest,
     releaseUpdateRecord: buildReleaseUpdateRecord({
       version: releaseMetadata.version,
       releaseNotes: releaseMetadata.releaseNotes,
+      releaseManifest: releaseMetadata.releaseManifest,
       gitInfo: resolvedGitInfo,
       now,
     }),
@@ -211,7 +215,7 @@ async function readGitInfo(repoRoot) {
 }
 
 async function readPreferredGitRemote(repoRoot) {
-  for (const remoteName of ['gitea', 'gitcode', 'origin']) {
+  for (const remoteName of ['gitea', 'origin']) {
     const remoteUrl = await readGitValue(repoRoot, ['remote', 'get-url', remoteName]).catch(() => '')
     if (remoteUrl) {
       return remoteUrl
@@ -313,7 +317,16 @@ function formatShanghaiDate(date) {
   return `${values.year}-${values.month}-${values.day}`
 }
 
-function buildReleaseUpdateRecord({ version, releaseNotes, gitInfo, now }) {
+function buildReleaseUpdateRecord({ version, releaseNotes, releaseManifest, gitInfo, now }) {
+  if (releaseManifest) {
+    return buildManifestReleaseUpdateRecord({
+      version,
+      releaseNotes: releaseManifest.releaseNotes || releaseNotes,
+      releaseManifest,
+      now,
+    })
+  }
+
   const subject = String(gitInfo.subject || '').trim()
   const title = subject || `Server deploy ${version}`
   const releaseDate = normalizeReleaseDate(releaseNotes.date) || formatShanghaiDate(now)
@@ -330,6 +343,34 @@ function buildReleaseUpdateRecord({ version, releaseNotes, gitInfo, now }) {
       ? buildReleaseUpdateDescription({ version, releaseNotes, gitInfo, subject })
       : `由服务器部署自动记录：${version} (${gitInfo.shortSha})。`,
     createdBy: `git:${String(gitInfo.author || 'deploy').trim() || 'deploy'}`,
+  }
+}
+
+function buildManifestReleaseUpdateRecord({ version, releaseNotes, releaseManifest, now }) {
+  const tag = String(releaseManifest.tag || `v${version}`).trim()
+  const gitSha = String(releaseManifest.gitSha || '').trim()
+  const channel = String(releaseManifest.channel || '').trim()
+  const releaseDate = normalizeReleaseDate(releaseManifest.releaseDate)
+    || normalizeReleaseDate(releaseNotes?.date)
+    || formatShanghaiDate(now)
+  const noteSummary = summarizeReleaseNotes(releaseNotes || {})
+  const detailParts = [
+    `Release ${tag}`,
+    channel ? `Channel: ${channel}` : '',
+    gitSha ? `Commit: ${gitSha}` : '',
+    noteSummary ? `Release notes: ${noteSummary}` : `Version: ${version}`,
+  ].filter(Boolean)
+
+  return {
+    recordKey: `release-${tag || version}`,
+    version,
+    releaseDate,
+    category: 'improved',
+    pageName: 'Version Release',
+    pagePath: '/release-updates',
+    title: `Release ${tag || version}`.slice(0, 255),
+    description: `${detailParts.join('. ')}.`,
+    createdBy: 'release:semantic-release',
   }
 }
 
@@ -407,6 +448,38 @@ function summarizeReleaseNoteItems(items, moduleName, category) {
 
 function hasStringItems(items) {
   return Array.isArray(items) && items.some((item) => typeof item === 'string' && item.trim())
+}
+
+async function readOptionalReleaseManifest(repoRoot, version) {
+  const manifestPath = resolve(
+    repoRoot,
+    'tms-frontend',
+    'src',
+    'shared',
+    'version',
+    'releaseManifest.json',
+  )
+
+  try {
+    const manifest = await readJson(manifestPath)
+    if (!manifest || typeof manifest !== 'object') {
+      throw new Error('releaseManifest.json must contain a JSON object')
+    }
+    if (manifest.version !== version) {
+      throw new Error(`releaseManifest.json version mismatch: expected ${version}, got ${manifest.version}`)
+    }
+    if (manifest.releaseNotes?.version && manifest.releaseNotes.version !== version) {
+      throw new Error(
+        `releaseManifest.json releaseNotes version mismatch: expected ${version}, got ${manifest.releaseNotes.version}`,
+      )
+    }
+    return manifest
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return null
+    }
+    throw error
+  }
 }
 
 async function readJson(filePath) {
