@@ -13,12 +13,15 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from modules.eric_module import EricModule
+from utils.excel_upload_backup import ExcelUploadBackupContext
+from utils.file_utils import copy_upload_to_path
 
 
 router = APIRouter(prefix="/eric", tags=["Eric"])
 eric_module = EricModule()
 logger = logging.getLogger(__name__)
 PROCESSING_ERROR_MESSAGE = "处理失败，请查看诊断日志或稍后重试"
+MODULE_ID = "eric"
 
 ALLOWED_PACK_EXTENSIONS = {".xlsx", ".xlsm"}
 ALLOWED_YTIC_EXTENSIONS = {".xls", ".xlsx", ".xlsm"}
@@ -59,9 +62,28 @@ def _download_path(filename: str) -> str:
     return file_path
 
 
-def _copy_upload(upload: UploadFile, target_path: str):
-    with open(target_path, "wb") as fp:
-        shutil.copyfileobj(upload.file, fp)
+def _backup_context(
+    upload: UploadFile,
+    safe_name: str,
+    *,
+    request_id: str,
+    file_role: str,
+) -> ExcelUploadBackupContext:
+    return ExcelUploadBackupContext(
+        module_id=MODULE_ID,
+        request_id=request_id,
+        file_role=file_role,
+        original_filename=safe_name,
+        content_type=getattr(upload, "content_type", "") or "",
+    )
+
+
+def _copy_upload(
+    upload: UploadFile,
+    target_path: str,
+    backup_context: ExcelUploadBackupContext | None = None,
+) -> None:
+    copy_upload_to_path(upload, target_path, backup_context=backup_context)
 
 
 def _copy_output_to_upload_dir(output_path: str) -> str:
@@ -85,11 +107,21 @@ async def process_eric(
         ALLOWED_PACK_EXTENSIONS,
         "Pack Size breakdown 文件",
     )
-    work_dir = os.path.join(UPLOAD_DIR, f"eric_upload_{uuid4().hex}")
+    request_id = uuid4().hex
+    work_dir = os.path.join(UPLOAD_DIR, f"eric_upload_{request_id}")
     os.makedirs(work_dir, exist_ok=True)
     file_path = os.path.join(work_dir, safe_name)
     try:
-        _copy_upload(excel_file, file_path)
+        _copy_upload(
+            excel_file,
+            file_path,
+            backup_context=_backup_context(
+                excel_file,
+                safe_name,
+                request_id=request_id,
+                file_role="pack",
+            ),
+        )
 
         target_output_dir = output_dir if output_dir else UPLOAD_DIR
         result = eric_module.process_file(file_path, target_output_dir)
@@ -134,14 +166,33 @@ async def reconcile_eric(
         "YTIC check 文件",
     )
 
-    work_dir = os.path.join(UPLOAD_DIR, f"eric_reconcile_{uuid4().hex}")
+    request_id = uuid4().hex
+    work_dir = os.path.join(UPLOAD_DIR, f"eric_reconcile_{request_id}")
     os.makedirs(work_dir, exist_ok=True)
     pack_path = os.path.join(work_dir, pack_name)
     ytic_path = os.path.join(work_dir, ytic_name)
 
     try:
-        _copy_upload(pack_file, pack_path)
-        _copy_upload(ytic_file, ytic_path)
+        _copy_upload(
+            pack_file,
+            pack_path,
+            backup_context=_backup_context(
+                pack_file,
+                pack_name,
+                request_id=request_id,
+                file_role="pack",
+            ),
+        )
+        _copy_upload(
+            ytic_file,
+            ytic_path,
+            backup_context=_backup_context(
+                ytic_file,
+                ytic_name,
+                request_id=request_id,
+                file_role="ytic",
+            ),
+        )
 
         target_output_dir = output_dir if output_dir else UPLOAD_DIR
         result = eric_module.process_reconciliation(

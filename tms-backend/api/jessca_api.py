@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from modules.jessca_module import JesscaModule
+from utils.excel_upload_backup import ExcelUploadBackupContext
 from utils.file_utils import (
     copy_output_to_directory,
     copy_upload_to_path,
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_EXCEL_EXTENSIONS = {".xlsx", ".xlsm", ".xls"}
 ALLOWED_PDF_EXTENSIONS = {".pdf"}
+MODULE_ID = "jessca"
 PROCESSING_ERROR_MESSAGE = "处理失败，请查看诊断日志或稍后重试"
 
 # 临时目录
@@ -80,12 +82,44 @@ def _public_message(message: str, output_path: str, output_filename: str) -> str
     return sanitize_output_reference(message, output_path, output_filename)
 
 
-def _save_uploads(files: List[UploadFile], work_dir: str, label: str) -> List[str]:
+def _backup_context(
+    upload: UploadFile,
+    safe_name: str,
+    *,
+    request_id: str,
+    file_role: str,
+) -> ExcelUploadBackupContext:
+    return ExcelUploadBackupContext(
+        module_id=MODULE_ID,
+        request_id=request_id,
+        file_role=file_role,
+        original_filename=safe_name,
+        content_type=getattr(upload, "content_type", "") or "",
+    )
+
+
+def _save_uploads(
+    files: List[UploadFile],
+    work_dir: str,
+    label: str,
+    *,
+    request_id: str,
+    file_role: str,
+) -> List[str]:
     paths = []
     for index, upload in enumerate(files, start=1):
         safe_name = _validate_excel_filename(upload.filename, label)
         file_path = os.path.join(work_dir, f"{index}_{safe_name}")
-        copy_upload_to_path(upload, file_path)
+        copy_upload_to_path(
+            upload,
+            file_path,
+            backup_context=_backup_context(
+                upload,
+                safe_name,
+                request_id=request_id,
+                file_role=file_role,
+            ),
+        )
         paths.append(file_path)
 
     return paths
@@ -128,13 +162,29 @@ async def process_jessca(
     处理 Jessca 数据核对
     """
 
-    work_dir = os.path.join(UPLOAD_DIR, f"jessca_process_{uuid4().hex}")
+    request_id = uuid4().hex
+    work_dir = os.path.join(UPLOAD_DIR, f"jessca_process_{request_id}")
     os.makedirs(work_dir, exist_ok=True)
     try:
-        invoice_paths = _save_uploads(invoices, work_dir, "发票文件")
+        invoice_paths = _save_uploads(
+            invoices,
+            work_dir,
+            "发票文件",
+            request_id=request_id,
+            file_role="invoice",
+        )
         reference_name = _validate_excel_filename(reference_file.filename, "参考文件")
         ref_path = os.path.join(work_dir, reference_name)
-        copy_upload_to_path(reference_file, ref_path)
+        copy_upload_to_path(
+            reference_file,
+            ref_path,
+            backup_context=_backup_context(
+                reference_file,
+                reference_name,
+                request_id=request_id,
+                file_role="reference",
+            ),
+        )
         tc_uploads = _normalize_optional_uploads(tc_invoice_file)
         if not tc_uploads:
             tc_uploads = _normalize_optional_uploads(packing_file)

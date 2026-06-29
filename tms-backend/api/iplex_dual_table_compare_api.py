@@ -17,6 +17,7 @@ from modules.iplex_dual_table_compare_module import (
     IplexDualTableCompareConfig,
     IplexDualTableCompareModule,
 )
+from utils.excel_upload_backup import ExcelUploadBackupContext
 from utils.file_utils import (
     copy_output_to_directory,
     copy_upload_to_path,
@@ -32,6 +33,7 @@ iplex_dual_table_compare_module = IplexDualTableCompareModule()
 logger = logging.getLogger(__name__)
 
 ALLOWED_EXCEL_EXTENSIONS = {".xls", ".xlsx", ".xlsm"}
+MODULE_ID = "iplex-dual-table-compare"
 PROCESSING_ERROR_MESSAGE = "处理失败，请查看诊断日志或稍后重试"
 
 UPLOAD_DIR = os.path.join(
@@ -67,19 +69,45 @@ def _raise_processing_error(exc: Exception) -> NoReturn:
     raise HTTPException(status_code=500, detail=PROCESSING_ERROR_MESSAGE) from exc
 
 
+def _backup_context(
+    upload: UploadFile,
+    safe_name: str,
+    *,
+    request_id: str,
+    file_role: str,
+) -> ExcelUploadBackupContext:
+    return ExcelUploadBackupContext(
+        module_id=MODULE_ID,
+        request_id=request_id,
+        file_role=file_role,
+        original_filename=safe_name,
+        content_type=getattr(upload, "content_type", "") or "",
+    )
+
+
 @router.post("/inspect")
 async def inspect_iplex_workbook(
     excel_file: UploadFile = File(...),
     sheet_name: Optional[str] = Form(None),
     header_row: int = Form(1),
 ):
-    work_dir = os.path.join(UPLOAD_DIR, f"iplex_dual_table_inspect_{uuid4().hex}")
+    request_id = uuid4().hex
+    work_dir = os.path.join(UPLOAD_DIR, f"iplex_dual_table_inspect_{request_id}")
     os.makedirs(work_dir, exist_ok=True)
 
     try:
         excel_name = _validate_excel_filename(excel_file.filename, "Excel 文件")
         excel_path = os.path.join(work_dir, excel_name)
-        copy_upload_to_path(excel_file, excel_path)
+        copy_upload_to_path(
+            excel_file,
+            excel_path,
+            backup_context=_backup_context(
+                excel_file,
+                excel_name,
+                request_id=request_id,
+                file_role="inspect_excel",
+            ),
+        )
 
         return iplex_dual_table_compare_module.inspect_workbook(
             excel_path,
@@ -103,7 +131,8 @@ async def process_iplex_dual_table_compare(
     config_json: str = Form(...),
     output_dir: Optional[str] = Form(None),
 ):
-    work_dir = os.path.join(UPLOAD_DIR, f"iplex_dual_table_compare_{uuid4().hex}")
+    request_id = uuid4().hex
+    work_dir = os.path.join(UPLOAD_DIR, f"iplex_dual_table_compare_{request_id}")
     os.makedirs(work_dir, exist_ok=True)
 
     try:
@@ -111,8 +140,26 @@ async def process_iplex_dual_table_compare(
         lookup_name = _validate_excel_filename(lookup_file.filename, "查找表")
         main_path = os.path.join(work_dir, f"main_{main_name}")
         lookup_path = os.path.join(work_dir, f"lookup_{lookup_name}")
-        copy_upload_to_path(main_file, main_path)
-        copy_upload_to_path(lookup_file, lookup_path)
+        copy_upload_to_path(
+            main_file,
+            main_path,
+            backup_context=_backup_context(
+                main_file,
+                main_name,
+                request_id=request_id,
+                file_role="main",
+            ),
+        )
+        copy_upload_to_path(
+            lookup_file,
+            lookup_path,
+            backup_context=_backup_context(
+                lookup_file,
+                lookup_name,
+                request_id=request_id,
+                file_role="lookup",
+            ),
+        )
         config = _parse_config(config_json)
 
         result = iplex_dual_table_compare_module.process_files(

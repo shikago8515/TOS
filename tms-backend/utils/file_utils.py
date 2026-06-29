@@ -7,9 +7,16 @@ TMS 工具 - 文件工具模块
 
 import os
 import shutil
+import logging
 from typing import BinaryIO, Iterable, List, Optional, Protocol, Set
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+from utils.excel_upload_backup import ExcelUploadBackupContext, store_excel_upload_backup
+
+
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 
 class UploadFileLike(Protocol):
@@ -68,9 +75,26 @@ def resolve_download_path(root_dir: str, filename: str) -> str:
     return file_path
 
 
-def copy_upload_to_path(upload: UploadFileLike, target_path: str) -> None:
+def copy_upload_to_path(
+    upload: UploadFileLike,
+    target_path: str,
+    backup_context: ExcelUploadBackupContext | None = None,
+) -> None:
     with open(target_path, "wb") as fp:
         shutil.copyfileobj(upload.file, fp)
+    if backup_context is None:
+        return
+
+    try:
+        store_excel_upload_backup(target_path, backup_context)
+    except Exception:
+        # 备份是审计增强能力，不能阻断用户当前 Excel 处理流程。
+        logger.warning(
+            "Excel upload backup failed: module_id=%s request_id=%s file_role=%s",
+            backup_context.module_id,
+            backup_context.request_id,
+            backup_context.file_role,
+        )
 
 
 def copy_output_to_directory(output_path: str, target_dir: str) -> str:

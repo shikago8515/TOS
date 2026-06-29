@@ -24,6 +24,7 @@ storage:
       run_files: "tos-run-files"
       results: "tos-results"
       downloads: "tos-downloads"
+      upload_backups: "tos-upload-backups"
 
 downloads:
   automation_helper:
