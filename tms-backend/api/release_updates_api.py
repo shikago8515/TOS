@@ -12,13 +12,16 @@ from pydantic import BaseModel, Field
 
 from app_version import APP_VERSION
 from utils.mysql_store import (
+    get_latest_release_announcement,
     insert_release_update_record_once,
     list_release_update_records,
+    upsert_release_announcement,
     upsert_release_update_record,
 )
 
 
 router = APIRouter(prefix="/release-updates", tags=["Release Updates"])
+announcements_router = APIRouter(prefix="/release-announcements", tags=["Release Announcements"])
 
 
 class ReleaseUpdatePayload(BaseModel):
@@ -58,6 +61,44 @@ class ReleaseUpdatesResponse(BaseModel):
 class ReleaseUpdateSaveResponse(BaseModel):
     ok: bool
     record: ReleaseUpdateRecordResponse
+
+
+class ReleaseAnnouncementGroup(BaseModel):
+    title: str = Field(min_length=1, max_length=80)
+    icon: str = Field(default="sparkles", max_length=48)
+    items: list[str] = Field(default_factory=list)
+
+
+class ReleaseAnnouncementPayload(BaseModel):
+    noticeId: str = Field(min_length=1, max_length=160)
+    version: str = Field(default=APP_VERSION, min_length=1, max_length=64)
+    releaseDate: str | None = None
+    showPopup: bool = False
+    level: str = Field(default="info", max_length=32)
+    title: str = Field(default="本次更新内容", min_length=1, max_length=255)
+    groups: list[ReleaseAnnouncementGroup] = Field(default_factory=list)
+    createdBy: str = Field(default="release", max_length=96)
+
+
+class ReleaseAnnouncementResponse(BaseModel):
+    noticeId: str
+    version: str
+    releaseDate: str
+    showPopup: bool
+    level: str
+    title: str
+    groups: list[ReleaseAnnouncementGroup]
+
+
+class LatestReleaseAnnouncementResponse(BaseModel):
+    ok: bool
+    version: str
+    announcement: ReleaseAnnouncementResponse | None
+
+
+class ReleaseAnnouncementSaveResponse(BaseModel):
+    ok: bool
+    announcement: ReleaseAnnouncementResponse
 
 
 def _default_record(
@@ -173,6 +214,53 @@ def save_release_update(
     }
 
 
+@announcements_router.get("/latest", response_model=LatestReleaseAnnouncementResponse)
+def read_latest_release_announcement() -> dict[str, Any]:
+    row = get_latest_release_announcement()
+    if not row:
+        return {
+            "ok": True,
+            "version": APP_VERSION,
+            "announcement": None,
+        }
+
+    announcement = _announcement_payload(row)
+    return {
+        "ok": True,
+        "version": announcement["version"],
+        "announcement": announcement,
+    }
+
+
+@announcements_router.post("", response_model=ReleaseAnnouncementSaveResponse)
+def save_release_announcement(
+    payload: ReleaseAnnouncementPayload,
+    x_release_update_token: str | None = Header(default=None, alias="X-Release-Update-Token"),
+) -> dict[str, Any]:
+    _validate_release_update_write_token(x_release_update_token)
+    row = upsert_release_announcement({
+        "notice_id": payload.noticeId.strip(),
+        "version": payload.version.strip(),
+        "release_date": payload.releaseDate,
+        "show_popup": payload.showPopup,
+        "level": payload.level.strip() or "info",
+        "title": payload.title.strip(),
+        "groups": [
+            {
+                "title": group.title.strip(),
+                "icon": group.icon.strip() or "sparkles",
+                "items": [item.strip() for item in group.items if item.strip()],
+            }
+            for group in payload.groups
+        ],
+        "created_by": payload.createdBy.strip() or "release",
+    })
+    return {
+        "ok": True,
+        "announcement": _announcement_payload(row),
+    }
+
+
 def seed_default_release_updates() -> None:
     global _release_update_seeded
 
@@ -210,6 +298,45 @@ def _record_payload(row: dict[str, Any]) -> dict[str, Any]:
         "createdAt": _format_datetime(row.get("created_at")),
         "updatedAt": _format_datetime(row.get("updated_at")),
     }
+
+
+def _announcement_payload(row: dict[str, Any]) -> dict[str, Any]:
+    groups = _parse_announcement_groups(row.get("groups_json"))
+    return {
+        "noticeId": row["notice_id"],
+        "version": row["version"],
+        "releaseDate": _format_date(row.get("release_date")),
+        "showPopup": bool(row.get("show_popup")),
+        "level": row.get("level", "info"),
+        "title": row.get("title", ""),
+        "groups": groups,
+    }
+
+
+def _parse_announcement_groups(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(value, list):
+        return []
+
+    groups: list[dict[str, Any]] = []
+    for raw_group in value:
+        if not isinstance(raw_group, dict):
+            continue
+        items = raw_group.get("items")
+        groups.append({
+            "title": str(raw_group.get("title") or "").strip(),
+            "icon": str(raw_group.get("icon") or "sparkles").strip() or "sparkles",
+            "items": [
+                str(item).strip()
+                for item in (items if isinstance(items, list) else [])
+                if str(item).strip()
+            ],
+        })
+    return [group for group in groups if group["title"] and group["items"]]
 
 
 def _format_date(value: Any) -> str:

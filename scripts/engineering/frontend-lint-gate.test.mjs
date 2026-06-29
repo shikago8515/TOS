@@ -20,9 +20,11 @@ test('frontend package exposes a lint gate', async () => {
 
 test('root frontend checks run lint before typecheck', async () => {
   const runChecks = await readFile(join(repoRoot, 'scripts', 'engineering', 'run-checks.mjs'), 'utf8')
-  const lintCommand = "command('frontend:lint', 'tms-frontend', npmBin, ['run', 'lint'], npmShell)"
-  const typecheckCommand = "command('frontend:typecheck', 'tms-frontend', npmBin, ['run', 'typecheck'], npmShell)"
+  const lintCommand = "command('frontend:lint', 'tms-frontend', npmCommand.executable, [...npmCommand.args, 'run', 'lint'], npmCommand.shell)"
+  const typecheckCommand = "command('frontend:typecheck', 'tms-frontend', npmCommand.executable, [...npmCommand.args, 'run', 'typecheck'], npmCommand.shell)"
 
+  assert.match(runChecks, /function createNpmCommand\(\)/)
+  assert.match(runChecks, /process\.env\.npm_execpath/)
   const lintOccurrences = Array.from(runChecks.matchAll(new RegExp(escapeRegExp(lintCommand), 'g')))
   assert.equal(lintOccurrences.length, 2)
 

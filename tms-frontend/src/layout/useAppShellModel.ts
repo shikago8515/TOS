@@ -19,7 +19,7 @@ import { koiLanguageToAppLanguage, normalizeKoiLanguage, type KoiLanguage } from
 import { useAppLanguage } from '../shared/i18n/appLanguage'
 import {
   buildReleaseNoticeGroups,
-  buildReleaseNoticeStateFromStorage,
+  buildReleaseNoticeStateFromServerOrStorage,
   markReleaseNoticeSeen,
   type ReleaseNoticeState,
 } from '../shared/version/releaseNotice'
@@ -129,6 +129,12 @@ export function useAppShellModel() {
       markReleaseNoticeSeen(window.localStorage, undefined, releaseNotice.value.releaseNotes)
     }
     releaseNotice.value = { visible: false, releaseNotes: null }
+  }
+
+  async function refreshReleaseNotice(): Promise<void> {
+    releaseNotice.value = await buildReleaseNoticeStateFromServerOrStorage({
+      storage: window.localStorage,
+    })
   }
   
   const sidebarGroups = computed<SidebarGroup[]>(() =>
@@ -506,7 +512,7 @@ export function useAppShellModel() {
   
   onMounted(() => {
     handleResize()
-    releaseNotice.value = buildReleaseNoticeStateFromStorage()
+    void refreshReleaseNotice()
     void refreshInstallerUpdateHint(true)
     installerUpdateTimer = window.setInterval(() => {
       void refreshInstallerUpdateHint(true)
