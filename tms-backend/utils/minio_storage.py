@@ -4,10 +4,20 @@ import hashlib
 import re
 from datetime import datetime
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
 from utils.settings import get_settings
+
+
+DEFAULT_BUCKET_NAMES = {
+    "templates": "tos-templates",
+    "run_files": "tos-run-files",
+    "results": "tos-results",
+    "downloads": "tos-downloads",
+    "upload_backups": "tos-upload-backups",
+}
 
 
 def get_minio_bucket(bucket_key: str) -> str:
@@ -17,7 +27,8 @@ def get_minio_bucket(bucket_key: str) -> str:
         .get("minio", {})
         .get("buckets", {})
     )
-    return str(buckets.get(bucket_key) or f"tos-{bucket_key}")
+    fallback_name = DEFAULT_BUCKET_NAMES.get(bucket_key) or f"tos-{sanitize_object_segment(bucket_key).replace('_', '-')}"
+    return str(buckets.get(bucket_key) or fallback_name)
 
 
 def put_object_bytes(
@@ -41,6 +52,34 @@ def put_object_bytes(
         "object_key": object_key,
         "file_size": len(content),
         "sha256": sha256_bytes(content),
+    }
+
+
+def put_object_file(
+    *,
+    bucket: str,
+    object_key: str,
+    file_path: str | Path,
+    content_type: str = "application/octet-stream",
+) -> dict[str, Any]:
+    path = Path(file_path)
+    file_size = path.stat().st_size
+    file_hash = sha256_file(path)
+    client = _build_minio_client()
+    _ensure_bucket(client, bucket)
+    with path.open("rb") as file_obj:
+        client.put_object(
+            bucket,
+            object_key,
+            file_obj,
+            length=file_size,
+            content_type=content_type or "application/octet-stream",
+        )
+    return {
+        "bucket": bucket,
+        "object_key": object_key,
+        "file_size": file_size,
+        "sha256": file_hash,
     }
 
 
@@ -82,6 +121,14 @@ def sanitize_object_segment(value: str) -> str:
 
 def sha256_bytes(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
+
+
+def sha256_file(file_path: str | Path) -> str:
+    digest = hashlib.sha256()
+    with Path(file_path).open("rb") as file_obj:
+        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _build_minio_client() -> Any:

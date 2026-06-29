@@ -166,6 +166,15 @@ automation-helper/payloads/<payload-sha256>/TOS-Automation-Helper-Payload.zip
 
 不要直接替换 Docker volume 下的 `part.*` 文件。MinIO 大对象由 metadata 和分片组成，必须通过 MinIO API、`mc cp` 或后端上传辅助流程写入。
 
+Excel 处理模块的原始上传文件会备份到 `tos-upload-backups` bucket，业务元数据写入 MySQL `excel_upload_backups` 表。该 bucket 只作为审计追溯用途，不对前端暴露公开下载入口；服务器上应配置 180 天自动清理：
+
+```bash
+mc ilm rule add ALIAS/tos-upload-backups --expire-days 180
+mc ilm rule ls ALIAS/tos-upload-backups
+```
+
+`ALIAS` 使用服务器 MinIO client 已配置的别名，不要把 MinIO access key 或 secret key 写入仓库、命令记录或交付文档。
+
 替换 TOS 桌面安装包时，先删除旧的 TOS desktop 对象：
 
 ```text

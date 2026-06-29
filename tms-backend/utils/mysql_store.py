@@ -501,6 +501,45 @@ def insert_automation_run_file(file_record: dict[str, Any]) -> dict[str, Any]:
     return row or {}
 
 
+def insert_excel_upload_backup(backup: dict[str, Any]) -> dict[str, Any]:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO excel_upload_backups
+                  (request_id, module_id, file_role, bucket, object_key,
+                   original_filename, content_type, file_size, sha256)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    backup["request_id"],
+                    backup["module_id"],
+                    backup["file_role"],
+                    backup["bucket"],
+                    backup["object_key"],
+                    backup.get("original_filename", ""),
+                    backup.get("content_type", ""),
+                    backup.get("file_size", 0),
+                    backup.get("sha256", ""),
+                ),
+            )
+            backup_id = cursor.lastrowid
+            cursor.execute(
+                """
+                SELECT id, request_id, module_id, file_role, bucket, object_key,
+                       original_filename, content_type, file_size, sha256, created_at
+                FROM excel_upload_backups
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (backup_id,),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    return row or {}
+
+
 def list_automation_run_files(run_id: str) -> list[dict[str, Any]]:
     ensure_schema()
     with mysql_connection() as connection:
@@ -747,6 +786,24 @@ SCHEMA_DDL = [
       sha256 CHAR(64) NOT NULL DEFAULT '',
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       KEY idx_automation_run_files_run_id (run_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS excel_upload_backups (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      request_id VARCHAR(96) NOT NULL,
+      module_id VARCHAR(128) NOT NULL,
+      file_role VARCHAR(64) NOT NULL,
+      bucket VARCHAR(128) NOT NULL,
+      object_key VARCHAR(512) NOT NULL,
+      original_filename VARCHAR(255) NOT NULL DEFAULT '',
+      content_type VARCHAR(128) NOT NULL DEFAULT '',
+      file_size BIGINT UNSIGNED NOT NULL DEFAULT 0,
+      sha256 CHAR(64) NOT NULL DEFAULT '',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_excel_upload_backups_request (request_id),
+      KEY idx_excel_upload_backups_module_created (module_id, created_at),
+      KEY idx_excel_upload_backups_sha256 (sha256)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     """,
     """

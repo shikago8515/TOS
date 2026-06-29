@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse
 from modules.tms_finance_internal_reconciliation_module import (
     TmsFinanceInternalReconciliationModule,
 )
+from utils.excel_upload_backup import ExcelUploadBackupContext
 from utils.file_utils import (
     copy_output_to_directory,
     copy_upload_to_path,
@@ -35,6 +36,7 @@ tms_finance_module = TmsFinanceInternalReconciliationModule()
 logger = logging.getLogger(__name__)
 
 ALLOWED_EXCEL_EXTENSIONS = {".xlsx", ".xlsm"}
+MODULE_ID = "tms-finance-internal-reconciliation"
 PROCESSING_ERROR_MESSAGE = "处理失败，请查看诊断日志或稍后重试"
 
 UPLOAD_DIR = os.path.join(
@@ -70,6 +72,22 @@ def _raise_processing_error(exc: Exception) -> NoReturn:
     raise HTTPException(status_code=500, detail=PROCESSING_ERROR_MESSAGE) from exc
 
 
+def _backup_context(
+    upload: UploadFile,
+    safe_name: str,
+    *,
+    request_id: str,
+    file_role: str,
+) -> ExcelUploadBackupContext:
+    return ExcelUploadBackupContext(
+        module_id=MODULE_ID,
+        request_id=request_id,
+        file_role=file_role,
+        original_filename=safe_name,
+        content_type=getattr(upload, "content_type", "") or "",
+    )
+
+
 @router.post("/process")
 async def process_internal_reconciliation(
     target_file: UploadFile = File(...),
@@ -80,7 +98,8 @@ async def process_internal_reconciliation(
 ):
     """处理内销对账表数据提取。"""
 
-    work_dir = os.path.join(UPLOAD_DIR, f"tms_finance_internal_reconciliation_{uuid4().hex}")
+    request_id = uuid4().hex
+    work_dir = os.path.join(UPLOAD_DIR, f"tms_finance_internal_reconciliation_{request_id}")
     os.makedirs(work_dir, exist_ok=True)
 
     try:
@@ -99,12 +118,30 @@ async def process_internal_reconciliation(
         for index, source_upload in enumerate(source_uploads, start=1):
             source_name = _validate_excel_filename(source_upload.filename, f"来源文件 {index}")
             source_path = os.path.join(work_dir, f"source_{index}_{source_name}")
-            copy_upload_to_path(source_upload, source_path)
+            copy_upload_to_path(
+                source_upload,
+                source_path,
+                backup_context=_backup_context(
+                    source_upload,
+                    source_name,
+                    request_id=request_id,
+                    file_role="source",
+                ),
+            )
             source_paths.append(source_path)
 
         target_name = _validate_excel_filename(target_file.filename, "内销对账单 文件")
         target_path = os.path.join(work_dir, f"target_{target_name}")
-        copy_upload_to_path(target_file, target_path)
+        copy_upload_to_path(
+            target_file,
+            target_path,
+            backup_context=_backup_context(
+                target_file,
+                target_name,
+                request_id=request_id,
+                file_role="target",
+            ),
+        )
 
         result = tms_finance_module.process_files(
             source_paths=source_paths,
