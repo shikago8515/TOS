@@ -28,7 +28,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getBrowserPlugins: () => ipcRenderer.invoke('get-browser-plugins'),
   launchBrowserPlugin: (pluginId) => ipcRenderer.invoke('launch-browser-plugin', pluginId),
   getAutomationApps: () => ipcRenderer.invoke('get-automation-apps'),
-  launchAutomationApp: (appId) => ipcRenderer.invoke('launch-automation-app', appId),
+  launchAutomationApp: (appId, options) => ipcRenderer.invoke('launch-automation-app', appId, options),
   stopAutomationApp: (appId) => ipcRenderer.invoke('stop-automation-app', appId),
   selectDirectory: (options) => ipcRenderer.invoke('select-directory', options),
   launchAdidasMaterialCollector: () => ipcRenderer.invoke('launch-adidas-material-collector')

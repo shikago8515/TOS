@@ -283,8 +283,10 @@ import {
   createAutomationRunRecord,
   fetchAutomationApps,
   finishAutomationRunRecord,
+  findLocalExecutorActiveRun,
   getAutomationHelperUpdateMessage,
   hasElectronAutomationSupport,
+  isLocalExecutorBusy,
   launchAutomationConsole,
   openAutomationHelperDownload,
   primeLocalAutomationLauncherBoot,
@@ -323,6 +325,7 @@ const launcherReachable = ref(false)
 const launching = ref(false)
 const refreshing = ref(false)
 const sending = ref(false)
+const restoredActiveRun = ref(false)
 const templateDownloading = ref(false)
 const directorySelecting = ref(false)
 const message = ref('')
@@ -431,7 +434,7 @@ async function initializeScenario(): Promise<void> {
   statusText.value = text('等待上传 Excel 并填写下载保存目录。')
   await refreshCredentialProfile()
   await refreshExecutorState(true)
-  if (electronSupported && activeApp.value?.available && !activeApp.value.running) {
+  if (electronSupported && activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) {
     await startActiveApp(true)
   }
 }
@@ -464,6 +467,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
 
     if (!electronSupported && !launcherReachable.value) {
       executorHealth.value = null
+      clearRestoredActiveRunState()
       if (!silent) {
         messageTone.value = 'warning'
         message.value = text('未检测到本机自动化助手')
@@ -476,6 +480,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
     if (activeApp.value) {
       activeApp.value = { ...activeApp.value, running: true }
     }
+    syncActiveRunViewFromHealth()
     const updateMessage = getAutomationHelperUpdateMessage(executorHealth.value, activeApp.value)
     if (updateMessage) {
       messageTone.value = 'warning'
@@ -487,6 +492,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
   } catch {
     executorHealth.value = null
     activeApp.value = activeApp.value || fallback
+    clearRestoredActiveRunState()
     if (!silent) {
       messageTone.value = 'warning'
       message.value = text('执行器未就绪。')
@@ -494,6 +500,46 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
   } finally {
     refreshing.value = false
   }
+}
+
+function syncActiveRunViewFromHealth(): void {
+  const activeRun = findPoAutoDownloadActiveRun(executorHealth.value)
+  if (activeRun) {
+    restoredActiveRun.value = true
+    sending.value = true
+    lastResult.value = null
+    statusLabel.value = '执行中'
+    const progress = extractRunProgress(executorHealth.value)
+    if (progress) {
+      runProgress.value = progress
+      statusText.value = formatRunProgress(progress)
+    } else {
+      const inputFileName = String(activeRun.inputFileName || '').trim()
+      statusText.value = inputFileName ? `执行器仍在下载 ${inputFileName}，请勿重复启动。` : text('执行器仍在下载 Invoice PDF，请勿重复启动。')
+    }
+    startProgressPolling()
+    return
+  }
+  if (!restoredActiveRun.value) return
+  clearRestoredActiveRunState()
+  statusText.value = text('后台下载任务已结束，请查看执行记录或重新开始。')
+}
+
+function clearRestoredActiveRunState(): void {
+  if (!restoredActiveRun.value) return
+  restoredActiveRun.value = false
+  sending.value = false
+  stopProgressPolling()
+  runProgress.value = null
+  statusLabel.value = '待命'
+}
+
+function findPoAutoDownloadActiveRun(health: LocalExecutorHealth | null | undefined): Record<string, any> | null {
+  return findLocalExecutorActiveRun(health, (run) => {
+    const action = String(run.action || '').trim()
+    const inputMode = String(run.inputMode || '').trim()
+    return action === 'run-po-auto-download-file' || inputMode === 'po-auto-download'
+  })
 }
 
 function startProgressPolling(): void {
@@ -516,6 +562,11 @@ async function pollRunProgress(): Promise<void> {
   try {
     const health = await probeLocalExecutorHealth(entry.executorBaseUrl)
     executorHealth.value = health
+    if (restoredActiveRun.value && !findPoAutoDownloadActiveRun(health)) {
+      clearRestoredActiveRunState()
+      statusText.value = text('后台下载任务已结束，请查看执行记录或重新开始。')
+      return
+    }
     const progress = extractRunProgress(health)
     if (progress) {
       runProgress.value = progress
@@ -600,6 +651,7 @@ async function stopActiveApp(): Promise<void> {
       throw new Error(result.error || 'Stop failed.')
     }
     executorHealth.value = null
+    clearRestoredActiveRunState()
     if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }
     messageTone.value = 'success'
     message.value = text('执行器已停止。')
@@ -976,8 +1028,11 @@ function normalizePoAutoDownloadUsername(value: string): string {
 }
 
 async function ensureReady(): Promise<boolean> {
-  if (executorHealth.value?.ok) return true
-  await startActiveApp(true)
+  if (entry && activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) {
+    await startActiveApp(true)
+  } else if (!executorHealth.value?.ok) {
+    await startActiveApp(true)
+  }
   await refreshExecutorState(true).catch(() => {})
   return Boolean(executorHealth.value?.ok)
 }
@@ -1079,6 +1134,9 @@ function buildExecutorResponseMessage(
   fallback = '自动化执行失败。',
 ): string {
   const rawMessage = typeof payload?.message === 'string' ? payload.message : ''
+  if (response.status === 404 && /not\s*found/i.test(rawMessage || raw || '')) {
+    return '本机执行器缺少当前自动化接口，系统已同步最新自动化逻辑但接口仍不可用。请确认服务器 automation-modules 模块包已发布，或重启本机自动化执行器后再试。'
+  }
   if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback)
   if (!payload) {
     return formatAutomationExecutorMessage('JSON.parse: unexpected character at line 1 column 1 of the JSON data', fallback)

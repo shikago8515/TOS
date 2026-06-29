@@ -1,7 +1,8 @@
-import type { Component } from 'vue'
+import { defineComponent, h, type Component } from 'vue'
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
 
-import { tosRouteDefinitions, tosRouteRedirects } from './routeCatalog'
+import { nprogress } from '../utils/nprogress'
+import { getDocumentTitle, tosRouteDefinitions, tosRouteRedirects } from './routeCatalog'
 import AdidasMaterialsPage from '../pages/adidas-materials/AdidasMaterialsPage.vue'
 import AutomationRunsPage from '../pages/automation-runs/AutomationRunsPage.vue'
 import AutomationTemplatesPage from '../pages/automation-templates/AutomationTemplatesPage.vue'
@@ -18,6 +19,7 @@ import JaneOutboundComparePage from '../pages/jane-outbound-compare/JaneOutbound
 import JanePage from '../pages/jane/JanePage.vue'
 import JaneSapPage from '../pages/jane-sap/JaneSapPage.vue'
 import JesscaPage from '../pages/jessca/JesscaPage.vue'
+import PackingListAutoDownloadPage from '../pages/packing-list-auto-download/PackingListAutoDownloadPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
 import ReleaseUpdatesPage from '../pages/release-updates/ReleaseUpdatesPage.vue'
 import SettingsPage from '../pages/settings/SettingsPage.vue'
@@ -31,32 +33,90 @@ import TmsFinanceInternalReconciliationPage from '../pages/tms-finance-internal-
 import WebAutomationPage from '../pages/web-automation/WebAutomationPage.vue'
 import WebAutomationScenarioPage from '../pages/web-automation/WebAutomationScenarioPage.vue'
 
+const routeComponentNameMap = new WeakMap<object, string>()
+
+function bindRouteComponentName(routeName: string, component: Component): Component {
+  if ((typeof component !== 'object' && typeof component !== 'function') || component === null) {
+    return component
+  }
+
+  const componentRecord = component as object
+  const existingRouteName = routeComponentNameMap.get(componentRecord)
+
+  if (!existingRouteName || existingRouteName === routeName) {
+    routeComponentNameMap.set(componentRecord, routeName)
+
+    try {
+      Object.defineProperty(componentRecord, 'name', {
+        value: routeName,
+        configurable: true,
+      })
+      return component
+    } catch (_error) {
+      // Fall through to a named wrapper when the imported component object is not writable.
+    }
+  }
+
+  return defineComponent({
+    name: routeName,
+    inheritAttrs: false,
+    setup(_props, { attrs, slots }) {
+      return () => h(component, attrs, slots)
+    },
+  })
+}
+
 const routeComponents: Partial<Record<string, Component>> = {
-  home: HomePage,
-  jessca: JesscaPage,
-  jane: JanePage,
-  'jane-bom-summary': JaneBomSummaryPage,
-  'jane-bom-compare': JaneBomComparePage,
-  'jane-outbound-compare': JaneOutboundComparePage,
-  'jane-infornexus': JaneInfornexusPage,
-  eric: EricPage,
-  'eric-infornexus': InfornexusAutoAddPage,
-  'jason-pdf-reorder': JasonPdfReorderPage,
-  'web-automation-scenario-shipping-automation': ShippingAutomationPage,
-  'web-automation-scenario-xinlongtai-shipping-automation': XinlongtaiShippingAutomationPage,
-  'web-automation-scenario-tc-inv-automation': TcInvAutomationPage,
-  'web-automation-scenario-po-auto-download': PoAutoDownloadPage,
-  'draft-packing-compare': DraftPackingComparePage,
-  'tms-finance-internal-reconciliation': TmsFinanceInternalReconciliationPage,
-  'tms-finance-work-sales': TmsFinanceInternalReconciliationPage,
-  'iplex-dual-table-compare': IplexDualTableComparePage,
-  'jane-sap': JaneSapPage,
-  'sophia-tina': SophiaTinaPage,
-  'web-automation': WebAutomationPage,
-  'adidas-materials': AdidasMaterialsPage,
-  'automation-runs': AutomationRunsPage,
-  'automation-templates': AutomationTemplatesPage,
-  settings: SettingsPage,
+  home: bindRouteComponentName('home', HomePage),
+  jessca: bindRouteComponentName('jessca', JesscaPage),
+  jane: bindRouteComponentName('jane', JanePage),
+  'jane-bom-summary': bindRouteComponentName('jane-bom-summary', JaneBomSummaryPage),
+  'jane-bom-compare': bindRouteComponentName('jane-bom-compare', JaneBomComparePage),
+  'jane-outbound-compare': bindRouteComponentName('jane-outbound-compare', JaneOutboundComparePage),
+  'jane-infornexus': bindRouteComponentName('jane-infornexus', JaneInfornexusPage),
+  eric: bindRouteComponentName('eric', EricPage),
+  'eric-infornexus': bindRouteComponentName('eric-infornexus', InfornexusAutoAddPage),
+  'jason-pdf-reorder': bindRouteComponentName('jason-pdf-reorder', JasonPdfReorderPage),
+  'web-automation-scenario-shipping-automation': bindRouteComponentName(
+    'web-automation-scenario-shipping-automation',
+    ShippingAutomationPage,
+  ),
+  'web-automation-scenario-xinlongtai-shipping-automation': bindRouteComponentName(
+    'web-automation-scenario-xinlongtai-shipping-automation',
+    XinlongtaiShippingAutomationPage,
+  ),
+  'web-automation-scenario-tc-inv-automation': bindRouteComponentName(
+    'web-automation-scenario-tc-inv-automation',
+    TcInvAutomationPage,
+  ),
+  'web-automation-scenario-po-auto-download': bindRouteComponentName(
+    'web-automation-scenario-po-auto-download',
+    PoAutoDownloadPage,
+  ),
+  'web-automation-scenario-packing-list-auto-download': bindRouteComponentName(
+    'web-automation-scenario-packing-list-auto-download',
+    PackingListAutoDownloadPage,
+  ),
+  'draft-packing-compare': bindRouteComponentName('draft-packing-compare', DraftPackingComparePage),
+  'tms-finance-internal-reconciliation': bindRouteComponentName(
+    'tms-finance-internal-reconciliation',
+    TmsFinanceInternalReconciliationPage,
+  ),
+  'tms-finance-work-sales': bindRouteComponentName(
+    'tms-finance-work-sales',
+    TmsFinanceInternalReconciliationPage,
+  ),
+  'iplex-dual-table-compare': bindRouteComponentName(
+    'iplex-dual-table-compare',
+    IplexDualTableComparePage,
+  ),
+  'jane-sap': bindRouteComponentName('jane-sap', JaneSapPage),
+  'sophia-tina': bindRouteComponentName('sophia-tina', SophiaTinaPage),
+  'web-automation': bindRouteComponentName('web-automation', WebAutomationPage),
+  'adidas-materials': bindRouteComponentName('adidas-materials', AdidasMaterialsPage),
+  'automation-runs': bindRouteComponentName('automation-runs', AutomationRunsPage),
+  'automation-templates': bindRouteComponentName('automation-templates', AutomationTemplatesPage),
+  settings: bindRouteComponentName('settings', SettingsPage),
 }
 
 const redirectRoutes: RouteRecordRaw[] = tosRouteRedirects.map((redirect) => ({
@@ -67,12 +127,16 @@ const redirectRoutes: RouteRecordRaw[] = tosRouteRedirects.map((redirect) => ({
 const moduleRoutes: RouteRecordRaw[] = tosRouteDefinitions.map((route) => ({
   path: route.path,
   name: route.name,
-  component: routeComponents[route.name] ?? RoutePlaceholder,
+  component: routeComponents[route.name] ?? bindRouteComponentName(route.name, RoutePlaceholder),
   props: {
     routeTitle: route.title,
   },
   meta: {
     title: route.title,
+    keepAliveName: route.name,
+    isAffix: route.path === '/' ? '1' : '0',
+    isKeepAlive: '1',
+    isVisible: '1',
   },
 }))
 
@@ -126,6 +190,14 @@ const scenarioRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/web-automation/scenarios/packing-list-auto-download',
+    name: 'web-automation-scenario-packing-list-auto-download',
+    component: PackingListAutoDownloadPage,
+    meta: {
+      title: '自动下载箱单',
+    },
+  },
+  {
     path: '/web-automation/scenarios/:scenarioId',
     name: 'web-automation-scenario',
     component: WebAutomationScenarioPage,
@@ -146,7 +218,44 @@ const utilityRoutes: RouteRecordRaw[] = [
   },
 ]
 
+function withRouteCacheMeta(route: RouteRecordRaw): RouteRecordRaw {
+  if (!route.name) {
+    return route
+  }
+
+  const routeName = String(route.name)
+  const routeWithComponent = route as RouteRecordRaw & { component?: Component }
+  const component = routeWithComponent.component
+
+  return {
+    ...routeWithComponent,
+    component: component ? bindRouteComponentName(routeName, component) : component,
+    meta: {
+      ...route.meta,
+      keepAliveName: route.meta?.keepAliveName ?? routeName,
+      isAffix: route.meta?.isAffix ?? (route.path === '/' ? '1' : '0'),
+      isKeepAlive: route.meta?.isKeepAlive ?? '1',
+      isVisible: route.meta?.isVisible ?? '1',
+    },
+  } as RouteRecordRaw
+}
+
 export const router = createRouter({
   history: createWebHashHistory(),
-  routes: [...redirectRoutes, ...scenarioRoutes, ...utilityRoutes, ...moduleRoutes],
+  routes: [...redirectRoutes, ...scenarioRoutes, ...utilityRoutes, ...moduleRoutes].map(withRouteCacheMeta),
+})
+
+router.beforeEach(() => {
+  nprogress.start()
+})
+
+router.afterEach((to) => {
+  if (typeof document !== 'undefined') {
+    document.title = getDocumentTitle(typeof to.meta.title === 'string' ? to.meta.title : undefined)
+  }
+  nprogress.done()
+})
+
+router.onError(() => {
+  nprogress.done()
 })

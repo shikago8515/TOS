@@ -7,6 +7,15 @@ const electronRoot = path.resolve(__dirname, '..')
 const automationAppsRoot = path.join(electronRoot, 'automation-apps')
 const outputRoot = path.join(electronRoot, 'dist-automation-modules')
 const registryPath = path.join(automationAppsRoot, 'registry.json')
+const frontendAutomationModelPath = path.join(
+  electronRoot,
+  '..',
+  'tms-frontend',
+  'src',
+  'pages',
+  'web-automation',
+  'webAutomationModel.ts',
+)
 const rootPackage = JSON.parse(fs.readFileSync(path.join(electronRoot, 'package.json'), 'utf8'))
 const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'))
 const options = parseOptions(process.argv.slice(2))
@@ -21,6 +30,8 @@ const moduleVersion = String(
 if (!Array.isArray(registry)) {
   throw new Error(`Automation registry must be an array: ${registryPath}`)
 }
+
+validateAutomationModuleCoverage()
 
 fs.rmSync(outputRoot, { recursive: true, force: true })
 fs.mkdirSync(outputRoot, { recursive: true })
@@ -141,6 +152,69 @@ function shouldSkipItem(name, isDirectory) {
     || lowerName.startsWith('executor.secret')
     || lowerName.startsWith('temp-')
   )
+}
+
+function validateAutomationModuleCoverage() {
+  const registryById = new Map()
+  const registeredAppDirs = new Set()
+  for (const app of registry) {
+    const id = String(app?.id || '').trim()
+    if (!id) {
+      throw new Error(`Automation registry contains an entry without id: ${registryPath}`)
+    }
+    if (registryById.has(id)) {
+      throw new Error(`Duplicate automation app id in registry: ${id}`)
+    }
+    registryById.set(id, app)
+    registeredAppDirs.add(String(app.appDir || id).trim())
+  }
+
+  const executableDirs = fs.readdirSync(automationAppsRoot, { withFileTypes: true })
+    .filter((item) => item.isDirectory())
+    .map((item) => item.name)
+    .filter((dirName) => fs.existsSync(path.join(automationAppsRoot, dirName, 'bin', 'start.js')))
+  const unregisteredDirs = executableDirs.filter((dirName) => !registeredAppDirs.has(dirName))
+  if (unregisteredDirs.length > 0) {
+    throw new Error(
+      `Automation app directories with bin/start.js are missing from registry.json: ${unregisteredDirs.join(', ')}`,
+    )
+  }
+
+  if (selectedAppIds.size > 0 || !fs.existsSync(frontendAutomationModelPath)) {
+    return
+  }
+
+  const frontendEntries = readFrontendAutomationEntries(frontendAutomationModelPath)
+  const missingOnlineAppIds = Array.from(new Set(
+    frontendEntries
+      .filter((entry) => entry.status === 'online')
+      .map((entry) => entry.appId)
+      .filter((appId) => appId && !registryById.has(appId)),
+  ))
+  if (missingOnlineAppIds.length > 0) {
+    const details = frontendEntries
+      .filter((entry) => entry.status === 'online' && missingOnlineAppIds.includes(entry.appId))
+      .map((entry) => `${entry.id}->${entry.appId}`)
+      .join(', ')
+    throw new Error(
+      `Online web automation entries are missing hot-update executor packages: ${details}. `
+        + 'Add the executor to tms-electron-app/automation-apps/registry.json before publishing.',
+    )
+  }
+}
+
+function readFrontendAutomationEntries(modelPath) {
+  const source = fs.readFileSync(modelPath, 'utf8')
+  const entries = []
+  const blockPattern = /\{\s*id:\s*'([^']+)'[\s\S]*?appId:\s*'([^']+)'[\s\S]*?status:\s*'([^']+)'[\s\S]*?\}/g
+  for (const match of source.matchAll(blockPattern)) {
+    entries.push({
+      id: match[1],
+      appId: match[2],
+      status: match[3],
+    })
+  }
+  return entries
 }
 
 function createZipFromDirectory(sourceDir, zipPath) {

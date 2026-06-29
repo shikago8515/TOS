@@ -380,6 +380,15 @@
       <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
     </template>
 
+    <template v-else-if="iconName === 'translate'">
+      <path d="M5 5h8" />
+      <path d="M9 3v2" />
+      <path d="M11 5c-.8 4-3 6.8-6 8.5" />
+      <path d="M6.5 8.5c1.2 2.1 3 3.8 5.5 5" />
+      <path d="M14 20l4-9 4 9" />
+      <path d="M15.3 17h5.4" />
+    </template>
+
     <template v-else-if="iconName === 'code'">
       <polyline points="16 18 22 12 16 6" />
       <polyline points="8 6 2 12 8 18" />

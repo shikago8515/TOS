@@ -5,6 +5,7 @@ import { fallbackAppVersion } from '../version/appVersion'
 import {
   buildNonJsonResponseMessage,
   buildBackendDownloadUrl,
+  downloadUrlAsFile,
   getBackendBaseUrl,
   isBackendVersionMismatchMessage,
   postFormData,
@@ -134,6 +135,23 @@ describe('backendClient', () => {
     await expect(
       requestBackendJson({ method: 'PUT', path, body: { username: 'user', password: 'test-password' } }),
     ).rejects.not.toThrow(/JSON\.parse|unexpected non-whitespace/i)
+  })
+
+  it('turns missing installer downloads into an error without navigating away', async () => {
+    stubWindow()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      detail: 'TOS 自动化助手安装包未上传，请先生成并上传到 MinIO。',
+    }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+
+    await expect(
+      downloadUrlAsFile(
+        'http://127.0.0.1:8000/api/system/config/automation-helper/download',
+        'TOS-Automation-Helper-Setup.exe',
+      ),
+    ).rejects.toThrow('TOS 自动化助手安装包未上传')
   })
 
   it('reports status and path when an error response is not JSON', async () => {

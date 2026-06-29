@@ -3,14 +3,14 @@
     <!-- Header -->
     <header class="tpl-header">
       <div class="header-title">
-        <h2>Excel 模板中心</h2>
-        <p class="header-sub">集中维护每个自动化页面的 Excel 模板，替换后页面下载入口会同步使用最新模板。</p>
+        <h2>{{ text('Excel 模板中心') }}</h2>
+        <p class="header-sub">{{ text('集中维护每个自动化页面的 Excel 模板，替换后页面下载入口会同步使用最新模板。') }}</p>
       </div>
       <div class="header-actions">
-        <button class="btn btn-primary" :disabled="loading" @click="loadTemplates">
+        <el-button class="btn btn-primary" :disabled="loading" :loading="loading" @click="loadTemplates">
           <AppIcon name="refresh-cw" :class="{ spin: loading }" />
-          刷新模板
-        </button>
+          {{ text('刷新模板') }}
+        </el-button>
       </div>
     </header>
 
@@ -20,45 +20,41 @@
         <div class="toolbar-empty">
           <span class="toolbar-empty-dot"></span>
           <div>
-            <strong>先选择一个模板</strong>
-            <span>点击下方表格左侧小圆点后，再下载、替换或停用模板。</span>
+            <strong>{{ text('先选择一个模板') }}</strong>
+            <span>{{ text('点击下方表格左侧小圆点后，再下载、替换或停用模板。') }}</span>
           </div>
         </div>
-        <button class="btn btn-primary" @click="startNewTemplate">
+        <el-button class="btn btn-primary" @click="startNewTemplate">
           <AppIcon name="plus" />
-          新增模板
-        </button>
-        <label class="toggle">
-          <input v-model="includeInactive" type="checkbox" @change="loadTemplates" />
-          <span class="toggle-track"></span>
-          <span class="toggle-label">显示停用</span>
-        </label>
+          {{ text('新增模板') }}
+        </el-button>
+        <div class="toggle">
+          <el-switch v-model="includeInactive" @change="loadTemplates" />
+          <span class="toggle-label">{{ text('显示停用') }}</span>
+        </div>
       </div>
 
       <div v-else class="editor-row">
         <!-- Left: Template identity -->
         <div class="editor-section">
           <template v-if="creatingTemplate">
-            <div class="custom-select" ref="moduleDropdownRef">
-              <button class="select-trigger" @click="toggleModuleDropdown">
-                <span class="trigger-label">{{ moduleLabel(form.moduleId) }}</span>
-                <AppIcon name="chevron-down" class="trigger-chevron" :class="{ open: moduleDropdownOpen }" />
-              </button>
-              <Transition name="dropdown">
-                <div v-if="moduleDropdownOpen" class="select-menu">
-                  <button
-                    v-for="module in automationModules"
-                    :key="module.id"
-                    class="select-option"
-                    :class="{ active: form.moduleId === module.id }"
-                    @click="selectModule(module.id)"
-                  >{{ module.navLabel }}</button>
-                </div>
-              </Transition>
+            <div class="custom-select">
+              <el-select
+                v-model="form.moduleId"
+                filterable
+                @change="selectModule"
+              >
+                <el-option
+                  v-for="module in automationModules"
+                  :key="module.id"
+                  :label="module.navLabel"
+                  :value="module.id"
+                />
+              </el-select>
             </div>
 
             <div class="template-type-group" :class="{ 'template-type-group--single': selectedTemplateTypes.length === 1 }">
-              <button
+              <el-button
                 v-for="type in selectedTemplateTypes"
                 :key="type.key"
                 type="button"
@@ -69,8 +65,8 @@
                 @click="selectTemplateType(type.key)"
               >
                 <span class="template-type-check" aria-hidden="true"></span>
-                {{ type.label }}
-              </button>
+                {{ text(type.label) }}
+              </el-button>
             </div>
           </template>
 
@@ -83,19 +79,19 @@
         <!-- Middle: Name + File -->
         <div class="editor-section editor-inputs">
           <div class="mini-input flex-1">
-            <input
+            <el-input
               v-model.trim="form.displayName"
-              :placeholder="creatingTemplate ? '新模板显示名称' : '模板显示名称'"
+              :placeholder="creatingTemplate ? text('新模板显示名称') : text('模板显示名称')"
             />
           </div>
 
           <label
             class="file-btn"
             :class="{ 'has-file': selectedFile }"
-            :title="creatingTemplate ? '选择新模板文件' : '选择文件替换当前模板'"
+            :title="creatingTemplate ? text('选择新模板文件') : text('选择文件替换当前模板')"
           >
             <AppIcon :name="selectedFile ? 'files' : 'upload'" />
-            <span>{{ selectedFile ? selectedFile.name : (creatingTemplate ? '选择模板文件' : '选择文件替换') }}</span>
+            <span>{{ selectedFile ? selectedFile.name : (creatingTemplate ? text('选择模板文件') : text('选择文件替换')) }}</span>
             <input
               ref="fileInput"
               type="file"
@@ -107,40 +103,40 @@
 
         <!-- Right: Primary actions -->
         <div class="editor-section editor-actions">
-          <button
+          <el-button
             v-if="selectedFile"
             class="btn btn-primary"
             :disabled="saving"
+            :loading="saving"
             :title="uploadButtonTitle"
             @click="uploadTemplate"
           >
             <AppIcon name="upload" />
-            {{ creatingTemplate ? '创建模板' : '替换文件' }}
-          </button>
-          <button v-if="editingTemplate" class="btn" :disabled="saving" @click="saveTemplateMeta">
+            {{ creatingTemplate ? text('创建模板') : text('替换文件') }}
+          </el-button>
+          <el-button v-if="editingTemplate" class="btn" :disabled="saving" :loading="saving" @click="saveTemplateMeta">
             <AppIcon name="files" />
-            保存名称
-          </button>
+            {{ text('保存名称') }}
+          </el-button>
         </div>
 
         <!-- Far right: Utility actions + toggle -->
         <div class="editor-section editor-utils">
-          <button v-if="editingTemplate" class="btn-icon" title="下载模板" @click="downloadSelectedTemplate">
+          <el-button v-if="editingTemplate" class="btn-icon" :title="text('下载模板')" @click="downloadSelectedTemplate">
             <AppIcon name="download" />
-          </button>
-          <button v-if="editingTemplate" class="btn-icon" :title="editingTemplate?.isActive === false ? '启用' : '停用'" :disabled="saving" @click="toggleSelectedTemplate">
+          </el-button>
+          <el-button v-if="editingTemplate" class="btn-icon" :title="editingTemplate?.isActive === false ? text('启用') : text('停用')" :disabled="saving" @click="toggleSelectedTemplate">
             <AppIcon :name="editingTemplate?.isActive === false ? 'play-circle' : 'stop-circle'" />
-          </button>
+          </el-button>
           <span class="utils-divider"></span>
-          <button class="btn btn-ghost" @click="resetForm">
+          <el-button class="btn btn-ghost" @click="resetForm">
             <AppIcon name="arrow-left" />
-            取消
-          </button>
-          <label class="toggle">
-            <input v-model="includeInactive" type="checkbox" @change="loadTemplates" />
-            <span class="toggle-track"></span>
-            <span class="toggle-label">显示停用</span>
-          </label>
+            {{ text('取消') }}
+          </el-button>
+          <div class="toggle">
+            <el-switch v-model="includeInactive" @change="loadTemplates" />
+            <span class="toggle-label">{{ text('显示停用') }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -148,19 +144,19 @@
     <!-- Template Table -->
     <section class="card table-card">
       <div class="card-head">
-        <strong>模板清单</strong>
-        <span class="badge">{{ templates.length }} 个模板</span>
+        <strong>{{ text('模板清单') }}</strong>
+        <span class="badge">{{ text(`${templates.length} 个模板`) }}</span>
       </div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>选择</th>
-              <th>自动化页面</th>
-              <th>模板名称 & 类型</th>
-              <th>源文件</th>
-              <th>状态</th>
-              <th>更新时间</th>
+              <th>{{ text('选择') }}</th>
+              <th>{{ text('自动化页面') }}</th>
+              <th>{{ text('模板名称 & 类型') }}</th>
+              <th>{{ text('源文件') }}</th>
+              <th>{{ text('状态') }}</th>
+              <th>{{ text('更新时间') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -173,16 +169,16 @@
               @click="selectTemplateForOperation(template)"
             >
               <td>
-                <button
+                <el-button
                   type="button"
                   class="row-selector"
                   :class="{ active: selectedTemplateId === template.id }"
                   :aria-pressed="selectedTemplateId === template.id"
-                  title="选择这个模板"
+                  :title="text('选择这个模板')"
                   @click.stop="selectTemplateForOperation(template)"
                 >
                   <span class="row-selector-dot" aria-hidden="true"></span>
-                </button>
+                </el-button>
               </td>
               <td><span class="tag">{{ moduleLabel(template.moduleId) }}</span></td>
               <td>
@@ -199,17 +195,17 @@
                 </div>
               </td>
               <td>
-                <span class="pill" :class="template.isActive === false ? 'pill--off' : 'pill--on'">
+                <el-tag class="pill" :class="template.isActive === false ? 'pill--off' : 'pill--on'" disable-transitions>
                   <span class="pill-dot"></span>
-                  {{ template.isActive === false ? '已停用' : '启用中' }}
-                </span>
+                  {{ template.isActive === false ? text('已停用') : text('启用中') }}
+                </el-tag>
               </td>
               <td><span class="cell-date">{{ formatDate(template.updatedAt || template.createdAt) }}</span></td>
             </tr>
             <tr v-if="!templates.length && !loading">
               <td colspan="6" class="empty-cell">
                 <AppIcon name="archive" class="empty-icon" />
-                <p>暂无模板记录</p>
+                <p>{{ text('暂无模板记录') }}</p>
               </td>
             </tr>
           </tbody>
@@ -220,8 +216,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import AppIcon from '../../shared/ui/AppIcon.vue'
+import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import { showAppAlert, showAppConfirm } from '../../shared/ui/appAlert'
 import { tosModules } from '../../domain/moduleCatalog'
 import {
@@ -244,6 +241,7 @@ import {
 const loading = ref(false)
 const saving = ref(false)
 const includeInactive = ref(false)
+const { isEnglish, text } = useAppLanguage()
 const templates = ref<AutomationTemplate[]>([])
 const editingTemplate = ref<AutomationTemplate | null>(null)
 const selectedTemplateId = ref<number | null>(null)
@@ -256,47 +254,33 @@ const form = reactive({
   displayName: '',
 })
 
-// ---- Custom Dropdown State ----
-const moduleDropdownOpen = ref(false)
-const moduleDropdownRef = ref<HTMLElement | null>(null)
-
-function toggleModuleDropdown() {
-  moduleDropdownOpen.value = !moduleDropdownOpen.value
-}
 function selectModule(id: string) {
   form.moduleId = id
   form.templateKey = normalizeTemplateKeyForModule(id, form.templateKey)
-  moduleDropdownOpen.value = false
 }
 function selectTemplateType(templateKey: string) {
   form.templateKey = normalizeTemplateKeyForModule(form.moduleId, templateKey)
 }
-function handleClickOutside(e: MouseEvent) {
-  const target = e.target as HTMLElement
-  if (moduleDropdownRef.value && !moduleDropdownRef.value.contains(target)) {
-    moduleDropdownOpen.value = false
-  }
-}
-
 onMounted(() => {
   form.moduleId = automationModules.value[0]?.id || 'shipping-automation'
-  document.addEventListener('click', handleClickOutside, true)
   void loadTemplates()
-})
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside, true)
 })
 
 // ---- Computed ----
-const automationModules = computed(() => automationTemplateModules)
+const automationModules = computed(() =>
+  automationTemplateModules.map((module) => ({
+    ...module,
+    navLabel: text(module.navLabel),
+  })),
+)
 const selectedTemplateTypes = computed(() =>
   findAutomationTemplateModule(form.moduleId)?.templateTypes || [{ key: 'default', label: '默认模板' }],
 )
 const canEditTemplateForm = computed(() => creatingTemplate.value || Boolean(editingTemplate.value))
 const uploadButtonTitle = computed(() => {
-  if (!canEditTemplateForm.value) return '请先勾选模板，或点击新增模板'
-  if (!selectedFile.value) return '请先选择 Excel 文件'
-  return creatingTemplate.value ? '上传新的模板文件' : '替换当前选中模板的文件'
+  if (!canEditTemplateForm.value) return text('请先勾选模板，或点击新增模板')
+  if (!selectedFile.value) return text('请先选择 Excel 文件')
+  return creatingTemplate.value ? text('上传新的模板文件') : text('替换当前选中模板的文件')
 })
 
 // ---- Data ----
@@ -357,7 +341,7 @@ async function saveTemplateMeta(): Promise<void> {
     await updateAutomationTemplate(editingTemplate.value.id, {
       moduleId: form.moduleId,
       templateKey: normalizeTemplateKeyForModule(form.moduleId, form.templateKey),
-      displayName: form.displayName || 'Excel 模板',
+      displayName: form.displayName || text('Excel 模板'),
       isActive: editingTemplate.value.isActive !== false,
     })
     resetForm()
@@ -375,8 +359,8 @@ async function toggleTemplate(template: AutomationTemplate, isActive: boolean): 
 
 async function removeTemplate(template: AutomationTemplate): Promise<void> {
   const confirmed = await showAppConfirm(
-    `确定停用模板「${template.displayName}」吗？停用后该模板将不再出现在下载选项中。`,
-    { title: '停用模板', confirmText: '确定停用', cancelText: '取消', tone: 'warning' },
+    text(`确定停用模板「${template.displayName}」吗？停用后该模板将不再出现在下载选项中。`),
+    { title: text('停用模板'), confirmText: text('确定停用'), cancelText: text('取消'), tone: 'warning' },
   )
   if (!confirmed) return
   await deleteAutomationTemplate(template.id)
@@ -402,7 +386,7 @@ async function downloadTemplate(template: AutomationTemplate): Promise<void> {
   try {
     await downloadAutomationTemplate(template)
   } catch (error) {
-    const message = error instanceof Error && error.message ? error.message : '模板下载失败。'
+    const message = text(error instanceof Error && error.message ? error.message : '模板下载失败。')
     void showAppAlert(message, { tone: 'warning' })
   }
 }
@@ -439,16 +423,18 @@ function syncSelectedTemplateAfterLoad(): void {
 // ---- Helpers ----
 function moduleLabel(moduleId: string): string {
   const templateModule = findAutomationTemplateModule(moduleId)
-  if (templateModule) return templateModule.navLabel
-  return tosModules.find((module) => module.id === moduleId)?.navLabel || moduleId
+  if (templateModule) return text(templateModule.navLabel)
+  const module = tosModules.find((item) => item.id === moduleId)
+  if (module) return isEnglish.value ? module.navLabelEn : module.navLabel
+  return moduleId
 }
 function templateTypeLabel(moduleId: string, templateKey: string): string {
-  return getTemplateTypeLabel(moduleId, templateKey)
+  return text(getTemplateTypeLabel(moduleId, templateKey))
 }
 function formatDate(value?: string): string {
   if (!value) return '-'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false })
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(isEnglish.value ? 'en-US' : 'zh-CN', { hour12: false })
 }
 function formatSize(size: number): string {
   if (!size) return '0 B'
@@ -599,6 +585,11 @@ function shortHash(value: string): string {
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(13,148,136,.1);
 }
+.btn :deep(.el-button__content) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-primary {
   color: #fff;
@@ -686,6 +677,11 @@ function shortHash(value: string): string {
   color: var(--teal);
   transform: translateY(-1px);
 }
+.btn-icon :deep(.el-button__content) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .btn-icon:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -770,6 +766,28 @@ function shortHash(value: string): string {
 .custom-select {
   position: relative;
   flex-shrink: 0;
+}
+.custom-select :deep(.el-select) {
+  min-width: 140px;
+}
+.custom-select :deep(.el-select__wrapper) {
+  min-height: 32px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-sm);
+  background: var(--slate-50);
+  box-shadow: none;
+  transition: all var(--transition);
+}
+.custom-select :deep(.el-select__wrapper:hover) {
+  background: var(--white);
+  box-shadow: 0 0 0 1px #99f6e4 inset;
+}
+.custom-select :deep(.el-select__selected-item),
+.custom-select :deep(.el-select__placeholder) {
+  color: var(--slate-700);
+  font-size: 12px;
+  font-weight: 600;
 }
 .select-trigger {
   display: inline-flex;
@@ -885,6 +903,12 @@ function shortHash(value: string): string {
   color: var(--teal);
   background: #ecfdf5;
 }
+.template-type-pill :deep(.el-button__content) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
 .template-type-pill.active {
   color: var(--teal-600);
   background: var(--white);
@@ -925,6 +949,35 @@ function shortHash(value: string): string {
   width: 130px;
 }
 .mini-input.flex-1 { flex: 1; min-width: 120px; max-width: 200px; }
+.mini-input :deep(.el-input__wrapper) {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-sm);
+  background: var(--slate-50);
+  box-shadow: none;
+  transition: all var(--transition);
+  box-sizing: border-box;
+}
+.mini-input :deep(.el-input__wrapper:hover) {
+  background: var(--white);
+  box-shadow: 0 0 0 1px #99f6e4 inset;
+}
+.mini-input :deep(.el-input__wrapper.is-focus) {
+  background: var(--white);
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(13,148,136,.08);
+}
+.mini-input :deep(.el-input__inner) {
+  color: var(--slate-900);
+  font-size: 12px;
+  font-weight: 500;
+}
+.mini-input :deep(.el-input__inner::placeholder) {
+  color: var(--slate-400);
+  font-weight: 400;
+}
 .mini-input input {
   width: 100%;
   height: 32px;
@@ -1019,6 +1072,20 @@ function shortHash(value: string): string {
   color: var(--slate-500);
   margin-left: auto;
   user-select: none;
+}
+.toggle :deep(.el-switch) {
+  --el-switch-on-color: var(--teal);
+  --el-switch-off-color: var(--slate-300);
+  height: 18px;
+}
+.toggle :deep(.el-switch__core) {
+  min-width: 32px;
+  height: 18px;
+  border: 0;
+}
+.toggle :deep(.el-switch__action) {
+  width: 12px;
+  height: 12px;
 }
 .toggle input { display: none; }
 .toggle-track {
@@ -1204,6 +1271,11 @@ tbody tr.inactive.selected {
 .row-selector:hover {
   background: var(--teal-50);
 }
+.row-selector :deep(.el-button__content) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .row-selector-dot {
   width: 13px;
   height: 13px;
@@ -1269,7 +1341,9 @@ tbody tr.inactive.selected {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  height: auto;
   padding: 3px 10px;
+  border: 0;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;

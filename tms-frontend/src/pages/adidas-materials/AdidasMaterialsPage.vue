@@ -43,7 +43,7 @@
         <div class="am-alert__icon">
           <AppIcon :name="alertIcon" />
         </div>
-        <span class="am-alert__text">{{ message }}</span>
+        <span class="am-alert__text">{{ text(message) }}</span>
         <button class="am-alert__close" type="button" @click="message = ''">×</button>
       </div>
     </transition>
@@ -56,8 +56,8 @@
               <AppIcon name="download-cloud" />
             </div>
             <div>
-              <h2 id="adidas-helper-update-title">需要更新本机自动化助手</h2>
-              <p>当前助手缺少 adidas 网页端启动能力，请安装最新版后再打开采集器。</p>
+              <h2 id="adidas-helper-update-title">{{ text('需要更新本机自动化助手') }}</h2>
+              <p>{{ text('当前助手缺少 adidas 网页端启动能力，请安装最新版后再打开采集器。') }}</p>
             </div>
             <button class="am-update-modal__close" type="button" @click="updateDialogOpen = false">
               <AppIcon name="x" />
@@ -67,23 +67,23 @@
           <div class="am-update-modal__body">
             <div class="am-version-grid">
               <div>
-                <span>当前版本</span>
-                <strong>{{ updateCurrentVersion || '未知版本' }}</strong>
+                <span>{{ text('当前版本') }}</span>
+                <strong>{{ updateCurrentVersion || text('未知版本') }}</strong>
               </div>
               <div>
-                <span>系统要求</span>
+                <span>{{ text('系统要求') }}</span>
                 <strong>{{ updateExpectedVersion }}</strong>
               </div>
             </div>
-            <p>{{ updateMessage }}</p>
-            <p>安装包文件名会带版本号；安装完成后请重启本机自动化助手，或重新打开此页面。</p>
+            <p>{{ text(updateMessage) }}</p>
+            <p>{{ text('安装包文件名会带版本号；安装完成后请重启本机自动化助手，或重新打开此页面。') }}</p>
           </div>
 
           <footer class="am-update-modal__foot">
-            <button class="am-secondary-btn" type="button" @click="updateDialogOpen = false">稍后处理</button>
+            <button class="am-secondary-btn" type="button" @click="updateDialogOpen = false">{{ text('稍后处理') }}</button>
             <button class="am-download-btn" type="button" @click="downloadLatestHelper">
               <AppIcon name="download" />
-              下载最新助手
+              {{ text('下载最新助手') }}
             </button>
           </footer>
         </section>
@@ -268,10 +268,10 @@ async function downloadLatestHelper(): Promise<void> {
   try {
     await openAutomationHelperDownload()
     messageTone.value = 'info'
-    message.value = '已打开自动化助手安装包下载。'
+    message.value = text('已打开自动化助手安装包下载。')
   } catch (error) {
     messageTone.value = 'error'
-    message.value = readErrorMessage(error, '自动化助手安装包下载失败。')
+    message.value = readErrorMessage(error, text('自动化助手安装包下载失败。'))
   }
 }
 

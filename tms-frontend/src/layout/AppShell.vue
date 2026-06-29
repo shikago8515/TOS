@@ -115,15 +115,50 @@
             <small>{{ installerUpdateLabel }}</small>
           </button>
 
-          <button
-            class="topbar-icon-btn topbar-bell"
-            type="button"
-            :title="text('版本更新记录')"
-            @click="openReleaseUpdatesPage"
-          >
-            <AppIcon name="bell" />
-            <span v-if="hasUnseenReleaseNotes" class="topbar-bell__badge">!</span>
-          </button>
+          <ElTooltip :content="darkModeTooltip" placement="bottom">
+            <button
+              class="topbar-icon-btn topbar-theme-btn"
+              type="button"
+              :aria-label="darkModeTooltip"
+              @click="toggleDarkMode"
+            >
+              <ElIcon>
+                <Sunny v-if="isDark" />
+                <Moon v-else />
+              </ElIcon>
+            </button>
+          </ElTooltip>
+
+          <ElTooltip :content="languageTooltip" placement="bottom">
+            <div class="topbar-koi-trigger-zone koi-flip-i">
+              <ElDropdown trigger="click" @command="selectLanguage">
+                <span
+                  class="el-icon koi-icon topbar-koi-dropdown-trigger"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="languageTooltip"
+                >
+                  <AppIcon name="translate" />
+                </span>
+                <template #dropdown>
+                  <ElDropdownMenu>
+                    <ElDropdownItem
+                      v-for="option in languageOptions"
+                      :key="option.value"
+                      :command="option.value"
+                      :disabled="option.disabled"
+                    >
+                      <span class="topbar-language-option">
+                        <span>{{ option.label }}</span>
+                        <small v-if="option.value === 'zh'">ZH</small>
+                        <small v-else>EN</small>
+                      </span>
+                    </ElDropdownItem>
+                  </ElDropdownMenu>
+                </template>
+              </ElDropdown>
+            </div>
+          </ElTooltip>
 
           <div ref="profileMenuRef" class="topbar-profile-wrap">
             <button
@@ -153,6 +188,21 @@
                   <span>
                     <strong>{{ text('系统设置') }}</strong>
                     <small>{{ text('语言、版本更新与自动化助手') }}</small>
+                  </span>
+                </button>
+                <button
+                  class="profile-menu-item"
+                  type="button"
+                  role="menuitem"
+                  @click="openReleaseUpdatesPage"
+                >
+                  <span class="profile-menu-icon profile-menu-icon--badge">
+                    <AppIcon name="bell" />
+                    <span v-if="hasUnseenReleaseNotes" class="topbar-bell__badge">!</span>
+                  </span>
+                  <span>
+                    <strong>{{ text('版本更新记录') }}</strong>
+                    <small>{{ text('查看最近版本更新内容') }}</small>
                   </span>
                 </button>
                 <button
@@ -189,10 +239,14 @@
         </div>
       </header>
 
+      <RouteTabs @refresh-current="refreshRouteView" />
+
       <main class="content-shell">
         <RouterView v-slot="{ Component, route }">
-          <transition name="page-slide" mode="out-in">
-            <component :is="Component" :key="route.fullPath" />
+          <transition name="fade-slide" mode="out-in" appear>
+            <keep-alive :max="16" :include="keepAliveStore.keepAliveName">
+              <component :is="Component" :key="route.fullPath" v-if="isRouterShow" />
+            </keep-alive>
           </transition>
         </RouterView>
       </main>
@@ -270,10 +324,41 @@
 </template>
 
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { nextTick, ref } from 'vue'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
+import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElTooltip } from 'element-plus'
+import { Moon, Sunny } from '@element-plus/icons-vue'
+import { useKeepAliveStore } from '../app/stores/keepAliveStore'
+import type { RouteTab } from '../app/stores/tabsStore'
 import AppIcon from '../shared/ui/AppIcon.vue'
+import RouteTabs from './RouteTabs.vue'
 import { useAppShellModel } from './useAppShellModel'
+
+const route = useRoute()
+const keepAliveStore = useKeepAliveStore()
+const isRouterShow = ref(true)
+
+async function refreshRouteView(tab?: RouteTab): Promise<void> {
+  const keepAliveName = tab?.name || route.meta.keepAliveName || (typeof route.name === 'string' ? route.name : '')
+  const shouldRestoreKeepAlive = Boolean(keepAliveName && keepAliveStore.keepAliveName.includes(keepAliveName))
+
+  if (keepAliveName) {
+    keepAliveStore.removeKeepAliveName(keepAliveName)
+  }
+
+  isRouterShow.value = false
+  await nextTick()
+
+  if (shouldRestoreKeepAlive && keepAliveName) {
+    keepAliveStore.addKeepAliveName(keepAliveName)
+  }
+
+  isRouterShow.value = true
+  window.dispatchEvent(new Event('resize'))
+}
+
 const {
+  darkModeTooltip,
   dismissReleaseNotice,
   displayDate,
   downloadInstallerUpdate,
@@ -286,10 +371,13 @@ const {
   installerUpdate,
   installerUpdateLabel,
   installerUpdateTitle,
+  isDark,
   isMobile,
   isModuleActive,
   isNavGroupExpanded,
   isSidebarHidden,
+  languageOptions,
+  languageTooltip,
   openAutomationRunsPage,
   openAutomationTemplatesPage,
   openReleaseUpdatesPage,
@@ -303,9 +391,11 @@ const {
   releaseNoticeVersionLabel,
   sidebarGroups,
   sidebarToggleLabel,
+  selectLanguage,
   text,
   toast,
   toggleCategory,
+  toggleDarkMode,
   toggleNavGroup,
   toggleSidebar,
   toggleProfileMenu,
@@ -609,6 +699,7 @@ const {
 }
 
 .topbar {
+  --el-header-icon-hover-bg-color: var(--color-primary-soft);
   height: var(--topbar-height);
   margin: 0 10px;
   border-radius: 0 0 var(--soft-radius, 16px) var(--soft-radius, 16px);
@@ -1706,6 +1797,78 @@ const {
     transform 0.18s ease;
 }
 
+.topbar-theme-btn :deep(.el-icon) {
+  font-size: 18px;
+}
+
+.topbar-koi-trigger-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-muted);
+  box-shadow: none;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.topbar-koi-trigger-zone:hover,
+.topbar-koi-trigger-zone:focus-within {
+  border-color: #99f6e4;
+  background: var(--el-header-icon-hover-bg-color);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-focus);
+}
+
+.topbar-koi-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 18px;
+  outline: none;
+}
+
+.topbar-koi-dropdown-trigger :deep(.app-icon) {
+  width: 18px;
+  height: 18px;
+}
+
+.koi-flip-i :deep(.app-icon),
+.koi-flip-i :deep(.el-icon) {
+  transition: transform 0.22s ease;
+}
+
+.koi-flip-i:hover :deep(.app-icon),
+.koi-flip-i:hover :deep(.el-icon) {
+  transform: rotateY(180deg);
+}
+
+.topbar-language-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 96px;
+}
+
+.topbar-language-option small {
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .topbar-update-btn {
   display: inline-flex;
   align-items: center;
@@ -1883,6 +2046,15 @@ const {
   flex-shrink: 0;
 }
 
+.profile-menu-icon--badge {
+  position: relative;
+}
+
+.profile-menu-icon--badge .topbar-bell__badge {
+  top: -6px;
+  right: -6px;
+}
+
 .profile-menu-item strong {
   display: block;
   font-size: 13px;
@@ -1936,18 +2108,22 @@ const {
 }
 
 .page-slide-enter-active,
-.page-slide-leave-active {
+.page-slide-leave-active,
+.fade-slide-enter-active,
+.fade-slide-leave-active {
   transition:
     opacity 0.24s var(--ease-spring),
     transform 0.24s var(--ease-spring);
 }
 
-.page-slide-enter-from {
+.page-slide-enter-from,
+.fade-slide-enter-from {
   opacity: 0;
   transform: translateY(10px);
 }
 
-.page-slide-leave-to {
+.page-slide-leave-to,
+.fade-slide-leave-to {
   opacity: 0;
   transform: translateY(-10px);
 }

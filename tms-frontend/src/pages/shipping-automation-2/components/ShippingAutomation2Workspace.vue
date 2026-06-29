@@ -202,7 +202,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
@@ -214,8 +214,9 @@ import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, E
 import {
   clearExecutorCredentials, createAutomationRunRecord, downloadAutomationTemplate,
   fetchAutomationApps, fetchAutomationTemplates, fetchExecutorCredentials, finishAutomationRunRecord,
+  findLocalExecutorActiveRun,
   getAutomationHelperUpdateMessage,
-  hasElectronAutomationSupport, launchAutomationConsole, openAutomationHelperDownload,
+  hasElectronAutomationSupport, isLocalExecutorBusy, launchAutomationConsole, openAutomationHelperDownload,
   primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
   recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
@@ -236,6 +237,7 @@ const activeApp = ref<AutomationAppInfo | null>(null); const executorHealth = re
 const executorCredentials = ref<ExecutorCredentials | null>(null); const automationTemplates = ref<AutomationTemplate[]>([])
 const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false)
 const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false)
+const restoredActiveBulkIds = ref<BulkId[]>([])
 const shippingUsername = ref(releasedBulkDefaultUsername); const shippingPassword = ref(''); const showPassword = ref(false)
 const showBrowserView = ref(true)
 const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info')
@@ -245,6 +247,7 @@ const bulkAreas = ref<BulkState[]>([
   { id: 'unreleased', label: 'Unreleased Bulk', file: null, dragging: false, dragDepth: 0, running: false, tone: 'idle', statusText: '等待选择 Excel 文件。', result: null },
   { id: 'released', label: 'Released Bulk', file: null, dragging: false, dragDepth: 0, running: false, tone: 'idle', statusText: '等待选择 Excel 文件。', result: null },
 ])
+let activeRunStateTimer: number | null = null
 
 const healthRaw = computed(() => executorHealth.value ? JSON.stringify(executorHealth.value, null, 2) : '{}')
 const executorStatusLabel = computed(() => {
@@ -260,8 +263,9 @@ const messageIconName = computed(() => { if (messageTone.value === 'success') re
 const bulkHistorySignal = computed(() => bulkAreas.value.map((bulk) => `${bulk.id}:${bulk.result?.runId || ''}:${bulk.result?.message || ''}`).join('|'))
 
 onMounted(() => { void initializeScenario() })
+onBeforeUnmount(() => { stopActiveRunStatePolling() })
 
-async function initializeScenario(): Promise<void> { await refreshAutomationTemplates(); await refreshExecutorCredentials(); await refreshExecutorState(true) }
+async function initializeScenario(): Promise<void> { await refreshAutomationTemplates(); await refreshExecutorCredentials(); await refreshExecutorState(true); if (electronSupported && activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) await startActiveApp(true) }
 
 async function refreshExecutorState(silent: boolean): Promise<void> {
   if (!entry || refreshing.value) return; refreshing.value = true; const fb = createFallbackAutomationApp(entry)
@@ -280,6 +284,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
     if (!electronSupported && !launcherReachable.value) {
       executorHealth.value = null
       activeApp.value = fb
+      clearRestoredActiveBulkState()
       if (!silent) {
         messageTone.value = 'warning'
         message.value = text('未检测到本机自动化助手。')
@@ -288,6 +293,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
     }
     executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl)
     if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
+    syncActiveRunViewFromHealth()
     const updateMessage = getAutomationHelperUpdateMessage(executorHealth.value, activeApp.value)
     if (updateMessage) {
       messageTone.value = 'warning'
@@ -299,6 +305,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
   } catch {
     executorHealth.value = null
     activeApp.value = activeApp.value || fb
+    clearRestoredActiveBulkState()
     if (!silent) {
       messageTone.value = 'warning'
       message.value = launcherReachable.value ? text('本机自动化助手已连接，执行器尚未启动。') : text('执行器未就绪。')
@@ -306,6 +313,63 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
   } finally {
     refreshing.value = false
   }
+}
+
+function syncActiveRunViewFromHealth(): void {
+  const activeIds = (['unreleased', 'released'] as BulkId[]).filter((id) => Boolean(findShipping2BulkActiveRun(id)))
+  for (const id of activeIds) {
+    const bulk = getBulk(id)
+    const activeRun = findShipping2BulkActiveRun(id)
+    if (!bulk) continue
+    bulk.running = true
+    bulk.tone = 'info'
+    const inputFileName = String(activeRun?.inputFileName || '').trim()
+    bulk.statusText = inputFileName ? `执行器仍在处理 ${inputFileName}，请勿重复启动。` : `${bulk.label} 仍在后台运行，请勿重复启动。`
+  }
+  for (const id of restoredActiveBulkIds.value) {
+    if (activeIds.includes(id)) continue
+    const bulk = getBulk(id)
+    if (!bulk) continue
+    bulk.running = false
+    bulk.tone = 'idle'
+    bulk.statusText = '后台执行器任务已结束，请查看执行记录或重新开始。'
+  }
+  restoredActiveBulkIds.value = activeIds
+  if (activeIds.length > 0) startActiveRunStatePolling()
+  else stopActiveRunStatePolling()
+}
+
+function findShipping2BulkActiveRun(id: BulkId): Record<string, any> | null {
+  return findLocalExecutorActiveRun(executorHealth.value, (run) => {
+    const action = String(run.action || '').trim()
+    const inputMode = String(run.inputMode || '').trim()
+    const bulkType = String(run.bulkType || '').trim()
+    return inputMode === 'shipping2-bulk' && (bulkType === id || action === `run-shipping2-${id}-bulk`)
+  })
+}
+
+function startActiveRunStatePolling(): void {
+  if (activeRunStateTimer !== null) return
+  activeRunStateTimer = window.setInterval(() => { void refreshExecutorState(true) }, 3500)
+}
+
+function stopActiveRunStatePolling(): void {
+  if (activeRunStateTimer === null) return
+  window.clearInterval(activeRunStateTimer)
+  activeRunStateTimer = null
+}
+
+function clearRestoredActiveBulkState(): void {
+  if (restoredActiveBulkIds.value.length === 0) return
+  for (const id of restoredActiveBulkIds.value) {
+    const bulk = getBulk(id)
+    if (bulk) {
+      bulk.running = false
+      bulk.tone = 'idle'
+    }
+  }
+  restoredActiveBulkIds.value = []
+  stopActiveRunStatePolling()
 }
 
 async function refreshExecutorCredentials(): Promise<void> { if (!entry) return; try { executorCredentials.value = await fetchExecutorCredentials(entry.id); shippingUsername.value = resolveReleasedBulkCredentialUsername(executorCredentials.value.username); if (executorCredentials.value.hasStoredCredentials) { const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = resolveReleasedBulkCredentialUsername(r.username); shippingPassword.value = r.password } } catch { executorCredentials.value = null; shippingUsername.value = resolveReleasedBulkCredentialUsername(shippingUsername.value) } }
@@ -321,8 +385,8 @@ function downloadAutomationHelper(): void { void openAutomationHelperDownload() 
 function bootLocalHelper(): void { primeLocalAutomationLauncherBoot(); messageTone.value = 'info'; message.value = text('已尝试启动本机自动化助手。'); window.setTimeout(() => { void refreshExecutorState(true) }, 1200) }
 
 async function startActiveApp(silent: boolean): Promise<void> { if (!entry || launching.value) return; if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot(); launching.value = true; try { const r = await launchAutomationConsole(entry.appId); if (!r.success) throw new Error(r.error || '启动失败'); await refreshExecutorState(true); if (!silent) { messageTone.value = 'success'; message.value = r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') } } catch (e) { const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.appId, entryId: entry.id, error: m }); if (!silent) { messageTone.value = 'error'; message.value = m } } finally { launching.value = false } }
-async function stopActiveApp(): Promise<void> { if (!entry) return; try { const r = await stopAutomationConsole(entry.appId); if (!r.success) throw new Error(r.error || '停止失败'); executorHealth.value = null; if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }; await refreshExecutorState(true).catch(() => {}); messageTone.value = 'info'; message.value = text('执行器已停止。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('停止失败')) } }
-async function ensureExecutorReady(): Promise<boolean> { if (executorHealth.value?.ok) return true; await startActiveApp(true); await refreshExecutorState(true).catch(() => {}); return Boolean(executorHealth.value?.ok) }
+async function stopActiveApp(): Promise<void> { if (!entry) return; try { const r = await stopAutomationConsole(entry.appId); if (!r.success) throw new Error(r.error || '停止失败'); executorHealth.value = null; clearRestoredActiveBulkState(); if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }; await refreshExecutorState(true).catch(() => {}); messageTone.value = 'info'; message.value = text('执行器已停止。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('停止失败')) } }
+async function ensureExecutorReady(): Promise<boolean> { if (entry && activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) await startActiveApp(true); else if (!executorHealth.value?.ok) await startActiveApp(true); await refreshExecutorState(true).catch(() => {}); return Boolean(executorHealth.value?.ok) }
 
 function setBulkFileInputRef(id: BulkId, el: unknown): void { if (el instanceof HTMLInputElement) bulkFileInputs.set(id, el) }
 function getBulk(id: BulkId): BulkState | undefined { return bulkAreas.value.find((b) => b.id === id) }
@@ -424,7 +488,7 @@ function bulkStatusIcon(b: BulkState): string { if (b.running) return 'loader'; 
 function formatSize(b: number): string { if (b < 1024) return `${b} B`; if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`; return `${(b / (1024 * 1024)).toFixed(1)} MB` }
 function createFallbackAutomationApp(t: WebAutomationEntry): AutomationAppInfo { return { id: t.appId, name: t.title, description: t.description, provider: 'Playwright', category: 'Web Automation', version: 'local', available: true, running: false, url: t.executorBaseUrl } }
 function safeParseJson<T>(raw: string): T | null { try { return raw ? JSON.parse(raw) as T : null } catch { return null } }
-function buildExecutorResponseMessage(res: Response, _raw: string, payload: { message?: unknown } | null, fallback = '自动化执行失败。'): string { const rawMessage = typeof payload?.message === 'string' ? payload.message : ''; if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback); if (!payload) return formatAutomationExecutorMessage('JSON.parse: unexpected character at line 1 column 1 of the JSON data', fallback); return formatAutomationExecutorMessage(`HTTP ${res.status}`, fallback) }
+function buildExecutorResponseMessage(res: Response, raw: string, payload: { message?: unknown } | null, fallback = '自动化执行失败。'): string { const rawMessage = typeof payload?.message === 'string' ? payload.message : ''; if (res.status === 404 && /not\s*found/i.test(rawMessage || raw || '')) return '本机执行器缺少当前自动化接口，系统已同步最新自动化逻辑但接口仍不可用。请确认服务器 automation-modules 模块包已发布，或重启本机自动化执行器后再试。'; if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback); if (!payload) return formatAutomationExecutorMessage('JSON.parse: unexpected character at line 1 column 1 of the JSON data', fallback); return formatAutomationExecutorMessage(`HTTP ${res.status}`, fallback) }
 function readErrorMessage(e: unknown, fb: string): string { return e instanceof Error && e.message ? e.message : fb }
 function goBack(): void { void router.push('/jane-infornexus') }
 

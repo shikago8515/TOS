@@ -3,14 +3,14 @@
     <!-- Header -->
     <header class="runs-header">
       <div class="header-title">
-        <h2>自动化执行档案</h2>
-        <p class="header-sub">统一查看各自动化页面的执行批次、上传文件、结果文件和失败说明。</p>
+        <h2>{{ text('自动化执行档案') }}</h2>
+        <p class="header-sub">{{ text('统一查看各自动化页面的执行批次、上传文件、结果文件和失败说明。') }}</p>
       </div>
       <div class="header-actions">
-        <button class="btn btn-primary" :disabled="loading" @click="loadRuns">
+        <el-button class="btn btn-primary" :disabled="loading" :loading="loading" @click="loadRuns">
           <AppIcon name="refresh-cw" :class="{ spin: loading }" />
-          刷新记录
-        </button>
+          {{ text('刷新记录') }}
+        </el-button>
       </div>
     </header>
 
@@ -18,22 +18,22 @@
     <div class="metrics-bar">
       <div class="metric-chip">
         <span class="metric-dot dot--total"></span>
-        <span class="metric-label">当前筛选</span>
+        <span class="metric-label">{{ text('当前筛选') }}</span>
         <span class="metric-value">{{ pagination.total }}</span>
       </div>
       <div class="metric-chip">
         <span class="metric-dot dot--success"></span>
-        <span class="metric-label">成功</span>
+        <span class="metric-label">{{ text('成功') }}</span>
         <span class="metric-value">{{ visibleSuccessCount }}</span>
       </div>
       <div class="metric-chip">
         <span class="metric-dot dot--failed"></span>
-        <span class="metric-label">失败</span>
+        <span class="metric-label">{{ text('失败') }}</span>
         <span class="metric-value">{{ visibleFailedCount }}</span>
       </div>
       <div class="metric-chip">
         <span class="metric-dot dot--running"></span>
-        <span class="metric-label">执行中</span>
+        <span class="metric-label">{{ text('执行中') }}</span>
         <span class="metric-value">{{ visibleRunningCount }}</span>
       </div>
     </div>
@@ -42,62 +42,59 @@
     <div class="runs-toolbar">
       <div class="toolbar-filters">
         <!-- Custom Dropdown: 自动化页面 -->
-        <div class="custom-select" ref="moduleDropdownRef">
-          <button class="select-trigger" @click="toggleModuleDropdown">
-            <span class="trigger-label">{{ filters.automationId ? moduleLabel(filters.automationId) : '全部页面' }}</span>
-            <AppIcon name="chevron-down" class="trigger-chevron" :class="{ open: moduleDropdownOpen }" />
-          </button>
-          <Transition name="dropdown">
-            <div v-if="moduleDropdownOpen" class="select-menu">
-              <button
-                class="select-option"
-                :class="{ active: filters.automationId === '' }"
-                @click="selectModule('')"
-              >全部页面</button>
-              <button
-                v-for="module in automationModules"
-                :key="module.id"
-                class="select-option"
-                :class="{ active: filters.automationId === module.id }"
-                @click="selectModule(module.id)"
-              >{{ module.navLabel }}</button>
-            </div>
-          </Transition>
+        <div class="custom-select">
+          <el-select
+            v-model="filters.automationId"
+            clearable
+            filterable
+            :placeholder="text('全部页面')"
+            @change="selectModule"
+          >
+            <el-option :label="text('全部页面')" value="" />
+            <el-option
+              v-for="module in automationModules"
+              :key="module.id"
+              :label="module.navLabel"
+              :value="module.id"
+            />
+          </el-select>
         </div>
 
         <!-- Custom Dropdown: 状态 -->
-        <div class="custom-select" ref="statusDropdownRef">
-          <button class="select-trigger" @click="toggleStatusDropdown">
-            <span class="trigger-label">{{ statusLabel(filters.status) || '全部状态' }}</span>
-            <AppIcon name="chevron-down" class="trigger-chevron" :class="{ open: statusDropdownOpen }" />
-          </button>
-          <Transition name="dropdown">
-            <div v-if="statusDropdownOpen" class="select-menu">
-              <button
-                v-for="option in statusOptions"
-                :key="option.value"
-                class="select-option"
-                :class="{ active: filters.status === option.value }"
-                @click="selectStatus(option.value)"
-              >{{ option.label }}</button>
-            </div>
-          </Transition>
+        <div class="custom-select">
+          <el-select
+            v-model="filters.status"
+            clearable
+            :placeholder="text('全部状态')"
+            @change="selectStatus"
+          >
+            <el-option
+              v-for="option in statusOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
         </div>
 
         <!-- Keyword Input -->
         <div class="keyword-input">
-          <AppIcon name="file-search" class="keyword-icon" />
-          <input
+          <el-input
             v-model.trim="filters.keyword"
-            placeholder="Run ID / 文件 / 错误说明"
+            :placeholder="text('Run ID / 文件 / 错误说明')"
+            clearable
             @keyup.enter="reloadFirstPage"
-          />
+          >
+            <template #prefix>
+              <AppIcon name="file-search" class="keyword-icon" />
+            </template>
+          </el-input>
         </div>
       </div>
-      <button class="btn" :disabled="loading" @click="reloadFirstPage">
+      <el-button class="btn" :disabled="loading" @click="reloadFirstPage">
         <AppIcon name="file-search" />
-        查询
-      </button>
+        {{ text('查询') }}
+      </el-button>
     </div>
 
     <!-- Error -->
@@ -113,18 +110,18 @@
       <!-- Left: Run List -->
       <section class="card list-card">
         <div class="card-head">
-          <strong>执行批次</strong>
+          <strong>{{ text('执行批次') }}</strong>
           <span class="badge">{{ runs.length }} / {{ pagination.total }}</span>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>执行时间</th>
-                <th>自动化页面</th>
-                <th>状态</th>
-                <th>说明</th>
-                <th>耗时</th>
+                <th>{{ text('执行时间') }}</th>
+                <th>{{ text('自动化页面') }}</th>
+                <th>{{ text('状态') }}</th>
+                <th>{{ text('说明') }}</th>
+                <th>{{ text('耗时') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -141,54 +138,60 @@
                   <span class="cell-id">{{ run.runId }}</span>
                 </td>
                 <td><span class="tag">{{ moduleLabel(run.automationId) }}</span></td>
-                <td><span class="pill" :class="`pill--${run.status}`">{{ statusLabel(run.status) }}</span></td>
-                <td class="cell-msg"><span class="msg-trunc" :title="run.message">{{ run.message || '-' }}</span></td>
+                <td>
+                  <el-tag class="pill" :class="`pill--${run.status}`" disable-transitions>
+                    {{ statusLabel(run.status) }}
+                  </el-tag>
+                </td>
+                <td class="cell-msg"><span class="msg-trunc" :title="run.message ? text(run.message) : '-'">{{ run.message ? text(run.message) : '-' }}</span></td>
                 <td><span class="cell-dur">{{ durationLabel(run) }}</span></td>
               </tr>
               <tr v-if="!runs.length && !loading">
                 <td colspan="5" class="empty-cell">
                   <AppIcon name="inbox" class="empty-icon" />
-                  <p>暂无执行记录</p>
+                  <p>{{ text('暂无执行记录') }}</p>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
         <div class="card-foot">
-          <button class="pager-btn" :disabled="loading || pagination.page <= 1" @click="goPage(pagination.page - 1)">
+          <el-button class="pager-btn" :disabled="loading || pagination.page <= 1" @click="goPage(pagination.page - 1)">
             <AppIcon name="chevron-left" />
-          </button>
-          <span class="pager-num">第 <b>{{ pagination.page }}</b> 页</span>
-          <button class="pager-btn" :disabled="loading || pagination.page * pagination.pageSize >= pagination.total" @click="goPage(pagination.page + 1)">
+          </el-button>
+          <span class="pager-num">{{ text('第') }} <b>{{ pagination.page }}</b> {{ text('页') }}</span>
+          <el-button class="pager-btn" :disabled="loading || pagination.page * pagination.pageSize >= pagination.total" @click="goPage(pagination.page + 1)">
             <AppIcon name="chevron-right" />
-          </button>
+          </el-button>
         </div>
       </section>
 
       <!-- Right: Detail -->
       <section class="card detail-card">
         <div class="card-head">
-          <strong>执行详情</strong>
-          <span v-if="detailLoading" class="loading-hint"><AppIcon name="loader" class="spin" /> 读取中...</span>
+          <strong>{{ text('执行详情') }}</strong>
+          <span v-if="detailLoading" class="loading-hint"><AppIcon name="loader" class="spin" /> {{ text('读取中...') }}</span>
         </div>
         <div class="detail-body">
           <template v-if="selectedRun">
             <!-- Detail Grid -->
             <div class="detail-grid">
               <div class="ditem">
-                <small>自动化页面</small>
+                <small>{{ text('自动化页面') }}</small>
                 <b>{{ moduleLabel(selectedRun.automationId) }}</b>
               </div>
               <div class="ditem">
-                <small>状态</small>
-                <span class="pill" :class="`pill--${selectedRun.status}`">{{ statusLabel(selectedRun.status) }}</span>
+                <small>{{ text('状态') }}</small>
+                <el-tag class="pill" :class="`pill--${selectedRun.status}`" disable-transitions>
+                  {{ statusLabel(selectedRun.status) }}
+                </el-tag>
               </div>
               <div class="ditem">
-                <small>开始时间</small>
+                <small>{{ text('开始时间') }}</small>
                 <b class="mono">{{ formatDate(selectedRun.startedAt || selectedRun.createdAt) }}</b>
               </div>
               <div class="ditem">
-                <small>结束时间</small>
+                <small>{{ text('结束时间') }}</small>
                 <b class="mono">{{ formatDate(selectedRun.finishedAt) || '-' }}</b>
               </div>
             </div>
@@ -196,14 +199,14 @@
             <!-- Message -->
             <div class="msg-box" :class="`msg--${selectedRun.status}`">
               <AppIcon :name="selectedRun.status === 'failed' ? 'alert-circle' : 'info'" class="msg-icon" />
-              <span>{{ selectedRun.message || '无执行说明。' }}</span>
+              <span>{{ selectedRun.message ? text(selectedRun.message) : text('无执行说明。') }}</span>
             </div>
 
             <!-- Files -->
             <div class="files-block">
-              <strong class="block-title">归档文件</strong>
+              <strong class="block-title">{{ text('归档文件') }}</strong>
               <div class="file-list">
-                <button
+                <el-button
                   v-for="file in selectedFiles"
                   :key="file.id"
                   class="file-item"
@@ -215,16 +218,16 @@
                     <small>{{ fileRoleLabel(file.fileRole) }} · {{ formatSize(file.fileSize) }}</small>
                   </span>
                   <AppIcon name="download" class="dl-icon" />
-                </button>
+                </el-button>
                 <div v-if="!selectedFiles.length" class="empty-inline">
-                  <AppIcon name="file-minus" /> 暂无归档文件
+                  <AppIcon name="file-minus" /> {{ text('暂无归档文件') }}
                 </div>
               </div>
             </div>
 
             <!-- JSON -->
             <div class="json-block">
-              <strong class="block-title">执行 JSON</strong>
+              <strong class="block-title">{{ text('执行 JSON') }}</strong>
               <div class="json-box">
                 <pre><code>{{ prettyJson(selectedRun.result) }}</code></pre>
               </div>
@@ -233,8 +236,8 @@
           <div v-else class="empty-detail">
             <div class="empty-detail-inner">
               <AppIcon name="cpu" class="empty-big-icon" />
-              <h3>未选择执行记录</h3>
-              <p>请在左侧列表中选择一条记录，以查看源文件、结果文件和错误详情。</p>
+              <h3>{{ text('未选择执行记录') }}</h3>
+              <p>{{ text('请在左侧列表中选择一条记录，以查看源文件、结果文件和错误详情。') }}</p>
             </div>
           </div>
         </div>
@@ -244,13 +247,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppIcon from '../../shared/ui/AppIcon.vue'
+import { useAppLanguage } from '../../shared/i18n/appLanguage'
+import { showAppAlert } from '../../shared/ui/appAlert'
 import { tosModules } from '../../domain/moduleCatalog'
 import { webAutomationEntries } from '../web-automation/webAutomationModel'
 import {
-  buildAutomationRunFileDownloadUrl,
+  downloadAutomationRunFile,
   fetchAutomationRunDetail,
   fetchAutomationRuns,
   type AutomationRunFileRecord,
@@ -262,6 +267,7 @@ const loading = ref(false)
 const detailLoading = ref(false)
 const errorMessage = ref('')
 const route = useRoute()
+const { isEnglish, text } = useAppLanguage()
 const runs = ref<AutomationRunRecord[]>([])
 const selectedRun = ref<AutomationRunRecord | null>(null)
 const selectedFiles = ref<AutomationRunFileRecord[]>([])
@@ -274,65 +280,37 @@ interface AutomationRunFilterOption {
   order: number
 }
 
-// ---- Custom Dropdown State ----
-const moduleDropdownOpen = ref(false)
-const statusDropdownOpen = ref(false)
-const moduleDropdownRef = ref<HTMLElement | null>(null)
-const statusDropdownRef = ref<HTMLElement | null>(null)
-
-const statusOptions = [
-  { value: '', label: '全部状态' },
-  { value: 'running', label: '执行中' },
-  { value: 'success', label: '成功' },
-  { value: 'failed', label: '失败' },
-  { value: 'canceled', label: '已取消' },
-]
+const statusOptions = computed(() => [
+  { value: '', label: text('全部状态') },
+  { value: 'running', label: text('执行中') },
+  { value: 'success', label: text('成功') },
+  { value: 'failed', label: text('失败') },
+  { value: 'canceled', label: text('已取消') },
+])
 
 const automationRunFilterIds = new Set<string>([
   'shipping-automation',
   'xinlongtai-shipping-automation',
   'tc-inv-automation',
   'po-auto-download',
+  'packing-list-auto-download',
   'shipping-automation-2',
   'infornexus-auto-add',
   'microsoft-login-n8n',
   'ticket-owner-statistics',
 ])
 
-function toggleModuleDropdown() {
-  moduleDropdownOpen.value = !moduleDropdownOpen.value
-  statusDropdownOpen.value = false
-}
-function toggleStatusDropdown() {
-  statusDropdownOpen.value = !statusDropdownOpen.value
-  moduleDropdownOpen.value = false
-}
 function selectModule(id: string) {
   filters.automationId = id
-  moduleDropdownOpen.value = false
   reloadFirstPage()
 }
 function selectStatus(value: string) {
   filters.status = value
-  statusDropdownOpen.value = false
   reloadFirstPage()
-}
-function handleClickOutside(e: MouseEvent) {
-  const target = e.target as HTMLElement
-  if (moduleDropdownRef.value && !moduleDropdownRef.value.contains(target)) {
-    moduleDropdownOpen.value = false
-  }
-  if (statusDropdownRef.value && !statusDropdownRef.value.contains(target)) {
-    statusDropdownOpen.value = false
-  }
 }
 
 onMounted(() => {
-  document.addEventListener('click', handleClickOutside, true)
   void loadRuns()
-})
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside, true)
 })
 
 // ---- Computed ----
@@ -341,7 +319,7 @@ const automationModules = computed<AutomationRunFilterOption[]>(() => {
     .filter((module) => automationRunFilterIds.has(module.id))
     .map((module) => ({
       id: module.id,
-      navLabel: module.navLabel,
+      navLabel: isEnglish.value ? module.navLabelEn : module.navLabel,
       order: module.order,
     }))
   const catalogIds = new Set<string>(catalogOptions.map((module) => module.id))
@@ -349,7 +327,7 @@ const automationModules = computed<AutomationRunFilterOption[]>(() => {
     .filter((entry) => automationRunFilterIds.has(entry.id) && !catalogIds.has(entry.id))
     .map((entry, index) => ({
       id: entry.id,
-      navLabel: entry.title,
+      navLabel: text(entry.title),
       order: 100 + index,
     }))
   return [...catalogOptions, ...scenarioOptions].sort((left, right) => left.order - right.order)
@@ -387,7 +365,7 @@ async function loadRuns(): Promise<void> {
       await selectRun(runs.value[0])
     }
   } catch (error) {
-    errorMessage.value = readErrorMessage(error, '无法读取自动化执行记录，请确认本地后端和远程 MySQL 数据库连接正常。')
+    errorMessage.value = text(readErrorMessage(error, '无法读取自动化执行记录，请确认本地后端和远程 MySQL 数据库连接正常。'))
     runs.value = []
     selectedRun.value = null
     selectedFiles.value = []
@@ -435,42 +413,51 @@ async function selectRun(run: AutomationRunRecord): Promise<void> {
 }
 
 async function downloadFile(file: AutomationRunFileRecord): Promise<void> {
-  const url = await buildAutomationRunFileDownloadUrl(file)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = file.originalFilename || file.fileRole
-  anchor.rel = 'noopener'
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
+  try {
+    await downloadAutomationRunFile(file)
+  } catch (error) {
+    void showAppAlert(text(readErrorMessage(error, '执行文件下载失败。')), { tone: 'warning' })
+  }
 }
 
 // ---- Helpers ----
 function moduleLabel(automationId: string): string {
   return (
     automationModules.value.find((module) => module.id === automationId)?.navLabel ||
-    tosModules.find((module) => module.id === automationId)?.navLabel ||
-    webAutomationEntries.find((entry) => entry.id === automationId)?.title ||
+    getCatalogModuleLabel(automationId) ||
+    getScenarioLabel(automationId) ||
     automationId
   )
 }
+
+function getCatalogModuleLabel(automationId: string): string {
+  const module = tosModules.find((item) => item.id === automationId)
+  if (!module) return ''
+  return isEnglish.value ? module.navLabelEn : module.navLabel
+}
+
+function getScenarioLabel(automationId: string): string {
+  const entry = webAutomationEntries.find((item) => item.id === automationId)
+  return entry ? text(entry.title) : ''
+}
+
 function statusLabel(status: string): string {
   const map: Record<string, string> = {
     running: '执行中', success: '成功', failed: '失败', canceled: '已取消',
   }
-  return map[status] || status || ''
+  return map[status] ? text(map[status]) : status || ''
 }
 function fileRoleLabel(role: string): string {
   const map: Record<string, string> = {
     source_excel: '上传 Excel', result_excel: '结果 Excel', result_json: '结果 JSON',
     failed_rows_excel: '失败明细', screenshot: '截图', log: '日志',
   }
-  return map[role] || role
+  return map[role] ? text(map[role]) : role
 }
 function formatDate(value?: string): string {
   if (!value) return ''
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false })
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(isEnglish.value ? 'en-US' : 'zh-CN', { hour12: false })
 }
 function durationLabel(run: AutomationRunRecord): string {
   if (!run.startedAt || !run.finishedAt) return '-'
@@ -637,6 +624,11 @@ function prettyJson(value: unknown): string {
   cursor: pointer;
   transition: all var(--transition);
 }
+.btn :deep(.el-button__content) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .btn:hover:not(:disabled) {
   background: var(--teal-50);
   border-color: #99f6e4;
@@ -742,6 +734,28 @@ function prettyJson(value: unknown): string {
   position: relative;
   flex-shrink: 0;
 }
+.custom-select :deep(.el-select) {
+  min-width: 140px;
+}
+.custom-select :deep(.el-select__wrapper) {
+  min-height: 34px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-sm);
+  background: var(--slate-50);
+  box-shadow: none;
+  transition: all var(--transition);
+}
+.custom-select :deep(.el-select__wrapper:hover) {
+  background: var(--white);
+  box-shadow: 0 0 0 1px #99f6e4 inset;
+}
+.custom-select :deep(.el-select__selected-item),
+.custom-select :deep(.el-select__placeholder) {
+  color: var(--slate-700);
+  font-size: 12px;
+  font-weight: 600;
+}
 .select-trigger {
   display: inline-flex;
   align-items: center;
@@ -829,15 +843,39 @@ function prettyJson(value: unknown): string {
   min-width: 160px;
   max-width: 320px;
 }
+.keyword-input :deep(.el-input__wrapper) {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-sm);
+  background: var(--slate-50);
+  box-shadow: none;
+  transition: all var(--transition);
+  box-sizing: border-box;
+}
+.keyword-input :deep(.el-input__wrapper:hover) {
+  background: var(--white);
+  box-shadow: 0 0 0 1px #99f6e4 inset;
+}
+.keyword-input :deep(.el-input__wrapper.is-focus) {
+  background: var(--white);
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(13,148,136,.08);
+}
+.keyword-input :deep(.el-input__inner) {
+  color: var(--slate-900);
+  font-size: 12px;
+  font-weight: 500;
+}
+.keyword-input :deep(.el-input__inner::placeholder) {
+  color: var(--slate-400);
+  font-weight: 400;
+}
 .keyword-icon {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
   width: 14px;
   height: 14px;
   color: var(--slate-400);
-  pointer-events: none;
 }
 .keyword-input input {
   width: 100%;
@@ -1012,7 +1050,9 @@ tbody tr.selected {
 .pill {
   display: inline-flex;
   align-items: center;
+  height: auto;
   padding: 3px 10px;
+  border: 0;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
@@ -1176,6 +1216,12 @@ tbody tr.selected {
   cursor: pointer;
   text-align: left;
   transition: all var(--transition);
+}
+.file-item :deep(.el-button__content) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
 }
 .file-item:hover {
   border-color: #99f6e4;

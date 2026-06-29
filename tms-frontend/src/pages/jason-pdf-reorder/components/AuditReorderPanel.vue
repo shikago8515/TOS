@@ -8,17 +8,17 @@
             <AppIcon name="list" />
           </div>
           <div>
-            <h2>排序与核对中心</h2>
-            <p>微调 PO 顺序，并实时比对 PO 页码匹配状态</p>
+            <h2>{{ text('排序与核对中心') }}</h2>
+            <p>{{ text('微调 PO 顺序，并实时比对 PO 页码匹配状态') }}</p>
           </div>
         </div>
-        <span class="badge success">{{ parsedPoCount }} 个 PO</span>
+        <span class="badge success">{{ parsedPoCount }} {{ text('个 PO') }}</span>
       </header>
 
       <div class="card-body">
         <label class="field-label" for="po-order-text">
-          <span>PO 顺序列表 (一行一个)</span>
-          <small>{{ parsedPoCount }} 个有效 PO</small>
+          <span>{{ text('PO 顺序列表 (一行一个)') }}</span>
+          <small>{{ parsedPoCount }} {{ text('个有效 PO') }}</small>
         </label>
         <textarea
           id="po-order-text"
@@ -32,19 +32,19 @@
           <div class="flex-wrap gap-xs">
             <button class="btn btn-soft" type="button" @click="emit('refreshMatches')">
               <AppIcon name="refresh-cw" />
-              应用列表
+              {{ text('应用列表') }}
             </button>
             <button class="btn" type="button" @click="emit('copyPoOrder')">
               <AppIcon name="copy" />
-              复制列表
+              {{ text('复制列表') }}
             </button>
             <button class="btn" type="button" @click="emit('printSummary')">
               <AppIcon name="printer" />
-              打印摘要
+              {{ text('打印摘要') }}
             </button>
           </div>
           <button class="btn btn-danger-soft" type="button" @click="emit('clearPoOrderOnly')">
-            清空列表
+            {{ text('清空列表') }}
           </button>
         </div>
 
@@ -54,12 +54,12 @@
               <tr>
                 <th>#</th>
                 <th>PO</th>
-                <th>PO页</th>
+                <th>{{ text('PO页') }}</th>
                 <th>Article</th>
-                <th class="num">数量</th>
-                <th class="num">货品金额</th>
-                <th>状态</th>
-                <th>操作</th>
+                <th class="num">{{ text('数量') }}</th>
+                <th class="num">{{ text('货品金额') }}</th>
+                <th>{{ text('状态') }}</th>
+                <th>{{ text('操作') }}</th>
               </tr>
             </thead>
             <transition-group name="jason-row-fade" tag="tbody">
@@ -67,7 +67,7 @@
                 <td colspan="8">
                   <div class="empty-state">
                     <AppIcon name="file-search" />
-                    <span>等待同步或输入 PO 列表</span>
+                    <span>{{ text('等待同步或输入 PO 列表') }}</span>
                   </div>
                 </td>
               </tr>
@@ -80,12 +80,12 @@
                 <td class="num">{{ valueOrDash(row.totalAmount) }}</td>
                 <td>
                   <span :class="['tag', row.found ? 'tag-success' : 'tag-warn']">
-                    {{ row.found ? '已匹配' : '未找到' }}
+                    {{ row.found ? text('已匹配') : text('未找到') }}
                   </span>
                 </td>
                 <td>
                   <button class="btn btn-soft" type="button" :disabled="isBusy(`single-${row.po}`)" @click="emit('generateSinglePo', row.po)">
-                    {{ isBusy(`single-${row.po}`) ? '生成中...' : '单独生成' }}
+                    {{ isBusy(`single-${row.po}`) ? text('生成中...') : text('单独生成') }}
                   </button>
                 </td>
               </tr>
@@ -96,7 +96,7 @@
         <slot name="po-message"></slot>
 
         <p v-if="extraPoNumbers.length" class="extra-note">
-          PO PDF 中有但当前列表未包含：{{ extraPoNumbers.join(', ') }}
+          {{ text('PO PDF 中有但当前列表未包含') }}：{{ extraPoNumbers.join(', ') }}
         </p>
       </div>
     </article>
@@ -105,6 +105,7 @@
 
 <script setup lang="ts">
 import AppIcon from '../../../shared/ui/AppIcon.vue'
+import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 
 interface MatchRow {
   po: string
@@ -124,6 +125,7 @@ interface Props {
 }
 
 defineProps<Props>()
+const { text } = useAppLanguage()
 const emit = defineEmits<{
   (e: 'update:poOrderText', text: string): void
   (e: 'refreshMatches'): void

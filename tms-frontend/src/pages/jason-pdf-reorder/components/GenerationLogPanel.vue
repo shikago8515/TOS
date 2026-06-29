@@ -9,17 +9,17 @@
             <AppIcon name="check-circle" />
           </div>
           <div>
-            <h2>PO PDF 匹配与生成</h2>
-            <p>上传 PO PDF，一键生成重排后的最终文件</p>
+            <h2>{{ text('PO PDF 匹配与生成') }}</h2>
+            <p>{{ text('上传 PO PDF，一键生成重排后的最终文件') }}</p>
           </div>
         </div>
-        <span class="badge success">{{ poPagesSize }} 个PO</span>
+        <span class="badge success">{{ poPagesSize }} {{ text('个PO') }}</span>
       </header>
 
       <div class="card-body">
         <div class="field-label">
-          <span>PO 原始文件 PDF</span>
-          <small>{{ poPagesSize }} 个已识别 PO</small>
+          <span>{{ text('PO 原始文件 PDF') }}</span>
+          <small>{{ poPagesSize }} {{ text('个已识别 PO') }}</small>
         </div>
         <label
           class="dropzone"
@@ -45,7 +45,7 @@
               <button 
                 type="button" 
                 class="dropzone-remove-btn" 
-                title="清除文件"
+                :title="text('清除文件')"
                 @click.stop.prevent="emit('clearPo')"
               >
                 <AppIcon name="x" />
@@ -54,23 +54,23 @@
           </template>
           <template v-else>
             <span class="dropzone-icon"><AppIcon name="upload" /></span>
-            <strong>选择或拖入 PO PDF</strong>
-            <span>支持单个 .pdf 文件</span>
+            <strong>{{ text('选择或拖入 PO PDF') }}</strong>
+            <span>{{ text('支持单个 .pdf 文件') }}</span>
           </template>
         </label>
 
         <div class="toolbar justify-between">
           <button class="btn btn-soft" type="button" :disabled="isBusy('po-preview')" @click="emit('previewPo')">
             <AppIcon :name="isBusy('po-preview') ? 'loader' : 'file-search'" :class="{ 'jason-spin': isBusy('po-preview') }" />
-            {{ isBusy('po-preview') ? '识别中...' : '识别 PO 页码' }}
+            {{ isBusy('po-preview') ? text('识别中...') : text('识别 PO 页码') }}
           </button>
           <button class="btn btn-danger-soft" type="button" @click="emit('clearPo')">
-            清空 PO 文件
+            {{ text('清空 PO 文件') }}
           </button>
         </div>
 
         <div class="options-container">
-          <h4 class="options-title">输出选项</h4>
+          <h4 class="options-title">{{ text('输出选项') }}</h4>
           <div class="options-stack">
             <label class="jason-switch-label">
               <div class="jason-switch">
@@ -81,7 +81,7 @@
                 >
                 <span class="jason-switch-slider" />
               </div>
-              <span class="jason-switch-text">仅打印当前页</span>
+              <span class="jason-switch-text">{{ text('仅打印当前页') }}</span>
             </label>
             <label class="jason-switch-label">
               <div class="jason-switch">
@@ -92,7 +92,7 @@
                 >
                 <span class="jason-switch-slider" />
               </div>
-              <span class="jason-switch-text">同时打印下一页</span>
+              <span class="jason-switch-text">{{ text('同时打印下一页') }}</span>
             </label>
             <label class="jason-switch-label">
               <div class="jason-switch">
@@ -103,7 +103,7 @@
                 >
                 <span class="jason-switch-slider" />
               </div>
-              <span class="jason-switch-text">摘要包含未找到 PO</span>
+              <span class="jason-switch-text">{{ text('摘要包含未找到 PO') }}</span>
             </label>
           </div>
         </div>
@@ -112,7 +112,7 @@
         <div class="generate-bar">
           <div class="status-row">
             <span class="status-pulse-dot" :class="resultStatusTone" />
-            <span :class="['status-text', resultStatusTone]">{{ resultStatusText }}</span>
+            <span :class="['status-text', resultStatusTone]">{{ text(resultStatusText) }}</span>
           </div>
           <div class="generate-actions-horizontal">
             <button
@@ -122,7 +122,7 @@
               @click="emit('generatePdf')"
             >
               <AppIcon :name="isBusy('generate') ? 'loader' : 'play-circle'" :class="{ 'jason-spin': isBusy('generate') }" />
-              {{ isBusy('generate') ? '生成中...' : '生成重排 PDF' }}
+              {{ isBusy('generate') ? text('生成中...') : text('生成重排 PDF') }}
             </button>
             <a
               v-if="downloadHref"
@@ -131,7 +131,7 @@
               :download="latestResult?.fileName"
             >
               <AppIcon name="download" />
-              下载结果
+              {{ text('下载结果') }}
             </a>
             <button
               v-if="downloadHref"
@@ -139,7 +139,7 @@
               type="button"
               @click="emit('openResult')"
             >
-              打开 PDF
+              {{ text('打开 PDF') }}
             </button>
           </div>
         </div>
@@ -147,7 +147,7 @@
         <div class="toolbar justify-center">
           <button class="btn btn-soft" type="button" @click="emit('update:isLogSidebarOpen', true)">
             <AppIcon name="terminal" />
-            查看运行日志
+            {{ text('查看运行日志') }}
           </button>
         </div>
       </div>
@@ -165,12 +165,12 @@
           <div class="drawer-title">
             <AppIcon name="terminal" />
             <div>
-              <h3>运行日志</h3>
-              <p>操作和后端状态返回</p>
+              <h3>{{ text('运行日志') }}</h3>
+              <p>{{ text('操作和后端状态返回') }}</p>
             </div>
           </div>
           <div class="drawer-actions">
-            <button class="btn btn-soft btn-sm" type="button" @click="emit('clearLogs')">清空</button>
+            <button class="btn btn-soft btn-sm" type="button" @click="emit('clearLogs')">{{ text('清空') }}</button>
             <button class="close-btn" type="button" @click="emit('update:isLogSidebarOpen', false)">
               <AppIcon name="x" />
             </button>
@@ -180,7 +180,7 @@
           <div class="log-list">
             <div v-for="line in logs" :key="line.id" class="log-line">
               <span>{{ line.time }}</span>
-              <strong>{{ line.text }}</strong>
+              <strong>{{ text(line.text) }}</strong>
             </div>
           </div>
         </div>
@@ -192,6 +192,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
+import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 
 interface LogLine {
   id: number
@@ -217,6 +218,7 @@ interface Props {
 }
 
 defineProps<Props>()
+const { text } = useAppLanguage()
 const emit = defineEmits<{
   (e: 'update:poFile', file: File | null): void
   (e: 'update:printCurrentOnly', val: boolean): void

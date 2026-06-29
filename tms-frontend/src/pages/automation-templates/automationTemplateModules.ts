@@ -30,6 +30,7 @@ const templateModuleDefinitions = [
   },
   { id: 'infornexus-auto-add', templateTypes: defaultTemplateTypes },
   { id: 'po-auto-download', templateTypes: defaultTemplateTypes },
+  { id: 'packing-list-auto-download', templateTypes: defaultTemplateTypes },
 ] as const
 
 export const automationTemplateModuleIds = templateModuleDefinitions.map((definition) => definition.id)

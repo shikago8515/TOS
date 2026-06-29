@@ -70,6 +70,32 @@ function getAutomationDataDir(userDataDir, appId) {
   return path.join(userDataDir, 'automation-apps', appId)
 }
 
+function getSharedExecutorRoot(automationAppRoot) {
+  return path.join(automationAppRoot, 'playwright-console')
+}
+
+function getAutomationDependencyPaths(automationApp, options) {
+  const automationAppRoot = options.automationAppRoot
+  const bundledAppDir = getAutomationAppPath(automationAppRoot, automationApp)
+  return [
+    path.join(bundledAppDir, 'node_modules'),
+    path.join(getSharedExecutorRoot(automationAppRoot), 'node_modules'),
+    path.join(automationAppRoot, 'node_modules'),
+    path.join(path.dirname(automationAppRoot), 'node_modules'),
+  ].filter((candidate, index, all) => (
+    fs.existsSync(candidate) && all.indexOf(candidate) === index
+  ))
+}
+
+function buildNodePath(automationApp, options, inheritedNodePath) {
+  const paths = getAutomationDependencyPaths(automationApp, options)
+  const inherited = String(inheritedNodePath || '').trim()
+  if (inherited) {
+    paths.push(...inherited.split(path.delimiter).filter(Boolean))
+  }
+  return Array.from(new Set(paths)).join(path.delimiter)
+}
+
 function getAutomationModuleCacheRoot(userDataDir) {
   return path.join(userDataDir, AUTOMATION_MODULE_CACHE_DIR)
 }
@@ -182,7 +208,8 @@ async function waitForAutomationApp(automationApp, timeoutMs = 15000) {
 async function launchAutomationApp(appId, options) {
   const processMap = options.processMap || new Map()
   const userDataDir = resolveUserDataDir(options)
-  const automationApp = await resolveAutomationAppRuntime(appId, options, { checkRemote: true })
+  const forceUpdate = Boolean(options.forceUpdate)
+  const automationApp = await resolveAutomationAppRuntime(appId, options, { checkRemote: true, forceUpdate })
 
   if (!automationApp) {
     return { success: false, error: `Unknown automation app: ${appId}` }
@@ -202,22 +229,56 @@ async function launchAutomationApp(appId, options) {
 
   const runningHealth = await requestAutomationAppHealthPayload(automationApp)
   if (runningHealth) {
-    if (shouldReuseRunningAutomationApp(automationApp, runningHealth)) {
-      return { success: true, alreadyRunning: true, appId, url: automationApp.url }
+    if (shouldReuseRunningAutomationApp(automationApp, runningHealth, { forceUpdate })) {
+      return {
+        success: true,
+        alreadyRunning: true,
+        appId,
+        url: automationApp.url,
+        source: automationApp.moduleSource || 'bundled',
+        version: automationApp.version || '',
+        moduleUpdateError: automationApp.moduleUpdateError || '',
+      }
     }
 
     stopAutomationApp(appId, options)
-    await waitForAutomationAppToStop(automationApp)
+    const stopped = await waitForAutomationAppToStop(automationApp)
+    if (!stopped) {
+      return {
+        success: false,
+        error: `自动化执行器 ${appId} 已在小助手之外运行，当前小助手无法接管并更新它。请先关闭旧执行器进程，再从 TOS 页面重新启动。`,
+        code: 'UNMANAGED_EXECUTOR_RUNNING',
+        appId,
+        url: automationApp.url,
+      }
+    }
   }
 
   const tracked = processMap.get(appId)
   if (tracked && tracked.child && !tracked.child.killed) {
     if (automationApp.moduleSource !== 'remote-cache') {
-      return { success: true, alreadyRunning: true, appId, url: automationApp.url }
+      return {
+        success: true,
+        alreadyRunning: true,
+        appId,
+        url: automationApp.url,
+        source: automationApp.moduleSource || 'bundled',
+        version: automationApp.version || '',
+        moduleUpdateError: automationApp.moduleUpdateError || '',
+      }
     }
 
     stopAutomationApp(appId, options)
-    await waitForAutomationAppToStop(automationApp)
+    const stopped = await waitForAutomationAppToStop(automationApp)
+    if (!stopped) {
+      return {
+        success: false,
+        error: `自动化执行器 ${appId} 重启前未能停止。请先关闭旧执行器进程，再从 TOS 页面重新启动。`,
+        code: 'EXECUTOR_STOP_TIMEOUT',
+        appId,
+        url: automationApp.url,
+      }
+    }
   }
 
   const logDir = path.join(userDataDir, 'logs')
@@ -232,9 +293,15 @@ async function launchAutomationApp(appId, options) {
     ...(options.baseEnv || {}),
     TMS_PLAYWRIGHT_PORT: String(automationApp.port),
     TMS_PLAYWRIGHT_DATA_DIR: dataDir,
+    TMS_AUTOMATION_APP_ROOT: options.automationAppRoot,
+    TMS_AUTOMATION_SHARED_EXECUTOR_ROOT: getSharedExecutorRoot(options.automationAppRoot),
     TOS_AUTOMATION_MODULE_VERSION: String(automationApp.version || ''),
     TOS_AUTOMATION_MODULE_SOURCE: String(automationApp.moduleSource || automationApp.source || 'bundled'),
     TOS_AUTOMATION_MODULE_SHA256: String(automationApp.packageSha256 || ''),
+  }
+  const nodePath = buildNodePath(automationApp, options, env.NODE_PATH)
+  if (nodePath) {
+    env.NODE_PATH = nodePath
   }
   const helperVersion = String(options.helperVersion || env.TOS_AUTOMATION_HELPER_VERSION || '').trim()
   if (helperVersion) {
@@ -326,7 +393,7 @@ async function waitForAutomationAppToStop(automationApp, timeoutMs = 5000) {
   return false
 }
 
-function shouldReuseRunningAutomationApp(automationApp, health) {
+function shouldReuseRunningAutomationApp(automationApp, health, options = {}) {
   if ((automationApp.moduleSource || automationApp.source) !== 'remote-cache') {
     return true
   }
@@ -341,7 +408,26 @@ function shouldReuseRunningAutomationApp(automationApp, health) {
     return false
   }
 
-  return compareVersionStrings(runningModuleVersion, automationApp.version) >= 0
+  if (compareVersionStrings(runningModuleVersion, automationApp.version) < 0) {
+    return false
+  }
+
+  const desiredSha = normalizePackageSha(automationApp.packageSha256)
+  if (!desiredSha) {
+    return true
+  }
+
+  const runningSha = normalizePackageSha(
+    health?.moduleSha256
+    || health?.automationModuleSha256
+    || health?.config?.moduleSha256
+    || '',
+  )
+  if (!runningSha) {
+    return !options.forceUpdate
+  }
+
+  return runningSha === desiredSha
 }
 
 function shutdownAutomationApps(options) {
@@ -379,7 +465,7 @@ async function resolveAutomationAppRuntime(appId, options, updateOptions = {}) {
   }
 
   const remoteModule = await getRemoteAutomationModule(appId, automationApp, options)
-  if (!remoteModule || !shouldInstallRemoteModule(remoteModule, selected)) {
+  if (!remoteModule || !shouldInstallRemoteModule(remoteModule, selected, { forceUpdate: updateOptions.forceUpdate })) {
     return selected
   }
 
@@ -497,7 +583,7 @@ function resolveManifestDownloadUrl(value, manifestUrl) {
   return new URL(raw, manifestUrl).toString()
 }
 
-function shouldInstallRemoteModule(remoteModule, selectedApp) {
+function shouldInstallRemoteModule(remoteModule, selectedApp, options = {}) {
   if (!remoteModule.packageUrl || !remoteModule.version) {
     return false
   }
@@ -507,16 +593,17 @@ function shouldInstallRemoteModule(remoteModule, selectedApp) {
     return true
   }
 
-  if (
-    versionCompare === 0
-    && selectedApp.moduleSource === 'remote-cache'
-    && remoteModule.packageSha256
-    && selectedApp.packageSha256
-  ) {
-    return remoteModule.packageSha256 !== selectedApp.packageSha256
+  if (versionCompare < 0) {
+    return false
   }
 
-  return false
+  const remoteSha = normalizePackageSha(remoteModule.packageSha256)
+  if (remoteSha) {
+    const selectedSha = normalizePackageSha(selectedApp.packageSha256)
+    return !selectedSha || selectedSha !== remoteSha
+  }
+
+  return Boolean(options.forceUpdate && selectedApp.moduleSource !== 'remote-cache')
 }
 
 async function installAutomationModule(remoteModule, options) {
@@ -626,6 +713,10 @@ function chooseNewestAutomationApp(bundled, cached) {
   return compareVersionStrings(cached.version || '', bundled.version || '') >= 0
     ? cached
     : bundled
+}
+
+function normalizePackageSha(value) {
+  return String(value || '').trim().toLowerCase()
 }
 
 function buildAutomationAppRuntime(automationApp, baseDir, source, extra = {}) {

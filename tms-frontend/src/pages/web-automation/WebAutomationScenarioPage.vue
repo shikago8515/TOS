@@ -150,6 +150,41 @@
               </div>
             </div>
 
+            <!-- Optional lookup workbooks -->
+            <div v-if="isTicketOwnerStatisticsScenario" class="sa-card__bd sa-lookup-files" style="border-top: 1px solid #f1f5f9;">
+              <label class="sa-field">
+                <span>{{ text('辅助 Excel（可选）') }}</span>
+              </label>
+              <div class="sa-lookup-file">
+                <input ref="ticketReleaseFileInput" class="sa-lookup-file__input" type="file" accept=".xlsx,.xls" @change="handleTicketReleaseFileSelect" />
+                <AppIcon name="files" class="sa-lookup-file__icon" />
+                <div class="sa-lookup-file__body">
+                  <b>{{ text('Release / Unrelease 表') }}</b>
+                  <small>{{ ticketReleaseFile ? ticketReleaseFile.name : text('按 PO Number 匹配 Factory，不上传则留空') }}</small>
+                </div>
+                <button v-if="ticketReleaseFile" class="sa-btn" type="button" @click="clearTicketReleaseFile">
+                  <AppIcon name="stop-circle" />{{ text('清除') }}
+                </button>
+                <button v-else class="sa-btn" type="button" @click="openTicketReleaseFilePicker">
+                  <AppIcon name="upload" />{{ text('选择') }}
+                </button>
+              </div>
+              <div class="sa-lookup-file">
+                <input ref="ticketFactoryPriceFileInput" class="sa-lookup-file__input" type="file" accept=".xlsx,.xls" @change="handleTicketFactoryPriceFileSelect" />
+                <AppIcon name="files" class="sa-lookup-file__icon" />
+                <div class="sa-lookup-file__body">
+                  <b>{{ text('Factory Price 表') }}</b>
+                  <small>{{ ticketFactoryPriceFile ? ticketFactoryPriceFile.name : text('按 Factory + Working Number 匹配 Merch，不上传则留空') }}</small>
+                </div>
+                <button v-if="ticketFactoryPriceFile" class="sa-btn" type="button" @click="clearTicketFactoryPriceFile">
+                  <AppIcon name="stop-circle" />{{ text('清除') }}
+                </button>
+                <button v-else class="sa-btn" type="button" @click="openTicketFactoryPriceFilePicker">
+                  <AppIcon name="upload" />{{ text('选择') }}
+                </button>
+              </div>
+            </div>
+
             <!-- Execute -->
             <div class="sa-card__ft">
               <button v-if="isInfornexusDirectScenario" class="sa-btn sa-btn--execute" :disabled="!canRunShippingAutomation" @click="runInfornexusDirectWithExcel">
@@ -168,6 +203,15 @@
                 <AppIcon :name="statusIconName" />{{ text(statusText) }}
               </div>
             </transition>
+            <div v-if="showTicketOwnerRunProgress" class="sa-progress">
+              <div class="sa-progress__head">
+                <span>{{ text(ticketOwnerProgressText) }}</span>
+                <b>{{ ticketOwnerProgressPercent }}%</b>
+              </div>
+              <div class="sa-progress__track">
+                <span :style="{ width: `${ticketOwnerProgressPercent}%` }" />
+              </div>
+            </div>
 
             <!-- Artifact Downloads -->
             <div v-if="(isShippingScenario || isTicketOwnerStatisticsScenario) && shippingArtifactLinks?.resultExcelUrl" class="sa-card__ft sa-artifacts" style="border-top: 1px solid #f1f5f9; padding-top: 16px;">
@@ -302,7 +346,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'; import { useRoute, useRouter } from 'vue-router'; import AppIcon from '../../shared/ui/AppIcon.vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'; import { useRoute, useRouter } from 'vue-router'; import AppIcon from '../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../shared/ui/BrowserVisibilitySwitch.vue'
 import AutomationRunHistoryPanel from './components/AutomationRunHistoryPanel.vue'
 import { showAppAlert } from '../../shared/ui/appAlert'
@@ -316,13 +360,17 @@ const route = useRoute(); const router = useRouter(); const { text } = useAppLan
 const DSU = ''; const DSP = ''; const DMU = ''; const DMP = ''
 const electronSupported = hasElectronAutomationSupport()
 const activeApp = ref<AutomationAppInfo | null>(null); const executorHealth = ref<LocalExecutorHealth | null>(null); const executorCredentials = ref<ExecutorCredentials | null>(null); const automationTemplates = ref<AutomationTemplate[]>([])
-const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false); const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false); const sending = ref(false)
+const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false); const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false); const sending = ref(false); const restoredActiveRun = ref(false)
 const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info'); const isHealthLogOpen = ref(false); const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
-const selectedFile = ref<File | null>(null); const webhookUrl = ref('http://127.0.0.1:5678/webhook/microsoft-login-excel-demo')
+const ticketReleaseFileInput = ref<HTMLInputElement | null>(null); const ticketFactoryPriceFileInput = ref<HTMLInputElement | null>(null)
+const selectedFile = ref<File | null>(null); const ticketReleaseFile = ref<File | null>(null); const ticketFactoryPriceFile = ref<File | null>(null); const webhookUrl = ref('http://127.0.0.1:5678/webhook/microsoft-login-excel-demo')
 const shippingUsername = ref(DSU); const shippingPassword = ref(DSP); const showShippingPassword = ref(true)
 const microsoftUsername = ref(DMU); const microsoftPassword = ref(DMP); const showMicrosoftPassword = ref(true)
 const showBrowserView = ref(true)
 const statusText = ref(''); const statusLabel = ref('待命'); const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
+const ticketOwnerProgressPercent = ref(0); const ticketOwnerProgressText = ref('')
+let ticketOwnerProgressTimer: number | null = null
+let activeRunStateTimer: number | null = null
 type SAL = { resultExcelUrl: string; resultJsonUrl?: string; failedPoExcelUrl?: string; failedPoJsonUrl?: string; failedRowCount: number }
 const shippingArtifactLinks = ref<SAL | null>(null)
 
@@ -359,6 +407,7 @@ const statusIconName = computed(() => { if (sending.value) return 'loader'; if (
 const canLaunchActiveApp = computed(() => Boolean(entry.value?.appId) && !launching.value)
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
 const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
+const showTicketOwnerRunProgress = computed(() => isTicketOwnerStatisticsScenario.value && sending.value)
 const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
 const savedCredentialUsername = computed(() => executorCredentials.value?.username || '')
 const primaryTemplate = computed(() => automationTemplates.value[0] || null)
@@ -371,12 +420,13 @@ const canRunShippingAutomation = computed(() => !sending.value)
 const canRunDirectExecutor = computed(() => !sending.value)
 
 onMounted(() => { void initializeScenario() })
+onBeforeUnmount(() => { stopTicketOwnerProgress(); stopActiveRunStatePolling() })
 async function initializeScenario(): Promise<void> {
   if (isShippingScenario.value) { shippingUsername.value = shippingUsername.value || DSU; shippingPassword.value = shippingPassword.value || DSP; statusLabel.value = '待命'; statusText.value = '等待上传万代 Excel 并执行 Shipping。' }
   else if (isInfornexusAutoAddScenario.value) { shippingUsername.value = shippingUsername.value || DSU; shippingPassword.value = shippingPassword.value || DSP; statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行 Infornexus 自动搜索添加。' }
   else if (isMicrosoftScenario.value) { microsoftUsername.value = microsoftUsername.value || DMU; microsoftPassword.value = microsoftPassword.value || DMP; statusLabel.value = '待命'; statusText.value = isTicketOwnerStatisticsScenario.value ? '等待启动浏览器采集并生成 Ticket ownership Excel。' : '等待上传 Excel 并执行。' }
   await refreshAutomationTemplates(); await refreshExecutorCredentials(); await refreshExecutorState(true)
-  if (electronSupported && activeApp.value?.available && !activeApp.value.running) await startActiveApp(true)
+  if (electronSupported && shouldSyncActiveAppRuntime()) await startActiveApp(true, { forceUpdate: true })
 }
 async function refreshExecutorState(silent: boolean): Promise<void> {
   if (!entry.value || refreshing.value) return
@@ -398,6 +448,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
     if (!electronSupported && !launcherReachable.value) {
       executorHealth.value = null
       activeApp.value = fb
+      clearRestoredActiveRunState()
       if (!silent) {
         messageTone.value = 'warning'
         message.value = text('未检测到本机自动化助手。')
@@ -407,6 +458,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
     executorHealth.value = await probeLocalExecutorHealth(entry.value.executorBaseUrl)
     await refreshExecutorCredentials()
     if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
+    syncActiveRunViewFromHealth()
     const launcherHelperVersion = String(launcherHealth?.helperVersion || launcherHealth?.version || '').trim()
     const updateMessage = getAutomationHelperUpdateMessage(executorHealth.value, activeApp.value, undefined, launcherHelperVersion)
     if (updateMessage) {
@@ -419,6 +471,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
   } catch {
     executorHealth.value = null
     activeApp.value = activeApp.value || fb
+    clearRestoredActiveRunState()
     if (!silent) {
       messageTone.value = 'warning'
       message.value = launcherReachable.value ? text('本机自动化助手已连接，执行器尚未启动。') : text('执行器未就绪。')
@@ -426,6 +479,91 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
   } finally {
     refreshing.value = false
   }
+}
+function syncActiveRunViewFromHealth(): void {
+  const activeRun = findCurrentScenarioActiveRun()
+  if (activeRun) {
+    restoredActiveRun.value = true
+    sending.value = true
+    lastResult.value = null
+    statusLabel.value = '执行中'
+    statusText.value = buildActiveRunStatusText(activeRun)
+    if (isTicketOwnerStatisticsScenario.value && ticketOwnerProgressTimer === null) startTicketOwnerProgress()
+    if (!message.value) {
+      messageTone.value = 'info'
+      message.value = text('检测到当前自动化仍在后台运行，已恢复页面状态。')
+    }
+    startActiveRunStatePolling()
+    return
+  }
+  if (!restoredActiveRun.value) return
+  clearRestoredActiveRunState()
+  statusText.value = text('后台执行器任务已结束，请查看执行记录或重新开始。')
+}
+function clearRestoredActiveRunState(): void {
+  if (!restoredActiveRun.value) return
+  restoredActiveRun.value = false
+  sending.value = false
+  stopTicketOwnerProgress()
+  stopActiveRunStatePolling()
+  statusLabel.value = '待命'
+}
+function startActiveRunStatePolling(): void {
+  if (activeRunStateTimer !== null) return
+  activeRunStateTimer = window.setInterval(() => {
+    void refreshExecutorState(true)
+  }, 3500)
+}
+function stopActiveRunStatePolling(): void {
+  if (activeRunStateTimer === null) return
+  window.clearInterval(activeRunStateTimer)
+  activeRunStateTimer = null
+}
+function findCurrentScenarioActiveRun(): Record<string, any> | null {
+  const runs = collectActiveRuns(executorHealth.value)
+  return runs.find(doesActiveRunBelongToCurrentScenario) || null
+}
+function collectActiveRuns(health: LocalExecutorHealth | null | undefined): Record<string, any>[] {
+  const runs: Record<string, any>[] = []
+  const activeRun = normalizeRunRecord(health?.activeRun)
+  if (activeRun) runs.push(activeRun)
+  if (Array.isArray(health?.activeRuns)) {
+    for (const item of health.activeRuns) {
+      const run = normalizeRunRecord(item)
+      if (run) runs.push(run)
+    }
+  }
+  return runs
+}
+function normalizeRunRecord(value: unknown): Record<string, any> | null {
+  return value && typeof value === 'object' ? value as Record<string, any> : null
+}
+function doesActiveRunBelongToCurrentScenario(run: Record<string, any>): boolean {
+  const scenarioId = String(entry.value?.id || '')
+  const moduleId = String(run.moduleId || '').trim()
+  const action = String(run.action || '').trim()
+  const inputMode = String(run.inputMode || '').trim()
+  if (moduleId && moduleId === scenarioId) return true
+  if (scenarioId === 'ticket-owner-statistics') return moduleId === 'ticket-owner-statistics' || action === 'run-ticket-owner-statistics'
+  if (scenarioId === 'microsoft-login-n8n') return moduleId === 'sap-btp-login'
+  if (scenarioId === 'shipping-automation') return action === 'run-shipping-file' || action === 'open-shipment-scan'
+  if (scenarioId === 'xinlongtai-shipping-automation') return action === 'run-xinlongtai-shipping-file'
+  if (scenarioId === 'infornexus-auto-add') return action === 'run-infornexus-auto-add-file' || inputMode === 'infornexus-auto-add'
+  if (scenarioId === 'shipping-automation-2') return inputMode === 'shipping2-bulk'
+  return false
+}
+function buildActiveRunStatusText(run: Record<string, any>): string {
+  const inputFileName = String(run.inputFileName || '').trim()
+  const startedAt = String(run.startedAt || '').trim()
+  if (isTicketOwnerStatisticsScenario.value) return '正在统计 ticket 归属，请保持浏览器窗口打开；切换页面不会中断采集。'
+  if (inputFileName) return `执行器仍在处理 ${inputFileName}，请勿重复启动。`
+  if (startedAt) return `执行器任务仍在运行，开始时间 ${formatRunTime(startedAt)}。`
+  return '执行器任务仍在运行，请勿重复启动。'
+}
+function formatRunTime(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
 }
 async function refreshExecutorCredentials(): Promise<void> { if (!entry.value) return; try { executorCredentials.value = await fetchExecutorCredentials(entry.value.id); const u = executorCredentials.value.username || ''; if (u && isInfornexusDirectScenario.value) shippingUsername.value = u; if (u && isMicrosoftScenario.value) microsoftUsername.value = u; if (executorCredentials.value.hasStoredCredentials) await fillStored() } catch { executorCredentials.value = null } }
 async function fillStored(): Promise<void> { if (!entry.value) return; const r = await resolveAutomationCredentials(entry.value.id); if (isInfornexusDirectScenario.value) { shippingUsername.value = r.username; shippingPassword.value = r.password } else if (isMicrosoftScenario.value) { microsoftUsername.value = r.username; microsoftPassword.value = r.password } }
@@ -435,8 +573,8 @@ function downloadAutomationHelper(): void { void openAutomationHelperDownload() 
 function bootLocalHelper(): void { primeLocalAutomationLauncherBoot(); messageTone.value = 'info'; message.value = text('已尝试启动本机自动化助手。'); window.setTimeout(() => { void refreshExecutorState(true) }, 1200) }
 async function saveCurrentCredentials(): Promise<void> { if (!entry.value || credentialSaving.value) return; const u = activeUsername.value.trim(); const p = activePassword.value; if (!u || !p) { messageTone.value = 'warning'; message.value = text('请先填写账号和密码。'); return }; credentialSaving.value = true; try { executorCredentials.value = await saveExecutorCredentials(entry.value.id, u, p); await refreshExecutorCredentials(); if (isInfornexusDirectScenario.value) { shippingUsername.value = executorCredentials.value.username || u; shippingPassword.value = p } else if (isMicrosoftScenario.value) { microsoftUsername.value = executorCredentials.value.username || u; microsoftPassword.value = p }; messageTone.value = 'success'; message.value = text('已保存。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('保存失败。')) } finally { credentialSaving.value = false } }
 async function clearCurrentCredentials(): Promise<void> { if (!entry.value || credentialClearing.value) return; credentialClearing.value = true; try { executorCredentials.value = await clearExecutorCredentials(entry.value.id); messageTone.value = 'info'; message.value = text('已清除。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('清除失败。')) } finally { credentialClearing.value = false } }
-async function startActiveApp(silent: boolean): Promise<void> { if (!entry.value || launching.value) return; if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot(); launching.value = true; try { const r = await launchAutomationConsole(entry.value.appId); if (!r.success) throw new Error(r.error || '启动失败'); await refreshExecutorState(true); if (!silent) { messageTone.value = 'success'; message.value = r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') } } catch (e) { const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.value.appId, entryId: entry.value.id, error: m }); if (!silent) { messageTone.value = 'error'; message.value = m } } finally { launching.value = false } }
-async function stopActiveApp(): Promise<void> { if (!entry.value) return; try { const r = await stopAutomationConsole(entry.value.appId); if (!r.success) throw new Error(r.error || '停止失败'); executorHealth.value = null; if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }; await refreshExecutorState(true).catch(() => {}); messageTone.value = 'info'; message.value = text('执行器已停止。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('停止失败')) } }
+async function startActiveApp(silent: boolean, options: { forceUpdate?: boolean } = {}): Promise<void> { if (!entry.value || launching.value) return; if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot(); launching.value = true; try { const forceUpdate = options.forceUpdate !== false; const r = await launchAutomationConsole(entry.value.appId, { forceUpdate }); if (!r.success) throw new Error(r.error || '启动失败'); await refreshExecutorState(true); if (!silent) { messageTone.value = 'success'; message.value = forceUpdate ? text('已同步最新自动化逻辑。') : r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') } } catch (e) { const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.value.appId, entryId: entry.value.id, forceUpdate: options.forceUpdate !== false, error: m }); if (!silent) { messageTone.value = 'error'; message.value = m } } finally { launching.value = false } }
+async function stopActiveApp(): Promise<void> { if (!entry.value) return; try { const r = await stopAutomationConsole(entry.value.appId); if (!r.success) throw new Error(r.error || '停止失败'); executorHealth.value = null; clearRestoredActiveRunState(); if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }; await refreshExecutorState(true).catch(() => {}); messageTone.value = 'info'; message.value = text('执行器已停止。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('停止失败')) } }
 function handleFileSelect(e: Event): void { const f = getExcelFile((e.target as HTMLInputElement).files); if (f) setSelectedFile(f) }
 function handleDragEnter(e: DragEvent): void { if (!hasDraggedFiles(e) || isInternalDragMove(e)) return; dragDepth.value += 1; isDragging.value = true }
 function handleDragOver(e: DragEvent): void { if (!hasDraggedFiles(e)) return; if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; isDragging.value = true }
@@ -444,6 +582,12 @@ function handleDragLeave(e: DragEvent): void { if (isInternalDragMove(e)) return
 function handleDrop(e: DragEvent): void { resetDragging(); const f = getExcelFile(e.dataTransfer?.files); if (f) setSelectedFile(f) }
 function openFilePicker(): void { fileInput.value?.click() }
 function clearFile(): void { selectedFile.value = null; resetDragging(); if (fileInput.value) fileInput.value.value = '' }
+function openTicketReleaseFilePicker(): void { ticketReleaseFileInput.value?.click() }
+function openTicketFactoryPriceFilePicker(): void { ticketFactoryPriceFileInput.value?.click() }
+function handleTicketReleaseFileSelect(e: Event): void { const f = getExcelFile((e.target as HTMLInputElement).files); if (f) ticketReleaseFile.value = f; if (ticketReleaseFileInput.value) ticketReleaseFileInput.value.value = '' }
+function handleTicketFactoryPriceFileSelect(e: Event): void { const f = getExcelFile((e.target as HTMLInputElement).files); if (f) ticketFactoryPriceFile.value = f; if (ticketFactoryPriceFileInput.value) ticketFactoryPriceFileInput.value.value = '' }
+function clearTicketReleaseFile(): void { ticketReleaseFile.value = null; if (ticketReleaseFileInput.value) ticketReleaseFileInput.value.value = '' }
+function clearTicketFactoryPriceFile(): void { ticketFactoryPriceFile.value = null; if (ticketFactoryPriceFileInput.value) ticketFactoryPriceFileInput.value.value = '' }
 function setSelectedFile(file: File): void { if (!isExcelFile(file)) { messageTone.value = 'warning'; message.value = text('请上传 .xlsx 或 .xls 文件。'); return }; selectedFile.value = file; message.value = '' }
 function getExcelFile(files: FileList | null | undefined): File | null { const list = files ? Array.from(files) : []; const f = list.find(isExcelFile) || null; if (!f && list.length > 0) { messageTone.value = 'warning'; message.value = text('请上传 .xlsx 或 .xls 文件。') }; return f }
 function isExcelFile(file: File): boolean { return /\.(xlsx|xls)$/i.test(file.name) }
@@ -463,16 +607,93 @@ function validateStoredOrTypedCredentials(username: string, password: string, si
 function validateShippingInputs(): boolean { if (!entry.value || !isShippingScenario.value) return showRunRequirementDialog('当前入口不存在，请返回自动化入口页重新进入。'); if (!selectedFile.value) return showRunRequirementDialog('请先上传 Excel 文件，文件需包含 PO No 列。'); return validateStoredOrTypedCredentials(shippingUsername.value, shippingPassword.value, 'Infor Nexus') }
 function validateAutoAddInputs(): boolean { if (!entry.value || !isInfornexusAutoAddScenario.value) return showRunRequirementDialog('当前入口不存在，请返回自动化入口页重新进入。'); if (!selectedFile.value) return showRunRequirementDialog('请先上传 Excel 文件，请把 10 位 ID 放在第二列。'); return validateStoredOrTypedCredentials(shippingUsername.value, shippingPassword.value, 'Infor Nexus') }
 function validateDirectExecutorInputs(): boolean { if (!entry.value) return showRunRequirementDialog('当前入口不存在，请返回自动化入口页重新进入。'); if (requiresExcel.value && !selectedFile.value) return showRunRequirementDialog('请先上传 Excel 文件。'); if (isMicrosoftScenario.value) return validateStoredOrTypedCredentials(microsoftUsername.value, microsoftPassword.value, 'Microsoft'); return true }
+function startTicketOwnerProgress(): void {
+  if (!isTicketOwnerStatisticsScenario.value) return
+  stopTicketOwnerProgress()
+  const stages = [
+    { at: 8, text: '正在启动浏览器并检查登录状态...' },
+    { at: 18, text: '正在打开 SAP Task Center 并设置筛选条件...' },
+    { at: 34, text: '正在读取 ticket 列表，准备逐条打开详情...' },
+    { at: 56, text: '正在循环处理 ticket，Claim 后打开详情页采集字段...' },
+    { at: 78, text: '正在按 A/B/C 规则补全字段和可选辅助 Excel...' },
+    { at: 92, text: '正在整理结果并生成 Ticket ownership Excel...' },
+  ]
+  ticketOwnerProgressPercent.value = stages[0].at
+  ticketOwnerProgressText.value = stages[0].text
+  ticketOwnerProgressTimer = window.setInterval(() => {
+    const nextPercent = Math.min(94, ticketOwnerProgressPercent.value + (ticketOwnerProgressPercent.value < 60 ? 2 : 1))
+    ticketOwnerProgressPercent.value = nextPercent
+    const currentStage = [...stages].reverse().find((stage) => nextPercent >= stage.at) || stages[0]
+    ticketOwnerProgressText.value = currentStage.text
+  }, 1800)
+}
+function stopTicketOwnerProgress(done = false): void {
+  if (ticketOwnerProgressTimer) {
+    window.clearInterval(ticketOwnerProgressTimer)
+    ticketOwnerProgressTimer = null
+  }
+  if (done) {
+    ticketOwnerProgressPercent.value = 100
+    ticketOwnerProgressText.value = 'Ticket ownership Excel 已生成。'
+    return
+  }
+  ticketOwnerProgressPercent.value = 0
+  ticketOwnerProgressText.value = ''
+}
 async function runInfornexusDirectWithExcel(): Promise<void> { if (isInfornexusAutoAddScenario.value) { await runInfornexusAutoAdd(); return }; await runShipping() }
-async function runShipping(): Promise<void> { if (sending.value) return; if (!validateShippingInputs()) return; if (!(await ensureReady())) { setNotReady(); void showAppAlert(statusText.value, { tone: 'warning' }); return }; const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload(shippingUsername.value, shippingPassword.value); const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.value?.localExecutorToken || '' }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: entry.value?.localExecutorToken || '', headless: !showBrowserView.value, ...cp }) }); const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); updateShippingArtifactLinks(j); await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(j?.message || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }; if (!j) throw new Error('无法解析响应。'); if (j?.ok && j?.shipmentScanOpened) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedPoCount ?? 0}/${j.totalPoCount ?? '?'} 个 PO。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }; statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。') } catch (e) { const m = formatAutomationExecutorMessage(readErrorMessage(e, '网络错误'), '自动化执行异常。'); statusLabel.value = '异常'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
-async function runInfornexusAutoAdd(): Promise<void> { if (sending.value) return; if (!validateAutoAddInputs()) return; if (!(await ensureReady())) { setNotReady(); void showAppAlert(statusText.value, { tone: 'warning' }); return }; const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload(shippingUsername.value, shippingPassword.value); const res = await fetch(infornexusAutoAddExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.value?.localExecutorToken || '' }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: entry.value?.localExecutorToken || '', headless: !showBrowserView.value, ...cp }) }); const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(j?.message || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }; if (!j) throw new Error('无法解析响应。'); if (j?.ok) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedIdCount ?? 0}/${j.totalIdCount ?? '?'} 个 ID。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }; statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。') } catch (e) { const m = formatAutomationExecutorMessage(readErrorMessage(e, '网络错误'), '自动化执行异常。'); statusLabel.value = '异常'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
-async function sendDirectToExecutor(): Promise<void> { if (sending.value) return; if (!validateDirectExecutorInputs()) return; if (!(await ensureReady())) { setNotReady(); void showAppAlert(statusText.value, { tone: 'warning' }); return }; const file = selectedFile.value; sending.value = true; statusLabel.value = '执行中'; statusText.value = isTicketOwnerStatisticsScenario.value ? '正在打开 SAP BTP 并采集 ticket 信息...' : '正在执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = file ? await createBackendRunRecord(file) : null; const cp = isMicrosoftScenario.value ? await resolveRunCredentialsPayload(microsoftUsername.value, microsoftPassword.value) : {}; const requestBody: Record<string, unknown> = { token: entry.value?.localExecutorToken || '', headless: !showBrowserView.value, ...cp }; if (file) { requestBody.fileName = file.name; requestBody.fileBase64 = await fileToBase64(file) }; const res = await fetch(directExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.value?.localExecutorToken || '' }, body: JSON.stringify(requestBody) }); const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); updateShippingArtifactLinks(j); await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(j?.message || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }; if (!j) throw new Error('无法解析响应。'); if (j.loginSuccess && j.ok !== false) { const rowCount = Number(j.ticketOwnerStatistics?.rowCount ?? 0); statusLabel.value = '成功'; statusText.value = isTicketOwnerStatisticsScenario.value ? `已生成 ${rowCount} 条 Ticket ownership 记录。` : `已处理 ${j.uploadedRowCount ?? '?'} 行。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。') } else { statusLabel.value = '未完成'; statusText.value = j.message || '未确认成功。'; lastResult.value = { ok: false, message: j.message }; messageTone.value = 'warning'; message.value = text('已触发，未确认。') } } catch (e) { const m = formatAutomationExecutorMessage(readErrorMessage(e, '网络错误'), '自动化执行异常。'); statusLabel.value = '异常'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
+async function runShipping(): Promise<void> { if (sending.value) return; if (!validateShippingInputs()) return; if (!(await ensureReady())) { setNotReady(); void showAppAlert(statusText.value, { tone: 'warning' }); return }; const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload(shippingUsername.value, shippingPassword.value); const { res, raw, j } = await postExecutorWithModuleRetry(shippingExecutorRunUrl.value, { fileName: file.name, fileBase64: fb64, token: entry.value?.localExecutorToken || '', headless: !showBrowserView.value, ...cp }); lastRawResponse.value = raw; updateShippingArtifactLinks(j); await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(j?.message || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }; if (!j) throw new Error('无法解析响应。'); if (j?.ok && j?.shipmentScanOpened) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedPoCount ?? 0}/${j.totalPoCount ?? '?'} 个 PO。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }; statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。') } catch (e) { const m = formatAutomationExecutorMessage(readErrorMessage(e, '网络错误'), '自动化执行异常。'); statusLabel.value = '异常'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
+async function runInfornexusAutoAdd(): Promise<void> { if (sending.value) return; if (!validateAutoAddInputs()) return; if (!(await ensureReady())) { setNotReady(); void showAppAlert(statusText.value, { tone: 'warning' }); return }; const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload(shippingUsername.value, shippingPassword.value); const { res, raw, j } = await postExecutorWithModuleRetry(infornexusAutoAddExecutorRunUrl.value, { fileName: file.name, fileBase64: fb64, token: entry.value?.localExecutorToken || '', headless: !showBrowserView.value, ...cp }); lastRawResponse.value = raw; await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(j?.message || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }; if (!j) throw new Error('无法解析响应。'); if (j?.ok) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedIdCount ?? 0}/${j.totalIdCount ?? '?'} 个 ID。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }; statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。') } catch (e) { const m = formatAutomationExecutorMessage(readErrorMessage(e, '网络错误'), '自动化执行异常。'); statusLabel.value = '异常'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
+async function sendDirectToExecutor(): Promise<void> { if (sending.value) return; if (!validateDirectExecutorInputs()) return; if (!(await ensureReady())) { setNotReady(); void showAppAlert(statusText.value, { tone: 'warning' }); return }; const file = selectedFile.value; sending.value = true; statusLabel.value = '执行中'; statusText.value = isTicketOwnerStatisticsScenario.value ? '正在打开 SAP BTP 并采集 ticket 信息...' : '正在执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''; startTicketOwnerProgress(); try { const rr = file ? await createBackendRunRecord(file) : null; const cp = isMicrosoftScenario.value ? await resolveRunCredentialsPayload(microsoftUsername.value, microsoftPassword.value) : {}; const requestBody: Record<string, unknown> = { token: entry.value?.localExecutorToken || '', headless: !showBrowserView.value, ...cp }; if (file) { requestBody.fileName = file.name; requestBody.fileBase64 = await fileToBase64(file) }; if (isTicketOwnerStatisticsScenario.value) await appendTicketOwnerLookupFiles(requestBody); const { res, raw, j } = await postExecutorWithModuleRetry(directExecutorRunUrl.value, requestBody); lastRawResponse.value = raw; updateShippingArtifactLinks(j); await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(j?.message || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }; if (!j) throw new Error('无法解析响应。'); if (j.loginSuccess && j.ok !== false) { const rowCount = Number(j.ticketOwnerStatistics?.rowCount ?? 0); statusLabel.value = '成功'; statusText.value = isTicketOwnerStatisticsScenario.value ? `已生成 ${rowCount} 条 Ticket ownership 记录。` : `已处理 ${j.uploadedRowCount ?? '?'} 行。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。') } else { statusLabel.value = '未完成'; statusText.value = j.message || '未确认成功。'; lastResult.value = { ok: false, message: j.message }; messageTone.value = 'warning'; message.value = text('已触发，未确认。') } } catch (e) { const m = formatAutomationExecutorMessage(readErrorMessage(e, '网络错误'), '自动化执行异常。'); statusLabel.value = '异常'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m } finally { stopTicketOwnerProgress(); sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
 function setNotReady(): void { statusLabel.value = '未就绪'; statusText.value = '本机执行器尚未就绪。'; lastResult.value = { ok: false, message: 'Executor is not ready.' }; messageTone.value = 'warning'; message.value = text('本机执行器未就绪。') }
-async function ensureReady(): Promise<boolean> { if (executorHealth.value?.ok) return true; await startActiveApp(true); await refreshExecutorState(true).catch(() => {}); return Boolean(executorHealth.value?.ok) }
+function isExecutorBusy(): boolean {
+  return Boolean(executorHealth.value?.busy || executorHealth.value?.activeRun || (Array.isArray(executorHealth.value?.activeRuns) && executorHealth.value.activeRuns.length > 0) || Number(executorHealth.value?.activeRunCount || 0) > 0)
+}
+function shouldSyncActiveAppRuntime(): boolean {
+  return Boolean(entry.value && activeApp.value?.available && !isExecutorBusy())
+}
+async function ensureReady(): Promise<boolean> {
+  if (shouldSyncActiveAppRuntime()) {
+    statusText.value = '正在检查并同步最新自动化逻辑...'
+    await startActiveApp(true, { forceUpdate: true })
+  } else if (!executorHealth.value?.ok) {
+    await startActiveApp(true)
+  }
+  await refreshExecutorState(true).catch(() => {})
+  return Boolean(executorHealth.value?.ok)
+}
+async function postExecutorWithModuleRetry(url: string, requestBody: Record<string, unknown>): Promise<{ res: Response; raw: string; j: Record<string, any> | null }> {
+  let result = await postExecutorJson(url, requestBody)
+  if (shouldRetryAfterMissingExecutorRoute(result.res, result.raw, result.j)) {
+    statusText.value = '执行器缺少当前自动化逻辑，正在同步最新模块后重试...'
+    await startActiveApp(true, { forceUpdate: true })
+    await refreshExecutorState(true).catch(() => {})
+    result = await postExecutorJson(url, requestBody)
+  }
+  return result
+}
+async function postExecutorJson(url: string, requestBody: Record<string, unknown>): Promise<{ res: Response; raw: string; j: Record<string, any> | null }> {
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': entry.value?.localExecutorToken || '' }, body: JSON.stringify(requestBody) })
+  const raw = await res.text()
+  return { res, raw, j: safeParseJson(raw) }
+}
+async function appendTicketOwnerLookupFiles(requestBody: Record<string, unknown>): Promise<void> {
+  if (ticketReleaseFile.value) {
+    requestBody.releaseLookupFileName = ticketReleaseFile.value.name
+    requestBody.releaseLookupFileBase64 = await fileToBase64(ticketReleaseFile.value)
+  }
+  if (ticketFactoryPriceFile.value) {
+    requestBody.factoryPriceFileName = ticketFactoryPriceFile.value.name
+    requestBody.factoryPriceFileBase64 = await fileToBase64(ticketFactoryPriceFile.value)
+  }
+}
+function shouldRetryAfterMissingExecutorRoute(res: Response, raw: string, payload: Record<string, any> | null): boolean {
+  const message = String(payload?.message || raw || '').trim()
+  return res.status === 404 && /not\s*found/i.test(message)
+}
 async function fileToBase64(f: File): Promise<string> { const b = await f.arrayBuffer(); return arrayBufferToBase64(b) }
 function arrayBufferToBase64(b: ArrayBuffer): string { const bytes = new Uint8Array(b); const cs = 0x8000; let bin = ''; for (let i = 0; i < bytes.length; i += cs) { const chunk = bytes.subarray(i, i + cs); bin += String.fromCharCode(...chunk) }; return window.btoa(bin) }
 function safeParseJson(r: string): Record<string, any> | null { try { return r ? JSON.parse(r) : null } catch { return null } }
-function buildExecutorResponseMessage(res: Response, _raw: string, payload: Record<string, any> | null, fallback = '自动化执行失败。'): string { const rawMessage = typeof payload?.message === 'string' ? payload.message : ''; if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback); if (!payload) return formatAutomationExecutorMessage('JSON.parse: unexpected character at line 1 column 1 of the JSON data', fallback); return formatAutomationExecutorMessage(`HTTP ${res.status}`, fallback) }
+function buildExecutorResponseMessage(res: Response, raw: string, payload: Record<string, any> | null, fallback = '自动化执行失败。'): string { const rawMessage = typeof payload?.message === 'string' ? payload.message : ''; if (res.status === 404 && /not\s*found/i.test(rawMessage || raw || '')) return '本机执行器缺少当前自动化接口，系统已尝试同步最新自动化逻辑但接口仍不可用。请确认小助手支持自动化模块热更新，并检查服务器 automation-modules 模块包是否已发布。'; if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback); if (!payload) return formatAutomationExecutorMessage('JSON.parse: unexpected character at line 1 column 1 of the JSON data', fallback); return formatAutomationExecutorMessage(`HTTP ${res.status}`, fallback) }
 function updateShippingArtifactLinks(p: Record<string, any> | null): void { if (!isShippingScenario.value && !isTicketOwnerStatisticsScenario.value) { shippingArtifactLinks.value = null; return }; const u = p?.artifacts?.downloadUrls; const re = buildShippingArtifactUrl(u?.resultExcelUrl); if (!re) { shippingArtifactLinks.value = null; return }; shippingArtifactLinks.value = { resultExcelUrl: re, resultJsonUrl: buildShippingArtifactUrl(u?.resultJsonUrl) || undefined, failedPoExcelUrl: buildShippingArtifactUrl(u?.failedPoExcelUrl) || undefined, failedPoJsonUrl: buildShippingArtifactUrl(u?.failedPoJsonUrl) || undefined, failedRowCount: Number(p?.artifacts?.failedRowCount ?? p?.ticketOwnerStatistics?.failedTicketCount ?? 0) } }
 function buildShippingArtifactUrl(rp: string): string { const np = String(rp || '').trim(); if (!np) return ''; if (/^https?:\/\//i.test(np)) return np; const bu = String(entry.value?.executorBaseUrl || '').replace(/\/+$/, ''); return bu ? `${bu}${np.startsWith('/') ? np : `/${np}`}` : '' }
 function downloadShippingArtifact(u: string | undefined, fn: string): void { if (!u) return; const a = document.createElement('a'); a.href = u; a.download = fn; a.rel = 'noopener'; document.body.append(a); a.click(); a.remove() }
@@ -585,13 +806,15 @@ function readErrorMessage(e: unknown, fb: string): string { return e instanceof 
 
 /* ═══ BODY: LEFT + RIGHT DOCK ═══ */
 .sa-body {
-  display: grid; grid-template-columns: 1fr 260px; gap: 14px;
-  flex: 1; min-height: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 260px); gap: 14px;
+  align-items: start;
+  flex: 1; min-height: 0; min-width: 0;
 }
 .sa-left { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
 
 /* ═══ MAIN CARD ═══ */
 .sa-card {
+  min-width: 0;
   background: #fff; border: 1px solid var(--br); border-radius: var(--r);
   box-shadow: var(--sh); overflow: hidden;
   animation: sa-rise .5s cubic-bezier(.22,1,.36,1) both;
@@ -673,6 +896,18 @@ function readErrorMessage(e: unknown, fb: string): string { return e instanceof 
   &__overlay { position: absolute; inset: 4px; display: flex; align-items: center; justify-content: center; background: rgba(240,249,255,.92); border: 2px dashed var(--a); border-radius: 10px; font-size: 12px; font-weight: 700; color: var(--a); pointer-events: none; backdrop-filter: blur(4px); animation: sa-dashPulse .8s ease-in-out infinite alternate; }
 }
 
+.sa-lookup-files { display: flex; flex-direction: column; gap: 10px; }
+.sa-lookup-file {
+  position: relative; display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 1px solid var(--br); border-radius: 10px;
+  background: #f8fafc;
+  &__input { display: none; }
+  &__icon { color: var(--a); flex-shrink: 0; }
+  &__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  b { font-size: 12px; color: var(--ink); }
+  small { font-size: 10px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+
 /* ─── Status Bar ─── */
 .sa-status {
   display: flex; align-items: center; gap: 7px;
@@ -682,6 +917,16 @@ function readErrorMessage(e: unknown, fb: string): string { return e instanceof 
   &--info { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
   &--ok   { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
   &--err  { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+}
+
+.sa-progress {
+  margin: 0 20px 12px; padding: 10px 12px;
+  border: 1px solid #bae6fd; border-radius: 10px; background: #f0f9ff;
+  &__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; font-size: 11px; color: #075985; }
+  &__head span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  &__head b { flex-shrink: 0; font-size: 11px; color: #0369a1; }
+  &__track { height: 7px; border-radius: 999px; overflow: hidden; background: #dbeafe; }
+  &__track span { display: block; height: 100%; border-radius: inherit; background: #0ea5e9; transition: width .35s ease; }
 }
 
 /* ─── Artifacts Row ─── */
@@ -715,8 +960,11 @@ function readErrorMessage(e: unknown, fb: string): string { return e instanceof 
 /* ═══ RIGHT DOCK ═══ */
 .sa-dock {
   display: flex; flex-direction: column; gap: 12px;
-  min-height: 0; animation: sa-slideIn .45s cubic-bezier(.22,1,.36,1) .12s both;
+  min-width: 0; min-height: 0; align-self: start;
+  animation: sa-slideIn .45s cubic-bezier(.22,1,.36,1) .12s both;
 }
+.sa-dock > * { min-width: 0; }
+.sa-dock :deep(.run-history-trigger) { width: 100%; min-height: 54px; }
 .sa-dock-card {
   background: #fff; border: 1px solid var(--br); border-radius: var(--r);
   box-shadow: var(--sh); overflow: hidden;
@@ -825,8 +1073,62 @@ function readErrorMessage(e: unknown, fb: string): string { return e instanceof 
 @keyframes sa-dashPulse { from { opacity: .7; } to { opacity: 1; border-color: #38bdf8; } }
 
 /* ═══ RESPONSIVE ═══ */
-@media (max-width: 1200px) { .sa-body { grid-template-columns: 1fr 220px; } }
-@media (max-width: 960px) { .sa-body { grid-template-columns: 1fr; } .sa-dock { flex-direction: row; } .sa-dock-card { flex: 1; &--flex { flex: 1; } } .sa-cred-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1200px) {
+  .sa { padding-inline: 16px; }
+  .sa-body { grid-template-columns: minmax(0, 1fr) minmax(210px, 230px); }
+  .sa-dock__bd { padding: 10px 12px; }
+}
+
+@media (max-width: 960px) {
+  .sa { height: auto; min-height: 100%; padding-inline: 14px; }
+  .sa-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-content: start;
+    flex: 0 0 auto;
+  }
+  .sa-dock {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+  }
+  .sa-dock-card { min-height: 0; }
+  .sa-dock-card--flex { flex: initial; }
+  .sa-dock :deep(.run-history-trigger) { height: 100%; min-height: 72px; }
+  .sa-cred-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+  .sa-hd { align-items: flex-start; flex-wrap: wrap; }
+  .sa-hd__left { min-width: 0; flex: 1 1 100%; }
+  .sa-hd__right { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+  .sa-card__hd { align-items: flex-start; padding: 14px 16px; }
+  .sa-card__bd { padding: 12px 16px; }
+  .sa-card__ft { padding: 0 16px 14px; }
+  .sa-cred-note { margin: 10px 16px 0; align-items: flex-start; line-height: 1.45; }
+  .sa-lookup-file { flex-wrap: wrap; align-items: flex-start; }
+  .sa-lookup-file .sa-btn { margin-left: auto; }
+  .sa-dock { grid-template-columns: 1fr; }
+  .sa-dock :deep(.run-history-trigger) { height: auto; min-height: 56px; }
+}
+
+@media (max-width: 520px) {
+  .sa { gap: 10px; padding: 0 10px 12px; }
+  .sa-hd__icon { width: 36px; height: 36px; border-radius: 12px; }
+  .sa-hd__text h1 { font-size: 14px; }
+  .sa-pill,
+  .sa-tag { max-width: 100%; }
+  .sa-card__hd { padding: 12px; }
+  .sa-card__bd { padding: 12px; }
+  .sa-card__ft { padding: 0 12px 12px; }
+  .sa-cred-note,
+  .sa-status,
+  .sa-progress { margin-inline: 12px; }
+  .sa-cred-row .sa-btn { flex: 1 1 130px; }
+  .sa-btn { min-width: 0; white-space: normal; line-height: 1.2; }
+  .sa-btn-grid { flex-direction: column; }
+  .sa-btn-grid .sa-btn { width: 100%; }
+}
 
 /* 执行器控制双列格栅 */
 .sa-btn-grid {

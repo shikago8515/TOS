@@ -12,7 +12,7 @@
           @click="changeTab('invoice')"
         >
           <AppIcon name="file-text" />
-          <span>发票 PO 提取</span>
+          <span>{{ text('发票 PO 提取') }}</span>
         </button>
         <button
           class="tab-btn"
@@ -21,7 +21,7 @@
           @click="changeTab('extract')"
         >
           <AppIcon name="target" />
-          <span>自定义号码提取</span>
+          <span>{{ text('自定义号码提取') }}</span>
         </button>
         <div class="tab-slider-bar" :style="{ left: activeTab === 'invoice' ? '4px' : 'calc(50% - 8px)' }" />
       </div>
@@ -32,18 +32,18 @@
           <div v-if="activeTab === 'invoice'" key="invoice-tab" class="tab-pane">
             <header class="tab-pane-header">
               <div>
-                <h3>发票 PO 提取</h3>
-                <p>上传发票 PDF 后提取 PO 顺序与明细</p>
+                <h3>{{ text('发票 PO 提取') }}</h3>
+                <p>{{ text('上传发票 PDF 后提取 PO 顺序与明细') }}</p>
               </div>
               <span class="badge" :class="{ active: invoiceEntries.length > 0 }">
-                {{ invoiceEntries.length }} 个PO
+                {{ invoiceEntries.length }} {{ text('个PO') }}
               </span>
             </header>
 
             <div class="tab-pane-body">
               <div class="field-label">
-                <span>发票 PDF 数据源</span>
-                <small>{{ invoiceEntries.length }} 个已导入 PO</small>
+                <span>{{ text('发票 PDF 数据源') }}</span>
+                <small>{{ invoiceEntries.length }} {{ text('个已导入 PO') }}</small>
               </div>
               <label
                 class="dropzone"
@@ -69,7 +69,7 @@
                     <button 
                       type="button" 
                       class="dropzone-remove-btn" 
-                      title="清除文件"
+                      :title="text('清除文件')"
                       @click.stop.prevent="emit('clearInvoice')"
                     >
                       <AppIcon name="x" />
@@ -78,23 +78,23 @@
                 </template>
                 <template v-else>
                   <span class="dropzone-icon"><AppIcon name="upload" /></span>
-                  <strong>选择或拖入发票 PDF</strong>
-                  <span>支持单个 .pdf 文件</span>
+                  <strong>{{ text('选择或拖入发票 PDF') }}</strong>
+                  <span>{{ text('支持单个 .pdf 文件') }}</span>
                 </template>
               </label>
 
               <div class="toolbar flex-wrap">
                 <button class="btn btn-soft" type="button" :disabled="isBusy('invoice-preview')" @click="emit('previewInvoice')">
                   <AppIcon :name="isBusy('invoice-preview') ? 'loader' : 'file-search'" :class="{ 'jason-spin': isBusy('invoice-preview') }" />
-                  {{ isBusy('invoice-preview') ? '提取中...' : '提取发票' }}
+                  {{ isBusy('invoice-preview') ? text('提取中...') : text('提取发票') }}
                 </button>
                 <button class="btn btn-soft" type="button" @click="emit('syncInvoice')">
                   <AppIcon name="refresh-cw" />
-                  同步到 PO
+                  {{ text('同步到 PO') }}
                 </button>
                 <button class="btn" type="button" @click="emit('copyInvoice')">
                   <AppIcon name="copy" />
-                  复制
+                  {{ text('复制') }}
                 </button>
                 <button class="btn" type="button" @click="emit('downloadInvoiceTxt')">
                   <AppIcon name="download" />
@@ -105,25 +105,25 @@
                   CSV
                 </button>
                 <button class="btn btn-danger-soft" type="button" @click="emit('clearInvoice')">
-                  清空
+                  {{ text('清空') }}
                 </button>
               </div>
 
               <div class="metrics">
                 <div class="metric">
-                  <span>PO 数量</span>
+                  <span>{{ text('PO 数量') }}</span>
                   <strong>{{ invoiceEntries.length }}</strong>
                 </div>
                 <div class="metric">
-                  <span>总数量</span>
+                  <span>{{ text('总数量') }}</span>
                   <strong>{{ valueOrDash(invoiceSummary?.totalQuantity) }}</strong>
                 </div>
                 <div class="metric">
-                  <span>货品金额</span>
+                  <span>{{ text('货品金额') }}</span>
                   <strong>{{ valueOrDash(invoiceSummary?.totalAmount) }}</strong>
                 </div>
                 <div class="metric">
-                  <span>发票总额</span>
+                  <span>{{ text('发票总额') }}</span>
                   <strong>{{ valueOrDash(invoiceSummary?.invoiceTotals?.invoice_total) }}</strong>
                 </div>
               </div>
@@ -134,12 +134,12 @@
                     <tr>
                       <th>#</th>
                       <th>PO</th>
-                      <th>发票页</th>
+                      <th>{{ text('发票页') }}</th>
                       <th>Article</th>
-                      <th>描述</th>
-                      <th class="num">数量</th>
-                      <th class="num">货品金额</th>
-                      <th class="num">净额</th>
+                      <th>{{ text('描述') }}</th>
+                      <th class="num">{{ text('数量') }}</th>
+                      <th class="num">{{ text('货品金额') }}</th>
+                      <th class="num">{{ text('净额') }}</th>
                     </tr>
                   </thead>
                   <transition-group name="jason-row-fade" tag="tbody">
@@ -147,7 +147,7 @@
                       <td colspan="8">
                         <div class="empty-state">
                           <AppIcon name="file-text" />
-                          <span>等待上传发票 PDF 并提取数据</span>
+                          <span>{{ text('等待上传发票 PDF 并提取数据') }}</span>
                         </div>
                       </td>
                     </tr>
@@ -173,10 +173,10 @@
           <div v-else key="extract-tab" class="tab-pane">
             <header class="tab-pane-header">
               <div>
-                <h3>自定义号码提取</h3>
-                <p>按自定义规则抓取特定文本或 PDF 中的号码</p>
+                <h3>{{ text('自定义号码提取') }}</h3>
+                <p>{{ text('按自定义规则抓取特定文本或 PDF 中的号码') }}</p>
               </div>
-              <span class="badge">{{ extractNumbers.length }} 个号码</span>
+              <span class="badge">{{ extractNumbers.length }} {{ text('个号码') }}</span>
             </header>
 
             <div class="tab-pane-body">
@@ -186,10 +186,10 @@
                   @input="emit('update:extractPattern', ($event.target as HTMLInputElement).value)"
                   class="text-input"
                   type="text"
-                  placeholder="如 090|45 或 \d{10}"
+                  :placeholder="text('如 090|45 或 \\d{10}')"
                   @keydown.prevent.enter="emit('applyExtractionRule')"
                 >
-                <button class="btn btn-soft" type="button" @click="emit('applyExtractionRule')">应用规则</button>
+                <button class="btn btn-soft" type="button" @click="emit('applyExtractionRule')">{{ text('应用规则') }}</button>
               </div>
 
               <div class="radio-row">
@@ -200,19 +200,19 @@
                     :checked="extractSearchType === option.value"
                     @change="emit('update:extractSearchType', option.value)"
                   >
-                  {{ option.label }}
+                  {{ text(option.label) }}
                 </label>
               </div>
 
               <div class="preset-row">
-                <button class="btn" type="button" @click="emit('setExtractPreset', '090|45', 'startsWith')">090/45 开头</button>
-                <button class="btn" type="button" @click="emit('setExtractPreset', '\\\\d{10}', 'regex')">10 位数字</button>
-                <button class="btn" type="button" @click="emit('setExtractPreset', '45', 'contains')">包含 45</button>
+                <button class="btn" type="button" @click="emit('setExtractPreset', '090|45', 'startsWith')">{{ text('090/45 开头') }}</button>
+                <button class="btn" type="button" @click="emit('setExtractPreset', '\\\\d{10}', 'regex')">{{ text('10 位数字') }}</button>
+                <button class="btn" type="button" @click="emit('setExtractPreset', '45', 'contains')">{{ text('包含 45') }}</button>
               </div>
 
               <div class="field-label">
-                <span>自定义提取 PDF</span>
-                <small>{{ extractFiles.length }} 个已选文件</small>
+                <span>{{ text('自定义提取 PDF') }}</span>
+                <small>{{ extractFiles.length }} {{ text('个已选文件') }}</small>
               </div>
               <label
                 class="dropzone mini-drop"
@@ -230,38 +230,38 @@
                   @change="onExtractFilesChange"
                 >
                 <span class="dropzone-icon"><AppIcon name="files" /></span>
-                <strong>{{ extractFiles.length ? `${extractFiles.length} 个 PDF` : '选择用于提取的 PDF' }}</strong>
-                <span>{{ extractFiles.length ? extractFiles.map((file) => file.name).join('，') : '可多选' }}</span>
+                <strong>{{ extractFiles.length ? `${extractFiles.length} ${text('个 PDF')}` : text('选择用于提取的 PDF') }}</strong>
+                <span>{{ extractFiles.length ? extractFiles.map((file) => file.name).join('，') : text('可多选') }}</span>
               </label>
 
               <textarea
                 :value="pasteText"
                 @input="emit('update:pasteText', ($event.target as HTMLTextAreaElement).value)"
                 class="textarea small"
-                placeholder="粘贴文本，然后点击从粘贴提取"
+                :placeholder="text('粘贴文本，然后点击从粘贴提取')"
               />
 
               <div class="toolbar flex-wrap">
                 <button class="btn btn-soft" type="button" :disabled="isBusy('extract-pdf')" @click="emit('extractFromPdf')">
                   <AppIcon :name="isBusy('extract-pdf') ? 'loader' : 'file-search'" :class="{ 'jason-spin': isBusy('extract-pdf') }" />
-                  {{ isBusy('extract-pdf') ? '从 PDF 提取' : '从 PDF 提取' }}
+                  {{ text('从 PDF 提取') }}
                 </button>
-                <button class="btn btn-soft" type="button" @click="emit('extractFromPaste')">从粘贴提取</button>
-                <button class="btn btn-soft" type="button" @click="emit('extractFromPageText')">抓取页面文本</button>
-                <button class="btn" type="button" @click="emit('copyExtracted')">复制</button>
-                <button class="btn" type="button" @click="emit('downloadExtracted')">下载</button>
-                <button class="btn btn-danger-soft" type="button" @click="emit('clearExtraction')">清空</button>
+                <button class="btn btn-soft" type="button" @click="emit('extractFromPaste')">{{ text('从粘贴提取') }}</button>
+                <button class="btn btn-soft" type="button" @click="emit('extractFromPageText')">{{ text('抓取页面文本') }}</button>
+                <button class="btn" type="button" @click="emit('copyExtracted')">{{ text('复制') }}</button>
+                <button class="btn" type="button" @click="emit('downloadExtracted')">{{ text('下载') }}</button>
+                <button class="btn btn-danger-soft" type="button" @click="emit('clearExtraction')">{{ text('清空') }}</button>
               </div>
 
               <div class="number-list-container">
                 <div v-if="extractNumbers.length === 0" class="empty-state compact">
-                  <span>等待提取号码</span>
+                  <span>{{ text('等待提取号码') }}</span>
                 </div>
                 <transition-group v-else name="jason-row-fade" tag="div" class="number-list">
                   <section v-for="group in extractGroups" :key="group.fileName" class="number-group">
                     <h3>{{ group.fileName }}</h3>
                     <template v-for="page in group.pages" :key="`${group.fileName}-${page.pageNum}`">
-                      <p>第 {{ page.pageNum }} 页 · {{ page.numbers.length }} 个</p>
+                      <p>{{ text('第') }} {{ page.pageNum }} {{ text('页') }} · {{ page.numbers.length }} {{ text('个') }}</p>
                       <div
                         v-for="number in page.numbers"
                         :key="`${group.fileName}-${page.pageNum}-${number}`"
@@ -287,6 +287,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
+import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 import type { 
   JasonPdfReorderEntry, 
   JasonPdfReorderSummary, 
@@ -311,6 +312,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const { text } = useAppLanguage()
 const emit = defineEmits<{
   (e: 'update:activeTab', tab: 'invoice' | 'extract'): void
   (e: 'update:invoiceFile', file: File | null): void

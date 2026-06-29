@@ -5,16 +5,16 @@
         <AppIcon name="file-search" />
       </div>
       <div>
-        <h1>PO 发票顺序重排</h1>
-        <p>智能文档工作台</p>
+        <h1>{{ text('PO 发票顺序重排') }}</h1>
+        <p>{{ text('智能文档工作台') }}</p>
       </div>
     </div>
 
     <!-- === 符合主题的 CSS 虚线粒子流光流水线图 === -->
     <div class="workflow-illustration">
-      <div class="node node--source" title="原始输入发票/列表">
+      <div class="node node--source" :title="text('原始输入发票/列表')">
         <AppIcon name="file-text" />
-        <span class="node-label">原始数据</span>
+        <span class="node-label">{{ text('原始数据') }}</span>
       </div>
       
       <div class="flow-line">
@@ -22,9 +22,9 @@
         <span class="pulse-dot" />
       </div>
 
-      <div class="node node--process" title="智能重组与页码映射">
+      <div class="node node--process" :title="text('智能重组与页码映射')">
         <AppIcon name="shuffle" />
-        <span class="node-label">排序重组</span>
+        <span class="node-label">{{ text('排序重组') }}</span>
       </div>
 
       <div class="flow-line">
@@ -32,9 +32,9 @@
         <span class="pulse-dot pulse-dot--delay" />
       </div>
 
-      <div class="node node--target" title="按指定顺序生成重排 PDF">
+      <div class="node node--target" :title="text('按指定顺序生成重排 PDF')">
         <AppIcon name="file-check" />
-        <span class="node-label">重排 PDF</span>
+        <span class="node-label">{{ text('重排 PDF') }}</span>
       </div>
     </div>
   </header>
@@ -42,6 +42,9 @@
 
 <script setup lang="ts">
 import AppIcon from '../../../shared/ui/AppIcon.vue'
+import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+
+const { text } = useAppLanguage()
 </script>
 
 <style scoped>

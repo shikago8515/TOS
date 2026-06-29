@@ -17,6 +17,7 @@ describe('automationTemplateModules', () => {
       'shipping-automation-2',
       'infornexus-auto-add',
       'po-auto-download',
+      'packing-list-auto-download',
     ])
     expect(automationTemplateModuleIds).not.toContain('jane-sap')
     expect(automationTemplateModuleIds).not.toContain('jane-infornexus')

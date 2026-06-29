@@ -6,10 +6,22 @@
   --text-color-secondary: #909399;
   --border-color: #dcdfe6;
 
-  --el-color-primary: #409eff;
+  --el-color-primary: #0f766e;
+  --el-color-primary-rgb: 15, 118, 110;
+  --el-color-primary-light-1: #277f78;
+  --el-color-primary-light-2: #3f8d87;
+  --el-color-primary-light-3: #579b96;
+  --el-color-primary-light-4: #6fa9a5;
+  --el-color-primary-light-5: #87b8b4;
+  --el-color-primary-light-6: #9fc6c3;
+  --el-color-primary-light-7: #b7d4d2;
+  --el-color-primary-light-8: #cfe2e1;
+  --el-color-primary-light-9: #e7f1f0;
+  --el-color-primary-dark-2: #0b5f59;
   --el-color-success: #67c23a;
   --el-color-warning: #e6a23c;
   --el-color-danger: #f56c6c;
+  --el-border-radius-base: 8px;
 
   /* ── Soft UI Tokens ── */
   --soft-bg: #f0f4f8;
@@ -37,13 +49,370 @@
 
   color: var(--text-color-primary);
   background: var(--bg-color);
-  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
+  font-family: 'KoiFont', Inter, 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
     'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
   font-synthesis: none;
   line-height: 1.6;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+html.dark {
+  color-scheme: dark;
+  --bg-color: #000000;
+  --text-color-primary: #e5eaf3;
+  --text-color-regular: #cfd3dc;
+  --text-color-secondary: #a3a6ad;
+  --border-color: #3d3d3f;
+  --soft-bg: #000000;
+  --soft-surface: #141414;
+  --soft-accent-light: rgba(var(--el-color-primary-rgb), 0.18);
+  --soft-text: #e5eaf3;
+  --soft-text-secondary: #cfd3dc;
+  --soft-text-muted: #a3a6ad;
+}
+
+html.dark body {
+  background-color: #000000;
+}
+
+html.dark .app-layout {
+  --color-bg: #000000;
+  --color-surface: #141414;
+  --color-surface-muted: #1f1f1f;
+  --color-text: #e5eaf3;
+  --color-muted: #cfd3dc;
+  --color-border: #3d3d3f;
+  --color-primary-soft: rgba(var(--el-color-primary-rgb), 0.18);
+  background:
+    linear-gradient(#141414 1px, transparent 1px),
+    linear-gradient(90deg, #141414 1px, transparent 1px),
+    var(--color-bg);
+}
+
+html.dark .content-shell {
+  color: #e5eaf3;
+  background: #000000;
+  --ink: #e5eaf3;
+  --em: #cfd3dc;
+  --mu: #a3a6ad;
+  --br: #3d3d3f;
+  --paper: #141414;
+  --sh: rgba(0, 0, 0, 0.38);
+  --a2: rgba(var(--el-color-primary-rgb), 0.18);
+  --teal-50: rgba(var(--el-color-primary-rgb), 0.16);
+  --teal-100: rgba(var(--el-color-primary-rgb), 0.22);
+  --teal-200: rgba(var(--el-color-primary-rgb), 0.34);
+  --teal-soft: rgba(var(--el-color-primary-rgb), 0.18);
+  --slate-50: #141414;
+  --slate-100: #1f1f1f;
+  --slate-200: #3d3d3f;
+  --slate-300: #4c4d4f;
+  --slate-400: #a3a6ad;
+  --slate-500: #cfd3dc;
+  --slate-600: #d8dce5;
+  --slate-700: #e5eaf3;
+  --slate-800: #eef1f6;
+  --slate-900: #f5f7fa;
+  --green-50: rgba(34, 197, 94, 0.12);
+  --green-100: rgba(34, 197, 94, 0.18);
+  --green-200: rgba(34, 197, 94, 0.26);
+}
+
+html.dark .content-shell :where(.home-page, .studio-page, .runs-page, .tpl-page, .ru-page, .stg-layout, .settings-workbench, .sa-page, .pad-page, .iaa-page, .s2-page, .sa, .pad, .iaa, .s2, .am-page, .jane-page-container, .jane-grid, .it-invoice-page, .wa-page, .ap-shell, .cap, .acp, .web-automation-panel, .placeholder-page) {
+  color: #e5eaf3;
+  background-color: transparent;
+}
+
+html.dark .content-shell :where(.sa, .pad, .iaa, .s2, .am-page, .jane-page-container, .jane-grid, .it-invoice-page, .wa-page, .ap-shell, .cap, .acp, .web-automation-panel, .placeholder-page) {
+  --ink: #e5eaf3;
+  --em: #cfd3dc;
+  --mu: #a3a6ad;
+  --muted: #a3a6ad;
+  --br: #3d3d3f;
+  --paper: #141414;
+  --sh: rgba(0, 0, 0, 0.38);
+  --a2: rgba(var(--el-color-primary-rgb), 0.18);
+  --white: #141414;
+  --gray-50: #18181b;
+  --gray-100: #1f1f1f;
+  --gray-200: #3d3d3f;
+  --gray-300: #4c4d4f;
+  --gray-400: #a3a6ad;
+  --gray-500: #cfd3dc;
+  --gray-700: #e5eaf3;
+  --gray-900: #f5f7fa;
+  --blue-light: rgba(14, 165, 233, 0.16);
+  --green-light: rgba(16, 185, 129, 0.16);
+  --amber-light: rgba(245, 158, 11, 0.16);
+  --red-light: rgba(239, 68, 68, 0.16);
+  --cap-ink: #e5eaf3;
+  --cap-muted: #a3a6ad;
+  --cap-border: #3d3d3f;
+  --history-ink: #e5eaf3;
+  --history-muted: #a3a6ad;
+  --history-border: #3d3d3f;
+}
+
+html.dark .content-shell :where(
+  .hero-banner,
+  .module-card,
+  .metric-card,
+  .service-card,
+  .studio-hero,
+  .studio-card,
+  .runs-toolbar,
+  .runs-card,
+  .run-card,
+  .tpl-editor,
+  .tpl-card,
+  .tpl-toolbar,
+  .ru-card,
+  .ru-stat,
+  .ru-list,
+  .stg-section,
+  .stg-download-card--light,
+  .stg-server-mode-card,
+  .stg-flow-chart,
+  .stg-toast,
+  .profile-card,
+  .panel,
+  .card,
+  .drawer,
+  .modal
+) {
+  background-color: #141414;
+  border-color: #3d3d3f;
+  color: #e5eaf3;
+  box-shadow: none;
+}
+
+html.dark .content-shell :where(
+  [class$="-card"],
+  [class*="-card "],
+  [class$="__card"],
+  [class*="__card "],
+  [class$="-panel"],
+  [class*="-panel "],
+  [class$="__panel"],
+  [class*="__panel "],
+  [class$="-toolbar"],
+  [class*="-toolbar "],
+  [class$="__toolbar"],
+  [class*="__toolbar "],
+  [class$="-section"],
+  [class*="-section "],
+  [class$="__section"],
+  [class*="__section "],
+  [class$="-hero"],
+  [class*="-hero "],
+  .am-hero,
+  .am-hero__stat,
+  .ap-hero,
+  .ap-search,
+  .ap-stat,
+  .ap-card,
+  .jane-stat,
+  .jane-toolbar,
+  .jane-toolbar__btn,
+  .jane-section,
+  .jane-filter input,
+  .jane-progress,
+  .iplex-preview,
+  .iplex-preview__table-wrap,
+  .placeholder-card,
+  .wa-hero,
+  .wa-search,
+  .wa-stat-chip,
+  .wa-card,
+  .wa-empty,
+  .wa-btn
+) {
+  background: #141414;
+  border-color: #3d3d3f;
+  color: #e5eaf3;
+  box-shadow: none;
+}
+
+html.dark .content-shell :where(
+  .runs-toolbar,
+  .filter-field,
+  .keyword-input,
+  .empty-state,
+  .file-empty,
+  .status-card,
+  .stg-card-description,
+  .stg-metadata-item,
+  .link-val,
+  .profile-menu-item,
+  .el-input__wrapper,
+  .el-select__wrapper,
+  .el-textarea__inner
+) {
+  background-color: #1f1f1f;
+  border-color: #3d3d3f;
+  color: #cfd3dc;
+}
+
+html.dark .content-shell :where(
+  input,
+  textarea,
+  select,
+  table,
+  thead,
+  tbody,
+  th,
+  td,
+  .upload-dropzone,
+  .file-group,
+  .file-row,
+  .history-row,
+  .summary-item,
+  .ap-search input,
+  .wa-search input,
+  .iplex-preview__table,
+  .iplex-preview__table th,
+  .iplex-preview__table td
+) {
+  background-color: #1f1f1f;
+  border-color: #3d3d3f;
+  color: #cfd3dc;
+}
+
+html.dark .content-shell :where(input::placeholder, textarea::placeholder) {
+  color: #7f8490;
+}
+
+html.dark .content-shell :where(h1, h2, h3, h4, strong, .card-title, .header-title h2, .tpl-title, .run-title, .ru-title, .stg-card-title) {
+  color: #e5eaf3;
+}
+
+html.dark .content-shell :where(
+  .am-hero__title,
+  .am-hero__stat-label,
+  .ap-hero__title,
+  .ap-stat__num,
+  .jane-header__title h2,
+  .jane-stat__value,
+  .jane-section__head h3,
+  .jane-progress__label strong,
+  .placeholder-card h2,
+  .wa-hero__text h2,
+  .wa-card__info strong,
+  .iplex-preview__head h3
+) {
+  color: #e5eaf3;
+}
+
+html.dark .content-shell :where(p, small, .header-sub, .muted, .desc, .description, .stg-card-description) {
+  color: #a3a6ad;
+}
+
+html.dark .content-shell :where(
+  .am-hero__desc,
+  .ap-hero__desc,
+  .ap-stat__label,
+  .jane-header__subtitle,
+  .jane-toolbar__status,
+  .placeholder-card p,
+  .wa-hero__text p,
+  .wa-card__info span,
+  .wa-card__desc,
+  .wa-hero__count
+) {
+  color: #a3a6ad;
+}
+
+html.dark .content-shell :where(.el-table, .el-table__header-wrapper, .el-table__body-wrapper) {
+  --el-table-bg-color: #141414;
+  --el-table-tr-bg-color: #141414;
+  --el-table-header-bg-color: #1f1f1f;
+  --el-table-text-color: #cfd3dc;
+  --el-table-header-text-color: #e5eaf3;
+  --el-table-border-color: #3d3d3f;
+}
+
+html.dark .topbar,
+html.dark .side-nav,
+html.dark .brand,
+html.dark .layout-tabs-bar,
+html.dark .profile-menu,
+html.dark .layout-tabs-context-menu,
+html.dark .release-notice-card,
+html.dark .toast-card {
+  background: #141414;
+  border-color: #3d3d3f;
+  color: #e5eaf3;
+}
+
+html.dark .menu-btn,
+html.dark .topbar-pill,
+html.dark .topbar-icon-btn,
+html.dark .topbar-profile,
+html.dark .layout-tabs-bar__item,
+html.dark .profile-menu-icon,
+html.dark .release-notice-close,
+html.dark .toast-close {
+  background: #1f1f1f;
+  border-color: #3d3d3f;
+  color: #cfd3dc;
+}
+
+html.dark .menu-item:hover,
+html.dark .menu-category-title:hover,
+html.dark .layout-tabs-bar__item:hover,
+html.dark .profile-menu-item:hover,
+html.dark .layout-tabs-context-menu__item:hover {
+  background: #1f1f1f;
+  color: var(--el-color-primary);
+}
+
+html.dark .menu-item.is-active,
+html.dark .layout-tabs-bar__item.is-active {
+  background: rgba(var(--el-color-primary-rgb), 0.18);
+  border-color: rgba(var(--el-color-primary-rgb), 0.45);
+  color: var(--el-color-primary);
+}
+
+html.dark .brand-text h1,
+html.dark .breadcrumb-item.current,
+html.dark .topbar-profile__name,
+html.dark .release-notice-title-block h2,
+html.dark .release-notice-group-title,
+html.dark .toast-title {
+  color: #e5eaf3;
+}
+
+html.dark .brand-text p,
+html.dark .breadcrumb,
+html.dark .breadcrumb-home,
+html.dark .profile-menu-item small,
+html.dark .release-notice-group ul,
+html.dark .toast-message {
+  color: #a3a6ad;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 9999;
+}
+
+::view-transition-new(root) {
+  z-index: 1;
+}
+
+.dark::view-transition-old(root) {
+  z-index: 1;
+}
+
+.dark::view-transition-new(root) {
+  z-index: 9999;
 }
 
 * {

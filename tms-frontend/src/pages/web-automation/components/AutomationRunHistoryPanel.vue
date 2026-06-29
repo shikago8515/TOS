@@ -4,7 +4,7 @@
       <AppIcon name="database" />
     </span>
     <span class="run-history-trigger__text">
-      <b>执行记录</b>
+      <b>{{ text('执行记录') }}</b>
       <small>{{ triggerSummary }}</small>
     </span>
     <AppIcon name="chevron-right" />
@@ -16,12 +16,12 @@
     </transition>
 
     <transition name="run-history-slide">
-      <aside v-if="drawerOpen" class="run-history-drawer" :style="drawerThemeStyle" role="dialog" aria-modal="true" aria-label="执行记录">
+      <aside v-if="drawerOpen" class="run-history-drawer" :style="drawerThemeStyle" role="dialog" aria-modal="true" :aria-label="text('执行记录')">
         <header class="run-history-drawer__head">
           <div>
             <p>Automation Runs</p>
-            <h2>执行记录</h2>
-            <span>查看本页面最近 {{ runs.length }} 次执行、源文件和结果归档。</span>
+            <h2>{{ text('执行记录') }}</h2>
+            <span>{{ text('查看本页面最近') }} {{ runs.length }} {{ text('次执行、源文件和结果归档。') }}</span>
           </div>
           <button class="run-history-icon-btn" type="button" @click="closeDrawer">
             <AppIcon name="x" />
@@ -31,11 +31,11 @@
         <div class="run-history-drawer__toolbar">
           <button class="run-history-action" type="button" :disabled="loading" @click="loadRuns">
             <AppIcon name="refresh-cw" :class="{ spin: loading }" />
-            刷新
+            {{ text('刷新') }}
           </button>
           <button class="run-history-action run-history-action--primary" type="button" @click="openAllRuns">
             <AppIcon name="external-link" />
-            全部记录
+            {{ text('全部记录') }}
           </button>
         </div>
 
@@ -50,23 +50,23 @@
           >
             <span class="run-history-row__status" :class="`run-history-row__status--${run.status}`" />
             <span class="run-history-row__main">
-              <b>{{ run.message || statusLabel(run.status) }}</b>
+              <b>{{ run.message ? text(run.message) : statusLabel(run.status) }}</b>
               <small>{{ formatDate(run.startedAt || run.createdAt) }} · {{ run.runId }}</small>
             </span>
             <em>{{ statusLabel(run.status) }}</em>
           </button>
         </div>
         <div v-else class="run-history-empty">
-          {{ loading ? '正在读取执行记录...' : '暂无执行记录' }}
+          {{ loading ? text('正在读取执行记录...') : text('暂无执行记录') }}
         </div>
 
         <section class="run-history-files">
           <div class="run-history-files__head">
-            <strong>归档文件</strong>
+            <strong>{{ text('归档文件') }}</strong>
             <span v-if="expandedRunId">{{ expandedRunId }}</span>
-            <span v-else>选择一条记录查看文件</span>
+            <span v-else>{{ text('选择一条记录查看文件') }}</span>
           </div>
-          <div v-if="detailLoading" class="run-history-empty">正在读取归档文件...</div>
+          <div v-if="detailLoading" class="run-history-empty">{{ text('正在读取归档文件...') }}</div>
           <template v-else-if="files.length">
             <button v-for="file in files" :key="file.id" class="run-history-file" type="button" @click="downloadFile(file)">
               <AppIcon name="download" />
@@ -76,7 +76,7 @@
               </span>
             </button>
           </template>
-          <div v-else class="run-history-empty">该记录暂无归档文件</div>
+          <div v-else class="run-history-empty">{{ text('该记录暂无归档文件') }}</div>
         </section>
       </aside>
     </transition>
@@ -87,8 +87,10 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
+import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+import { showAppAlert } from '../../../shared/ui/appAlert'
 import {
-  buildAutomationRunFileDownloadUrl,
+  downloadAutomationRunFile,
   fetchAutomationRunDetail,
   fetchAutomationRuns,
   type AutomationRunFileRecord,
@@ -106,6 +108,7 @@ const props = withDefaults(defineProps<{
 defineExpose({ refresh: loadRuns })
 
 const router = useRouter()
+const { isEnglish, text } = useAppLanguage()
 const triggerRef = ref<HTMLElement | null>(null)
 const drawerThemeStyle = ref<Record<string, string>>({})
 const drawerOpen = ref(false)
@@ -116,8 +119,8 @@ const files = ref<AutomationRunFileRecord[]>([])
 const expandedRunId = ref('')
 
 const triggerSummary = computed(() => {
-  if (loading.value) return '同步中'
-  if (!runs.value.length) return '暂无记录'
+  if (loading.value) return text('同步中')
+  if (!runs.value.length) return text('暂无记录')
   const latest = runs.value[0]
   return `${statusLabel(latest.status)} · ${formatDate(latest.startedAt || latest.createdAt)}`
 })
@@ -178,14 +181,11 @@ async function toggleRun(run: AutomationRunRecord): Promise<void> {
 }
 
 async function downloadFile(file: AutomationRunFileRecord): Promise<void> {
-  const url = await buildAutomationRunFileDownloadUrl(file)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = file.originalFilename || file.fileRole
-  anchor.rel = 'noopener'
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
+  try {
+    await downloadAutomationRunFile(file)
+  } catch (error) {
+    void showAppAlert(text(readErrorMessage(error, '执行文件下载失败。')), { tone: 'warning' })
+  }
 }
 
 function openAllRuns(): void {
@@ -200,7 +200,7 @@ function statusLabel(status: string): string {
     failed: '失败',
     canceled: '已取消',
   }
-  return labels[status] || status || '-'
+  return labels[status] ? text(labels[status]) : status || '-'
 }
 
 function fileRoleLabel(role: string): string {
@@ -213,13 +213,17 @@ function fileRoleLabel(role: string): string {
     screenshot: '截图',
     log: '日志',
   }
-  return labels[role] || role
+  return labels[role] ? text(labels[role]) : role
 }
 
 function formatDate(value?: string): string {
   if (!value) return '-'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false })
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(isEnglish.value ? 'en-US' : 'zh-CN', { hour12: false })
+}
+
+function readErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
 }
 
 function syncDrawerTheme(): void {

@@ -25,6 +25,10 @@ import {
   createTcInvAutomation,
   isTcInvAutomationRoute,
 } from "./modules/tc-inv-automation/index.mjs";
+import {
+  createPackingListAutoDownloadAutomation,
+  isPackingListAutoDownloadRoute,
+} from "./modules/packing-list-auto-download/index.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,7 +43,7 @@ const PREPARE_NEXT_PO_DIALOG_TIMEOUT_MS = 3000;
 const XINLONGTAI_SHIPPING_AUTOMATION_ID = "xinlongtai-shipping-automation";
 const DESKTOP_UTILITY_CONNECTION_PATTERN = /taking longer than normal for the desktop to connect|Desktop Utility process is running|version\s+2\.0\.1\.29|re-loading the PackByScan application|Awaiting desktop|PackByScan/i;
 
-const sharedExecutorRoot = path.resolve(appRoot, "..", "playwright-console");
+const sharedExecutorRoot = resolveSharedExecutorRoot();
 const sharedPackageJson = path.join(sharedExecutorRoot, "package.json");
 const requireShared = createRequire(sharedPackageJson);
 const { chromium, firefox, webkit } = requireShared("playwright");
@@ -48,6 +52,29 @@ const executorVersion = await resolveExecutorVersion();
 
 const browserEngines = { chromium, firefox, webkit };
 const VISIBLE_CHROMIUM_WINDOW_ARGS = ["--start-maximized", "--window-position=0,0"];
+
+function resolveSharedExecutorRoot() {
+  const candidates = [
+    process.env.TMS_AUTOMATION_SHARED_EXECUTOR_ROOT,
+    process.env.TMS_AUTOMATION_APP_ROOT
+      ? path.join(process.env.TMS_AUTOMATION_APP_ROOT, "playwright-console")
+      : "",
+    path.resolve(appRoot, "..", "playwright-console"),
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = String(candidate || "").trim();
+    if (!normalized) {
+      continue;
+    }
+    const packageJsonPath = path.join(path.resolve(normalized), "package.json");
+    if (existsSync(packageJsonPath)) {
+      return path.resolve(normalized);
+    }
+  }
+
+  return path.resolve(appRoot, "..", "playwright-console");
+}
 
 await ensureRuntimeFiles();
 const config = await loadConfig();
@@ -120,6 +147,21 @@ const tcInvAutomation = createTcInvAutomation({
   unregisterActiveRun: (runId) => activeRuns.delete(runId),
   xlsx,
 });
+const packingListAutoDownloadAutomation = createPackingListAutoDownloadAutomation({
+  browserEngines,
+  buildVisibleBrowserLaunchOptions,
+  config,
+  ensureLoggedIn,
+  log,
+  normalizeUploadFileName,
+  recordCompletedRun,
+  registerActiveRun,
+  resolveCredentials,
+  safePageTitle,
+  safePageUrl,
+  unregisterActiveRun: (runId) => activeRuns.delete(runId),
+  xlsx,
+});
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -176,6 +218,14 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       authorize(req, body);
       const result = await tcInvAutomation.handleRequest(body);
+      sendJson(res, result.statusCode, result.body);
+      return;
+    }
+
+    if (req.method === "POST" && isPackingListAutoDownloadRoute(requestPath)) {
+      const body = await readJsonBody(req);
+      authorize(req, body);
+      const result = await packingListAutoDownloadAutomation.handleRequest(body);
       sendJson(res, result.statusCode, result.body);
       return;
     }
@@ -498,6 +548,8 @@ function buildHealthPayload() {
       poAutoDownloadDirectoryPicker: true,
       poAutoDownloadRequestDownload: true,
       tcInvAutomation: true,
+      packingListAutoDownload: true,
+      packingListAutoDownloadDirectoryPicker: true,
     },
     config: {
       version: executorVersion,

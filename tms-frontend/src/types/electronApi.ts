@@ -14,6 +14,12 @@ export interface ElectronActionResult {
   remote?: boolean
   version?: string
   versionMismatch?: boolean
+  source?: string
+  moduleUpdateError?: string
+}
+
+export interface LaunchAutomationAppOptions {
+  forceUpdate?: boolean
 }
 
 export interface DirectorySelectionResult {
@@ -58,6 +64,10 @@ export interface AutomationAppInfo {
   running: boolean
   port?: number
   url: string
+  source?: string
+  moduleSource?: string
+  packageSha256?: string
+  moduleUpdatedAt?: string
 }
 
 export interface DiagnosticEvent {
@@ -156,7 +166,7 @@ export interface ElectronApi {
   getBrowserPlugins(): Promise<BrowserPluginInfo[]>
   launchBrowserPlugin(pluginId: string): Promise<ElectronActionResult>
   getAutomationApps(): Promise<AutomationAppInfo[]>
-  launchAutomationApp(appId: string): Promise<ElectronActionResult>
+  launchAutomationApp(appId: string, options?: LaunchAutomationAppOptions): Promise<ElectronActionResult>
   stopAutomationApp(appId: string): Promise<ElectronActionResult>
   selectDirectory?(options?: { title?: string; defaultPath?: string }): Promise<DirectorySelectionResult>
   launchAdidasMaterialCollector(): Promise<ElectronActionResult>

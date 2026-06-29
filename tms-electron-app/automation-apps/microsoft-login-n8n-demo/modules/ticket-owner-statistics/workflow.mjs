@@ -1,10 +1,16 @@
 import { persistTicketOwnerStatisticsArtifacts } from "./artifacts.mjs";
 import { collectTicketOwnerStatistics } from "./task-center-page.mjs";
 import { resolveTicketOwnerRow } from "./ticket-fields.mjs";
+import {
+  buildTicketOwnerExcelLookups,
+  enrichTicketOwnerRowsWithExcelLookups,
+} from "./excel-lookups.mjs";
 
 export async function runTicketOwnerStatisticsWorkflow(deps, { runOptions, body, moduleDefinition }) {
+  const excelLookups = buildTicketOwnerExcelLookups(deps.xlsx, body);
+
   if (body?.simulate === true) {
-    const collection = buildSimulatedTicketOwnerStatistics(body);
+    const collection = buildSimulatedTicketOwnerStatistics(body, excelLookups);
     const artifacts = await persistTicketOwnerStatisticsArtifacts(deps, collection);
     return buildWorkflowResult({
       loginSuccess: true,
@@ -32,6 +38,9 @@ export async function runTicketOwnerStatisticsWorkflow(deps, { runOptions, body,
     diagnoseWorkflowTaskOnly: body?.diagnoseWorkflowTaskOnly === true,
     diagnoseUiLinkCount: normalizePositiveInteger(body?.diagnoseUiLinkCount, undefined),
     diagnoseUiLinkWaitMs: normalizePositiveInteger(body?.diagnoseUiLinkWaitMs, undefined),
+    detailFirst: body?.detailFirst !== false,
+    sampleAcrossBranches: body?.sampleAcrossBranches === true,
+    excelLookups,
     workflowMode: "ticket-owner-statistics",
     workflowLabel: moduleDefinition.title,
     successMessage: "已完成 SAP BTP ticket 归属采集，并生成 Ticket ownership Excel。",
@@ -96,17 +105,21 @@ function buildTicketOwnerStatisticsPayload(collection) {
     failedTickets: collection.failedTickets || [],
     requestFirst: collection.requestFirst || null,
     odataLookup: collection.odataLookup || null,
+    excelLookup: collection.excelLookup || null,
     uiLinkDiagnostics: collection.uiLinkDiagnostics || [],
     expectedOutput: "Ticket ownership.xlsx",
     generatedWorkbookName: collection.artifacts?.workbookFileName || "Ticket ownership.xlsx",
   };
 }
 
-function buildSimulatedTicketOwnerStatistics(body) {
+function buildSimulatedTicketOwnerStatistics(body, excelLookups) {
   const simulatedRows = Array.isArray(body?.simulatedRows) && body.simulatedRows.length > 0
     ? body.simulatedRows
     : defaultSimulatedRows();
-  const rows = simulatedRows.map((item) => resolveTicketOwnerRow(item.task || item, item.detail || item));
+  const rows = enrichTicketOwnerRowsWithExcelLookups(
+    simulatedRows.map((item) => resolveTicketOwnerRow(item.task || item, item.detail || item)),
+    excelLookups
+  );
   const ticketResults = rows.map((row, index) => ({
     ok: true,
     simulated: true,
@@ -144,6 +157,7 @@ function buildSimulatedTicketOwnerStatistics(body) {
     ticketResults,
     failedTickets: [],
     finalTaskCenterUrl: "simulation://sap-btp-task-center",
+    excelLookup: excelLookups?.summary || null,
     message: `模拟请求已生成 ${rows.length} 条 Ticket ownership 记录。`,
   };
 }

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 const componentPath = fileURLToPath(new URL('./components/AutomationCredentialsPanel.vue', import.meta.url))
 const accountProfileManagerPath = fileURLToPath(new URL('./components/AutomationAccountProfileManager.vue', import.meta.url))
 const accountProfileManagerSource = readWorkspaceSource('./components/AutomationAccountProfileManager.vue')
+const packingListAutoDownloadSource = readWorkspaceSource('../packing-list-auto-download/components/PackingListAutoDownloadWorkspace.vue')
 const poAutoDownloadSource = readWorkspaceSource('../po-auto-download/components/PoAutoDownloadWorkspace.vue')
 const shippingAutomationSource = readWorkspaceSource('../shipping-automation/components/ShippingAutomationWorkspace.vue')
 const tcInvAutomationSource = readWorkspaceSource('../tc-inv-automation/components/TcInvAutomationWorkspace.vue')
@@ -32,8 +33,8 @@ describe('AutomationCredentialsPanel source integration', () => {
     expect(shippingAutomationSource).toContain('AutomationCredentialsPanel')
   })
 
-  it('uses the shared account profile manager in Invoice, Xinlongtai, and TC INV pages', () => {
-    for (const source of [poAutoDownloadSource, xinlongtaiShippingSource, tcInvAutomationSource]) {
+  it('uses the shared account profile manager in Invoice, packing list, Xinlongtai, and TC INV pages', () => {
+    for (const source of [poAutoDownloadSource, packingListAutoDownloadSource, xinlongtaiShippingSource, tcInvAutomationSource]) {
       expect(source).toContain('AutomationAccountProfileManager')
       expect(source).toContain('credentialProfileRef')
       expect(source).toContain('handleCredentialState')

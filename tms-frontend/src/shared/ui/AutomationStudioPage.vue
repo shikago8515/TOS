@@ -3,12 +3,12 @@
     <header class="studio-hero">
       <div class="studio-hero__copy">
         <div class="studio-hero__eyebrow">
-          <span class="eyebrow-pill">{{ eyebrow }}</span>
-          <span class="stage-pill">{{ stageLabel }}</span>
+          <span class="eyebrow-pill">{{ text(eyebrow) }}</span>
+          <span class="stage-pill">{{ text(stageLabel) }}</span>
         </div>
 
-        <h2 class="studio-hero__title">{{ title }}</h2>
-        <p class="studio-hero__subtitle">{{ subtitle }}</p>
+        <h2 class="studio-hero__title">{{ text(title) }}</h2>
+        <p class="studio-hero__subtitle">{{ text(subtitle) }}</p>
 
         <div v-if="$slots.actions" class="studio-hero__actions">
           <slot name="actions" />
@@ -28,7 +28,7 @@
 
     <div class="studio-banner studio-banner--stage">
       <AppIcon name="radar" />
-      <span>{{ stageMessage }}</span>
+      <span>{{ text(stageMessage) }}</span>
     </div>
 
     <div
@@ -37,7 +37,7 @@
       :class="`studio-banner--${statusTone}`"
     >
       <AppIcon :name="resolveStatusIcon(statusTone)" />
-      <span>{{ statusMessage }}</span>
+      <span>{{ text(statusMessage) }}</span>
     </div>
 
     <div v-if="metrics.length" class="studio-metrics">
@@ -51,9 +51,9 @@
           <AppIcon :name="metric.icon" />
         </div>
         <div class="metric-card__body">
-          <span class="metric-card__label">{{ metric.label }}</span>
-          <strong class="metric-card__value">{{ metric.value }}</strong>
-          <p class="metric-card__detail">{{ metric.detail }}</p>
+          <span class="metric-card__label">{{ text(metric.label) }}</span>
+          <strong class="metric-card__value">{{ text(metric.value) }}</strong>
+          <p class="metric-card__detail">{{ text(metric.detail) }}</p>
         </div>
       </article>
     </div>
@@ -65,10 +65,10 @@
     <section v-if="notes.length" class="studio-notes">
       <div class="studio-notes__header">
         <div>
-          <span class="section-eyebrow">{{ notesEyebrow }}</span>
-          <h3>{{ notesTitle }}</h3>
+          <span class="section-eyebrow">{{ text(notesEyebrow) }}</span>
+          <h3>{{ text(notesTitle) }}</h3>
         </div>
-        <p v-if="notesSummary">{{ notesSummary }}</p>
+        <p v-if="notesSummary">{{ text(notesSummary) }}</p>
       </div>
 
       <div class="studio-note-grid">
@@ -77,8 +77,8 @@
             <AppIcon :name="note.icon" />
           </div>
           <div class="studio-note-card__copy">
-            <strong>{{ note.title }}</strong>
-            <p>{{ note.description }}</p>
+            <strong>{{ text(note.title) }}</strong>
+            <p>{{ text(note.description) }}</p>
           </div>
         </article>
       </div>
@@ -88,6 +88,7 @@
 
 <script setup lang="ts">
 import AppIcon from './AppIcon.vue'
+import { useAppLanguage } from '../i18n/appLanguage'
 
 interface StudioMetric {
   label: string
@@ -130,6 +131,8 @@ const props = withDefaults(
     notesSummary: '',
   },
 )
+
+const { text } = useAppLanguage()
 
 function resolveStatusIcon(tone: string): string {
   if (tone === 'success') return 'check-circle'

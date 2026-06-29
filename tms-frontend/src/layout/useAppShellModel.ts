@@ -1,6 +1,8 @@
 ﻿import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import { useGlobalStore } from '../app/stores/globalStore'
+import { toggleDarkModeWithTransition } from '../app/theme'
 import {
   getLocalizedModuleTitle,
   getModulesByGroup,
@@ -11,6 +13,9 @@ import {
   type TosModuleGroup,
   type TosNavGroupDefinition,
 } from '../domain/moduleCatalog'
+import { i18n, setI18nLanguage } from '../languages'
+import { getDocumentTitle as getLocalizedDocumentTitle } from '../languages/menuLanguage'
+import { koiLanguageToAppLanguage, normalizeKoiLanguage, type KoiLanguage } from '../languages/language'
 import { useAppLanguage } from '../shared/i18n/appLanguage'
 import {
   buildReleaseNoticeGroups,
@@ -42,11 +47,12 @@ interface SidebarGroup extends TosNavGroupDefinition {
 export function useAppShellModel() {
   const route = useRoute()
   const router = useRouter()
+  const globalStore = useGlobalStore()
   const isSidebarHidden = ref(false)
   const isMobile = ref(false)
   const expandedNavGroups = ref<Set<TosModuleGroup>>(new Set(['jessica', 'sophia', 'jane', 'eric', 'jason', 'finance-excel']))
   const expandedCategories = ref<Set<string>>(new Set())
-  const { isEnglish, t, text } = useAppLanguage()
+  const { isEnglish, setAppLanguage, t, text } = useAppLanguage()
   const profileMenuRef = ref<HTMLElement | null>(null)
   const profileMenuOpen = ref(false)
   
@@ -184,6 +190,52 @@ export function useAppShellModel() {
   
     return `${month}/${day}${weekdays[today.getDay()]}`
   })
+
+  const languageOptions = computed(() => [
+    {
+      value: 'zh' as const,
+      label: i18n.global.t('header.languageList.chinese'),
+      disabled: globalStore.language === 'zh',
+    },
+    {
+      value: 'en' as const,
+      label: i18n.global.t('header.languageList.english'),
+      disabled: globalStore.language === 'en',
+    },
+  ])
+
+  const currentLanguageLabel = computed(() => {
+    return languageOptions.value.find((option) => option.value === globalStore.language)?.label ?? globalStore.language
+  })
+
+  const languageTooltip = computed(() => `${i18n.global.t('header.language')}: ${currentLanguageLabel.value}`)
+  const isDark = computed(() => globalStore.isDark)
+  const darkModeTooltip = computed(() =>
+    globalStore.isDark ? i18n.global.t('header.lightMode') : i18n.global.t('header.darkMode'),
+  )
+
+  function syncRuntimeLanguage(language: KoiLanguage): void {
+    setI18nLanguage(language)
+    setAppLanguage(koiLanguageToAppLanguage(language))
+    if (typeof document !== 'undefined') {
+      document.documentElement.lang = koiLanguageToAppLanguage(language)
+      document.title = getLocalizedDocumentTitle(typeof route.meta.title === 'string' ? route.meta.title : undefined)
+    }
+  }
+
+  function selectLanguage(command: string | number | object): void {
+    const language = normalizeKoiLanguage(command)
+    if (globalStore.language !== language) {
+      globalStore.setGlobalState('language', language)
+    }
+    syncRuntimeLanguage(language)
+  }
+
+  async function toggleDarkMode(event: MouseEvent): Promise<void> {
+    await toggleDarkModeWithTransition(event, globalStore.isDark, (value) => {
+      globalStore.setGlobalState('isDark', value)
+    })
+  }
   
   function shouldShowInSidebar(module: TosModuleDefinition): boolean {
     if (module.id === 'settings' || module.id === 'automation-runs' || module.id === 'automation-templates') {
@@ -419,6 +471,7 @@ export function useAppShellModel() {
       'xinlongtai-shipping-automation': 'globe',
       'tc-inv-automation': 'workflow',
       'po-auto-download': 'download-cloud',
+      'packing-list-auto-download': 'download-cloud',
       'draft-packing-compare': 'file-search',
       'web-automation': 'workflow',
       'jane-sap': 'server',
@@ -499,7 +552,14 @@ export function useAppShellModel() {
     { immediate: true },
   )
 
+  watch(
+    () => globalStore.language,
+    (language) => syncRuntimeLanguage(language),
+    { immediate: true },
+  )
+
   return {
+    darkModeTooltip,
     dismissReleaseNotice,
     displayDate,
     expandedCategories,
@@ -511,10 +571,13 @@ export function useAppShellModel() {
     installerUpdate,
     installerUpdateLabel,
     installerUpdateTitle,
+    isDark,
     isMobile,
     isModuleActive,
     isNavGroupExpanded,
     isSidebarHidden,
+    languageOptions,
+    languageTooltip,
     openAutomationRunsPage,
     openAutomationTemplatesPage,
     openReleaseUpdatesPage,
@@ -532,7 +595,9 @@ export function useAppShellModel() {
     toast,
     downloadInstallerUpdate,
     refreshInstallerUpdateHint,
+    selectLanguage,
     toggleCategory,
+    toggleDarkMode,
     toggleNavGroup,
     toggleSidebar,
     toggleProfileMenu,

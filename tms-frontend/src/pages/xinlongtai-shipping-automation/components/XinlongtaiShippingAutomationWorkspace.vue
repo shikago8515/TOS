@@ -230,7 +230,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
@@ -243,8 +243,9 @@ import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, L
 import {
   createAutomationRunRecord, downloadAutomationTemplate,
   fetchAutomationApps, fetchAutomationTemplates, finishAutomationRunRecord,
+  findLocalExecutorActiveRun,
   getAutomationHelperUpdateMessage,
-  hasElectronAutomationSupport, launchAutomationConsole, openAutomationHelperDownload,
+  hasElectronAutomationSupport, isLocalExecutorBusy, launchAutomationConsole, openAutomationHelperDownload,
   primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
   recordWebAutomationEvent, stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
@@ -268,7 +269,7 @@ const activeApp = ref<AutomationAppInfo | null>(null)
 const executorHealth = ref<LocalExecutorHealth | null>(null)
 const automationTemplates = ref<AutomationTemplate[]>([])
 const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false)
-const templateLoading = ref(false); const sending = ref(false)
+const templateLoading = ref(false); const sending = ref(false); const restoredActiveRun = ref(false)
 const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info')
 const isHealthLogOpen = ref(false)
 const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
@@ -280,6 +281,7 @@ const credentialProfileRef = ref<CredentialProfileRef | null>(null)
 const showBrowserView = ref(true)
 const statusText = ref(''); const statusLabel = ref('待命')
 const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
+let activeRunStateTimer: number | null = null
 type SAL = { resultExcelUrl: string; resultJsonUrl?: string; failedPoExcelUrl?: string; failedPoJsonUrl?: string; failedRowCount: number }
 const shippingArtifactLinks = ref<SAL | null>(null)
 
@@ -306,11 +308,12 @@ const canRunShippingAutomation = computed(() => !sending.value && hasStoredCrede
 const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
 
 onMounted(() => { void initializeScenario() })
+onBeforeUnmount(() => { stopActiveRunStatePolling() })
 
 async function initializeScenario(): Promise<void> {
   statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行 Shipping。'
   await refreshAutomationTemplates(); await refreshCredentialProfile(); await refreshExecutorState(true)
-  if (electronSupported && activeApp.value?.available && !activeApp.value.running) await startActiveApp(true)
+  if (electronSupported && activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) await startActiveApp(true)
 }
 
 async function refreshExecutorState(silent: boolean): Promise<void> {
@@ -318,16 +321,57 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
   try {
     launcherReachable.value = electronSupported ? true : await probeLocalAutomationLauncherHealth()
     if (electronSupported) { try { const apps = await fetchAutomationApps(); activeApp.value = apps.find((a) => a.id === entry?.appId) ?? fb } catch { activeApp.value = fb } } else { activeApp.value = fb }
-    if (!electronSupported && !launcherReachable.value) { executorHealth.value = null; activeApp.value = fb; if (!silent) { messageTone.value = 'warning'; message.value = text('未检测到本机自动化助手。') }; return }
+    if (!electronSupported && !launcherReachable.value) { executorHealth.value = null; activeApp.value = fb; clearRestoredActiveRunState(); if (!silent) { messageTone.value = 'warning'; message.value = text('未检测到本机自动化助手。') }; return }
     executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl); await refreshCredentialProfile()
     if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
+    syncActiveRunViewFromHealth()
     const updateMessage = getAutomationHelperUpdateMessage(executorHealth.value, activeApp.value)
     if (updateMessage) { messageTone.value = 'warning'; message.value = text(updateMessage) }
     else if (!silent) { messageTone.value = 'success'; message.value = text('状态已刷新。') }
   } catch {
-    executorHealth.value = null; activeApp.value = activeApp.value || fb
+    executorHealth.value = null; activeApp.value = activeApp.value || fb; clearRestoredActiveRunState()
     if (!silent) { messageTone.value = 'warning'; message.value = launcherReachable.value ? text('本机自动化助手已连接，执行器尚未启动。') : text('执行器未就绪。') }
   } finally { refreshing.value = false }
+}
+
+function syncActiveRunViewFromHealth(): void {
+  const activeRun = findXinlongtaiShippingActiveRun(executorHealth.value)
+  if (activeRun) {
+    restoredActiveRun.value = true
+    sending.value = true
+    lastResult.value = null
+    statusLabel.value = '执行中'
+    const inputFileName = String(activeRun.inputFileName || '').trim()
+    statusText.value = inputFileName ? `执行器仍在处理 ${inputFileName}，请勿重复启动。` : text('新龙泰 Shipping 自动化仍在后台运行，请勿重复启动。')
+    startActiveRunStatePolling()
+    return
+  }
+  if (!restoredActiveRun.value) return
+  clearRestoredActiveRunState()
+  statusText.value = text('后台执行器任务已结束，请查看执行记录或重新开始。')
+}
+
+function findXinlongtaiShippingActiveRun(health: LocalExecutorHealth | null | undefined): Record<string, any> | null {
+  return findLocalExecutorActiveRun(health, (run) => String(run.action || '').trim() === 'run-xinlongtai-shipping-file')
+}
+
+function startActiveRunStatePolling(): void {
+  if (activeRunStateTimer !== null) return
+  activeRunStateTimer = window.setInterval(() => { void refreshExecutorState(true) }, 3500)
+}
+
+function stopActiveRunStatePolling(): void {
+  if (activeRunStateTimer === null) return
+  window.clearInterval(activeRunStateTimer)
+  activeRunStateTimer = null
+}
+
+function clearRestoredActiveRunState(): void {
+  if (!restoredActiveRun.value) return
+  restoredActiveRun.value = false
+  sending.value = false
+  stopActiveRunStatePolling()
+  statusLabel.value = '待命'
 }
 
 async function refreshCredentialProfile(): Promise<void> {
@@ -377,7 +421,7 @@ async function stopActiveApp(): Promise<void> {
   if (!entry) return
   try {
     const r = await stopAutomationConsole(entry.appId); if (!r.success) throw new Error(r.error || '停止失败')
-    executorHealth.value = null; if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }
+    executorHealth.value = null; clearRestoredActiveRunState(); if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }
     await refreshExecutorState(true).catch(() => {}); messageTone.value = 'info'; message.value = text('执行器已停止。')
   } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('停止失败')) }
 }
@@ -476,11 +520,11 @@ async function runShipping(): Promise<void> {
 }
 
 function setNotReady(): void { statusLabel.value = '未就绪'; statusText.value = '本机执行器尚未就绪。'; lastResult.value = { ok: false, message: 'Executor is not ready.' }; messageTone.value = 'warning'; message.value = text('本机执行器未就绪。') }
-async function ensureReady(): Promise<boolean> { if (executorHealth.value?.ok) return true; await startActiveApp(true); await refreshExecutorState(true).catch(() => {}); return Boolean(executorHealth.value?.ok) }
+async function ensureReady(): Promise<boolean> { if (entry && activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) await startActiveApp(true); else if (!executorHealth.value?.ok) await startActiveApp(true); await refreshExecutorState(true).catch(() => {}); return Boolean(executorHealth.value?.ok) }
 async function fileToBase64(f: File): Promise<string> { const b = await f.arrayBuffer(); return arrayBufferToBase64(b) }
 function arrayBufferToBase64(b: ArrayBuffer): string { const bytes = new Uint8Array(b); const cs = 0x8000; let bin = ''; for (let i = 0; i < bytes.length; i += cs) { const chunk = bytes.subarray(i, i + cs); bin += String.fromCharCode(...chunk) }; return window.btoa(bin) }
 function safeParseJson(r: string): Record<string, any> | null { try { return r ? JSON.parse(r) : null } catch { return null } }
-function buildExecutorResponseMessage(res: Response, _raw: string, payload: Record<string, any> | null, fallback = '自动化执行失败。'): string { const rawMessage = typeof payload?.message === 'string' ? payload.message : ''; if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback); if (!payload) return formatAutomationExecutorMessage('JSON.parse: unexpected character at line 1 column 1 of the JSON data', fallback); return formatAutomationExecutorMessage(`HTTP ${res.status}`, fallback) }
+function buildExecutorResponseMessage(res: Response, raw: string, payload: Record<string, any> | null, fallback = '自动化执行失败。'): string { const rawMessage = typeof payload?.message === 'string' ? payload.message : ''; if (res.status === 404 && /not\s*found/i.test(rawMessage || raw || '')) return '本机执行器缺少当前自动化接口，系统已同步最新自动化逻辑但接口仍不可用。请确认服务器 automation-modules 模块包已发布，或重启本机自动化执行器后再试。'; if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback); if (!payload) return formatAutomationExecutorMessage('JSON.parse: unexpected character at line 1 column 1 of the JSON data', fallback); return formatAutomationExecutorMessage(`HTTP ${res.status}`, fallback) }
 function updateShippingArtifactLinks(p: Record<string, any> | null): void {
   const u = p?.artifacts?.downloadUrls; const re = buildShippingArtifactUrl(u?.resultExcelUrl)
   if (!re) { shippingArtifactLinks.value = null; return }

@@ -1,4 +1,5 @@
 import { routeRedirects, tosModules } from '../domain/moduleCatalog'
+import { getDocumentTitle as getLocalizedDocumentTitle } from '../languages/menuLanguage'
 
 export interface TosRouteDefinition {
   path: string
@@ -22,5 +23,5 @@ export const tosRouteDefinitions: readonly TosRouteDefinition[] = tosModules.map
 export const tosRouteRedirects: readonly TosRouteRedirect[] = routeRedirects
 
 export function getDocumentTitle(routeTitle?: string): string {
-  return routeTitle ? `${routeTitle} - TOS` : 'TOS'
+  return getLocalizedDocumentTitle(routeTitle)
 }

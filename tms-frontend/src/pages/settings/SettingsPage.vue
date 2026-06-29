@@ -1,360 +1,385 @@
 <template>
-  <div class="stg-layout">
-    <!-- 主工作区：非对称双栏布局 -->
-    <main class="stg-main">
-      <!-- 左栏：主核心区域 (Hero Showcase & Downloads Grouped) -->
-      <div class="stg-col-primary">
-        <!-- 1. 顶部 Hero 看板：显示当前版本和状态 -->
-        <header class="stg-hero" :class="{ 'has-update': canDownload }">
-          <!-- 背景流光 -->
-          <div class="stg-hero__background">
-            <div class="stg-hero__glow"></div>
-          </div>
-
-          <div class="stg-hero__content">
-            <div class="stg-hero__info">
-              <div class="stg-hero__icon-box">
-                <AppIcon name="settings" class="icon-pulse" />
-              </div>
-              <div class="stg-hero__title-group">
-                <div class="stg-hero__subtitle">{{ text('当前版本') }}</div>
-                <h1 class="stg-hero__title">{{ currentVersion }}</h1>
-              </div>
-            </div>
-
-            <div class="stg-hero__actions">
-              <!-- 语言切换器 -->
-              <div class="stg-hero__lang">
-                <SettingsLanguageSwitch />
-              </div>
-              <!-- 快捷检查更新 -->
-              <button
-                v-if="hasDesktopUpdateSupport"
-                class="stg-btn-interactive"
-                type="button"
-                :disabled="isActionLocked"
-                @click="handleCheck"
-              >
-                <AppIcon
-                  name="refresh-cw"
-                  :class="{ 'is-spin': status?.checking || activeAction === 'check' }"
-                />
-                <span>{{ text('检查更新') }}</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- 展开的进度面板 -->
-          <transition name="stg-slide-fade">
-            <div
-              v-if="status?.downloading && status?.progress"
-              class="stg-hero__progress-panel"
+  <div class="sb-workbench">
+    <!-- LEFT MAIN AREA -->
+    <div class="sb-main">
+      <!-- SECTION 1: Hero Version Banner -->
+      <header class="sb-hero">
+        <div class="sb-hero__icon">
+          <el-icon :size="28"><Setting /></el-icon>
+        </div>
+        <div class="sb-hero__body">
+          <span class="sb-hero__eyebrow">{{ text('当前版本') }}</span>
+          <div class="sb-hero__line">
+            <h1 class="sb-hero__version">{{ currentVersion }}</h1>
+            <el-tag
+              class="sb-hero__tag"
+              :type="statusTone === 'error' ? 'danger' : 'success'"
+              effect="light"
+              round
             >
-              <div class="stg-progress__meta">
-                <span class="stg-progress__status">
-                  <AppIcon name="download-cloud" class="icon-bounce" />
-                  {{ text('系统更新下载中') }}
-                </span>
-                <span class="stg-progress__details">{{ downloadDetail }}</span>
-              </div>
-              <div class="stg-progress__track">
-                <div
-                  class="stg-progress__fill"
-                  :style="{ width: `${progressPercent}%` }"
-                >
-                  <div class="stg-progress__shimmer"></div>
-                </div>
-                <span class="stg-progress__percent">{{ progressPercent }}%</span>
-              </div>
+              <el-icon><CircleCheckFilled /></el-icon>
+              {{ text(statusLabel || '最新版本') }}
+            </el-tag>
+          </div>
+          <span class="sb-hero__mode">{{ runModeLabel }}</span>
+        </div>
+        <div class="sb-hero__decor" aria-hidden="true">
+          <span class="sb-hero__ring sb-hero__ring--lg"></span>
+          <span class="sb-hero__ring sb-hero__ring--md"></span>
+          <span class="sb-hero__ring sb-hero__ring--sm"></span>
+        </div>
+      </header>
+
+      <!-- SECTION 2: Download Center -->
+      <section class="sb-downloads">
+        <header class="sb-section-head">
+          <div class="sb-section-head__title">
+            <span class="sb-section-head__icon">
+              <el-icon :size="20"><Download /></el-icon>
+            </span>
+            <div>
+              <h2>{{ text('下载中心') }}</h2>
+              <p>{{ text('根据您的使用场景，选择部署桌面完整端或安装网页轻量级扩展') }}</p>
             </div>
-          </transition>
+          </div>
+          <div class="sb-section-head__pills">
+            <span class="sb-pill">
+              <el-icon><Monitor /></el-icon>
+              {{ text('独立桌面客户端套件') }}
+            </span>
+            <span class="sb-pill sb-pill--accent">
+              <el-icon><Connection /></el-icon>
+              {{ text('网页自动化助手') }}
+            </span>
+          </div>
         </header>
 
-        <!-- 状态通知 Toast -->
-        <transition name="stg-toast-slide">
-          <div
-            v-if="noticeText"
-            class="stg-toast"
-            :class="`stg-toast--${noticeTone}`"
-            role="status"
-          >
-            <AppIcon
-              :name="noticeTone === 'error' ? 'alert-circle' : noticeTone === 'success' ? 'check-circle' : 'info'"
-              class="stg-toast__lead-icon"
+        <div class="sb-downloads__grid">
+          <!-- Card 1: Lightweight Installer (Recommended / Featured) -->
+          <article class="sb-card sb-card--featured">
+            <div class="sb-card__accent sb-card__accent--teal"></div>
+            <div class="sb-card__body">
+              <div class="sb-card__header">
+                <el-tag type="success" effect="light" round class="sb-card__badge">
+                  <el-icon><StarFilled /></el-icon>
+                  {{ text('推荐下载') }}
+                </el-tag>
+                <span class="sb-card__icon-ring sb-card__icon-ring--teal">
+                  <el-icon :size="22"><Monitor /></el-icon>
+                </span>
+              </div>
+              <h3>{{ text('TOS 桌面端轻量安装器') }}</h3>
+              <p>{{ text('体积轻巧，首选安装。在线从 MinIO 自动下载完整组件。') }}</p>
+            </div>
+            <img
+              class="sb-card__image"
+              :src="desktopLightInstallerImage"
+              alt=""
             />
-            <span class="stg-toast__message">{{ text(noticeText) }}</span>
-            <button class="stg-toast__close-btn" type="button" @click="message = ''">
-              <AppIcon name="stop-circle" />
-            </button>
-          </div>
-        </transition>
-
-        <!-- 2. 下载中心：全新非对称双主轴分栏布局 (清新双淡色版，无任何深色大黑框) -->
-        <section class="stg-section stg-downloads">
-          <div class="stg-section__header">
-            <div class="stg-section__title-bar">
-              <AppIcon name="download" class="stg-section__icon" />
-              <h2>{{ text('下载中心') }}</h2>
-            </div>
-            <p class="stg-section__desc">{{ text('根据您的使用场景，选择部署桌面完整端或安装网页轻量级扩展') }}</p>
-          </div>
-
-          <div class="stg-downloads__split-container">
-            <!-- 2.1 左大栏：桌面独立运行客户端套件 (无多余背景边框包裹) -->
-            <div class="stg-downloads__group stg-downloads__group--desktop">
-              <div class="stg-group-header">
-                <AppIcon name="monitor" class="stg-group-icon" />
-                <span>{{ text('独立桌面客户端套件') }}</span>
-              </div>
-
-              <div class="stg-panel-cards" :class="{ 'has-manual': hasDesktopUpdateSupport && manualDownload }">
-                <!-- 卡片 1: TOS 桌面端轻量安装包 (在线下载) -->
-                <div class="stg-download-card stg-download-card--light">
-                  <div class="stg-card-content">
-                    <div class="stg-card-body">
-                      <div class="stg-card-header-row">
-                        <h4 class="stg-card-title">{{ text('TOS 桌面端轻量安装器') }}</h4>
-                        <span class="stg-card-badge">{{ text('在线下载') }}</span>
-                      </div>
-                      <p class="stg-card-description">
-                        {{ text('体积轻巧，首选安装。在线从 MinIO 自动下载完整组件。') }}
-                      </p>
-                    </div>
-                    <div class="stg-card-footer">
-                      <button
-                        class="stg-btn-primary"
-                        type="button"
-                        :disabled="desktopInstallerDownloading"
-                        @click="handleDesktopInstallerDownload"
-                      >
-                        <AppIcon name="download" />
-                        <span>{{ desktopInstallerDownloading ? text('获取中...') : text('安全下载轻量安装器') }}</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- 卡片 2: TOS 桌面端全量部署包 (离线全量) -->
-                <div class="stg-download-card stg-download-card--light">
-                  <div class="stg-card-content">
-                    <div class="stg-card-body">
-                      <div class="stg-card-header-row">
-                        <h4 class="stg-card-title">{{ text('TOS 桌面端全量部署包') }}</h4>
-                        <span class="stg-card-badge-outline">{{ text('离线全量') }}</span>
-                      </div>
-                      <p class="stg-card-description">
-                        {{ text('集成完整运行环境，完全离线一键部署，适合物理内网环境。') }}
-                      </p>
-                    </div>
-                    <div class="stg-card-footer">
-                      <button
-                        class="stg-btn-secondary stg-btn-secondary--cyan"
-                        type="button"
-                        :disabled="desktopFullInstallerDownloading"
-                        @click="handleDesktopFullInstallerDownload"
-                      >
-                        <AppIcon name="download" />
-                        <span>{{ desktopFullInstallerDownloading ? text('获取中...') : text('安全下载离线全量包') }}</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- 免安装绿色版 (仅在支持时显示) -->
-                <div v-if="hasDesktopUpdateSupport && manualDownload" class="stg-download-card stg-download-card--light">
-                  <div class="stg-card-content">
-                    <div class="stg-card-body">
-                      <div class="stg-card-header-row">
-                        <h4 class="stg-card-title">{{ text('免安装绿色便携版') }}</h4>
-                        <span class="stg-card-badge-outline">{{ text('绿色便携') }}</span>
-                      </div>
-                      <p class="stg-card-description">{{ text('解压即用，无缝集成运行组件。') }}</p>
-                    </div>
-                    <div class="stg-card-footer">
-                      <button
-                        class="stg-btn-secondary"
-                        type="button"
-                        :disabled="isActionLocked"
-                        @click="handleManualDownload"
-                      >
-                        <AppIcon name="download" />
-                        <span>{{ activeAction === 'manual' ? text('准备中...') : text('获取免安装版') }}</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 2.2 右小栏：网页端轻量级协作组件 -->
-            <div class="stg-downloads__group stg-downloads__group--web">
-              <div class="stg-group-header">
-                <AppIcon name="monitor-code" class="stg-group-icon" />
-                <span>{{ text('网页自动化助手') }}</span>
-              </div>
-
-              <div class="stg-panel-cards">
-                <!-- 自动化小助手安装包 -->
-                <div class="stg-download-card stg-download-card--light">
-                  <div class="stg-card-content">
-                    <div class="stg-card-body">
-                      <div class="stg-card-header-row">
-                        <h4 class="stg-card-title">{{ text('TOS 网页桥接小助手') }}</h4>
-                        <span class="stg-card-badge-helper">{{ text('浏览器专属') }}</span>
-                      </div>
-                      <p class="stg-card-description">
-                        {{ text('专为 Web 浏览器打造的轻量级桥接组件，网页端直连调度。') }}
-                      </p>
-
-                      <!-- 网页助手优势特性对照列表 -->
-                      <ul class="stg-feature-list">
-                        <li class="stg-feature-item">
-                          <AppIcon name="check" class="stg-feature-icon" />
-                          <span>{{ text('极速轻量：免去客户端安装') }}</span>
-                        </li>
-                        <li class="stg-feature-item">
-                          <AppIcon name="check" class="stg-feature-icon" />
-                          <span>{{ text('即开即用：网页与本机无缝桥接') }}</span>
-                        </li>
-                        <li class="stg-feature-item">
-                          <AppIcon name="check" class="stg-feature-icon" />
-                          <span>{{ text('安全隔离：严格鉴权防越权') }}</span>
-                        </li>
-                      </ul>
-                    </div>
-                    <div class="stg-card-footer">
-                      <button
-                        class="stg-btn-secondary stg-btn-secondary--teal"
-                        type="button"
-                        :disabled="helperDownloading"
-                        @click="handleHelperDownload"
-                      >
-                        <AppIcon name="download" />
-                        <span>{{ helperDownloading ? text('获取中...') : text('极速下载助手扩展') }}</span>
-                      </button>
-                      <button
-                        class="stg-btn-ghost"
-                        type="button"
-                        @click="handleHelperPanelOpen"
-                      >
-                        <AppIcon name="monitor-code" />
-                        <span>{{ text('打开小助手面板') }}</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <!-- 右栏：侧边辅助与信息检测 -->
-      <div class="stg-col-sidebar">
-        <!-- 3. 更新管理看板 -->
-        <section class="stg-section stg-updates">
-          <div class="stg-section__header-compact">
-            <AppIcon name="refresh-cw" class="stg-section__icon-mini" />
-            <h3>{{ text('更新管理') }}</h3>
-          </div>
-
-          <div class="stg-updates__panel">
-            <!-- 桌面更新流程 -->
-            <!-- 非桌面端环境：服务器/浏览器模式提示 -->
-            <div class="stg-server-mode-card">
-              <div class="stg-server-mode__header">
-                <div class="stg-server-mode__avatar">
-                  <AppIcon name="wifi" class="icon-pulse" />
-                </div>
-                <div class="stg-server-mode__title">
-                  <h4>{{ runModeLabel }}</h4>
-                  <span class="stg-status-badge stg-status-badge--live">{{ text('线上连接中') }}</span>
-                </div>
-              </div>
-              <p class="stg-server-mode__desc">
-                {{ text('当前运行于 Web 服务器 / 浏览器沙盒中。当您登录桌面客户端时，本面板将自动启用增量更新检测。') }}
-              </p>
-
-              <!-- 交互设计：展示云端与本地交互的流程链路示意（升级为多层光效流动动画） -->
-              <div class="stg-flow-chart">
-                <div class="stg-flow-node">
-                  <AppIcon name="database" />
-                  <span>{{ text('云端服务') }}</span>
-                </div>
-                <div class="stg-flow-line">
-                  <!-- 双重光点流动线，形成流畅的数据同步感 -->
-                  <span class="stg-flow-stream stg-flow-stream--1"></span>
-                  <span class="stg-flow-stream stg-flow-stream--2"></span>
-                  <span class="stg-flow-stream stg-flow-stream--3"></span>
-                </div>
-                <div class="stg-flow-node">
-                  <AppIcon name="browser" />
-                  <span>{{ text('网页应用') }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- 4. 版本元数据参数面板 -->
-        <section class="stg-section stg-metadata">
-          <div class="stg-section__header-compact">
-            <AppIcon name="sparkles" class="stg-section__icon-mini" />
-            <h3>{{ text('运行参数') }}</h3>
-          </div>
-
-          <div class="stg-metadata-list">
-            <!-- 当前版本 -->
-            <div class="stg-metadata-item">
-              <span class="stg-metadata-key">{{ t('app.settings.currentVersion') }}</span>
-              <span class="stg-metadata-val mono-font">{{ currentVersion }}</span>
-            </div>
-
-            <!-- 服务器安装包版本 -->
-            <div
-              v-for="packageRow in serverInstallerPackageRows"
-              :key="packageRow.key"
-              class="stg-metadata-item"
+            <el-button
+              class="sb-card__btn"
+              type="primary"
+              size="large"
+              :loading="desktopInstallerDownloading"
+              :disabled="desktopInstallerDownloading"
+              @click="handleDesktopInstallerDownload"
             >
-              <span class="stg-metadata-key">{{ text(packageRow.label) }}</span>
-              <span class="stg-metadata-val mono-font highlight-cyan" :title="packageRow.filename || packageRow.versionLabel">
-                {{ packageRow.versionLabel }}
-              </span>
-            </div>
+              <el-icon><Download /></el-icon>
+              {{ desktopInstallerDownloading ? text('获取中...') : text('安全下载轻量安装器') }}
+            </el-button>
+          </article>
 
-            <!-- 最新版本 (仅限桌面端) -->
-            <div v-if="hasDesktopUpdateSupport" class="stg-metadata-item">
-              <span class="stg-metadata-key">{{ t('app.settings.latestVersion') }}</span>
-              <span class="stg-metadata-val mono-font highlight-cyan">{{ latestVersion }}</span>
-            </div>
-
-            <!-- 运行模式 -->
-            <div class="stg-metadata-item">
-              <span class="stg-metadata-key">{{ t('app.settings.runMode') }}</span>
-              <span class="stg-metadata-val"><span class="stg-pill-mode">{{ runModeLabel }}</span></span>
-            </div>
-
-            <!-- 更新服务源 (仅限桌面端) -->
-            <div v-if="hasDesktopUpdateSupport" class="stg-metadata-item stg-metadata-item--vertical">
-              <div class="stg-metadata-header-row">
-                <span class="stg-metadata-key">{{ t('app.settings.feedUrl') }}</span>
-                <span v-if="feedUrlSourceLabel" class="stg-pill-source">{{ feedUrlSourceLabel }}</span>
+          <!-- Card 2: Full Offline Package -->
+          <article class="sb-card">
+            <div class="sb-card__accent sb-card__accent--emerald"></div>
+            <div class="sb-card__body">
+              <div class="sb-card__header">
+                <el-tag type="primary" effect="light" round class="sb-card__badge">
+                  <el-icon><Files /></el-icon>
+                  {{ text('离线全量') }}
+                </el-tag>
+                <span class="sb-card__icon-ring sb-card__icon-ring--emerald">
+                  <el-icon :size="22"><Files /></el-icon>
+                </span>
               </div>
-              <span class="stg-metadata-val mono-font link-val" :title="feedUrlText">
-                {{ feedUrlText }}
-              </span>
+              <h3>{{ text('TOS 桌面端全量部署包') }}</h3>
+              <p>{{ text('集成完整运行环境，完全离线一键部署，适合物理内网环境。') }}</p>
+            </div>
+            <img
+              class="sb-card__image sb-card__image--wide"
+              :src="desktopFullPackageImage"
+              alt=""
+            />
+            <el-button
+              class="sb-card__btn"
+              type="primary"
+              size="large"
+              :loading="desktopFullInstallerDownloading"
+              :disabled="desktopFullInstallerDownloading"
+              @click="handleDesktopFullInstallerDownload"
+            >
+              <el-icon><Download /></el-icon>
+              {{ desktopFullInstallerDownloading ? text('获取中...') : text('安全下载离线全量包') }}
+            </el-button>
+          </article>
+
+          <!-- Card 3: Web Bridge Helper -->
+          <article class="sb-card sb-card--helper">
+            <div class="sb-card__accent sb-card__accent--amber"></div>
+            <div class="sb-card__body">
+              <div class="sb-card__header">
+                <el-tag type="success" effect="light" round class="sb-card__badge">
+                  <el-icon><Connection /></el-icon>
+                  {{ text('浏览器扩展') }}
+                </el-tag>
+                <span class="sb-card__icon-ring sb-card__icon-ring--amber">
+                  <el-icon :size="22"><Connection /></el-icon>
+                </span>
+              </div>
+              <h3>{{ text('TOS 网页桥接小助手') }}</h3>
+              <p>{{ text('专为 Web 浏览器打造的轻量级桥接组件，网页端直连调度。') }}</p>
+              <ul class="sb-card__features">
+                <li><el-icon><CircleCheck /></el-icon>{{ text('极速搭建：免本地客户端安装') }}</li>
+                <li><el-icon><CircleCheck /></el-icon>{{ text('即开即用：网页与本机无缝桥接') }}</li>
+                <li><el-icon><CircleCheck /></el-icon>{{ text('安全隔离：严格鉴权防越权') }}</li>
+              </ul>
+            </div>
+            <img
+              class="sb-card__image sb-card__image--helper"
+              :src="webHelperImage"
+              alt=""
+            />
+            <div class="sb-card__actions">
+              <el-button
+                type="success"
+                plain
+                :loading="helperDownloading"
+                :disabled="helperDownloading"
+                @click="handleHelperDownload"
+              >
+                <el-icon><Download /></el-icon>
+                {{ helperDownloading ? text('获取中...') : text('极速下载助手扩展') }}
+              </el-button>
+              <el-button @click="handleHelperPanelOpen">
+                <el-icon><Monitor /></el-icon>
+                {{ text('打开小助手面板') }}
+              </el-button>
+            </div>
+          </article>
+        </div>
+      </section>
+    </div>
+
+    <!-- RIGHT SIDEBAR -->
+    <aside class="sb-aside">
+      <!-- SECTION 3: Update Management -->
+      <section class="sb-side-card">
+        <header class="sb-side-card__head">
+          <div class="sb-side-card__head-start">
+            <span class="sb-side-card__head-icon">
+              <el-icon :size="18"><Refresh /></el-icon>
+            </span>
+            <h2>{{ text('更新管理') }}</h2>
+          </div>
+          <el-tooltip :content="text('检查更新')" placement="top">
+            <el-button
+              class="sb-side-card__refresh-btn"
+              circle
+              :disabled="isActionLocked"
+              @click="handleCheck"
+            >
+              <el-icon><Refresh /></el-icon>
+            </el-button>
+          </el-tooltip>
+        </header>
+
+        <!-- Status Block -->
+        <div class="sb-status">
+          <span class="sb-status__dot">
+            <el-icon :size="20"><CircleCheckFilled /></el-icon>
+          </span>
+          <div class="sb-status__text">
+            <h3>{{ runModeLabel }}</h3>
+            <p>{{ text(statusLabel) }}</p>
+          </div>
+          <el-tag
+            :type="statusTone === 'error' ? 'danger' : statusTone"
+            effect="light"
+            round
+          >
+            {{ text(statusLabel) }}
+          </el-tag>
+        </div>
+
+        <p class="sb-side-card__desc">
+          {{ text('当前运行于 Web 服务器 / 浏览器沙盒中。当您登录桌面客户端时，本面板将自动启用增量更新检测。') }}
+        </p>
+
+        <!-- Connection Flow -->
+        <div class="sb-flow">
+          <div class="sb-flow__node">
+            <el-icon :size="22"><Cloudy /></el-icon>
+            <span>{{ text('云端服务') }}</span>
+          </div>
+          <div class="sb-flow__edge">
+            <span class="sb-flow__dash"></span>
+          </div>
+          <div class="sb-flow__node sb-flow__node--active">
+            <span class="sb-flow__pulse"></span>
+            <el-icon :size="22"><CircleCheckFilled /></el-icon>
+            <span>{{ text('连接正常') }}</span>
+          </div>
+          <div class="sb-flow__edge">
+            <span class="sb-flow__dash"></span>
+          </div>
+          <div class="sb-flow__node">
+            <el-icon :size="22"><Monitor /></el-icon>
+            <span>{{ text('网页应用') }}</span>
+          </div>
+        </div>
+
+        <!-- Download Progress -->
+        <div v-if="status?.downloading && status?.progress" class="sb-progress">
+          <div class="sb-progress__header">
+            <span>{{ text('系统更新下载中') }}</span>
+            <strong>{{ progressPercent }}%</strong>
+          </div>
+          <div class="sb-progress__track">
+            <div
+              class="sb-progress__fill"
+              :style="{ width: progressPercent + '%' }"
+            >
+              <span class="sb-progress__shimmer"></span>
             </div>
           </div>
-        </section>
-      </div>
-    </main>
+          <small>{{ downloadDetail }}</small>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="sb-actions">
+          <el-button
+            v-if="hasDesktopUpdateSupport"
+            type="primary"
+            plain
+            :loading="activeAction === 'check'"
+            :disabled="isActionLocked"
+            @click="handleCheck"
+          >
+            {{ text('立即检查') }}
+          </el-button>
+          <el-button
+            v-if="canDownload"
+            type="success"
+            plain
+            :loading="activeAction === 'download'"
+            :disabled="isActionLocked"
+            @click="handleDownload"
+          >
+            {{ text('下载更新') }}
+          </el-button>
+          <el-button
+            v-if="canInstall"
+            type="warning"
+            plain
+            :loading="activeAction === 'install'"
+            :disabled="isActionLocked"
+            @click="handleInstall"
+          >
+            {{ text('立即安装并重启') }}
+          </el-button>
+          <el-button
+            v-if="hasDesktopUpdateSupport && manualDownload"
+            plain
+            :loading="activeAction === 'manual'"
+            :disabled="isActionLocked"
+            @click="handleManualDownload"
+          >
+            {{ text('获取免安装版') }}
+          </el-button>
+        </div>
+
+        <!-- Alert / Notice -->
+        <el-alert
+          v-if="noticeText"
+          class="sb-alert"
+          :type="noticeTone === 'error' ? 'error' : noticeTone === 'warning' ? 'warning' : noticeTone === 'success' ? 'success' : 'info'"
+          :title="text(noticeText)"
+          show-icon
+          closable
+          @close="message = ''"
+        />
+      </section>
+
+      <!-- SECTION 4: Runtime Parameters -->
+      <section class="sb-side-card sb-side-card--params">
+        <header class="sb-side-card__head">
+          <div class="sb-side-card__head-start">
+            <span class="sb-side-card__head-icon">
+              <el-icon :size="18"><InfoFilled /></el-icon>
+            </span>
+            <h2>{{ text('运行参数') }}</h2>
+          </div>
+        </header>
+
+        <div class="sb-params">
+          <div class="sb-param__row">
+            <span>{{ text('当前版本') }}</span>
+            <strong>{{ currentVersion }}</strong>
+          </div>
+          <div
+            v-for="packageRow in serverInstallerPackageRows"
+            :key="packageRow.key"
+            class="sb-param__row"
+          >
+            <span>{{ text(packageRow.label) }}</span>
+            <strong :title="packageRow.filename || packageRow.versionLabel">
+              {{ packageRow.versionLabel }}
+            </strong>
+          </div>
+          <div v-if="hasDesktopUpdateSupport" class="sb-param__row">
+            <span>{{ text('最新版本') }}</span>
+            <strong>{{ latestVersion }}</strong>
+          </div>
+          <div class="sb-param__row">
+            <span>{{ text('运行模式') }}</span>
+            <strong class="sb-param__highlight">{{ runModeLabel }}</strong>
+          </div>
+          <div v-if="feedUrlText !== '-'" class="sb-param__row sb-param__row--stack">
+            <span>{{ t('app.settings.feedUrl') }}</span>
+            <strong :title="feedUrlText">{{ feedUrlText }}</strong>
+            <em v-if="feedUrlSourceLabel">{{ feedUrlSourceLabel }}</em>
+          </div>
+        </div>
+
+        <el-button class="sb-export-btn" text @click="handleExportRuntimeParams">
+          <el-icon><Download /></el-icon>
+          {{ text('导出运行参数') }}
+          <el-icon><ArrowRight /></el-icon>
+        </el-button>
+      </section>
+    </aside>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
-import AppIcon from '../../shared/ui/AppIcon.vue'
-import SettingsLanguageSwitch from './SettingsLanguageSwitch.vue'
+import {
+  ArrowRight,
+  CircleCheck,
+  CircleCheckFilled,
+  Cloudy,
+  Connection,
+  Download,
+  Files,
+  InfoFilled,
+  Monitor,
+  Refresh,
+  Setting,
+  StarFilled,
+} from '@element-plus/icons-vue'
+
+import desktopFullPackageImage from '../../assets/settings/desktop-full-package.png'
+import desktopLightInstallerImage from '../../assets/settings/desktop-light-installer.png'
+import webHelperImage from '../../assets/settings/web-helper.svg'
 import { useSettingsPageModel } from './useSettingsPageModel'
 
 const {
@@ -371,6 +396,7 @@ const {
   handleDesktopFullInstallerDownload,
   handleDesktopInstallerDownload,
   handleDownload,
+  handleExportRuntimeParams,
   handleHelperDownload,
   handleHelperPanelOpen,
   handleInstall,
@@ -380,7 +406,6 @@ const {
   isActionLocked,
   latestVersion,
   manualDownload,
-  manualDownloadDetail,
   message,
   noticeText,
   noticeTone,
@@ -393,1295 +418,1109 @@ const {
   t,
   text,
 } = useSettingsPageModel()
-
-onMounted(() => {
-  const shell = document.querySelector('.content-shell')
-  if (shell) {
-    shell.classList.add('no-scroll')
-  }
-})
-
-onUnmounted(() => {
-  const shell = document.querySelector('.content-shell')
-  if (shell) {
-    shell.classList.remove('no-scroll')
-  }
-})
 </script>
 
 <style scoped lang="scss">
-/* ================================================================= */
-/* Modern Settings Layout Tokens (Teal / Cyan / Slate, No Purple)     */
-/* ================================================================= */
-.stg-layout {
-  --teal-50: #f0fdfa;
-  --teal-100: #ccfbf1;
-  --teal-200: #99f6e4;
-  --teal-500: #14b8a6;
-  --teal-600: #0d9488;
-  --teal-700: #0f766e;
-  --teal-900: #115e59;
+/* =============================================
+   CSS Custom Properties — Teal/Emerald/Amber
+   NO purple or purple-adjacent colors
+   ============================================= */
+.sb-workbench {
+  --sb-teal-50: #f0fdfa;
+  --sb-teal-100: #ccfbf1;
+  --sb-teal-200: #99f6e4;
+  --sb-teal-400: #2dd4bf;
+  --sb-teal-500: #14b8a6;
+  --sb-teal-600: #0d9488;
+  --sb-teal-700: #0f766e;
+  --sb-emerald-400: #34d399;
+  --sb-emerald-500: #10b981;
+  --sb-emerald-600: #059669;
+  --sb-amber-400: #fbbf24;
+  --sb-amber-500: #f59e0b;
+  --sb-amber-600: #d97706;
+  --sb-sky-400: #38bdf8;
+  --sb-sky-500: #0ea5e9;
 
-  --cyan-50: #ecfeff;
-  --cyan-100: #cffafe;
-  --cyan-500: #06b6d4;
-  --cyan-600: #0891b2;
-  --cyan-700: #0369a1;
+  --sb-bg: #f5f8fb;
+  --sb-surface: rgba(255, 255, 255, 0.94);
+  --sb-surface-hover: #ffffff;
+  --sb-border: #dfe7ef;
+  --sb-border-soft: #edf2f7;
+  --sb-text: #17233f;
+  --sb-text-heading: #0f172a;
+  --sb-muted: #67748e;
 
-  --emerald-50: #ecfdf5;
-  --emerald-500: #10b981;
-  --emerald-600: #059669;
+  --sb-radius-sm: 10px;
+  --sb-radius: 14px;
+  --sb-radius-lg: 20px;
+  --sb-radius-xl: 28px;
 
-  --slate-50: #f8fafc;
-  --slate-100: #f1f5f9;
-  --slate-200: #e2e8f0;
-  --slate-300: #cbd5e1;
-  --slate-400: #94a3b8;
-  --slate-500: #64748b;
-  --slate-600: #475569;
-  --slate-700: #334155;
-  --slate-800: #1e293b;
-  --slate-900: #0f172a;
+  --sb-shadow-sm: 0 2px 8px rgba(15, 35, 58, 0.05);
+  --sb-shadow: 0 10px 28px rgba(15, 35, 58, 0.07);
+  --sb-shadow-lg: 0 18px 40px rgba(15, 35, 58, 0.10);
+  --sb-shadow-glow-teal: 0 0 0 3px rgba(13, 148, 136, 0.10);
+  --sb-shadow-glow-emerald: 0 0 0 3px rgba(5, 150, 105, 0.10);
+  --sb-shadow-glow-amber: 0 0 0 3px rgba(217, 119, 6, 0.10);
 
-  --border-radius-card: 16px;
-  --border-radius-inner: 10px;
-  --border-radius-pill: 9999px;
+  --sb-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --sb-ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
 
-  --transition-bezier: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  --transition-bounce: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-  --shadow-soft: 0 4px 20px -2px rgba(15, 23, 42, 0.03), 0 2px 8px -1px rgba(15, 23, 42, 0.01);
-  --shadow-elevated: 0 12px 30px -4px rgba(13, 148, 136, 0.06), 0 4px 12px -2px rgba(15, 23, 42, 0.02);
-
-  height: 100%;
-  max-height: 100%;
-  box-sizing: border-box;
-  padding: 12px 16px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  background: radial-gradient(circle at 10% 20%, rgba(6, 182, 212, 0.04) 0%, transparent 40%),
-              radial-gradient(circle at 90% 80%, rgba(20, 184, 166, 0.04) 0%, transparent 40%),
-              #f8fafc;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  color: var(--slate-900);
-  -webkit-font-smoothing: antialiased;
-}
-
-/* 动态挂载到父外壳，强力禁滚且自适应 */
-:global(.content-shell.no-scroll) {
-  overflow: hidden !important;
-  height: 100% !important;
-  max-height: 100% !important;
-}
-
-/* Eliminate browser default focus borders */
-button, input, select, textarea {
-  outline: none !important;
-  &:focus {
-    outline: none !important;
-  }
-  &:focus-visible {
-    outline: none !important;
-    box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.25) !important;
-  }
-}
-
-/* Keyframe animations */
-@keyframes pulse-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(0.95); opacity: 0.8; }
-}
-@keyframes spin-cw {
-  to { transform: rotate(360deg); }
-}
-@keyframes shine-slide {
-  0% { transform: translateX(-150%) skewX(-25deg); }
-  100% { transform: translateX(150%) skewX(-25deg); }
-}
-@keyframes stagger-in {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes stream-flow {
-  0% { left: 0%; opacity: 0; }
-  15% { opacity: 0.85; }
-  85% { opacity: 0.85; }
-  100% { left: 100%; opacity: 0; }
-}
-
-.is-spin { animation: spin-cw 0.8s linear infinite; }
-.icon-pulse { animation: pulse-pulse 2.2s ease-in-out infinite; }
-
-/* Grid main container */
-.stg-main {
   display: grid;
-  grid-template-columns: 6.8fr 3.2fr;
-  gap: 18px;
+  grid-template-columns: minmax(0, 2.15fr) minmax(390px, 0.95fr);
+  gap: 22px;
   width: 100%;
-  max-width: 1220px;
   height: 100%;
-  max-height: 660px;
   min-height: 0;
+  padding: 16px 18px 18px;
+  box-sizing: border-box;
   overflow: hidden;
-  animation: stagger-in 0.6s var(--transition-bezier) both;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(13, 148, 136, 0.07), transparent 28%),
+    radial-gradient(circle at 85% 75%, rgba(14, 165, 233, 0.05), transparent 30%),
+    var(--sb-bg);
+  color: var(--sb-text);
+  font-size: 13px;
 }
 
-.stg-col-primary {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  height: 100%;
-  min-height: 0;
+/* =============================================
+   Dark Mode
+   ============================================= */
+:global(html.dark) .sb-workbench {
+  --sb-bg: #000000;
+  --sb-surface: rgba(20, 20, 20, 0.94);
+  --sb-surface-hover: #1c1c1c;
+  --sb-border: #303133;
+  --sb-border-soft: #25262a;
+  --sb-text: #e5eaf3;
+  --sb-text-heading: #e5eaf3;
+  --sb-muted: #a7adba;
+  --sb-shadow-sm: none;
+  --sb-shadow: none;
+  --sb-shadow-lg: none;
+  --sb-shadow-glow-teal: 0 0 0 1px rgba(13, 148, 136, 0.30);
+  --sb-shadow-glow-emerald: 0 0 0 1px rgba(5, 150, 105, 0.30);
+  --sb-shadow-glow-amber: 0 0 0 1px rgba(217, 119, 6, 0.30);
+
+  background:
+    radial-gradient(circle at 12% 10%, rgba(13, 148, 136, 0.11), transparent 28%),
+    radial-gradient(circle at 85% 75%, rgba(14, 165, 233, 0.08), transparent 30%),
+    var(--sb-bg);
 }
 
-.stg-col-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  height: 100%;
-  min-height: 0;
-}
+:global(html.dark) {
+  .sb-hero {
+    background:
+      linear-gradient(120deg, rgba(20, 20, 20, 0.96), rgba(9, 39, 38, 0.86)),
+      repeating-linear-gradient(135deg, rgba(13, 148, 136, 0.13) 0 1px, transparent 1px 12px);
+  }
 
-/* Card wrappers */
-.stg-section {
-  position: relative;
-  background-color: #ffffff;
-  border: 1px solid var(--slate-200);
-  border-radius: var(--border-radius-card);
-  box-shadow: var(--shadow-soft);
-  transition: var(--transition-bezier);
-  overflow: hidden;
+  .sb-card {
+    background: #18181a;
+    border-color: var(--sb-border);
+  }
 
-  &:hover {
-    box-shadow: 0 8px 30px rgba(15, 23, 42, 0.03);
-    border-color: rgba(20, 184, 166, 0.2);
+  .sb-card--featured {
+    background:
+      linear-gradient(180deg, rgba(13, 148, 136, 0.06), #18181a 40%);
+  }
+
+  .sb-flow,
+  .sb-status {
+    background: #18181a;
+  }
+
+  .sb-progress {
+    background: rgba(13, 148, 136, 0.13);
+  }
+
+  .sb-side-card {
+    background: rgba(20, 20, 20, 0.94);
+    border-color: var(--sb-border);
+  }
+
+  .sb-hero__line h1,
+  .sb-section-head__title h2,
+  .sb-card h3,
+  .sb-side-card__head h2,
+  .sb-status h3,
+  .sb-param__row strong {
+    color: var(--sb-text-heading);
   }
 }
 
-.stg-section__header {
-  padding: 16px 20px 10px;
-  border-bottom: 1px solid var(--slate-100);
-  flex-shrink: 0;
+/* =============================================
+   Layout Grid
+   ============================================= */
+.sb-main {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 18px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.sb-aside {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 18px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* =============================================
+   SECTION 1: Hero Version Banner
+   ============================================= */
+.sb-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  min-height: 96px;
+  padding: 16px 22px;
+  overflow: hidden;
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.96), rgba(240, 253, 250, 0.86)),
+    repeating-linear-gradient(135deg, rgba(13, 148, 136, 0.07) 0 1px, transparent 1px 12px);
+  border: 1px solid var(--sb-border);
+  border-radius: var(--sb-radius-lg);
+  box-shadow: var(--sb-shadow);
+  animation: sb-fadeUp 0.55s var(--sb-ease) 0s both;
+}
+
+.sb-hero__icon {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+  color: #ffffff;
+  background: linear-gradient(145deg, var(--sb-teal-500), var(--sb-teal-600));
+  box-shadow: 0 12px 28px rgba(13, 148, 136, 0.22);
+}
+
+.sb-hero__body {
+  min-width: 0;
+}
+
+.sb-hero__eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--sb-muted);
+}
+
+.sb-hero__line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sb-hero__version {
+  margin: 0;
+  font-size: clamp(23px, 2.2vw, 30px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--sb-text-heading);
+}
+
+.sb-hero__tag {
+  height: 26px;
+  padding-inline: 10px;
+  font-weight: 800;
+  font-size: 11px;
+}
+
+.sb-hero__mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--sb-teal-600);
+  background: var(--sb-teal-50);
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--sb-teal-100);
+}
+
+/* Decorative rings */
+.sb-hero__decor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.sb-hero__ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1.5px solid rgba(13, 148, 136, 0.10);
+
+  &--lg {
+    width: 180px;
+    height: 180px;
+    top: -70px;
+    right: -50px;
+    animation: sb-float 8s ease-in-out infinite;
+  }
+
+  &--md {
+    width: 110px;
+    height: 110px;
+    top: 16px;
+    right: 55px;
+    animation: sb-float 10s ease-in-out infinite 1.2s;
+  }
+
+  &--sm {
+    width: 65px;
+    height: 65px;
+    bottom: -20px;
+    right: 110px;
+    animation: sb-float 6s ease-in-out infinite 2.4s;
+  }
+}
+
+/* =============================================
+   SECTION 2: Download Center
+   ============================================= */
+.sb-downloads {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 18px;
+  min-height: 0;
+  padding: 24px;
+  border: 1px solid var(--sb-border);
+  border-radius: var(--sb-radius-lg);
+  background: var(--sb-surface);
+  box-shadow: var(--sb-shadow);
+  overflow: hidden;
+  animation: sb-fadeUp 0.55s var(--sb-ease) 0.07s both;
+}
+
+.sb-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.sb-section-head__title {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
 
   h2 {
     margin: 0;
-    font-size: 16px;
-    font-weight: 800;
-    color: var(--slate-800);
-  }
-}
-
-.stg-section__title-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.stg-section__icon {
-  font-size: 16px;
-  color: var(--teal-600);
-}
-
-.stg-section__desc {
-  margin: 2px 0 0;
-  font-size: 12.5px;
-  color: var(--slate-500);
-}
-
-/* Compact headers */
-.stg-section__header-compact {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 18px 8px;
-  border-bottom: 1px solid var(--slate-100);
-  flex-shrink: 0;
-
-  h3 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 800;
-    color: var(--slate-800);
-  }
-}
-
-.stg-section__icon-mini {
-  font-size: 13px;
-  color: var(--teal-600);
-}
-
-/* Hero card banner */
-.stg-hero {
-  position: relative;
-  z-index: 20;
-  background: linear-gradient(135deg, #ffffff 0%, var(--teal-50) 100%);
-  border: 1px solid var(--slate-200);
-  border-radius: var(--border-radius-card);
-  box-shadow: var(--shadow-soft);
-  padding: 16px 20px;
-  flex-shrink: 0;
-  overflow: visible;
-  transition: var(--transition-bezier);
-
-  &.has-update {
-    background: linear-gradient(135deg, #ffffff 0%, var(--cyan-50) 100%);
-    border-color: rgba(6, 182, 212, 0.25);
-    box-shadow: var(--shadow-elevated);
-  }
-
-  &:hover {
-    border-color: rgba(20, 184, 166, 0.3);
-  }
-}
-
-.stg-hero__background {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: inherit;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.stg-hero__glow {
-  position: absolute;
-  top: -150px;
-  right: -150px;
-  width: 350px;
-  height: 350px;
-  background: radial-gradient(circle, rgba(20, 184, 166, 0.1) 0%, rgba(20, 184, 166, 0) 70%);
-}
-
-.stg-hero__content {
-  position: relative;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.stg-hero__info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.stg-hero__icon-box {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  background: linear-gradient(135deg, var(--teal-500) 0%, var(--teal-600) 100%);
-  color: #ffffff;
-  border-radius: 8px;
-  font-size: 18px;
-  box-shadow: 0 4px 10px rgba(13, 148, 136, 0.15);
-}
-
-.stg-hero__title-group {
-  display: flex;
-  flex-direction: column;
-}
-
-.stg-hero__subtitle {
-  font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 700;
-  color: var(--slate-400);
-}
-
-.stg-hero__title {
-  margin: 1px 0 0;
-  font-size: 24px;
-  font-weight: 900;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  color: var(--slate-900);
-  letter-spacing: -0.5px;
-}
-
-.stg-hero__actions {
-  position: relative;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.stg-btn-interactive {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--slate-200);
-  border-radius: var(--border-radius-inner);
-  background-color: #ffffff;
-  color: var(--slate-700);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.01);
-  transition: var(--transition-bezier);
-
-  &:hover:not(:disabled) {
-    border-color: var(--teal-500);
-    color: var(--teal-600);
-    background-color: var(--teal-50);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 10px rgba(13, 148, 136, 0.06);
-  }
-
-  &:active:not(:disabled) {
-    transform: scale(0.97) !important;
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-}
-
-.stg-hero__lang {
-  display: flex;
-  align-items: center;
-  position: relative;
-  z-index: 40;
-}
-
-.stg-hero__progress-panel {
-  position: relative;
-  z-index: 2;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--slate-200);
-}
-
-.stg-progress__meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-}
-
-.stg-progress__status {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--teal-700);
-}
-
-.stg-progress__details {
-  font-size: 10px;
-  font-family: 'JetBrains Mono', monospace;
-  color: var(--slate-500);
-}
-
-.stg-progress__track {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.stg-progress__fill {
-  position: relative;
-  height: 4px;
-  border-radius: var(--border-radius-pill);
-  background: linear-gradient(90deg, var(--teal-500), var(--cyan-500));
-  transition: width 0.4s cubic-bezier(0.1, 0.8, 0.25, 1);
-  overflow: hidden;
-  flex: 1;
-}
-
-.stg-progress__shimmer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.4) 50%, rgba(255, 255, 255, 0) 100%);
-  animation: shine-slide 1.6s infinite;
-}
-
-.stg-progress__percent {
-  font-size: 11px;
-  font-weight: 800;
-  font-family: 'JetBrains Mono', monospace;
-  color: var(--teal-600);
-  min-width: 28px;
-  text-align: right;
-}
-
-/* Toast component styles */
-.stg-toast {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  border-radius: var(--border-radius-inner);
-  border: 1px solid var(--slate-200);
-  background-color: #ffffff;
-  box-shadow: 0 6px 16px -5px rgba(15, 23, 42, 0.06);
-}
-
-.stg-toast__lead-icon {
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.stg-toast__message {
-  flex: 1;
-  font-size: 11.5px;
-  font-weight: 600;
-}
-
-.stg-toast__close-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border: 0;
-  background: transparent;
-  color: var(--slate-400);
-  border-radius: 4px;
-  cursor: pointer;
-  transition: var(--transition-bezier);
-
-  &:hover {
-    color: var(--slate-700);
-    background-color: var(--slate-100);
-  }
-}
-
-.stg-toast--success {
-  border-color: rgba(16, 185, 129, 0.15);
-  background-color: var(--emerald-50);
-  color: var(--emerald-600);
-}
-.stg-toast--warning {
-  border-color: rgba(245, 158, 11, 0.15);
-  background-color: #fffbeb;
-  color: #d97706;
-}
-.stg-toast--error {
-  border-color: rgba(239, 68, 68, 0.15);
-  background-color: #fef2f2;
-  color: #dc2626;
-}
-
-/* Downloads section layout */
-.stg-downloads {
-  z-index: 10;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.stg-downloads__split-container {
-  display: grid;
-  grid-template-columns: 1.95fr 1.05fr; /* 65% vs 35% */
-  gap: 18px;
-  padding: 0 18px 18px;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.stg-downloads__group {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.stg-group-header {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 3px 4px;
-  font-size: 12.5px;
-  font-weight: 800;
-  color: var(--slate-400);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  flex-shrink: 0;
-
-  .stg-group-icon {
-    font-size: 14px;
-    color: var(--teal-500);
-
-    .stg-downloads__group--web & {
-      color: var(--cyan-500);
-    }
-  }
-}
-
-.stg-panel-cards {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 14px;
-  align-items: stretch;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-
-  &::-webkit-scrollbar {
-    width: 4px;
-  }
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  &::-webkit-scrollbar-thumb {
-    background: rgba(20, 184, 166, 0.15);
-    border-radius: 2px;
-  }
-  &::-webkit-scrollbar-thumb:hover {
-    background: rgba(20, 184, 166, 0.35);
-  }
-
-  &.has-manual {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-.stg-downloads__group--web .stg-panel-cards {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  align-items: stretch;
-}
-
-/* Cards glassmorphism styles */
-.stg-download-card {
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  border-radius: var(--border-radius-inner);
-  overflow: hidden;
-  height: 100%;
-  transition: var(--transition-bounce);
-}
-
-.stg-card-content {
-  padding: 16px 18px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  height: 100%;
-  box-sizing: border-box;
-  flex: 1;
-}
-
-.stg-card-body {
-  margin-bottom: 10px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-}
-
-.stg-card-footer {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.stg-card-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.stg-download-card--light {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.01);
-
-  &:hover {
-    transform: translateY(-2px);
-    background-color: #ffffff;
-    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.03);
-  }
-
-  .stg-downloads__group--desktop &:hover {
-    border-color: rgba(20, 184, 166, 0.25);
-    box-shadow: 0 8px 20px rgba(13, 148, 136, 0.06);
-  }
-
-  .stg-downloads__group--web &:hover {
-    border-color: rgba(6, 182, 212, 0.25);
-    box-shadow: 0 8px 20px rgba(6, 182, 212, 0.06);
-  }
-
-  .stg-card-title {
-    color: var(--slate-800);
-  }
-
-  .stg-card-description {
-    color: var(--slate-500);
-  }
-}
-
-.stg-card-title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.stg-card-description {
-  margin: 4px 0 0 0;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-/* Web Helper Feature Checklist styles */
-.stg-feature-list {
-  list-style: none;
-  padding: 0;
-  margin: 10px 0 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.stg-feature-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--slate-600);
-}
-
-.stg-feature-icon {
-  font-size: 12px;
-  color: var(--teal-500);
-  flex-shrink: 0;
-}
-
-.stg-card-badge {
-  font-size: 10.5px;
-  font-weight: 800;
-  padding: 2px 7px;
-  border-radius: var(--border-radius-pill);
-  background-color: var(--teal-500);
-  color: #ffffff;
-  letter-spacing: 0.1px;
-}
-
-.stg-card-badge-outline {
-  font-size: 10.5px;
-  font-weight: 800;
-  padding: 2px 7px;
-  border-radius: var(--border-radius-pill);
-  background-color: transparent;
-  color: var(--cyan-500);
-  border: 1px solid rgba(6, 182, 212, 0.35);
-  letter-spacing: 0.1px;
-}
-
-.stg-card-badge-helper {
-  font-size: 10.5px;
-  font-weight: 800;
-  padding: 2px 7px;
-  border-radius: var(--border-radius-pill);
-  background-color: var(--teal-100);
-  color: var(--teal-700);
-  border: 1px solid rgba(20, 184, 166, 0.15);
-  letter-spacing: 0.1px;
-}
-
-/* Button UI elements */
-.stg-btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  height: 32px;
-  border: 0;
-  border-radius: var(--border-radius-inner);
-  background: linear-gradient(135deg, var(--teal-500) 0%, var(--teal-600) 100%);
-  color: #ffffff;
-  font-size: 12.5px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 3px 8px rgba(13, 148, 136, 0.15);
-  transition: var(--transition-bezier);
-
-  &:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 5px 12px rgba(13, 148, 136, 0.25);
-  }
-
-  &:active {
-    transform: scale(0.97) !important;
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-}
-
-.stg-btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  height: 32px;
-  border: 1px solid var(--slate-200);
-  border-radius: var(--border-radius-inner);
-  background-color: #ffffff;
-  color: var(--slate-700);
-  font-size: 12.5px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: var(--transition-bezier);
-
-  &:hover:not(:disabled) {
-    border-color: var(--teal-500);
-    color: var(--teal-600);
-    background-color: var(--teal-50);
-    box-shadow: 0 4px 10px rgba(20, 184, 166, 0.08);
-  }
-
-  &:active {
-    transform: scale(0.97) !important;
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  &--cyan {
-    border-color: rgba(6, 182, 212, 0.25);
-    background-color: var(--cyan-50);
-    color: var(--cyan-700);
-
-    &:hover:not(:disabled) {
-      border-color: var(--cyan-500);
-      background-color: var(--cyan-500);
-      color: #ffffff;
-      box-shadow: 0 4px 10px rgba(6, 182, 212, 0.15);
-    }
-  }
-
-  &--teal {
-    border-color: rgba(20, 184, 166, 0.25);
-    background-color: var(--teal-50);
-    color: var(--teal-700);
-
-    &:hover:not(:disabled) {
-      border-color: var(--teal-500);
-      background-color: var(--teal-500);
-      color: #ffffff;
-      box-shadow: 0 4px 10px rgba(20, 184, 166, 0.15);
-    }
-  }
-}
-
-.stg-btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  height: 32px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: var(--border-radius-inner);
-  background: #ffffff;
-  color: var(--slate-500);
-  font-size: 12.5px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: var(--transition-bezier);
-
-  &:hover {
-    border-color: var(--cyan-500);
-    color: var(--cyan-700);
-    background: var(--cyan-50);
-  }
-
-  &:active {
-    transform: scale(0.97) !important;
-  }
-}
-
-/* Timeline/updates config */
-.stg-updates {
-  z-index: 10;
-  flex: 1.35;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.stg-updates__panel {
-  padding: 10px 16px 16px;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-
-  &::-webkit-scrollbar {
-    width: 4px;
-  }
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  &::-webkit-scrollbar-thumb {
-    background: rgba(20, 184, 166, 0.15);
-    border-radius: 2px;
-  }
-}
-
-.stg-timeline {
-  position: relative;
-  padding-left: 14px;
-
-  &::before {
-    content: '';
-    position: absolute;
-    left: 4px;
-    top: 10px;
-    bottom: 10px;
-    width: 2px;
-    background-color: var(--slate-200);
-  }
-}
-
-.stg-timeline-item {
-  position: relative;
-  margin-bottom: 14px;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
-
-  &.is-disabled {
-    opacity: 0.45;
-    pointer-events: none;
-    filter: grayscale(0.8);
-  }
-}
-
-.stg-timeline-item__badge {
-  position: absolute;
-  left: -22px;
-  top: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background-color: #ffffff;
-  border: 2px solid var(--teal-500);
-  color: var(--teal-600);
-  font-size: 9px;
-  z-index: 2;
-}
-
-.stg-timeline-item__content {
-  padding-left: 12px;
-
-  h4 {
-    margin: 0;
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--slate-800);
+    font-size: 22px;
+    font-weight: 900;
+    color: var(--sb-text-heading);
   }
 
   p {
-    margin: 2px 0 6px 0;
-    font-size: 10.5px;
-    color: var(--slate-500);
-    line-height: 1.4;
+    margin: 5px 0 0;
+    color: var(--sb-muted);
+    font-size: 12px;
+    line-height: 1.5;
   }
 }
 
-.stg-timeline-action-btn {
+.sb-section-head__icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 13px;
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--sb-emerald-500), var(--sb-teal-600));
+  flex-shrink: 0;
+}
+
+.sb-section-head__pills {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-top: 8px;
+}
+
+.sb-pill {
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border: 1px solid var(--slate-300);
-  border-radius: var(--border-radius-inner);
-  background-color: #ffffff;
-  color: var(--slate-700);
-  font-size: 10.5px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: var(--transition-bezier);
-
-  &:hover {
-    border-color: var(--teal-500);
-    color: var(--teal-600);
-    background-color: var(--teal-50);
-  }
-
-  &:active {
-    transform: scale(0.95) !important;
-  }
-
-  &--primary {
-    color: var(--teal-600);
-    border-color: var(--teal-200);
-    &:hover { background-color: var(--teal-50); border-color: var(--teal-500); }
-  }
-
-  &--success {
-    color: var(--emerald-600);
-    border-color: var(--emerald-200);
-    &:hover { background-color: var(--emerald-50); border-color: var(--emerald-500); }
-  }
-}
-
-.stg-server-mode-card {
-  background-color: var(--slate-50);
-  border: 1px solid var(--slate-200);
-  border-radius: var(--border-radius-inner);
-  padding: 14px;
-  transition: var(--transition-bezier);
-
-  &:hover {
-    border-color: var(--teal-200);
-    box-shadow: 0 6px 16px rgba(13, 148, 136, 0.03);
-  }
-}
-
-.stg-server-mode__header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.stg-server-mode__avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background-color: var(--teal-100);
-  color: var(--teal-600);
-  font-size: 16px;
-}
-
-.stg-server-mode__title {
-  display: flex;
-  flex-direction: column;
-
-  h4 {
-    margin: 0;
-    font-size: 13.5px;
-    font-weight: 800;
-    color: var(--slate-800);
-  }
-}
-
-.stg-status-badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: 10px;
-  font-weight: 800;
-  color: var(--teal-600);
-
-  &::before {
-    content: '';
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background-color: var(--teal-500);
-    margin-right: 4px;
-    animation: pulse-pulse 1.4s infinite;
-  }
-}
-
-.stg-server-mode__desc {
-  margin: 0 0 14px 0;
+  gap: 6px;
+  color: var(--sb-sky-500);
   font-size: 12px;
-  line-height: 1.45;
-  color: var(--slate-500);
-}
+  font-weight: 800;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.06);
+  border: 1px solid rgba(14, 165, 233, 0.15);
+  transition: background 0.25s ease;
 
-.stg-flow-chart {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-radius: var(--border-radius-inner);
-  background-color: #ffffff;
-  border: 1px solid var(--slate-200);
-  box-shadow: inset 0 2px 6px rgba(15, 23, 42, 0.01);
-}
-
-.stg-flow-node {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  font-size: 15px;
-  color: var(--slate-700);
-
-  span {
-    font-size: 10.5px;
-    font-weight: 800;
-    color: var(--slate-400);
-    text-transform: uppercase;
-    letter-spacing: 0.2px;
+  &--accent {
+    color: var(--sb-teal-600);
+    background: var(--sb-teal-50);
+    border-color: var(--sb-teal-100);
   }
 }
 
-.stg-flow-line {
-  position: relative;
-  flex: 1;
-  height: 3px;
-  background-color: var(--slate-100);
-  border-radius: var(--border-radius-pill);
-  margin: 0 14px;
-  overflow: hidden;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+/* Download Cards Grid */
+.sb-downloads__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  min-height: 0;
+  overflow: auto;
+  padding: 3px;
 }
 
-.stg-flow-stream {
+/* =============================================
+   Download Card Component
+   ============================================= */
+.sb-card {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 14px;
+  min-height: 450px;
+  padding: 22px;
+  border: 1px solid var(--sb-border);
+  border-radius: var(--sb-radius);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 252, 255, 0.94));
+  overflow: hidden;
+  transition:
+    transform 0.28s var(--sb-ease),
+    box-shadow 0.28s var(--sb-ease),
+    border-color 0.25s ease;
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--sb-shadow-lg);
+    border-color: transparent;
+  }
+
+  h3 {
+    margin: 10px 0 8px;
+    color: var(--sb-text-heading);
+    font-size: 17px;
+    font-weight: 900;
+    line-height: 1.3;
+  }
+
+  p {
+    margin: 0;
+    color: var(--sb-muted);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+}
+
+/* Featured card (Recommended) */
+.sb-card--featured {
+  background:
+    linear-gradient(180deg, rgba(240, 253, 250, 0.70), rgba(255, 255, 255, 0.98) 45%);
+
+  &:hover {
+    box-shadow: var(--sb-shadow-lg), var(--sb-shadow-glow-teal);
+  }
+}
+
+/* Helper card */
+.sb-card--helper {
+  h3 {
+    margin-bottom: 7px;
+  }
+
+  p {
+    line-height: 1.5;
+  }
+}
+
+/* Accent bar — slides in on hover */
+.sb-card__accent {
   position: absolute;
   top: 0;
-  height: 100%;
-  width: 12px;
-  background: linear-gradient(90deg, rgba(20, 184, 166, 0) 0%, var(--teal-500) 50%, rgba(20, 184, 166, 0) 100%);
-  border-radius: inherit;
-  animation: stream-flow 2.4s infinite linear;
+  left: 0;
+  right: 0;
+  height: 3px;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.40s var(--sb-ease);
+  z-index: 1;
 
-  &--1 { animation-delay: 0s; }
-  &--2 { animation-delay: 0.8s; }
-  &--3 { animation-delay: 1.6s; }
+  &--teal {
+    background: linear-gradient(90deg, var(--sb-teal-500), var(--sb-teal-600));
+  }
+
+  &--emerald {
+    background: linear-gradient(90deg, var(--sb-emerald-400), var(--sb-emerald-600));
+  }
+
+  &--amber {
+    background: linear-gradient(90deg, var(--sb-amber-400), var(--sb-amber-600));
+  }
 }
 
-/* Parameters Panel */
-.stg-metadata {
-  z-index: 10;
-  flex: 1;
-  min-height: 0;
+.sb-card:hover .sb-card__accent {
+  transform: scaleX(1);
+}
+
+.sb-card__body {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 
-.stg-metadata-list {
-  padding: 6px 16px 16px;
+.sb-card__header {
   display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
 
-  &::-webkit-scrollbar {
-    width: 4px;
+.sb-card__badge {
+  height: 26px;
+  padding-inline: 10px;
+  font-weight: 800;
+  font-size: 11px;
+}
+
+.sb-card__icon-ring {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  flex-shrink: 0;
+
+  &--teal {
+    color: var(--sb-teal-600);
+    background: rgba(13, 148, 136, 0.08);
   }
-  &::-webkit-scrollbar-track {
-    background: transparent;
+
+  &--emerald {
+    color: var(--sb-emerald-600);
+    background: rgba(5, 150, 105, 0.08);
   }
-  &::-webkit-scrollbar-thumb {
-    background: rgba(20, 184, 166, 0.15);
-    border-radius: 2px;
+
+  &--amber {
+    color: var(--sb-amber-600);
+    background: rgba(217, 119, 6, 0.08);
   }
 }
 
-.stg-metadata-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--slate-100);
-  transition: var(--transition-bezier);
+/* Card Feature List (helper card) */
+.sb-card__features {
+  display: grid;
+  gap: 5px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  color: #273755;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
 
-  &:last-child {
-    border-bottom: 0;
-    padding-bottom: 0;
-  }
+  li {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    white-space: nowrap;
 
-  &:hover {
-    padding-left: 4px;
-    background-color: rgba(20, 184, 166, 0.02);
-  }
-
-  &--vertical {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 5px;
-    &:hover {
-      padding-left: 0;
-      background-color: transparent;
+    .el-icon {
+      flex-shrink: 0;
+      color: var(--sb-teal-600);
+      font-size: 13px;
     }
   }
 }
 
-.stg-metadata-header-row {
+/* Card Images */
+.sb-card__image {
+  align-self: center;
+  justify-self: center;
+  width: min(86%, 235px);
+  max-height: 170px;
+  object-fit: contain;
+  filter: drop-shadow(0 16px 18px rgba(13, 148, 136, 0.10));
+  transition: transform 0.35s var(--sb-ease);
+}
+
+.sb-card:hover .sb-card__image {
+  transform: translateY(-3px);
+}
+
+.sb-card__image--wide {
+  width: min(92%, 270px);
+  max-height: 150px;
+}
+
+.sb-card__image--helper {
+  width: min(88%, 248px);
+  max-height: 162px;
+}
+
+/* Card Buttons */
+.sb-card__btn {
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 13px;
+  transition: transform 0.15s ease;
+
+  &:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+}
+
+.sb-card__actions {
+  display: grid;
+  grid-template-rows: repeat(2, 42px);
+  gap: 8px;
+  align-content: end;
+
+  .el-button {
+    width: 100%;
+    height: 42px;
+    margin: 0;
+    border-radius: 10px;
+    font-weight: 800;
+    transition: transform 0.15s ease;
+
+    &:active:not(:disabled) {
+      transform: scale(0.97);
+    }
+  }
+
+  .el-button + .el-button {
+    margin-left: 0;
+  }
+}
+
+/* =============================================
+   SECTION 3 & 4: Sidebar Cards
+   ============================================= */
+.sb-side-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 20px 22px;
+  border: 1px solid var(--sb-border);
+  border-radius: var(--sb-radius);
+  background: var(--sb-surface);
+  box-shadow: var(--sb-shadow-sm);
+  overflow: hidden;
+
+  &:first-child {
+    animation: sb-fadeUp 0.55s var(--sb-ease) 0.14s both;
+  }
+
+  &:last-child {
+    animation: sb-fadeUp 0.55s var(--sb-ease) 0.20s both;
+  }
+}
+
+.sb-side-card--params {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.sb-side-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--sb-border-soft);
+  flex-shrink: 0;
+}
+
+.sb-side-card__head-start {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sb-side-card__head-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  color: var(--sb-teal-600);
+  background: var(--sb-teal-50);
+}
+
+.sb-side-card__head h2 {
+  margin: 0;
+  color: var(--sb-text-heading);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.sb-side-card__refresh-btn {
+  transition: transform 0.3s var(--sb-ease);
+  color: var(--sb-teal-600);
+
+  &:hover:not(:disabled) {
+    transform: rotate(90deg);
+  }
+}
+
+/* Status Block */
+.sb-status {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--sb-border-soft);
+  border-radius: 10px;
+  background: #fbfdff;
+  flex-shrink: 0;
+}
+
+.sb-status__dot {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: #0f9f6e;
+  background: #dff8ee;
+}
+
+.sb-status__text {
+  min-width: 0;
+
+  h3 {
+    margin: 0;
+    color: var(--sb-text-heading);
+    font-size: 15px;
+    font-weight: 900;
+  }
+
+  p {
+    margin: 4px 0 0;
+    color: var(--sb-teal-600);
+    font-size: 12px;
+    font-weight: 800;
+  }
+}
+
+.sb-side-card__desc {
+  margin: 14px 0;
+  color: var(--sb-muted);
+  font-size: 12px;
+  line-height: 1.75;
+  flex-shrink: 0;
+}
+
+/* Connection Flow */
+.sb-flow {
+  display: grid;
+  grid-template-columns: auto minmax(28px, 1fr) auto minmax(28px, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 12px;
+  border: 1px solid var(--sb-border-soft);
+  border-radius: 10px;
+  background: #ffffff;
+  flex-shrink: 0;
+}
+
+.sb-flow__node {
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  color: #1c2b4a;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+
+  .el-icon {
+    color: #203253;
+  }
+}
+
+.sb-flow__node--active {
+  color: var(--sb-teal-600);
+
+  .el-icon {
+    color: var(--sb-teal-600);
+  }
+}
+
+.sb-flow__pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 50px;
+  height: 50px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: transparent;
+  animation: sb-pulse-ring 2.4s ease-out infinite;
+  pointer-events: none;
+}
+
+.sb-flow__edge {
+  height: 2px;
+}
+
+.sb-flow__dash {
+  display: block;
+  height: 2px;
+  width: 100%;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--sb-teal-400) 0px,
+    var(--sb-teal-400) 5px,
+    transparent 5px,
+    transparent 9px
+  );
+  animation: sb-dash-flow 1.6s linear infinite;
+}
+
+/* Progress Bar */
+.sb-progress {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(13, 148, 136, 0.18);
+  border-radius: 10px;
+  background: var(--sb-teal-50);
+  flex-shrink: 0;
+}
+
+.sb-progress__header {
   display: flex;
   justify-content: space-between;
-  width: 100%;
-  align-items: center;
-}
-
-.stg-metadata-key {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--slate-500);
-}
-
-.stg-metadata-val {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--slate-800);
-}
-
-.highlight-cyan {
-  color: var(--cyan-600);
-}
-
-.mono-font {
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.link-val {
-  word-break: break-all;
-  color: var(--slate-500);
-  font-weight: 500;
-  font-size: 11.5px;
-  background-color: var(--slate-50);
-  padding: 5px 7px;
-  border-radius: 4px;
-  width: 100%;
-  border: 1px solid transparent;
-  transition: var(--transition-bezier);
-
-  &:hover {
-    border-color: var(--slate-200);
-    background-color: #ffffff;
-    color: var(--slate-800);
-  }
-}
-
-.stg-pill-mode {
-  padding: 1px 6px;
-  background-color: var(--teal-50);
-  color: var(--teal-700);
-  font-size: 10.5px;
+  margin-bottom: 8px;
+  color: var(--sb-teal-700);
+  font-size: 12px;
   font-weight: 800;
-  border-radius: var(--border-radius-pill);
 }
 
-.stg-pill-source {
-  padding: 1px 5px;
-  background-color: var(--slate-100);
-  color: var(--slate-500);
-  font-size: 10px;
-  font-weight: 800;
-  border-radius: 4px;
-}
-
-/* Transition library */
-.stg-slide-fade-enter-active, .stg-slide-fade-leave-active {
-  transition: all 0.4s var(--transition-bezier);
-  max-height: 120px;
-  opacity: 1;
+.sb-progress__track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--sb-teal-100);
   overflow: hidden;
 }
-.stg-slide-fade-enter-from, .stg-slide-fade-leave-to {
-  max-height: 0;
-  opacity: 0;
-  transform: translateY(-8px);
+
+.sb-progress__fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--sb-teal-600), var(--sb-teal-400));
+  transition: width 0.6s var(--sb-ease);
+  position: relative;
+  overflow: hidden;
 }
 
-.stg-toast-slide-enter-active {
-  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.stg-toast-slide-leave-active {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.stg-toast-slide-enter-from {
-  opacity: 0;
-  transform: scale(0.9) translateY(-14px);
-}
-.stg-toast-slide-leave-to {
-  opacity: 0;
-  transform: translateY(-6px);
+.sb-progress__shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.35) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: sb-shimmer 1.8s linear infinite;
 }
 
-/* Responsive media queries */
+.sb-progress small {
+  display: block;
+  margin-top: 6px;
+  color: var(--sb-muted);
+  font-size: 12px;
+}
+
+/* Action Buttons */
+.sb-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  flex-shrink: 0;
+
+  .el-button {
+    border-radius: 8px;
+    font-weight: 800;
+    font-size: 12px;
+    transition: transform 0.15s ease;
+
+    &:active:not(:disabled) {
+      transform: scale(0.97);
+    }
+  }
+}
+
+/* Alert */
+.sb-alert {
+  margin-top: 14px;
+  flex-shrink: 0;
+  animation: sb-slideDown 0.35s var(--sb-ease) both;
+}
+
+/* =============================================
+   Runtime Parameters
+   ============================================= */
+.sb-params {
+  min-height: 0;
+  overflow: auto;
+  margin-top: 4px;
+}
+
+.sb-param__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 42px;
+  border-bottom: 1px solid var(--sb-border-soft);
+  color: var(--sb-muted);
+  font-size: 13px;
+  padding: 4px 0;
+
+  strong {
+    min-width: 0;
+    color: var(--sb-text-heading);
+    font-weight: 800;
+    font-size: 13px;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+    letter-spacing: -0.01em;
+  }
+}
+
+.sb-param__highlight {
+  color: var(--sb-teal-600) !important;
+  font-family: inherit !important;
+}
+
+.sb-param__row--stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 0;
+
+  strong {
+    width: 100%;
+    text-align: left;
+    font-size: 12px;
+  }
+
+  em {
+    color: var(--sb-teal-600);
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 800;
+    background: var(--sb-teal-50);
+    padding: 1px 8px;
+    border-radius: 4px;
+  }
+}
+
+/* Export Button */
+.sb-export-btn {
+  justify-content: space-between;
+  width: 100%;
+  height: 42px;
+  margin-top: 10px;
+  color: var(--sb-muted);
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 10px;
+  flex-shrink: 0;
+
+  :deep(.el-icon) {
+    font-size: 15px;
+  }
+}
+
+/* =============================================
+   KEYFRAME ANIMATIONS
+   ============================================= */
+@keyframes sb-fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sb-float {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  33% {
+    transform: translateY(-7px) rotate(1deg);
+  }
+  66% {
+    transform: translateY(3px) rotate(-1deg);
+  }
+}
+
+@keyframes sb-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(13, 148, 136, 0.30);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(13, 148, 136, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(13, 148, 136, 0);
+  }
+}
+
+@keyframes sb-dash-flow {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 14px 0;
+  }
+}
+
+@keyframes sb-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes sb-slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 200px;
+  }
+}
+
+/* =============================================
+   RESPONSIVE
+   ============================================= */
+@media (max-width: 1380px) {
+  .sb-downloads__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .sb-card {
+    padding: 16px;
+    min-height: 420px;
+  }
+}
+
 @media (max-width: 1280px) {
-  .stg-downloads__split-container {
-    grid-template-columns: 1.85fr 1.15fr;
+  .sb-workbench {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .sb-main {
     gap: 16px;
   }
-  .stg-panel-cards {
-    grid-template-columns: 1fr !important;
+
+  .sb-aside {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto;
+    overflow: visible;
+  }
+
+  .sb-side-card--params {
+    grid-template-rows: auto auto auto;
   }
 }
 
-@media (max-width: 1024px) {
-  .stg-main {
+@media (max-width: 920px) {
+  .sb-downloads__grid {
     grid-template-columns: 1fr;
-    gap: 16px;
-    height: auto;
-    max-height: none;
-    overflow: auto;
+    max-width: 520px;
+    margin: 0 auto;
+    width: 100%;
   }
-  .stg-layout {
-    height: auto;
-    max-height: none;
-    overflow: auto;
-  }
-}
 
-@media (max-width: 768px) {
-  .stg-downloads__split-container {
+  .sb-aside {
     grid-template-columns: 1fr;
+  }
+
+  .sb-hero {
+    grid-template-columns: auto minmax(0, 1fr);
+    min-height: auto;
   }
 }
 
 @media (max-width: 640px) {
-  .stg-layout {
+  .sb-workbench {
     padding: 10px;
-  }
-
-  .stg-hero__content {
-    flex-direction: column;
-    align-items: flex-start;
     gap: 14px;
   }
 
-  .stg-hero__actions {
-    width: 100%;
-    justify-content: space-between;
+  .sb-hero {
+    padding: 16px;
+    gap: 14px;
   }
 
-  .stg-downloads__split-container {
-    padding: 0 10px;
+  .sb-hero__icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
   }
+
+  .sb-downloads {
+    padding: 16px;
+  }
+
+  .sb-section-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .sb-side-card {
+    padding: 16px;
+  }
+}
+</style>
+
+<style>
+.content-shell:has(.sb-workbench) {
+  padding: 0 !important;
+  overflow: hidden;
 }
 </style>

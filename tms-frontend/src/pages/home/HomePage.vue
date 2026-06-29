@@ -5,10 +5,10 @@
       <div class="hero-left">
         <div class="hero-badge">
           <AppIcon name="radar" />
-          <span>TMS 工作站</span>
+          <span>{{ text('TMS 工作站') }}</span>
         </div>
-        <h1 class="hero-title">TOS 运营看板</h1>
-        <p class="hero-desc">数据核对、报表制作、浏览器自动化与通用工具，一站式工作台。</p>
+        <h1 class="hero-title">{{ text('TOS 运营看板') }}</h1>
+        <p class="hero-desc">{{ text('数据核对、报表制作、浏览器自动化与通用工具，一站式工作台。') }}</p>
       </div>
       <div class="hero-illust" aria-hidden="true">
         <svg viewBox="0 0 480 200" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -171,11 +171,11 @@
         <div class="modules-head">
           <div class="modules-head-left">
             <AppIcon name="layers" class="modules-head-icon" />
-            <h3 class="modules-title">正式模块与测试模块</h3>
+            <h3 class="modules-title">{{ text('正式模块与测试模块') }}</h3>
           </div>
           <div class="modules-head-right">
             <span class="modules-count">{{ homeModuleCards.length }}</span>
-            <button class="modules-grid-toggle" type="button" title="切换视图">
+            <button class="modules-grid-toggle" type="button" :title="text('切换视图')">
               <AppIcon name="grid" />
             </button>
           </div>
@@ -203,10 +203,10 @@
               <AppIcon :name="card.iconName" />
             </div>
             <div class="module-card__text">
-              <span class="module-card__name">{{ card.module.navLabel }}</span>
+              <span class="module-card__name">{{ getHomeModuleLabel(card) }}</span>
               <span class="module-card__stage">
                 <span class="module-card__dot" :class="`module-card__dot--${card.stageDot}`" />
-                {{ card.stageLabel }}
+                {{ getHomeModuleStageLabel(card) }}
               </span>
             </div>
           </RouterLink>
@@ -220,9 +220,9 @@
           <div class="status-head">
             <div class="status-head-left">
               <AppIcon name="activity" class="status-head-icon" />
-              <h3 class="status-title">运行概况</h3>
+              <h3 class="status-title">{{ text('运行概况') }}</h3>
             </div>
-            <RouterLink class="status-more" to="/settings">查看更多 &gt;</RouterLink>
+            <RouterLink class="status-more" to="/settings">{{ text('查看更多') }} &gt;</RouterLink>
           </div>
           <div class="status-list">
             <div
@@ -258,19 +258,37 @@ import {
   homeMetricTiles,
   homeModuleCards,
   serviceStatusItems,
+  type HomeModuleCard,
 } from './homeModel'
+import { useAppLanguage } from '../../shared/i18n/appLanguage'
 
 /* ── Data refs ── */
-const metricTiles = homeMetricTiles
-const statusItems = serviceStatusItems
+const { isEnglish, text } = useAppLanguage()
+
+const metricTiles = computed(() =>
+  homeMetricTiles.map((item) => ({
+    ...item,
+    label: text(item.label),
+    detail: text(item.detail),
+    deltaLabel: item.deltaLabel ? text(item.deltaLabel) : item.deltaLabel,
+  })),
+)
+const statusItems = computed(() =>
+  serviceStatusItems.map((item) => ({
+    ...item,
+    title: text(item.title),
+    subtitle: text(item.subtitle),
+    status: text(item.status),
+  })),
+)
 
 /* ── Module tabs ── */
 const activeTab = ref('all')
-const moduleTabs = [
-  { key: 'all', label: '全部' },
-  { key: 'production', label: '正式模块' },
-  { key: 'testing', label: '测试模块' },
-]
+const moduleTabs = computed(() => [
+  { key: 'all', label: text('全部') },
+  { key: 'production', label: text('正式模块') },
+  { key: 'testing', label: text('测试模块') },
+])
 
 const filteredModules = computed(() => {
   if (activeTab.value === 'production') {
@@ -283,6 +301,14 @@ const filteredModules = computed(() => {
 })
 
 /* ── Helpers ── */
+function getHomeModuleLabel(card: HomeModuleCard): string {
+  return isEnglish.value ? card.module.navLabelEn : card.module.navLabel
+}
+
+function getHomeModuleStageLabel(card: HomeModuleCard): string {
+  return text(card.stageLabel)
+}
+
 function statusIconName(tone: string): string {
   const map: Record<string, string> = {
     online: 'check-circle',

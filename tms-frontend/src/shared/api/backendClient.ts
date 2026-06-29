@@ -135,6 +135,43 @@ export async function buildBackendDownloadUrl(path: string): Promise<string> {
   return buildBackendUrl(baseUrl, path)
 }
 
+export async function downloadUrlAsFile(
+  url: string,
+  fallbackFilename = 'download',
+): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(url, { method: 'GET' })
+  } catch (_error) {
+    throw new Error('无法连接安装包下载服务，请确认本地后端已启动，或服务器网络可访问。')
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    throw new Error(readDownloadResponseMessage(text, {
+      status: response.status,
+      path: readUrlPath(url),
+    }))
+  }
+
+  const blob = await response.blob()
+  if (blob.size <= 0) {
+    throw new Error('安装包下载失败：服务器返回的文件内容为空，请重新打包并上传安装包。')
+  }
+
+  const filename = readDownloadFilename(response.headers.get('content-disposition'))
+    || fallbackFilename
+  const objectUrl = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = objectUrl
+  anchor.rel = 'noopener'
+  anchor.download = filename
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 2500)
+}
+
 export async function requestBackendJson<TResponse>({
   method = 'GET',
   path,
@@ -294,6 +331,56 @@ function parseJsonResponse<TResponse>(text: string, context: ResponseMessageCont
 function buildBackendUrl(baseUrl: string, path: string): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   return `${baseUrl.replace(/\/$/, '')}${normalizedPath}`
+}
+
+function readDownloadResponseMessage(text: string, context: ResponseMessageContext): string {
+  const trimmed = String(text || '').trim()
+  if (trimmed) {
+    try {
+      const data = JSON.parse(trimmed) as unknown
+      const message = readResponseMessage(data, context)
+      if (message) {
+        return message
+      }
+    } catch (_error) {
+      const preview = trimmed.replace(/\s+/g, ' ').slice(0, 120)
+      return `安装包下载失败（HTTP ${context.status || '未知'}）：服务器返回了无法识别的内容。${preview ? `响应开头：${preview}` : ''}`
+    }
+  }
+
+  if (context.status === 404) {
+    return '安装包下载失败：服务器还没有上传对应安装包，请先完成打包并上传到 MinIO 后再下载。'
+  }
+
+  return `安装包下载失败（HTTP ${context.status || '未知'}），请稍后重试或检查服务器发布状态。`
+}
+
+function readDownloadFilename(contentDisposition: string | null): string {
+  const header = String(contentDisposition || '')
+  const encodedMatch = /filename\*=UTF-8''([^;]+)/i.exec(header)
+  if (encodedMatch?.[1]) {
+    try {
+      return decodeURIComponent(encodedMatch[1].trim().replace(/^"|"$/g, ''))
+    } catch (_error) {
+      return encodedMatch[1].trim().replace(/^"|"$/g, '')
+    }
+  }
+
+  const quotedMatch = /filename="([^"]+)"/i.exec(header)
+  if (quotedMatch?.[1]) {
+    return quotedMatch[1].trim()
+  }
+
+  const plainMatch = /filename=([^;]+)/i.exec(header)
+  return plainMatch?.[1]?.trim().replace(/^"|"$/g, '') || ''
+}
+
+function readUrlPath(url: string): string {
+  try {
+    return new URL(url, window.location?.href || 'http://127.0.0.1').pathname
+  } catch (_error) {
+    return url
+  }
 }
 
 async function readBackendRuntimeVersion(baseUrl: string): Promise<string | undefined> {

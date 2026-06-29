@@ -8,6 +8,7 @@ const { spawn } = require('child_process')
 const { launchAdidasMaterialsCollector } = require('./adidas-materials-direct')
 const {
   getAutomationApps,
+  getAutomationAppById,
   launchAutomationApp,
   loadAutomationAppRegistry,
   resolveUserDataDir,
@@ -104,7 +105,7 @@ const server = http.createServer(async (req, res) => {
       const apps = await getAutomationApps(sharedOptions)
       sendJson(res, 200, {
         ok: true,
-        apps,
+        apps: apps.map(toPublicAutomationApp),
       })
       return
     }
@@ -115,14 +116,24 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
+    const proxyRouteMatch = requestUrl.pathname.match(/^\/api\/apps\/([^/]+)\/proxy(?:\/(.*))?$/)
+    if (proxyRouteMatch) {
+      const appId = decodeURIComponent(proxyRouteMatch[1])
+      const proxyPath = `/${proxyRouteMatch[2] || ''}${requestUrl.search || ''}`
+      await proxyAutomationAppRequest(appId, proxyPath, req, res)
+      return
+    }
+
     const appRouteMatch = requestUrl.pathname.match(/^\/api\/apps\/([^/]+)\/(start|stop)$/)
     if (req.method === 'POST' && appRouteMatch) {
       const appId = decodeURIComponent(appRouteMatch[1])
       const action = appRouteMatch[2]
+      const requestBody = action === 'start' ? await readJsonBody(req) : {}
+      const forceUpdate = readBooleanParam(requestUrl.searchParams.get('forceUpdate')) || readBooleanParam(requestBody.forceUpdate)
       const result = action === 'start'
-        ? await launchAutomationApp(appId, sharedOptions)
+        ? await launchAutomationApp(appId, { ...sharedOptions, forceUpdate })
         : stopAutomationApp(appId, sharedOptions)
-      sendJson(res, result.success ? 200 : 500, result)
+      sendJson(res, result.success ? 200 : 500, toPublicAutomationResult(result, appId))
       return
     }
 
@@ -147,7 +158,7 @@ server.listen(port, host, () => {
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Executor-Token, Authorization')
 }
 
 function resolveHelperVersion() {
@@ -182,11 +193,133 @@ function sendJson(res, statusCode, payload) {
   res.end(JSON.stringify(payload, null, 2))
 }
 
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = ''
+    req.setEncoding('utf8')
+    req.on('data', (chunk) => {
+      body += chunk
+    })
+    req.on('end', () => {
+      if (!body.trim()) {
+        resolve({})
+        return
+      }
+
+      try {
+        resolve(JSON.parse(body))
+      } catch (error) {
+        reject(Object.assign(new Error('Invalid JSON request body.'), { statusCode: 400 }))
+      }
+    })
+    req.on('error', reject)
+  })
+}
+
+function readBooleanParam(value) {
+  return value === true || value === 'true' || value === '1'
+}
+
 function sendHtml(res, statusCode, html) {
   res.writeHead(statusCode, {
     'Content-Type': 'text/html; charset=utf-8',
   })
   res.end(html)
+}
+
+function getPublicAutomationAppUrl(appId) {
+  return `http://${host}:${port}/api/apps/${encodeURIComponent(appId)}/proxy`
+}
+
+function toPublicAutomationApp(app) {
+  return {
+    ...app,
+    internalPort: app.port,
+    internalUrl: app.url,
+    port,
+    url: getPublicAutomationAppUrl(app.id),
+  }
+}
+
+function toPublicAutomationResult(result, appId) {
+  if (!result || typeof result !== 'object' || !result.appId && !appId) {
+    return result
+  }
+  const resultAppId = result.appId || appId
+  return {
+    ...result,
+    internalUrl: result.url,
+    url: getPublicAutomationAppUrl(resultAppId),
+  }
+}
+
+async function proxyAutomationAppRequest(appId, proxyPath, clientReq, clientRes) {
+  let automationApp = getAutomationAppById(appId, sharedOptions)
+  if (!automationApp) {
+    sendJson(clientRes, 404, {
+      ok: false,
+      message: `Unknown automation app: ${appId}`,
+    })
+    return
+  }
+
+  if (!isHealthProxyPath(proxyPath)) {
+    const launchResult = await launchAutomationApp(appId, { ...sharedOptions, forceUpdate: false })
+    if (!launchResult.success) {
+      sendJson(clientRes, 503, {
+        ok: false,
+        message: launchResult.error || `Automation app did not start: ${appId}`,
+        logPath: launchResult.logPath,
+      })
+      return
+    }
+    automationApp = getAutomationAppById(appId, sharedOptions) || automationApp
+  }
+
+  const targetUrl = new URL(automationApp.url)
+  const headers = { ...clientReq.headers, host: targetUrl.host }
+  delete headers['accept-encoding']
+
+  await new Promise((resolve) => {
+    const targetReq = http.request({
+      hostname: targetUrl.hostname,
+      port: targetUrl.port,
+      path: proxyPath || '/',
+      method: clientReq.method,
+      headers,
+    }, (targetRes) => {
+      const responseHeaders = {
+        ...targetRes.headers,
+        'access-control-allow-origin': '*',
+        'access-control-allow-methods': 'GET, POST, OPTIONS',
+        'access-control-allow-headers': 'Content-Type, X-Executor-Token, Authorization',
+      }
+      clientRes.writeHead(targetRes.statusCode || 502, responseHeaders)
+      targetRes.pipe(clientRes)
+      targetRes.on('end', resolve)
+      targetRes.on('error', resolve)
+    })
+
+    targetReq.on('error', (error) => {
+      if (!clientRes.headersSent) {
+        sendJson(clientRes, 502, {
+          ok: false,
+          message: `Automation app proxy failed: ${error.message}`,
+          appId,
+        })
+      } else {
+        clientRes.end()
+      }
+      resolve()
+    })
+
+    clientReq.pipe(targetReq)
+  })
+}
+
+function isHealthProxyPath(proxyPath) {
+  const pathname = String(proxyPath || '/').split('?')[0].replace(/\/+$/, '') || '/'
+  return pathname === '/health' || pathname === '/api/health'
 }
 
 async function getHelperUpdateStatus() {

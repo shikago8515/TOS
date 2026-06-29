@@ -12,7 +12,14 @@ import {
   normalizeText,
   resolveTicketOwnerRow,
 } from "./ticket-fields.mjs";
-import { buildTicketOwnerRowsFromTaskCenterTasks } from "./odata-lookups.mjs";
+import {
+  buildTicketOwnerRowsFromTaskCenterTasks,
+  lookupTicketOwnerFields,
+} from "./odata-lookups.mjs";
+import {
+  applyTicketOwnerExcelLookups,
+  enrichTicketOwnerRowsWithExcelLookups,
+} from "./excel-lookups.mjs";
 
 const TASK_CENTER_TILE_SELECTORS = [
   "#__tile32",
@@ -41,6 +48,7 @@ const TASK_ROW_SELECTOR = [
 export async function collectTicketOwnerStatistics(page, options = {}) {
   const timeoutMs = Number(options.navigationTimeoutMs || 45000);
   const maxTicketCount = normalizePositiveInteger(options.maxTicketCount, 200);
+  const excelLookups = options.excelLookups || null;
   const maxAttemptCount = normalizePositiveInteger(
     options.maxTicketAttemptCount,
     Math.max(maxTicketCount * 8, 25)
@@ -55,7 +63,9 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
   let requestDiagnostics = null;
   try {
     await openTaskCenter(page, timeoutMs);
+    await showTicketOwnerProgress(page, "正在筛选任务类型", 10);
     const selectedTaskTypes = await configureTicketOwnerTaskTypeFilter(page, timeoutMs);
+    await showTicketOwnerProgress(page, "正在读取工单列表", 16);
     await pageWait(page, 1200);
 
     const requestRows = requestFirst
@@ -105,25 +115,62 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
       };
     }
 
+    const detailFirstCollection = options.detailFirst !== false
+      ? await collectTicketOwnerRowsFromDetailPages(page, taskCenterTasks, {
+        maxTicketCount,
+        maxAttemptCount,
+        sampleAcrossBranches: options.sampleAcrossBranches === true,
+        timeoutMs,
+        excelLookups,
+      })
+      : null;
+
+    if (detailFirstCollection?.rows?.length > 0) {
+      await showTicketOwnerProgress(page, "正在生成 Excel", 96);
+      requestDiagnostics = requestRecorder.summarize();
+      return {
+        ok: true,
+        rowCount: detailFirstCollection.rows.length,
+        failedTicketCount: detailFirstCollection.failedTickets.length,
+        attemptedTicketCount: detailFirstCollection.attemptedTicketCount,
+        selectedTaskTypes,
+        rows: detailFirstCollection.rows,
+        ticketResults: detailFirstCollection.ticketResults,
+        failedTickets: detailFirstCollection.failedTickets,
+        requestFirst: requestDiagnostics,
+        odataLookup,
+        excelLookup: excelLookups?.summary || null,
+        finalTaskCenterUrl: page.url(),
+        message: `已按 ticket 详情页 A/B/C 规则生成 ${detailFirstCollection.rows.length} 条 Ticket ownership 记录。`,
+      };
+    }
+
     if (odataLookup?.rows?.length > 0) {
+      await showTicketOwnerProgress(page, "正在生成 Excel", 96);
       requestDiagnostics = requestRecorder.summarize();
       return {
         ok: true,
         rowCount: odataLookup.rows.length,
-        failedTicketCount: odataLookup.failedTickets.length,
-        attemptedTicketCount: odataLookup.rows.length + odataLookup.failedTickets.length,
+        failedTicketCount: odataLookup.failedTickets.length + (detailFirstCollection?.failedTickets?.length || 0),
+        attemptedTicketCount: odataLookup.rows.length + odataLookup.failedTickets.length + (detailFirstCollection?.attemptedTicketCount || 0),
         selectedTaskTypes,
-        rows: odataLookup.rows,
+        rows: enrichTicketOwnerRowsWithExcelLookups(odataLookup.rows, excelLookups),
         ticketResults: odataLookup.ticketResults,
-        failedTickets: odataLookup.failedTickets,
+        failedTickets: [
+          ...(detailFirstCollection?.failedTickets || []),
+          ...odataLookup.failedTickets,
+        ],
         requestFirst: requestDiagnostics,
         odataLookup,
+        detailFirst: detailFirstCollection,
+        excelLookup: excelLookups?.summary || null,
         finalTaskCenterUrl: page.url(),
         message: `已通过 Task Center + OData 请求生成 ${odataLookup.rows.length} 条 Ticket ownership 记录。`,
       };
     }
 
     if (requestRows.length > 0) {
+      await showTicketOwnerProgress(page, "正在生成 Excel", 96);
       requestDiagnostics = requestRecorder.summarize();
       return {
         ok: true,
@@ -131,7 +178,7 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
         failedTicketCount: 0,
         attemptedTicketCount: requestRows.length,
         selectedTaskTypes,
-        rows: requestRows,
+        rows: enrichTicketOwnerRowsWithExcelLookups(requestRows, excelLookups),
         ticketResults: requestRows.map((row, index) => ({
           ok: true,
           requestFirst: true,
@@ -146,6 +193,7 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
         })),
         failedTickets: [],
         requestFirst: requestDiagnostics,
+        excelLookup: excelLookups?.summary || null,
         finalTaskCenterUrl: page.url(),
         message: `已通过请求优先模式生成 ${requestRows.length} 条 Ticket ownership 记录。`,
       };
@@ -186,15 +234,31 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
       processedKeys.add(taskKey);
 
       try {
+        await showTicketOwnerProgress(
+          page,
+          `正在打开第 ${processedKeys.size} 个工单`,
+          estimateTicketProgress(rows.length, maxTicketCount)
+        );
         const selected = await focusTaskRow(page, nextTask);
         if (!selected) {
           throw new Error(`没有找到可点击的 Task Center 行：${summarizeTask(nextTask)}`);
         }
 
+        await showTicketOwnerProgress(
+          page,
+          "正在认领并打开详情页",
+          estimateTicketProgress(rows.length, maxTicketCount) + 2
+        );
         const claim = await claimTaskIfAvailable(page);
         const openInApp = await openSelectedTaskInApp(page, timeoutMs);
-        const detail = await readTicketDetail(openInApp.appPage, nextTask, timeoutMs);
-        const ownerRow = resolveTicketOwnerRow(nextTask, detail.fields);
+        await showTicketOwnerProgress(
+          openInApp.appPage,
+          "正在采集 A/B/C 字段",
+          estimateTicketProgress(rows.length, maxTicketCount) + 4
+        );
+        const detail = await readTicketDetail(openInApp.appPage, nextTask, timeoutMs, openInApp.detailFrame);
+        const resolved = await resolveOwnerRowFromDetailPage(openInApp.appPage, nextTask, detail, { excelLookups });
+        const ownerRow = resolved.row;
         ownerRow.warnings = collectOwnerRowWarnings(ownerRow);
         const missingRequiredFields = collectMissingRequiredOwnerFields(ownerRow);
 
@@ -209,6 +273,11 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
         }
 
         rows.push(ownerRow);
+        await showTicketOwnerProgress(
+          page,
+          `已完成 ${rows.length} 条，正在继续下一条`,
+          estimateTicketProgress(rows.length, maxTicketCount)
+        );
         ticketResults.push({
           ok: true,
           taskKey,
@@ -222,6 +291,7 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
           claim,
           openInApp: openInApp.summary,
           detailTextSnippet: detail.rawTextSnippet,
+          lookupAttempts: resolved.lookup?.attempts || [],
         });
 
         await restoreTaskCenter(page, openInApp, taskCenterUrl, timeoutMs);
@@ -241,6 +311,13 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
     }
 
     requestDiagnostics = requestRecorder?.summarize?.() || summarizeTaskCenterRequestRecords([]);
+      await showTicketOwnerProgress(
+        page,
+        rows.length > 0
+          ? "正在生成 Excel"
+          : "没有采集到可导出的 ticket，正在整理诊断信息...",
+        96
+      );
 
     return {
       ok: rows.length > 0,
@@ -252,6 +329,7 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
       ticketResults,
       failedTickets,
       requestFirst: requestDiagnostics,
+      excelLookup: excelLookups?.summary || null,
       finalTaskCenterUrl: page.url(),
       message: rows.length > 0
         ? `已生成 ${rows.length} 条 Ticket ownership 记录。`
@@ -674,8 +752,10 @@ async function collectVisibleTaskRows(page, limit) {
 
       const cells = await collectRowCells(row);
       const extracted = extractTaskInfoFromText(text, cells);
+      const taskTypeFromFirstColumn = extractTaskTypeFromTaskCell(cells[0]);
       const task = {
         ...extracted,
+        taskType: taskTypeFromFirstColumn || extracted.taskType,
         text,
         cells,
         rowIndex: index,
@@ -690,10 +770,241 @@ async function collectVisibleTaskRows(page, limit) {
   return collected;
 }
 
+async function collectTicketOwnerRowsFromDetailPages(page, taskCenterTasks, options = {}) {
+  const maxTicketCount = normalizePositiveInteger(options.maxTicketCount, 200);
+  const maxAttemptCount = normalizePositiveInteger(options.maxAttemptCount, Math.max(maxTicketCount * 8, 25));
+  const timeoutMs = Number(options.timeoutMs || 45000);
+  const rows = [];
+  const ticketResults = [];
+  const failedTickets = [];
+  const processedKeys = new Set();
+  const taskCenterUrl = page.url();
+  const queue = buildDetailTaskQueue(taskCenterTasks, {
+    sampleAcrossBranches: options.sampleAcrossBranches === true,
+  }).slice(0, maxAttemptCount);
+  const plannedCount = Math.max(1, Math.min(queue.length || maxTicketCount, maxTicketCount));
+
+  for (const task of queue) {
+    if (rows.length >= maxTicketCount || processedKeys.size >= maxAttemptCount) {
+      break;
+    }
+
+    const taskKey = buildTaskKey(task);
+    if (processedKeys.has(taskKey)) {
+      continue;
+    }
+    processedKeys.add(taskKey);
+
+    let taskPage = null;
+    let openInApp = null;
+    let openedFromCurrentTaskCenter = false;
+    let claim = { clicked: false, reason: "Task was opened from Task Center uiLink." };
+    try {
+      await showTicketOwnerProgress(
+        page,
+        `正在打开第 ${processedKeys.size} 个工单`,
+        estimateTicketProgress(rows.length, plannedCount)
+      );
+      const focused = await focusTaskRow(page, task);
+      if (!focused && !task.uiLink) {
+        throw new Error(`Task Center API 没有提供可打开的详情链接：${summarizeTask(task)}`);
+      }
+
+      if (focused) {
+        taskPage = page;
+        openedFromCurrentTaskCenter = true;
+        claim = { clicked: false, reason: "Task was selected from the visible Task Center list." };
+      } else {
+      await showTicketOwnerProgress(page, `正在打开第 ${processedKeys.size} 个工单详情`, estimateTicketProgress(rows.length, plannedCount) + 1);
+        taskPage = await openTaskCenterTaskLink(page, task.uiLink, timeoutMs);
+      }
+    await showTicketOwnerProgress(taskPage, "正在认领并打开详情页", estimateTicketProgress(rows.length, plannedCount) + 2);
+      claim = await claimTaskIfAvailable(taskPage);
+      openInApp = await openSelectedTaskInApp(taskPage, timeoutMs);
+      await showTicketOwnerProgress(openInApp.appPage, "正在采集 A/B/C 字段", estimateTicketProgress(rows.length, plannedCount) + 4);
+      const detail = await readTicketDetail(openInApp.appPage, task, timeoutMs, openInApp.detailFrame);
+      const resolved = await resolveOwnerRowFromDetailPage(openInApp.appPage, task, detail, {
+        excelLookups: options.excelLookups || null,
+      });
+      const ownerRow = resolved.row;
+      const missingRequiredFields = collectMissingRequiredOwnerFields(ownerRow);
+
+      if (ownerRow.branchId === "UNKNOWN") {
+        throw new Error(`当前 ticket 详情页不属于 PPT 中 A/B/C 三类：${summarizeTask(task)}`);
+      }
+      if (missingRequiredFields.length > 0) {
+        throw new Error(
+          `ticket 明细缺少关键字段：${missingRequiredFields.join(", ")}。` +
+          `当前页面片段：${detail.rawTextSnippet.slice(0, 500)}`
+        );
+      }
+
+      rows.push(ownerRow);
+      await showTicketOwnerProgress(page, `已完成 ${rows.length} 条，正在继续下一条`, estimateTicketProgress(rows.length, plannedCount));
+      ticketResults.push({
+        ok: true,
+        detailFirst: true,
+        taskKey,
+        branchId: ownerRow.branchId,
+        caseNumber: ownerRow["Case Number"],
+        taskType: ownerRow["Task Type"],
+        request: ownerRow.Request,
+        poNumber: ownerRow["PO Number"],
+        workingNumber: ownerRow["Working Number"],
+        source: resolved.lookup?.source || "ticket-detail-page",
+        warnings: ownerRow.warnings || [],
+        claim,
+        openInApp: openInApp.summary,
+        detailTextSnippet: detail.rawTextSnippet,
+        lookupAttempts: resolved.lookup?.attempts || [],
+      });
+    } catch (error) {
+      failedTickets.push({
+        ok: false,
+        detailFirst: true,
+        taskKey,
+        caseNumber: task.caseNumber,
+        taskType: task.taskType,
+        request: task.request,
+        message: error?.message || "ticket 详情页采集失败。",
+      });
+    } finally {
+      if (openedFromCurrentTaskCenter) {
+        await recoverTaskCenter(page, taskCenterUrl, timeoutMs).catch(() => {});
+      } else {
+        await closeDetailPages(page, taskPage, openInApp);
+      }
+    }
+  }
+
+  return {
+    rows,
+    ticketResults,
+    failedTickets,
+    attemptedTicketCount: processedKeys.size,
+  };
+}
+
+function buildDetailTaskQueue(taskCenterTasks, options = {}) {
+  const candidates = (Array.isArray(taskCenterTasks) ? taskCenterTasks : [])
+    .filter((task) => task.uiLink && isTicketOwnerCandidate(task));
+  if (options.sampleAcrossBranches !== true) {
+    return candidates;
+  }
+
+  const buckets = new Map([
+    ["provide feedback", []],
+    ["review main ticket resolution", []],
+    ["review sub-ticket resolution", []],
+    ["other", []],
+  ]);
+  for (const task of candidates) {
+    const taskType = normalizeComparable(task.taskType || task.subject || "");
+    const key = taskType.includes("provide feedback")
+      ? "provide feedback"
+      : taskType.includes("review main ticket resolution")
+        ? "review main ticket resolution"
+        : taskType.includes("review sub-ticket resolution")
+          ? "review sub-ticket resolution"
+          : "other";
+    buckets.get(key).push(task);
+  }
+
+  const balanced = [];
+  let added = true;
+  while (added) {
+    added = false;
+    for (const bucket of buckets.values()) {
+      const task = bucket.shift();
+      if (task) {
+        balanced.push(task);
+        added = true;
+      }
+    }
+  }
+  return balanced;
+}
+
+async function openTaskCenterTaskLink(page, uiLink, timeoutMs) {
+  const taskPage = await page.context().newPage();
+  await taskPage.goto(uiLink, {
+    waitUntil: "domcontentloaded",
+    timeout: Math.min(Math.max(timeoutMs, 30000), 90000),
+  });
+  await waitForTaskInboxDetailReady(taskPage, timeoutMs);
+  return taskPage;
+}
+
+async function resolveOwnerRowFromDetailPage(page, task, detail, options = {}) {
+  let fields = { ...(detail.fields || {}) };
+  let row = resolveTicketOwnerRow(task, fields);
+  let excelLookup = applyTicketOwnerExcelLookups({
+    task,
+    fields,
+    row,
+    lookups: options.excelLookups || null,
+  });
+  if (excelLookup.changed) {
+    fields = excelLookup.fields;
+    row = resolveTicketOwnerRow(task, fields);
+  }
+  let lookup = null;
+  if (!row["PO Number"] || !row["Working Number"]) {
+    lookup = await lookupTicketOwnerFields(page, task, fields);
+    fields = {
+      ...fields,
+      poNumber: fields.poNumber || lookup.poNumber || "",
+      workingNumber: fields.workingNumber || lookup.workingNumber || "",
+      releaseLookupWorkingNumber: fields.releaseLookupWorkingNumber || lookup.workingNumber || "",
+    };
+    row = resolveTicketOwnerRow(task, fields);
+    excelLookup = applyTicketOwnerExcelLookups({
+      task,
+      fields,
+      row,
+      lookups: options.excelLookups || null,
+    });
+    if (excelLookup.changed) {
+      fields = excelLookup.fields;
+      row = resolveTicketOwnerRow(task, fields);
+    }
+  }
+  const excelAttempts = excelLookup.attempts || [];
+  if (excelAttempts.length > 0) {
+    lookup = {
+      ...(lookup || {}),
+      source: excelLookup.source || lookup?.source || "excel-lookups",
+      attempts: [
+        ...excelAttempts,
+        ...(lookup?.attempts || []),
+      ],
+    };
+  }
+  row.warnings = collectOwnerRowWarnings(row);
+  return { row, fields, lookup };
+}
+
+async function closeDetailPages(taskCenterPage, taskPage, openInApp) {
+  const pages = new Set();
+  if (openInApp?.appPage && openInApp.appPage !== taskCenterPage) {
+    pages.add(openInApp.appPage);
+  }
+  if (taskPage && taskPage !== taskCenterPage) {
+    pages.add(taskPage);
+  }
+  for (const page of pages) {
+    await page.close().catch(() => {});
+  }
+}
+
 async function collectRowCells(row) {
-  const cells = row.locator("[role='gridcell'], td, .sapMListTblCell, .sapMText, .sapMObjectIdentifierTitle, .sapMObjectAttributeText");
+  let cells = row.locator(":scope > [role='gridcell'], :scope > td, :scope > th");
+  let count = await cells.count().catch(() => 0);
+  if (count === 0) {
+    cells = row.locator("[role='gridcell'], td, .sapMListTblCell, .sapMText, .sapMObjectIdentifierTitle, .sapMObjectAttributeText");
+    count = await cells.count().catch(() => 0);
+  }
   const values = [];
-  const count = await cells.count().catch(() => 0);
   for (let index = 0; index < Math.min(count, 24); index += 1) {
     const text = normalizeText(await cells.nth(index).innerText().catch(() => ""));
     if (text && !values.includes(text)) {
@@ -701,6 +1012,20 @@ async function collectRowCells(row) {
     }
   }
   return values;
+}
+
+function extractTaskTypeFromTaskCell(value) {
+  const normalized = normalizeComparable(value);
+  if (normalized.includes("provide feedback")) {
+    return "Provide Feedback";
+  }
+  if (normalized.includes("review main ticket resolution")) {
+    return "Review Main Ticket Resolution";
+  }
+  if (normalized.includes("review sub-ticket resolution")) {
+    return "Review Sub-Ticket Resolution";
+  }
+  return "";
 }
 
 function isTicketOwnerCandidate(task) {
@@ -794,14 +1119,16 @@ async function openSelectedTaskInApp(page, timeoutMs) {
 
   const opened = await waitForOpenInAppTarget(page, beforePages, beforeUrl, timeoutMs);
   await opened.appPage.waitForLoadState("domcontentloaded", { timeout: Math.min(timeoutMs, 20000) }).catch(() => {});
-  await waitForOpenInAppReady(opened.appPage, timeoutMs);
+  const detailFrame = opened.detailFrame || await waitForBusinessDetailReady(opened.appPage, timeoutMs);
 
   return {
     ...opened,
+    detailFrame,
     summary: {
       openedIn: opened.openedIn,
       finalUrl: opened.appPage.url(),
       title: await safeTitle(opened.appPage),
+      frameUrl: typeof detailFrame?.url === "function" ? detailFrame.url() : "",
     },
   };
 }
@@ -811,24 +1138,23 @@ async function waitForOpenInAppTarget(page, beforePages, beforeUrl, timeoutMs) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < Math.min(timeoutMs, 30000)) {
     const livePages = context.pages().filter((candidate) => !candidate.isClosed());
-    const popup = livePages.find((candidate) => {
-      if (candidate === page) {
-        return false;
+    for (const candidate of livePages) {
+      const detailFrame = await findTicketBusinessFrame(candidate);
+      if (detailFrame) {
+        return {
+          appPage: candidate,
+          detailFrame,
+          openedIn: candidate === page
+            ? (page.url() !== beforeUrl ? "same_page_navigation" : "same_page")
+            : "popup",
+        };
       }
-      return !beforePages.includes(candidate) || candidate.url() !== "about:blank";
-    });
-
-    if (popup) {
-      return {
-        appPage: popup,
-        openedIn: "popup",
-      };
     }
 
-    if (page.url() !== beforeUrl || await isPotentialOpenInAppSurface(page)) {
+    if (page.url() !== beforeUrl && await isPotentialOpenInAppSurface(page)) {
       return {
         appPage: page,
-        openedIn: page.url() !== beforeUrl ? "same_page_navigation" : "same_page",
+        openedIn: "same_page_navigation",
       };
     }
 
@@ -836,6 +1162,64 @@ async function waitForOpenInAppTarget(page, beforePages, beforeUrl, timeoutMs) {
   }
 
   throw new Error("Open in App 后没有检测到 ticket 页面。");
+}
+
+async function waitForTaskInboxDetailReady(page, timeoutMs) {
+  const ready = await waitFor(async () => await anyVisible(page, [
+    "#application-taskcenter-display-component---detail--openTaskButton",
+    "button:has-text(\"Open in App\")",
+    "[role='button']:has-text(\"Open in App\")",
+    "button:has-text(\"Claim\")",
+    "button:has-text(\"Release\")",
+  ]), Math.max(timeoutMs, 60000), 500).then(() => true).catch(() => false);
+
+  if (!ready) {
+    const debug = await collectPageDebug(page);
+    throw new Error(`Task Center ticket detail did not become ready. Debug: ${JSON.stringify(debug)}`);
+  }
+  await pageWait(page, 500);
+}
+
+async function waitForBusinessDetailReady(page, timeoutMs) {
+  let detailFrame = null;
+  const ready = await waitFor(async () => {
+    detailFrame = await findTicketBusinessFrame(page);
+    return Boolean(detailFrame);
+  }, Math.max(timeoutMs, 90000), 500).then(() => true).catch(() => false);
+
+  if (!ready || !detailFrame) {
+    const debug = await collectPageDebug(page);
+    throw new Error(`Open in App did not expose a ticket business detail frame. Debug: ${JSON.stringify(debug)}`);
+  }
+  await pageWait(page, 500);
+  return detailFrame;
+}
+
+async function findTicketBusinessFrame(page) {
+  for (const target of listTargets(page)) {
+    const detected = await target.evaluate(() => {
+      const textOf = (element) => String(element?.innerText || element?.textContent || "")
+        .replace(/\s+/g, " ")
+        .trim();
+      const bodyText = textOf(document.body);
+      if (!bodyText) {
+        return false;
+      }
+
+      const hasProvideFeedbackObjectPage = Boolean(document.getElementById("__component1---ObjectPage"))
+        && /Provide Feedback|PO Information|Working No#|BTP Ticket Number/i.test(bodyText);
+      const hasReviewTicketPoDetails = Boolean(
+        document.querySelector("[id*='smartTable.PODetails'], [id*='section.PODetails']")
+      ) && /Review (Main|Sub)-Ticket Resolution|PO Details|PO \/ Contract No#/i.test(bodyText);
+
+      return hasProvideFeedbackObjectPage || hasReviewTicketPoDetails;
+    }).catch(() => false);
+
+    if (detected) {
+      return target;
+    }
+  }
+  return null;
 }
 
 async function waitForOpenInAppReady(page, timeoutMs) {
@@ -861,19 +1245,70 @@ async function waitForOpenInAppReady(page, timeoutMs) {
   await pageWait(page, 500);
 }
 
-async function readTicketDetail(page, task, timeoutMs) {
+async function readTicketDetail(page, task, timeoutMs, detailFrame = null) {
   await page.waitForLoadState("domcontentloaded", { timeout: Math.min(timeoutMs, 20000) }).catch(() => {});
-  const text = await collectTicketDetailText(page);
-  const fields = extractTicketFieldsFromText(text, task);
+  const targetFrame = detailFrame || await waitForBusinessDetailReady(page, timeoutMs);
+  await expandTicketDetailSections(targetFrame);
+  const structured = await waitForStructuredTicketFields(targetFrame, task, timeoutMs);
+  const text = await collectTicketDetailText(page, targetFrame);
+  const textFields = extractTicketFieldsFromText(text, task);
+  const fields = mergeTicketFields(textFields, structured.fields);
   return {
     fields,
+    detailKind: structured.kind,
     rawTextSnippet: normalizeText(text).slice(0, 1000),
   };
 }
 
-async function collectTicketDetailText(page) {
+async function waitForStructuredTicketFields(targetFrame, task, timeoutMs) {
+  let latest = await extractTicketFieldsFromBusinessFrame(targetFrame, task);
+  const startedAt = Date.now();
+  const waitMs = Math.min(Math.max(Number(timeoutMs || 0), 12000), 30000);
+
+  while (!isStructuredTicketFieldsReady(latest, task) && Date.now() - startedAt < waitMs) {
+    await pageWait(targetFrame, 500);
+    await expandTicketDetailSections(targetFrame);
+    latest = await extractTicketFieldsFromBusinessFrame(targetFrame, task);
+  }
+
+  return latest;
+}
+
+function isStructuredTicketFieldsReady(structured, task) {
+  const fields = structured?.fields || {};
+  const taskType = normalizeComparable(fields.taskType || task?.taskType);
+  if (taskType.includes("provide feedback")) {
+    return Boolean(
+      normalizeText(fields.caseNumber) &&
+      normalizeText(fields.request) &&
+      normalizeText(fields.poNumber) &&
+      normalizeText(fields.workingNumber)
+    );
+  }
+
+  if (
+    taskType.includes("review main ticket resolution") ||
+    taskType.includes("review sub-ticket resolution")
+  ) {
+    return Boolean(
+      normalizeText(fields.caseNumber) &&
+      normalizeText(fields.request) &&
+      normalizeText(fields.poNumber)
+    );
+  }
+
+  return Boolean(
+    normalizeText(fields.caseNumber) ||
+    normalizeText(fields.poNumber) ||
+    normalizeText(fields.workingNumber)
+  );
+}
+
+async function collectTicketDetailText(page, detailFrame = null) {
   const textParts = [];
-  const initialText = await readAllBodyText(page);
+  const initialText = detailFrame
+    ? await detailFrame.locator("body").innerText({ timeout: 3000 }).catch(() => "")
+    : await readAllBodyText(page);
   appendUniqueText(textParts, initialText);
 
   const detailSectionLabels = [
@@ -886,15 +1321,256 @@ async function collectTicketDetailText(page) {
   ];
 
   for (const label of detailSectionLabels) {
-    const clicked = await clickFirstVisibleText(page, label);
+    const clicked = detailFrame
+      ? await clickFirstVisibleTextInTarget(detailFrame, label)
+      : await clickFirstVisibleText(page, label);
     if (!clicked) {
       continue;
     }
     await pageWait(page, 700);
-    appendUniqueText(textParts, await readAllBodyText(page));
+    const nextText = detailFrame
+      ? await detailFrame.locator("body").innerText({ timeout: 3000 }).catch(() => "")
+      : await readAllBodyText(page);
+    appendUniqueText(textParts, nextText);
   }
 
   return textParts.join("\n");
+}
+
+async function expandTicketDetailSections(target) {
+  const showMoreSelectors = [
+    "[id$='--seeMore']:has-text(\"Show More\")",
+    "[id*='PODetails--seeMore']:has-text(\"Show More\")",
+    "button:has-text(\"Show More\")",
+  ];
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    let clicked = false;
+    for (const selector of showMoreSelectors) {
+      const button = target.locator(selector).first();
+      if (!await button.isVisible().catch(() => false)) {
+        continue;
+      }
+      await button.scrollIntoViewIfNeeded().catch(() => {});
+      await button.click({ timeout: 5000 }).catch(() => {});
+      clicked = true;
+      break;
+    }
+    if (!clicked) {
+      return;
+    }
+    await pageWait(target, 700);
+  }
+}
+
+async function extractTicketFieldsFromBusinessFrame(target, task) {
+  const extracted = await target.evaluate(() => {
+    const normalize = (value) => String(value ?? "")
+      .replace(/\u00a0/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const cleanValue = (value) => {
+      const normalized = normalize(value);
+      return /^(?:-|–)?\s*Empty Value$/i.test(normalized) ? "" : normalized;
+    };
+    const textOf = (element) => cleanValue(element?.innerText || element?.textContent || element?.value || "");
+    const firstTextByIdSuffix = (root, suffix) => {
+      const selector = `[id$="${suffix.replace(/["\\]/g, "\\$&")}"]`;
+      return textOf(root.querySelector(selector));
+    };
+    const extractAfterLabel = (source, label, nextLabels = []) => {
+      const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const escapedNext = nextLabels.map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      const boundary = escapedNext.length > 0
+        ? `(?=\\s+(?:${escapedNext.join("|")})\\b|$)`
+        : "(?=$)";
+      const match = source.match(new RegExp(`${escapedLabel}\\s*:?\\s*(.+?)${boundary}`, "i"));
+      return cleanValue(match?.[1] || "");
+    };
+    const poRegex = /\b(?:0\d{8,11}|[1-9]\d{8,11})\b/;
+    const workingRegex = /\bRC[A-Z0-9]{6,}\b/i;
+    const firstPo = (value) => normalize(value).match(poRegex)?.[0] || "";
+    const firstWorking = (value) => normalize(value).match(workingRegex)?.[0] || "";
+    const readDomTextById = (id) => textOf(document.getElementById(id));
+    const readControlValue = (id, contextFieldNames = []) => {
+      const core = window.sap?.ui?.getCore?.();
+      const control = core?.byId?.(id);
+      if (control) {
+        for (const method of ["getValue", "getText", "getSelectedKey"]) {
+          try {
+            const value = typeof control[method] === "function" ? cleanValue(control[method]()) : "";
+            if (value) {
+              return value;
+            }
+          } catch {}
+        }
+
+        try {
+          const innerControls = typeof control.getInnerControls === "function" ? control.getInnerControls() : [];
+          for (const innerControl of innerControls || []) {
+            for (const method of ["getValue", "getText", "getSelectedKey"]) {
+              try {
+                const value = typeof innerControl?.[method] === "function" ? cleanValue(innerControl[method]()) : "";
+                if (value) {
+                  return value;
+                }
+              } catch {}
+            }
+          }
+        } catch {}
+
+        try {
+          const contextObject = control.getBindingContext?.()?.getObject?.();
+          for (const fieldName of contextFieldNames) {
+            const value = cleanValue(contextObject?.[fieldName]);
+            if (value) {
+              return value;
+            }
+          }
+        } catch {}
+      }
+
+      return readDomTextById(`${id}-text`) || readDomTextById(id);
+    };
+    const requestTypeLabels = {
+      EHSH: "Early/Hold Shipment",
+      TMC: "Transport Mode Change",
+      MOT: "Transport Mode Change",
+    };
+    const objectPage = document.getElementById("__component1---ObjectPage");
+
+    if (objectPage) {
+      const objectText = textOf(objectPage);
+      const requestContext = window.sap?.ui?.getCore?.()
+        ?.byId?.("__component1---ObjectPage--btpTicketNumberSmartField")
+        ?.getBindingContext?.()
+        ?.getObject?.();
+      const requestTypeCode = cleanValue(requestContext?.requestTypeCode).toUpperCase();
+      return {
+        kind: "provide-feedback-object-page",
+        fields: {
+          caseNumber: readControlValue("__component1---ObjectPage--btpTicketNumberSmartField", [
+            "BTPTicketNumber",
+          ]),
+          taskType: readDomTextById("__title0-inner")
+            || (objectText.includes("Provide Feedback") ? "Provide Feedback" : ""),
+          request: readDomTextById("__component1---ObjectPage--titleExpandedHeading-inner")
+            || readDomTextById("__component1---ObjectPage--titleSnappedHeading-inner")
+            || requestTypeLabels[requestTypeCode]
+            || cleanValue(requestContext?.requestCategoryLabel)
+            || cleanValue(requestContext?.RequestReasonLabel),
+          poNumber: readControlValue("__component1---ObjectPage--purchaseOrderNumberSmartField", [
+            "purchaseOrderNumber",
+          ]),
+          workingNumber: readControlValue("__component1---ObjectPage--workingNumberSmartField", [
+            "workingNumber",
+          ]),
+          factoryCode: readControlValue("__component1---ObjectPage--factoryCodeSmartField", [
+            "factoryCode",
+          ]),
+        },
+      };
+    }
+
+    const root = document.querySelector("#__component1---App, [id$='--page'], body") || document.body;
+    const rootText = textOf(root);
+    const poDetails = document.querySelector("[id*='smartTable.PODetails']")
+      || document.querySelector("[id*='section.PODetails']");
+    const poDetailsText = textOf(poDetails);
+    let poNumber = "";
+    let workingNumber = "";
+    let factoryCode = "";
+
+    if (poDetails) {
+      const headers = [...poDetails.querySelectorAll("th, td[role='columnheader'], [role='columnheader']")]
+        .map((header) => textOf(header))
+        .filter(Boolean);
+      const poIndex = headers.findIndex((header) => /PO\s*\/\s*Contract\s*No#?|PO\s*(?:No|Number)#?/i.test(header));
+      const workingIndex = headers.findIndex((header) => /Working\s*(?:No|Number)#?/i.test(header));
+      const factoryIndex = headers.findIndex((header) => /Factory/i.test(header));
+      const rows = [...poDetails.querySelectorAll("tr[role='row'], tr.sapUiTableRow, tr.sapMListTblRow, [role='row']")];
+
+      for (const row of rows) {
+        const rowText = textOf(row);
+        if (!rowText || /PO \/ Contract No#|Aggregator|Cost Validation/i.test(rowText)) {
+          continue;
+        }
+
+        const cells = [...row.querySelectorAll("td, [role='gridcell'], .sapMListTblCell")]
+          .map((cell) => textOf(cell));
+        if (poIndex >= 0 && cells[poIndex]) {
+          poNumber = firstPo(cells[poIndex]);
+        }
+        poNumber = poNumber || firstPo(cells.join(" ")) || firstPo(rowText);
+        if (workingIndex >= 0 && cells[workingIndex]) {
+          workingNumber = firstWorking(cells[workingIndex]);
+        }
+        if (factoryIndex >= 0 && cells[factoryIndex]) {
+          factoryCode = cleanValue(cells[factoryIndex]);
+        }
+        workingNumber = workingNumber || firstWorking(rowText);
+        if (poNumber || workingNumber) {
+          break;
+        }
+      }
+
+      poNumber = poNumber || firstPo(poDetailsText);
+      workingNumber = workingNumber || firstWorking(poDetailsText);
+    }
+
+    const taskType = rootText.match(/\bReview Main Ticket Resolution\b/i)?.[0]
+      || rootText.match(/\bReview Sub-Ticket Resolution\b/i)?.[0]
+      || "";
+    const requestLabels = [
+      "Request Category",
+      "Subject",
+      "Description",
+      "PO Details",
+      "Comments",
+      "Related Documents",
+      "Main Ticket Tracking",
+      "Sub-Ticket Tracking",
+    ];
+
+    return {
+      kind: "review-ticket-po-details",
+      fields: {
+        caseNumber: rootText.match(/\bCase Number:?\s*([A-Z0-9-]+)/i)?.[1] || "",
+        taskType,
+        request: extractAfterLabel(rootText, "Request Area", requestLabels)
+          || extractAfterLabel(rootText, "Request Category", requestLabels),
+        poNumber,
+        workingNumber,
+        factoryCode,
+      },
+    };
+  }).catch(() => ({ kind: "unknown", fields: {} }));
+
+  const fields = extracted?.fields || {};
+  return {
+    kind: extracted?.kind || "unknown",
+    fields: {
+      caseNumber: fields.caseNumber || "",
+      taskType: fields.taskType || task?.taskType || "",
+      request: fields.request || "",
+      poNumber: fields.poNumber || "",
+      workingNumber: fields.workingNumber || "",
+      factoryCode: fields.factoryCode || "",
+      factory: fields.factory || fields.factoryCode || "",
+      rawTextSnippet: "",
+    },
+  };
+}
+
+function mergeTicketFields(baseFields, preferredFields) {
+  const merged = { ...(baseFields || {}) };
+  for (const [key, value] of Object.entries(preferredFields || {})) {
+    const normalized = normalizeText(value);
+    if (normalized) {
+      merged[key] = normalized;
+    }
+  }
+  return merged;
 }
 
 function appendUniqueText(textParts, text) {
@@ -981,6 +1657,24 @@ async function readAllBodyText(page) {
   return textParts.join("\n");
 }
 
+async function clickFirstVisibleTextInTarget(target, label) {
+  const candidates = [
+    target.getByText(label, { exact: true }).first(),
+    target.locator(`[aria-label="${cssEscape(label)}"]`).first(),
+    target.locator(`[title="${cssEscape(label)}"]`).first(),
+  ];
+
+  for (const candidate of candidates) {
+    if (!await candidate.isVisible().catch(() => false)) {
+      continue;
+    }
+    await candidate.scrollIntoViewIfNeeded().catch(() => {});
+    await candidate.click({ timeout: 5000 }).catch(() => {});
+    return true;
+  }
+  return false;
+}
+
 async function clickFirstVisibleText(page, label) {
   for (const target of listTargets(page)) {
     const candidates = [
@@ -1010,7 +1704,7 @@ async function isPotentialOpenInAppSurface(page) {
     url.includes("WorkflowTask-DisplayMyInbox") ||
     url.includes("detail_deep")
   ) {
-    return true;
+    return Boolean(await findTicketBusinessFrame(page));
   }
   if (url.includes("taskcenter-display")) {
     return false;
@@ -1049,6 +1743,12 @@ function collectOwnerRowWarnings(row) {
   if (!row["Working Number"]) {
     warnings.push("Working Number 为空");
   }
+  if (!row.Factory) {
+    warnings.push("Factory 为空");
+  }
+  if (!row.Merch) {
+    warnings.push("Merch 为空");
+  }
   if (!row.Request) {
     warnings.push("Request 为空");
   }
@@ -1061,7 +1761,6 @@ function collectMissingRequiredOwnerFields(row) {
     "Task Type",
     "Request",
     "PO Number",
-    "Working Number",
   ].filter((field) => !normalizeText(row?.[field]));
 }
 
@@ -1161,6 +1860,92 @@ async function clickFirstVisible(page, selectors) {
 
 async function waitForAny(page, selectors, timeoutMs) {
   await waitFor(async () => await anyVisible(page, selectors), timeoutMs, 250);
+}
+
+function estimateTicketProgress(completedCount, totalCount) {
+  const total = Math.max(1, Number(totalCount) || 1);
+  const completed = Math.max(0, Number(completedCount) || 0);
+  return Math.min(94, 18 + Math.round((completed / total) * 74));
+}
+
+async function showTicketOwnerProgress(target, message, percent = 0) {
+  if (!target || typeof target.evaluate !== "function") {
+    return;
+  }
+  const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  const targets = [target];
+  if (typeof target.frames === "function") {
+    targets.push(...target.frames());
+  }
+
+  await Promise.all(targets.map((progressTarget) => injectTicketOwnerProgress(progressTarget, message, safePercent)));
+}
+
+async function injectTicketOwnerProgress(target, message, percent) {
+  await target.evaluate(({ message: progressMessage, percent: progressPercent }) => {
+    const id = "tos-ticket-owner-progress";
+    let root = document.getElementById(id);
+    if (!root) {
+      root = document.createElement("div");
+      root.id = id;
+      root.setAttribute("role", "status");
+      root.setAttribute("aria-live", "polite");
+      root.setAttribute("data-tos-ticket-owner-progress", "true");
+      root.style.cssText = [
+        "position:fixed",
+        "right:18px",
+        "bottom:18px",
+        "z-index:2147483647",
+        "width:340px",
+        "max-width:calc(100vw - 36px)",
+        "box-sizing:border-box",
+        "padding:14px 16px",
+        "border:2px solid #0ea5e9",
+        "border-radius:10px",
+        "background:#eff6ff",
+        "color:#111827",
+        "box-shadow:0 18px 48px rgba(15,23,42,.28)",
+        "font-family:Segoe UI,Microsoft YaHei,Arial,sans-serif",
+        "font-size:14px",
+        "line-height:1.45",
+        "pointer-events:none",
+      ].join(";");
+
+      const title = document.createElement("div");
+      title.style.cssText = "display:flex;align-items:center;gap:8px;font-size:15px;font-weight:800;margin-bottom:8px;";
+      const dot = document.createElement("span");
+      dot.style.cssText = "width:9px;height:9px;border-radius:999px;background:#10b981;box-shadow:0 0 0 5px rgba(16,185,129,.16);flex:0 0 auto;";
+      const titleText = document.createElement("span");
+      titleText.textContent = "TOS 正在统计工单归属";
+      title.append(dot, titleText);
+
+      const messageNode = document.createElement("div");
+      messageNode.setAttribute("data-tos-progress-message", "true");
+      messageNode.style.cssText = "font-size:13px;color:#334155;margin-bottom:10px;word-break:break-word;";
+
+      const track = document.createElement("div");
+      track.style.cssText = "height:7px;border-radius:999px;background:#dbeafe;overflow:hidden;";
+      const bar = document.createElement("div");
+      bar.setAttribute("data-tos-progress-bar", "true");
+      bar.style.cssText = "height:100%;width:0%;background:#0284c7;border-radius:999px;transition:width .28s ease;";
+      track.appendChild(bar);
+
+      root.append(title, messageNode, track);
+      document.documentElement.appendChild(root);
+    }
+
+    const messageNode = root.querySelector("[data-tos-progress-message]");
+    const barNode = root.querySelector("[data-tos-progress-bar]");
+    if (messageNode) {
+      messageNode.textContent = progressMessage;
+    }
+    if (barNode) {
+      barNode.style.width = `${progressPercent}%`;
+    }
+  }, {
+    message: String(message || ""),
+    percent,
+  }).catch(() => {});
 }
 
 async function waitFor(predicate, timeoutMs, intervalMs) {

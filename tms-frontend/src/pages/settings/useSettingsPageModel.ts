@@ -23,6 +23,7 @@ import {
 } from './settingsApi'
 import type { ServerInstallerVersions } from './settingsApi'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
+import { showAppAlert } from '../../shared/ui/appAlert'
 import {
   openAutomationHelperDownload,
   openAutomationHelperPanel,
@@ -257,6 +258,13 @@ export function useSettingsPageModel() {
   }
   
   async function handleCheck(): Promise<void> {
+    if (!hasDesktopUpdateSupport.value) {
+      await loadSettings()
+      messageTone.value = 'success'
+      message.value = '运行参数已刷新，浏览器模式不支持桌面增量更新检测'
+      return
+    }
+
     await runUpdateAction('check', checkForUpdates)
   }
   
@@ -282,7 +290,7 @@ export function useSettingsPageModel() {
       message.value = '已打开 TOS 应用安装包下载。'
     } catch (error) {
       messageTone.value = 'error'
-      message.value = readErrorMessage(error, 'TOS 应用安装包下载失败')
+      await showInstallerDownloadError(error, 'TOS 应用安装包下载失败')
     } finally {
       desktopInstallerDownloading.value = false
     }
@@ -298,7 +306,7 @@ export function useSettingsPageModel() {
       message.value = '已打开 TOS 完整安装包下载。'
     } catch (error) {
       messageTone.value = 'error'
-      message.value = readErrorMessage(error, 'TOS 完整安装包下载失败')
+      await showInstallerDownloadError(error, 'TOS 完整安装包下载失败')
     } finally {
       desktopFullInstallerDownloading.value = false
     }
@@ -314,10 +322,20 @@ export function useSettingsPageModel() {
       message.value = '已打开自动化助手安装包下载。'
     } catch (error) {
       messageTone.value = 'error'
-      message.value = readErrorMessage(error, '自动化助手安装包下载失败')
+      await showInstallerDownloadError(error, '自动化助手安装包下载失败')
     } finally {
       helperDownloading.value = false
     }
+  }
+
+  async function showInstallerDownloadError(error: unknown, fallback: string): Promise<void> {
+    const errorMessage = readErrorMessage(error, fallback)
+    message.value = errorMessage
+    await showAppAlert(errorMessage, {
+      title: '安装包下载失败',
+      tone: 'error',
+      confirmText: '我知道了',
+    })
   }
 
   async function handleHelperPanelOpen(): Promise<void> {
@@ -331,6 +349,50 @@ export function useSettingsPageModel() {
       messageTone.value = 'error'
       message.value = readErrorMessage(error, '打开本机自动化助手更新面板失败')
     }
+  }
+
+  function handleExportRuntimeParams(): void {
+    const exportedAt = new Date().toISOString()
+    const exportPayload = {
+      exportedAt,
+      app: {
+        currentVersion: currentVersion.value,
+        latestVersion: latestVersion.value,
+        backendVersion: backendVersion.value,
+        runMode: runModeLabel.value,
+        isPackaged: status.value?.isPackaged ?? versionInfo.value.isPackaged,
+      },
+      update: {
+        status: status.value?.status ?? 'idle',
+        statusLabel: statusLabel.value,
+        updateAvailable: status.value?.updateAvailable ?? false,
+        checking: status.value?.checking ?? false,
+        downloading: status.value?.downloading ?? false,
+        downloaded: status.value?.downloaded ?? false,
+        feedUrl: feedUrlText.value,
+        feedUrlSource: status.value?.feedUrlSource ?? '',
+        feedUrlSourceLabel: feedUrlSourceLabel.value,
+        error: status.value?.error ?? '',
+      },
+      installers: serverInstallerPackageRows.value.map((packageRow) => ({
+        key: packageRow.key,
+        label: packageRow.label,
+        version: packageRow.versionLabel,
+        filename: packageRow.filename,
+        source: packageRow.source,
+      })),
+      environment: {
+        hasDesktopUpdateSupport: hasDesktopUpdateSupport.value,
+        userAgent: typeof navigator === 'undefined' ? '' : navigator.userAgent,
+      },
+    }
+
+    downloadJsonFile(
+      exportPayload,
+      `tos-runtime-params-${exportedAt.replace(/[:.]/g, '-')}.json`,
+    )
+    messageTone.value = 'success'
+    message.value = '运行参数已导出'
   }
   
   async function runUpdateAction(
@@ -409,6 +471,25 @@ export function useSettingsPageModel() {
     }
   
     return fallback
+  }
+
+  function downloadJsonFile(payload: unknown, filename: string): void {
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json;charset=utf-8',
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.style.display = 'none'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
   }
   
   function formatBytes(value: number): string {
@@ -494,6 +575,7 @@ export function useSettingsPageModel() {
     handleDesktopFullInstallerDownload,
     handleDesktopInstallerDownload,
     handleDownload,
+    handleExportRuntimeParams,
     handleHelperDownload,
     handleHelperPanelOpen,
     handleInstall,

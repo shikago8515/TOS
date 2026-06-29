@@ -11,10 +11,10 @@
           <span>{{ text('探索我们每一次的演进：功能迭代、页面优化与系统修复。') }}</span>
         </div>
       </div>
-      <button class="ru-btn ru-btn--primary" type="button" :disabled="loading" @click="loadRecords">
+      <el-button class="ru-btn ru-btn--primary" :disabled="loading" :loading="loading" @click="loadRecords">
         <AppIcon name="refresh-cw" :class="{ 'ru-spin': loading }" />
         {{ loading ? text('同步中') : text('刷新记录') }}
-      </button>
+      </el-button>
     </header>
 
     <div class="ru-stats">
@@ -42,18 +42,17 @@
     </div>
 
     <div class="ru-toolbar">
-      <button
+      <el-button
         v-for="filter in filters"
         :key="filter.value"
         class="ru-filter"
         :class="{ 'is-active': activeFilter === filter.value }"
-        type="button"
         @click="activeFilter = filter.value"
       >
         <AppIcon :name="filter.icon" />
         <span>{{ text(filter.label) }}</span>
         <em v-if="filterCount(filter.value) > 0">{{ filterCount(filter.value) }}</em>
-      </button>
+      </el-button>
     </div>
 
     <div v-if="usingBundledFallback" class="ru-source-note">
@@ -65,9 +64,9 @@
       <div v-if="errorMessage" class="ru-alert">
         <div class="ru-alert__content">
           <AppIcon name="alert-triangle" />
-          <span>{{ errorMessage }}</span>
+          <span>{{ text(errorMessage) }}</span>
         </div>
-        <button type="button" class="ru-btn ru-btn--danger" @click="loadRecords">{{ text('重新尝试') }}</button>
+        <el-button class="ru-btn ru-btn--danger" @click="loadRecords">{{ text('重新尝试') }}</el-button>
       </div>
     </transition>
 
@@ -104,7 +103,7 @@
 
         <div class="ru-record__body">
           <div class="ru-record__header">
-            <h2 class="ru-record__title">{{ record.title }}</h2>
+            <h2 class="ru-record__title">{{ text(record.title) }}</h2>
             <div class="ru-record__meta">
               <span class="ru-badge" :class="`ru-badge--${normalizeCategory(record.category)}`">
                 {{ text(categoryLabel(record.category)) }}
@@ -114,12 +113,14 @@
             </div>
           </div>
 
-          <p class="ru-record__desc">{{ record.description || text('本次更新带来了一些性能提升与细节优化。') }}</p>
+          <p class="ru-record__desc">
+            {{ record.description ? text(record.description) : text('本次更新带来了一些性能提升与细节优化。') }}
+          </p>
 
           <footer class="ru-record__foot">
             <span class="ru-page-chip">
               <AppIcon name="monitor" />
-              {{ record.pageName || text('全局通用') }}
+              {{ record.pageName ? text(record.pageName) : text('全局通用') }}
             </span>
             <code v-if="record.pagePath" class="ru-path">{{ record.pagePath }}</code>
           </footer>
@@ -333,6 +334,12 @@ function formatDate(value: string): string {
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.ru-btn :deep(.el-button__content) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .ru-btn:disabled {
   cursor: not-allowed;
   opacity: 0.7;
@@ -440,6 +447,12 @@ function formatDate(value: string): string {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.ru-filter :deep(.el-button__content) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .ru-filter:hover {

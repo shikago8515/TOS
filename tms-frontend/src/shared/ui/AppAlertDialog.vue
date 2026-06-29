@@ -22,8 +22,8 @@
           </div>
 
           <div class="app-alert__content">
-            <h2 :id="titleId" class="app-alert__title">{{ current.title }}</h2>
-            <p :id="messageId" class="app-alert__message">{{ current.message }}</p>
+            <h2 :id="titleId" class="app-alert__title">{{ text(current.title) }}</h2>
+            <p :id="messageId" class="app-alert__message">{{ text(current.message) }}</p>
           </div>
 
           <footer class="app-alert__actions">
@@ -33,10 +33,10 @@
               type="button"
               @click="cancelAppAlert"
             >
-              {{ current.cancelText }}
+              {{ text(current.cancelText) }}
             </button>
             <button ref="confirmRef" class="app-alert__confirm" type="button" @click="confirmAppAlert">
-              {{ current.confirmText }}
+              {{ text(current.confirmText) }}
             </button>
           </footer>
         </section>
@@ -50,8 +50,10 @@ import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
 
 import AppIcon from './AppIcon.vue'
 import { confirmAppAlert, cancelAppAlert, useAppAlertState } from './appAlert'
+import { useAppLanguage } from '../i18n/appLanguage'
 
 const state = useAppAlertState()
+const { text } = useAppLanguage()
 const current = computed(() => state.current)
 const dialogRef = ref<HTMLElement | null>(null)
 const confirmRef = ref<HTMLButtonElement | null>(null)

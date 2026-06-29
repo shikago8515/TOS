@@ -1147,8 +1147,12 @@ async function getCoreAutomationApps() {
   return automationLauncherCore.getAutomationApps(getCoreAutomationOptions());
 }
 
-async function launchCoreAutomationApp(appId) {
-  const result = await automationLauncherCore.launchAutomationApp(appId, getCoreAutomationOptions());
+async function launchCoreAutomationApp(appId, options = {}) {
+  const launchOptions = options && typeof options === 'object' ? options : {};
+  const result = await automationLauncherCore.launchAutomationApp(appId, {
+    ...getCoreAutomationOptions(),
+    forceUpdate: Boolean(launchOptions.forceUpdate),
+  });
   if (!result.success && /^Unknown automation app:/i.test(String(result.error || ''))) {
     const registry = loadAutomationAppRegistry();
     const knownApps = registry.map((item) => item.id).filter(Boolean).join(', ') || '(none)';
@@ -1334,9 +1338,9 @@ async function getAutomationLauncherApps() {
   return Array.isArray(payload.apps) ? payload.apps : [];
 }
 
-async function launchAutomationLauncherApp(appId) {
+async function launchAutomationLauncherApp(appId, options = {}) {
   await ensureAutomationLauncher();
-  return requestLauncherJson('POST', `/api/apps/${encodeURIComponent(appId)}/start`);
+  return requestLauncherJson('POST', `/api/apps/${encodeURIComponent(appId)}/start`, options);
 }
 
 async function stopAutomationLauncherApp(appId) {
@@ -1951,13 +1955,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle('get-automation-apps', () => getCoreAutomationApps());
 
-  ipcMain.handle('launch-automation-app', async (_event, appId) => {
+  ipcMain.handle('launch-automation-app', async (_event, appId, options = {}) => {
     if (typeof appId !== 'string' || !appId) {
       return { success: false, error: 'Invalid automation app id' };
     }
-    writeDiagnosticEvent('web-automation', 'launch-start', { appId });
-    const result = await launchCoreAutomationApp(appId);
-    writeDiagnosticEvent('web-automation', result.success ? 'launch-success' : 'launch-failure', { appId, result });
+    const launchOptions = options && typeof options === 'object' ? options : {};
+    writeDiagnosticEvent('web-automation', 'launch-start', { appId, forceUpdate: Boolean(launchOptions.forceUpdate) });
+    const result = await launchCoreAutomationApp(appId, launchOptions);
+    writeDiagnosticEvent('web-automation', result.success ? 'launch-success' : 'launch-failure', { appId, forceUpdate: Boolean(launchOptions.forceUpdate), result });
     return result;
   });
 

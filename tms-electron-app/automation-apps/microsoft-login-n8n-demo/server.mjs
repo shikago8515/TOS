@@ -24,7 +24,7 @@ const runtimeConfigPath = path.join(runtimeDataRoot, "executor.config.local.json
 const artifactsDir = path.join(runtimeDataRoot, "run-artifacts");
 const uploadPagePath = path.join(appRoot, "demo-upload.html");
 
-const sharedExecutorRoot = path.resolve(appRoot, "..", "playwright-console");
+const sharedExecutorRoot = resolveSharedExecutorRoot();
 const sharedPackageJson = path.join(sharedExecutorRoot, "package.json");
 const requireShared = createRequire(sharedPackageJson);
 const { chromium, firefox, webkit } = requireShared("playwright");
@@ -32,6 +32,30 @@ const xlsx = requireShared("xlsx");
 
 const browserEngines = { chromium, firefox, webkit };
 const VISIBLE_CHROMIUM_WINDOW_ARGS = ["--start-maximized", "--window-position=0,0"];
+
+function resolveSharedExecutorRoot() {
+  const candidates = [
+    process.env.TMS_AUTOMATION_SHARED_EXECUTOR_ROOT,
+    process.env.TMS_AUTOMATION_APP_ROOT
+      ? path.join(process.env.TMS_AUTOMATION_APP_ROOT, "playwright-console")
+      : "",
+    path.resolve(appRoot, "..", "playwright-console"),
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = String(candidate || "").trim();
+    if (!normalized) {
+      continue;
+    }
+    const packageJsonPath = path.join(path.resolve(normalized), "package.json");
+    if (existsSync(packageJsonPath)) {
+      return path.resolve(normalized);
+    }
+  }
+
+  return path.resolve(appRoot, "..", "playwright-console");
+}
+
 await ensureRuntimeFiles();
 const config = await loadConfig();
 
@@ -680,11 +704,27 @@ async function runLogin(rows, options) {
 }
 
 async function fillMicrosoftLogin(page, username, password, options) {
+  const signedInSelectors = [
+    "#__tile32",
+    "a[href*='taskcenter-display']",
+    "[id*='inboxTable']",
+    "text=Task Center",
+  ];
+
   await waitForAny(page, [
     "input[name='loginfmt']",
     "input[name='passwd']",
     "#idRichContext_DisplaySign",
+    ...signedInSelectors,
   ], options.navigationTimeoutMs);
+
+  if (
+    await anyVisible(page, signedInSelectors) &&
+    !await isVisible(page, "input[name='loginfmt']") &&
+    !await isVisible(page, "input[name='passwd']")
+  ) {
+    return;
+  }
 
   if (await isVisible(page, "input[name='loginfmt']")) {
     await page.fill("input[name='loginfmt']", username);
@@ -2788,13 +2828,23 @@ function buildHealthPayload() {
   const helperVersion = String(process.env.TOS_AUTOMATION_HELPER_VERSION || "").trim();
   const moduleVersion = String(process.env.TOS_AUTOMATION_MODULE_VERSION || "").trim();
   const moduleSource = String(process.env.TOS_AUTOMATION_MODULE_SOURCE || "bundled").trim();
+  const moduleSha256 = String(process.env.TOS_AUTOMATION_MODULE_SHA256 || "").trim();
   return {
     ok: true,
     version: helperVersion,
     helperVersion,
     moduleVersion,
     moduleSource,
-    moduleSha256: String(process.env.TOS_AUTOMATION_MODULE_SHA256 || "").trim(),
+    moduleSha256,
+    capabilities: {
+      routes: [
+        "/run-login-file",
+        "/api/run-login-file",
+        "/run-ticket-owner-statistics",
+        "/api/run-ticket-owner-statistics",
+      ],
+      modules: ["sap-btp-login", "ticket-owner-statistics"],
+    },
     busy: Boolean(activeRun),
     activeRun,
     lastRun,
@@ -2809,6 +2859,7 @@ function buildHealthPayload() {
       staySignedInAction: config.staySignedInAction,
       moduleVersion,
       moduleSource,
+      moduleSha256,
       loginUrlPreview: previewUrl(config.loginUrl),
       credentialsSource: "tos-backend-database",
     },

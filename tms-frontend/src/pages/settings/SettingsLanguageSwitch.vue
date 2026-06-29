@@ -33,7 +33,7 @@ import AppIcon from '../../shared/ui/AppIcon.vue'
 
 const rootRef = ref<HTMLElement | null>(null)
 const open = ref(false)
-const { currentLanguage, languageOptions } = useAppLanguage()
+const { currentLanguage, languageOptions, setAppLanguage } = useAppLanguage()
 
 const currentLangLabel = computed(() => {
   return languageOptions.value.find((option) => option.value === currentLanguage.value)?.label ?? currentLanguage.value
@@ -52,7 +52,7 @@ function toggleOpen(): void {
 }
 
 function selectLanguage(value: 'zh-CN' | 'en-US'): void {
-  currentLanguage.value = value
+  setAppLanguage(value)
   open.value = false
 }
 

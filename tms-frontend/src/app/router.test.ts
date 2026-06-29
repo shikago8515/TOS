@@ -9,6 +9,7 @@ import JasonPdfReorderPage from '../pages/jason-pdf-reorder/JasonPdfReorderPage.
 import JaneInfornexusPage from '../pages/jane-infornexus/JaneInfornexusPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
 import ReleaseUpdatesPage from '../pages/release-updates/ReleaseUpdatesPage.vue'
+import PackingListAutoDownloadPage from '../pages/packing-list-auto-download/PackingListAutoDownloadPage.vue'
 import PoAutoDownloadPage from '../pages/po-auto-download/PoAutoDownloadPage.vue'
 import ShippingAutomationPage from '../pages/shipping-automation/ShippingAutomationPage.vue'
 import TcInvAutomationPage from '../pages/tc-inv-automation/TcInvAutomationPage.vue'
@@ -94,6 +95,17 @@ describe('router', () => {
 
     expect(route?.name).toBe('web-automation-scenario-po-auto-download')
     expect(route?.components?.default).toBe(PoAutoDownloadPage)
+    expect(route?.components?.default).not.toBe(RoutePlaceholder)
+  })
+
+  it('routes packing list auto download to its standalone scenario page component', async () => {
+    const { router } = await import('./router')
+    const route = router
+      .getRoutes()
+      .find((entry) => entry.path === '/web-automation/scenarios/packing-list-auto-download')
+
+    expect(route?.name).toBe('web-automation-scenario-packing-list-auto-download')
+    expect(route?.components?.default).toBe(PackingListAutoDownloadPage)
     expect(route?.components?.default).not.toBe(RoutePlaceholder)
   })
 

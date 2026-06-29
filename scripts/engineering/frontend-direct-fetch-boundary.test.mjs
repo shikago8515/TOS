@@ -16,6 +16,7 @@ const allowedDirectRequestFiles = new Set([
   'tms-frontend/src/pages/web-automation/webAutomationApi.ts',
   'tms-frontend/src/pages/web-automation/WebAutomationScenarioPage.vue',
   'tms-frontend/src/pages/infornexus-auto-add/components/InfornexusAutoAddWorkspace.vue',
+  'tms-frontend/src/pages/packing-list-auto-download/components/PackingListAutoDownloadWorkspace.vue',
   'tms-frontend/src/pages/po-auto-download/components/PoAutoDownloadWorkspace.vue',
   'tms-frontend/src/pages/shipping-automation/components/ShippingAutomationWorkspace.vue',
   'tms-frontend/src/pages/shipping-automation-2/components/ShippingAutomation2Workspace.vue',

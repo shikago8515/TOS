@@ -1,9 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { AutomationAppInfo } from '../../types/electronApi'
 import {
+  downloadAutomationRunFile,
   formatAutomationLauncherErrorMessage,
   getAutomationHelperUpdateMessage,
+  isLocalExecutorBusy,
+  launchAutomationConsole,
   minimumAutomationHelperVersion,
   openInfornexusAutoAddSearchPage,
 } from './webAutomationApi'
@@ -155,6 +158,114 @@ describe('webAutomationApi', () => {
 
     expect(message).toContain(compatibleHelperVersion)
     expect(message).toContain('0.9.8-beta.3.27')
+  })
+
+  it('passes forceUpdate to the desktop automation launcher', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const launchAutomationApp = vi.fn().mockResolvedValue({ success: true, url: 'http://127.0.0.1:3002' })
+    const recordDiagnosticEvent = vi.fn().mockResolvedValue({ success: true })
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        electronAPI: {
+          launchAutomationApp,
+          recordDiagnosticEvent,
+        },
+      },
+    })
+
+    try {
+      const result = await launchAutomationConsole('microsoft-login-n8n-demo', { forceUpdate: true })
+
+      expect(result.success).toBe(true)
+      expect(launchAutomationApp).toHaveBeenCalledWith('microsoft-login-n8n-demo', { forceUpdate: true })
+      expect(recordDiagnosticEvent).toHaveBeenCalled()
+    } finally {
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
+  })
+
+  it('defaults automation launcher starts to force module update', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const launchAutomationApp = vi.fn().mockResolvedValue({ success: true, url: 'http://127.0.0.1:3002' })
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        electronAPI: {
+          launchAutomationApp,
+          recordDiagnosticEvent: vi.fn().mockResolvedValue({ success: true }),
+        },
+      },
+    })
+
+    try {
+      await launchAutomationConsole('shipping-automation-demo')
+
+      expect(launchAutomationApp).toHaveBeenCalledWith('shipping-automation-demo', { forceUpdate: true })
+    } finally {
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
+  })
+
+  it('detects local executor busy states', () => {
+    expect(isLocalExecutorBusy(null)).toBe(false)
+    expect(isLocalExecutorBusy({ ok: true, activeRunCount: 1 })).toBe(true)
+    expect(isLocalExecutorBusy({ ok: true, busy: true })).toBe(true)
+    expect(isLocalExecutorBusy({ ok: true, activeRuns: [{}] })).toBe(true)
+  })
+
+  it('surfaces run file download errors from the backend response', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const originalFetch = globalThis.fetch
+    const requests: string[] = []
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location: { pathname: '/' },
+      },
+    })
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      requests.push(String(input))
+      return new Response(JSON.stringify({
+        detail: '执行文件暂时无法下载，请联系管理员检查 MinIO 存储连接。',
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 503,
+      })
+    }) as typeof fetch
+
+    try {
+      await expect(downloadAutomationRunFile({
+        bucket: 'tos-run-files',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        downloadPath: '/api/automation/run-files/172/download',
+        fileRole: 'result_excel',
+        fileSize: 100,
+        id: 172,
+        objectKey: 'runs/result.xlsx',
+        originalFilename: 'result.xlsx',
+        runId: 'run-1',
+        sha256: 'abc123',
+        createdAt: '2026-06-26T00:00:00.000Z',
+      })).rejects.toThrow('执行文件暂时无法下载，请联系管理员检查 MinIO 存储连接。')
+      expect(requests).toHaveLength(1)
+      expect(requests[0]).toContain('/api/automation/run-files/172/download')
+    } finally {
+      globalThis.fetch = originalFetch
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
   })
 })
 

@@ -57,6 +57,7 @@ const KNOWN_REQUESTS = [
   "PO Cancellation",
   "Transport Mode Change",
   "Partial Shipment",
+  "Early/Hold Shipment",
   "Early / Hold Shipment",
   "Preferential Document",
   "Short Shipment (Shortage Management)",
@@ -119,11 +120,14 @@ export function extractTicketFieldsFromText(text, fallback = {}) {
       "Ticket Number",
     ]) || fallback.caseNumber || extractCaseNumber(normalizedText, []),
     taskType: extractKnownValue(normalizedText, [], KNOWN_TASK_TYPES) || fallback.taskType || "",
-    request: extractByLabels(normalizedText, [
-      "Request",
-      "Request Area",
-      "Request Type",
-    ]) || extractKnownValue(normalizedText, [], KNOWN_REQUESTS) || fallback.request || "",
+    request: extractKnownValue(normalizedText, [], KNOWN_REQUESTS)
+      || extractByLabels(normalizedText, [
+        "Request Area",
+        "Request Category",
+        "Request Type",
+      ])
+      || fallback.request
+      || "",
     poNumber: poNumber || fallback.poNumber || "",
     workingNumber: workingNumber || fallback.workingNumber || "",
     releaseLookupWorkingNumber: poNumber
@@ -148,9 +152,6 @@ export function classifyTicketBranch(task, detail = {}) {
   }
 
   if (taskType.includes("review main ticket resolution")) {
-    if (!workingNumber && poNumber) {
-      return TASK_TYPE_BRANCHES.releaseLookup;
-    }
     return TASK_TYPE_BRANCHES.reviewMain;
   }
 
@@ -167,6 +168,8 @@ export function resolveTicketOwnerRow(task, detail = {}) {
   const taskType = normalizeText(detail.taskType || task.taskType);
   const request = normalizeText(detail.request || task.request);
   const poNumber = normalizeText(detail.poNumber || task.poNumber);
+  const factory = normalizeText(detail.factory || detail.factoryCode || task.factory || task.factoryCode);
+  const merch = normalizeText(detail.merch || task.merch);
   let workingNumber = normalizeText(detail.workingNumber || task.workingNumber);
 
   if (branch.id === "C" && !workingNumber) {
@@ -179,8 +182,8 @@ export function resolveTicketOwnerRow(task, detail = {}) {
     "Request": request,
     "PO Number": normalizePoNumber(poNumber),
     "Working Number": normalizeWorkingNumber(workingNumber),
-    Factory: "",
-    Merch: "",
+    Factory: factory,
+    Merch: merch,
     branchId: branch.id,
     branchTitle: branch.title,
     sourceNotes: branch.description,
@@ -304,14 +307,20 @@ function extractByLabels(text, labels) {
 }
 
 function normalizePoNumber(value) {
-  return normalizeText(value)
+  const normalized = normalizeText(value)
     .replace(/\s+/g, "")
     .replace(/^O(?=\d)/i, "0")
     .replace(/\.0+$/, "");
+  PO_NUMBER_REGEX.lastIndex = 0;
+  const match = normalized.match(PO_NUMBER_REGEX);
+  return match?.[0] || normalized.replace(/^#+/, "");
 }
 
 function normalizeWorkingNumber(value) {
-  return normalizeText(value).replace(/\s+/g, "").toUpperCase();
+  const normalized = normalizeText(value).replace(/\s+/g, "").toUpperCase();
+  WORKING_NUMBER_REGEX.lastIndex = 0;
+  const match = normalized.match(WORKING_NUMBER_REGEX);
+  return match?.[0] || normalized.replace(/^#+/, "");
 }
 
 function escapeRegex(value) {

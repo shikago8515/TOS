@@ -1,8 +1,17 @@
 import { computed, ref, watch } from 'vue'
 
+import { useGlobalStore } from '../../app/stores/globalStore'
+import {
+  appLanguageToKoiLanguage,
+  koiLanguageToAppLanguage,
+  normalizeKoiLanguage,
+  type KoiLanguage,
+} from '../../languages/language'
+
 export type AppLanguage = 'zh-CN' | 'en-US'
 
 const languageStorageKey = 'tos-app-language'
+const globalStorageKey = 'tos:global'
 const defaultLanguage: AppLanguage = 'zh-CN'
 
 function readStoredLanguage(): AppLanguage {
@@ -10,15 +19,29 @@ function readStoredLanguage(): AppLanguage {
     return defaultLanguage
   }
 
-  const storedLanguage = window.localStorage.getItem(languageStorageKey)
-  return storedLanguage === 'en-US' ? 'en-US' : defaultLanguage
+  try {
+    const storedGlobal = window.localStorage.getItem(globalStorageKey)
+    if (storedGlobal) {
+      const parsed = JSON.parse(storedGlobal) as { language?: unknown }
+      return koiLanguageToAppLanguage(normalizeKoiLanguage(parsed.language))
+    }
+
+    const storedLanguage = window.localStorage.getItem(languageStorageKey)
+    return storedLanguage === 'en-US' ? 'en-US' : defaultLanguage
+  } catch (_error) {
+    return defaultLanguage
+  }
 }
 
 const currentLanguage = ref<AppLanguage>(readStoredLanguage())
 
 watch(currentLanguage, (language) => {
   if (typeof window !== 'undefined') {
-    window.localStorage.setItem(languageStorageKey, language)
+    try {
+      window.localStorage.setItem(languageStorageKey, language)
+    } catch (_error) {
+      // Keep language changes in memory when localStorage is blocked or unavailable.
+    }
   }
 })
 
@@ -181,6 +204,386 @@ function normalizeStaticText(value: string): string {
 
 const staticTextTranslations: Record<string, string> = {
   首页: 'Home',
+  'TMS 工作站': 'TMS Workstation',
+  数据处理: 'Data Processing',
+  'TOS 运营看板': 'TOS Operations Dashboard',
+  '数据核对、报表制作、浏览器自动化与通用工具，一站式工作台。':
+    'Data comparison, report preparation, browser automation, and general tools in one workstation.',
+  正式模块与测试模块: 'Production and Validation Modules',
+  切换视图: 'Switch View',
+  正式模块: 'Production',
+  测试模块: 'Validation',
+  测试阶段: 'Validation Stage',
+  杰西卡: 'Jessica',
+  索菲: 'Sophia',
+  简: 'Jane',
+  埃里克: 'Eric',
+  杰森: 'Jason',
+  露西亚: 'Lucia',
+  '杰西卡 / 索菲 / 简 / 埃里克 / 杰森 / 露西亚': 'Jessica / Sophia / Jane / Eric / Jason / Lucia',
+  较昨日: 'vs yesterday',
+  所有已上线模块: 'All published modules',
+  '网页自动化 / Infornexus / ...': 'Web automation / Infornexus / ...',
+  系统健康度: 'System Health',
+  所有服务运行正常: 'All services are running normally',
+  运行概况: 'Runtime Overview',
+  查看更多: 'View More',
+  'Python 后端': 'Python Backend',
+  本地业务服务: 'Local business service',
+  诊断日志: 'Diagnostics',
+  当前会话与模块运行记录: 'Current session and module records',
+  可导出: 'Exportable',
+  浏览器自动化: 'Browser Automation',
+  '网页自动化 / Infornexus': 'Web automation / Infornexus',
+  业务验证中: 'Validating',
+  '2 组必传': '2 required groups',
+  '2 张 Excel 必传': '2 Excel files required',
+  '3 组必传 + 2 组可选': '3 required groups + 2 optional groups',
+  '每类至少 1 份 PDF': 'At least 1 PDF per type',
+  '产地证 × Packing List → 字段提取与上下对比 Excel':
+    'Certificate of Origin x Packing List -> field extraction and vertical comparison Excel',
+  Excel模块默认模板准备: 'Default Excel module template preparation',
+  'Excel 模块默认模板准备': 'Default Excel module template preparation',
+  有更新: 'Update',
+  系统管理员: 'Administrator',
+  自动化执行档案: 'Automation Run Archive',
+  '查看执行批次、结果文件和失败说明': 'View run batches, result files, and failure details',
+  Excel模板中心: 'Excel Template Center',
+  'Excel 模板中心': 'Excel Template Center',
+  维护各自动化页面使用的模板: 'Manage templates used by automation pages',
+  未命名页面: 'Untitled Page',
+  正在检查安装包版本: 'Checking installer version',
+  安装包已是最新版本: 'Installer is up to date',
+  发现安装包更新: 'Installer Update Available',
+  已是最新版本: 'Already Up to Date',
+  当前桌面端安装包版本已和服务器保持一致: 'The desktop installer version is already aligned with the server.',
+  '当前桌面端安装包版本已和服务器保持一致。': 'The desktop installer version is already aligned with the server.',
+  检查更新失败: 'Update Check Failed',
+  无法连接服务器安装包版本清单请稍后再试: 'Unable to connect to the server installer manifest. Try again later.',
+  '无法连接服务器安装包版本清单，请稍后再试。': 'Unable to connect to the server installer manifest. Try again later.',
+  已开始下载安装包: 'Installer Download Started',
+  下载安装包失败: 'Installer Download Failed',
+  无法打开服务器安装包下载请检查网络或稍后重试: 'Unable to open the server installer download. Check the network or try again later.',
+  '无法打开服务器安装包下载，请检查网络或稍后重试。':
+    'Unable to open the server installer download. Check the network or try again later.',
+  '统一查看各自动化页面的执行批次、上传文件、结果文件和失败说明。':
+    'View run batches, uploads, result files, and failure details across automation pages.',
+  '当前筛选': 'Current Filter',
+  '全部页面': 'All Pages',
+  '全部状态': 'All Statuses',
+  'Run ID / 文件 / 错误说明': 'Run ID / File / Error',
+  '查询': 'Search',
+  '执行批次': 'Run Batches',
+  '执行时间': 'Run Time',
+  '自动化页面': 'Automation Page',
+  '说明': 'Message',
+  '耗时': 'Duration',
+  '暂无执行记录': 'No run records',
+  '第': 'Page',
+  '页': '',
+  '执行详情': 'Run Details',
+  '读取中...': 'Loading...',
+  '开始时间': 'Start Time',
+  '结束时间': 'End Time',
+  '无执行说明。': 'No run message.',
+  '归档文件': 'Archived Files',
+  '暂无归档文件': 'No archived files',
+  '执行 JSON': 'Run JSON',
+  '未选择执行记录': 'No Run Selected',
+  '请在左侧列表中选择一条记录，以查看源文件、结果文件和错误详情。':
+    'Select a run record on the left to view source files, result files, and error details.',
+  '已取消': 'Canceled',
+  '无法读取自动化执行记录，请确认本地后端和远程 MySQL 数据库连接正常。':
+    'Unable to load automation run records. Confirm the local backend and remote MySQL connection are healthy.',
+  '执行文件下载失败。': 'Run file download failed.',
+  '集中维护每个自动化页面的 Excel 模板，替换后页面下载入口会同步使用最新模板。':
+    'Manage Excel templates for each automation page. Download entries use the latest template after replacement.',
+  '刷新模板': 'Refresh Templates',
+  '先选择一个模板': 'Select a template first',
+  '点击下方表格左侧小圆点后，再下载、替换或停用模板。':
+    'Click the small dot on the left of a table row, then download, replace, or disable the template.',
+  '新增模板': 'New Template',
+  '显示停用': 'Show Disabled',
+  '新模板显示名称': 'New template display name',
+  '模板显示名称': 'Template display name',
+  '选择新模板文件': 'Choose new template file',
+  '选择文件替换当前模板': 'Choose a file to replace the current template',
+  '选择模板文件': 'Choose template file',
+  '选择文件替换': 'Choose replacement file',
+  '创建模板': 'Create Template',
+  '替换文件': 'Replace File',
+  '保存名称': 'Save Name',
+  '启用': 'Enable',
+  '停用': 'Disable',
+  '取消': 'Cancel',
+  '模板清单': 'Template List',
+  '选择': 'Select',
+  '模板名称 & 类型': 'Template Name & Type',
+  '更新时间': 'Updated At',
+  '选择这个模板': 'Select this template',
+  '已停用': 'Disabled',
+  '启用中': 'Enabled',
+  '暂无模板记录': 'No template records',
+  '请先勾选模板，或点击新增模板': 'Select a template first, or click New Template',
+  '请先选择 Excel 文件': 'Choose an Excel file first',
+  '上传新的模板文件': 'Upload a new template file',
+  '替换当前选中模板的文件': 'Replace the selected template file',
+  'Excel 模板': 'Excel Template',
+  '停用模板': 'Disable Template',
+  '确定停用': 'Disable',
+  '默认模板': 'Default Template',
+  'Released Bulk 模板': 'Released Bulk Template',
+  'Unreleased Bulk 模板': 'Unreleased Bulk Template',
+  '请上传 .xlsx 或 .xls 文件。': 'Upload a .xlsx or .xls file.',
+  '未检测到本机自动化助手': 'Local automation helper not detected',
+  '未检测到本机自动化助手。': 'Local automation helper not detected.',
+  '已触发，结果未确认。': 'Triggered; result not confirmed.',
+  '已触发，未确认。': 'Triggered; result not confirmed.',
+  '执行器未就绪。': 'Executor is not ready.',
+  '本机执行器未就绪。': 'Local executor is not ready.',
+  '执行完成。': 'Completed.',
+  '请先启动 TOS 自动化助手，然后重新检测。': 'Start the TOS automation helper first, then check again.',
+  '日志': 'Logs',
+  '下载助手': 'Download Helper',
+  '已尝试启动本机自动化助手。': 'Attempted to start the local automation helper.',
+  '运行状态与连通性控制台': 'Runtime status and connectivity console',
+  '执行器健康日志': 'Executor Health Logs',
+  '执行器未连接': 'Executor Disconnected',
+  '执行器已启动。': 'Executor started.',
+  '执行器已停止。': 'Executor stopped.',
+  '执行器已在运行。': 'Executor is already running.',
+  '重新检测': 'Recheck',
+  '状态已刷新。': 'Status refreshed.',
+  '原始响应': 'Raw Response',
+  '本机自动化助手已连接，执行器尚未启动。': 'Local automation helper is connected; the executor has not started.',
+  '清除': 'Clear',
+  '停止失败': 'Stop failed',
+  '停止执行器失败。': 'Failed to stop executor.',
+  '暂无模板': 'No template',
+  '后台执行器任务已结束，请查看执行记录或重新开始。':
+    'The background executor task has ended. View run records or start again.',
+  '后台下载任务已结束，请查看执行记录或重新开始。':
+    'The background download task has ended. View run records or start again.',
+  '模板加载中...': 'Loading template...',
+  '下载 Excel 模板': 'Download Excel Template',
+  '请输入 User ID': 'Enter User ID',
+  '请输入密码': 'Enter password',
+  '请先填写账号和密码。': 'Fill in the account and password first.',
+  '已保存': 'Saved',
+  '已保存。': 'Saved.',
+  '保存登录账号密码': 'Save Login Account and Password',
+  '保存失败。': 'Save failed.',
+  '保存中...': 'Saving...',
+  '保存': 'Save',
+  '登录账号': 'Login Account',
+  '登录账号密码': 'Login Account and Password',
+  '登录凭据': 'Login Credentials',
+  '清除失败。': 'Clear failed.',
+  '已清除。': 'Cleared.',
+  '请先新增并保存 Infor Nexus 登录账号密码。': 'Add and save Infor Nexus login credentials first.',
+  '当前': 'Current',
+  '已下载': 'Downloaded',
+  '已完成': 'Completed',
+  '启动执行器失败。': 'Failed to start executor.',
+  '上传 PO No Excel 执行批量录入': 'Upload PO No Excel for batch entry',
+  '执行': 'Run',
+  '释放以上传': 'Release to upload',
+  '拖拽或点击选择 Excel 文件': 'Drag or click to choose an Excel file',
+  '暂无已保存账号': 'No saved accounts',
+  '默认账号': 'Default Account',
+  '新增账号': 'New Account',
+  '编辑账号': 'Edit Account',
+  '删除账号档案': 'Delete Account Profile',
+  '账号档案': 'Account Profiles',
+  '已保存账号': 'Saved Accounts',
+  '选择账号': 'Select Account',
+  '没有匹配账号': 'No matching account',
+  '确认删除': 'Confirm Delete',
+  '删除中...': 'Deleting...',
+  '已保存账号档案。': 'Account profile saved.',
+  '已删除账号档案。': 'Account profile deleted.',
+  '保存账号档案失败。': 'Failed to save account profile.',
+  '删除账号档案失败。': 'Failed to delete account profile.',
+  '保存到远程数据库后，可在账号档案中直接选择使用。':
+    'After saving to the remote database, you can select it directly from account profiles.',
+  '例如 user3 / 默认账号': 'Example: user3 / default account',
+  '自动搜索并添加': 'Auto Search and Add',
+  '按 Excel 顺序逐个搜索、勾选并添加': 'Search, select, and add one by one in Excel order.',
+  '上传 Excel 并执行': 'Upload Excel and Run',
+  '上传 Excel 并执行 TC INV': 'Upload Excel and Run TC INV',
+  '上传出货明细表并同步交期与费用': 'Upload shipment details and sync delivery dates and fees',
+  '登录并打开 TC INV 流程': 'Log in and open the TC INV flow',
+  '请包含工厂、交期、费用等字段': 'Include fields such as factory, delivery date, and fees',
+  '请求下载箱单 PDF': 'Request Packing List PDF Downloads',
+  '上传 Excel 后按 PO 号查询箱单并发起下载到本机目录。':
+    'After Excel upload, query packing lists by PO number and download them to a local folder.',
+  '上传 Excel 并下载箱单 PDF': 'Upload Excel and Download Packing List PDFs',
+  '等待上传 Excel 并填写箱单下载保存目录。': 'Waiting for Excel upload and packing list download folder.',
+  '选择箱单下载保存目录': 'Choose Packing List Download Folder',
+  '箱单 PDF 下载完成。': 'Packing List PDF download completed.',
+  '正在上传 Excel 并发起箱单 PDF 请求下载...': 'Uploading Excel and starting packing list PDF download requests...',
+  '自动下载箱单模板未上传，请先在 Excel 模板中心上传。':
+    'Packing list auto-download template is missing. Upload it in the Excel Template Center first.',
+  '执行器仍在下载箱单 PDF，请勿重复启动。': 'The executor is still downloading packing list PDFs. Do not start it again.',
+  '执行器仍在下载 Invoice PDF，请勿重复启动。': 'The executor is still downloading Invoice PDFs. Do not start it again.',
+  'PO 自动下载模板未上传，请先上传到 MinIO。': 'PO auto-download template is missing. Upload it to MinIO first.',
+  '请从 Jessica 浏览器自动化菜单重新进入。': 'Re-enter from the Jessica browser automation menu.',
+  '请包含 PO NUMBER 和 STATUS 列': 'Include PO NUMBER and STATUS columns',
+  '例如：D:\\Downloads\\InforNexus\\PackingList': 'Example: D:\\Downloads\\InforNexus\\PackingList',
+  '万代 Shipping 自动化仍在后台运行，请勿重复启动。':
+    'Wandai Shipping automation is still running in the background. Do not start it again.',
+  '新龙泰 Shipping 自动化仍在后台运行，请勿重复启动。':
+    'Xinlongtai Shipping automation is still running in the background. Do not start it again.',
+  'Infornexus 自动搜索添加仍在后台运行，请勿重复启动。':
+    'Infornexus auto search/add is still running in the background. Do not start it again.',
+  'TC INV 自动化仍在后台运行，请勿重复启动。':
+    'TC INV automation is still running in the background. Do not start it again.',
+  '读取账号密码失败。': 'Failed to read account credentials.',
+  '检测到当前自动化仍在后台运行，已恢复页面状态。':
+    'The current automation is still running in the background, so the page state has been restored.',
+  '已同步最新自动化逻辑。': 'Latest automation logic has been synchronized.',
+  '未保存': 'Not Saved',
+  '按 Factory + Working Number 匹配 Merch，不上传则留空':
+    'Match Merch by Factory + Working Number; leave blank if not uploaded.',
+  '按 PO Number 匹配 Factory，不上传则留空':
+    'Match Factory by PO Number; leave blank if not uploaded.',
+  '辅助 Excel（可选）': 'Auxiliary Excel (optional)',
+  'Factory Price 表': 'Factory Price Sheet',
+  'Release / Unrelease 表': 'Release / Unrelease Sheet',
+  'Microsoft 账号': 'Microsoft Account',
+  'Microsoft 密码': 'Microsoft Password',
+  '请输入 Microsoft 账号': 'Enter Microsoft account',
+  '打开小助手面板': 'Open Helper Panel',
+  '当前版本': 'Current Version',
+  '更新管理': 'Update Management',
+  '处理日志': 'Processing Logs',
+  '条': 'items',
+  '需要更新本机自动化助手': 'Local Automation Helper Update Required',
+  '当前助手缺少 adidas 网页端启动能力，请安装最新版后再打开采集器。':
+    'The current helper lacks adidas web launcher support. Install the latest version before opening the collector.',
+  '未知版本': 'Unknown Version',
+  '系统要求': 'System Requirement',
+  '安装包文件名会带版本号；安装完成后请重启本机自动化助手，或重新打开此页面。':
+    'The installer file name includes the version. After installation, restart the local automation helper or reopen this page.',
+  '稍后处理': 'Later',
+  '下载最新助手': 'Download Latest Helper',
+  '自动化助手安装包下载失败。': 'Automation helper installer download failed.',
+  '核对异常列表': 'Exception List',
+  '待生成': 'Pending',
+  '上传两张 Excel 后点击生成，系统会自动识别固定业务列并在这里显示核对结果。':
+    'Upload two Excel files and click generate. The system will identify fixed business columns and show comparison results here.',
+  '全部一致，未发现差值不为 0 的行。': 'Everything matches. No rows with non-zero differences were found.',
+  'RC 行号': 'RC Row',
+  'RC 单价': 'RC Unit Price',
+  'PO 单价': 'PO Unit Price',
+  '单价差值': 'Unit Price Difference',
+  'RC 金额': 'RC Amount',
+  'PO 金额': 'PO Amount',
+  '金额差值': 'Amount Difference',
+  '功能开发中': 'Feature in Development',
+  '此功能模块正在紧张开发中，敬请期待！': 'This feature module is under active development. Stay tuned.',
+  '返回首页': 'Back Home',
+  '执行记录': 'Run Records',
+  '查看本页面最近': 'View the latest',
+  '次执行、源文件和结果归档。': 'runs, source files, and result archives for this page.',
+  '全部记录': 'All Records',
+  '正在读取执行记录...': 'Loading run records...',
+  '选择一条记录查看文件': 'Select a record to view files',
+  '正在读取归档文件...': 'Loading archived files...',
+  '该记录暂无归档文件': 'This record has no archived files',
+  '失败 JSON': 'Failure JSON',
+  '排序与核对中心': 'Sort and Compare Center',
+  '微调 PO 顺序，并实时比对 PO 页码匹配状态': 'Fine-tune PO order and compare PO page matching status in real time',
+  '个 PO': 'POs',
+  '个PO': 'POs',
+  '个有效 PO': 'valid POs',
+  'PO 顺序列表 (一行一个)': 'PO Order List (one per line)',
+  '应用列表': 'Apply List',
+  '复制列表': 'Copy List',
+  '打印摘要': 'Print Summary',
+  '清空列表': 'Clear List',
+  'PO页': 'PO Page',
+  '数量': 'Quantity',
+  '货品金额': 'Goods Amount',
+  '等待同步或输入 PO 列表': 'Waiting for sync or PO list input',
+  '已匹配': 'Matched',
+  '未找到': 'Not Found',
+  '生成中...': 'Generating...',
+  '单独生成': 'Generate Single',
+  'PO PDF 中有但当前列表未包含': 'POs exist in the PO PDF but are not included in the current list',
+  '发票 PO 提取': 'Invoice PO Extraction',
+  '自定义号码提取': 'Custom Number Extraction',
+  '上传发票 PDF 后提取 PO 顺序与明细': 'Upload an invoice PDF to extract PO order and details',
+  '发票 PDF 数据源': 'Invoice PDF Data Source',
+  '个已导入 PO': 'imported POs',
+  '清除文件': 'Clear File',
+  '选择或拖入发票 PDF': 'Choose or drop an invoice PDF',
+  '支持单个 .pdf 文件': 'Supports a single .pdf file',
+  '提取中...': 'Extracting...',
+  '提取发票': 'Extract Invoice',
+  '同步到 PO': 'Sync to PO',
+  '复制': 'Copy',
+  'PO 数量': 'PO Count',
+  '总数量': 'Total Quantity',
+  '发票总额': 'Invoice Total',
+  '发票页': 'Invoice Page',
+  '描述': 'Description',
+  '净额': 'Net Amount',
+  '等待上传发票 PDF 并提取数据': 'Waiting for invoice PDF upload and extraction',
+  '按自定义规则抓取特定文本或 PDF 中的号码': 'Capture numbers from text or PDFs with custom rules',
+  '个号码': 'numbers',
+  '应用规则': 'Apply Rule',
+  '090/45 开头': 'Starts with 090/45',
+  '10 位数字': '10-digit number',
+  '包含 45': 'Contains 45',
+  '自定义提取 PDF': 'Custom Extraction PDF',
+  '个已选文件': 'selected files',
+  '个 PDF': 'PDFs',
+  '选择用于提取的 PDF': 'Choose PDFs for extraction',
+  '可多选': 'Multiple allowed',
+  '如 090|45 或 \\d{10}': 'Example: 090|45 or \\d{10}',
+  '粘贴文本，然后点击从粘贴提取': 'Paste text, then click extract from paste',
+  '从 PDF 提取': 'Extract from PDF',
+  '从粘贴提取': 'Extract from Paste',
+  '抓取页面文本': 'Capture Page Text',
+  '等待提取号码': 'Waiting to extract numbers',
+  '个': 'items',
+  '闪电极速重排': 'Lightning Fast Reorder',
+  '免去手动核对，一键完成数据提取与 PDF 合并': 'Skip manual checking and complete data extraction plus PDF merge in one click',
+  '拖入或选择发票 PDF': 'Drop or choose invoice PDF',
+  '清除发票文件': 'Clear invoice file',
+  '拖入或选择 PO PDF': 'Drop or choose PO PDF',
+  '清除 PO 文件': 'Clear PO file',
+  '正在极速重排...': 'Fast reordering...',
+  '极速生成成功': 'Fast generation succeeded',
+  '一键极速重排': 'One-click Fast Reorder',
+  '预览 PDF': 'Preview PDF',
+  '清空文件': 'Clear Files',
+  'PO PDF 匹配与生成': 'PO PDF Matching and Generation',
+  '上传 PO PDF，一键生成重排后的最终文件': 'Upload a PO PDF and generate the final reordered file in one click',
+  '个已识别 PO': 'recognized POs',
+  'PO 原始文件 PDF': 'Original PO PDF',
+  '选择或拖入 PO PDF': 'Choose or drop a PO PDF',
+  '识别中...': 'Recognizing...',
+  '识别 PO 页码': 'Recognize PO Pages',
+  '清空 PO 文件': 'Clear PO File',
+  '输出选项': 'Output Options',
+  '仅打印当前页': 'Print current page only',
+  '同时打印下一页': 'Also print next page',
+  '摘要包含未找到 PO': 'Include missing POs in summary',
+  '生成重排 PDF': 'Generate Reordered PDF',
+  '打开 PDF': 'Open PDF',
+  '查看运行日志': 'View Runtime Logs',
+  '运行日志': 'Runtime Logs',
+  '操作和后端状态返回': 'Operations and backend status responses',
+  'PO 发票顺序重排': 'PO Invoice Order Reorder',
+  '智能文档工作台': 'Smart Document Workbench',
+  '原始输入发票/列表': 'Original invoice/list input',
+  '原始数据': 'Raw Data',
+  '智能重组与页码映射': 'Smart reordering and page mapping',
+  '排序重组': 'Order Rebuild',
+  '按指定顺序生成重排 PDF': 'Generate reordered PDF in the specified order',
+  '重排 PDF': 'Reordered PDF',
   'jessica - 对账核对': 'jessica - Invoice Compare',
   'jessica - Invoice 核对': 'jessica - Invoice Compare',
   'Invoice 核对': 'Invoice Compare',
@@ -833,6 +1236,7 @@ const staticTextTranslations: Record<string, string> = {
   '开发/预览': 'Development / Preview',
   '检查中...': 'Checking...',
   检查更新: 'Check for Updates',
+  立即检查: 'Check Now',
   '下载中...': 'Downloading...',
   下载更新: 'Download Update',
   备用下载: 'Backup Download',
@@ -853,12 +1257,14 @@ const staticTextTranslations: Record<string, string> = {
   正在退出并安装更新: 'Exiting and installing update',
   系统: 'System',
   版本更新记录: 'Version Update Log',
+  查看最近版本更新内容: 'Review recent version updates',
   查看每次更新影响的页面和内容: 'View affected pages and update details',
   '语言、版本更新与自动化助手': 'Language, updates, and automation helper',
   更新管理中心: 'Update Management Center',
   '检查、下载与安装桌面客户端更新': 'Check, download, and install desktop client updates',
   系统更新下载中: 'System update downloading',
   下载中心: 'Download Center',
+  推荐下载: 'Recommended',
   '根据您的使用场景，选择部署桌面完整端或安装网页轻量级扩展':
     'Choose a full desktop deployment or lightweight web extension based on your usage scenario',
   独立桌面客户端套件: 'Standalone Desktop Client Suite',
@@ -880,9 +1286,11 @@ const staticTextTranslations: Record<string, string> = {
   获取免安装版: 'Get No-install Version',
   网页自动化助手: 'Web Automation Helper',
   'TOS 网页桥接小助手': 'TOS Web Bridge Helper',
+  浏览器扩展: 'Browser Extension',
   浏览器专属: 'Browser Only',
   '专为 Web 浏览器打造的轻量级桥接组件，网页端直连调度。':
     'A lightweight bridge for web browsers, enabling direct scheduling from the web app.',
+  '极速搭建：免本地客户端安装': 'Fast setup: no local desktop client install',
   '极速轻量：免去客户端安装': 'Lightweight: no full client install',
   '即开即用：网页与本机无缝桥接': 'Ready to use: bridges the web page and local machine',
   '安全隔离：严格鉴权防越权': 'Secure isolation: strict authorization to prevent privilege overreach',
@@ -891,6 +1299,7 @@ const staticTextTranslations: Record<string, string> = {
   '当前运行于 Web 服务器 / 浏览器沙盒中。当您登录桌面客户端时，本面板将自动启用增量更新检测。':
     'Running in the web server / browser sandbox. When you sign in to the desktop client, this panel automatically enables incremental update checks.',
   云端服务: 'Cloud Server',
+  连接正常: 'Connected',
   网页应用: 'Web App',
   运行参数: 'Runtime Parameters',
   轻量安装器版本: 'Lightweight Installer Version',
@@ -924,6 +1333,7 @@ const staticTextTranslations: Record<string, string> = {
   本机自动化: 'Local Automation',
   桌面客户端: 'Desktop Client',
   更新操作: 'Update Actions',
+  导出运行参数: 'Export Runtime Parameters',
   更新内容: 'Update Details',
   全部: 'All',
   新功能: 'New Features',
@@ -1170,6 +1580,23 @@ const normalizedStaticTextTranslations: Record<string, string> = Object.fromEntr
 
 export function setAppLanguage(language: AppLanguage): void {
   currentLanguage.value = language
+
+  try {
+    const globalStore = useGlobalStore()
+    const koiLanguage = appLanguageToKoiLanguage(language)
+    if (globalStore.language !== koiLanguage) {
+      globalStore.setGlobalState('language', koiLanguage)
+    }
+  } catch (_error) {
+    // Pinia is not active during isolated module tests; the local ref still drives legacy i18n.
+  }
+}
+
+export function syncAppLanguageFromKoi(language: KoiLanguage): void {
+  const nextLanguage = koiLanguageToAppLanguage(language)
+  if (currentLanguage.value !== nextLanguage) {
+    currentLanguage.value = nextLanguage
+  }
 }
 
 export function translateText(key: TranslationKey, language = currentLanguage.value): string {
@@ -1184,6 +1611,36 @@ export function translateStaticText(value: string, language = currentLanguage.va
   const directTranslation = staticTextTranslations[value] ?? normalizedStaticTextTranslations[normalizeStaticText(value)]
   if (directTranslation) {
     return directTranslation
+  }
+
+  const installerUpdateTitleMatch = value.match(/^发现安装包更新 (.+)，点击下载最新版完整安装包$/)
+  if (installerUpdateTitleMatch) {
+    return `Installer update ${installerUpdateTitleMatch[1]} available. Click to download the latest full installer.`
+  }
+
+  const serverInstallerUpdateMatch = value.match(/^服务器已有 (.+)，可从右上角下载最新版完整安装包。$/)
+  if (serverInstallerUpdateMatch) {
+    return `Server has ${serverInstallerUpdateMatch[1]}; download the latest full installer from the top right.`
+  }
+
+  const installerDownloadStartedMatch = value.match(/^正在下载 (.+) 完整安装包，下载完成后请按安装向导覆盖安装。$/)
+  if (installerDownloadStartedMatch) {
+    return `Downloading the ${installerDownloadStartedMatch[1]} full installer. After it finishes, follow the installer to overwrite the current version.`
+  }
+
+  const templateCountMatch = value.match(/^(\d+) 个模板$/)
+  if (templateCountMatch) {
+    return `${templateCountMatch[1]} templates`
+  }
+
+  const rowCountMatch = value.match(/^(\d+) 行$/)
+  if (rowCountMatch) {
+    return `${rowCountMatch[1]} rows`
+  }
+
+  const disableTemplateConfirmMatch = value.match(/^确定停用模板「(.+)」吗？停用后该模板将不再出现在下载选项中。$/)
+  if (disableTemplateConfirmMatch) {
+    return `Disable template "${disableTemplateConfirmMatch[1]}"? It will no longer appear in download options.`
   }
 
   const fileCountMatch = value.match(/^(\d+) 个文件已选择$/)

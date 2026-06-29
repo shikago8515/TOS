@@ -8,8 +8,8 @@
         <AppIcon name="zap" />
       </div>
       <div>
-        <h3>闪电极速重排</h3>
-        <p>免去手动核对，一键完成数据提取与 PDF 合并</p>
+        <h3>{{ text('闪电极速重排') }}</h3>
+        <p>{{ text('免去手动核对，一键完成数据提取与 PDF 合并') }}</p>
       </div>
     </div>
 
@@ -32,13 +32,13 @@
         <AppIcon :name="invoiceFile ? 'file-check' : 'upload-cloud'" class="slot-icon" />
         <div class="slot-text">
           <strong v-if="invoiceFile" class="file-name" :title="invoiceFile.name">{{ invoiceFile.name }}</strong>
-          <span v-else>拖入或选择发票 PDF</span>
+          <span v-else>{{ text('拖入或选择发票 PDF') }}</span>
         </div>
         <button 
           v-if="invoiceFile" 
           type="button" 
           class="slot-clear-btn" 
-          title="清除发票文件"
+          :title="text('清除发票文件')"
           @click.stop.prevent="emit('clearInvoice')"
         >
           <AppIcon name="x" />
@@ -67,13 +67,13 @@
         <AppIcon :name="poFile ? 'file-check' : 'upload-cloud'" class="slot-icon" />
         <div class="slot-text">
           <strong v-if="poFile" class="file-name" :title="poFile.name">{{ poFile.name }}</strong>
-          <span v-else>拖入或选择 PO PDF</span>
+          <span v-else>{{ text('拖入或选择 PO PDF') }}</span>
         </div>
         <button 
           v-if="poFile" 
           type="button" 
           class="slot-clear-btn" 
-          title="清除 PO 文件"
+          :title="text('清除 PO 文件')"
           @click.stop.prevent="emit('clearPo')"
         >
           <AppIcon name="x" />
@@ -98,7 +98,7 @@
           :class="{ 'jason-spin': isBusy('generate') }"
         />
         <span class="fast-trigger-label">
-          {{ isBusy('generate') ? '正在极速重排...' : (downloadHref ? '极速生成成功' : '一键极速重排') }}
+          {{ isBusy('generate') ? text('正在极速重排...') : (downloadHref ? text('极速生成成功') : text('一键极速重排')) }}
         </span>
       </button>
 
@@ -110,14 +110,14 @@
           :download="latestResult?.fileName"
         >
           <AppIcon name="download" />
-          下载结果
+          {{ text('下载结果') }}
         </a>
         <button
           class="btn"
           type="button"
           @click="emit('openResult')"
         >
-          预览 PDF
+          {{ text('预览 PDF') }}
         </button>
       </div>
 
@@ -127,7 +127,7 @@
         type="button"
         @click="emit('clearAll')"
       >
-        清空文件
+        {{ text('清空文件') }}
       </button>
     </div>
   </article>
@@ -136,6 +136,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
+import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 
 interface Props {
   invoiceFile: File | null
@@ -146,6 +147,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const { text } = useAppLanguage()
 const emit = defineEmits<{
   (e: 'update:invoiceFile', file: File | null): void
   (e: 'update:poFile', file: File | null): void

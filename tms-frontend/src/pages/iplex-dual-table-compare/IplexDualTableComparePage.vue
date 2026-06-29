@@ -31,29 +31,29 @@
             >
               <div class="iplex-preview__head">
                 <div>
-                  <h3>核对异常列表</h3>
+                  <h3>{{ text('核对异常列表') }}</h3>
                 </div>
-                <span>{{ success ? `${previewRows.length} 行` : '待生成' }}</span>
+                <span>{{ success ? text(`${previewRows.length} 行`) : text('待生成') }}</span>
               </div>
               <div v-if="!success" class="iplex-preview__empty iplex-preview__empty--pending">
-                上传两张 Excel 后点击生成，系统会自动识别固定业务列并在这里显示核对结果。
+                {{ text('上传两张 Excel 后点击生成，系统会自动识别固定业务列并在这里显示核对结果。') }}
               </div>
               <div v-else-if="previewRows.length === 0" class="iplex-preview__empty">
-                全部一致，未发现差值不为 0 的行。
+                {{ text('全部一致，未发现差值不为 0 的行。') }}
               </div>
               <div v-else class="iplex-preview__table-wrap">
                 <table class="iplex-preview__table">
                   <thead>
                     <tr>
-                      <th>RC 行号</th>
+                      <th>{{ text('RC 行号') }}</th>
                       <th>BUYER ORDER NO.</th>
-                      <th>状态</th>
-                      <th>RC 单价</th>
-                      <th>PO 单价</th>
-                      <th>单价差值</th>
-                      <th>RC 金额</th>
-                      <th>PO 金额</th>
-                      <th>金额差值</th>
+                      <th>{{ text('状态') }}</th>
+                      <th>{{ text('RC 单价') }}</th>
+                      <th>{{ text('PO 单价') }}</th>
+                      <th>{{ text('单价差值') }}</th>
+                      <th>{{ text('RC 金额') }}</th>
+                      <th>{{ text('PO 金额') }}</th>
+                      <th>{{ text('金额差值') }}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -61,7 +61,7 @@
                       <td>{{ row.row_number }}</td>
                       <td>{{ row.key || '-' }}</td>
                       <td>
-                        <span class="iplex-preview__status">{{ row.status }}</span>
+                        <span class="iplex-preview__status">{{ text(row.status) }}</span>
                       </td>
                       <td>{{ row.four_digit.main_value || '-' }}</td>
                       <td>{{ row.four_digit.lookup_value || '-' }}</td>
@@ -92,6 +92,7 @@
 import { computed, ref } from 'vue'
 
 import { readErrorMessage } from '../../shared/api/backendClient'
+import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import {
   areRequiredFilesReady,
   serializeInputFiles,
@@ -145,6 +146,7 @@ const previewRows = ref<IplexDualTableComparePreviewRow[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(iplexDualTableCompareModuleId),
 )
+const { text } = useAppLanguage()
 
 const uploadFields = computed<ExcelFileField[]>(() => [
   {

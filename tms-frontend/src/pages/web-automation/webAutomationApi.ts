@@ -5,6 +5,7 @@ import type {
 } from '../../types/electronApi'
 import {
   buildBackendDownloadUrl,
+  downloadUrlAsFile,
   postFormData,
   readResponseMessage,
   requestBackendJson,
@@ -44,6 +45,40 @@ export interface LocalExecutorHealth {
   config?: Record<string, unknown>
 }
 
+export function isLocalExecutorBusy(health: LocalExecutorHealth | null | undefined): boolean {
+  const activeRunCount = Number(health?.activeRunCount || 0)
+  return Boolean(
+    health?.busy
+      || health?.activeRun
+      || (Array.isArray(health?.activeRuns) && health.activeRuns.length > 0)
+      || (Number.isFinite(activeRunCount) && activeRunCount > 0),
+  )
+}
+
+export function collectLocalExecutorActiveRuns(health: LocalExecutorHealth | null | undefined): Record<string, any>[] {
+  const runs: Record<string, any>[] = []
+  const activeRun = toActiveRunRecord(health?.activeRun)
+  if (activeRun) runs.push(activeRun)
+  if (Array.isArray(health?.activeRuns)) {
+    for (const item of health.activeRuns) {
+      const run = toActiveRunRecord(item)
+      if (run) runs.push(run)
+    }
+  }
+  return runs
+}
+
+export function findLocalExecutorActiveRun(
+  health: LocalExecutorHealth | null | undefined,
+  matcher: (run: Record<string, any>) => boolean,
+): Record<string, any> | null {
+  return collectLocalExecutorActiveRuns(health).find(matcher) || null
+}
+
+function toActiveRunRecord(value: unknown): Record<string, any> | null {
+  return value && typeof value === 'object' ? value as Record<string, any> : null
+}
+
 export interface LocalAutomationLauncherHealth {
   ok: boolean
   version?: string
@@ -51,6 +86,10 @@ export interface LocalAutomationLauncherHealth {
   host?: string
   port?: number
   pid?: number
+}
+
+export interface LaunchAutomationConsoleOptions {
+  forceUpdate?: boolean
 }
 
 export interface ExecutorCredentials {
@@ -183,13 +222,7 @@ export async function resolveAutomationHelperDownloadUrl(): Promise<string> {
 
 export async function openAutomationHelperDownload(): Promise<void> {
   const downloadUrl = await resolveAutomationHelperDownloadUrl()
-  const anchor = document.createElement('a')
-  anchor.href = downloadUrl
-  anchor.rel = 'noopener'
-  anchor.download = ''
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
+  await downloadUrlAsFile(downloadUrl, 'TOS-Automation-Helper-Setup.exe')
 }
 
 export async function openAutomationHelperPanel(): Promise<AutomationHelperPanelOpenResult> {
@@ -224,15 +257,23 @@ export async function fetchAutomationApps(): Promise<AutomationAppInfo[]> {
   return Array.isArray(payload.apps) ? payload.apps : []
 }
 
-export async function launchAutomationConsole(appId: string): Promise<ElectronActionResult> {
-  await recordWebAutomationEvent('launch-start', { appId })
+export async function launchAutomationConsole(
+  appId: string,
+  options: LaunchAutomationConsoleOptions = {},
+): Promise<ElectronActionResult> {
+  const forceUpdate = options.forceUpdate !== false
+  await recordWebAutomationEvent('launch-start', { appId, forceUpdate })
 
   let result: ElectronActionResult
   if (window.electronAPI?.launchAutomationApp) {
-    result = await window.electronAPI.launchAutomationApp(appId)
+    result = await window.electronAPI.launchAutomationApp(appId, { forceUpdate })
   } else {
     await ensureLocalAutomationLauncher()
-    result = await requestLauncherJson<ElectronActionResult>('POST', `/api/apps/${encodeURIComponent(appId)}/start`)
+    result = await requestLauncherJson<ElectronActionResult>(
+      'POST',
+      `/api/apps/${encodeURIComponent(appId)}/start`,
+      { forceUpdate },
+    )
   }
 
   if (!result.success && result.error) {
@@ -244,6 +285,7 @@ export async function launchAutomationConsole(appId: string): Promise<ElectronAc
 
   await recordWebAutomationEvent(result.success ? 'launch-success' : 'launch-failure', {
     appId,
+    forceUpdate,
     result,
   })
   return result
@@ -616,6 +658,32 @@ export function buildAutomationRunFileDownloadUrl(file: AutomationRunFileRecord)
   return buildBackendDownloadUrl(file.downloadPath)
 }
 
+export async function downloadAutomationRunFile(file: AutomationRunFileRecord): Promise<void> {
+  const url = await buildAutomationRunFileDownloadUrl(file)
+  let response: Response
+  try {
+    response = await fetch(url, { method: 'GET' })
+  } catch (_error) {
+    throw new Error('无法连接后端服务，执行文件下载失败。请确认本地后端或服务器后端正在运行。')
+  }
+
+  if (!response.ok) {
+    const rawText = await response.text().catch(() => '')
+    throw new Error(readAutomationRunFileDownloadErrorMessage(rawText, response.status, file.downloadPath))
+  }
+
+  const blob = await response.blob()
+  const objectUrl = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = objectUrl
+  anchor.rel = 'noopener'
+  anchor.download = readAutomationRunFileDownloadFilename(response, file)
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(objectUrl)
+}
+
 export async function probeLocalAutomationLauncherHealth(): Promise<boolean> {
   return Boolean(await fetchLocalAutomationLauncherHealth())
 }
@@ -711,6 +779,57 @@ function readTemplateDownloadFilename(response: Response, template: AutomationTe
   }
 
   return template.originalFilename || `${template.templateKey || 'template'}.xlsx`
+}
+
+function readAutomationRunFileDownloadErrorMessage(rawText: string, status: number, path: string): string {
+  const trimmed = String(rawText || '').trim()
+  if (trimmed) {
+    try {
+      const payload = JSON.parse(trimmed) as unknown
+      const apiMessage = readResponseMessage(payload, { status, path })
+      if (apiMessage) {
+        return apiMessage
+      }
+    } catch {
+      // Fall through and show a short plain-text preview.
+    }
+  }
+
+  if (status === 404) {
+    return '执行文件不存在，或文件已经从 MinIO 删除，请联系管理员检查归档记录。'
+  }
+
+  if (status >= 500) {
+    return '执行文件暂时无法下载，请联系管理员检查 MinIO 存储连接。'
+  }
+
+  const plainText = trimmed
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160)
+  return plainText
+    ? `执行文件下载失败：${plainText}`
+    : `执行文件下载失败（HTTP ${status || '未知'}）。`
+}
+
+function readAutomationRunFileDownloadFilename(response: Response, file: AutomationRunFileRecord): string {
+  const disposition = response.headers.get('content-disposition') || ''
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim())
+    } catch {
+      return utf8Match[1].trim()
+    }
+  }
+
+  const asciiMatch = disposition.match(/filename="?([^";]+)"?/i)
+  if (asciiMatch?.[1]) {
+    return asciiMatch[1].trim()
+  }
+
+  return file.originalFilename || file.fileRole || 'automation-run-file'
 }
 
 async function probeAutomationHelperUpdatePanel(): Promise<'available' | 'unsupported' | 'not-running'> {
@@ -826,12 +945,13 @@ async function waitFor(
 async function requestLauncherJson<T = Record<string, unknown>>(
   method: string,
   pathname: string,
+  body?: Record<string, unknown>,
 ): Promise<T> {
+  const requestBody = body === undefined ? undefined : JSON.stringify(body)
   const response = await fetchWithTimeout(`${launcherBaseUrl}${pathname}`, {
     method,
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: requestBody ? { 'Content-Type': 'application/json' } : undefined,
+    body: requestBody,
   }, 15000)
 
   const rawText = await response.text()

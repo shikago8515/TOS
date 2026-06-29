@@ -103,6 +103,22 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
   };
 }
 
+export async function lookupTicketOwnerFields(page, task, detail = {}, options = {}) {
+  const cache = new Map();
+  const base = {
+    ...taskToBaseFields(task || {}),
+    caseNumber: pickFirstValue(detail.caseNumber, task?.caseNumber),
+    taskType: pickFirstValue(detail.taskType, task?.taskType),
+    requestId: pickFirstValue(detail.requestId, task?.requestId),
+    userTaskId: pickFirstValue(detail.userTaskId, extractTaskInstanceId(task)),
+    request: pickFirstValue(detail.request, task?.request),
+    poNumber: pickFirstValue(detail.poNumber, task?.poNumber),
+    workingNumber: pickFirstValue(detail.workingNumber, task?.workingNumber),
+  };
+  const lookup = await resolveTicketLookup(page, base, task || {}, cache, options);
+  return lookup;
+}
+
 async function resolveTicketLookup(page, base, task, cache, options = {}) {
   const cacheKey = [base.caseNumber, base.poNumber].map(normalizeText).join("|");
   if (cache.has(cacheKey)) {

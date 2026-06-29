@@ -4,10 +4,10 @@
       <div class="placeholder-icon" aria-hidden="true">
         !
       </div>
-      <h2>功能开发中</h2>
-      <p>此功能模块正在紧张开发中，敬请期待！</p>
+      <h2>{{ text('功能开发中') }}</h2>
+      <p>{{ text('此功能模块正在紧张开发中，敬请期待！') }}</p>
       <RouterLink class="return-link" to="/">
-        返回首页
+        {{ text('返回首页') }}
       </RouterLink>
     </div>
   </section>
@@ -15,6 +15,9 @@
 
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
+import { useAppLanguage } from '../shared/i18n/appLanguage'
+
+const { text } = useAppLanguage()
 </script>
 
 <style scoped>

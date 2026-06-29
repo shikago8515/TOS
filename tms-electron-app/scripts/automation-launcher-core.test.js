@@ -1,6 +1,8 @@
 const assert = require('assert')
+const crypto = require('crypto')
 const fs = require('fs')
-const { spawn } = require('child_process')
+const http = require('http')
+const { execFileSync, spawn } = require('child_process')
 const net = require('net')
 const os = require('os')
 const path = require('path')
@@ -170,6 +172,104 @@ test('automation launcher injects helper version when starting an app', async ()
   }
 })
 
+test('automation launcher installs a remote module when same version has a different package sha', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tos-launcher-same-version-sha-'))
+  const automationAppRoot = path.join(root, 'automation-apps')
+  const userDataDir = path.join(root, 'user-data')
+  const bundledAppDir = path.join(automationAppRoot, 'demo-app')
+  const remoteAppDir = path.join(root, 'remote-app')
+  const zipPath = path.join(root, 'demo-app.zip')
+  const port = await getFreePort()
+  const processMap = new Map()
+
+  fs.mkdirSync(path.join(bundledAppDir, 'bin'), { recursive: true })
+  fs.writeFileSync(path.join(bundledAppDir, 'bin', 'start.js'), '')
+  fs.writeFileSync(
+    path.join(automationAppRoot, 'registry.json'),
+    JSON.stringify([
+      {
+        id: 'demo-app',
+        name: 'Demo App',
+        version: '1.0.0',
+        appDir: 'demo-app',
+        entry: 'bin/start.js',
+        defaultPort: port,
+      },
+    ], null, 2),
+  )
+
+  fs.mkdirSync(path.join(remoteAppDir, 'bin'), { recursive: true })
+  fs.writeFileSync(
+    path.join(remoteAppDir, 'bin', 'start.js'),
+    [
+      "const fs = require('fs')",
+      "const http = require('http')",
+      "const path = require('path')",
+      "const dataDir = process.env.TMS_PLAYWRIGHT_DATA_DIR",
+      "fs.mkdirSync(dataDir, { recursive: true })",
+      "fs.writeFileSync(path.join(dataDir, 'started-module-source.txt'), process.env.TOS_AUTOMATION_MODULE_SOURCE || '')",
+      "fs.writeFileSync(path.join(dataDir, 'started-module-sha.txt'), process.env.TOS_AUTOMATION_MODULE_SHA256 || '')",
+      "const server = http.createServer((req, res) => {",
+      "  if (req.url === '/api/health') {",
+      "    res.writeHead(200, { 'Content-Type': 'application/json' })",
+      "    res.end(JSON.stringify({ ok: true, moduleVersion: process.env.TOS_AUTOMATION_MODULE_VERSION || '', moduleSha256: process.env.TOS_AUTOMATION_MODULE_SHA256 || '' }))",
+      "    return",
+      "  }",
+      "  res.writeHead(404)",
+      "  res.end()",
+      "})",
+      "server.listen(Number(process.env.TMS_PLAYWRIGHT_PORT), '127.0.0.1')",
+      "process.on('SIGTERM', () => server.close(() => process.exit(0)))",
+      "process.on('SIGINT', () => server.close(() => process.exit(0)))",
+    ].join('\n'),
+  )
+  createZipFromDir(remoteAppDir, zipPath)
+  const sha256 = hashFile(zipPath)
+  const server = await startAutomationModuleServer({
+    manifest: {
+      ok: true,
+      modules: [
+        {
+          id: 'demo-app',
+          name: 'Demo App',
+          version: '1.0.0',
+          appDir: 'demo-app',
+          entry: 'bin/start.js',
+          defaultPort: port,
+          downloadPath: '/demo-app.zip',
+          sha256,
+        },
+      ],
+    },
+    zipPath,
+  })
+
+  try {
+    const result = await launchAutomationApp('demo-app', {
+      automationAppRoot,
+      userDataDir,
+      processMap,
+      processExecPath: process.execPath,
+      automationModuleManifestUrl: `${server.url}/manifest`,
+      helperVersion: '9.9.9',
+    })
+
+    assert.equal(result.success, true)
+    assert.equal(result.source, 'remote-cache')
+    assert.equal(
+      fs.readFileSync(path.join(userDataDir, 'automation-apps', 'demo-app', 'started-module-source.txt'), 'utf8'),
+      'remote-cache',
+    )
+    assert.equal(
+      fs.readFileSync(path.join(userDataDir, 'automation-apps', 'demo-app', 'started-module-sha.txt'), 'utf8'),
+      sha256,
+    )
+  } finally {
+    shutdownAutomationApps({ processMap })
+    await server.close()
+  }
+})
+
 test('automation launcher restarts an old running app when cached module is newer', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tos-launcher-restart-old-app-'))
   const automationAppRoot = path.join(root, 'automation-apps')
@@ -287,6 +387,124 @@ test('automation launcher restarts an old running app when cached module is newe
   }
 })
 
+test('automation launcher force update restarts same-version cached module when running health lacks sha', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tos-launcher-force-update-same-version-'))
+  const automationAppRoot = path.join(root, 'automation-apps')
+  const userDataDir = path.join(root, 'user-data')
+  const bundledAppDir = path.join(automationAppRoot, 'demo-app')
+  const cachedAppDir = path.join(
+    userDataDir,
+    'automation-module-cache',
+    'demo-app',
+    '1.0.0',
+    'app',
+  )
+  const port = await getFreePort()
+  const processMap = new Map()
+  const oldLogFd = fs.openSync(path.join(root, 'old-app.log'), 'a')
+
+  fs.mkdirSync(path.join(bundledAppDir, 'bin'), { recursive: true })
+  fs.writeFileSync(path.join(bundledAppDir, 'bin', 'start.js'), '')
+  fs.writeFileSync(
+    path.join(automationAppRoot, 'registry.json'),
+    JSON.stringify([
+      {
+        id: 'demo-app',
+        name: 'Demo App',
+        version: '1.0.0',
+        appDir: 'demo-app',
+        entry: 'bin/start.js',
+        defaultPort: port,
+      },
+    ], null, 2),
+  )
+
+  fs.mkdirSync(path.join(cachedAppDir, 'bin'), { recursive: true })
+  fs.writeFileSync(
+    path.join(cachedAppDir, 'bin', 'start.js'),
+    [
+      "const fs = require('fs')",
+      "const http = require('http')",
+      "const path = require('path')",
+      "const dataDir = process.env.TMS_PLAYWRIGHT_DATA_DIR",
+      "fs.mkdirSync(dataDir, { recursive: true })",
+      "fs.writeFileSync(path.join(dataDir, 'force-started-module-sha.txt'), process.env.TOS_AUTOMATION_MODULE_SHA256 || '')",
+      "const server = http.createServer((req, res) => {",
+      "  if (req.url === '/api/health') {",
+      "    res.writeHead(200, { 'Content-Type': 'application/json' })",
+      "    res.end(JSON.stringify({ ok: true, moduleVersion: process.env.TOS_AUTOMATION_MODULE_VERSION || '', moduleSha256: process.env.TOS_AUTOMATION_MODULE_SHA256 || '' }))",
+      "    return",
+      "  }",
+      "  res.writeHead(404)",
+      "  res.end()",
+      "})",
+      "server.listen(Number(process.env.TMS_PLAYWRIGHT_PORT), '127.0.0.1')",
+      "process.on('SIGTERM', () => server.close(() => process.exit(0)))",
+      "process.on('SIGINT', () => server.close(() => process.exit(0)))",
+    ].join('\n'),
+  )
+  fs.writeFileSync(
+    path.join(userDataDir, 'automation-module-cache', 'demo-app', 'current.json'),
+    JSON.stringify({
+      id: 'demo-app',
+      name: 'Demo App',
+      version: '1.0.0',
+      entry: 'bin/start.js',
+      defaultPort: port,
+      versionSegment: '1.0.0',
+      baseDir: path.join('1.0.0', 'app'),
+      sha256: 'd'.repeat(64),
+      installedAt: '2026-06-26T02:00:00.000Z',
+    }, null, 2),
+  )
+
+  const oldScriptPath = path.join(root, 'old-app.js')
+  fs.writeFileSync(
+    oldScriptPath,
+    [
+      "const http = require('http')",
+      "const server = http.createServer((req, res) => {",
+      "  if (req.url === '/api/health') {",
+      "    res.writeHead(200, { 'Content-Type': 'application/json' })",
+      "    res.end(JSON.stringify({ ok: true, moduleVersion: '1.0.0' }))",
+      "    return",
+      "  }",
+      "  res.writeHead(404)",
+      "  res.end()",
+      "})",
+      "server.listen(Number(process.env.TMS_PLAYWRIGHT_PORT), '127.0.0.1')",
+      "process.on('SIGTERM', () => server.close(() => process.exit(0)))",
+    ].join('\n'),
+  )
+  const oldChild = spawn(process.execPath, [oldScriptPath], {
+    env: { ...process.env, TMS_PLAYWRIGHT_PORT: String(port) },
+    stdio: ['ignore', oldLogFd, oldLogFd],
+  })
+  processMap.set('demo-app', { child: oldChild, logFd: oldLogFd, logPath: path.join(root, 'old-app.log') })
+
+  try {
+    assert.equal(await waitForHealth(`http://127.0.0.1:${port}/api/health`), true)
+    const result = await launchAutomationApp('demo-app', {
+      automationAppRoot,
+      userDataDir,
+      processMap,
+      processExecPath: process.execPath,
+      enableModuleUpdates: false,
+      forceUpdate: true,
+    })
+
+    assert.equal(result.success, true)
+    assert.notEqual(result.alreadyRunning, true)
+    assert.equal(
+      fs.readFileSync(path.join(userDataDir, 'automation-apps', 'demo-app', 'force-started-module-sha.txt'), 'utf8'),
+      'd'.repeat(64),
+    )
+  } finally {
+    shutdownAutomationApps({ processMap })
+    if (!oldChild.killed) oldChild.kill()
+  }
+})
+
 function getFreePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer()
@@ -311,4 +529,55 @@ async function waitForHealth(url, timeoutMs = 5000) {
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
   return false
+}
+
+function createZipFromDir(sourceDir, zipPath) {
+  if (process.platform === 'win32') {
+    execFileSync('powershell.exe', [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      '& { param($sourceDir, $zipPath) Compress-Archive -Path (Join-Path $sourceDir "*") -DestinationPath $zipPath -Force }',
+      sourceDir,
+      zipPath,
+    ], { windowsHide: true })
+    return
+  }
+
+  execFileSync('zip', ['-qr', zipPath, '.'], { cwd: sourceDir })
+}
+
+function hashFile(filePath) {
+  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
+}
+
+function startAutomationModuleServer({ manifest, zipPath }) {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      if (req.url === '/manifest') {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(manifest))
+        return
+      }
+
+      if (req.url === '/demo-app.zip') {
+        res.writeHead(200, { 'Content-Type': 'application/zip' })
+        fs.createReadStream(zipPath).pipe(res)
+        return
+      }
+
+      res.writeHead(404)
+      res.end()
+    })
+    server.on('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      const port = typeof address === 'object' && address ? address.port : 0
+      resolve({
+        url: `http://127.0.0.1:${port}`,
+        close: () => new Promise((closeResolve) => server.close(closeResolve)),
+      })
+    })
+  })
 }

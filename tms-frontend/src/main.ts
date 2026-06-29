@@ -1,8 +1,15 @@
 import { createApp } from 'vue'
+import ElementPlus from 'element-plus'
+import * as ElementPlusIconsVue from '@element-plus/icons-vue'
+import { createPinia } from 'pinia'
 
 import App from './App.vue'
 import { router } from './app/router'
+import { i18n } from './languages'
 import { installAppAlertBridge } from './shared/ui/appAlert'
+import 'element-plus/dist/index.css'
+import 'element-plus/theme-chalk/dark/css-vars.css'
+import './styles/nprogress.scss'
 import './styles/base.css'
 
 function isFileDragEvent(event: DragEvent): boolean {
@@ -26,4 +33,10 @@ window.addEventListener('drop', guardWindowFileDrop, true)
 
 installAppAlertBridge()
 
-createApp(App).use(router).mount('#app')
+const app = createApp(App)
+
+for (const [iconName, iconComponent] of Object.entries(ElementPlusIconsVue)) {
+  app.component(iconName, iconComponent)
+}
+
+app.use(createPinia()).use(i18n).use(router).use(ElementPlus).mount('#app')

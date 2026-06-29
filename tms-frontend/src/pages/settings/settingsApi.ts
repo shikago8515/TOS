@@ -3,7 +3,11 @@ import type {
   UpdateActionResult,
   UpdateStatus,
 } from '../../types/electronApi'
-import { buildBackendDownloadUrl, getBackendBaseUrl } from '../../shared/api/backendClient'
+import {
+  buildBackendDownloadUrl,
+  downloadUrlAsFile,
+  getBackendBaseUrl,
+} from '../../shared/api/backendClient'
 import { fallbackAppVersion } from '../../shared/version/appVersion'
 
 const defaultTosDesktopDownloadPath = 'https://ai.tomwell.net:56130/tos/tos-desktop/download'
@@ -143,13 +147,7 @@ export async function resolveTosDesktopDownloadUrl(): Promise<string> {
 
 export async function openTosDesktopDownload(): Promise<void> {
   const downloadUrl = await resolveTosDesktopDownloadUrl()
-  const anchor = document.createElement('a')
-  anchor.href = downloadUrl
-  anchor.rel = 'noopener'
-  anchor.download = ''
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
+  await downloadUrlAsFile(downloadUrl, 'TOS-Desktop-Setup.exe')
 }
 
 export function getTosDesktopFullDownloadUrl(): string {
@@ -168,13 +166,7 @@ export async function resolveTosDesktopFullDownloadUrl(): Promise<string> {
 
 export async function openTosDesktopFullDownload(): Promise<void> {
   const downloadUrl = await resolveTosDesktopFullDownloadUrl()
-  const anchor = document.createElement('a')
-  anchor.href = downloadUrl
-  anchor.rel = 'noopener'
-  anchor.download = ''
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
+  await downloadUrlAsFile(downloadUrl, 'TOS-Desktop-Full-Setup.exe')
 }
 
 async function buildUnsupportedResult(): Promise<UpdateActionResult> {

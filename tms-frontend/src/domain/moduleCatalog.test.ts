@@ -43,6 +43,7 @@ describe('moduleCatalog', () => {
     const xinlongtaiModule = getModuleById('xinlongtai-shipping-automation')
     const tcInvModule = getModuleById('tc-inv-automation')
     const poAutoDownloadModule = getModuleById('po-auto-download')
+    const packingListAutoDownloadModule = getModuleById('packing-list-auto-download')
     const jessicaModules = getModulesByGroup('jessica')
     const jasonModules = getModulesByGroup('jason')
     const jessicaModuleIds = jessicaModules.map((module) => module.id)
@@ -78,12 +79,21 @@ describe('moduleCatalog', () => {
       navLabel: 'TC INV 自动化',
       category: 'browser-automation',
     })
+    expect(packingListAutoDownloadModule).toMatchObject({
+      group: 'jessica',
+      path: '/web-automation/scenarios/packing-list-auto-download',
+      routeName: 'web-automation-scenario-packing-list-auto-download',
+      title: 'Jessica / 自动下载箱单',
+      navLabel: '自动下载箱单',
+      category: 'browser-automation',
+    })
     expect(jessicaModuleIds).toEqual(
       expect.arrayContaining([
         'shipping-automation',
         'xinlongtai-shipping-automation',
         'tc-inv-automation',
         'po-auto-download',
+        'packing-list-auto-download',
       ]),
     )
     expect(jasonModuleIds).not.toContain('po-auto-download')
@@ -95,6 +105,9 @@ describe('moduleCatalog', () => {
     )
     expect(jessicaModuleIds.indexOf('po-auto-download')).toBeGreaterThan(
       jessicaModuleIds.indexOf('tc-inv-automation'),
+    )
+    expect(jessicaModuleIds.indexOf('packing-list-auto-download')).toBeGreaterThan(
+      jessicaModuleIds.indexOf('po-auto-download'),
     )
     expect(jessicaModuleIds.indexOf('tc-inv-automation')).toBeGreaterThan(
       jessicaModuleIds.indexOf('xinlongtai-shipping-automation'),
