@@ -48,6 +48,7 @@ temp-*.py
 .env.*
 !.env.example
 !tms-frontend/.env.server
+!tms-frontend/.env.hybrid
 *.local.json
 *.secret.local.json
 .shared/

@@ -14,7 +14,7 @@ describe('releaseUpdatesApi', () => {
     vi.mocked(requestBackendJson).mockReset()
   })
 
-  it('reads release records through the local backend client', async () => {
+  it('reads release records through the remote backend target', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     vi.mocked(requestBackendJson).mockResolvedValue({
@@ -53,6 +53,7 @@ describe('releaseUpdatesApi', () => {
     expect(fetchMock).not.toHaveBeenCalled()
     expect(requestBackendJson).toHaveBeenCalledWith({
       path: '/api/release-updates?limit=160',
+      backendTarget: 'remote',
       timeoutMs: 6000,
     })
   })
