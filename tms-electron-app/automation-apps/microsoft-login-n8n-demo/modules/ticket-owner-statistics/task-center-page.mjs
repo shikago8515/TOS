@@ -78,6 +78,20 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
       percent: 16,
     });
     await pageWait(page, 1200);
+    const taskListCounts = await readTaskListCounts(page);
+    if (requestFirst && taskListCounts.filteredCount > 0) {
+      await reportTicketOwnerProgress(page, options, {
+        phase: "queue",
+        message: `筛选后共有 ${taskListCounts.filteredCount} 个工单，正在补充读取列表请求`,
+        percent: 17,
+        filteredTotalCount: taskListCounts.filteredCount,
+        taskCenterTotalCount: taskListCounts.totalCount,
+      });
+      await hydrateTaskCenterTaskRequests(page, requestRecorder, {
+        targetCount: taskListCounts.filteredCount,
+        maxAttemptCount,
+      });
+    }
 
     const requestRows = requestFirst
       ? extractCompleteRowsFromRequestRecords(requestRecorder.records, maxTicketCount)
@@ -97,6 +111,9 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
         maxTicketCount,
         maxTaskLookupCount: maxAttemptCount,
         expectedTicketCount,
+        filteredTotalCount: taskListCounts.filteredCount,
+        taskCenterTotalCount: taskListCounts.totalCount,
+        requestLookupConcurrency: options.requestLookupConcurrency,
         reportProgress: async (progress) => {
           await reportTicketOwnerProgress(page, options, progress);
         },
@@ -841,6 +858,49 @@ async function collectVisibleTaskRows(page, limit) {
   }
 
   return collected;
+}
+
+async function readTaskListCounts(page) {
+  for (const target of listTargets(page)) {
+    const text = normalizeText(await target.locator("body").innerText({ timeout: 3000 }).catch(() => ""));
+    const match = text.match(/\bTasks\s*\(\s*(\d+)\s*\/\s*(\d+)\s*\)/i);
+    if (match) {
+      return {
+        filteredCount: Number(match[1]) || 0,
+        totalCount: Number(match[2]) || 0,
+        label: match[0],
+      };
+    }
+  }
+  return {
+    filteredCount: 0,
+    totalCount: 0,
+    label: "",
+  };
+}
+
+async function hydrateTaskCenterTaskRequests(page, requestRecorder, options = {}) {
+  if (!requestRecorder?.records) {
+    return;
+  }
+
+  const targetCount = normalizePositiveInteger(options.targetCount, 0);
+  const maxAttemptCount = normalizePositiveInteger(options.maxAttemptCount, 200);
+  const desiredCount = targetCount > 0 ? Math.min(targetCount, maxAttemptCount) : maxAttemptCount;
+  let stableRounds = 0;
+  let lastCount = extractTaskCenterTasksFromRequestRecords(requestRecorder.records).length;
+
+  for (let round = 0; round < 10 && lastCount < desiredCount && stableRounds < 3; round += 1) {
+    const changed = await scrollTaskCenterRows(page);
+    await pageWait(page, changed ? 850 : 450);
+    const currentCount = extractTaskCenterTasksFromRequestRecords(requestRecorder.records).length;
+    if (currentCount <= lastCount) {
+      stableRounds += 1;
+    } else {
+      stableRounds = 0;
+    }
+    lastCount = currentCount;
+  }
 }
 
 async function collectTicketOwnerRowsFromDetailPages(page, taskCenterTasks, options = {}) {
@@ -2059,6 +2119,12 @@ function normalizeTicketOwnerProgress(progress) {
     diagnosticFailedCount: toProgressCount(input.diagnosticFailedCount),
     activeCount: toProgressCount(input.activeCount),
     pendingCount: toProgressCount(input.pendingCount),
+    filteredTotalCount: toProgressCount(input.filteredTotalCount),
+    taskCenterTotalCount: toProgressCount(input.taskCenterTotalCount),
+    discoveredTaskCount: toProgressCount(input.discoveredTaskCount),
+    plannedCount: toProgressCount(input.plannedCount),
+    skippedCount: toProgressCount(input.skippedCount),
+    concurrencyCount: toProgressCount(input.concurrencyCount),
     currentTickets: Array.isArray(input.currentTickets)
       ? input.currentTickets.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 6)
       : [],
@@ -2076,6 +2142,21 @@ function formatProgressMessage(message, progress = {}) {
     message,
   });
   const parts = [String(message || "正在执行")];
+  if (details.filteredTotalCount > 0) {
+    parts.push(`筛选 ${details.filteredTotalCount}${details.taskCenterTotalCount > 0 ? `/${details.taskCenterTotalCount}` : ""}`);
+  }
+  if (details.plannedCount > 0 && details.plannedCount !== details.totalCount) {
+    parts.push(`计划处理 ${details.plannedCount}`);
+  }
+  if (details.discoveredTaskCount > 0 && details.discoveredTaskCount !== details.filteredTotalCount) {
+    parts.push(`已识别 ${details.discoveredTaskCount}`);
+  }
+  if (details.skippedCount > 0) {
+    parts.push(`未进 A/B/C 队列 ${details.skippedCount}`);
+  }
+  if (details.concurrencyCount > 1) {
+    parts.push(`并发 ${details.concurrencyCount}`);
+  }
   if (details.totalCount > 0) {
     parts.push(`已生成 ${details.completedCount}/${details.totalCount}`);
   }
@@ -2179,7 +2260,28 @@ async function injectTicketOwnerProgress(target, message, percent, details = {})
       const attempted = Number(progressDetails?.attemptedCount || 0);
       const failed = Number(progressDetails?.failedCount || 0);
       const active = Number(progressDetails?.activeCount || 0);
+      const filteredTotal = Number(progressDetails?.filteredTotalCount || 0);
+      const taskCenterTotal = Number(progressDetails?.taskCenterTotalCount || 0);
+      const discovered = Number(progressDetails?.discoveredTaskCount || 0);
+      const planned = Number(progressDetails?.plannedCount || 0);
+      const skipped = Number(progressDetails?.skippedCount || 0);
+      const concurrency = Number(progressDetails?.concurrencyCount || 0);
       const parts = [];
+      if (filteredTotal > 0) {
+        parts.push(`筛选 ${filteredTotal}${taskCenterTotal > 0 ? `/${taskCenterTotal}` : ""}`);
+      }
+      if (planned > 0 && planned !== total) {
+        parts.push(`计划处理 ${planned}`);
+      }
+      if (discovered > 0 && discovered !== filteredTotal) {
+        parts.push(`已识别 ${discovered}`);
+      }
+      if (skipped > 0) {
+        parts.push(`未进 A/B/C 队列 ${skipped}`);
+      }
+      if (concurrency > 1) {
+        parts.push(`并发 ${concurrency}`);
+      }
       if (total > 0) {
         parts.push(`已生成 ${completed}/${total}`);
       }

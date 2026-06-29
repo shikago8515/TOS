@@ -17,8 +17,166 @@ const REQUIRED_OUTPUT_FIELDS = [
   "PO Number",
   "Working Number",
 ];
+const DEFAULT_REQUEST_LOOKUP_CONCURRENCY = 3;
+const MAX_REQUEST_LOOKUP_CONCURRENCY = 5;
 
 export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, options = {}) {
+  const maxTicketCount = normalizePositiveInteger(options.maxTicketCount, 200);
+  const maxTaskLookupCount = normalizePositiveInteger(
+    options.maxTaskLookupCount,
+    Math.max(maxTicketCount * 5, 10)
+  );
+  const requestLookupConcurrency = Math.min(
+    MAX_REQUEST_LOOKUP_CONCURRENCY,
+    normalizePositiveInteger(options.requestLookupConcurrency || options.lookupConcurrency, DEFAULT_REQUEST_LOOKUP_CONCURRENCY)
+  );
+  const lookupCache = new Map();
+  const rows = [];
+  const ticketResults = [];
+  const failedTickets = [];
+  const lookupDiagnostics = [];
+  const expectedTicketCount = normalizePositiveInteger(options.expectedTicketCount, maxTicketCount);
+  const filteredTotalCount = normalizePositiveInteger(options.filteredTotalCount, 0);
+  const sourceTasks = Array.isArray(tasks) ? tasks : [];
+  const supportedTasks = sourceTasks
+    .filter((task) => isSupportedTaskType(task.taskType))
+    .slice(0, maxTaskLookupCount);
+  const plannedCount = Math.max(1, Math.min(maxTicketCount, supportedTasks.length || expectedTicketCount));
+  const notQueuedCount = Math.max(0, (filteredTotalCount || sourceTasks.length) - supportedTasks.length);
+  const activeTasks = new Map();
+  const workerCount = Math.max(1, Math.min(requestLookupConcurrency, supportedTasks.length || 1));
+  let attemptedCount = 0;
+  let nextIndex = 0;
+  let stopRequested = false;
+
+  await reportLookupState("正在准备请求工单数据", 18);
+
+  async function worker(workerIndex) {
+    while (!stopRequested) {
+      if (rows.length >= maxTicketCount || lookupDiagnostics.length >= maxTaskLookupCount) {
+        stopRequested = true;
+        return;
+      }
+
+      const task = supportedTasks[nextIndex];
+      nextIndex += 1;
+      if (!task) {
+        return;
+      }
+
+      attemptedCount += 1;
+      const sequence = attemptedCount;
+      const base = taskToBaseFields(task);
+      const activeKey = `${workerIndex}-${sequence}`;
+      activeTasks.set(activeKey, base.caseNumber || base.subject || `worker-${workerIndex + 1}`);
+      await reportLookupState(`正在请求第 ${sequence} 个工单数据`, estimateLookupProgress(rows.length, plannedCount));
+
+      try {
+        const lookup = await resolveTicketLookup(page, base, task, lookupCache, options);
+        lookupDiagnostics.push({
+          caseNumber: base.caseNumber,
+          taskType: base.taskType,
+          poNumber: base.poNumber,
+          resolvedPoNumber: lookup.poNumber,
+          workingNumber: lookup.workingNumber,
+          factoryCode: lookup.factoryCode,
+          requestId: lookup.requestId,
+          userTaskId: lookup.userTaskId,
+          source: lookup.source,
+          attempts: lookup.attempts,
+        });
+
+        const row = resolveTicketOwnerRow({
+          caseNumber: base.caseNumber,
+          taskType: base.taskType,
+          request: base.request,
+          poNumber: lookup.poNumber || base.poNumber,
+          workingNumber: lookup.workingNumber || base.workingNumber,
+          factoryCode: lookup.factoryCode || base.factoryCode,
+        });
+        const missingFields = collectMissingRequiredFields(row);
+
+        if (missingFields.length > 0) {
+          failedTickets.push({
+            ok: false,
+            requestFirst: true,
+            caseNumber: base.caseNumber,
+            taskType: base.taskType,
+            request: base.request,
+            poNumber: lookup.poNumber || base.poNumber,
+            missingFields,
+            message: `request-first OData lookup missing: ${missingFields.join(", ")}`,
+          });
+          continue;
+        }
+
+        if (rows.length < maxTicketCount) {
+          rows.push(row);
+          ticketResults.push({
+            ok: true,
+            requestFirst: true,
+            odataLookup: true,
+            taskKey: `${base.caseNumber}|${base.taskType}|${lookup.poNumber || base.poNumber}`,
+            branchId: row.branchId,
+            caseNumber: row["Case Number"],
+            taskType: row["Task Type"],
+            request: row.Request,
+            poNumber: row["PO Number"],
+            workingNumber: row["Working Number"],
+            source: lookup.source,
+            warnings: [],
+          });
+        }
+      } catch (error) {
+        failedTickets.push({
+          ok: false,
+          requestFirst: true,
+          caseNumber: base.caseNumber,
+          taskType: base.taskType,
+          request: base.request,
+          poNumber: base.poNumber,
+          missingFields: [],
+          message: error?.message || "request-first OData lookup failed",
+        });
+      } finally {
+        activeTasks.delete(activeKey);
+        await reportLookupState("已获取当前工单数据，继续下一条", estimateLookupProgress(rows.length, plannedCount));
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, (_, index) => worker(index)));
+
+  return {
+    rows,
+    ticketResults,
+    failedTickets,
+    lookupDiagnostics,
+  };
+
+  async function reportLookupState(message, percent) {
+    await reportLookupProgress(options, {
+      phase: "request-lookup",
+      message,
+      percent,
+      totalCount: plannedCount,
+      filteredTotalCount,
+      discoveredTaskCount: sourceTasks.length,
+      plannedCount,
+      skippedCount: notQueuedCount,
+      completedCount: rows.length,
+      successCount: rows.length,
+      failedCount: failedTickets.length,
+      attemptedCount,
+      activeCount: activeTasks.size,
+      concurrencyCount: workerCount,
+      pendingCount: Math.max(0, plannedCount - rows.length),
+      currentTickets: Array.from(activeTasks.values()).filter(Boolean),
+    });
+  }
+}
+
+async function buildTicketOwnerRowsFromTaskCenterTasksLegacy(page, tasks, options = {}) {
   const maxTicketCount = normalizePositiveInteger(options.maxTicketCount, 200);
   const maxTaskLookupCount = normalizePositiveInteger(
     options.maxTaskLookupCount,
