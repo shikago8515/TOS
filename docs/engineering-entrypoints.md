@@ -61,12 +61,13 @@
 - 手动写入服务器前先运行 `npm run release:updates:push:dry-run` 检查当前 commit 将生成的记录；不要依赖 `npm run release:updates:push -- --dry-run` 这类参数透传。
 - commit/merge 自动记录通过 `.githooks` 调用 `scripts/release_update_sync.py`，默认从 `TOS_RELEASE_UPDATES_API_URL` 或 `tms-frontend/.env.server` 解析服务器 `/api/release-updates`，不得提交数据库账号或写入 token；该 hook 只作为辅助记录或预览，不作为正式版本发布事实来源。
 - `POST /api/release-updates` 可由服务器环境变量 `TOS_RELEASE_UPDATE_WRITE_TOKEN` 保护；`GET /api/release-updates` 必须保持公开读取，避免版本页不可用。
-- `semantic-release` 只在 Gitea `main` push 后的发布环境运行；发布环境需要配置 `GITEA_TOKEN` 或 `TOS_GITEA_TOKEN`。`main` 作为 `beta.3` prerelease 分支，`stable` 仅作为 semantic-release 要求的稳定 release branch；首次启用前需要在当前基线提交补齐 `v0.9.8-beta.3.28` tag。
+- `semantic-release` 只在 Gitea `main` push 后由 `.gitea/workflows/tos-check.yml` 运行；发布环境使用 Gitea Actions 内置 `GITEA_TOKEN`，并同步暴露为 `TOS_GITEA_TOKEN`。`main` 作为 `beta.3` prerelease 分支，`stable` 仅作为 semantic-release 要求的稳定 release branch；首次启用前需要在当前基线提交补齐 `v0.9.8-beta.3.28` tag。
 - 普通功能、修复和文档清理不要手工维护 `releaseNotes.json` 或运行 `version:bump`；当前版本说明和 release manifest 由 `semantic-release` 根据 Conventional Commits 写入，服务器包生成前会校验版本一致，并在 manifest 存在时优先用它生成部署记录。
 
 ## Gitea 远端检查
 
-- 当前远端检查和发布以 Gitea `main` 为准。
+- 当前远端检查和发布以 Gitea `main` 为准，入口是 `.gitea/workflows/tos-check.yml`。
 - `main`、`codex/**` 分支 push，以及面向 `main` 的合并请求会运行完整 `npm run check`。
+- 只有 `refs/heads/main` push 且上一条提交不是 `chore(release):` 时，workflow 才会继续运行 `npm run release -- --no-ci`。
 - CI 会设置 `PYTHON=python3` 和 `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`，并在 runner 内下载使用 Node.js 22.11.0；当前远端检查只运行脚本级测试，不下载浏览器，也不做真实浏览器自动化 smoke。
 - 远端检查不运行 `npm run pack`、`npm run build:win`、发布清单写入命令或任何上传发布产物的命令。

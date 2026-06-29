@@ -19,6 +19,10 @@ const commandGroups = {
       '--test',
       'scripts/engineering/semantic-release-config.test.mjs',
     ]),
+    command('gitea-workflow-config-test', '.', process.execPath, [
+      '--test',
+      'scripts/engineering/gitea-workflow-config.test.mjs',
+    ]),
     command('semantic-release-tos-plugin-test', '.', process.execPath, [
       '--test',
       'scripts/engineering/semantic-release-tos-plugin.test.mjs',

@@ -9,6 +9,11 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+  code: write
+  releases: write
+
 jobs:
   check:
     name: Full repository checks
@@ -19,17 +24,32 @@ jobs:
     steps:
       - name: Checkout source
         env:
-          GITCODE_REF: ${{ gitcode.ref }}
-          GITCODE_SHA: ${{ gitcode.sha }}
+          GITEA_REF: ${{ gitea.ref }}
+          GITEA_SHA: ${{ gitea.sha }}
+          GITEA_ACTOR: ${{ gitea.actor }}
+          GITEA_SERVER_URL: ${{ gitea.server_url }}
+          GITEA_REPOSITORY: ${{ gitea.repository }}
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
         run: |
           rm -rf repo_workspace
-          git clone --no-checkout --depth 1 https://gitcode.com/shikago8515/TOS.git repo_workspace
-          cd repo_workspace
-          if [ -n "$GITCODE_REF" ]; then
-            git fetch --depth 1 origin "$GITCODE_REF" || true
+          repo_url="${GITEA_SERVER_URL%/}/${GITEA_REPOSITORY}.git"
+          if [ -n "$GITEA_TOKEN" ]; then
+            case "$repo_url" in
+              http://*) auth_repo_url="http://${GITEA_ACTOR:-tos-release-bot}:${GITEA_TOKEN}@${repo_url#http://}" ;;
+              https://*) auth_repo_url="https://${GITEA_ACTOR:-tos-release-bot}:${GITEA_TOKEN}@${repo_url#https://}" ;;
+              *) auth_repo_url="$repo_url" ;;
+            esac
+          else
+            auth_repo_url="$repo_url"
           fi
-          if [ -n "$GITCODE_SHA" ]; then
-            git checkout --detach "$GITCODE_SHA"
+          git clone --no-checkout --depth 1 "$auth_repo_url" repo_workspace
+          cd repo_workspace
+          git remote set-url origin "$repo_url"
+          if [ -n "$GITEA_REF" ]; then
+            git fetch --depth 1 origin "$GITEA_REF" || true
+          fi
+          if [ -n "$GITEA_SHA" ]; then
+            git checkout --detach "$GITEA_SHA"
           else
             git checkout main
           fi
@@ -65,17 +85,20 @@ jobs:
 
       - name: Semantic release
         env:
-          GITCODE_REF: ${{ gitcode.ref }}
-          GITCODE_SHA: ${{ gitcode.sha }}
-          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
-          GITCODE_REPOSITORY: shikago8515/TOS
+          GITEA_REF: ${{ gitea.ref }}
+          GITEA_SHA: ${{ gitea.sha }}
+          GITEA_ACTOR: ${{ gitea.actor }}
+          GITEA_SERVER_URL: ${{ gitea.server_url }}
+          GITEA_REPOSITORY: ${{ gitea.repository }}
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          TOS_GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
         run: |
           cd repo_workspace
           NODE_VERSION=22.11.0
           NODE_DIST="node-v${NODE_VERSION}-linux-x64"
           export PATH="$PWD/.ci/${NODE_DIST}/bin:$PATH"
-          if [ "$GITCODE_REF" != "refs/heads/main" ] || [ -z "$GITCODE_TOKEN" ]; then
-            echo "Skip semantic-release: not a main push or GITCODE_TOKEN is missing."
+          if [ "$GITEA_REF" != "refs/heads/main" ] || [ -z "$GITEA_TOKEN" ]; then
+            echo "Skip semantic-release: not a main push or GITEA_TOKEN is missing."
             exit 0
           fi
           if git log -1 --pretty=%s | grep -q '^chore(release):'; then
@@ -83,9 +106,15 @@ jobs:
             exit 0
           fi
           git config user.name "tos-release-bot"
-          git config user.email "tos-release-bot@users.noreply.gitcode.com"
-          git remote set-url origin "https://oauth2:${GITCODE_TOKEN}@gitcode.com/shikago8515/TOS.git"
-          git checkout -B main "$GITCODE_SHA"
+          git config user.email "tos-release-bot@users.noreply.gitea.local"
+          repo_url="${GITEA_SERVER_URL%/}/${GITEA_REPOSITORY}.git"
+          case "$repo_url" in
+            http://*) auth_repo_url="http://${GITEA_ACTOR:-tos-release-bot}:${GITEA_TOKEN}@${repo_url#http://}" ;;
+            https://*) auth_repo_url="https://${GITEA_ACTOR:-tos-release-bot}:${GITEA_TOKEN}@${repo_url#https://}" ;;
+            *) auth_repo_url="$repo_url" ;;
+          esac
+          git remote set-url origin "$auth_repo_url"
+          git checkout -B main "$GITEA_SHA"
           git fetch origin main --tags --prune
           if ! git ls-remote --exit-code --heads origin stable >/dev/null 2>&1; then
             git push origin HEAD:stable

@@ -64,4 +64,4 @@ git push -u gitea codex/<topic>
 - 服务器 `~/TOS-source` 可 `git pull --ff-only origin main`：
 - 服务器 `scripts/server/deploy-gitea-main.sh` 已执行：
 - 后端版本和前端 HTTP 200 已验证：
-- 如需同步其他历史远端，已按对应远端规则执行：
+- 旧远端不参与当前发布：

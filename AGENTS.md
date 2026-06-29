@@ -20,7 +20,7 @@
 - Electron 打包默认使用 `tms-frontend/dist`；`TOS_FRONTEND_SOURCE=recovered` 只用于紧急回退。
 - 仓库根目录 `package.json` 提供工程入口 scripts，用于编排前端、后端和 Electron 子项目的现有检查命令。
 - Gitea `main` 是当前服务器部署主线；本地改完后优先推送并合并到 Gitea `main`。
-- Gitea 是当前唯一主线远端；服务器部署、远端检查和自动版本发布都以 Gitea `main` 为准。历史旧远端工作流仅保留为旧流程参考，不作为当前检查或发布路径。
+- Gitea 是当前唯一主线远端；服务器部署、远端检查和自动版本发布都以 Gitea `main` 为准。历史旧远端不作为当前检查或发布路径，旧 CI workflow 不再保留。
 - 完整 TOS-AI 工作流位于 `docs/tos-ai-workflow.md`，覆盖 Gitea 同步、分支开发、自动版本、更新内容、CI、服务器发布和回滚。
 
 ## 默认探索边界
