@@ -706,6 +706,7 @@ async function finishBackendRunRecord(r: AutomationRunRecord | null, ok: boolean
   return payload.files
 }
 async function collectResultFiles(p: Record<string, any> | null): Promise<AutomationRunFileInput[]> {
+  if (isTicketOwnerStatisticsScenario.value) return []
   const u = p?.artifacts?.downloadUrls
   if (!u || typeof u !== 'object') return []
   const resultExcelName = isTicketOwnerStatisticsScenario.value ? 'Ticket ownership.xlsx' : 'shipping-last-result.xlsx'

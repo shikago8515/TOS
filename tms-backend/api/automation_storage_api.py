@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+from io import BytesIO
 import json
 import logging
 from datetime import datetime
@@ -9,6 +10,10 @@ from typing import Any
 from urllib.parse import quote
 from uuid import uuid4
 
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.table import Table, TableStyleInfo
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -60,6 +65,19 @@ MICROSOFT_SHARED_CREDENTIAL_IDS = (
     "microsoft-login-n8n",
     "ticket-owner-statistics",
 )
+
+TICKET_OWNER_AUTOMATION_ID = "ticket-owner-statistics"
+TICKET_OWNER_COLUMNS = (
+    "Case Number",
+    "Task Type",
+    "Request",
+    "PO Number",
+    "Working Number",
+    "Factory",
+    "Merch",
+)
+TICKET_OWNER_EXCEL_NAME = "Ticket ownership.xlsx"
+EXCEL_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 class CredentialPayload(BaseModel):
@@ -343,12 +361,24 @@ async def finish_run(run_id: str, payload: RunUpdatePayload) -> dict[str, Any]:
     )
     files: list[dict[str, Any]] = []
     warnings: list[str] = []
+    server_generated_roles: set[str] = set()
     if payload.result is not None:
         result_file = _try_store_result_json(run_id, row["automation_id"], payload.result, warnings)
         if result_file:
             files.append(result_file)
+        ticket_owner_file = _try_store_ticket_owner_excel(
+            run_id,
+            row["automation_id"],
+            payload.result,
+            warnings,
+        )
+        if ticket_owner_file:
+            files.append(ticket_owner_file)
+            server_generated_roles.add("result_excel")
 
     for file_payload in payload.resultFiles:
+        if file_payload.fileRole in server_generated_roles:
+            continue
         result_file = _try_store_remote_result_file(run_id, row["automation_id"], file_payload, warnings)
         if result_file:
             files.append(result_file)
@@ -622,6 +652,34 @@ def _try_store_result_json(
         return None
 
 
+def _try_store_ticket_owner_excel(
+    run_id: str,
+    automation_id: str,
+    result: Any,
+    warnings: list[str],
+) -> dict[str, Any] | None:
+    if automation_id != TICKET_OWNER_AUTOMATION_ID or not isinstance(result, dict):
+        return None
+    rows = result.get("rows")
+    if not isinstance(rows, list):
+        return None
+
+    try:
+        content = _build_ticket_owner_workbook_bytes(rows)
+        return _store_result_file_bytes(
+            run_id=run_id,
+            automation_id=automation_id,
+            file_role="result_excel",
+            filename=TICKET_OWNER_EXCEL_NAME,
+            content=content,
+            content_type=EXCEL_CONTENT_TYPE,
+        )
+    except Exception:
+        logger.exception("Failed to build server-side ticket ownership workbook.")
+        warnings.append("File storage is unavailable; ticket ownership Excel was not generated on the server.")
+        return None
+
+
 def _try_store_remote_result_file(
     run_id: str,
     automation_id: str,
@@ -715,6 +773,36 @@ def _store_result_json(run_id: str, automation_id: str, result: Any) -> dict[str
     })
 
 
+def _store_result_file_bytes(
+    *,
+    run_id: str,
+    automation_id: str,
+    file_role: str,
+    filename: str,
+    content: bytes,
+    content_type: str,
+) -> dict[str, Any]:
+    safe_filename = sanitize_object_segment(filename)
+    bucket = get_minio_bucket("results")
+    object_key = build_object_key("results", automation_id, run_id, file_role, safe_filename)
+    storage_record = put_object_bytes(
+        bucket=bucket,
+        object_key=object_key,
+        content=content,
+        content_type=content_type,
+    )
+    return insert_automation_run_file({
+        "run_id": run_id,
+        "file_role": file_role,
+        "bucket": bucket,
+        "object_key": object_key,
+        "original_filename": safe_filename,
+        "content_type": content_type,
+        "file_size": storage_record["file_size"],
+        "sha256": storage_record["sha256"] or sha256_bytes(content),
+    })
+
+
 def _store_remote_result_file(run_id: str, automation_id: str, file_payload: RunFilePayload) -> dict[str, Any]:
     if file_payload.contentBase64:
         return _store_result_file_content(run_id, automation_id, file_payload)
@@ -771,6 +859,76 @@ def _store_result_file_content(run_id: str, automation_id: str, file_payload: Ru
         "file_size": storage_record["file_size"],
         "sha256": storage_record["sha256"] or sha256_bytes(content),
     })
+
+
+def _build_ticket_owner_workbook_bytes(rows: list[Any]) -> bytes:
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Ticket ownership"
+
+    header_fill = PatternFill("solid", fgColor="FF5B9BD5")
+    stripe_fill = PatternFill("solid", fgColor="FFDDEBF7")
+    white_fill = PatternFill("solid", fgColor="FFFFFFFF")
+    thin_side = Side(style="thin", color="FF000000")
+    border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+    header_font = Font(bold=True, color="FFFFFF")
+    alignment = Alignment(horizontal="center", vertical="center")
+
+    worksheet.append(list(TICKET_OWNER_COLUMNS))
+    for cell in worksheet[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.border = border
+        cell.alignment = alignment
+        cell.number_format = "@"
+
+    for row_index, source_row in enumerate(rows, start=2):
+        normalized_row = _normalize_ticket_owner_row(source_row)
+        worksheet.append([normalized_row[column] for column in TICKET_OWNER_COLUMNS])
+        fill = stripe_fill if row_index % 2 == 0 else white_fill
+        for cell in worksheet[row_index]:
+            cell.fill = fill
+            cell.border = border
+            cell.alignment = alignment
+            cell.number_format = "@"
+
+    column_widths = (16, 30, 34, 18, 22, 16, 16)
+    for column_index, width in enumerate(column_widths, start=1):
+        worksheet.column_dimensions[get_column_letter(column_index)].width = width
+
+    worksheet.freeze_panes = "A2"
+    table_ref = f"A1:G{max(worksheet.max_row, 1)}"
+    worksheet.auto_filter.ref = table_ref
+    if worksheet.max_row >= 2:
+        table = Table(displayName="TicketOwnership", ref=table_ref)
+        table.tableStyleInfo = TableStyleInfo(
+            name="TableStyleMedium2",
+            showFirstColumn=False,
+            showLastColumn=False,
+            showRowStripes=True,
+            showColumnStripes=False,
+        )
+        worksheet.add_table(table)
+
+    stream = BytesIO()
+    workbook.save(stream)
+    workbook.close()
+    return stream.getvalue()
+
+
+def _normalize_ticket_owner_row(row: Any) -> dict[str, str]:
+    if not isinstance(row, dict):
+        return {column: "" for column in TICKET_OWNER_COLUMNS}
+    return {
+        column: _normalize_ticket_owner_cell(row.get(column))
+        for column in TICKET_OWNER_COLUMNS
+    }
+
+
+def _normalize_ticket_owner_cell(value: Any) -> str:
+    if value is None:
+        return ""
+    return " ".join(str(value).replace("\xa0", " ").split())
 
 
 def _safe_json_loads(value: Any) -> Any:

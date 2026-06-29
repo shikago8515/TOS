@@ -3,9 +3,12 @@ import base64
 import tempfile
 import unittest
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+
+from openpyxl import load_workbook
 
 from api import automation_storage_api
 from utils import credential_crypto
@@ -222,6 +225,87 @@ class AutomationStorageTests(unittest.TestCase):
         put_object.assert_called_once()
         self.assertEqual(put_object.call_args.kwargs["content"], b"excel-bytes")
         download_url.assert_not_called()
+
+    def test_ticket_owner_result_excel_is_built_on_server(self):
+        existing_row = build_run_row("run-ticket", status="running")
+        existing_row["automation_id"] = "ticket-owner-statistics"
+        existing_row["module_id"] = "ticket-owner-statistics"
+        updated_row = {
+            **existing_row,
+            "status": "success",
+            "message": "done",
+            "finished_at": datetime(2026, 6, 29, 12, 0, 0),
+        }
+        result = {
+            "ok": True,
+            "rows": [{
+                "Case Number": "10682971",
+                "Task Type": "Provide Feedback",
+                "Request": "Transport Mode Change",
+                "PO Number": "0902793368",
+                "Working Number": "RC2606OW001",
+                "Factory": "3LP001",
+                "Merch": "Rosa",
+            }],
+        }
+        payload = RunUpdatePayload(
+            status="success",
+            message="done",
+            result=result,
+            resultFiles=[RunFilePayload(
+                url="http://127.0.0.1:3002/artifacts/local.xlsx",
+                fileName="Ticket ownership.xlsx",
+                fileRole="result_excel",
+            )],
+        )
+        inserted_excel_row = {
+            "id": 22,
+            "run_id": "run-ticket",
+            "file_role": "result_excel",
+            "bucket": "tos-results",
+            "object_key": "results/ticket-owner-statistics/run-ticket/result_excel/Ticket ownership.xlsx",
+            "original_filename": "Ticket ownership.xlsx",
+            "content_type": automation_storage_api.EXCEL_CONTENT_TYPE,
+            "file_size": 1,
+            "sha256": "d" * 64,
+            "created_at": datetime(2026, 6, 29, 12, 0, 0),
+        }
+
+        with patch.object(automation_storage_api, "get_automation_run", return_value=existing_row), \
+             patch.object(automation_storage_api, "update_automation_run", return_value=updated_row), \
+             patch.object(automation_storage_api, "_store_result_json", return_value={
+                 "id": 21,
+                 "run_id": "run-ticket",
+                 "file_role": "result_json",
+                 "bucket": "tos-results",
+                 "object_key": "results/ticket-owner-statistics/run-ticket/result.json",
+                 "original_filename": "result.json",
+                 "content_type": "application/json; charset=utf-8",
+                 "file_size": 100,
+                 "sha256": "e" * 64,
+                 "created_at": datetime(2026, 6, 29, 12, 0, 0),
+             }), \
+             patch.object(automation_storage_api, "get_minio_bucket", return_value="tos-results"), \
+             patch.object(automation_storage_api, "build_object_key", return_value=inserted_excel_row["object_key"]), \
+             patch.object(automation_storage_api, "put_object_bytes", return_value={
+                 "file_size": 2048,
+                 "sha256": "d" * 64,
+             }) as put_object, \
+             patch.object(automation_storage_api, "insert_automation_run_file", return_value=inserted_excel_row), \
+             patch.object(automation_storage_api, "_store_remote_result_file") as remote_store:
+            response = run_async(automation_storage_api.finish_run("run-ticket", payload))
+
+        self.assertEqual([file["file_role"] for file in response["files"]], ["result_json", "result_excel"])
+        remote_store.assert_not_called()
+        excel_content = put_object.call_args.kwargs["content"]
+        workbook = load_workbook(BytesIO(excel_content))
+        sheet = workbook["Ticket ownership"]
+        self.assertEqual(sheet["A1"].value, "Case Number")
+        self.assertEqual(sheet["D2"].value, "0902793368")
+        self.assertEqual(sheet["A1"].fill.fgColor.rgb, "FF5B9BD5")
+        self.assertEqual(sheet["A2"].fill.fgColor.rgb, "FFDDEBF7")
+        self.assertEqual(sheet.auto_filter.ref, "A1:G2")
+        workbook.close()
 
     def test_template_payload_exposes_management_fields(self):
         row = {
