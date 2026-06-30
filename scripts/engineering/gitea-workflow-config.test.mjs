@@ -18,4 +18,6 @@ test('release workflow is owned by Gitea Actions only', () => {
   assert.match(workflow, /npm run check/)
   assert.match(workflow, /npm run release -- --no-ci/)
   assert.match(workflow, /git fetch --depth 1 "\$auth_repo_url" "\$GITEA_REF" \|\| true/)
+  assert.match(workflow, /apk add --no-cache nodejs npm python3 py3-pip/)
+  assert.doesNotMatch(workflow, /nodejs\.org\/dist/)
 })

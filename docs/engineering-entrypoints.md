@@ -80,5 +80,5 @@
 - 当前远端检查和发布以 Gitea `main` 为准，入口是 `.gitea/workflows/tos-check.yml`。
 - `main`、`codex/**` 分支 push，以及面向 `main` 的合并请求会运行完整 `npm run check`。
 - 只有 `refs/heads/main` push 且上一条提交不是 `chore(release):` 时，workflow 才会继续运行 `npm run release -- --no-ci`。
-- CI 会设置 `PYTHON=python3` 和 `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`，并在 runner 内下载使用 Node.js 22.11.0；当前远端检查只运行脚本级测试，不下载浏览器，也不做真实浏览器自动化 smoke。
+- CI 会设置 `PYTHON=python3` 和 `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`，并在 runner 内通过系统包安装 `nodejs`、`npm`、`python3` 和 `pip`；当前远端检查只运行脚本级测试，不下载浏览器，也不做真实浏览器自动化 smoke。
 - 远端检查不运行 `npm run pack`、`npm run build:win`、发布清单写入命令或任何上传发布产物的命令。

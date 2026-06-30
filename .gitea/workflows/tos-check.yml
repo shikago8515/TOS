@@ -57,19 +57,13 @@ jobs:
       - name: Install Node.js and dependencies
         run: |
           cd repo_workspace
-          NODE_VERSION=22.11.0
-          NODE_DIST="node-v${NODE_VERSION}-linux-x64"
-          NODE_ARCHIVE="${NODE_DIST}.tar.xz"
-          mkdir -p .ci
-          if [ ! -x ".ci/${NODE_DIST}/bin/node" ]; then
-            if command -v curl >/dev/null 2>&1; then
-              curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/${NODE_ARCHIVE}" -o ".ci/${NODE_ARCHIVE}"
-            else
-              wget -q "https://nodejs.org/dist/v${NODE_VERSION}/${NODE_ARCHIVE}" -O ".ci/${NODE_ARCHIVE}"
-            fi
-            tar -xJf ".ci/${NODE_ARCHIVE}" -C .ci
+          if command -v apk >/dev/null 2>&1; then
+            apk add --no-cache nodejs npm python3 py3-pip
+          elif command -v apt-get >/dev/null 2>&1; then
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y nodejs npm python3 python3-pip
           fi
-          export PATH="$PWD/.ci/${NODE_DIST}/bin:$PATH"
           node --version
           npm --version
           python3 --version
@@ -78,9 +72,6 @@ jobs:
       - name: Run full repository checks
         run: |
           cd repo_workspace
-          NODE_VERSION=22.11.0
-          NODE_DIST="node-v${NODE_VERSION}-linux-x64"
-          export PATH="$PWD/.ci/${NODE_DIST}/bin:$PATH"
           PYTHON=python3 npm run check
 
       - name: Semantic release
@@ -94,9 +85,6 @@ jobs:
           TOS_GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
         run: |
           cd repo_workspace
-          NODE_VERSION=22.11.0
-          NODE_DIST="node-v${NODE_VERSION}-linux-x64"
-          export PATH="$PWD/.ci/${NODE_DIST}/bin:$PATH"
           if [ "$GITEA_REF" != "refs/heads/main" ] || [ -z "$GITEA_TOKEN" ]; then
             echo "Skip semantic-release: not a main push or GITEA_TOKEN is missing."
             exit 0
