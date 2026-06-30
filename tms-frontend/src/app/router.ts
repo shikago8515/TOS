@@ -8,6 +8,7 @@ import AutomationRunsPage from '../pages/automation-runs/AutomationRunsPage.vue'
 import AutomationTemplatesPage from '../pages/automation-templates/AutomationTemplatesPage.vue'
 import DraftPackingComparePage from '../pages/draft-packing-compare/DraftPackingComparePage.vue'
 import EricPage from '../pages/eric/EricPage.vue'
+import ExcelTemplateMapperTestPage from '../pages/excel-template-mapper-test/ExcelTemplateMapperTestPage.vue'
 import HomePage from '../pages/home/HomePage.vue'
 import IplexDualTableComparePage from '../pages/iplex-dual-table-compare/IplexDualTableComparePage.vue'
 import InfornexusAutoAddPage from '../pages/infornexus-auto-add/InfornexusAutoAddPage.vue'
@@ -75,6 +76,10 @@ const routeComponents: Partial<Record<string, Component>> = {
   'jane-outbound-compare': bindRouteComponentName('jane-outbound-compare', JaneOutboundComparePage),
   'jane-infornexus': bindRouteComponentName('jane-infornexus', JaneInfornexusPage),
   eric: bindRouteComponentName('eric', EricPage),
+  'excel-template-mapper-test': bindRouteComponentName(
+    'excel-template-mapper-test',
+    ExcelTemplateMapperTestPage,
+  ),
   'eric-infornexus': bindRouteComponentName('eric-infornexus', InfornexusAutoAddPage),
   'jason-pdf-reorder': bindRouteComponentName('jason-pdf-reorder', JasonPdfReorderPage),
   'web-automation-scenario-shipping-automation': bindRouteComponentName(

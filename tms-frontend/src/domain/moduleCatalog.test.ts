@@ -297,4 +297,29 @@ describe('moduleCatalog', () => {
     })
     expect(generalToolIds).toEqual(expect.arrayContaining(['automation-runs', 'automation-templates']))
   })
+
+  it('exposes the generic Excel template mapper as a validation tool under general tools', () => {
+    const mapperModule = getModuleById('excel-template-mapper-test')
+    const generalToolIds = getModulesByGroup('general-tools').map((module) => module.id)
+
+    expect(mapperModule).toMatchObject({
+      path: '/excel-template-mapper-test',
+      routeName: 'excel-template-mapper-test',
+      title: '通用 Excel 映射测试',
+      titleEn: 'Generic Excel Mapper Test',
+      navLabel: '通用 Excel 映射测试',
+      navLabelEn: 'Generic Excel Mapper',
+      group: 'general-tools',
+      category: 'excel',
+      stage: 'validation',
+      order: 75,
+    })
+    expect(generalToolIds).toContain('excel-template-mapper-test')
+    expect(generalToolIds.indexOf('excel-template-mapper-test')).toBeGreaterThan(
+      generalToolIds.indexOf('web-automation'),
+    )
+    expect(generalToolIds.indexOf('excel-template-mapper-test')).toBeLessThan(
+      generalToolIds.indexOf('adidas-materials'),
+    )
+  })
 })

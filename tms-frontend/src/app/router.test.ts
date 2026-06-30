@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 import AutomationRunsPage from '../pages/automation-runs/AutomationRunsPage.vue'
 import AutomationTemplatesPage from '../pages/automation-templates/AutomationTemplatesPage.vue'
 import DraftPackingComparePage from '../pages/draft-packing-compare/DraftPackingComparePage.vue'
+import ExcelTemplateMapperTestPage from '../pages/excel-template-mapper-test/ExcelTemplateMapperTestPage.vue'
 import IplexDualTableComparePage from '../pages/iplex-dual-table-compare/IplexDualTableComparePage.vue'
 import InfornexusAutoAddPage from '../pages/infornexus-auto-add/InfornexusAutoAddPage.vue'
 import JasonPdfReorderPage from '../pages/jason-pdf-reorder/JasonPdfReorderPage.vue'
@@ -201,5 +202,14 @@ describe('router', () => {
     expect(templatesRoute?.name).toBe('automation-templates')
     expect(templatesRoute?.components?.default).toBe(AutomationTemplatesPage)
     expect(templatesRoute?.components?.default).not.toBe(RoutePlaceholder)
+  })
+
+  it('routes the generic Excel mapper test module to its real page component', async () => {
+    const { router } = await import('./router')
+    const route = router.getRoutes().find((entry) => entry.path === '/excel-template-mapper-test')
+
+    expect(route?.name).toBe('excel-template-mapper-test')
+    expect(route?.components?.default).toBe(ExcelTemplateMapperTestPage)
+    expect(route?.components?.default).not.toBe(RoutePlaceholder)
   })
 })

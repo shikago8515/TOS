@@ -30,6 +30,17 @@ test('backend API contract includes iPlex dual table compare routes', () => {
   )
 })
 
+test('backend API contract includes generic Excel template mapper routes', () => {
+  assert.deepEqual(
+    requiredBackendOpenapiPaths.filter((routePath) => routePath.startsWith('/api/excel-template-mapper/')).sort(),
+    [
+      '/api/excel-template-mapper/download/{filename}',
+      '/api/excel-template-mapper/inspect',
+      '/api/excel-template-mapper/process',
+    ]
+  )
+})
+
 test('backend API contract includes release and system config routes', () => {
   assert.deepEqual(
     requiredBackendOpenapiPaths.filter((routePath) => (

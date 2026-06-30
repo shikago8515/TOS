@@ -18,6 +18,7 @@ describe('automationTemplateModules', () => {
       'infornexus-auto-add',
       'po-auto-download',
       'packing-list-auto-download',
+      'excel-template-mapper-test',
     ])
     expect(automationTemplateModuleIds).not.toContain('jane-sap')
     expect(automationTemplateModuleIds).not.toContain('jane-infornexus')
@@ -44,5 +45,6 @@ describe('automationTemplateModules', () => {
     expect(getTemplateTypeLabel('shipping-automation-2', 'unreleased')).toBe('Unreleased Bulk 模板')
     expect(normalizeTemplateKeyForModule('shipping-automation', 'unreleased')).toBe('default')
     expect(normalizeTemplateKeyForModule('shipping-automation-2', 'unreleased')).toBe('unreleased')
+    expect(getDefaultTemplateKey('excel-template-mapper-test')).toBe('default')
   })
 })
