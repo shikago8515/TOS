@@ -46,7 +46,7 @@ jobs:
           cd repo_workspace
           git remote set-url origin "$repo_url"
           if [ -n "$GITEA_REF" ]; then
-            git fetch --depth 1 origin "$GITEA_REF" || true
+            git fetch --depth 1 "$auth_repo_url" "$GITEA_REF" || true
           fi
           if [ -n "$GITEA_SHA" ]; then
             git checkout --detach "$GITEA_SHA"
