@@ -5,6 +5,7 @@ export interface UploadRequestOptions {
   formData: FormData
   onProgress?: (percentage: number) => void
   requireRuntimeVersion?: boolean
+  backendTarget?: BackendTarget
 }
 
 export interface JsonRequestOptions {
@@ -13,7 +14,10 @@ export interface JsonRequestOptions {
   body?: unknown
   requireRuntimeVersion?: boolean
   timeoutMs?: number
+  backendTarget?: BackendTarget
 }
+
+export type BackendTarget = 'default' | 'local' | 'remote'
 
 export interface ResponseMessageContext {
   status?: number
@@ -28,7 +32,18 @@ const remoteBackendUrl = 'https://ai.tomwell.net:56130/tos/desktop-api'
 
 let backendStartPromise: Promise<string | undefined> | null = null
 
-export async function getBackendBaseUrl(): Promise<string> {
+export async function getBackendBaseUrl(
+  backendTarget: BackendTarget = 'default',
+  path = '',
+): Promise<string> {
+  if (backendTarget === 'remote') {
+    return readRemoteBrowserBackendUrl()
+  }
+
+  if (backendTarget === 'local') {
+    return getLocalBackendBaseUrl()
+  }
+
   const startedBackendUrl = await ensureBackendReady()
 
   if (startedBackendUrl) {
@@ -41,10 +56,62 @@ export async function getBackendBaseUrl(): Promise<string> {
     return backendUrl.replace(/\/$/, '')
   }
 
-  return readBrowserBackendUrl()
+  return readDefaultBrowserBackendUrl(path)
 }
 
-function readBrowserBackendUrl(): string {
+async function getLocalBackendBaseUrl(): Promise<string> {
+  const startedBackendUrl = await ensureBackendReady()
+
+  if (startedBackendUrl) {
+    return startedBackendUrl.replace(/\/$/, '')
+  }
+
+  const backendUrl = await window.electronAPI?.getBackendUrl()
+
+  if (backendUrl) {
+    return backendUrl.replace(/\/$/, '')
+  }
+
+  return readLocalBrowserBackendUrl()
+}
+
+function readDefaultBrowserBackendUrl(path: string): string {
+  const configuredUrl = import.meta.env.VITE_BACKEND_URL
+
+  if (typeof configuredUrl === 'string' && configuredUrl.trim()) {
+    return configuredUrl.trim().replace(/\/$/, '')
+  }
+
+  if (isHybridBackendRoutingMode()) {
+    return shouldUseRemoteBackendByDefault(path)
+      ? readRemoteBrowserBackendUrl()
+      : readLocalBrowserBackendUrl()
+  }
+
+  if (window.location?.pathname?.startsWith('/tos')) {
+    return '/tos/desktop-api'
+  }
+
+  return readLocalBrowserBackendUrl()
+}
+
+function readLocalBrowserBackendUrl(): string {
+  const configuredUrl = import.meta.env.VITE_LOCAL_BACKEND_URL
+
+  if (typeof configuredUrl === 'string' && configuredUrl.trim()) {
+    return configuredUrl.trim().replace(/\/$/, '')
+  }
+
+  return localDevBackendUrl
+}
+
+function readRemoteBrowserBackendUrl(): string {
+  const configuredRemoteUrl = import.meta.env.VITE_REMOTE_BACKEND_URL
+
+  if (typeof configuredRemoteUrl === 'string' && configuredRemoteUrl.trim()) {
+    return configuredRemoteUrl.trim().replace(/\/$/, '')
+  }
+
   const configuredUrl = import.meta.env.VITE_BACKEND_URL
 
   if (typeof configuredUrl === 'string' && configuredUrl.trim()) {
@@ -55,7 +122,24 @@ function readBrowserBackendUrl(): string {
     return '/tos/desktop-api'
   }
 
-  return localDevBackendUrl
+  return remoteBackendUrl
+}
+
+function isHybridBackendRoutingMode(): boolean {
+  return String(import.meta.env.VITE_BACKEND_ROUTING_MODE || '').trim().toLowerCase() === 'hybrid'
+}
+
+function shouldUseRemoteBackendByDefault(path: string): boolean {
+  const normalizedPath = normalizeApiPath(path)
+  return normalizedPath === '/api/release-updates'
+    || normalizedPath.startsWith('/api/release-updates/')
+    || normalizedPath === '/api/automation/templates'
+    || normalizedPath.startsWith('/api/automation/templates/')
+}
+
+function normalizeApiPath(path: string): string {
+  const [pathname] = String(path || '').split('?')
+  return pathname.startsWith('/') ? pathname : `/${pathname}`
 }
 
 async function ensureBackendReady(): Promise<string | undefined> {
@@ -84,8 +168,9 @@ export async function postFormData<TResponse>({
   formData,
   onProgress,
   requireRuntimeVersion = false,
+  backendTarget = 'default',
 }: UploadRequestOptions): Promise<TResponse> {
-  const baseUrl = await getBackendBaseUrl()
+  const baseUrl = await getBackendBaseUrl(backendTarget, path)
   if (requireRuntimeVersion) {
     await ensureBackendRuntimeVersion(baseUrl)
   }
@@ -126,8 +211,11 @@ export async function postFormData<TResponse>({
   })
 }
 
-export async function buildBackendDownloadUrl(path: string): Promise<string> {
-  const baseUrl = await getBackendBaseUrl()
+export async function buildBackendDownloadUrl(
+  path: string,
+  backendTarget: BackendTarget = 'default',
+): Promise<string> {
+  const baseUrl = await getBackendBaseUrl(backendTarget, path)
   return buildBackendUrl(baseUrl, path)
 }
 
@@ -174,8 +262,9 @@ export async function requestBackendJson<TResponse>({
   body,
   requireRuntimeVersion = false,
   timeoutMs = 20000,
+  backendTarget = 'default',
 }: JsonRequestOptions): Promise<TResponse> {
-  const baseUrl = await getBackendBaseUrl()
+  const baseUrl = await getBackendBaseUrl(backendTarget, path)
   if (requireRuntimeVersion) {
     await ensureBackendRuntimeVersion(baseUrl)
   }

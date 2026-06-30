@@ -17,6 +17,7 @@ const launcherProtocolUrl = 'tos://automation/launcher/start'
 const defaultAutomationHelperDownloadPath = '/api/system/config/automation-helper/download'
 const localHealthProbeTimeoutMs = 650
 const localLauncherProbeTimeoutMs = 650
+const automationTemplateBackendTarget = 'remote'
 export const minimumAutomationHelperVersion = '0.9.8-beta.3.19'
 
 export interface InfornexusAutoAddManualSessionSummary {
@@ -494,6 +495,7 @@ export async function resolveAutomationCredentials(
 export async function fetchAutomationTemplates(moduleId: string): Promise<AutomationTemplate[]> {
   const payload = await requestBackendJson<{ templates?: AutomationTemplate[] }>({
     path: `/api/automation/templates?moduleId=${encodeURIComponent(moduleId)}`,
+    backendTarget: automationTemplateBackendTarget,
   })
   return Array.isArray(payload.templates) ? payload.templates : []
 }
@@ -501,6 +503,7 @@ export async function fetchAutomationTemplates(moduleId: string): Promise<Automa
 export async function fetchAllAutomationTemplates(includeInactive = false): Promise<AutomationTemplate[]> {
   const payload = await requestBackendJson<{ templates?: AutomationTemplate[] }>({
     path: `/api/automation/templates?includeInactive=${includeInactive ? 'true' : 'false'}`,
+    backendTarget: automationTemplateBackendTarget,
   })
   return Array.isArray(payload.templates) ? payload.templates : []
 }
@@ -520,6 +523,7 @@ export async function uploadAutomationTemplate(input: {
   const payload = await postFormData<{ template?: AutomationTemplate }>({
     path: '/api/automation/templates',
     formData,
+    backendTarget: automationTemplateBackendTarget,
   })
   if (!payload.template) {
     throw new Error('模板上传完成，但后端未返回模板记录。')
@@ -540,6 +544,7 @@ export async function updateAutomationTemplate(
     method: 'PATCH',
     path: `/api/automation/templates/${encodeURIComponent(String(templateId))}`,
     body: input,
+    backendTarget: automationTemplateBackendTarget,
   })
   if (!payload.template) {
     throw new Error('模板更新完成，但后端未返回模板记录。')
@@ -551,11 +556,12 @@ export async function deleteAutomationTemplate(templateId: number): Promise<void
   await requestBackendJson({
     method: 'DELETE',
     path: `/api/automation/templates/${encodeURIComponent(String(templateId))}`,
+    backendTarget: automationTemplateBackendTarget,
   })
 }
 
 export async function buildAutomationTemplateDownloadUrl(template: AutomationTemplate): Promise<string> {
-  return buildBackendDownloadUrl(template.downloadPath)
+  return buildBackendDownloadUrl(template.downloadPath, automationTemplateBackendTarget)
 }
 
 export async function downloadAutomationTemplate(template: AutomationTemplate | null | undefined): Promise<void> {

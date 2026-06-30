@@ -30,6 +30,7 @@
     "/api/jane/process",
     "/api/jessca/download/{filename}",
     "/api/jessca/process",
+    "/api/release-announcements/latest",
     "/api/release-updates",
     "/api/sophia-tina/download/{filename}",
     "/api/sophia-tina/process",

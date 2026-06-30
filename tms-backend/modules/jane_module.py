@@ -345,13 +345,39 @@ class JaneModule:
     def sort_tms_rows_for_generation(
         self,
         df: pd.DataFrame,
+        country_lookup: Optional[Dict[str, Dict[str, str]]] = None,
         logs: Optional[List[str]] = None
     ) -> pd.DataFrame:
-        """保留 Copy of TMS 原表顺序，保证业务已排序结果不被后端重排。"""
+        """按业务指定顺序生成：Article Number -> Country/Region -> Working Number。"""
 
+        country_lookup = country_lookup or {}
+        destination_col = self._find_column(df, ['Country/Region', 'DESTINATION', 'Destination'])
+
+        def normalized_sort_text(value: Any) -> str:
+            return self._normalize_text(value).upper()
+
+        def resolve_country(row: pd.Series) -> str:
+            destination = self._normalize_text(row.get(destination_col)) if destination_col else ''
+            if destination:
+                return destination.upper()
+
+            customer_no = self._normalize_customer_no(row.get('Gps Customer Number'))
+            country_info = country_lookup.get(customer_no, {})
+            return self._normalize_text(country_info.get('destination')).upper()
+
+        source_rows = df.copy().reset_index(drop=True)
+        sorted_indices = sorted(
+            range(len(source_rows)),
+            key=lambda row_idx: (
+                normalized_sort_text(source_rows.iloc[row_idx].get('Article Number')),
+                resolve_country(source_rows.iloc[row_idx]),
+                normalized_sort_text(source_rows.iloc[row_idx].get('Working Number')),
+                row_idx,
+            ),
+        )
         if logs is not None:
-            logs.append("  已保留 Copy of TMS 原表顺序生成")
-        return df.copy().reset_index(drop=True)
+            logs.append("  已按 Article Number -> Country/Region -> Working Number 排序生成")
+        return source_rows.iloc[sorted_indices].reset_index(drop=True)
 
     def get_category(self, destination: Any, region: Any) -> str:
         """根据国家/地区与 REGION 返回统计单别。"""
@@ -1679,11 +1705,6 @@ class JaneModule:
             else:
                 df_filtered = df_result
 
-            df_filtered = self.sort_tms_rows_for_generation(df_filtered, result['logs'])
-            working_order = list(df_filtered['Working Number'].unique())
-            
-            log(f"筛选后：{len(df_filtered)} 行数据，{len(working_order)} 个 Working Number")
-            
             if len(df_filtered) == 0:
                 result['message'] = '没有匹配的数据！请检查筛选条件'
                 return result
@@ -1697,9 +1718,12 @@ class JaneModule:
             country_lookup: Dict[str, Dict[str, str]] = {}
             log(f"\n📖 正在读取 country.xlsx 并计算单别统计...")
             country_lookup = self.read_country_table(country_path, result['logs'])
+            df_filtered = self.sort_tms_rows_for_generation(df_filtered, country_lookup, result['logs'])
+            working_order = list(df_filtered['Working Number'].unique())
             category_stats = self.calculate_category_statistics(df_filtered, country_lookup, result['logs'])
             log(f"✅ country.xlsx 读取完成：{len(country_lookup)} 个客户号映射")
             log(f"✅ 已计算 {len(category_stats)} 个 Working Number 的单别总件数")
+            log(f"筛选后：{len(df_filtered)} 行数据，{len(working_order)} 个 Working Number")
 
             log(f"\n📐 正在根据客户文件自动生成分段成品表...")
             wb = self.create_auto_workbook(df_filtered, working_order, country_lookup, result['logs'])

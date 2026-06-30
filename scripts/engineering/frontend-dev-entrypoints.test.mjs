@@ -6,12 +6,13 @@ import { fileURLToPath } from 'node:url'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(scriptDir, '..', '..')
+const npmForwarder = 'node scripts/engineering/run-npm.mjs'
 
 test('default frontend dev entrypoint uses local backend mode', async () => {
   const rootPackage = await readJson(resolve(repoRoot, 'package.json'))
   const frontendPackage = await readJson(resolve(repoRoot, 'tms-frontend', 'package.json'))
 
-  assert.equal(rootPackage.scripts['dev:frontend'], 'npm --prefix tms-frontend run dev')
+  assert.equal(rootPackage.scripts['dev:frontend'], `${npmForwarder} --prefix tms-frontend run dev`)
   assert.equal(frontendPackage.scripts.dev, frontendPackage.scripts['dev:local'])
   assert.match(frontendPackage.scripts.dev, /^vite\b/)
   assert.doesNotMatch(frontendPackage.scripts.dev, /--mode\s+server\b/)
@@ -23,8 +24,8 @@ test('server frontend entrypoint is the only script that loads .env.server', asy
   const frontendPackage = await readJson(resolve(repoRoot, 'tms-frontend', 'package.json'))
   const envServer = await readFile(resolve(repoRoot, 'tms-frontend', '.env.server'), 'utf8')
 
-  assert.equal(rootPackage.scripts['dev:frontend:server'], 'npm --prefix tms-frontend run dev:server')
-  assert.equal(rootPackage.scripts['dev:frontend:local'], 'npm --prefix tms-frontend run dev:local')
+  assert.equal(rootPackage.scripts['dev:frontend:server'], `${npmForwarder} --prefix tms-frontend run dev:server`)
+  assert.equal(rootPackage.scripts['dev:frontend:local'], `${npmForwarder} --prefix tms-frontend run dev:local`)
   assert.match(envServer, /^VITE_BACKEND_URL=/m)
   assert.match(frontendPackage.scripts['dev:server'], /--mode\s+server\b/)
 
@@ -35,6 +36,30 @@ test('server frontend entrypoint is the only script that loads .env.server', asy
 
     assert.doesNotMatch(script, /--mode\s+server\b/, `${name} must not load .env.server`)
   }
+})
+
+test('local dev entrypoints use the npm CLI wrapper instead of nested npm shims', async () => {
+  const rootPackage = await readJson(resolve(repoRoot, 'package.json'))
+  const runNpm = await readFile(resolve(repoRoot, 'scripts', 'engineering', 'run-npm.mjs'), 'utf8')
+
+  const forwardedScripts = [
+    'dev:frontend',
+    'dev:frontend:server',
+    'dev:frontend:local',
+    'preview:frontend',
+    'dev:electron',
+  ]
+
+  for (const name of forwardedScripts) {
+    assert.match(rootPackage.scripts[name], new RegExp(`^${escapeRegExp(npmForwarder)}\\b`))
+    assert.doesNotMatch(rootPackage.scripts[name], /\bnpm\s+--prefix\b/)
+  }
+
+  assert.match(runNpm, /process\.env\.npm_execpath/)
+  assert.match(runNpm, /process\.execPath/)
+  assert.match(runNpm, /npm-cli\.js/)
+  assert.doesNotMatch(runNpm, /npm\.cmd/)
+  assert.doesNotMatch(runNpm, /shell:\s*true/)
 })
 
 test('engineering docs keep local frontend dev and release update sync rules current', async () => {
@@ -81,4 +106,8 @@ test('engineering docs keep removed frontend routes out of current validation ta
 
 async function readJson(path) {
   return JSON.parse(await readFile(path, 'utf8'))
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

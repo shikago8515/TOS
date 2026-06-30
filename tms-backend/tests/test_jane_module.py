@@ -83,6 +83,16 @@ class JaneModuleWorkbookTests(unittest.TestCase):
             self.assertTrue(result["success"], result["message"])
             return openpyxl.load_workbook(result["output_path"], data_only=False)
 
+    def _summary_working_article_rows(self, wb: openpyxl.Workbook) -> List[tuple[str, str]]:
+        summary_rows: List[tuple[str, str]] = []
+        current_working = None
+        for row in wb["Summary"].iter_rows(min_row=3, max_col=3, values_only=True):
+            if row[1]:
+                current_working = row[1]
+            if current_working and row[2]:
+                summary_rows.append((current_working, row[2]))
+        return summary_rows
+
     def test_subtotal_po_qty_sums_po_qty_column_rows(self):
         df = pd.DataFrame(
             [
@@ -199,44 +209,58 @@ class JaneModuleWorkbookTests(unittest.TestCase):
 
         self.assertEqual(["欧美单"], data_categories)
 
-    def test_process_reports_preserves_source_working_and_article_order(self) -> None:
+    def test_process_reports_sorts_by_article_country_then_working(self) -> None:
         rows = [
             self._tms_row("WN-B", "ART-2", "SOUTH AFRICA", "1003", 103, 10, 30),
-            self._tms_row("WN-C", "ART-1", "CANADA", "1002", 102, 10, 20),
-            self._tms_row("WN-A", "ART-1", "CANADA", "1001", 101, 10, 10),
-            self._tms_row("WN-B", "ART-1", "USA", "1004", 104, 10, 40),
+            self._tms_row("WN-A", "ART-1", "ITALY", "1002", 102, 10, 20),
+            self._tms_row("WN-Z", "ART-1", "GERMANY", "1001", 101, 10, 10),
+            self._tms_row("WN-C", "ART-1", "USA", "1004", 104, 10, 40),
         ]
 
         wb = self._process_rows(rows)
-        summary_rows = []
-        current_working = None
-        for row in wb["Summary"].iter_rows(min_row=3, max_col=3, values_only=True):
-            if row[1]:
-                current_working = row[1]
-            if current_working and row[2]:
-                summary_rows.append((current_working, row[2]))
 
-        self.assertEqual(["Summary", "WN-B", "WN-C", "WN-A"], wb.sheetnames)
+        self.assertEqual(["Summary", "WN-Z", "WN-A", "WN-C", "WN-B"], wb.sheetnames)
         self.assertEqual(
             [
-                ("WN-B", "ART-2"),
-                ("WN-B", "ART-1"),
-                ("WN-C", "ART-1"),
+                ("WN-Z", "ART-1"),
                 ("WN-A", "ART-1"),
+                ("WN-C", "ART-1"),
+                ("WN-B", "ART-2"),
             ],
-            summary_rows,
+            self._summary_working_article_rows(wb),
         )
 
-    def test_working_filter_preserves_filtered_source_order(self) -> None:
+    def test_process_reports_uses_country_file_destination_for_sort_when_tms_country_is_blank(self) -> None:
         rows = [
-            self._tms_row("WN-B", "ART-2", "SOUTH AFRICA", "1003", 103, 10, 30),
-            self._tms_row("WN-C", "ART-1", "CANADA", "1002", 102, 10, 20),
-            self._tms_row("WN-A", "ART-1", "CANADA", "1001", 101, 10, 10),
+            self._tms_row("WN-A", "ART-1", "", "1002", 102, 10, 20),
+            self._tms_row("WN-Z", "ART-1", "", "1001", 101, 10, 10),
+        ]
+        country_rows = [
+            {"CST NO": "1002", "DESTINATION": "ITALY", "REGION": "EMEA"},
+            {"CST NO": "1001", "DESTINATION": "GERMANY", "REGION": "EMEA"},
         ]
 
-        wb = self._process_rows(rows, working_filters=["WN-B", "WN-A"])
+        wb = self._process_rows(rows, country_rows=country_rows)
 
-        self.assertEqual(["Summary", "WN-B", "WN-A"], wb.sheetnames)
+        self.assertEqual(["Summary", "WN-Z", "WN-A"], wb.sheetnames)
+        self.assertEqual(
+            [
+                ("WN-Z", "ART-1"),
+                ("WN-A", "ART-1"),
+            ],
+            self._summary_working_article_rows(wb),
+        )
+
+    def test_working_filter_sorts_filtered_rows_by_article_country_then_working(self) -> None:
+        rows = [
+            self._tms_row("WN-B", "ART-2", "SOUTH AFRICA", "1003", 103, 10, 30),
+            self._tms_row("WN-A", "ART-1", "ITALY", "1002", 102, 10, 20),
+            self._tms_row("WN-Z", "ART-1", "GERMANY", "1001", 101, 10, 10),
+        ]
+
+        wb = self._process_rows(rows, working_filters=["WN-B", "WN-A", "WN-Z"])
+
+        self.assertEqual(["Summary", "WN-Z", "WN-A", "WN-B"], wb.sheetnames)
 
 
 if __name__ == "__main__":

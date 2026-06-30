@@ -44,7 +44,14 @@ git rebase gitea/main
 
 改动必须聚焦当前需求，遵循 `AGENTS.md` 的模块边界和验证要求。
 
-按范围运行最接近的检查：
+按范围运行最接近的检查，日常开发不默认把 `npm run check:quick` 当成所有小改的起步门禁：
+
+- 前端 UI、文案或局部路由小改：优先运行 `cd tms-frontend && npm run lint`、`npm run typecheck` 和相关 `vitest`。
+- 后端单模块小改：优先运行对应 `python -m unittest tests.test_xxx -v`。
+- 公共工具、前后端契约、版本发布、CI/CD、部署、打包、合并 `main` 或推送 Gitea 主线前：必须运行 `npm run check:quick`。
+- 正式大版本、Windows 打包发布或自动更新链路：运行 `npm run check` 或发布专项验证。
+
+可用根目录检查入口：
 
 ```powershell
 npm run check:quick
@@ -54,7 +61,7 @@ npm run check:electron
 npm run check
 ```
 
-发布相关改动至少运行：
+发布、部署、CI/CD、打包或版本链路相关改动至少运行：
 
 ```powershell
 npm run check:quick
@@ -118,14 +125,19 @@ npm run release:updates:pull
 
 `release:updates:push` 通过服务器 `/api/release-updates` 写入记录，不直连数据库账号；`release:updates:pull` 从服务器拉取并合并更新本地缓存。同步缓存类提交如需避免 post-commit 再次写入服务器，可以临时设置 `TOS_RELEASE_UPDATES_SKIP=1`。本地 commit/merge hook 只用于辅助记录或预览，不作为正式版本发布事实来源。
 
-版本号、`CHANGELOG.md`、当前版本 `releaseNotes.json`、`releaseManifest.json` 和 Git tag 默认由 `semantic-release` 在 Gitea `main` push 后自动生成。`main` 当前继续发布 `beta.3` 预发布版本；`stable` 仅作为 semantic-release 要求的稳定 release branch，占位保持在当前基线。首次启用前需要在当前基线提交上补齐 `v0.9.8-beta.3.28` tag，避免自动发布从旧 tag 重新计算历史版本；Gitea 发布环境会在缺少 `stable` 分支时自动创建。
+版本号、`CHANGELOG.md`、当前版本 `releaseNotes.json`、`releaseManifest.json` 和 Git tag 默认由 `.gitea/workflows/tos-check.yml` 在 Gitea `main` push 后通过 `semantic-release` 自动生成。`main` 当前继续发布 `beta.3` 预发布版本；`stable` 仅作为 semantic-release 要求的稳定 release branch，占位保持在当前基线。首次启用前需要在当前基线提交上补齐 `v0.9.8-beta.3.28` tag，避免自动发布从旧 tag 重新计算历史版本；Gitea 发布环境会在缺少 `stable` 分支时自动创建。
 
 ## 5. Gitea 提交与验证门禁
 
-提交前确认状态和验证结果：
+提交前确认状态和验证结果。普通小改按开发验证分层记录对应检查，至少先确认：
 
 ```powershell
 git status --short --branch
+```
+
+涉及版本发布、部署、CI/CD、打包、主线合并或准备推送 Gitea 主线时，必须补充：
+
+```powershell
 npm run check:backend-version
 npm run release:updates:dry-run
 npm run release:updates:push:dry-run
@@ -140,7 +152,7 @@ git commit -m "类型: 描述"
 git push -u gitea codex/<topic>
 ```
 
-Gitea 远端检查以 Gitea `main` 和 `codex/**` 分支为准，远端检查运行完整 `npm run check`。触发正式自动版本发布时，在 Gitea 发布环境运行 `npm run release`；默认服务器部署不再依赖“先本机打包再上传”。
+Gitea 远端检查以 Gitea `main` 和 `codex/**` 分支为准，远端检查运行完整 `npm run check`。触发正式自动版本发布时，Gitea Actions 使用内置 `GITEA_TOKEN` 在发布环境运行 `npm run release`；默认服务器部署不再依赖“先本机打包再上传”。
 
 分支推送到 Gitea 后，合并进本地 `main`，在 `main` 上运行 `npm run check:quick`，再推送 `main` 到 Gitea。
 

@@ -6,6 +6,7 @@ import { test } from 'node:test'
 
 import {
   buildGiteaReleaseRequest,
+  buildTosReleaseAnnouncement,
   buildTosReleaseNotes,
   prepare,
   publish,
@@ -35,10 +36,57 @@ test('builds TOS release notes from semantic-release commits', () => {
   assert.equal(notes.version, nextRelease.version)
   assert.equal(notes.date, '2026-06-22')
   assert.equal(notes.noticeId, '2026-06-22-v0.9.8-beta.3.29')
-  assert.equal(notes.showPopup, false)
+  assert.equal(notes.showPopup, true)
   assert.deepEqual(notes.added, ['添加自动发布链路'])
   assert.deepEqual(notes.fixed, ['修复版本记录读取'])
   assert.deepEqual(notes.improved, ['优化发布包生成'])
+})
+
+test('builds maintenance announcement without popup by default', () => {
+  const notes = buildTosReleaseNotes({
+    version: nextRelease.version,
+    releaseDate: '2026-06-22',
+    commits: [
+      { subject: 'fix: correct footer copy', message: 'fix: correct footer copy' },
+      { subject: 'perf: reduce API payload', message: 'perf: reduce API payload' },
+    ],
+  })
+  const announcement = buildTosReleaseAnnouncement({
+    version: nextRelease.version,
+    tag: nextRelease.gitTag,
+    releaseDate: '2026-06-22',
+    releaseNotes: notes,
+  })
+
+  assert.equal(notes.showPopup, false)
+  assert.equal(announcement.noticeId, nextRelease.gitTag)
+  assert.equal(announcement.showPopup, false)
+  assert.equal(announcement.level, 'maintenance')
+  assert.deepEqual(announcement.groups, [
+    { title: '优化', icon: 'activity', items: ['reduce API payload'] },
+    { title: '修复', icon: 'check-circle', items: ['correct footer copy'] },
+  ])
+})
+
+test('allows release popup override for maintenance releases', () => {
+  const notes = buildTosReleaseNotes({
+    version: nextRelease.version,
+    releaseDate: '2026-06-22',
+    commits: [
+      { subject: 'fix: correct footer copy', message: 'fix: correct footer copy' },
+    ],
+    showPopupOverride: '1',
+  })
+  const announcement = buildTosReleaseAnnouncement({
+    version: nextRelease.version,
+    tag: nextRelease.gitTag,
+    releaseDate: '2026-06-22',
+    releaseNotes: notes,
+  })
+
+  assert.equal(notes.showPopup, true)
+  assert.equal(announcement.showPopup, true)
+  assert.equal(announcement.level, 'feature')
 })
 
 test('prepare syncs TOS version files and current release notes', async () => {
@@ -91,6 +139,23 @@ test('prepare syncs TOS version files and current release notes', async () => {
   assert.equal(releaseManifest.releaseDate, '2026-06-22')
   assert.equal(releaseManifest.channel, 'beta.3')
   assert.equal(releaseManifest.releaseNotes.version, nextRelease.version)
+  assert.equal(releaseManifest.announcement.noticeId, nextRelease.gitTag)
+  assert.equal(releaseManifest.announcement.version, nextRelease.version)
+  assert.equal(releaseManifest.announcement.releaseDate, '2026-06-22')
+  assert.equal(releaseManifest.announcement.showPopup, true)
+  assert.equal(releaseManifest.announcement.level, 'feature')
+  assert.equal(releaseManifest.announcement.title, '本次更新内容')
+  assert.deepEqual(
+    releaseManifest.announcement.groups.map(({ title, icon }) => ({ title, icon })),
+    [
+      { title: '新增', icon: 'sparkles' },
+      { title: '优化', icon: 'activity' },
+      { title: '修复', icon: 'check-circle' },
+    ],
+  )
+  assert.deepEqual(releaseManifest.announcement.groups[0].items, releaseNotes.added)
+  assert.deepEqual(releaseManifest.announcement.groups[1].items, releaseNotes.improved)
+  assert.deepEqual(releaseManifest.announcement.groups[2].items, releaseNotes.fixed)
   assert.deepEqual(releaseManifest.artifacts, {
     serverPackage: null,
     desktopInstaller: null,

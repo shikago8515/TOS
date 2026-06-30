@@ -1,13 +1,12 @@
 import { spawn } from 'node:child_process'
-import { readdirSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(scriptDir, '..', '..')
 const mode = process.argv[2] ?? 'all'
-const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-const npmShell = process.platform === 'win32'
+const npmCommand = createNpmCommand()
 const pythonBin = process.env.PYTHON ?? 'python'
 
 const commandGroups = {
@@ -19,6 +18,10 @@ const commandGroups = {
     command('semantic-release-config-test', '.', process.execPath, [
       '--test',
       'scripts/engineering/semantic-release-config.test.mjs',
+    ]),
+    command('gitea-workflow-config-test', '.', process.execPath, [
+      '--test',
+      'scripts/engineering/gitea-workflow-config.test.mjs',
     ]),
     command('semantic-release-tos-plugin-test', '.', process.execPath, [
       '--test',
@@ -57,15 +60,15 @@ const commandGroups = {
     ]),
   ],
   frontendFull: [
-    command('frontend:lint', 'tms-frontend', npmBin, ['run', 'lint'], npmShell),
-    command('frontend:typecheck', 'tms-frontend', npmBin, ['run', 'typecheck'], npmShell),
-    command('frontend:test', 'tms-frontend', npmBin, ['run', 'test'], npmShell),
-    command('frontend:build', 'tms-frontend', npmBin, ['run', 'build'], npmShell),
+    command('frontend:lint', 'tms-frontend', npmCommand.executable, [...npmCommand.args, 'run', 'lint'], npmCommand.shell),
+    command('frontend:typecheck', 'tms-frontend', npmCommand.executable, [...npmCommand.args, 'run', 'typecheck'], npmCommand.shell),
+    command('frontend:test', 'tms-frontend', npmCommand.executable, [...npmCommand.args, 'run', 'test'], npmCommand.shell),
+    command('frontend:build', 'tms-frontend', npmCommand.executable, [...npmCommand.args, 'run', 'build'], npmCommand.shell),
   ],
   frontendQuick: [
-    command('frontend:lint', 'tms-frontend', npmBin, ['run', 'lint'], npmShell),
-    command('frontend:typecheck', 'tms-frontend', npmBin, ['run', 'typecheck'], npmShell),
-    command('frontend:test', 'tms-frontend', npmBin, ['run', 'test'], npmShell),
+    command('frontend:lint', 'tms-frontend', npmCommand.executable, [...npmCommand.args, 'run', 'lint'], npmCommand.shell),
+    command('frontend:typecheck', 'tms-frontend', npmCommand.executable, [...npmCommand.args, 'run', 'typecheck'], npmCommand.shell),
+    command('frontend:test', 'tms-frontend', npmCommand.executable, [...npmCommand.args, 'run', 'test'], npmCommand.shell),
   ],
   backendFull: [
     command('backend:unittest', 'tms-backend', pythonBin, ['-m', 'unittest', 'discover', 'tests/', '-v']),
@@ -117,6 +120,32 @@ function command(label, cwd, executable, args, shell = false) {
     executable,
     args,
     shell,
+  }
+}
+
+function createNpmCommand() {
+  const npmExecPath = process.env.npm_execpath
+  if (npmExecPath && existsSync(npmExecPath)) {
+    return {
+      executable: process.execPath,
+      args: [npmExecPath],
+      shell: false,
+    }
+  }
+
+  const bundledNpmCli = resolve(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')
+  if (existsSync(bundledNpmCli)) {
+    return {
+      executable: process.execPath,
+      args: [bundledNpmCli],
+      shell: false,
+    }
+  }
+
+  return {
+    executable: process.platform === 'win32' ? 'npm.cmd' : 'npm',
+    args: [],
+    shell: process.platform === 'win32',
   }
 }
 

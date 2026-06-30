@@ -72,6 +72,80 @@ describe('backendClient', () => {
     await expect(getBackendBaseUrl()).resolves.toBe('/tos/desktop-api')
   })
 
+  it('routes shared release updates to the remote backend in hybrid browser mode', async () => {
+    vi.stubEnv('VITE_BACKEND_ROUTING_MODE', 'hybrid')
+    vi.stubEnv('VITE_REMOTE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos/desktop-api/')
+    vi.stubEnv('VITE_LOCAL_BACKEND_URL', 'http://127.0.0.1:8000/')
+    stubWindow()
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue('{"ok":true,"records":[],"total":0}'),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await requestBackendJson({ path: '/api/release-updates?limit=160' })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://ai.tomwell.net:56130/tos/desktop-api/api/release-updates?limit=160',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
+  it('routes automation template downloads to the remote backend in hybrid browser mode', async () => {
+    vi.stubEnv('VITE_BACKEND_ROUTING_MODE', 'hybrid')
+    vi.stubEnv('VITE_REMOTE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos/desktop-api/')
+    vi.stubEnv('VITE_LOCAL_BACKEND_URL', 'http://127.0.0.1:8000/')
+    stubWindow()
+
+    await expect(
+      buildBackendDownloadUrl('/api/automation/templates/1/download'),
+    ).resolves.toBe('https://ai.tomwell.net:56130/tos/desktop-api/api/automation/templates/1/download')
+  })
+
+  it('keeps ordinary processing APIs on the local backend in hybrid browser mode', async () => {
+    vi.stubEnv('VITE_BACKEND_ROUTING_MODE', 'hybrid')
+    vi.stubEnv('VITE_REMOTE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos/desktop-api/')
+    vi.stubEnv('VITE_LOCAL_BACKEND_URL', 'http://127.0.0.1:8000/')
+    stubWindow()
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue('{"ok":true}'),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await requestBackendJson({ method: 'POST', path: '/api/jane/process', body: { dryRun: true } })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:8000/api/jane/process',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('allows request callers to explicitly select the remote backend', async () => {
+    vi.stubEnv('VITE_BACKEND_ROUTING_MODE', 'hybrid')
+    vi.stubEnv('VITE_REMOTE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos/desktop-api/')
+    vi.stubEnv('VITE_LOCAL_BACKEND_URL', 'http://127.0.0.1:8000/')
+    stubWindow()
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue('{"ok":true}'),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await requestBackendJson({
+      path: '/api/jane/process',
+      backendTarget: 'remote',
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://ai.tomwell.net:56130/tos/desktop-api/api/jane/process',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
   it('returns fallback text for non-Error failures', () => {
     expect(readErrorMessage('network failed', 'fallback message')).toBe(
       'fallback message',

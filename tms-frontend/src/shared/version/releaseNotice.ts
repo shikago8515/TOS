@@ -1,5 +1,6 @@
 import { fallbackAppVersion } from './appVersion'
 import bundledReleaseNotes from './releaseNotes.json'
+import { requestBackendJson } from '../api/backendClient'
 
 export interface ReleaseNotes {
   version: string
@@ -10,6 +11,7 @@ export interface ReleaseNotes {
   improved: string[]
   fixed: string[]
   modules?: ReleaseNoteModule[]
+  groups?: ReleaseNoticeContentGroup[]
 }
 
 export interface ReleaseNoteModule {
@@ -25,6 +27,30 @@ export interface ReleaseNoticeGroup {
   icon: string
   items: string[]
 }
+
+export interface ReleaseNoticeContentGroup {
+  title: string
+  icon?: string
+  items: string[]
+}
+
+export interface ReleaseAnnouncementPayload {
+  noticeId: string
+  version: string
+  releaseDate?: string
+  showPopup: boolean
+  level?: string
+  title?: string
+  groups: ReleaseNoticeContentGroup[]
+}
+
+export interface LatestReleaseAnnouncementResponse {
+  ok: boolean
+  version?: string
+  announcement: ReleaseAnnouncementPayload | null
+}
+
+export type ReleaseAnnouncementFetcher = () => Promise<LatestReleaseAnnouncementResponse>
 
 export interface StorageLike {
   getItem(key: string): string | null
@@ -85,6 +111,59 @@ export function buildReleaseNoticeStateFromStorage(
   })
 }
 
+export async function buildReleaseNoticeStateFromServerOrStorage({
+  storage = getBrowserStorage(),
+  currentVersion = fallbackAppVersion,
+  fallbackReleaseNotes = currentReleaseNotes,
+  fetchLatestAnnouncement = fetchLatestReleaseAnnouncement,
+}: {
+  storage?: StorageLike | null
+  currentVersion?: string
+  fallbackReleaseNotes?: ReleaseNotes
+  fetchLatestAnnouncement?: ReleaseAnnouncementFetcher
+} = {}): Promise<ReleaseNoticeState> {
+  try {
+    const response = await fetchLatestAnnouncement()
+    if (response.ok && response.announcement === null) {
+      return { visible: false, releaseNotes: null }
+    }
+    if (response.ok && response.announcement) {
+      const releaseNotes = releaseNotesFromAnnouncement(response.announcement)
+      return buildReleaseNoticeState({
+        currentVersion: response.version || releaseNotes.version || currentVersion,
+        releaseNotes,
+        seenNoticeKey: readReleaseNoticeSeenKey(storage),
+        seenVersion: readReleaseNoticeSeenVersion(storage),
+      })
+    }
+  } catch (_error) {
+    return buildReleaseNoticeStateFromStorage(storage, currentVersion, fallbackReleaseNotes)
+  }
+
+  return buildReleaseNoticeStateFromStorage(storage, currentVersion, fallbackReleaseNotes)
+}
+
+export async function fetchLatestReleaseAnnouncement(): Promise<LatestReleaseAnnouncementResponse> {
+  return requestBackendJson<LatestReleaseAnnouncementResponse>({
+    path: '/api/release-announcements/latest',
+    timeoutMs: 5000,
+  })
+}
+
+export function releaseNotesFromAnnouncement(announcement: ReleaseAnnouncementPayload): ReleaseNotes {
+  return {
+    version: announcement.version,
+    date: announcement.releaseDate,
+    noticeId: announcement.noticeId,
+    showPopup: announcement.showPopup,
+    added: [],
+    improved: [],
+    fixed: [],
+    modules: [],
+    groups: normalizeReleaseNoticeContentGroups(announcement.groups),
+  }
+}
+
 export function markReleaseNoticeSeen(
   storage: StorageLike | null,
   currentVersion = fallbackAppVersion,
@@ -131,6 +210,19 @@ export function buildReleaseNoticeGroups(
   releaseNotes: ReleaseNotes,
   translate: (value: string) => string = (value) => value,
 ): ReleaseNoticeGroup[] {
+  const directGroups = normalizeReleaseNoticeContentGroups(releaseNotes.groups)
+    .map((group, index) => ({
+      key: `announcement-${index}`,
+      title: translate(group.title),
+      icon: group.icon || 'sparkles',
+      items: translateItems(group.items, translate),
+    }))
+    .filter((group) => group.items.length > 0)
+
+  if (directGroups.length > 0) {
+    return directGroups
+  }
+
   const moduleGroups = (releaseNotes.modules ?? [])
     .map((module, index) => {
       const items = buildModuleItems(module, translate)
@@ -157,6 +249,7 @@ export function buildReleaseNoticeGroups(
 
 function hasReleaseNotesContent(releaseNotes: ReleaseNotes): boolean {
   return [
+    ...(releaseNotes.groups ?? []).map((group) => group.items ?? []),
     releaseNotes.added,
     releaseNotes.improved,
     releaseNotes.fixed,
@@ -166,6 +259,24 @@ function hasReleaseNotesContent(releaseNotes: ReleaseNotes): boolean {
       module.fixed ?? [],
     ]),
   ].some((items) => items.some((item) => item.trim()))
+}
+
+function normalizeReleaseNoticeContentGroups(
+  groups: ReleaseNoticeContentGroup[] | undefined,
+): ReleaseNoticeContentGroup[] {
+  if (!Array.isArray(groups)) {
+    return []
+  }
+
+  return groups
+    .map((group) => ({
+      title: String(group?.title || '').trim(),
+      icon: String(group?.icon || 'sparkles').trim() || 'sparkles',
+      items: Array.isArray(group?.items)
+        ? group.items.map((item) => String(item || '').trim()).filter(Boolean)
+        : [],
+    }))
+    .filter((group) => group.title && group.items.length > 0)
 }
 
 function normalizeVersion(version: string | null | undefined): string {

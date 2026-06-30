@@ -10,6 +10,7 @@
 - Jason 已完成 canonical 前后端命名：`/#/jason/pdf-reorder` 和 `/api/jason/pdf-reorder/*` 是当前主入口；`it-invoice-pdf-reorder` 是历史兼容技术标识，只作为旧路由和旧 API alias 保留。
 - Jason、`release-updates`、`system-config` 等接口已先行补齐 response schema，并纳入桌面后端契约测试；后续 schema 化应继续推广到高频业务接口。
 - 前端已接入低侵入 ESLint 静态门禁，`check:quick` 与 `check:frontend` 会运行 `npm run lint`；Prettier 暂未引入，避免制造全仓格式化 diff。
+- 日常开发验证已按风险分层：小范围前端/后端改动优先运行相关最小检查，主线合并、发布、部署、CI/CD 和打包链路仍保留 `npm run check:quick` 作为强门禁。
 - 系统设置页已接入 TOS 轻量在线安装器和完整安装包下载链路；相关 MinIO 下载接口仍属于发布敏感链路。
 - `recovered-frontend` 仍作为回退和视觉参考保留；没有移除或更改回退开关。
 
@@ -24,6 +25,7 @@
 | P2 | 安全硬化 | 收紧桌面场景下的 CORS、外链打开和本地 executor token 管理 | Electron 外链使用 allowlist；CORS 使用本地 allowlist；executor token 从本机配置或安全存储读取；敏感配置不进入 Git 或发行包 |
 | P2 | 发布验收自动化 | 补齐浏览器 smoke、Electron 启动和外部二进制供应链验证 | 发布前验证脚本能发现缺失外部资源、前端入口异常和关键页面加载失败 |
 | P2 | 前端静态门禁 | 已接入低侵入 ESLint；Prettier 暂缓 | `npm run lint` 已纳入 `check:quick` 和 `check:frontend`；后续逐步收紧自动化响应类型相关规则 |
+| P2 | 后端慢测试治理 | 优化或拆分 `test_file_security_utils.LegacyApiSecurityTests` 等耗时测试 | 保留安全覆盖，不降低 `check:quick` 门禁；可定位慢点、减少重复 setup 或单独标识 slow test |
 
 ## 执行边界
 
@@ -41,3 +43,4 @@
 4. 为 `release-updates` 与 `system-config` 补充 response schema，并把系统接口纳入桌面后端契约。
 5. 单独处理 Electron 外链 allowlist、CORS 本地 allowlist 和 executor token 配置化，补 secret hygiene 测试。
 6. 在发布脚本中增加可选 smoke 验证，覆盖 `/release-updates`、TOS 桌面下载入口和关键业务页面，先本地跑通，再考虑纳入 Gitea 远端检查。
+7. 单独优化后端慢测试，优先处理 `tms-backend/tests/test_file_security_utils.py` 中 legacy API security 覆盖的重复 setup；不得通过删除安全断言来缩短 `check:quick`。

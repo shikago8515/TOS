@@ -49,6 +49,7 @@ export async function fetchReleaseUpdates(limit = 120): Promise<ReleaseUpdatesRe
   try {
     const payload = await requestBackendJson<ReleaseUpdatesResponse>({
       path,
+      backendTarget: 'remote',
       timeoutMs: releaseUpdatesRequestTimeoutMs,
     })
     const normalized = normalizeReleaseUpdatesPayload(payload, 'backend')

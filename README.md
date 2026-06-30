@@ -11,11 +11,11 @@ TOS 是一个 Windows x64 桌面工具，当前源码工作区由三部分组成
 ## 当前工程事实
 
 - 后端入口是 `tms-backend/main.py`，默认监听 `http://127.0.0.1:8000`，用于本机后端联调和 local dev。
-- 前端开发服务器由 `tms-frontend/package.json` 定义，当前是 `http://127.0.0.1:5174`；默认 `dev:frontend` 连接本地后端 `http://127.0.0.1:8000`，服务器联调必须显式使用 `dev:frontend:server`，入口细节见 `docs/engineering-entrypoints.md`。
+- 前端开发服务器由 `tms-frontend/package.json` 定义，当前是 `http://127.0.0.1:5174`；默认 `dev:frontend` 连接本地后端 `http://127.0.0.1:8000`，服务器联调必须显式使用 `dev:frontend:server`，混合联调使用 `dev:frontend:hybrid`，入口细节见 `docs/engineering-entrypoints.md` 和 `docs/development-hybrid-backend.md`。
 - Electron 打包默认使用 `tms-frontend/dist`；`TOS_FRONTEND_SOURCE=recovered` 仅用于紧急回退。
 - 仓库根目录 `package.json` 提供工程入口 scripts，用于编排前端、后端和 Electron 子项目的现有检查命令。
 - Gitea `main` 是当前服务器部署主线；本地改完后优先推送并合并到 Gitea `main`。
-- Gitea 是当前唯一主线远端；服务器部署、远端检查和自动版本发布都以 Gitea `main` 为准。历史旧远端工作流仅保留为旧流程参考，不作为当前检查或发布路径。
+- Gitea 是当前唯一主线远端；服务器部署、远端检查和自动版本发布都以 Gitea `main` 为准。历史旧远端不作为当前检查或发布路径，旧 CI workflow 不再保留。
 
 ## 文档地图
 
@@ -44,7 +44,9 @@ npm run check
 npm run server:package:dry-run
 ```
 
-`npm run check:quick` 运行工程脚本测试、前端 typecheck/test、后端 unittest 和 Electron script tests；`npm run check` 运行工程脚本测试、完整前端、完整后端和 Electron 脚本检查。
+`npm run check:quick` 运行工程脚本测试、前端 lint/typecheck/test、后端 unittest 和 Electron script tests；`npm run check` 运行工程脚本测试、完整前端、完整后端和 Electron 脚本检查。
+
+日常开发按风险分层验证：前端 UI、文案或局部路由小改优先运行前端 `lint`、`typecheck` 和相关 `vitest`；后端单模块小改优先运行对应 `python -m unittest tests.test_xxx -v`。公共工具、前后端契约、版本发布、CI/CD、部署、打包、合并 `main` 或推送 Gitea 主线前，必须运行 `npm run check:quick`。
 
 默认服务器发布在服务器执行 `deploy-tos`，通过 Gitea deploy key 免密拉取 `main`，再调用 `scripts/server/deploy-gitea-main.sh` 本地生成并应用服务器发布包。备用方案才在本机生成发布包：
 
@@ -56,10 +58,21 @@ npm run server:package
 
 Gitea 检查环境使用同一套根目录入口：先运行 `npm run ci:install` 安装依赖，再运行 `PYTHON=python3 npm run check`。该远端检查不触发 `npm run pack`、`npm run build:win` 或发布清单写入命令。
 
+常用前端开发入口：
+
+```powershell
+npm run dev:frontend
+npm run dev:frontend:server
+npm run dev:frontend:hybrid
+```
+
+`dev:frontend` 连接本地后端；`dev:frontend:server` 全部连接服务器后端；`dev:frontend:hybrid` 用于服务器共享数据接口 + 本地执行接口的混合联调。
+
 也可以进入子目录运行单项命令：
 
 ```powershell
 cd tms-frontend
+npm run lint
 npm run typecheck
 npm run test
 npm run build

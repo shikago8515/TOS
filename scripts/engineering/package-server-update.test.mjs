@@ -39,7 +39,9 @@ test('server apply script posts release update records after deploy verification
   const frontendWait = 'wait_for_command "frontend static site" curl -fsSI http://127.0.0.1:18080/'
 
   assert.match(deployScript, /api\/release-updates/)
+  assert.match(deployScript, /api\/release-announcements/)
   assert.match(deployScript, /releaseUpdateRecord/)
+  assert.match(deployScript, /releaseAnnouncement/)
   assert.match(deployScript, /wait_for_command\(\) \{/)
   assert.match(deployScript, /TOS_VERIFY_RETRIES:-30/)
   assert.match(deployScript, /TOS_VERIFY_DELAY:-2/)
@@ -51,12 +53,16 @@ test('server apply script posts release update records after deploy verification
   const backendWaitIndex = deployScript.indexOf(backendWait)
   const frontendWaitIndex = deployScript.indexOf(frontendWait)
   const syncCallIndex = deployScript.lastIndexOf('\nsync_release_update_record\n')
+  const announcementSyncCallIndex = deployScript.lastIndexOf('\nsync_release_announcement\n')
 
   assert(backendWaitIndex > -1)
   assert(frontendWaitIndex > -1)
   assert(syncCallIndex > -1)
+  assert(announcementSyncCallIndex > -1)
   assert(backendWaitIndex < syncCallIndex)
   assert(frontendWaitIndex < syncCallIndex)
+  assert(backendWaitIndex < announcementSyncCallIndex)
+  assert(frontendWaitIndex < announcementSyncCallIndex)
 })
 
 test('server apply script replaces backend data files from the package', async () => {
@@ -160,6 +166,17 @@ test('uses the semantic-release manifest as the server release update source whe
       fixed: ['Fix release record source'],
       modules: [],
     },
+    announcement: {
+      noticeId: 'v0.9.8-beta.3.3',
+      version: '0.9.8-beta.3.3',
+      releaseDate: '2026-06-13',
+      showPopup: true,
+      level: 'feature',
+      title: 'Release v0.9.8-beta.3.3',
+      groups: [
+        { title: 'Added', icon: 'sparkles', items: ['Add version manifest'] },
+      ],
+    },
     artifacts: {
       serverPackage: null,
       desktopInstaller: null,
@@ -184,6 +201,17 @@ test('uses the semantic-release manifest as the server release update source whe
   assert.equal(plan.releaseUpdateRecord.createdBy, 'release:semantic-release')
   assert.match(plan.releaseUpdateRecord.description, /Add version manifest/)
   assert.match(plan.releaseUpdateRecord.description, /abc123semanticrelease/)
+  assert.deepEqual(plan.releaseAnnouncement, {
+    noticeId: 'v0.9.8-beta.3.3',
+    version: '0.9.8-beta.3.3',
+    releaseDate: '2026-06-13',
+    showPopup: true,
+    level: 'feature',
+    title: 'Release v0.9.8-beta.3.3',
+    groups: [
+      { title: 'Added', icon: 'sparkles', items: ['Add version manifest'] },
+    ],
+  })
 })
 
 test('dry-run reports package plan without requiring a clean worktree', async () => {
@@ -273,6 +301,7 @@ test('creates a server update archive with manifest and only deployable paths', 
     description: '由服务器部署自动记录：0.9.8-beta.3.3 (4e1c3e5)。',
     createdBy: 'git:deploy',
   })
+  assert.equal(manifest.releaseAnnouncement, null)
   assert.equal(Object.hasOwn(manifest, 'archivePath'), false)
 })
 
