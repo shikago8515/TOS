@@ -52,6 +52,19 @@
         </div>
       </transition>
 
+      <transition name="sa-alert-anim">
+        <div v-if="desktopBridgeWarning" class="sa-helper sa-helper--desktop">
+          <div class="sa-helper__icon"><AppIcon name="alert-circle" /></div>
+          <div class="sa-helper__body">
+            <strong>{{ text('Infor Nexus Desktop Utility 未连接') }}</strong>
+            <p>{{ text(desktopBridgeWarning) }}</p>
+          </div>
+          <div class="sa-helper__btns">
+            <button class="sa-btn" :disabled="refreshing" @click="refreshExecutorState(false)"><AppIcon name="refresh-cw" />{{ text('重新检测') }}</button>
+          </div>
+        </div>
+      </transition>
+
       <!-- ═══ BODY: LEFT + RIGHT DOCK ═══ -->
       <div class="sa-body">
         <!-- LEFT COLUMN -->
@@ -251,6 +264,7 @@ import {
   fetchAutomationApps, fetchAutomationTemplates, fetchExecutorCredentialOptions, fetchExecutorCredentials, finishAutomationRunRecord,
   findLocalExecutorActiveRun,
   getAutomationHelperUpdateMessage,
+  getInforNexusDesktopBridgeWarning,
   hasElectronAutomationSupport, isLocalExecutorBusy, launchAutomationConsole, openAutomationHelperDownload,
   primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
   recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole,
@@ -301,12 +315,13 @@ const statusIconName = computed(() => { if (sending.value) return 'loader'; if (
 const canLaunchActiveApp = computed(() => Boolean(entry?.appId) && !launching.value)
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
 const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
+const desktopBridgeWarning = computed(() => getInforNexusDesktopBridgeWarning(executorHealth.value))
 const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
 const savedCredentialUsername = computed(() => formatInforNexusUserIdForDisplay(executorCredentials.value?.username || ''))
 const primaryTemplate = computed(() => automationTemplates.value[0] || null)
 const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
 const shippingExecutorRunUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-shipping-file` : '' })
-const canRunShippingAutomation = computed(() => !sending.value)
+const canRunShippingAutomation = computed(() => !sending.value && !desktopBridgeWarning.value)
 const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
 
 onMounted(() => { void initializeScenario() })
@@ -531,7 +546,7 @@ async function resolveRunCredentialsPayload(): Promise<Record<string, string>> {
   if (!entry) return {}
   const u = formatInforNexusUserIdForDisplay(shippingUsername.value); const tp = shippingPassword.value
   const accountKey = selectedCredentialKey.value || buildCredentialAccountKey(u)
-  if (tp.trim()) { if (!u) throw new Error('请填写账号密码。'); const savedKey = buildCredentialAccountKey(u); executorCredentials.value = await saveExecutorCredentials(entry.id, u, tp, savedKey); selectedCredentialKey.value = savedKey; shippingUsername.value = u; await refreshExecutorCredentials(savedKey); return { username: u, password: tp } }
+  if (tp.trim()) { if (!u) throw new Error('请填写账号密码。'); shippingUsername.value = u; return { username: u, password: tp } }
   const r = await resolveAutomationCredentials(entry.id, accountKey); selectedCredentialKey.value = r.accountKey; const displayUsername = formatInforNexusUserIdForDisplay(r.username); shippingUsername.value = displayUsername; shippingPassword.value = r.password; return { username: displayUsername, password: r.password }
 }
 
@@ -562,6 +577,7 @@ function validateShippingInputs(): boolean {
   const password = shippingPassword.value.trim()
   if (password && !username) return showRunRequirementDialog('请先填写 User ID。')
   if (!password && !hasStoredCredentials.value) return showRunRequirementDialog('请先填写并保存 Infor Nexus 登录账号密码。')
+  if (desktopBridgeWarning.value) return showRunRequirementDialog(desktopBridgeWarning.value)
   return true
 }
 
@@ -694,6 +710,15 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
   background: linear-gradient(135deg, #fffbeb, #fef3c7);
   border: 1px solid #fde68a; flex-shrink: 0;
   animation: sa-slideR .4s cubic-bezier(.22,1,.36,1) .08s both;
+  &--desktop {
+    background: linear-gradient(135deg, #fef2f2, #fee2e2);
+    border-color: #fecaca;
+    .sa-helper__icon {
+      background: #fee2e2;
+      :deep(.app-icon) { color: #dc2626; }
+    }
+    .sa-helper__body p { color: #991b1b; }
+  }
   &__icon {
     width: 36px; height: 36px; border-radius: 10px;
     background: #fef3c7; display: flex; align-items: center; justify-content: center; flex-shrink: 0;

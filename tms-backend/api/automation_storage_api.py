@@ -58,6 +58,7 @@ INFOR_NEXUS_SHARED_CREDENTIAL_IDS = (
     "shipping-automation-2",
     "xinlongtai-shipping-automation",
     "po-auto-download",
+    "packing-list-auto-download",
     "released-bulk-automation",
 )
 
@@ -162,34 +163,29 @@ def clear_credentials(automation_id: str, accountKey: str = Query("default")) ->
 @router.post("/credentials/{automation_id}/resolve")
 def resolve_credentials(automation_id: str, accountKey: str = Query("default")) -> dict[str, Any]:
     account_key = _normalize_account_key(accountKey)
-    row, source_automation_id = _get_credentials_with_alias(automation_id, account_key)
-    if not row:
+    resolved_row, source_automation_id, password, saw_stored_credentials = _resolve_credentials_with_aliases(
+        automation_id,
+        account_key,
+    )
+    if resolved_row:
+        return {
+            "ok": True,
+            "automationId": automation_id,
+            "sourceAutomationId": source_automation_id,
+            "accountKey": account_key,
+            "username": resolved_row["username"],
+            "password": password,
+        }
+    if not saw_stored_credentials:
         raise HTTPException(status_code=404, detail="未保存当前网站登录账号密码。请先填写并保存。")
-    try:
-        password = decrypt_secret(row["password_ciphertext"])
-    except ValueError as exc:
-        logger.warning(
-            "Automation credential decrypt failed: automation_id=%s source_automation_id=%s account_key=%s",
-            automation_id,
-            source_automation_id,
-            account_key,
-        )
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "已找到该 Infor Nexus 账号记录，但本机后端无法解密密码。"
-                "请确认本机 tms-backend/config/settings.yaml 中的 security.credential_key "
-                "与保存该密码时使用的后端一致；如果当前连接的是远程数据库，请使用服务器同一套凭据密钥。"
-            ),
-        ) from exc
-    return {
-        "ok": True,
-        "automationId": automation_id,
-        "sourceAutomationId": source_automation_id,
-        "accountKey": account_key,
-        "username": row["username"],
-        "password": password,
-    }
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "已找到该 Infor Nexus 账号记录，但本机后端无法解密密码。"
+            "请确认本机 tms-backend/config/settings.yaml 中的 security.credential_key "
+            "与保存该密码时使用的后端一致；如果当前连接的是远程数据库，请使用服务器同一套凭据密钥。"
+        ),
+    )
 
 
 @router.get("/templates")
@@ -535,6 +531,31 @@ def _get_credentials_with_alias(automation_id: str, account_key: str) -> tuple[d
         if row:
             return row, candidate_id
     return None, automation_id
+
+
+def _resolve_credentials_with_aliases(
+    automation_id: str,
+    account_key: str,
+) -> tuple[dict[str, Any] | None, str, str, bool]:
+    account_key = _normalize_account_key(account_key)
+    saw_stored_credentials = False
+    for candidate_id in _credential_lookup_ids(automation_id):
+        row = get_automation_credentials(candidate_id, account_key)
+        if not row:
+            continue
+        saw_stored_credentials = True
+        try:
+            password = decrypt_secret(row["password_ciphertext"])
+        except ValueError:
+            logger.warning(
+                "Automation credential decrypt failed: automation_id=%s source_automation_id=%s account_key=%s",
+                automation_id,
+                candidate_id,
+                account_key,
+            )
+            continue
+        return row, candidate_id, password, saw_stored_credentials
+    return None, automation_id, "", saw_stored_credentials
 
 
 def _normalize_account_key(value: Any) -> str:

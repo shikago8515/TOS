@@ -163,6 +163,18 @@ test('browser cookies are converted to request cookie jar', async () => {
   assert.equal(jar.header(), 'userToken=user-token-value; JSESSIONID=session-cookie-value; sToken=s-token-value')
 })
 
+test('invoice download accepts active and new STATUS values', async () => {
+  const {
+    isDownloadableInvoiceStatus,
+  } = await import(poAutoDownloadModuleUrl)
+
+  assert.equal(isDownloadableInvoiceStatus('active'), true)
+  assert.equal(isDownloadableInvoiceStatus('NEW'), true)
+  assert.equal(isDownloadableInvoiceStatus(' New '), true)
+  assert.equal(isDownloadableInvoiceStatus('inactive'), false)
+  assert.equal(isDownloadableInvoiceStatus(''), false)
+})
+
 async function withHttpServer(handler, callback) {
   const server = http.createServer((req, res) => {
     Promise.resolve(handler(req, res)).catch((error) => {

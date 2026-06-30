@@ -178,6 +178,16 @@
                 <span v-if="progressCurrent">{{ text('当前') }} {{ progressCurrent }}</span>
               </div>
             </div>
+
+            <div v-if="downloadedPdfPaths.length" class="pad-result-paths">
+              <div class="pad-result-paths__title">
+                <AppIcon name="file-check" />
+                <span>{{ text('已保存 PDF') }}</span>
+              </div>
+              <div v-for="filePath in downloadedPdfPaths" :key="filePath" class="pad-result-path">
+                {{ filePath }}
+              </div>
+            </div>
           </section>
         </main>
 
@@ -343,7 +353,7 @@ const showBrowserView = ref(true)
 const saveDirectory = ref('')
 const statusLabel = ref('待命')
 const statusText = ref('')
-const lastResult = ref<{ ok: boolean; message?: string } | null>(null)
+const lastResult = ref<Record<string, any> | null>(null)
 const lastRawResponse = ref('')
 const runProgress = ref<Record<string, any> | null>(null)
 let progressTimer: number | null = null
@@ -414,6 +424,14 @@ const progressCurrent = computed(() => {
       ? runProgress.value.currentInvoiceNumbers
     : []
   return values.map((item: unknown) => String(item || '').trim()).filter(Boolean).slice(0, 3).join('、')
+})
+const downloadedPdfPaths = computed(() => {
+  const paths = [
+    ...extractDownloadedPdfPaths(lastResult.value),
+    ...extractDownloadedPdfPaths(runProgress.value),
+    ...extractDownloadedPdfPaths((executorHealth.value as any)?.lastRun),
+  ]
+  return Array.from(new Set(paths)).slice(0, 8)
 })
 const messageIconName = computed(() => {
   if (messageTone.value === 'success') return 'check-circle'
@@ -934,7 +952,7 @@ async function runPackingListAutoDownload(): Promise<void> {
       if (shouldShowAutomationErrorDialog(json?.message || friendlyMessage)) showAutomationErrorDialog(friendlyMessage)
       statusLabel.value = '未完成'
       statusText.value = appendFailureExamples(friendlyMessage, json)
-      lastResult.value = { ok: false, message: statusText.value }
+      lastResult.value = { ...(json || {}), ok: false, message: statusText.value }
       messageTone.value = 'error'
       message.value = statusText.value
       return
@@ -945,13 +963,15 @@ async function runPackingListAutoDownload(): Promise<void> {
     }
 
     if (json?.ok) {
-      const completed = Number(json.downloadedInvoiceCount ?? json.downloadedPoCount ?? json.completedPoCount ?? 0)
-      const total = Number(json.totalInvoiceCount ?? json.totalPoCount ?? 0)
+      const completed = Number(json.downloadedPackingListCount ?? json.downloadedInvoiceCount ?? json.downloadedPoCount ?? json.completedPoCount ?? 0)
+      const total = Number(json.totalPackingListCount ?? json.totalInvoiceCount ?? json.totalPoCount ?? 0)
+      const paths = extractDownloadedPdfPaths(json)
+      const pathSuffix = paths[0] ? ` 保存路径：${paths[0]}` : ''
       statusLabel.value = '成功'
       statusText.value = total > 0
-        ? `箱单 PDF 下载完成。已下载 ${completed}/${total} 份箱单。`
-        : text('箱单 PDF 下载完成。')
-      lastResult.value = { ok: true, message: json.message }
+        ? `箱单 PDF 下载完成。已下载 ${completed}/${total} 份箱单。${pathSuffix}`
+        : `${text('箱单 PDF 下载完成。')}${pathSuffix}`
+      lastResult.value = json
       messageTone.value = 'success'
       message.value = text('执行完成。')
       return
@@ -959,7 +979,7 @@ async function runPackingListAutoDownload(): Promise<void> {
 
     statusLabel.value = '未完成'
     statusText.value = appendFailureExamples(json?.message || text('已触发，结果未确认。'), json)
-    lastResult.value = { ok: false, message: statusText.value }
+    lastResult.value = { ...(json || {}), ok: false, message: statusText.value }
     messageTone.value = 'warning'
     message.value = text('已触发，结果未确认。')
   } catch (error) {
@@ -1073,6 +1093,33 @@ function safeParseJson(raw: string): Record<string, any> | null {
   } catch {
     return null
   }
+}
+
+function extractDownloadedPdfPaths(payload: Record<string, any> | null | undefined): string[] {
+  if (!payload || typeof payload !== 'object') return []
+  const values: string[] = []
+  const add = (value: unknown): void => {
+    const normalized = String(value || '').trim()
+    if (normalized && /\.pdf$/i.test(normalized)) values.push(normalized)
+  }
+  const addArray = (items: unknown): void => {
+    if (Array.isArray(items)) items.forEach(add)
+  }
+  addArray(payload.downloadedFilePaths)
+  add(payload.firstDownloadedFilePath)
+  add(payload.lastDownloadedFilePath)
+  add(payload.filePath)
+  addArray(payload.progress?.downloadedFilePaths)
+  add(payload.progress?.lastDownloadedFilePath)
+  if (Array.isArray(payload.groupResults)) {
+    for (const group of payload.groupResults) {
+      add(group?.filePath)
+      if (Array.isArray(group?.attempts)) {
+        for (const attempt of group.attempts) add(attempt?.filePath)
+      }
+    }
+  }
+  return Array.from(new Set(values))
 }
 
 function buildExecutorResponseMessage(
@@ -1690,6 +1737,38 @@ function goBack(): void {
     border-radius: inherit;
     background: linear-gradient(90deg, var(--blue), var(--teal));
     transition: width .25s ease;
+  }
+}
+
+.pad-result-paths {
+  margin: -4px 20px 16px;
+  padding: 11px 13px;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  background: #f0fdf4;
+  color: #14532d;
+}
+
+.pad-result-paths__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.pad-result-path {
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, .72);
+  font-family: Consolas, "Microsoft YaHei", monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  word-break: break-all;
+
+  + .pad-result-path {
+    margin-top: 5px;
   }
 }
 

@@ -73,6 +73,7 @@ export function createShipping2ReleasedBulkAutomation({
   config,
   log,
   forceClickLocator,
+  showAutomationBadge,
   xlsx,
   assertWorkbookPayload,
   resolveWorksheetName,
@@ -176,6 +177,21 @@ export function createShipping2ReleasedBulkAutomation({
     return releasedBulkRows;
   }
 
+  const showReleasedBulkBadge = async (page, message, details = {}) => {
+    if (typeof showAutomationBadge !== "function") {
+      return;
+    }
+    await showAutomationBadge(page, {
+      title: "Shipping2 Released Bulk 自动化",
+      message,
+      details: {
+        phase: "shipping2-released-bulk",
+        selectedAction: "Released Bulk",
+        ...details,
+      },
+    });
+  };
+
   async function processShipping2ReleasedBulkWorksheet(page, releasedBulkRows) {
     const targetRows = Array.isArray(releasedBulkRows)
       ? releasedBulkRows.filter((row) => normalizeCellValue(row?.poNo))
@@ -198,11 +214,21 @@ export function createShipping2ReleasedBulkAutomation({
     const poNumbers = targetRows
       .map((row) => String(row?.poNo || "").trim())
       .filter(Boolean);
+    await showReleasedBulkBadge(page, "正在筛选 Released Bulk PO", {
+      phase: "bulk-filter",
+      totalCount: targetRows.length,
+    });
     await applyShipping2ReleasedBulkPoFilter(page, poNumbers);
 
     const rowResults = await updateReleasedBulkRowsInPage(page, targetRows);
     const updatedRowCount = rowResults.filter((row) => row.ok).length;
     const failedRowCount = rowResults.filter((row) => !row.ok).length;
+    await showReleasedBulkBadge(page, "Released Bulk PO 已处理，等待保存决定", {
+      phase: failedRowCount > 0 ? "failed" : "bulk-save-decision",
+      completedCount: updatedRowCount,
+      failedCount: failedRowCount,
+      totalCount: targetRows.length,
+    });
     const saveResult = failedRowCount > 0
       ? await waitForReleasedBulkFailureDecision(page, {
         poCount: targetRows.length,
@@ -801,9 +827,16 @@ export function createShipping2ReleasedBulkAutomation({
   async function updateReleasedBulkRowsInPage(page, targetRows) {
     const rowResults = [];
 
-    for (const targetRow of targetRows) {
+    for (let rowIndex = 0; rowIndex < targetRows.length; rowIndex += 1) {
+      const targetRow = targetRows[rowIndex];
       const poNo = normalizeCellValue(targetRow?.poNo);
       try {
+        await showReleasedBulkBadge(page, `正在处理 Released Bulk PO ${poNo}`, {
+          phase: "bulk-row",
+          poNo,
+          currentCount: rowIndex + 1,
+          totalCount: targetRows.length,
+        });
         let plan = await markReleasedBulkRowEditTargets(page, targetRow);
         if (Array.isArray(plan?.missingHeaders) && plan.missingHeaders.length > 0) {
           throw new Error(`Released Bulk row for PO No ${poNo} is missing worksheet columns: ${plan.missingHeaders.join(", ")}.`);
@@ -891,6 +924,14 @@ export function createShipping2ReleasedBulkAutomation({
           verification,
           error: ok ? "" : String(verification?.error || "").trim(),
         });
+        await showReleasedBulkBadge(page, `Released Bulk PO ${poNo} ${ok ? "已完成" : "处理失败，已记录"}`, {
+          phase: ok ? "bulk-row-complete" : "failed",
+          poNo,
+          currentCount: rowIndex + 1,
+          completedCount: rowResults.filter((item) => item.ok).length,
+          failedCount: rowResults.filter((item) => !item.ok).length,
+          totalCount: targetRows.length,
+        });
 
         log?.("Released Bulk row update checked.", {
           poNo,
@@ -908,6 +949,14 @@ export function createShipping2ReleasedBulkAutomation({
           cellResults: [],
           verification: null,
           error: error instanceof Error ? error.message : String(error),
+        });
+        await showReleasedBulkBadge(page, `Released Bulk PO ${poNo} 处理失败，已记录`, {
+          phase: "failed",
+          poNo,
+          currentCount: rowIndex + 1,
+          completedCount: rowResults.filter((item) => item.ok).length,
+          failedCount: rowResults.filter((item) => !item.ok).length,
+          totalCount: targetRows.length,
         });
       }
     }

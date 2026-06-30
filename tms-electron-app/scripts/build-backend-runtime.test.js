@@ -4,6 +4,7 @@ const test = require('node:test')
 
 const {
   backendDir,
+  backendConfigDir,
   buildPyInstallerArgs,
 } = require('./build-backend-runtime')
 
@@ -31,6 +32,20 @@ test('PyInstaller args include release update seed data as runtime data', () => 
 
   assert.equal(source, path.join(backendDir, 'data'))
   assert.equal(target, 'data')
+})
+
+test('PyInstaller args include backend config as runtime data', () => {
+  const args = buildPyInstallerArgs()
+  const addDataValues = args
+    .map((arg, index) => (arg === '--add-data' ? args[index + 1] : undefined))
+    .filter(Boolean)
+  const configDataValue = addDataValues.find((value) => value.endsWith(`${path.delimiter}config`))
+
+  assert(configDataValue, 'expected backend config --add-data value')
+  const [source, target] = configDataValue.split(path.delimiter)
+
+  assert.equal(source, backendConfigDir)
+  assert.equal(target, 'config')
 })
 
 test('PyInstaller args exclude unused heavyweight optional packages', () => {

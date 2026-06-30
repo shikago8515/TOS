@@ -184,6 +184,7 @@ export function createPoAutoDownloadAutomation(deps) {
     resolveCredentials,
     safePageTitle,
     safePageUrl,
+    showAutomationBadge,
     unregisterActiveRun,
     xlsx,
   } = deps;
@@ -277,7 +278,7 @@ export function createPoAutoDownloadAutomation(deps) {
     const activeRows = poRows.filter((row) => isActiveInvoiceRow(row));
     setRunProgress(activeRun, {
       phase: "准备下载",
-      message: `已读取 ${poRows.length} 行，待下载 ${activeRows.length} 个 active Invoice。`,
+      message: `已读取 ${poRows.length} 行，待下载 ${activeRows.length} 个 active/new Invoice。`,
       totalCount: poRows.length,
       activeCount: activeRows.length,
       skippedCount: skippedStatusResults.length,
@@ -290,7 +291,7 @@ export function createPoAutoDownloadAutomation(deps) {
     if (activeRows.length === 0) {
       setRunProgress(activeRun, {
         phase: "已结束",
-        message: "没有 STATUS=active 的 Invoice 行可下载。",
+        message: "没有 STATUS=active/new 的 Invoice 行可下载。",
         completedCount: 0,
         failedCount: poRows.length,
         skippedCount: skippedStatusResults.length,
@@ -318,7 +319,7 @@ export function createPoAutoDownloadAutomation(deps) {
         selectedDownloadDirectory,
         downloadDirectory,
         poResults: mergeSkippedAndWorkerResults(poRows, skippedStatusResults, []),
-        message: "没有 STATUS=active 的 Invoice 行可下载，已记录并跳过全部行。",
+        message: "没有 STATUS=active/new 的 Invoice 行可下载，已记录并跳过全部行。",
         progress: activeRun?.progress || null,
         generatedAt: new Date().toISOString(),
         startedAt,
@@ -362,7 +363,7 @@ export function createPoAutoDownloadAutomation(deps) {
       const failedSearchCount = activeRows.length - searchedPoCount;
       const downloadedPoCount = downloadResults.filter((item) => item.ok).length;
       const failedPoCount = poResults.length - downloadedPoCount;
-      const message = `PO 自动下载完成，已下载 ${downloadedPoCount}/${activeRows.length} 个 active Invoice，跳过 ${skippedStatusResults.length} 条非 active。`;
+      const message = `PO 自动下载完成，已下载 ${downloadedPoCount}/${activeRows.length} 个 active/new Invoice，跳过 ${skippedStatusResults.length} 条非 active/new。`;
       setRunProgress(activeRun, {
         phase: failedPoCount === 0 ? "已完成" : "未完成",
         message,
@@ -513,17 +514,41 @@ export function createPoAutoDownloadAutomation(deps) {
       page.setDefaultTimeout(config.navigationTimeoutMs);
       page.setDefaultNavigationTimeout(config.navigationTimeoutMs);
 
+      const showBrowserFallbackBadge = async (message, details = {}) => {
+        if (typeof showAutomationBadge !== "function") return;
+        await showAutomationBadge(page, {
+          title: "PO Invoice 自动下载",
+          message,
+          details: {
+            phase: "po-auto-download-auth",
+            ...details,
+          },
+        });
+      };
+
+      await showBrowserFallbackBadge("请求登录失败，正在打开浏览器登录兜底", {
+        phase: "open-login",
+      });
       await page.goto(config.loginUrl || `${loginOrigin}/`, {
         waitUntil: "domcontentloaded",
         timeout: config.navigationTimeoutMs,
+      });
+      await showBrowserFallbackBadge("正在确认 Infor Nexus 登录状态", {
+        phase: "login",
       });
       await ensureLoggedIn(page, credentials);
       if (config.postLoginWaitMs > 0) {
         await page.waitForTimeout(config.postLoginWaitMs).catch(() => {});
       }
+      await showBrowserFallbackBadge("登录完成，正在打开 Invoices 页面", {
+        phase: "open-invoices",
+      });
       await page.goto(invoicesViewUrl, {
         waitUntil: "domcontentloaded",
         timeout: config.navigationTimeoutMs,
+      });
+      await showBrowserFallbackBadge("Invoices 页面已打开，正在提取下载会话", {
+        phase: "capture-session",
       });
 
       const jar = createCookieJarFromBrowserCookies(await context.cookies(loginOrigin));
@@ -543,6 +568,9 @@ export function createPoAutoDownloadAutomation(deps) {
         cookieNames: jar.names(),
         finalUrl: finalUrl || invoicesViewUrl,
       });
+      await showBrowserFallbackBadge("浏览器登录兜底成功，已建立下载会话", {
+        phase: "complete",
+      });
 
       return {
         cookieHeader: jar.header(),
@@ -556,6 +584,15 @@ export function createPoAutoDownloadAutomation(deps) {
         authMethod: "browser-login-fallback",
       };
     } finally {
+      if (page && !page.isClosed() && typeof showAutomationBadge === "function") {
+        await showAutomationBadge(page, {
+          title: "PO Invoice 自动下载",
+          message: "浏览器登录兜底结束，继续下载流程",
+          details: {
+            phase: "complete",
+          },
+        });
+      }
       await context?.close().catch(() => {});
       await browser?.close().catch(() => {});
     }
@@ -1163,8 +1200,14 @@ function uniquePoRows(rows) {
   return uniqueRows;
 }
 
+const DOWNLOADABLE_INVOICE_STATUSES = new Set(["active", "new"]);
+
+export function isDownloadableInvoiceStatus(status) {
+  return DOWNLOADABLE_INVOICE_STATUSES.has(String(status || "").trim().toLowerCase());
+}
+
 function isActiveInvoiceRow(row) {
-  return String(row?.status || "").trim().toLowerCase() === "active";
+  return isDownloadableInvoiceStatus(row?.status);
 }
 
 function buildStatusSkippedResult(row) {
@@ -1178,7 +1221,7 @@ function buildStatusSkippedResult(row) {
     ok: false,
     skipped: true,
     step: "STATUS validation",
-    error: `STATUS must be active. Current STATUS: ${status || "(blank)"}.`,
+    error: `STATUS must be active or new. Current STATUS: ${status || "(blank)"}.`,
   };
 }
 

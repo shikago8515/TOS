@@ -65,7 +65,7 @@ The frontend sends workbook bytes and a local download directory:
 }
 ```
 
-The executor parses the workbook with its own `INVOICE NUMBER` and `STATUS` column parser and uses a request-first flow before any browser click automation. Only rows with `STATUS = active` are downloaded; other rows are recorded as skipped failures and the batch continues.
+The executor parses the workbook with its own `INVOICE NUMBER` and `STATUS` column parser and uses a request-first flow before any browser click automation. Only rows with `STATUS = active` or `STATUS = new` are downloaded; other rows are recorded as skipped failures and the batch continues.
 
 1. `GET https://network.infornexus.com/`
 2. `POST https://network.infornexus.com/en/trade/login.jsp` with form credentials
@@ -85,4 +85,4 @@ The selected run folder is kept clean for users and contains downloaded PDF file
 
 Login credentials are stored in the server backend database through `/api/automation/credentials/{automation_id}`. The `po-auto-download` page supports multiple saved account profiles through `account_key`; the frontend account combobox filters saved profiles by account key or username and resolves the selected profile before running.
 
-Latest local verification: `PO 自动下载模板.XLS` completed 13/13 active Invoice PDF downloads into `D:\TOS-Shipping-test\TC Invoice 2026-06-16-1`.
+Latest local verification: `PO 自动下载模板.XLS` completed 13/13 downloadable Invoice PDF rows into `D:\TOS-Shipping-test\TC Invoice 2026-06-16-1`.

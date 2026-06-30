@@ -71,6 +71,9 @@ export function createInfornexusAutoAddManualSessionManager(dependencies = {}) {
   const createManualSessionId = typeof dependencies.createManualSessionId === "function"
     ? dependencies.createManualSessionId
     : () => `manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const showAutomationBadge = typeof dependencies.showAutomationBadge === "function"
+    ? dependencies.showAutomationBadge
+    : async () => {};
 
   async function open(credentials, options = {}) {
     await close("replaced");
@@ -111,6 +114,15 @@ export function createInfornexusAutoAddManualSessionManager(dependencies = {}) {
         page.setDefaultNavigationTimeout(Number(config.navigationTimeoutMs || 45000));
       }
 
+      const showManualBadge = async (message, details = {}) => showAutomationBadge(page, {
+        title: "Infor Nexus Auto Add 手动会话",
+        message,
+        details: {
+          phase: "auto-add-manual",
+          ...details,
+        },
+      });
+
       const session = {
         autoAddSearchUrl: "",
         browser,
@@ -125,6 +137,9 @@ export function createInfornexusAutoAddManualSessionManager(dependencies = {}) {
       bindSessionLifecycle(session);
       currentSession = session;
 
+      await showManualBadge("正在打开 Infor Nexus 登录页", {
+        phase: "open-login",
+      });
       await page.goto(config.loginUrl || INFORNEXUS_AUTO_ADD_ORIGIN, {
         waitUntil: "domcontentloaded",
         timeout: Number(config.navigationTimeoutMs || 45000),
@@ -132,11 +147,17 @@ export function createInfornexusAutoAddManualSessionManager(dependencies = {}) {
       if (typeof dependencies.ensureLoggedIn !== "function") {
         throw new Error("Infornexus manual session requires ensureLoggedIn.");
       }
+      await showManualBadge("正在确认 Infor Nexus 登录状态", {
+        phase: "login",
+      });
       await dependencies.ensureLoggedIn(page, credentials);
       if (Number(config.postLoginWaitMs || 0) > 0 && typeof page.waitForTimeout === "function") {
         await page.waitForTimeout(Number(config.postLoginWaitMs || 0));
       }
 
+      await showManualBadge("登录完成，正在打开 Auto Add 查询页", {
+        phase: "open-search",
+      });
       const autoAddSearchUrl = await openInfornexusAutoAddSearchPage(page, {
         loginUrl: config.loginUrl,
         navigationTimeoutMs: Number(config.navigationTimeoutMs || 45000),
@@ -146,6 +167,9 @@ export function createInfornexusAutoAddManualSessionManager(dependencies = {}) {
       session.autoAddSearchUrl = autoAddSearchUrl;
       session.finalUrl = getSafePageUrl(page);
       session.title = await getSafePageTitle(page);
+      await showManualBadge("Auto Add 查询页已打开，等待手动操作", {
+        phase: "ready",
+      });
 
       log("Opened Infornexus auto-add manual search session.", {
         autoAddSearchUrl,
@@ -165,6 +189,13 @@ export function createInfornexusAutoAddManualSessionManager(dependencies = {}) {
         generatedAt: new Date().toISOString(),
       };
     } catch (error) {
+      await showAutomationBadge(page, {
+        title: "Infor Nexus Auto Add 手动会话",
+        message: "Auto Add 手动会话打开失败",
+        details: {
+          phase: "failed",
+        },
+      });
       if (currentSession?.manualSessionId === manualSessionId) {
         currentSession = null;
       }

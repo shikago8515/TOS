@@ -160,9 +160,9 @@
                 <el-icon><Download /></el-icon>
                 {{ helperDownloading ? text('获取中...') : text('极速下载助手扩展') }}
               </el-button>
-              <el-button @click="handleHelperPanelOpen">
+              <el-button @click.stop.prevent="openHelperUpdateDialog">
                 <el-icon><Monitor /></el-icon>
-                {{ text('打开小助手面板') }}
+                {{ text('小助手更新') }}
               </el-button>
             </div>
           </article>
@@ -358,6 +358,75 @@
         </el-button>
       </section>
     </aside>
+
+    <el-dialog
+      v-model="helperUpdateDialogVisible"
+      class="sb-helper-update-dialog"
+      width="540px"
+      append-to-body
+      destroy-on-close
+      :close-on-click-modal="false"
+    >
+      <template #header>
+        <div class="sb-helper-dialog-head">
+          <span class="sb-helper-dialog-head__icon">
+            <el-icon><Connection /></el-icon>
+          </span>
+          <div>
+            <h3>{{ text('TOS 自动化助手更新') }}</h3>
+            <p>{{ text('检查本机网页桥接小助手是否为服务器最新版本，并下载最新版安装包进行覆盖安装。') }}</p>
+          </div>
+        </div>
+      </template>
+
+      <div class="sb-helper-dialog">
+        <section class="sb-helper-dialog__status">
+          <span
+            class="sb-helper-dialog__status-icon"
+            :class="`is-${helperUpdateView.tagType}`"
+          >
+            <el-icon><CircleCheckFilled /></el-icon>
+          </span>
+          <div class="sb-helper-dialog__status-text">
+            <el-tag :type="helperUpdateView.tagType" effect="light" round>
+              {{ text(helperUpdateView.label) }}
+            </el-tag>
+            <p>{{ text(helperUpdateView.message) }}</p>
+          </div>
+        </section>
+
+        <section class="sb-helper-dialog__versions">
+          <div class="sb-helper-dialog__version-row">
+            <span>{{ text('当前版本') }}</span>
+            <strong>{{ helperUpdateCurrentVersion }}</strong>
+          </div>
+          <div class="sb-helper-dialog__version-row">
+            <span>{{ text('服务器最新版本') }}</span>
+            <strong>{{ helperUpdateServerVersion }}</strong>
+          </div>
+        </section>
+
+        <footer class="sb-helper-dialog__actions">
+          <el-button
+            :loading="helperUpdateChecking"
+            :disabled="helperUpdateChecking || helperDownloading"
+            @click="handleHelperUpdateCheck"
+          >
+            <el-icon><Refresh /></el-icon>
+            {{ text('检查最新版') }}
+          </el-button>
+          <el-button
+            type="primary"
+            :loading="helperDownloading"
+            :disabled="helperDownloading || helperUpdateChecking"
+            @click="handleHelperDownload"
+          >
+            <el-icon><Download /></el-icon>
+            {{ text('下载并打开安装包') }}
+          </el-button>
+        </footer>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -376,6 +445,7 @@ import {
   Setting,
   StarFilled,
 } from '@element-plus/icons-vue'
+import { ref } from 'vue'
 
 import desktopFullPackageImage from '../../assets/settings/desktop-full-package.png'
 import desktopLightInstallerImage from '../../assets/settings/desktop-light-installer.png'
@@ -398,11 +468,15 @@ const {
   handleDownload,
   handleExportRuntimeParams,
   handleHelperDownload,
-  handleHelperPanelOpen,
+  handleHelperUpdateCheck,
   handleInstall,
   handleManualDownload,
   hasDesktopUpdateSupport,
   helperDownloading,
+  helperUpdateChecking,
+  helperUpdateCurrentVersion,
+  helperUpdateServerVersion,
+  helperUpdateView,
   isActionLocked,
   latestVersion,
   manualDownload,
@@ -418,6 +492,13 @@ const {
   t,
   text,
 } = useSettingsPageModel()
+
+const helperUpdateDialogVisible = ref(false)
+
+function openHelperUpdateDialog(): void {
+  helperUpdateDialogVisible.value = true
+  void handleHelperUpdateCheck()
+}
 </script>
 
 <style scoped lang="scss">
@@ -1360,6 +1441,190 @@ const {
   :deep(.el-icon) {
     font-size: 15px;
   }
+}
+
+/* =============================================
+   Helper Update Dialog
+   ============================================= */
+:global(.sb-helper-update-dialog) {
+  --helper-dialog-surface: #ffffff;
+  --helper-dialog-soft: #f4fbfa;
+  --helper-dialog-border: #dfe7ef;
+  --helper-dialog-border-soft: #edf2f7;
+  --helper-dialog-text: #17233f;
+  --helper-dialog-heading: #0f172a;
+  --helper-dialog-muted: #66748c;
+  --helper-dialog-teal: #0d9488;
+
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--helper-dialog-surface);
+  box-shadow: 0 22px 70px rgba(15, 35, 58, 0.18);
+}
+
+:global(.sb-helper-update-dialog .el-dialog__header) {
+  margin: 0;
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid var(--helper-dialog-border-soft);
+}
+
+:global(.sb-helper-update-dialog .el-dialog__body) {
+  padding: 0;
+}
+
+:global(.sb-helper-dialog-head) {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 36px;
+}
+
+:global(.sb-helper-dialog-head__icon) {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  color: #0d9488;
+  background: rgba(45, 212, 191, 0.16);
+  border: 1px solid rgba(13, 148, 136, 0.18);
+}
+
+:global(.sb-helper-dialog-head h3) {
+  margin: 0;
+  color: var(--helper-dialog-heading);
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+:global(.sb-helper-dialog-head p) {
+  margin: 6px 0 0;
+  color: var(--helper-dialog-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+:global(.sb-helper-dialog) {
+  padding: 18px 22px 22px;
+  color: var(--helper-dialog-text);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(13, 148, 136, 0.08), transparent 28%),
+    var(--helper-dialog-surface);
+}
+
+:global(.sb-helper-dialog__status) {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(13, 148, 136, 0.16);
+  border-radius: 14px;
+  background: var(--helper-dialog-soft);
+}
+
+:global(.sb-helper-dialog__status-icon) {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  color: #0d9488;
+  background: rgba(45, 212, 191, 0.18);
+}
+
+:global(.sb-helper-dialog__status-icon.is-warning) {
+  color: #d97706;
+  background: rgba(251, 191, 36, 0.18);
+}
+
+:global(.sb-helper-dialog__status-icon.is-danger) {
+  color: #dc2626;
+  background: rgba(248, 113, 113, 0.16);
+}
+
+:global(.sb-helper-dialog__status-text) {
+  min-width: 0;
+}
+
+:global(.sb-helper-dialog__status-text p) {
+  margin: 8px 0 0;
+  color: var(--helper-dialog-muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+:global(.sb-helper-dialog__versions) {
+  margin-top: 14px;
+  border: 1px solid var(--helper-dialog-border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+:global(.sb-helper-dialog__version-row) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 48px;
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.68);
+  border-bottom: 1px solid var(--helper-dialog-border-soft);
+}
+
+:global(.sb-helper-dialog__version-row:last-child) {
+  border-bottom: 0;
+}
+
+:global(.sb-helper-dialog__version-row span) {
+  color: var(--helper-dialog-muted);
+  font-size: 13px;
+}
+
+:global(.sb-helper-dialog__version-row strong) {
+  min-width: 0;
+  color: var(--helper-dialog-heading);
+  font-size: 15px;
+  font-weight: 900;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:global(.sb-helper-dialog__actions) {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+:global(.sb-helper-dialog__actions .el-button) {
+  min-width: 126px;
+  height: 38px;
+  border-radius: 10px;
+  font-weight: 800;
+}
+
+:global(html.dark .sb-helper-update-dialog) {
+  --helper-dialog-surface: #141414;
+  --helper-dialog-soft: #18181a;
+  --helper-dialog-border: #303133;
+  --helper-dialog-border-soft: #25262a;
+  --helper-dialog-text: #e5eaf3;
+  --helper-dialog-heading: #f2f6fc;
+  --helper-dialog-muted: #a7adba;
+
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.48);
+}
+
+:global(html.dark .sb-helper-dialog__version-row) {
+  background: rgba(24, 24, 26, 0.86);
+}
+
+:global(html.dark .sb-helper-dialog__status) {
+  background: rgba(24, 24, 26, 0.92);
 }
 
 /* =============================================

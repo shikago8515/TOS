@@ -26,7 +26,7 @@ import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import { showAppAlert } from '../../shared/ui/appAlert'
 import {
   openAutomationHelperDownload,
-  openAutomationHelperPanel,
+  probeLocalAutomationLauncherHealthPayload,
 } from '../web-automation/webAutomationApi'
 
 type NoticeTone = 'info' | 'success' | 'warning' | 'error'
@@ -46,6 +46,10 @@ export function useSettingsPageModel() {
   const desktopInstallerDownloading = ref(false)
   const desktopFullInstallerDownloading = ref(false)
   const helperDownloading = ref(false)
+  const helperUpdateChecking = ref(false)
+  const helperUpdateChecked = ref(false)
+  const helperLocalVersion = ref('')
+  const helperUpdateError = ref('')
   let unsubscribeUpdateStatus: (() => void) | undefined
   const { t, text } = useAppLanguage()
   
@@ -175,6 +179,90 @@ export function useSettingsPageModel() {
       versionLabel: item.packageInfo?.version ? formatDisplayVersion(item.packageInfo.version) : '-',
       source: item.packageInfo?.source ?? '',
     }))
+  })
+  const automationHelperPackage = computed(() =>
+    serverInstallerVersions.value?.packages.find((packageInfo) => packageInfo.id === 'automation-helper') ?? null,
+  )
+  const helperUpdateCurrentRawVersion = computed(() => {
+    if (helperLocalVersion.value) return helperLocalVersion.value
+    return helperUpdateChecked.value ? '' : currentVersion.value
+  })
+  const helperUpdateServerRawVersion = computed(() =>
+    automationHelperPackage.value?.version || serverInstallerVersions.value?.version || currentVersion.value,
+  )
+  const helperUpdateCurrentVersion = computed(() => {
+    const version = helperUpdateCurrentRawVersion.value.trim()
+    return version ? formatDisplayVersion(version) : text('未检测到')
+  })
+  const helperUpdateServerVersion = computed(() => {
+    const version = helperUpdateServerRawVersion.value.trim()
+    return version ? formatDisplayVersion(version) : '-'
+  })
+  const helperUpdateView = computed(() => {
+    if (helperUpdateChecking.value) {
+      return {
+        label: '检查中',
+        tagType: 'info',
+        message: '正在读取本机网页桥接小助手和服务器安装包版本。',
+      }
+    }
+
+    if (helperUpdateError.value) {
+      return {
+        label: '检查失败',
+        tagType: 'danger',
+        message: helperUpdateError.value,
+      }
+    }
+
+    if (!helperUpdateChecked.value) {
+      return {
+        label: '待检查',
+        tagType: 'info',
+        message: '点击检查最新版后，会比对本机小助手与服务器最新安装包版本。',
+      }
+    }
+
+    const localVersion = helperLocalVersion.value.trim()
+    if (!localVersion) {
+      return {
+        label: '未检测到',
+        tagType: 'warning',
+        message: '未检测到正在运行的本机自动化助手，可直接下载最新版安装包进行覆盖安装。',
+      }
+    }
+
+    const serverVersion = helperUpdateServerRawVersion.value.trim()
+    if (!serverVersion) {
+      return {
+        label: '服务器未知',
+        tagType: 'warning',
+        message: '暂时无法读取服务器小助手版本，请稍后重新检查。',
+      }
+    }
+
+    const versionDiff = compareVersionStrings(localVersion, serverVersion)
+    if (versionDiff < 0) {
+      return {
+        label: '发现新版',
+        tagType: 'warning',
+        message: '服务器已有新版小助手，建议下载最新版安装包并覆盖安装。',
+      }
+    }
+
+    if (versionDiff > 0) {
+      return {
+        label: '本机较新',
+        tagType: 'info',
+        message: '本机小助手版本高于服务器记录，请确认服务器安装包清单是否已经更新。',
+      }
+    }
+
+    return {
+      label: '已是最新',
+      tagType: 'success',
+      message: '当前小助手版本已经和服务器保持一致。',
+    }
   })
   const emptyChangelogText = computed(() => {
     if (status.value?.status === 'available' || status.value?.status === 'downloaded') {
@@ -328,6 +416,32 @@ export function useSettingsPageModel() {
     }
   }
 
+  async function handleHelperUpdateCheck(): Promise<void> {
+    if (helperUpdateChecking.value) {
+      return
+    }
+
+    helperUpdateChecking.value = true
+    helperUpdateError.value = ''
+
+    try {
+      const [installerVersions, launcherHealth] = await Promise.all([
+        getServerInstallerVersions(),
+        probeLocalAutomationLauncherHealthPayload(),
+      ])
+      serverInstallerVersions.value = installerVersions
+      helperLocalVersion.value = String(
+        launcherHealth?.helperVersion || launcherHealth?.version || '',
+      ).trim()
+      helperUpdateChecked.value = true
+    } catch (error) {
+      helperUpdateChecked.value = true
+      helperUpdateError.value = readErrorMessage(error, '检查自动化助手版本失败')
+    } finally {
+      helperUpdateChecking.value = false
+    }
+  }
+
   async function showInstallerDownloadError(error: unknown, fallback: string): Promise<void> {
     const errorMessage = readErrorMessage(error, fallback)
     message.value = errorMessage
@@ -336,19 +450,6 @@ export function useSettingsPageModel() {
       tone: 'error',
       confirmText: '我知道了',
     })
-  }
-
-  async function handleHelperPanelOpen(): Promise<void> {
-    message.value = ''
-
-    try {
-      const result = await openAutomationHelperPanel()
-      messageTone.value = result.status === 'opened' ? 'info' : 'warning'
-      message.value = result.message
-    } catch (error) {
-      messageTone.value = 'error'
-      message.value = readErrorMessage(error, '打开本机自动化助手更新面板失败')
-    }
   }
 
   function handleExportRuntimeParams(): void {
@@ -577,12 +678,16 @@ export function useSettingsPageModel() {
     handleDownload,
     handleExportRuntimeParams,
     handleHelperDownload,
-    handleHelperPanelOpen,
+    handleHelperUpdateCheck,
     handleInstall,
     handleManualDownload,
     hasCategorizedChangelog,
     hasDesktopUpdateSupport,
     helperDownloading,
+    helperUpdateChecking,
+    helperUpdateCurrentVersion,
+    helperUpdateServerVersion,
+    helperUpdateView,
     isActionLocked,
     latestVersion,
     manualDownload,

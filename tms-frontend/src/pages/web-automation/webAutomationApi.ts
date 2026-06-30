@@ -27,6 +27,24 @@ export interface InfornexusAutoAddManualSessionSummary {
   title?: string
 }
 
+export interface InforNexusDesktopBridgeHostRegistration {
+  browser?: string
+  scope?: string
+  key?: string
+  registered?: boolean
+}
+
+export interface InforNexusDesktopBridgeHealth {
+  extensionId?: string
+  extensionPath?: string
+  extensionInstalledForAutomation?: boolean
+  nativeHostName?: string
+  nativeHostRegistered?: boolean
+  nativeHosts?: InforNexusDesktopBridgeHostRegistration[]
+  browser?: string
+  channel?: string
+}
+
 export interface LocalExecutorHealth {
   ok: boolean
   version?: string
@@ -41,6 +59,7 @@ export interface LocalExecutorHealth {
   dataDir?: string
   runtimeConfigPath?: string
   runtimeSecretPath?: string
+  desktopBridge?: InforNexusDesktopBridgeHealth
   capabilities?: Record<string, unknown>
   config?: Record<string, unknown>
 }
@@ -53,6 +72,21 @@ export function isLocalExecutorBusy(health: LocalExecutorHealth | null | undefin
       || (Array.isArray(health?.activeRuns) && health.activeRuns.length > 0)
       || (Number.isFinite(activeRunCount) && activeRunCount > 0),
   )
+}
+
+export function getInforNexusDesktopBridgeWarning(health: LocalExecutorHealth | null | undefined): string {
+  const bridge = health?.desktopBridge
+  if (!health?.ok || !bridge) return ''
+
+  if (bridge.extensionInstalledForAutomation === false) {
+    return 'Infor Nexus Print-Scan-Ship 浏览器扩展未加载，请更新 TOS 自动化助手后重启执行器。'
+  }
+
+  if (bridge.nativeHostRegistered === false) {
+    return 'Infor Nexus Desktop Utility 未安装或未注册。请登录 Infor Nexus，在 Home > Resources 下载并安装 Desktop Utility，启动后重启 TOS 自动化助手，或在 Print-Scan-Ship 左下角点击 Reconnect to Desktop。'
+  }
+
+  return ''
 }
 
 export function collectLocalExecutorActiveRuns(health: LocalExecutorHealth | null | undefined): Record<string, any>[] {

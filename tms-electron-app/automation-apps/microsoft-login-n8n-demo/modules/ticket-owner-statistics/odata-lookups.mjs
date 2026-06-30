@@ -152,6 +152,14 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
     ticketResults,
     failedTickets,
     lookupDiagnostics,
+    filteredTotalCount,
+    taskCenterTotalCount: normalizePositiveInteger(options.taskCenterTotalCount, 0),
+    discoveredTaskCount: sourceTasks.length,
+    plannedCount,
+    skippedCount: notQueuedCount,
+    concurrencyCount: workerCount,
+    attemptedTicketCount: attemptedCount,
+    failedTicketCount: failedTickets.length,
   };
 
   async function reportLookupState(message, percent) {
@@ -170,7 +178,7 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
       attemptedCount,
       activeCount: activeTasks.size,
       concurrencyCount: workerCount,
-      pendingCount: Math.max(0, plannedCount - rows.length),
+      pendingCount: Math.max(0, plannedCount - attemptedCount),
       currentTickets: Array.from(activeTasks.values()).filter(Boolean),
     });
   }

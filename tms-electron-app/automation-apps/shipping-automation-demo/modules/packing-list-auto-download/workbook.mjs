@@ -2,8 +2,10 @@ const PO_HEADER_ALIASES = new Set([
   "po",
   "po#",
   "pono",
+  "pono1",
   "ponos",
   "ponumber",
+  "ponumber1",
   "ponumbers",
   "purchaseorder",
   "purchaseorderno",
@@ -19,6 +21,18 @@ const PO_HEADER_ALIASES = new Set([
   "采购订单",
   "采购订单号",
   "订单号",
+]);
+
+const NO_HEADER_ALIASES = new Set([
+  "no",
+  "no.",
+  "number",
+  "batch",
+  "batchno",
+  "batchnumber",
+  "批次",
+  "批次号",
+  "编号",
 ]);
 
 const STATUS_HEADER_ALIASES = new Set([
@@ -66,7 +80,14 @@ export function validatePackingListWorkbookPayload(body, deps) {
 
   const poNumbers = collectPoNumbers(rows);
   if (poNumbers.length === 0) {
-    const error = new Error("自动下载箱单 Excel 未找到 PO Number 列的有效 PO 号。请确认第一行表头包含 PO Number、PO# 或 PO号。");
+    const error = new Error("自动下载箱单 Excel 未找到 PO No1 / PO Number 列的有效 PO 号。请确认第一行表头包含 PO No1、PO Number、PO# 或 PO号。");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const groups = collectNoGroups(rows);
+  if (groups.length === 0) {
+    const error = new Error("自动下载箱单 Excel 未找到 NO 批次。请确认第一行表头包含 NO，且至少第一条 PO 行填写了 NO。");
     error.statusCode = 400;
     throw error;
   }
@@ -74,7 +95,9 @@ export function validatePackingListWorkbookPayload(body, deps) {
   return {
     inputFileName,
     byteLength: workbookBuffer.length,
+    firstNo: groups[0]?.no || "",
     firstPoNumber: poNumbers[0],
+    groups,
     poNumbers,
     rowCount: rows.length,
     rows,
@@ -116,10 +139,16 @@ function resolveWorksheetName(workbook, preferredSheetName) {
 
 function normalizeRows(rawRows) {
   const normalizedRows = [];
+  let activeNo = "";
   rawRows.forEach((row, index) => {
     const normalized = normalizePackingListRow(row, index + 2);
     if (normalized.nonEmptyCellCount === 0) {
       return;
+    }
+    if (normalized.no) {
+      activeNo = normalized.no;
+    } else if (activeNo) {
+      normalized.no = activeNo;
     }
     normalizedRows.push(normalized);
   });
@@ -136,9 +165,12 @@ function normalizePackingListRow(row, rowIndex) {
 
   const poCell = findCellByAliases(normalized, PO_HEADER_ALIASES);
   const poNumbers = splitPoNumbers(poCell.value);
+  const noCell = findCellByAliases(normalized, NO_HEADER_ALIASES);
   const statusCell = findCellByAliases(normalized, STATUS_HEADER_ALIASES);
   return {
     rowIndex,
+    no: normalizeNoValue(noCell.value),
+    noSourceHeader: noCell.header,
     nonEmptyCellCount: Object.values(normalized).filter(Boolean).length,
     originalRow: normalized,
     poNumber: poNumbers[0] || "",
@@ -178,7 +210,44 @@ function collectPoNumbers(rows) {
   return poNumbers;
 }
 
+function collectNoGroups(rows) {
+  const groups = [];
+  const groupsByNo = new Map();
+  for (const row of rows) {
+    const no = normalizeNoValue(row.no);
+    if (!no) continue;
+    const poNumbers = Array.isArray(row.poNumbers) ? row.poNumbers : [];
+    if (poNumbers.length === 0) continue;
+
+    let group = groupsByNo.get(no);
+    if (!group) {
+      group = {
+        no,
+        rows: [],
+        poNumbers: [],
+      };
+      groupsByNo.set(no, group);
+      groups.push(group);
+    }
+    group.rows.push(row);
+    for (const poNumber of poNumbers) {
+      if (!group.poNumbers.includes(poNumber)) {
+        group.poNumbers.push(poNumber);
+      }
+    }
+  }
+  return groups.filter((group) => group.poNumbers.length > 0);
+}
+
 function normalizePoNumber(value) {
+  const text = normalizeCellValue(value);
+  if (!text || /^(total|subtotal|合计|总计|小计)$/i.test(text)) {
+    return "";
+  }
+  return text;
+}
+
+function normalizeNoValue(value) {
   const text = normalizeCellValue(value);
   if (!text || /^(total|subtotal|合计|总计|小计)$/i.test(text)) {
     return "";

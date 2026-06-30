@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const { registerAdidasMaterialsCollector } = require('./adidas-materials-main');
-const automationLauncherCore = require('./automation-launcher/core');
+const automationLauncherCore = loadAutomationLauncherCore();
 const { normalizeAllowedExternalUrl } = require('./external-url-allowlist');
 const {
   describeBackendCompatibilityFailure,
@@ -30,7 +30,7 @@ const REQUIRED_BACKEND_OPENAPI_PATHS = requiredBackendOpenapiPaths;
 const REMOTE_BACKEND_URL = normalizeBackendBaseUrl(
   process.env.TOS_REMOTE_BACKEND_URL || process.env.VITE_BACKEND_URL || 'https://ai.tomwell.net:56130/tos/desktop-api'
 );
-const USE_REMOTE_BACKEND = process.env.TOS_DESKTOP_BACKEND_MODE !== 'local';
+const USE_REMOTE_BACKEND = process.env.TOS_DESKTOP_BACKEND_MODE === 'remote';
 let activeBackendPort = BACKEND_PORT;
 let activeBackendUrl = USE_REMOTE_BACKEND ? REMOTE_BACKEND_URL : buildBackendUrl(BACKEND_PORT);
 const APP_DISPLAY_NAME = 'TOS'/*12345678*/;
@@ -46,6 +46,22 @@ const UPDATE_SOURCE_CONFIG_FILE = 'update-source.json';
 const UPDATE_STATUS_CHANNEL = 'update-status';
 const MANUAL_DOWNLOADS_FILE = 'manual-downloads.json';
 const AUTOMATION_HELPER_VERSION_FILE = 'automation-helper-version.json';
+
+function loadAutomationLauncherCore() {
+  const candidates = [
+    app.isPackaged ? path.join(process.resourcesPath, 'automation-launcher', 'core.js') : '',
+    path.join(__dirname, 'automation-launcher', 'core.js'),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return require(candidate);
+    }
+  }
+
+  const searchedPaths = candidates.join(', ');
+  throw new Error(`Cannot find automation launcher core. Searched: ${searchedPaths}`);
+}
 
 const externalModules = {
   infornexus: {
@@ -1616,6 +1632,45 @@ function getBackendDataDir() {
   return path.join(app.getPath('userData'), 'backend-data');
 }
 
+function getBackendConfigDir(preferRuntime = false) {
+  if (!app.isPackaged) {
+    return path.resolve(__dirname, '..', 'tms-backend', 'config');
+  }
+
+  const runtimeConfigDir = path.join(process.resourcesPath, 'backend-runtime', 'tos-backend', '_internal', 'config');
+  const sourceConfigDir = path.join(process.resourcesPath, 'backend', 'config');
+  if (preferRuntime && fs.existsSync(runtimeConfigDir)) {
+    return runtimeConfigDir;
+  }
+  if (fs.existsSync(sourceConfigDir)) {
+    return sourceConfigDir;
+  }
+  return runtimeConfigDir;
+}
+
+function buildBackendProcessEnv(port, preferRuntimeConfig = false) {
+  const configDir = getBackendConfigDir(preferRuntimeConfig);
+  const settingsFile = path.join(configDir, 'settings.yaml');
+  const credentialKeyFile = path.join(configDir, 'credential.key');
+  const env = {
+    ...process.env,
+    PYTHONIOENCODING: 'utf-8',
+    PYTHONUTF8: '1',
+    TOS_BACKEND_HOST: BACKEND_HOST,
+    TOS_BACKEND_PORT: String(port),
+    TMS_BACKEND_DATA_DIR: getBackendDataDir(),
+  };
+
+  if (fs.existsSync(settingsFile)) {
+    env.TOS_SETTINGS_FILE = settingsFile;
+  }
+  if (fs.existsSync(credentialKeyFile)) {
+    env.TOS_CREDENTIAL_KEY_FILE = credentialKeyFile;
+  }
+
+  return env;
+}
+
 function normalizeBackendBaseUrl(value) {
   return String(value || '').trim().replace(/\/+$/, '');
 }
@@ -1698,12 +1753,7 @@ async function spawnBackendWith(candidate, backendDir, logStream, port) {
     cwd: backendDir,
     windowsHide: true,
     stdio: ['ignore', logStream, logStream],
-    env: {
-      ...process.env,
-      PYTHONIOENCODING: 'utf-8',
-      PYTHONUTF8: '1',
-      TMS_BACKEND_DATA_DIR: getBackendDataDir()
-    }
+    env: buildBackendProcessEnv(port, false)
   });
 
   let spawnError = null;
@@ -1724,14 +1774,7 @@ async function spawnBundledBackend(executablePath, logStream, port) {
     cwd: path.dirname(executablePath),
     windowsHide: true,
     stdio: ['ignore', logStream, logStream],
-    env: {
-      ...process.env,
-      PYTHONIOENCODING: 'utf-8',
-      PYTHONUTF8: '1',
-      TOS_BACKEND_HOST: BACKEND_HOST,
-      TOS_BACKEND_PORT: String(port),
-      TMS_BACKEND_DATA_DIR: getBackendDataDir()
-    }
+    env: buildBackendProcessEnv(port, true)
   });
 
   let spawnError = null;

@@ -95,7 +95,7 @@ const automationValidationErrorRules: AutomationValidationErrorRule[] = [
   },
   {
     pattern: /Uploaded workbook must contain at least one INVOICE NUMBER row/i,
-    message: 'Invoice 自动下载模板缺少 INVOICE NUMBER 数据。请确认表头包含 INVOICE NUMBER 和 STATUS，并从第 2 行开始填写；STATUS 为 active 才会下载。',
+    message: 'Invoice 自动下载模板缺少 INVOICE NUMBER 数据。请确认表头包含 INVOICE NUMBER 和 STATUS，并从第 2 行开始填写；STATUS 为 active 或 new 才会下载。',
   },
 ]
 

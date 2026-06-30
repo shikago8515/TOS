@@ -107,7 +107,7 @@ tms-frontend/src/shared/version/releaseNotes.json
 
 模板见 `docs/templates/release-notes.md`。
 
-版本发布事实以 Git tag、`releaseManifest.json` 和服务器包 `deploy/manifest.json` 为准；版本更新历史页面以服务器 MySQL `release_update_records` 为查询主源，本地 `tms-frontend/src/shared/version/releaseHistory.json` 和 `tms-backend/data/release_updates_seed.json` 只是可再生成缓存。更新版本记录时使用：
+版本发布事实以 Git tag、`releaseManifest.json` 和服务器包 `deploy/manifest.json` 为准；版本更新历史页面以服务器 MySQL `tos_release_records` 为查询主源，本地 `tms-frontend/src/shared/version/releaseHistory.json` 和 `tms-backend/data/release_updates_seed.json` 只是可再生成缓存。更新版本记录时使用：
 
 ```powershell
 npm run release:updates:push:dry-run

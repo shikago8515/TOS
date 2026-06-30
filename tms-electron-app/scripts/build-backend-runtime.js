@@ -6,6 +6,7 @@ const electronDir = path.resolve(__dirname, '..')
 const repoRoot = path.resolve(electronDir, '..')
 const backendDir = path.join(repoRoot, 'tms-backend')
 const backendDataDir = path.join(backendDir, 'data')
+const backendConfigDir = path.join(backendDir, 'config')
 const templateDir = path.join(backendDir, 'templates')
 const runtimeRoot = path.join(electronDir, 'backend-runtime')
 const runtimeDir = path.join(runtimeRoot, 'tos-backend')
@@ -59,6 +60,8 @@ function buildPyInstallerArgs() {
     `${templateDir}${path.delimiter}templates`,
     '--add-data',
     `${backendDataDir}${path.delimiter}data`,
+    '--add-data',
+    `${backendConfigDir}${path.delimiter}config`,
     ...excludedBackendRuntimeModules.flatMap((moduleName) => ['--exclude-module', moduleName]),
     launcherPath,
   ]
@@ -66,6 +69,8 @@ function buildPyInstallerArgs() {
 
 function main() {
   requireFile(launcherPath, 'backend launcher')
+  requireFile(path.join(backendConfigDir, 'settings.yaml'), 'backend runtime settings')
+  requireFile(path.join(backendConfigDir, 'credential.key'), 'backend credential key')
   requireFile(path.join(templateDir, 'sophia_tina_pivot_template.xlsx'), 'Sophia/Tina pivot template')
   requireFile(path.join(backendDataDir, 'release_updates_seed.json'), 'release updates seed data')
   fs.mkdirSync(runtimeRoot, { recursive: true })
@@ -103,6 +108,14 @@ function main() {
     path.join(runtimeDir, '_internal', 'data', 'release_updates_seed.json'),
     'backend runtime release updates seed data',
   )
+  requireFile(
+    path.join(runtimeDir, '_internal', 'config', 'settings.yaml'),
+    'backend runtime settings',
+  )
+  requireFile(
+    path.join(runtimeDir, '_internal', 'config', 'credential.key'),
+    'backend runtime credential key',
+  )
 
   console.log(`Backend runtime rebuilt: ${runtimeDir}`)
 }
@@ -113,6 +126,7 @@ if (require.main === module) {
 
 module.exports = {
   backendDir,
+  backendConfigDir,
   backendDataDir,
   buildPyInstallerArgs,
   excludedBackendRuntimeModules,

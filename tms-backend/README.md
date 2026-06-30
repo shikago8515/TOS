@@ -53,7 +53,7 @@ npm run check:backend
 - 旧 `/api/it-invoice-pdf-reorder/*` 和 legacy `/api/preview-invoice`、`/api/preview-po`、`/api/extract-numbers`、`/api/process` 继续保留兼容。
 - 系统配置下载接口包含自动化助手、TOS 轻量在线安装器、完整安装包、payload 和 PO 自动下载模板下载路径，例如 `/api/system/config/tos-desktop/download`、`/api/system/config/tos-desktop-full/download` 与 `/api/system/config/po-auto-download/template/download`。
 - `/api/release-updates` 提供版本更新记录读取和部署同步写入；服务器 MySQL 是主源，本地默认 seed `data/release_updates_seed.json` 需要通过 `npm run release:updates:pull` 与 `tms-frontend/src/shared/version/releaseHistory.json` 保持一致。
-- 自动化凭据接口 `/api/automation/credentials/{automation_id}` 负责保存 Infor Nexus 等登录凭据；`po-auto-download/default` 使用同一张 `automation_credentials` 表，前端只回显账号，执行时通过 resolve 接口取加密密码。
+- 自动化凭据接口 `/api/automation/credentials/{automation_id}` 负责保存 Infor Nexus 等登录凭据；`po-auto-download/default` 使用同一张 `tos_login_accounts` 表，前端只回显账号，执行时通过 resolve 接口取加密密码。
 
 ## Engineering Notes
 

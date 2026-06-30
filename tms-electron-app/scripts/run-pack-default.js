@@ -58,6 +58,8 @@ const requiredBackendRuntimeResources = [
   'tos-backend/_internal/_socket.pyd',
   'tos-backend/_internal/_ssl.pyd',
   'tos-backend/_internal/_asyncio.pyd',
+  'tos-backend/_internal/config/settings.yaml',
+  'tos-backend/_internal/config/credential.key',
   'tos-backend/_internal/templates/sophia_tina_pivot_template.xlsx',
 ]
 
@@ -91,9 +93,23 @@ function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 }
 
+function clearWindowsProtectedAttributes(targetDir) {
+  if (process.platform !== 'win32' || !fs.existsSync(targetDir)) {
+    return
+  }
+
+  for (const target of [targetDir, path.join(targetDir, '*')]) {
+    spawnSync('attrib', ['-R', '-S', '-H', target, '/S', '/D'], {
+      shell: false,
+      stdio: 'ignore',
+    })
+  }
+}
+
 function removeDirectoryWithRetry(targetDir, attempts = 5) {
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
+      clearWindowsProtectedAttributes(targetDir)
       fs.rmSync(targetDir, { recursive: true, force: true })
       return
     } catch (error) {
@@ -866,7 +882,7 @@ function runElectronBuilder() {
 
 async function main() {
   fs.mkdirSync(outputDir, { recursive: true })
-  fs.rmSync(unpackedDir, { recursive: true, force: true })
+  removeDirectoryWithRetry(unpackedDir)
   fs.writeFileSync(markerPath, JSON.stringify({ startedAt: Date.now() }), 'utf8')
 
   console.log('[1/3] Build rebuilt frontend')

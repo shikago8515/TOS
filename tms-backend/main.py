@@ -24,6 +24,7 @@ from api.it_invoice_pdf_reorder_api import compat_router as it_invoice_pdf_reord
 from api.it_invoice_pdf_reorder_api import legacy_router as it_invoice_pdf_reorder_legacy_router
 from api.it_invoice_pdf_reorder_api import router as it_invoice_pdf_reorder_router
 from api.automation_storage_api import router as automation_storage_router
+from api.process_history_api import router as process_history_router
 from api.system_config_api import router as system_config_router
 from api.release_updates_api import router as release_updates_router
 from api.tms_finance_internal_reconciliation_api import router as tms_finance_internal_reconciliation_router
@@ -78,6 +79,7 @@ app.include_router(it_invoice_pdf_reorder_router, prefix="/api")
 app.include_router(it_invoice_pdf_reorder_compat_router, prefix="/api")
 app.include_router(it_invoice_pdf_reorder_legacy_router, prefix="/api")
 app.include_router(automation_storage_router, prefix="/api")
+app.include_router(process_history_router, prefix="/api")
 app.include_router(system_config_router, prefix="/api")
 app.include_router(release_updates_router, prefix="/api")
 app.include_router(tms_finance_internal_reconciliation_router, prefix="/api")

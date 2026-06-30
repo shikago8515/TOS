@@ -1,4 +1,5 @@
 ﻿import http from "node:http";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -42,6 +43,9 @@ const artifactsDir = path.join(runtimeDataRoot, "run-artifacts");
 const PREPARE_NEXT_PO_DIALOG_TIMEOUT_MS = 3000;
 const XINLONGTAI_SHIPPING_AUTOMATION_ID = "xinlongtai-shipping-automation";
 const DESKTOP_UTILITY_CONNECTION_PATTERN = /taking longer than normal for the desktop to connect|Desktop Utility process is running|version\s+2\.0\.1\.29|re-loading the PackByScan application|Awaiting desktop|PackByScan/i;
+const INFOR_NEXUS_EXTENSION_ID = "fkmgjdbgapopggcnkapkodfjeblddieo";
+const INFOR_NEXUS_NATIVE_HOST = "com.gtnexus.packbyscan.chrome_native_bridge";
+const BUSINESS_DATA_EMPTY_CODE = "INFORNEXUS_BUSINESS_DATA_EMPTY";
 
 const sharedExecutorRoot = resolveSharedExecutorRoot();
 const sharedPackageJson = path.join(sharedExecutorRoot, "package.json");
@@ -86,6 +90,7 @@ const {
   config,
   log,
   forceClickLocator,
+  showAutomationBadge,
   xlsx,
   assertWorkbookPayload,
   resolveWorksheetName,
@@ -98,6 +103,7 @@ const {
   config,
   log,
   forceClickLocator,
+  showAutomationBadge,
   xlsx,
   assertWorkbookPayload,
   resolveWorksheetName,
@@ -114,6 +120,7 @@ const autoAddManualSessionManager = createInfornexusAutoAddManualSessionManager(
   log,
   safePageTitle,
   safePageUrl,
+  showAutomationBadge,
 });
 const poAutoDownloadAutomation = createPoAutoDownloadAutomation({
   browserEngines,
@@ -128,6 +135,7 @@ const poAutoDownloadAutomation = createPoAutoDownloadAutomation({
   resolveCredentials,
   safePageTitle,
   safePageUrl,
+  showAutomationBadge,
   unregisterActiveRun: (runId) => activeRuns.delete(runId),
   xlsx,
 });
@@ -144,6 +152,7 @@ const tcInvAutomation = createTcInvAutomation({
   resolveCredentials,
   safePageTitle,
   safePageUrl,
+  showAutomationBadge,
   unregisterActiveRun: (runId) => activeRuns.delete(runId),
   xlsx,
 });
@@ -516,6 +525,7 @@ async function loadConfig() {
     postLoginWaitMs: Number(merged.postLoginWaitMs ?? 500),
     keepBrowserOpenOnSuccessMs: Number(merged.keepBrowserOpenOnSuccessMs ?? 2000),
     keepBrowserOpenOnErrorMs: Number(merged.keepBrowserOpenOnErrorMs ?? 2000),
+    inforNexusExtensionPath: resolveInforNexusExtensionPath(merged.inforNexusExtensionPath),
     launchOptions: merged.launchOptions && typeof merged.launchOptions === "object"
       ? merged.launchOptions
       : {},
@@ -526,6 +536,7 @@ function buildHealthPayload() {
   const activeRunList = Array.from(activeRuns.values());
   const moduleVersion = String(process.env.TOS_AUTOMATION_MODULE_VERSION || "").trim();
   const moduleSource = String(process.env.TOS_AUTOMATION_MODULE_SOURCE || "bundled").trim();
+  const desktopBridge = collectInforNexusDesktopBridgeDiagnostics();
   return {
     ok: true,
     version: executorVersion,
@@ -542,6 +553,7 @@ function buildHealthPayload() {
     recentRuns,
     dataDir: runtimeDataRoot,
     runtimeConfigPath,
+    desktopBridge,
     capabilities: {
       infornexusAutoAddManualSearch: true,
       poAutoDownload: true,
@@ -564,6 +576,7 @@ function buildHealthPayload() {
       postLoginWaitMs: config.postLoginWaitMs,
       keepBrowserOpenOnSuccessMs: config.keepBrowserOpenOnSuccessMs,
       keepBrowserOpenOnErrorMs: config.keepBrowserOpenOnErrorMs,
+      inforNexusExtensionPath: config.inforNexusExtensionPath,
       launchOptions: config.launchOptions,
       credentialsSource: "tos-backend-database",
     },
@@ -587,6 +600,142 @@ function buildVisibleBrowserLaunchOptions(baseOptions, browserName) {
     launchOptions.args = mergeBrowserArgs(launchOptions.args, VISIBLE_CHROMIUM_WINDOW_ARGS);
   }
   return launchOptions;
+}
+
+function resolveInforNexusExtensionPath(configuredPath) {
+  const configured = String(process.env.TMS_INFOR_NEXUS_EXTENSION_PATH || configuredPath || "").trim();
+  const candidate = configured || path.join(
+    process.env.APPDATA || "",
+    "TOS-Automation-Helper",
+    "infor-nexus-extension",
+    INFOR_NEXUS_EXTENSION_ID,
+  );
+  const resolved = path.resolve(candidate);
+  return existsSync(path.join(resolved, "manifest.json")) ? resolved : "";
+}
+
+function collectInforNexusDesktopBridgeDiagnostics() {
+  const nativeHosts = collectInforNexusNativeHostRegistrations();
+  const activeBrowser = resolveInforNexusNativeHostBrowser(config.launchOptions?.channel);
+  const activeNativeHosts = activeBrowser
+    ? nativeHosts.filter((item) => item.browser === activeBrowser)
+    : nativeHosts;
+  return {
+    extensionId: INFOR_NEXUS_EXTENSION_ID,
+    extensionPath: config.inforNexusExtensionPath,
+    extensionInstalledForAutomation: Boolean(config.inforNexusExtensionPath),
+    nativeHostName: INFOR_NEXUS_NATIVE_HOST,
+    nativeHostRegistered: activeNativeHosts.some((item) => item.registered),
+    nativeHosts,
+    activeBrowser,
+    browser: config.browser,
+    channel: String(config.launchOptions?.channel || ""),
+  };
+}
+
+function resolveInforNexusNativeHostBrowser(channel) {
+  const normalized = String(channel || "").toLowerCase();
+  if (normalized.includes("edge")) return "edge";
+  if (normalized.includes("chrome")) return "chrome";
+  return "";
+}
+
+function collectInforNexusNativeHostRegistrations() {
+  const registryKeys = [
+    {
+      browser: "chrome",
+      scope: "current-user",
+      key: `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${INFOR_NEXUS_NATIVE_HOST}`,
+    },
+    {
+      browser: "chrome",
+      scope: "local-machine",
+      key: `HKLM\\Software\\Google\\Chrome\\NativeMessagingHosts\\${INFOR_NEXUS_NATIVE_HOST}`,
+    },
+    {
+      browser: "edge",
+      scope: "current-user",
+      key: `HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\${INFOR_NEXUS_NATIVE_HOST}`,
+    },
+    {
+      browser: "edge",
+      scope: "local-machine",
+      key: `HKLM\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\${INFOR_NEXUS_NATIVE_HOST}`,
+    },
+  ];
+
+  return registryKeys.map((entry) => ({
+    ...entry,
+    registered: isRegistryKeyPresent(entry.key),
+  }));
+}
+
+function isRegistryKeyPresent(key) {
+  if (process.platform !== "win32") {
+    return false;
+  }
+  try {
+    execFileSync("reg.exe", ["query", key, "/ve"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 1500,
+      windowsHide: true,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function canUseInforNexusExtensionLaunch(browserName, launchOptions) {
+  const channel = String(launchOptions?.channel || "").toLowerCase();
+  return Boolean(
+    config.inforNexusExtensionPath
+    && !launchOptions.headless
+    && String(browserName || "").toLowerCase() === "chromium"
+    && channel === "chrome"
+  );
+}
+
+function addInforNexusExtensionArgs(currentArgs) {
+  const extensionPath = config.inforNexusExtensionPath;
+  let args = Array.isArray(currentArgs) ? [...currentArgs] : [];
+  args = mergeExtensionBrowserArg(args, "--disable-extensions-except=", extensionPath);
+  args = mergeExtensionBrowserArg(args, "--load-extension=", extensionPath);
+  return args;
+}
+
+function mergeIgnoreDefaultArgs(currentValue, requiredArgs) {
+  const existing = Array.isArray(currentValue) ? [...currentValue] : [];
+  for (const arg of requiredArgs) {
+    if (!existing.includes(arg)) {
+      existing.push(arg);
+    }
+  }
+  return existing;
+}
+
+function mergeExtensionBrowserArg(args, prefix, extensionPath) {
+  const existingIndex = args.findIndex((arg) => String(arg || "").startsWith(prefix));
+  if (existingIndex === -1) {
+    return [...args, `${prefix}${extensionPath}`];
+  }
+
+  const existingValue = String(args[existingIndex] || "").slice(prefix.length);
+  const paths = existingValue
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (!paths.includes(extensionPath)) {
+    paths.push(extensionPath);
+  }
+  const merged = [...args];
+  merged[existingIndex] = `${prefix}${paths.join(",")}`;
+  return merged;
+}
+
+function resolveInforNexusBrowserProfileDir(runId) {
+  return path.join(runtimeDataRoot, "browser-profiles", `infor-nexus-${runId}`);
 }
 
 function buildCredentialsPayload() {
@@ -785,6 +934,16 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
   const idRows = Array.isArray(runContext?.idRows) ? runContext.idRows : [];
   const runId = String(runContext?.runId || createRunId("infornexus-auto-add"));
   const idResults = [];
+  const showRunBadge = async (message, details = {}) => showAutomationBadge(page, {
+    title: "Infor Nexus Auto Add 自动化",
+    message,
+    details: {
+      phase: "auto-add",
+      inputFileName: runContext?.inputFileName || "",
+      totalCount: idRows.length,
+      ...details,
+    },
+  });
 
   try {
     browser = await engine.launch(browserLaunchOptions);
@@ -796,12 +955,21 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
     page.setDefaultTimeout(config.navigationTimeoutMs);
     page.setDefaultNavigationTimeout(config.navigationTimeoutMs);
 
+    await showRunBadge("正在打开 Infor Nexus 登录页", {
+      phase: "open-login",
+    });
     await page.goto(config.loginUrl, {
       waitUntil: "domcontentloaded",
       timeout: config.navigationTimeoutMs,
     });
+    await showRunBadge("正在确认 Infor Nexus 登录状态", {
+      phase: "login",
+    });
 
     await ensureLoggedIn(page, credentials);
+    await showRunBadge("登录完成，正在打开 Auto Add 查询页", {
+      phase: "open-search",
+    });
     await page.waitForTimeout(config.postLoginWaitMs);
     const autoAddSearchUrl = await openInfornexusAutoAddSearchPage(page, {
       loginUrl: config.loginUrl,
@@ -809,20 +977,36 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
       navigationTimeoutMs: config.navigationTimeoutMs,
       postLoginWaitMs: config.postLoginWaitMs,
     });
+    await showRunBadge("Auto Add 查询页已打开", {
+      phase: "search-ready",
+    });
     log("Opened Infornexus auto-add search page.", {
       autoAddSearchUrl,
       finalUrl: safePageUrl(page),
     });
     await waitForInfornexusAutoAddSearchReady(page);
 
-    for (const idRow of idRows) {
+    for (let index = 0; index < idRows.length; index += 1) {
+      const idRow = idRows[index];
       const id = String(idRow?.id || "").trim();
       try {
+        await showRunBadge(`正在处理 ID ${id}`, {
+          phase: "process-id",
+          currentCount: index + 1,
+          totalCount: idRows.length,
+          id,
+        });
         const itemResult = await processInfornexusAutoAddId(page, id);
         idResults.push({
           ...idRow,
           ok: true,
           ...itemResult,
+        });
+        await showRunBadge(`ID ${id} 已处理`, {
+          phase: "process-id",
+          currentCount: index + 1,
+          totalCount: idRows.length,
+          id,
         });
       } catch (error) {
         const normalizedError = normalizeRunError(
@@ -841,6 +1025,12 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
           rowIndex: Number(idRow?.rowIndex || 0),
           error: normalizedError.message,
         });
+        await showRunBadge(`ID ${id} 处理失败，已记录`, {
+          phase: "failed",
+          currentCount: index + 1,
+          totalCount: idRows.length,
+          id,
+        });
         if (hasPageLifecycleEnded(page, lifecycle) || isClosedTargetError(error)) {
           throw normalizedError;
         }
@@ -857,6 +1047,11 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
     }
 
     latestScreenshotPath = path.join(artifactsDir, `infornexus-auto-add-${runId}-success-${Date.now()}.png`);
+    await showRunBadge("Auto Add 自动化已完成", {
+      phase: "complete",
+      completedCount: idResults.filter((item) => item.ok).length,
+      totalCount: idRows.length,
+    });
     await page.screenshot({ path: latestScreenshotPath, fullPage: true });
 
     const failedIdCount = idResults.filter((item) => !item.ok).length;
@@ -895,6 +1090,9 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
     );
     let failureMessage = normalizedError.message;
     if (page && !page.isClosed()) {
+      await showRunBadge("Auto Add 自动化失败，已保留错误信息", {
+        phase: "failed",
+      });
       latestScreenshotPath = path.join(artifactsDir, `infornexus-auto-add-${runId}-error-${Date.now()}.png`);
       await page.screenshot({ path: latestScreenshotPath, fullPage: true }).catch(() => {});
       if (latestScreenshotPath) {
@@ -995,26 +1193,77 @@ async function runShippingWorkflow(credentials, runContext) {
   let createShipmentEquipmentIds = [];
   let releasedBulkResult = null;
   let unreleasedBulkResult = null;
+  const automationBadgeTitle = resolveShippingAutomationBadgeTitle({
+    targetPage,
+    shipmentScanAction,
+    shipping2BulkType,
+    shouldFillPoNumbers,
+  });
+  const showRunBadge = async (message, details = {}) => showAutomationBadge(page, {
+    title: automationBadgeTitle,
+    message,
+    details: {
+      phase: "shipping",
+      inputFileName: runContext?.inputFileName || "",
+      totalCount: poRows.length || shipping2BulkRows.length,
+      selectedAction: isShipping2BulkRun ? shipping2BulkLabel : shouldFillPoNumbers ? shipmentScanAction : "",
+      ...details,
+    },
+  });
 
   try {
-    browser = await engine.launch(browserLaunchOptions);
-    context = await browser.newContext({
-      viewport: null,
-    });
-    page = await context.newPage();
+    if (shouldOpenShipmentScan && canUseInforNexusExtensionLaunch(config.browser, browserLaunchOptions)) {
+      const persistentLaunchOptions = {
+        ...browserLaunchOptions,
+        args: addInforNexusExtensionArgs(browserLaunchOptions.args),
+        ignoreDefaultArgs: mergeIgnoreDefaultArgs(browserLaunchOptions.ignoreDefaultArgs, [
+          "--disable-extensions",
+        ]),
+        viewport: null,
+      };
+      context = await engine.launchPersistentContext(
+        resolveInforNexusBrowserProfileDir(runId),
+        persistentLaunchOptions,
+      );
+      browser = context.browser();
+      page = context.pages()[0] || await context.newPage();
+      log("Loaded Infor Nexus browser extension for Shipment Scan.", {
+        extensionId: INFOR_NEXUS_EXTENSION_ID,
+        extensionPath: config.inforNexusExtensionPath,
+        nativeHostRegistered: collectInforNexusNativeHostRegistrations().some((item) => item.registered),
+      });
+    } else {
+      browser = await engine.launch(browserLaunchOptions);
+      context = await browser.newContext({
+        viewport: null,
+      });
+      page = await context.newPage();
+    }
     lifecycle = trackBrowserLifecycle(page, context, browser);
     page.setDefaultTimeout(config.navigationTimeoutMs);
     page.setDefaultNavigationTimeout(config.navigationTimeoutMs);
 
+    await showRunBadge("正在打开 Infor Nexus 登录页", {
+      phase: "open-login",
+    });
     await page.goto(config.loginUrl, {
       waitUntil: "domcontentloaded",
       timeout: config.navigationTimeoutMs,
     });
+    await showRunBadge("正在确认 Infor Nexus 登录状态", {
+      phase: "login",
+    });
 
     await ensureLoggedIn(page, credentials);
+    await showRunBadge("登录完成，正在打开业务页面", {
+      phase: "logged-in",
+    });
     await page.waitForTimeout(config.postLoginWaitMs);
 
     if (shouldOpenShipmentScan) {
+      await showRunBadge("正在打开 Print-Scan-Ship / Shipment Scan", {
+        phase: "open-shipment-scan",
+      });
       await clickLocator(page.locator("#navmenu__applications"), "Applications");
       await clickLocator(
         page.locator("#navmenu__inprogressmanifestsprintscanship"),
@@ -1022,15 +1271,36 @@ async function runShippingWorkflow(credentials, runContext) {
       );
       await page.waitForURL(/\/en\/trade\/PackByScan/, { timeout: config.navigationTimeoutMs });
       await page.waitForTimeout(config.postLoginWaitMs);
+      await showRunBadge("Shipment Scan 已打开", {
+        phase: "shipment-scan-ready",
+      });
     } else if (shouldOpenEventManagement) {
+      await showRunBadge("正在打开 Event Management", {
+        phase: "open-event-management",
+      });
       await openEventManagement(page);
+      await showRunBadge("Event Management 已打开", {
+        phase: "event-management-ready",
+      });
       if (isShipping2BulkRun) {
+        await showRunBadge(`正在打开 ${shipping2BulkLabel} 工作表`, {
+          phase: "open-shipping2-worksheet",
+        });
         await openShipping2BulkWorksheet(page, shipping2BulkType);
+        await showRunBadge(`${shipping2BulkLabel} 工作表已打开`, {
+          phase: "shipping2-worksheet-ready",
+        });
         if (shipping2BulkType === "released") {
           releasedBulkResult = await processShipping2ReleasedBulkWorksheet(page, releasedBulkRows);
         } else if (shipping2BulkType === "unreleased") {
           unreleasedBulkResult = await processShipping2UnreleasedBulkWorksheet(page, unreleasedBulkRows);
         }
+        await showRunBadge(`${shipping2BulkLabel} 自动化已处理完成`, {
+          phase: "shipping2-complete",
+          completedCount: Number((shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)?.updatedRowCount || 0),
+          failedCount: Number((shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)?.failedRowCount || 0),
+          totalCount: shipping2BulkRows.length,
+        });
       }
     }
 
@@ -1039,11 +1309,25 @@ async function runShippingWorkflow(credentials, runContext) {
         const poRow = poRows[index];
         const nextPoRow = poRows[index + 1] || null;
         try {
+          await showRunBadge(`正在处理 Shipment Scan PO ${String(poRow?.poNo || "").trim()}`, {
+            phase: "shipment-scan-po",
+            currentCount: index + 1,
+            totalCount: poRows.length,
+            poNo: String(poRow?.poNo || "").trim(),
+            changeEquipmentId: String(poRow?.changeEquipmentId || "").trim(),
+          });
           const shipmentResult = await processShipmentPoRow(page, poRow, shipmentScanAction);
           poResults.push({
             ...poRow,
             ok: true,
             changeEquipmentApplyStatus: String(shipmentResult?.status || "applied"),
+          });
+          await showRunBadge(`Shipment Scan PO ${String(poRow?.poNo || "").trim()} 已完成`, {
+            phase: "shipment-scan-po",
+            currentCount: index + 1,
+            totalCount: poRows.length,
+            poNo: String(poRow?.poNo || "").trim(),
+            changeEquipmentId: String(poRow?.changeEquipmentId || "").trim(),
           });
           if (nextPoRow && !hasPageLifecycleEnded(page, lifecycle)) {
             await prepareForNextShipmentPoIteration(page, poRow.poNo, nextPoRow.poNo, shipmentScanAction);
@@ -1055,15 +1339,26 @@ async function runShippingWorkflow(credentials, runContext) {
             lifecycle,
             `PO No ${String(poRow?.poNo || "").trim()}: browser page became unavailable during Shipment Scan.`,
           );
+          const failureReason = normalizedError.message;
           poResults.push({
             ...poRow,
             ok: false,
-            error: normalizedError.message,
+            error: failureReason,
+            errorCode: normalizedError.code || "",
+            failedStep: classifyPoFailureStep(failureReason),
           });
           log("Shipment PO failed; recorded and continuing.", {
             poNo: String(poRow?.poNo || "").trim(),
-            error: normalizedError.message,
+            error: failureReason,
             nextPoNo: String(nextPoRow?.poNo || "").trim(),
+          });
+          await showRunBadge(`Shipment Scan PO ${String(poRow?.poNo || "").trim()} 失败，已记录`, {
+            phase: normalizedError.code === BUSINESS_DATA_EMPTY_CODE ? "business-empty" : "failed",
+            currentCount: index + 1,
+            totalCount: poRows.length,
+            poNo: String(poRow?.poNo || "").trim(),
+            changeEquipmentId: String(poRow?.changeEquipmentId || "").trim(),
+            failedStep: classifyPoFailureStep(failureReason),
           });
           if (hasPageLifecycleEnded(page, lifecycle) || isClosedTargetError(error)) {
             throw normalizedError;
@@ -1100,11 +1395,25 @@ async function runShippingWorkflow(credentials, runContext) {
         const nextCreateShipmentBatch = createShipmentBatches[batchIndex + 1] || null;
         const changeEquipmentId = createShipmentBatch.changeEquipmentId;
         try {
+          await showRunBadge(`正在 Create Shipment 设备 ${changeEquipmentId}`, {
+            phase: "create-shipment",
+            currentCount: batchIndex + 1,
+            totalCount: createShipmentBatches.length,
+            changeEquipmentId,
+            poNos: createShipmentBatch.poNos,
+          });
           await processCreateShipmentEquipmentId(page, createShipmentBatch);
           createShipmentResults.push({
             changeEquipmentId,
             poNos: createShipmentBatch.poNos,
             ok: true,
+          });
+          await showRunBadge(`Create Shipment 设备 ${changeEquipmentId} 已完成`, {
+            phase: "create-shipment",
+            currentCount: batchIndex + 1,
+            totalCount: createShipmentBatches.length,
+            changeEquipmentId,
+            poNos: createShipmentBatch.poNos,
           });
         } catch (error) {
           const normalizedError = normalizeRunError(
@@ -1113,16 +1422,27 @@ async function runShippingWorkflow(credentials, runContext) {
             lifecycle,
             `Change Equipment ID ${changeEquipmentId}: browser page became unavailable during Create Shipment.`,
           );
+          const failureReason = normalizedError.message;
           createShipmentResults.push({
             changeEquipmentId,
             poNos: createShipmentBatch.poNos,
             ok: false,
-            error: normalizedError.message,
+            error: failureReason,
+            errorCode: normalizedError.code || "",
+            failedStep: classifyPoFailureStep(failureReason),
           });
           log("Create Shipment batch failed.", {
             changeEquipmentId,
             poNos: createShipmentBatch.poNos,
-            error: normalizedError.message,
+            error: failureReason,
+          });
+          await showRunBadge(`Create Shipment 设备 ${changeEquipmentId} 失败，已记录`, {
+            phase: normalizedError.code === BUSINESS_DATA_EMPTY_CODE ? "business-empty" : "failed",
+            currentCount: batchIndex + 1,
+            totalCount: createShipmentBatches.length,
+            changeEquipmentId,
+            poNos: createShipmentBatch.poNos,
+            failedStep: classifyPoFailureStep(failureReason),
           });
           if (hasPageLifecycleEnded(page, lifecycle) || isClosedTargetError(error)) {
             throw normalizedError;
@@ -1151,12 +1471,20 @@ async function runShippingWorkflow(credentials, runContext) {
     }
 
     latestScreenshotPath = path.join(artifactsDir, `${artifactPrefix}-${runId}-success-${Date.now()}.png`);
+    await showRunBadge("Shipping 自动化已完成，正在生成运行结果", {
+      phase: "complete",
+      completedCount: poResults.filter((item) => item.ok).length,
+      failedCount: poResults.filter((item) => !item.ok).length,
+      totalCount: poRows.length || shipping2BulkRows.length,
+    });
     await page.screenshot({ path: latestScreenshotPath, fullPage: true });
 
     const failedPoCount = poResults.filter((item) => !item.ok).length;
     const completedPoCount = poResults.filter((item) => item.ok).length;
     const failedCreateShipmentCount = createShipmentResults.filter((item) => !item.ok).length;
     const completedCreateShipmentCount = createShipmentResults.filter((item) => item.ok).length;
+    const businessDataEmptyPoCount = countBusinessDataEmptyResults(poResults);
+    const businessDataEmptyCreateShipmentCount = countBusinessDataEmptyResults(createShipmentResults);
     const shipping2BulkResult = shipping2BulkType === "released"
       ? releasedBulkResult
       : shipping2BulkType === "unreleased"
@@ -1182,6 +1510,7 @@ async function runShippingWorkflow(credentials, runContext) {
       totalPoCount: poRows.length,
       completedPoCount,
       failedPoCount,
+      businessDataEmptyPoCount,
       poResults,
       shipping2BulkFilterApplied: Boolean(shipping2BulkResult?.filterApplied),
       shipping2BulkSaved: Boolean(shipping2BulkResult?.saved),
@@ -1200,6 +1529,7 @@ async function runShippingWorkflow(credentials, runContext) {
       uniqueChangeEquipmentIdCount: createShipmentEquipmentIds.length,
       completedCreateShipmentCount,
       failedCreateShipmentCount,
+      businessDataEmptyCreateShipmentCount,
       createShipmentResults,
       selectedAction: isShipping2BulkRun ? shipping2BulkLabel : shouldFillPoNumbers ? shipmentScanAction : "",
       message: shouldFillPoNumbers
@@ -1237,7 +1567,12 @@ async function runShippingWorkflow(credentials, runContext) {
         : "Infor Nexus login browser session became unavailable.",
     );
     const failureMessage = normalizedError.message;
+    const businessDataEmptyPoCount = countBusinessDataEmptyResults(poResults);
+    const businessDataEmptyCreateShipmentCount = countBusinessDataEmptyResults(createShipmentResults);
     if (page && !page.isClosed()) {
+      await showRunBadge("Shipping 自动化失败，已记录错误信息", {
+        phase: normalizedError.code === BUSINESS_DATA_EMPTY_CODE ? "business-empty" : "failed",
+      });
       latestScreenshotPath = path.join(artifactsDir, `${artifactPrefix}-${runId}-error-${Date.now()}.png`);
       await page.screenshot({ path: latestScreenshotPath, fullPage: true }).catch(() => {});
     }
@@ -1259,6 +1594,7 @@ async function runShippingWorkflow(credentials, runContext) {
         poRows.length - poResults.filter((item) => item.ok).length,
         poResults.filter((item) => !item.ok).length,
       ),
+      businessDataEmptyPoCount,
       poResults,
       shipping2BulkFilterApplied: Boolean(
         (shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)?.filterApplied,
@@ -1297,6 +1633,7 @@ async function runShippingWorkflow(credentials, runContext) {
       uniqueChangeEquipmentIdCount: createShipmentEquipmentIds.length,
       completedCreateShipmentCount: createShipmentResults.filter((item) => item.ok).length,
       failedCreateShipmentCount: createShipmentResults.filter((item) => !item.ok).length,
+      businessDataEmptyCreateShipmentCount,
       createShipmentResults,
       selectedAction: isShipping2BulkRun ? shipping2BulkLabel : shouldFillPoNumbers ? shipmentScanAction : "",
       message: failureMessage || (isShipping2BulkRun
@@ -1996,11 +2333,13 @@ async function confirmShipmentScanFilters(page, poNo, shipmentScanAction) {
       await dialogPause(shipmentDialog, 350);
       await clickShipmentScanOk(shipmentDialog);
       await page.waitForTimeout(250);
-      await assertNoDesktopUtilityConnectionIssue(page, {
-        poNo,
-        stage: "Shipment Scan",
-        operation: "Shipment Scan",
-      });
+      const desktopIssue = await getDesktopUtilityConnectionIssue(page);
+      if (desktopIssue?.detected) {
+        log("Desktop Utility notice visible after Shipment Scan OK; continuing to inspect business grid.", {
+          poNo: String(poNo || "").trim(),
+          text: desktopIssue.text,
+        });
+      }
       log("Confirmed PO No.", {
         poNo: String(poNo || "").trim(),
         shipmentScanAction: actionLabel,
@@ -2051,12 +2390,6 @@ async function waitForShipmentGridRows(page, poNo, shipmentScanAction = "Remove/
   let lastSignature = "";
 
   while (Date.now() - startedAt < timeoutMs) {
-    await assertNoDesktopUtilityConnectionIssue(page, {
-      poNo,
-      stage: "Shipment Scan",
-      operation: "Shipment Scan",
-    });
-
     lastDialogError = (await getVisibleDialogErrorText(page)) || lastDialogError;
     if (lastDialogError) {
       throw new Error(`PO No ${poNo}: ${lastDialogError}`);
@@ -2091,12 +2424,11 @@ async function waitForShipmentGridRows(page, poNo, shipmentScanAction = "Remove/
           noDataVisible: state.noDataVisible,
           waitedMs: Date.now() - startedAt,
         });
-        await assertNoDesktopUtilityConnectionIssue(page, {
+        throw buildShipmentBusinessDataEmptyError(
           poNo,
-          stage: "Shipment Scan",
-          operation: "Shipment Scan",
-        });
-        throw new Error(`PO No ${poNo}: no shipment rows were loaded after clicking OK.`);
+          state,
+          "no shipment rows were loaded after clicking OK",
+        );
       }
     } else {
       noDataSince = 0;
@@ -2109,12 +2441,11 @@ async function waitForShipmentGridRows(page, poNo, shipmentScanAction = "Remove/
           poNo,
           waitedMs: Date.now() - startedAt,
         });
-        await assertNoDesktopUtilityConnectionIssue(page, {
+        throw buildShipmentBusinessDataEmptyError(
           poNo,
-          stage: "Shipment Scan",
-          operation: "Shipment Scan",
-        });
-        throw new Error(`PO No ${poNo}: shipment grid stayed empty after clicking OK.`);
+          state,
+          "shipment grid stayed empty after clicking OK",
+        );
       }
     } else {
       emptyGridSince = 0;
@@ -2133,12 +2464,11 @@ async function waitForShipmentGridRows(page, poNo, shipmentScanAction = "Remove/
           waitedMs: Date.now() - startedAt,
           sample: String(state.rowSignature || "").slice(0, 180),
         });
-        await assertNoDesktopUtilityConnectionIssue(page, {
+        throw buildShipmentBusinessDataEmptyError(
           poNo,
-          stage: "Shipment Scan",
-          operation: "Shipment Scan",
-        });
-        throw new Error(`PO No ${poNo}: shipment grid did not switch to rows for this PO.`);
+          state,
+          "shipment grid did not switch to rows for this PO",
+        );
       }
     } else {
       staleNonMatchingSince = 0;
@@ -2148,12 +2478,11 @@ async function waitForShipmentGridRows(page, poNo, shipmentScanAction = "Remove/
     await page.waitForTimeout(250);
   }
 
-  await assertNoDesktopUtilityConnectionIssue(page, {
+  throw buildShipmentBusinessDataEmptyError(
     poNo,
-    stage: "Shipment Scan",
-    operation: "Shipment Scan",
-  });
-  throw new Error(`PO No ${poNo}: timed out waiting for shipment rows. State: ${JSON.stringify(lastState || {})}`);
+    lastState,
+    "timed out waiting for shipment rows",
+  );
 }
 
 async function waitForShipmentWorkspaceReadyAfterApply(page, poNo, shipmentScanAction = "Remove/Change Equipment ID") {
@@ -2202,7 +2531,11 @@ async function selectShipmentGridRows(page, poNo, shipmentScanAction = "Remove/C
     lastState = selectionState;
 
     if (selectionState.noDataVisible && selectionState.rowCount === 0) {
-      throw new Error(`PO No ${poNo}: no shipment rows were loaded after clicking OK.`);
+      throw buildShipmentBusinessDataEmptyError(
+        poNo,
+        selectionState,
+        "no shipment rows were loaded after clicking OK",
+      );
     }
 
     if (selectionState.rowCount > 0
@@ -2279,7 +2612,11 @@ async function selectShipmentGridRows(page, poNo, shipmentScanAction = "Remove/C
     await page.waitForTimeout(250);
   }
 
-  throw new Error(`PO No ${poNo}: shipment rows were not fully selected. State: ${JSON.stringify(lastState || {})}`);
+  throw buildShipmentBusinessDataEmptyError(
+    poNo,
+    lastState,
+    "shipment rows were not fully selected",
+  );
 }
 
 async function clickAssignEquipmentShipmentGridCheckers(page, poNo, mode = "header") {
@@ -2585,18 +2922,8 @@ async function processCreateShipmentEquipmentId(page, createShipmentBatch) {
   await clearCreateShipmentPoNumber(dialog);
   await fillCreateShipmentBrowseDays(dialog, "601");
   await fillCreateShipmentEquipmentId(dialog, normalizedChangeEquipmentId);
-  await assertNoDesktopUtilityConnectionIssue(page, {
-    changeEquipmentId: normalizedChangeEquipmentId,
-    stage: "Create Shipment",
-    operation: "Create Shipment",
-  });
   await clickDialogOk(dialog, "Create Shipment Filter");
   await page.waitForTimeout(250);
-  await assertNoDesktopUtilityConnectionIssue(page, {
-    changeEquipmentId: normalizedChangeEquipmentId,
-    stage: "Create Shipment",
-    operation: "Create Shipment",
-  });
   await waitForCreateShipmentGridRows(page, createShipmentBatch);
   const selectionSummary = await selectCreateShipmentGridRows(page, createShipmentBatch);
   if (!selectionSummary?.selectedTargetRowCount) {
@@ -2877,14 +3204,9 @@ async function waitForCreateShipmentGridRows(page, createShipmentBatch) {
   let noDataSince = 0;
   let staleNonMatchingSince = 0;
   let lastNonMatchingSignature = "";
+  const noDataThresholdMs = Math.min(8000, Math.max(3000, Math.floor(timeoutMs / 2)));
 
   while (Date.now() - startedAt < timeoutMs) {
-    await assertNoDesktopUtilityConnectionIssue(page, {
-      changeEquipmentId,
-      stage: "Create Shipment",
-      operation: "Create Shipment",
-    });
-
     const errorText = await getVisibleDialogErrorText(page);
     if (errorText) {
       throw new Error(errorText);
@@ -2913,13 +3235,12 @@ async function waitForCreateShipmentGridRows(page, createShipmentBatch) {
 
     if (state.rowCount === 0) {
       noDataSince = noDataSince || Date.now();
-      if (state.noDataVisible && Date.now() - noDataSince >= 1000) {
-        await assertNoDesktopUtilityConnectionIssue(page, {
+      if (state.noDataVisible && Date.now() - noDataSince >= noDataThresholdMs) {
+        throw buildCreateShipmentBusinessDataEmptyError(
           changeEquipmentId,
-          stage: "Create Shipment",
-          operation: "Create Shipment",
-        });
-        throw new Error(`Create Shipment ${changeEquipmentId}: no rows were loaded after confirming filters.`);
+          state,
+          "no rows were loaded after confirming filters",
+        );
       }
     } else {
       noDataSince = 0;
@@ -2932,12 +3253,11 @@ async function waitForCreateShipmentGridRows(page, createShipmentBatch) {
         : Date.now();
       lastNonMatchingSignature = currentSignature;
       if (Date.now() - staleNonMatchingSince >= 1800) {
-        await assertNoDesktopUtilityConnectionIssue(page, {
+        throw buildCreateShipmentBusinessDataEmptyError(
           changeEquipmentId,
-          stage: "Create Shipment",
-          operation: "Create Shipment",
-        });
-        throw new Error(`Create Shipment ${changeEquipmentId}: grid did not switch to rows for this equipment number.`);
+          state,
+          "grid did not switch to rows for this equipment number",
+        );
       }
     } else {
       staleNonMatchingSince = 0;
@@ -2947,12 +3267,11 @@ async function waitForCreateShipmentGridRows(page, createShipmentBatch) {
     await page.waitForTimeout(250);
   }
 
-  await assertNoDesktopUtilityConnectionIssue(page, {
+  throw buildCreateShipmentBusinessDataEmptyError(
     changeEquipmentId,
-    stage: "Create Shipment",
-    operation: "Create Shipment",
-  });
-  throw new Error(`Create Shipment ${changeEquipmentId}: timed out waiting for filtered grid rows. State: ${JSON.stringify(lastState || {})}`);
+    lastState,
+    "timed out waiting for filtered grid rows",
+  );
 }
 
 async function selectCreateShipmentGridRows(page, createShipmentBatch) {
@@ -2981,7 +3300,11 @@ async function selectCreateShipmentGridRows(page, createShipmentBatch) {
     }
 
     if (plan.matchedTargetRowCount === 0 && plan.rowCount > 0) {
-      throw new Error(`Create Shipment ${changeEquipmentId}: no grid rows matched the requested PO/equipment pairs.`);
+      throw buildCreateShipmentBusinessDataEmptyError(
+        changeEquipmentId,
+        plan,
+        "no grid rows matched the requested PO/equipment pairs",
+      );
     }
 
     const nextAction = Array.isArray(plan.actions)
@@ -3001,7 +3324,11 @@ async function selectCreateShipmentGridRows(page, createShipmentBatch) {
     await page.waitForTimeout(250);
   }
 
-  throw new Error(`Create Shipment ${changeEquipmentId}: grid rows were not fully selected. State: ${JSON.stringify(lastPlan || {})}`);
+  throw buildCreateShipmentBusinessDataEmptyError(
+    changeEquipmentId,
+    lastPlan,
+    "grid rows were not fully selected",
+  );
 }
 
 async function clickCreateShipmentWorkspaceButton(page, createShipmentBatch, selectionSummary) {
@@ -3220,13 +3547,42 @@ async function clickDialogOk(dialog, label) {
 }
 
 async function clickDialogButton(dialog, label, buttonPattern) {
-  const button = dialog.locator("button.x-btn-text").filter({ hasText: buttonPattern }).first();
-  await button.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
-  await forceClickLocator(button, `${label} button`);
-  await dialog.waitFor({ state: "hidden", timeout: config.navigationTimeoutMs }).catch(() => {});
-  log(`Clicked ${label} button.`, {
-    buttonPattern: String(buttonPattern),
-  });
+  const candidates = [
+    dialog.locator("button.x-btn-text").filter({ hasText: buttonPattern }),
+    dialog.locator("td.x-btn-center button").filter({ hasText: buttonPattern }),
+    dialog.getByRole("button", { name: buttonPattern }),
+  ];
+  const startedAt = Date.now();
+  const timeoutMs = Math.min(config.navigationTimeoutMs, 15000);
+  let lastError = null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    for (const locator of candidates) {
+      const count = await locator.count().catch(() => 0);
+      for (let index = 0; index < Math.min(count, 8); index += 1) {
+        const button = locator.nth(index);
+        const visible = await button.isVisible().catch(() => false);
+        if (!visible) {
+          continue;
+        }
+
+        try {
+          await forceClickLocator(button, `${label} button`);
+          await dialog.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
+          log(`Clicked ${label} button.`, {
+            buttonPattern: String(buttonPattern),
+          });
+          return;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+    }
+
+    await dialogPause(dialog, 250);
+  }
+
+  throw lastError || new Error(`${label} button was not found.`);
 }
 
 async function forceClickLocator(locator, label) {
@@ -3292,6 +3648,83 @@ function buildDesktopUtilityConnectionMessage(metadata = {}) {
       ? `Create Shipment ${changeEquipmentId}: `
       : "";
   return `${prefix}Infor Nexus 桌面工具连接超时：页面已进入 ${stage}，但没有连上 Desktop Utility，${operation} 无法加载所需设备/包裹数据。请确认 Desktop Utility 正在运行且版本不低于 2.0.1.29；可点击左下角 Reconnect to Desktop，或重新加载 PackByScan 后再执行。`;
+}
+
+function compactBusinessDataState(state = {}) {
+  const compact = {};
+  const numericFields = [
+    "rowCount",
+    "matchedPoRowCount",
+    "matchedEquipmentRowCount",
+    "matchedTargetPairRowCount",
+    "matchedTargetRowCount",
+    "matchedTargetPairCount",
+    "selectedRowCount",
+    "packagesSelectedCount",
+    "missingTargetPairCount",
+  ];
+
+  for (const field of numericFields) {
+    if (state?.[field] !== undefined && state?.[field] !== null && state?.[field] !== "") {
+      compact[field] = Number(state[field] || 0);
+    }
+  }
+
+  if (state?.noDataVisible !== undefined) {
+    compact.noDataVisible = Boolean(state.noDataVisible);
+  }
+
+  const rowSignature = String(state?.rowSignature || "").trim();
+  if (rowSignature) {
+    compact.rowSignature = rowSignature.slice(0, 240);
+  }
+
+  return compact;
+}
+
+function createBusinessDataEmptyError(message, metadata = {}) {
+  const state = compactBusinessDataState(metadata?.state);
+  const stateSuffix = Object.keys(state).length > 0
+    ? ` State: ${JSON.stringify(state)}`
+    : "";
+  const error = new Error(`${message}${stateSuffix}`);
+  error.code = BUSINESS_DATA_EMPTY_CODE;
+  error.businessDataEmpty = true;
+  error.businessData = {
+    ...metadata,
+    state,
+  };
+  return error;
+}
+
+function buildShipmentBusinessDataEmptyError(poNo, state, reason) {
+  const normalizedPoNo = String(poNo || "").trim();
+  const reasonText = String(reason || "").trim();
+  const detail = reasonText ? `（${reasonText}）` : "";
+  return createBusinessDataEmptyError(
+    `PO No ${normalizedPoNo}: 业务数据为空，Shipment Scan 未查询到可处理的包裹/设备行${detail}。`,
+    {
+      poNo: normalizedPoNo,
+      stage: "Shipment Scan",
+      reason: reasonText,
+      state,
+    },
+  );
+}
+
+function buildCreateShipmentBusinessDataEmptyError(changeEquipmentId, state, reason) {
+  const normalizedChangeEquipmentId = String(changeEquipmentId || "").trim();
+  const reasonText = String(reason || "").trim();
+  const detail = reasonText ? `（${reasonText}）` : "";
+  return createBusinessDataEmptyError(
+    `Create Shipment ${normalizedChangeEquipmentId}: 业务数据为空，Create Shipment 未查询到可处理的 PO/设备行${detail}。`,
+    {
+      changeEquipmentId: normalizedChangeEquipmentId,
+      stage: "Create Shipment",
+      reason: reasonText,
+      state,
+    },
+  );
 }
 
 async function assertNoDesktopUtilityConnectionIssue(page, metadata = {}) {
@@ -3994,7 +4427,8 @@ function extractFailedPoRows(result, poRows) {
         rowIndex: row.rowIndex,
         poNo: row.poNo,
         changeEquipmentId: row.changeEquipmentId,
-        failedStep: classifyPoFailureStep(resultRow?.error || result?.message || ""),
+        failedStep: resultRow?.failedStep || classifyPoFailureStep(resultRow?.error || result?.message || ""),
+        errorCode: resultRow?.errorCode || "",
         reason: resultRow?.error || result?.message || "Shipment PO row was not completed.",
         originalRow: row.originalRow,
       };
@@ -4007,6 +4441,7 @@ async function writeFailedPoWorkbook(targetPath, failedRows) {
     poNo: row.poNo,
     changeEquipmentId: row.changeEquipmentId || "",
     failedStep: row.failedStep || "",
+    errorCode: row.errorCode || "",
     failureReason: row.reason || "",
     ...(row.originalRow && typeof row.originalRow === "object" ? row.originalRow : {}),
   }));
@@ -4014,7 +4449,7 @@ async function writeFailedPoWorkbook(targetPath, failedRows) {
   const worksheet = xlsx.utils.json_to_sheet(exportRows, {
     header: exportRows.length > 0
       ? undefined
-      : ["rowIndex", "poNo", "changeEquipmentId", "failedStep", "failureReason"],
+      : ["rowIndex", "poNo", "changeEquipmentId", "failedStep", "errorCode", "failureReason"],
   });
   const workbook = xlsx.utils.book_new();
   xlsx.utils.book_append_sheet(workbook, worksheet, "Failed PO Rows");
@@ -4042,7 +4477,7 @@ async function writeRunResultWorkbook(targetPath, result, poRows) {
     xlsx.utils.json_to_sheet(poResultRows, {
       header: poResultRows.length > 0
         ? undefined
-        : ["rowIndex", "poNo", "changeEquipmentId", "ok", "failedStep", "failureReason"],
+        : ["rowIndex", "poNo", "changeEquipmentId", "ok", "failedStep", "errorCode", "failureReason"],
     }),
     "PO Results",
   );
@@ -4051,7 +4486,7 @@ async function writeRunResultWorkbook(targetPath, result, poRows) {
     xlsx.utils.json_to_sheet(createShipmentRows, {
       header: createShipmentRows.length > 0
         ? undefined
-        : ["changeEquipmentId", "poNos", "ok", "failureReason"],
+        : ["changeEquipmentId", "poNos", "ok", "failedStep", "errorCode", "failureReason"],
     }),
     "Create Shipment",
   );
@@ -4079,6 +4514,7 @@ function buildPoResultWorkbookRows(result, poRows) {
       ok: Boolean(resultRow?.ok),
       changeEquipmentApplyStatus: String(resultRow?.changeEquipmentApplyStatus || ""),
       failedStep: resultRow?.ok ? "" : classifyPoFailureStep(failureReason),
+      errorCode: resultRow?.ok ? "" : String(resultRow?.errorCode || ""),
       failureReason,
       ...(row.originalRow && typeof row.originalRow === "object" ? row.originalRow : {}),
     };
@@ -4090,12 +4526,19 @@ function buildCreateShipmentWorkbookRows(result) {
     ? result.createShipmentResults
     : [];
 
-  return createShipmentResults.map((item) => ({
-    changeEquipmentId: String(item?.changeEquipmentId || "").trim(),
-    poNos: Array.isArray(item?.poNos) ? item.poNos.join(", ") : "",
-    ok: Boolean(item?.ok),
-    failureReason: item?.ok ? "" : String(item?.error || result?.message || "").trim(),
-  }));
+  return createShipmentResults.map((item) => {
+    const failureReason = item?.ok
+      ? ""
+      : String(item?.error || result?.message || "").trim();
+    return {
+      changeEquipmentId: String(item?.changeEquipmentId || "").trim(),
+      poNos: Array.isArray(item?.poNos) ? item.poNos.join(", ") : "",
+      ok: Boolean(item?.ok),
+      failedStep: item?.ok ? "" : item?.failedStep || classifyPoFailureStep(failureReason),
+      errorCode: item?.ok ? "" : String(item?.errorCode || ""),
+      failureReason,
+    };
+  });
 }
 
 function buildRunSummaryRows(result, poResultRows, createShipmentRows) {
@@ -4107,11 +4550,48 @@ function buildRunSummaryRows(result, poResultRows, createShipmentRows) {
     { metric: "totalPoCount", value: Number(result?.totalPoCount ?? poResultRows.length) },
     { metric: "completedPoCount", value: Number(result?.completedPoCount ?? poResultRows.filter((item) => item.ok).length) },
     { metric: "failedPoCount", value: Number(result?.failedPoCount ?? poResultRows.filter((item) => !item.ok).length) },
+    { metric: "businessDataEmptyPoCount", value: Number(result?.businessDataEmptyPoCount ?? poResultRows.filter((item) => isBusinessDataEmptyResult(item)).length) },
     { metric: "uniqueChangeEquipmentIdCount", value: Number(result?.uniqueChangeEquipmentIdCount ?? 0) },
     { metric: "completedCreateShipmentCount", value: Number(result?.completedCreateShipmentCount ?? createShipmentRows.filter((item) => item.ok).length) },
     { metric: "failedCreateShipmentCount", value: Number(result?.failedCreateShipmentCount ?? createShipmentRows.filter((item) => !item.ok).length) },
+    { metric: "businessDataEmptyCreateShipmentCount", value: Number(result?.businessDataEmptyCreateShipmentCount ?? createShipmentRows.filter((item) => isBusinessDataEmptyResult(item)).length) },
     { metric: "finalUrl", value: String(result?.finalUrl || "") },
   ];
+}
+
+function countBusinessDataEmptyResults(rows) {
+  return Array.isArray(rows)
+    ? rows.filter((item) => isBusinessDataEmptyResult(item)).length
+    : 0;
+}
+
+function isBusinessDataEmptyResult(item) {
+  if (!item || item.ok) {
+    return false;
+  }
+
+  if (String(item.errorCode || "") === BUSINESS_DATA_EMPTY_CODE) {
+    return true;
+  }
+
+  return classifyPoFailureStep(item.failedStep || item.failureReason || item.error || "") === "业务数据为空";
+}
+
+function isBusinessDataEmptyReason(reason) {
+  const normalizedReason = String(reason || "").toLowerCase();
+  return normalizedReason.includes("业务数据为空")
+    || normalizedReason.includes("business data empty")
+    || normalizedReason.includes(BUSINESS_DATA_EMPTY_CODE.toLowerCase())
+    || normalizedReason.includes("no shipment rows were loaded")
+    || normalizedReason.includes("shipment grid stayed empty")
+    || normalizedReason.includes("shipment grid did not switch")
+    || normalizedReason.includes("timed out waiting for shipment rows")
+    || normalizedReason.includes("no rows were loaded after confirming filters")
+    || normalizedReason.includes("timed out waiting for filtered grid rows")
+    || normalizedReason.includes("grid did not switch to rows for this equipment number")
+    || normalizedReason.includes("no grid rows matched")
+    || normalizedReason.includes("grid rows were not fully selected")
+    || normalizedReason.includes("shipment rows were not fully selected");
 }
 
 function classifyPoFailureStep(reason) {
@@ -4126,6 +4606,10 @@ function classifyPoFailureStep(reason) {
 
   if (normalizedReason.includes("change equipment id is empty")) {
     return "Workbook Validation";
+  }
+
+  if (isBusinessDataEmptyReason(reason)) {
+    return "业务数据为空";
   }
 
   if (normalizedReason.includes("desktop utility")
@@ -4641,7 +5125,7 @@ function trackBrowserLifecycle(page, context, browser) {
     state.contextClosed = true;
     record("context-close");
   });
-  browser.on("disconnected", () => {
+  browser?.on("disconnected", () => {
     state.browserDisconnected = true;
     record("browser-disconnected");
   });
@@ -4667,6 +5151,199 @@ function describeLifecycleEvents(lifecycle) {
   }
 
   return `Last lifecycle event: ${lastEvent.type} at ${lastEvent.at}.`;
+}
+
+function resolveShippingAutomationBadgeTitle(options = {}) {
+  const shipping2BulkType = String(options?.shipping2BulkType || "").trim();
+  if (shipping2BulkType === "released") {
+    return "Shipping2 Released Bulk 自动化";
+  }
+  if (shipping2BulkType === "unreleased") {
+    return "Shipping2 Unreleased Bulk 自动化";
+  }
+
+  if (options?.shouldFillPoNumbers) {
+    return isAssignEquipmentShipmentScanAction(options?.shipmentScanAction)
+      ? "万代 Shipping 自动化"
+      : "新龙泰 Shipping 自动化";
+  }
+
+  if (options?.targetPage === "event-management") {
+    return "Infor Nexus Event Management 自动化";
+  }
+
+  if (options?.targetPage === "home") {
+    return "Infor Nexus 登录自动化";
+  }
+
+  return "Infor Nexus Shipment Scan 自动化";
+}
+
+async function showAutomationBadge(target, options = {}) {
+  if (!target || typeof target.evaluate !== "function") {
+    return;
+  }
+
+  const targets = [target];
+  if (typeof target.frames === "function") {
+    targets.push(...target.frames());
+  }
+
+  const uniqueTargets = Array.from(new Set(targets)).filter(
+    (item) => item && typeof item.evaluate === "function",
+  );
+  const payload = {
+    id: "tos-browser-automation-status-badge",
+    title: String(options?.title || "TOS 浏览器自动化"),
+    message: String(options?.message || "自动化正在执行"),
+    details: normalizeAutomationBadgeDetails(options?.details),
+  };
+
+  await Promise.allSettled(uniqueTargets.map((item) => injectAutomationBadge(item, payload)));
+}
+
+function normalizeAutomationBadgeDetails(details = {}) {
+  const normalized = {
+    phase: String(details?.phase || ""),
+    inputFileName: String(details?.inputFileName || ""),
+    selectedAction: String(details?.selectedAction || ""),
+    poNo: String(details?.poNo || ""),
+    changeEquipmentId: String(details?.changeEquipmentId || ""),
+    id: String(details?.id || ""),
+    failedStep: String(details?.failedStep || ""),
+    currentCount: Number(details?.currentCount || 0),
+    completedCount: Number(details?.completedCount || 0),
+    failedCount: Number(details?.failedCount || 0),
+    totalCount: Number(details?.totalCount || 0),
+  };
+
+  if (Array.isArray(details?.poNos)) {
+    normalized.poNos = details.poNos
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+      .slice(0, 4);
+  } else {
+    normalized.poNos = [];
+  }
+
+  return normalized;
+}
+
+async function injectAutomationBadge(target, payload) {
+  await target.evaluate(({ id, title, message, details }) => {
+    const asText = (value) => String(value || "").trim();
+    let root = document.getElementById(id);
+    if (!root) {
+      root = document.createElement("div");
+      root.id = id;
+      root.setAttribute("role", "status");
+      root.setAttribute("aria-live", "polite");
+      root.setAttribute("data-tos-browser-automation-badge", "true");
+      root.style.cssText = [
+        "position:fixed",
+        "left:18px",
+        "top:18px",
+        "z-index:2147483647",
+        "width:320px",
+        "max-width:calc(100vw - 36px)",
+        "box-sizing:border-box",
+        "padding:10px 12px",
+        "border:2px solid #0ea5e9",
+        "border-radius:8px",
+        "background:#f8fafc",
+        "color:#0f172a",
+        "box-shadow:0 12px 32px rgba(15,23,42,.20)",
+        "font-family:Segoe UI,Microsoft YaHei,Arial,sans-serif",
+        "font-size:13px",
+        "line-height:1.35",
+        "pointer-events:none",
+      ].join(";");
+
+      const titleNode = document.createElement("div");
+      titleNode.style.cssText = "display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;margin-bottom:5px;";
+
+      const dot = document.createElement("span");
+      dot.setAttribute("data-tos-badge-dot", "true");
+      dot.style.cssText = "width:8px;height:8px;border-radius:999px;background:#10b981;box-shadow:0 0 0 5px rgba(16,185,129,.14);flex:0 0 auto;";
+
+      const titleText = document.createElement("span");
+      titleText.setAttribute("data-tos-badge-title", "true");
+      titleText.style.cssText = "min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      titleNode.append(dot, titleText);
+
+      const messageNode = document.createElement("div");
+      messageNode.setAttribute("data-tos-badge-message", "true");
+      messageNode.style.cssText = "font-size:12px;color:#334155;word-break:break-word;";
+
+      const metaNode = document.createElement("div");
+      metaNode.setAttribute("data-tos-badge-meta", "true");
+      metaNode.style.cssText = "margin-top:5px;font-size:11px;color:#0369a1;word-break:break-word;";
+
+      root.append(titleNode, messageNode, metaNode);
+      document.documentElement.appendChild(root);
+    }
+
+    const phase = asText(details?.phase);
+    const failed = phase === "failed" || phase === "error";
+    const businessEmpty = phase === "business-empty";
+    const complete = phase === "complete" || phase.endsWith("-complete");
+    root.style.borderColor = failed ? "#dc2626" : businessEmpty ? "#f59e0b" : complete ? "#059669" : "#0ea5e9";
+    root.style.background = failed ? "#fef2f2" : businessEmpty ? "#fffbeb" : complete ? "#ecfdf5" : "#f8fafc";
+
+    const dot = root.querySelector("[data-tos-badge-dot]");
+    if (dot) {
+      const color = failed ? "#ef4444" : businessEmpty ? "#f59e0b" : complete ? "#10b981" : "#0ea5e9";
+      dot.style.background = color;
+      dot.style.boxShadow = failed
+        ? "0 0 0 5px rgba(239,68,68,.14)"
+        : businessEmpty
+          ? "0 0 0 5px rgba(245,158,11,.18)"
+          : complete
+            ? "0 0 0 5px rgba(16,185,129,.14)"
+            : "0 0 0 5px rgba(14,165,233,.16)";
+    }
+
+    const titleNode = root.querySelector("[data-tos-badge-title]");
+    if (titleNode) {
+      titleNode.textContent = asText(title) || "TOS 浏览器自动化";
+    }
+
+    const messageNode = root.querySelector("[data-tos-badge-message]");
+    if (messageNode) {
+      messageNode.textContent = asText(message) || "自动化正在执行";
+    }
+
+    const metaNode = root.querySelector("[data-tos-badge-meta]");
+    if (metaNode) {
+      const parts = [];
+      const current = Number(details?.currentCount || 0);
+      const completed = Number(details?.completedCount || 0);
+      const total = Number(details?.totalCount || 0);
+      const failedCount = Number(details?.failedCount || 0);
+      const poNo = asText(details?.poNo);
+      const changeEquipmentId = asText(details?.changeEquipmentId);
+      const idValue = asText(details?.id);
+      const selectedAction = asText(details?.selectedAction);
+      const failedStep = asText(details?.failedStep);
+      const fileName = asText(details?.inputFileName);
+      const poNos = Array.isArray(details?.poNos) ? details.poNos.map(asText).filter(Boolean) : [];
+
+      if (current > 0 && total > 0) parts.push(`${current}/${total}`);
+      else if (completed > 0 && total > 0) parts.push(`完成 ${completed}/${total}`);
+      else if (total > 0) parts.push(`共 ${total}`);
+      if (failedCount > 0) parts.push(`失败 ${failedCount}`);
+      if (poNo) parts.push(`PO ${poNo}`);
+      if (changeEquipmentId) parts.push(`设备 ${changeEquipmentId}`);
+      if (idValue) parts.push(`ID ${idValue}`);
+      if (poNos.length > 0) parts.push(`PO ${poNos.join(", ")}`);
+      if (selectedAction) parts.push(selectedAction);
+      if (failedStep) parts.push(failedStep);
+      if (fileName) parts.push(fileName.slice(0, 48));
+
+      metaNode.textContent = parts.join(" · ");
+      metaNode.style.display = parts.length > 0 ? "block" : "none";
+    }
+  }, payload).catch(() => {});
 }
 
 function normalizeRunError(error, page, lifecycle, fallbackMessage) {

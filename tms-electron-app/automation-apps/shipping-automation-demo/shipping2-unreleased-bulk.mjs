@@ -50,9 +50,25 @@ export function createShipping2UnreleasedBulkAutomation(dependencies) {
   const config = dependencies.config;
   const log = typeof dependencies.log === "function" ? dependencies.log : () => {};
   const forceClickLocator = dependencies.forceClickLocator;
+  const showAutomationBadge = dependencies.showAutomationBadge;
   const xlsx = dependencies.xlsx;
   const assertWorkbookPayload = dependencies.assertWorkbookPayload;
   const resolveWorksheetName = dependencies.resolveWorksheetName;
+
+async function showUnreleasedBulkBadge(page, message, details = {}) {
+  if (typeof showAutomationBadge !== "function") {
+    return;
+  }
+  await showAutomationBadge(page, {
+    title: "Shipping2 Unreleased Bulk 自动化",
+    message,
+    details: {
+      phase: "shipping2-unreleased-bulk",
+      selectedAction: "Unreleased Bulk",
+      ...details,
+    },
+  });
+}
 
 async function processShipping2UnreleasedBulkWorksheet(page, unreleasedBulkRows) {
   if (!Array.isArray(unreleasedBulkRows) || unreleasedBulkRows.length === 0) {
@@ -62,10 +78,20 @@ async function processShipping2UnreleasedBulkWorksheet(page, unreleasedBulkRows)
   const poNumbers = unreleasedBulkRows
     .map((row) => String(row?.poNo || "").trim())
     .filter(Boolean);
+  await showUnreleasedBulkBadge(page, "正在筛选 Unreleased Bulk PO", {
+    phase: "bulk-filter",
+    totalCount: unreleasedBulkRows.length,
+  });
   await applyShipping2UnreleasedBulkPoFilter(page, poNumbers);
   const rowResults = await updateShipping2UnreleasedBulkRows(page, unreleasedBulkRows);
   const failedRowCount = rowResults.filter((row) => !row.ok).length;
   const updatedRowCount = rowResults.filter((row) => row.ok).length;
+  await showUnreleasedBulkBadge(page, "Unreleased Bulk PO 已处理，等待保存决定", {
+    phase: failedRowCount > 0 ? "failed" : "bulk-save-decision",
+    completedCount: updatedRowCount,
+    failedCount: failedRowCount,
+    totalCount: unreleasedBulkRows.length,
+  });
   const saveResult = failedRowCount === 0
     ? await waitForUnreleasedBulkSaveDecision(page, {
       poCount: poNumbers.length,
@@ -156,10 +182,12 @@ async function waitForUnreleasedBulkSaveDecision(page, summary) {
     panel.setAttribute("data-tos-unreleased-bulk-reminder", "true");
     panel.style.cssText = [
       "position:fixed",
-      "right:18px",
-      "bottom:18px",
+      "top:78px",
+      "left:50%",
+      "transform:translateX(-50%)",
       "z-index:2147483647",
       "width:360px",
+      "max-width:calc(100vw - 32px)",
       "box-sizing:border-box",
       "background:#111827",
       "color:#f9fafb",
@@ -344,10 +372,12 @@ async function waitForUnreleasedBulkFailureDecision(page, summary) {
     panel.setAttribute("data-tos-unreleased-bulk-reminder", "true");
     panel.style.cssText = [
       "position:fixed",
-      "right:18px",
-      "bottom:18px",
+      "top:78px",
+      "left:50%",
+      "transform:translateX(-50%)",
       "z-index:2147483647",
       "width:420px",
+      "max-width:calc(100vw - 32px)",
       "max-height:55vh",
       "overflow:auto",
       "box-sizing:border-box",
@@ -1004,9 +1034,16 @@ async function waitForUnreleasedBulkFilteredRows(page, poNumbers, timeoutMs = Ma
 
 async function updateShipping2UnreleasedBulkRows(page, unreleasedBulkRows) {
   const rowResults = [];
-  for (const row of unreleasedBulkRows) {
+  for (let rowIndex = 0; rowIndex < unreleasedBulkRows.length; rowIndex += 1) {
+    const row = unreleasedBulkRows[rowIndex];
     const poNo = String(row?.poNo || "").trim();
     try {
+      await showUnreleasedBulkBadge(page, `正在处理 Unreleased Bulk PO ${poNo}`, {
+        phase: "bulk-row",
+        poNo,
+        currentCount: rowIndex + 1,
+        totalCount: unreleasedBulkRows.length,
+      });
       let plan = await markUnreleasedBulkRowEditTargets(page, row);
       if (Array.isArray(plan?.missingHeaders) && plan.missingHeaders.length > 0) {
         throw new Error(`Unreleased Bulk row for PO No ${poNo} is missing worksheet columns: ${plan.missingHeaders.join(", ")}.`);
@@ -1085,6 +1122,15 @@ async function updateShipping2UnreleasedBulkRows(page, unreleasedBulkRows) {
         cellResults,
         verification,
       });
+      const rowOk = rowResults[rowResults.length - 1]?.ok;
+      await showUnreleasedBulkBadge(page, `Unreleased Bulk PO ${poNo} ${rowOk ? "已完成" : "处理失败，已记录"}`, {
+        phase: rowOk ? "bulk-row-complete" : "failed",
+        poNo,
+        currentCount: rowIndex + 1,
+        completedCount: rowResults.filter((item) => item.ok).length,
+        failedCount: rowResults.filter((item) => !item.ok).length,
+        totalCount: unreleasedBulkRows.length,
+      });
     } catch (error) {
       const rawError = error instanceof Error ? error.message : String(error);
       const friendlyError = /Unreleased Bulk row for PO No .* was not found in the worksheet grid/i.test(rawError)
@@ -1096,6 +1142,14 @@ async function updateShipping2UnreleasedBulkRows(page, unreleasedBulkRows) {
         changedCellCount: 0,
         failedCellCount: 1,
         error: friendlyError,
+      });
+      await showUnreleasedBulkBadge(page, `Unreleased Bulk PO ${poNo} 处理失败，已记录`, {
+        phase: "failed",
+        poNo,
+        currentCount: rowIndex + 1,
+        completedCount: rowResults.filter((item) => item.ok).length,
+        failedCount: rowResults.filter((item) => !item.ok).length,
+        totalCount: unreleasedBulkRows.length,
       });
     }
   }

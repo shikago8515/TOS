@@ -33,12 +33,14 @@ export function createPackingListAutoDownloadAutomation(deps) {
     let inputFileName = "";
     let credentials = null;
     let workbook = null;
+    let downloadDirectory = "";
 
     try {
       inputFileName = normalizeUploadFileName(body);
       credentials = resolveCredentials(body);
       workbook = validatePackingListWorkbookPayload(body, deps);
       inputFileName = workbook.inputFileName;
+      downloadDirectory = resolveDownloadDirectory(body);
     } catch (error) {
       const formatted = formatPackingListAutoDownloadError(error);
       return {
@@ -64,11 +66,17 @@ export function createPackingListAutoDownloadAutomation(deps) {
       headless,
       inputFileName,
       inputMode: "packing-list-auto-download",
+      downloadDirectory,
+      totalGroupCount: workbook.groups.length,
       totalPoCount: workbook.poNumbers.length,
       progress: {
         phase: "准备箱单查询",
-        message: `已读取 ${workbook.poNumbers.length} 个 PO 号，准备打开箱单页面。`,
+        message: `已读取 ${workbook.groups.length} 个 NO 批次、${workbook.poNumbers.length} 个 PO 号，准备打开箱单页面。`,
+        downloadDirectory,
+        totalCount: workbook.groups.length,
+        totalGroupCount: workbook.groups.length,
         totalPoCount: workbook.poNumbers.length,
+        currentPackingListNumbers: [],
         currentPoNumbers: [],
         updatedAt: new Date().toISOString(),
       },
@@ -81,6 +89,7 @@ export function createPackingListAutoDownloadAutomation(deps) {
         buildVisibleBrowserLaunchOptions,
         config,
         credentials,
+        downloadDirectory,
         ensureLoggedIn,
         headless,
         inputFileName,
@@ -97,6 +106,7 @@ export function createPackingListAutoDownloadAutomation(deps) {
         ok: result.ok,
         finalUrl: result.finalUrl,
         headless,
+        downloadDirectory,
         inputFileName,
         inputMode: "packing-list-auto-download",
         automationImplemented: result.automationImplemented,
@@ -106,7 +116,13 @@ export function createPackingListAutoDownloadAutomation(deps) {
         flexViewPostObserved: result.flexViewPostObserved,
         authMethod: result.authMethod,
         searchedPoNumber: result.searchedPoNumber,
+        totalGroupCount: result.totalGroupCount,
         totalPoCount: result.totalPoCount,
+        downloadedPackingListCount: result.downloadedPackingListCount,
+        failedPackingListCount: result.failedPackingListCount,
+        downloadedFilePaths: result.downloadedFilePaths,
+        firstDownloadedFilePath: result.firstDownloadedFilePath,
+        groupResults: result.groupResults,
         progress: result.progress,
       });
 
@@ -156,4 +172,19 @@ function resolveRunHeadless(body, config) {
     if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
   }
   return Boolean(config.headless);
+}
+
+function resolveDownloadDirectory(body) {
+  const value = String(
+    body?.downloadDirectory
+      || body?.saveDirectory
+      || body?.outputDirectory
+      || "",
+  ).trim();
+  if (!value) {
+    const error = new Error("请先选择箱单 PDF 下载保存目录。");
+    error.statusCode = 400;
+    throw error;
+  }
+  return value;
 }

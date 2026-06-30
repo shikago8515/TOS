@@ -28,13 +28,18 @@ from scripts.seed_automation_templates import AUTOMATION_TEMPLATES, read_templat
 
 
 class AutomationStorageTests(unittest.TestCase):
-    def test_schema_contains_required_tables(self):
+    def test_schema_contains_new_tos_business_tables(self):
         schema_text = "\n".join(SCHEMA_DDL)
 
-        self.assertIn("automation_credentials", schema_text)
-        self.assertIn("excel_templates", schema_text)
-        self.assertIn("automation_runs", schema_text)
-        self.assertIn("automation_run_files", schema_text)
+        self.assertIn("tos_people", schema_text)
+        self.assertIn("tos_modules", schema_text)
+        self.assertIn("tos_activity_records", schema_text)
+        self.assertIn("tos_activity_files", schema_text)
+        self.assertIn("tos_module_templates", schema_text)
+        self.assertIn("tos_login_accounts", schema_text)
+        self.assertIn("tos_release_records", schema_text)
+        self.assertNotIn("CREATE TABLE IF NOT EXISTS automation_runs", schema_text)
+        self.assertNotIn("CREATE TABLE IF NOT EXISTS excel_templates", schema_text)
 
     def test_credentials_encrypt_and_decrypt_with_local_key_file(self):
         original_key_file = os.environ.get(credential_crypto.CREDENTIAL_KEY_FILE_ENV)
@@ -120,6 +125,7 @@ class AutomationStorageTests(unittest.TestCase):
     def test_shipping_executor_id_can_read_shared_infor_nexus_credentials(self):
         lookup_ids = _credential_lookup_ids("shipping-automation-demo")
         released_bulk_lookup_ids = _credential_lookup_ids("shipping-automation-2")
+        packing_list_lookup_ids = _credential_lookup_ids("packing-list-auto-download")
 
         self.assertEqual(lookup_ids[0], "shipping-automation-demo")
         self.assertIn("shipping-automation", lookup_ids)
@@ -128,6 +134,46 @@ class AutomationStorageTests(unittest.TestCase):
         self.assertEqual(released_bulk_lookup_ids[0], "shipping-automation-2")
         self.assertIn("shipping-automation", released_bulk_lookup_ids)
         self.assertIn("po-auto-download", released_bulk_lookup_ids)
+        self.assertEqual(packing_list_lookup_ids[0], "packing-list-auto-download")
+        self.assertIn("po-auto-download", packing_list_lookup_ids)
+
+    def test_resolve_credentials_skips_bad_infor_nexus_ciphertext_candidate(self):
+        rows = {
+            "packing-list-auto-download": {
+                "account_key": "default",
+                "username": "broken-user",
+                "password_ciphertext": "bad-ciphertext",
+            },
+            "po-auto-download": {
+                "account_key": "default",
+                "username": "shared-user",
+                "password_ciphertext": "good-ciphertext",
+            },
+        }
+
+        def fake_decrypt_secret(ciphertext):
+            if ciphertext == "bad-ciphertext":
+                raise ValueError("wrong key")
+            return "plain-password"
+
+        def fake_get_automation_credentials(automation_id, account_key):
+            return rows.get(automation_id)
+
+        with patch.object(
+            automation_storage_api,
+            "get_automation_credentials",
+            side_effect=fake_get_automation_credentials,
+        ), \
+             patch.object(automation_storage_api, "decrypt_secret", side_effect=fake_decrypt_secret):
+            response = automation_storage_api.resolve_credentials(
+                "packing-list-auto-download",
+                accountKey="default",
+            )
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["sourceAutomationId"], "po-auto-download")
+        self.assertEqual(response["username"], "shared-user")
+        self.assertEqual(response["password"], "plain-password")
 
     def test_ticket_owner_statistics_can_read_shared_microsoft_credentials(self):
         lookup_ids = _credential_lookup_ids("ticket-owner-statistics")

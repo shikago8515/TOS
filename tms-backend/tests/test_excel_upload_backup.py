@@ -30,13 +30,13 @@ class ExcelUploadBackupTests(unittest.TestCase):
     def test_minio_storage_can_upload_file_path_with_checksum(self) -> None:
         self.assertTrue(hasattr(minio_storage, "put_object_file"))
 
-    def test_mysql_schema_contains_excel_upload_backups_metadata_table(self) -> None:
+    def test_mysql_schema_stores_upload_backups_in_activity_files(self) -> None:
         schema_text = "\n".join(mysql_store.SCHEMA_DDL)
 
-        self.assertIn("CREATE TABLE IF NOT EXISTS excel_upload_backups", schema_text)
-        self.assertIn("request_id VARCHAR(96) NOT NULL", schema_text)
-        self.assertIn("module_id VARCHAR(128) NOT NULL", schema_text)
+        self.assertIn("CREATE TABLE IF NOT EXISTS tos_activity_files", schema_text)
+        self.assertIn("activity_id VARCHAR(128) NOT NULL", schema_text)
         self.assertIn("file_role VARCHAR(64) NOT NULL", schema_text)
+        self.assertIn("storage_provider VARCHAR(32) NOT NULL DEFAULT 'minio'", schema_text)
         self.assertIn("sha256 CHAR(64) NOT NULL", schema_text)
 
     def test_example_settings_declares_upload_backup_bucket(self) -> None:

@@ -616,6 +616,24 @@ async function runLogin(rows, options) {
   let context;
   let page;
   let runFailed = false;
+  const workflowMode = String(options.workflowMode || "task-center-po-decisions");
+  const workflowTitle = String(options.workflowLabel || (
+    workflowMode === "ticket-owner-statistics"
+      ? "统计 ticket 归属 自动化"
+      : workflowMode === "login-only"
+        ? "SAP BTP 登录自动化"
+        : "SAP BTP PO Decision 自动化"
+  ));
+  const showRunBadge = async (message, details = {}) => showAutomationBadge(page, {
+    title: workflowTitle,
+    message,
+    details: {
+      phase: "sap-btp-login",
+      workflowMode,
+      totalCount: Array.isArray(rows) ? rows.length : 0,
+      ...details,
+    },
+  });
 
   try {
     browser = await engine.launch(browserLaunchOptions);
@@ -626,12 +644,21 @@ async function runLogin(rows, options) {
     page.setDefaultTimeout(options.navigationTimeoutMs);
     page.setDefaultNavigationTimeout(options.navigationTimeoutMs);
 
+    await showRunBadge("正在打开 Microsoft / SAP BTP 登录页", {
+      phase: "open-login",
+    });
     await page.goto(options.loginUrl, {
       waitUntil: "domcontentloaded",
       timeout: options.navigationTimeoutMs,
     });
 
+    await showRunBadge("正在填写登录信息", {
+      phase: "login",
+    });
     await fillMicrosoftLogin(page, options.username, options.password, options);
+    await showRunBadge("正在确认登录结果", {
+      phase: "login-check",
+    });
 
     if (options.postLoginWaitMs > 0) {
       const homeTileSelectors = [
@@ -653,19 +680,38 @@ async function runLogin(rows, options) {
     const loginState = await capturePageState(page);
     const loginSuccess = detectLoginSuccess(loginState);
 
-    const workflowMode = String(options.workflowMode || "task-center-po-decisions");
     let taskCenter = null;
     let workflowResult = null;
     if (loginSuccess && typeof options.afterLogin === "function") {
+      await showRunBadge(`登录完成，正在执行 ${workflowTitle}`, {
+        phase: "workflow",
+      });
       workflowResult = await options.afterLogin(page, options);
     } else if (loginSuccess && workflowMode !== "login-only") {
-      taskCenter = await runTaskCenterSearchFlow(page, rows, options);
+      await showRunBadge("登录完成，正在执行 Task Center PO 处理", {
+        phase: "task-center",
+      });
+      taskCenter = await runTaskCenterSearchFlow(page, rows, options, showRunBadge);
+    } else if (!loginSuccess) {
+      await showRunBadge("登录未到达确认成功状态，已记录页面状态", {
+        phase: "failed",
+      });
     }
 
     const finalState = await capturePageState(page);
     const workflowOk = workflowResult ? workflowResult.ok !== false : true;
+    const finalOk = loginSuccess && workflowOk;
+    await showRunBadge(
+      finalOk ? `${workflowTitle} 已完成` : `${workflowTitle} 未完成，已记录状态`,
+      {
+        phase: finalOk ? "complete" : "failed",
+        completedCount: taskCenter?.completedRowCount || 0,
+        failedCount: taskCenter?.failedRowCount || 0,
+        totalCount: Array.isArray(rows) ? rows.length : 0,
+      },
+    );
     return {
-      ok: loginSuccess && workflowOk,
+      ok: finalOk,
       loginSuccess,
       uploadedRowCount: rows.length,
       generatedAt: new Date().toISOString(),
@@ -684,6 +730,9 @@ async function runLogin(rows, options) {
     };
   } catch (error) {
     runFailed = true;
+    await showRunBadge(`${workflowTitle} 执行失败，已记录错误信息`, {
+      phase: "failed",
+    });
     const finalState = await capturePageState(page);
     const loginSuccess = page ? detectLoginSuccess(finalState) : false;
     return {
@@ -727,21 +776,52 @@ async function fillMicrosoftLogin(page, username, password, options) {
     "[id*='inboxTable']",
     "text=Task Center",
   ];
+  const microsoftEmailSelectors = ["input[name='loginfmt']"];
+  const microsoftPasswordSelectors = ["input[name='passwd']"];
+  const adidasEmailSelectors = [
+    "input[type='email']",
+    "input[placeholder*='example.com']",
+    "input[placeholder*='someone']",
+    "input[name='username']",
+    "input[name='login']",
+    "input[id*='user']",
+  ];
+  const adidasPasswordSelectors = [
+    "input[type='password']",
+    "input[name='password']",
+    "input[id*='password']",
+  ];
 
   await waitForAny(page, [
-    "input[name='loginfmt']",
-    "input[name='passwd']",
+    ...microsoftEmailSelectors,
+    ...microsoftPasswordSelectors,
+    ...adidasEmailSelectors,
+    ...adidasPasswordSelectors,
     "#idRichContext_DisplaySign",
+    "#KmsiDescription",
+    "#idBtn_Back",
     ...signedInSelectors,
   ], options.navigationTimeoutMs);
 
+  await handleStaySignedInPrompt(page, options);
+
   if (
     await anyVisible(page, signedInSelectors) &&
-    !await isVisible(page, "input[name='loginfmt']") &&
-    !await isVisible(page, "input[name='passwd']")
+    !await anyVisible(page, [
+      ...microsoftEmailSelectors,
+      ...microsoftPasswordSelectors,
+      ...adidasEmailSelectors,
+      ...adidasPasswordSelectors,
+    ])
   ) {
     return;
   }
+
+  await fillAdidasLoginIfPresent(page, username, password, options, {
+    signedInSelectors,
+    emailSelectors: adidasEmailSelectors,
+    passwordSelectors: adidasPasswordSelectors,
+  });
 
   if (await isVisible(page, "input[name='loginfmt']")) {
     await page.fill("input[name='loginfmt']", username);
@@ -752,10 +832,22 @@ async function fillMicrosoftLogin(page, username, password, options) {
   await page.waitForLoadState("domcontentloaded").catch(() => {});
   await waitForAny(page, [
     "input[name='passwd']",
+    ...adidasPasswordSelectors,
     "#passwordError",
     "#usernameError",
     "#idRichContext_DisplaySign",
+    "#KmsiDescription",
+    "#idBtn_Back",
+    ...signedInSelectors,
   ], options.navigationTimeoutMs);
+
+  await handleStaySignedInPrompt(page, options);
+
+  await fillAdidasLoginIfPresent(page, username, password, options, {
+    signedInSelectors,
+    emailSelectors: adidasEmailSelectors,
+    passwordSelectors: adidasPasswordSelectors,
+  });
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     if (!(await isVisible(page, "input[name='passwd']"))) {
@@ -774,13 +866,7 @@ async function fillMicrosoftLogin(page, username, password, options) {
     }
   }
 
-  if (await isVisible(page, "#KmsiDescription")) {
-    if (options.staySignedInAction === "yes") {
-      await clickFirstVisible(page, ["#idSIButton9"]);
-    } else {
-      await clickFirstVisible(page, ["#idBtn_Back", "#idSIButton9"]);
-    }
-  }
+  await handleStaySignedInPrompt(page, options);
 
   if (await isVisible(page, "input[name='otc']") || await isVisible(page, "#idTxtBx_SAOTCC_OTC")) {
     const error = new Error("Additional verification is required on this account.");
@@ -798,6 +884,87 @@ async function fillMicrosoftLogin(page, username, password, options) {
       ]))
     );
   }, Math.min(options.navigationTimeoutMs, 12000), 250).catch(() => {});
+}
+
+async function handleStaySignedInPrompt(page, options) {
+  if (!await anyVisible(page, ["#KmsiDescription", "#idBtn_Back", "text=保持登录状态"])) {
+    return false;
+  }
+
+  if (options.staySignedInAction === "yes") {
+    await clickFirstVisible(page, ["#idSIButton9", "input[value='是']", "button:has-text(\"是\")"]);
+  } else {
+    await clickFirstVisible(page, ["#idBtn_Back", "input[value='否']", "button:has-text(\"否\")"]);
+  }
+  await page.waitForLoadState("domcontentloaded").catch(() => {});
+  await pageWait(page, 800);
+  return true;
+}
+
+async function fillAdidasLoginIfPresent(page, username, password, options, selectors) {
+  const emailSelectors = selectors?.emailSelectors || [];
+  const passwordSelectors = selectors?.passwordSelectors || [];
+  const signedInSelectors = selectors?.signedInSelectors || [];
+  const nextButtonSelectors = [
+    "button:has-text(\"下一步\")",
+    "button:has-text(\"Next\")",
+    "input[type='submit']",
+    "button[type='submit']",
+  ];
+  const submitButtonSelectors = [
+    "button:has-text(\"登录\")",
+    "button:has-text(\"Sign in\")",
+    "button:has-text(\"Log in\")",
+    "button:has-text(\"下一步\")",
+    "button:has-text(\"Next\")",
+    "input[type='submit']",
+    "button[type='submit']",
+  ];
+  let handled = false;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (await anyVisible(page, signedInSelectors)) {
+      return handled;
+    }
+
+    const email = await firstVisibleTarget(page, emailSelectors);
+    if (email) {
+      await email.target.locator(email.selector).first().fill(username);
+      await clickFirstVisible(page, nextButtonSelectors).catch(async () => {
+        await page.keyboard.press("Enter").catch(() => {});
+      });
+      handled = true;
+      await page.waitForLoadState("domcontentloaded").catch(() => {});
+      await pageWait(page, 800);
+      continue;
+    }
+
+    const passwordInput = await firstVisibleTarget(page, passwordSelectors);
+    if (passwordInput) {
+      await passwordInput.target.locator(passwordInput.selector).first().fill(password);
+      await clickFirstVisible(page, submitButtonSelectors).catch(async () => {
+        await page.keyboard.press("Enter").catch(() => {});
+      });
+      handled = true;
+      await page.waitForLoadState("domcontentloaded").catch(() => {});
+      await pageWait(page, 1000);
+      continue;
+    }
+
+    break;
+  }
+
+  if (handled) {
+    await waitFor(async () => {
+      return (
+        await anyVisible(page, signedInSelectors) ||
+        await anyVisible(page, ["input[name='loginfmt']", "input[name='passwd']"]) ||
+        !await anyVisible(page, [...emailSelectors, ...passwordSelectors])
+      );
+    }, Math.min(options.navigationTimeoutMs, 12000), 250).catch(() => {});
+  }
+
+  return handled;
 }
 
 async function retryTransientAccountLookup(page) {
@@ -840,7 +1007,7 @@ function detectLoginSuccess(pageState) {
   return !pageState.url.includes("login.microsoftonline.com");
 }
 
-async function runTaskCenterSearchFlow(page, rows, options) {
+async function runTaskCenterSearchFlow(page, rows, options, showRunBadge = async () => {}) {
   const caseEntries = rows
     .map((row, index) => ({
       rowIndex: index + 2,
@@ -868,8 +1035,16 @@ async function runTaskCenterSearchFlow(page, rows, options) {
     groupedEntries.get(entry.caseNumber).push(entry);
   }
 
+  await showRunBadge("正在打开 Task Center", {
+    phase: "open-task-center",
+    totalCount: caseEntries.length,
+  });
   await openTaskCenter(page, options.navigationTimeoutMs);
   const selectedTaskTypes = await configureTaskCenterFilter(page);
+  await showRunBadge("Task Center 已就绪，正在准备搜索 Case", {
+    phase: "task-center-ready",
+    totalCount: caseEntries.length,
+  });
   const taskCenterUrl = page.url();
 
   const searchedCases = [];
@@ -877,14 +1052,46 @@ async function runTaskCenterSearchFlow(page, rows, options) {
   let failedRowCount = 0;
   for (let index = 0; index < caseGroups.length; index += 1) {
     const group = caseGroups[index];
+    await showRunBadge(`正在搜索 Case ${group.caseNumber}`, {
+      phase: "case-search",
+      caseNumber: group.caseNumber,
+      currentCount: index + 1,
+      totalCount: caseGroups.length,
+    });
     const searchResult = await searchCaseNumber(page, group.caseNumber);
     let openInAppRun = await openInAppFromSearchResults(page, group.caseNumber, options.navigationTimeoutMs);
+    await showRunBadge(`Case ${group.caseNumber} 已打开 Open in App`, {
+      phase: "open-in-app",
+      caseNumber: group.caseNumber,
+      currentCount: index + 1,
+      totalCount: caseGroups.length,
+    });
     const orderedEntries = sortCaseGroupEntriesForExecution(group.entries);
     const rowResults = [];
 
     for (let rowIndex = 0; rowIndex < orderedEntries.length; rowIndex += 1) {
       const entry = orderedEntries[rowIndex];
       try {
+        await showRunBadge(`正在处理 Case ${group.caseNumber} / PO ${entry.po}`, {
+          phase: "po-processing",
+          caseNumber: group.caseNumber,
+          po: entry.po,
+          decision: entry.decision,
+          currentCount: completedRowCount + failedRowCount + 1,
+          totalCount: caseEntries.length,
+        });
+        await showAutomationBadge(openInAppRun.appPage, {
+          title: "SAP BTP PO Decision 自动化",
+          message: `正在处理 Case ${group.caseNumber} / PO ${entry.po}`,
+          details: {
+            phase: "po-processing",
+            caseNumber: group.caseNumber,
+            po: entry.po,
+            decision: entry.decision,
+            currentCount: completedRowCount + failedRowCount + 1,
+            totalCount: caseEntries.length,
+          },
+        });
         const processed = await processPoEntryWithRecovery(
           page,
           openInAppRun,
@@ -903,6 +1110,19 @@ async function runTaskCenterSearchFlow(page, rows, options) {
           recoveredVia: processed.recoveredVia,
         });
         completedRowCount += 1;
+        await showAutomationBadge(openInAppRun.appPage, {
+          title: "SAP BTP PO Decision 自动化",
+          message: `PO ${entry.po} 已完成`,
+          details: {
+            phase: "po-complete",
+            caseNumber: group.caseNumber,
+            po: entry.po,
+            decision: entry.decision,
+            completedCount: completedRowCount,
+            failedCount: failedRowCount,
+            totalCount: caseEntries.length,
+          },
+        });
       } catch (error) {
         log("PO processing failed after all recovery attempts.", {
           caseNumber: group.caseNumber,
@@ -918,7 +1138,28 @@ async function runTaskCenterSearchFlow(page, rows, options) {
           error: error.message || "PO processing failed.",
         });
         failedRowCount += 1;
+        await showAutomationBadge(openInAppRun.appPage, {
+          title: "SAP BTP PO Decision 自动化",
+          message: `PO ${entry.po} 处理失败，已记录`,
+          details: {
+            phase: "failed",
+            caseNumber: group.caseNumber,
+            po: entry.po,
+            decision: entry.decision,
+            completedCount: completedRowCount,
+            failedCount: failedRowCount,
+            totalCount: caseEntries.length,
+          },
+        });
       }
+      await showRunBadge(`Task Center PO 进度 ${completedRowCount + failedRowCount}/${caseEntries.length}`, {
+        phase: failedRowCount > 0 ? "failed" : "po-progress",
+        caseNumber: group.caseNumber,
+        completedCount: completedRowCount,
+        failedCount: failedRowCount,
+        currentCount: completedRowCount + failedRowCount,
+        totalCount: caseEntries.length,
+      });
     }
 
     const hasFailedRows = rowResults.some((rowResult) => !rowResult.ok);
@@ -931,7 +1172,29 @@ async function runTaskCenterSearchFlow(page, rows, options) {
     };
 
     if (!hasFailedRows && rowResults.length > 0) {
+      await showAutomationBadge(openInAppRun.appPage, {
+        title: "SAP BTP PO Decision 自动化",
+        message: `Case ${group.caseNumber} 已处理，正在 Save`,
+        details: {
+          phase: "save",
+          caseNumber: group.caseNumber,
+          completedCount: completedRowCount,
+          failedCount: failedRowCount,
+          totalCount: caseEntries.length,
+        },
+      });
       saveResult = await saveOpenInAppChanges(openInAppRun.appPage, options.navigationTimeoutMs);
+      await showAutomationBadge(openInAppRun.appPage, {
+        title: "SAP BTP PO Decision 自动化",
+        message: `Case ${group.caseNumber} 已 Save`,
+        details: {
+          phase: "case-complete",
+          caseNumber: group.caseNumber,
+          completedCount: completedRowCount,
+          failedCount: failedRowCount,
+          totalCount: caseEntries.length,
+        },
+      });
     }
 
     searchedCases.push({
@@ -958,6 +1221,14 @@ async function runTaskCenterSearchFlow(page, rows, options) {
       await restoreTaskCenterAfterOpen(page, openInAppRun, taskCenterUrl, options.navigationTimeoutMs);
     }
   }
+
+  await showRunBadge("Task Center PO 处理已完成", {
+    phase: failedRowCount > 0 ? "failed" : "complete",
+    completedCount: completedRowCount,
+    failedCount: failedRowCount,
+    currentCount: completedRowCount + failedRowCount,
+    totalCount: caseEntries.length,
+  });
 
   return {
     taskCenterOpened: true,
@@ -1183,10 +1454,18 @@ async function openInAppFromSearchResults(page, caseNumber, timeoutMs) {
     contextPages: context.pages().filter((candidate) => !candidate.isClosed()).map((candidate) => candidate.url()),
   });
 
-  if (resolvedOpen.openedIn === "popup") {
-    await resolvedOpen.appPage.waitForLoadState("domcontentloaded", { timeout: timeoutMs }).catch(() => {});
-    await waitForOpenInAppReady(resolvedOpen.appPage, timeoutMs);
+  await resolvedOpen.appPage.waitForLoadState("domcontentloaded", { timeout: timeoutMs }).catch(() => {});
+  await waitForOpenInAppReady(resolvedOpen.appPage, timeoutMs);
+  await showAutomationBadge(resolvedOpen.appPage, {
+    title: "SAP BTP PO Decision 自动化",
+    message: `Case ${caseNumber} 的 Open in App 页面已打开`,
+    details: {
+      phase: "open-in-app",
+      caseNumber,
+    },
+  });
 
+  if (resolvedOpen.openedIn === "popup") {
     const summary = {
       caseNumber,
       selectedAction: "Open in App",
@@ -1201,9 +1480,6 @@ async function openInAppFromSearchResults(page, caseNumber, timeoutMs) {
       openedIn: "popup",
     };
   }
-
-  await resolvedOpen.appPage.waitForLoadState("domcontentloaded", { timeout: timeoutMs }).catch(() => {});
-  await waitForOpenInAppReady(resolvedOpen.appPage, timeoutMs);
 
   const openedIn = resolvedOpen.appPage.url() !== beforeUrl ? "same_page_navigation" : "same_page";
   const summary = {
@@ -1296,11 +1572,25 @@ async function restoreTaskCenterAfterOpen(page, openInAppRun, taskCenterUrl, tim
     }
     await page.bringToFront().catch(() => {});
     await waitForTaskCenterReady(page, Math.min(timeoutMs, 10000)).catch(() => {});
+    await showAutomationBadge(page, {
+      title: "SAP BTP PO Decision 自动化",
+      message: "已回到 Task Center，继续处理下一组 Case",
+      details: {
+        phase: "task-center-ready",
+      },
+    });
     return;
   }
 
   if (page.url().includes("taskcenter-display")) {
     await waitForTaskCenterReady(page, Math.min(timeoutMs, 10000)).catch(() => {});
+    await showAutomationBadge(page, {
+      title: "SAP BTP PO Decision 自动化",
+      message: "Task Center 已就绪，继续处理下一组 Case",
+      details: {
+        phase: "task-center-ready",
+      },
+    });
     return;
   }
 
@@ -1310,6 +1600,13 @@ async function restoreTaskCenterAfterOpen(page, openInAppRun, taskCenterUrl, tim
   });
   await waitForTaskCenterReady(page, timeoutMs);
   await configureTaskCenterFilter(page);
+  await showAutomationBadge(page, {
+    title: "SAP BTP PO Decision 自动化",
+    message: "已重新打开 Task Center，继续处理下一组 Case",
+    details: {
+      phase: "task-center-ready",
+    },
+  });
 }
 
 async function resolveMenuItemRoot(target, selector) {
@@ -1328,6 +1625,13 @@ async function reloadOpenInAppPage(appPage, url, timeoutMs) {
     timeout: timeoutMs,
   });
   await waitForOpenInAppReady(appPage, timeoutMs);
+  await showAutomationBadge(appPage, {
+    title: "SAP BTP PO Decision 自动化",
+    message: "Open in App 页面已恢复，继续处理",
+    details: {
+      phase: "open-in-app-reloaded",
+    },
+  });
 }
 
 async function ensureOpenInAppRunActive(page, openInAppRun, caseNumber, timeoutMs) {
@@ -2655,8 +2959,19 @@ async function capturePageState(page) {
     title: await safeTitle(page),
     pageTextSnippet: await readBodySnippet(page),
     visibleError: await readVisibleError(page),
-    emailVisible: await isVisible(page, "input[name='loginfmt']"),
-    passwordVisible: await isVisible(page, "input[name='passwd']"),
+    emailVisible: await anyVisible(page, [
+      "input[name='loginfmt']",
+      "input[type='email']",
+      "input[placeholder*='example.com']",
+      "input[placeholder*='someone']",
+      "input[name='username']",
+      "input[name='login']",
+    ]),
+    passwordVisible: await anyVisible(page, [
+      "input[name='passwd']",
+      "input[type='password']",
+      "input[name='password']",
+    ]),
     mfaVisible: (await isVisible(page, "input[name='otc']")) || (await isVisible(page, "#idTxtBx_SAOTCC_OTC")),
   };
 }
@@ -2901,6 +3216,150 @@ function buildVisibleBrowserLaunchOptions(baseOptions, browserName) {
     launchOptions.args = mergeBrowserArgs(launchOptions.args, VISIBLE_CHROMIUM_WINDOW_ARGS);
   }
   return launchOptions;
+}
+
+async function showAutomationBadge(target, options = {}) {
+  if (!target || typeof target.evaluate !== "function" || isPageClosed(target)) {
+    return;
+  }
+
+  const targets = [target];
+  if (typeof target.frames === "function") {
+    targets.push(...target.frames());
+  }
+
+  const uniqueTargets = Array.from(new Set(targets)).filter((item) => item && typeof item.evaluate === "function");
+  const payload = {
+    id: "tos-browser-automation-status-badge",
+    title: String(options?.title || "TOS 浏览器自动化"),
+    message: String(options?.message || "自动化正在执行"),
+    details: normalizeAutomationBadgeDetails(options?.details),
+  };
+
+  await Promise.allSettled(uniqueTargets.map((item) => injectAutomationBadge(item, payload)));
+}
+
+function normalizeAutomationBadgeDetails(details = {}) {
+  const input = details && typeof details === "object" ? details : {};
+  const normalized = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (value == null) {
+      continue;
+    }
+    if (Array.isArray(value)) {
+      normalized[key] = value.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 6);
+    } else if (typeof value === "number" || typeof value === "boolean") {
+      normalized[key] = value;
+    } else {
+      normalized[key] = String(value || "").trim();
+    }
+  }
+  return normalized;
+}
+
+async function injectAutomationBadge(target, payload) {
+  await target.evaluate(({ id, title, message, details }) => {
+    const asText = (value) => String(value || "").trim();
+    let root = document.getElementById(id);
+    if (!root) {
+      root = document.createElement("div");
+      root.id = id;
+      root.setAttribute("role", "status");
+      root.setAttribute("aria-live", "polite");
+      root.setAttribute("data-tos-browser-automation-badge", "true");
+      root.style.cssText = [
+        "position:fixed",
+        "left:18px",
+        "top:18px",
+        "z-index:2147483647",
+        "width:320px",
+        "max-width:calc(100vw - 36px)",
+        "box-sizing:border-box",
+        "padding:10px 12px",
+        "border:2px solid #0ea5e9",
+        "border-radius:8px",
+        "background:#f8fafc",
+        "color:#0f172a",
+        "box-shadow:0 12px 32px rgba(15,23,42,.20)",
+        "font-family:Segoe UI,Microsoft YaHei,Arial,sans-serif",
+        "font-size:13px",
+        "line-height:1.35",
+        "pointer-events:none",
+      ].join(";");
+
+      const titleNode = document.createElement("div");
+      titleNode.style.cssText = "display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;margin-bottom:5px;";
+
+      const dot = document.createElement("span");
+      dot.setAttribute("data-tos-badge-dot", "true");
+      dot.style.cssText = "width:8px;height:8px;border-radius:999px;background:#10b981;box-shadow:0 0 0 5px rgba(16,185,129,.14);flex:0 0 auto;";
+
+      const titleText = document.createElement("span");
+      titleText.setAttribute("data-tos-badge-title", "true");
+      titleText.style.cssText = "min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      titleNode.append(dot, titleText);
+
+      const messageNode = document.createElement("div");
+      messageNode.setAttribute("data-tos-badge-message", "true");
+      messageNode.style.cssText = "font-size:12px;color:#334155;word-break:break-word;";
+
+      const metaNode = document.createElement("div");
+      metaNode.setAttribute("data-tos-badge-meta", "true");
+      metaNode.style.cssText = "margin-top:5px;font-size:11px;color:#0369a1;word-break:break-word;";
+
+      root.append(titleNode, messageNode, metaNode);
+      document.documentElement.appendChild(root);
+    }
+
+    const phase = asText(details?.phase);
+    const failed = phase === "failed" || phase === "error";
+    const complete = phase === "complete" || phase.endsWith("-complete");
+    root.style.borderColor = failed ? "#dc2626" : complete ? "#059669" : "#0ea5e9";
+    root.style.background = failed ? "#fef2f2" : complete ? "#ecfdf5" : "#f8fafc";
+
+    const dot = root.querySelector("[data-tos-badge-dot]");
+    if (dot) {
+      const color = failed ? "#ef4444" : complete ? "#10b981" : "#0ea5e9";
+      dot.style.background = color;
+      dot.style.boxShadow = failed
+        ? "0 0 0 5px rgba(239,68,68,.14)"
+        : complete
+          ? "0 0 0 5px rgba(16,185,129,.14)"
+          : "0 0 0 5px rgba(14,165,233,.14)";
+    }
+
+    const titleNode = root.querySelector("[data-tos-badge-title]");
+    if (titleNode) {
+      titleNode.textContent = title;
+    }
+
+    const messageNode = root.querySelector("[data-tos-badge-message]");
+    if (messageNode) {
+      messageNode.textContent = message || "自动化正在执行";
+    }
+
+    const metaNode = root.querySelector("[data-tos-badge-meta]");
+    if (metaNode) {
+      const parts = [];
+      const caseNumber = asText(details?.caseNumber);
+      const po = asText(details?.po);
+      const decision = asText(details?.decision);
+      const workflowMode = asText(details?.workflowMode);
+      const total = Number(details?.totalCount || 0);
+      const current = Number(details?.currentCount || 0);
+      const completed = Number(details?.completedCount || 0);
+      const failedCount = Number(details?.failedCount || 0);
+      if (caseNumber) parts.push(`Case ${caseNumber}`);
+      if (po) parts.push(`PO ${po}`);
+      if (decision) parts.push(`Decision ${decision}`);
+      if (workflowMode) parts.push(workflowMode);
+      if (total > 0 && current > 0) parts.push(`${current}/${total}`);
+      if (completed > 0) parts.push(`完成 ${completed}`);
+      if (failedCount > 0) parts.push(`失败 ${failedCount}`);
+      metaNode.textContent = parts.join(" · ");
+      metaNode.style.display = parts.length ? "block" : "none";
+    }
+  }, payload).catch(() => {});
 }
 
 function log(message, meta) {

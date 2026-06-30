@@ -33,6 +33,9 @@ def _resolve_credential_key() -> bytes:
     if env_key:
         return _normalize_key(env_key)
 
+    if os.environ.get(CREDENTIAL_KEY_FILE_ENV):
+        return _read_or_create_key_file(_resolve_key_path())
+
     settings = get_settings()
     configured_key = (
         settings.get("security", {})
@@ -41,7 +44,10 @@ def _resolve_credential_key() -> bytes:
     if configured_key:
         return _normalize_key(str(configured_key))
 
-    key_path = _resolve_key_path()
+    return _read_or_create_key_file(_resolve_key_path())
+
+
+def _read_or_create_key_file(key_path: Path) -> bytes:
     if key_path.exists():
         return _normalize_key(key_path.read_text(encoding="utf-8").strip())
 

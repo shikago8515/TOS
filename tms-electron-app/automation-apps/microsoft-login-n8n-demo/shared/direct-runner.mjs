@@ -101,6 +101,12 @@ function normalizeProgress(progress) {
     diagnosticFailedCount: toNonNegativeInteger(input.diagnosticFailedCount),
     activeCount: toNonNegativeInteger(input.activeCount),
     pendingCount: toNonNegativeInteger(input.pendingCount),
+    filteredTotalCount: toNonNegativeInteger(input.filteredTotalCount),
+    taskCenterTotalCount: toNonNegativeInteger(input.taskCenterTotalCount),
+    discoveredTaskCount: toNonNegativeInteger(input.discoveredTaskCount),
+    plannedCount: toNonNegativeInteger(input.plannedCount),
+    skippedCount: toNonNegativeInteger(input.skippedCount),
+    concurrencyCount: toNonNegativeInteger(input.concurrencyCount),
     currentTickets: Array.isArray(input.currentTickets)
       ? input.currentTickets.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 6)
       : [],

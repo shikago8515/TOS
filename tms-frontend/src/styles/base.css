@@ -131,7 +131,11 @@ html.dark .content-shell :where(.sa, .pad, .iaa, .s2, .am-page, .jane-page-conta
   --mu: #a3a6ad;
   --muted: #a3a6ad;
   --br: #3d3d3f;
+  --line: #3d3d3f;
   --paper: #141414;
+  --surface: #141414;
+  --surface-muted: #1f1f1f;
+  --surface-hover: #2a2a2a;
   --sh: rgba(0, 0, 0, 0.38);
   --a2: rgba(var(--el-color-primary-rgb), 0.18);
   --white: #141414;
@@ -331,6 +335,1000 @@ html.dark .content-shell :where(.el-table, .el-table__header-wrapper, .el-table_
   --el-table-text-color: #cfd3dc;
   --el-table-header-text-color: #e5eaf3;
   --el-table-border-color: #3d3d3f;
+}
+
+/* Page-local token bridges for scoped legacy pages. */
+html.dark .content-shell :is(.ru-page) {
+  --ru-primary-light: rgba(13, 148, 136, 0.18);
+  --ru-added-light: rgba(16, 185, 129, 0.16);
+  --ru-improved-light: rgba(14, 165, 233, 0.16);
+  --ru-fixed-light: rgba(245, 158, 11, 0.16);
+  --ru-text-main: #e5eaf3;
+  --ru-text-muted: #a3a6ad;
+  --ru-border: #3d3d3f;
+  --ru-surface: #141414;
+  --ru-bg: #000000;
+  --ru-danger: #f87171;
+  background: #000000 !important;
+  color: #e5eaf3 !important;
+}
+
+html.dark .content-shell :is(.sb-workbench, .settings-workbench) {
+  --sb-teal-50: rgba(13, 148, 136, 0.18);
+  --sb-teal-100: rgba(13, 148, 136, 0.28);
+  --sb-teal-200: rgba(45, 212, 191, 0.32);
+  --sb-bg: #000000;
+  --sb-surface: #141414;
+  --sb-surface-hover: #1f1f1f;
+  --sb-border: #3d3d3f;
+  --sb-border-soft: #2a2a2a;
+  --sb-text: #cfd3dc;
+  --sb-text-heading: #e5eaf3;
+  --sb-muted: #a3a6ad;
+  --sb-shadow-sm: none;
+  --sb-shadow: none;
+  --sb-shadow-lg: none;
+  background: #000000 !important;
+  color: #cfd3dc !important;
+}
+
+html.dark .content-shell :is(.it-invoice-page) {
+  --white: #141414;
+  --gray-50: #1f1f1f;
+  --gray-100: #2a2a2a;
+  --gray-200: #3d3d3f;
+  --gray-300: #4c4d4f;
+  --gray-400: #a3a6ad;
+  --gray-500: #cfd3dc;
+  --gray-600: #cfd3dc;
+  --gray-700: #e5eaf3;
+  --gray-800: #e5eaf3;
+  --gray-900: #f5f7fa;
+  --blue-light: rgba(14, 165, 233, 0.16);
+  --green-light: rgba(16, 185, 129, 0.16);
+  --amber-light: rgba(245, 158, 11, 0.16);
+  --red-light: rgba(239, 68, 68, 0.16);
+  color: #cfd3dc !important;
+}
+
+html.dark .content-shell :is(.runs-page, .tpl-page) {
+  --white: #141414;
+  --slate-50: #1f1f1f;
+  --slate-100: #2a2a2a;
+  --slate-200: #3d3d3f;
+  --slate-300: #4c4d4f;
+  --slate-400: #a3a6ad;
+  --slate-500: #cfd3dc;
+  --slate-600: #cfd3dc;
+  --slate-700: #e5eaf3;
+  --slate-800: #e5eaf3;
+  --slate-900: #f5f7fa;
+  --teal-50: rgba(13, 148, 136, 0.18);
+  --green-50: rgba(34, 197, 94, 0.16);
+  --green-100: rgba(34, 197, 94, 0.22);
+  --red-50: rgba(239, 68, 68, 0.16);
+  --red-100: rgba(239, 68, 68, 0.22);
+  --amber-50: rgba(245, 158, 11, 0.16);
+  --sky-50: rgba(14, 165, 233, 0.16);
+}
+
+html.dark .content-shell :is(.sa, .pad, .iaa, .s2, .sa-page, .pad-page, .iaa-page, .s2-page, .wa-page, .web-automation-panel) {
+  --bg: #000000;
+  --card: #141414;
+  --panel: #141414;
+  --surface: #141414;
+  --surface-muted: #1f1f1f;
+  --surface-hover: #2a2a2a;
+  --br: #3d3d3f;
+  --line: #3d3d3f;
+  --a2: rgba(14, 165, 233, 0.16);
+  --em2: rgba(16, 185, 129, 0.16);
+  --text: #e5eaf3;
+  --ink: #e5eaf3;
+  --muted: #a3a6ad;
+  --mu: #a3a6ad;
+  --sub: #a3a6ad;
+  color: #cfd3dc !important;
+}
+
+/*
+  Dark child-page hardening.
+  Many legacy child pages use scoped CSS with literal light colors. These rules are
+  intentionally stronger than the earlier variable layer so dark mode reaches all
+  nested work surfaces without rewriting every page component.
+*/
+html.dark .content-shell :is(
+  .home-page,
+  .studio-page,
+  .runs-page,
+  .tpl-page,
+  .ru-page,
+  .settings-workbench,
+  .sb-workbench,
+  .sa-page,
+  .pad-page,
+  .iaa-page,
+  .s2-page,
+  .am-page,
+  .jane-page-container,
+  .it-invoice-page,
+  .wa-page,
+  .ap-shell,
+  .cap,
+  .acp,
+  .web-automation-panel,
+  .placeholder-page
+) {
+  background: transparent !important;
+  color: #e5eaf3 !important;
+}
+
+html.dark .content-shell :is(
+  [class$="-card"],
+  [class*="-card "],
+  [class$="__card"],
+  [class*="__card "],
+  [class$="-panel"],
+  [class*="-panel "],
+  [class$="__panel"],
+  [class*="__panel "],
+  [class$="-toolbar"],
+  [class*="-toolbar "],
+  [class$="__toolbar"],
+  [class*="__toolbar "],
+  [class$="-header"],
+  [class*="-header "],
+  [class$="__header"],
+  [class*="__header "],
+  [class$="-bar"],
+  [class*="-bar "],
+  [class$="__bar"],
+  [class*="__bar "],
+  [class$="-section"],
+  [class*="-section "],
+  [class$="__section"],
+  [class*="__section "],
+  [class$="-box"],
+  [class*="-box "],
+  [class$="__box"],
+  [class*="__box "],
+  [class$="-wrap"],
+  [class*="-wrap "],
+  [class$="__wrap"],
+  [class*="__wrap "],
+  [class$="-dock"],
+  [class*="-dock "],
+  [class$="__dock"],
+  [class*="__dock "],
+  [class$="-log"],
+  [class*="-log "],
+  [class$="-empty"],
+  [class*="-empty "],
+  [class$="-summary"],
+  [class*="-summary "],
+  [class$="-preview"],
+  [class*="-preview "],
+  .pad-card,
+  .pad-dock-card,
+  .pad-log,
+  .sa-card,
+  .sa-back-btn,
+  .sa-dock-card,
+  .sa-log,
+  .sa-tag,
+  .iaa-card,
+  .iaa-back-btn,
+  .iaa-dock-card,
+  .iaa-log,
+  .iaa-tag,
+  .s2-card,
+  .s2-back-btn,
+  .s2-bulk,
+  .s2-dock-card,
+  .s2-log,
+  .s2-tag,
+  .am-card,
+  .am-panel,
+  .ap-card,
+  .ap-search,
+  .ap-stat,
+  .jane-section,
+  .jane-toolbar,
+  .jane-stat,
+  .iplex-preview,
+  .file-requirement-guide,
+  .file-precheck-panel,
+  .process-history-panel,
+  .result-summary
+) {
+  background: #141414 !important;
+  border-color: #3d3d3f !important;
+  color: #e5eaf3 !important;
+  box-shadow: none !important;
+}
+
+html.dark .content-shell :is(.sa, .pad, .iaa, .s2) :is(
+  .el-button:not(.el-button--primary):not(.el-button--success):not(.el-button--warning):not(.el-button--danger),
+  .el-input__wrapper,
+  .el-select__wrapper,
+  .el-textarea__inner,
+  .el-dropdown,
+  .cap-panel,
+  .cap-profile-trigger,
+  .cap-profile-menu,
+  .cap-profile-option,
+  .cap-dialog,
+  .cap-confirm,
+  .cap-input,
+  .cap-btn:not(.cap-btn--primary):not(.cap-btn--danger),
+  .browser-visibility-switch__options,
+  .browser-visibility-switch__option,
+  .browser-visibility-switch__option--active,
+  .run-history-trigger,
+  .run-history-row,
+  .run-history-file,
+  .run-history-drawer,
+  .run-history-drawer__toolbar,
+  .run-history-files,
+  .acp-input,
+  .acp-combo-menu,
+  .acp-combo-option,
+  .acp-btn:not(.acp-btn--primary)
+) {
+  background: #1f1f1f !important;
+  border-color: #3d3d3f !important;
+  color: #cfd3dc !important;
+  box-shadow: none !important;
+}
+
+html.dark .content-shell :is(.sa, .pad, .iaa, .s2) :is(
+  .cap-profile-option--active,
+  .cap-profile-option__main:hover,
+  .browser-visibility-switch__option--active,
+  .run-history-trigger:hover,
+  .run-history-row:hover,
+  .run-history-row--active,
+  .run-history-file:hover,
+  .acp-combo-option:hover,
+  .acp-combo-option--active
+) {
+  background: rgba(var(--el-color-primary-rgb), 0.16) !important;
+  border-color: rgba(var(--el-color-primary-rgb), 0.36) !important;
+  color: var(--el-color-primary) !important;
+}
+
+html.dark .content-shell :is(.sa, .pad, .iaa, .s2) :is(
+  .cap-profile-trigger__icon,
+  .cap-dialog__icon,
+  .run-history-trigger__icon,
+  .sa-card__hd-ico,
+  .sa-dock__hd-icon,
+  .sa-step__n,
+  .iaa-card__hd-ico,
+  .iaa-dock__hd-icon,
+  .iaa-step__n,
+  .s2-bulk__hd-ico,
+  .s2-dock__hd-icon,
+  .s2-step__n,
+  .pad-card__icon,
+  .pad-dock-card__head .app-icon,
+  .pad-step__num,
+  .browser-visibility-switch__label .app-icon
+) {
+  background: rgba(var(--el-color-primary-rgb), 0.16) !important;
+  color: var(--el-color-primary) !important;
+}
+
+html.dark .content-shell :is(.sa, .pad, .iaa, .s2) :is(
+  .sa-btn:not(.sa-btn--pri):not(.sa-btn--primary):not(.sa-btn--execute):not(.sa-btn--run-unreleased):not(.sa-btn--run-released),
+  .pad-btn:not(.pad-btn--primary):not(.pad-btn--run),
+  .pad-back,
+  .pad-alert__close,
+  .pad-drop__clear,
+  .pad-input-btn,
+  .iaa-btn:not(.iaa-btn--pri):not(.iaa-btn--primary):not(.iaa-btn--execute),
+  .iaa-back,
+  .s2-btn:not(.s2-btn--pri):not(.s2-btn--primary):not(.s2-btn--run-unreleased):not(.s2-btn--run-released),
+  .s2-back,
+  .sa-back,
+  .sa-back-btn,
+  .iaa-back-btn,
+  .s2-back-btn
+) {
+  background: #1f1f1f !important;
+  border-color: #3d3d3f !important;
+  color: #cfd3dc !important;
+  box-shadow: none !important;
+}
+
+html.dark .content-shell :is(.sa, .pad, .iaa, .s2) :is(
+  .sa-btn--soft,
+  .pad-btn--template,
+  .iaa-btn--soft,
+  .s2-btn--soft
+) {
+  background: rgba(14, 165, 233, 0.14) !important;
+  border-color: rgba(14, 165, 233, 0.3) !important;
+  color: #7dd3fc !important;
+}
+
+html.dark .content-shell :is(.sa, .pad, .iaa, .s2) :is(
+  .sa-btn--danger-soft,
+  .iaa-btn--danger-soft,
+  .s2-btn--danger-soft
+) {
+  background: rgba(239, 68, 68, 0.14) !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+  color: #fca5a5 !important;
+}
+
+html.dark .content-shell :is(.sa, .pad, .iaa, .s2) :is(
+  .sa-card__hd,
+  .sa-card__bd,
+  .sa-card__ft,
+  .sa-dock__hd,
+  .sa-dock__bd,
+  .iaa-card__hd,
+  .iaa-card__bd,
+  .iaa-card__ft,
+  .iaa-dock__hd,
+  .iaa-dock__bd,
+  .s2-bulk__hd,
+  .s2-bulk__body,
+  .s2-bulk__status,
+  .s2-bulk__result,
+  .s2-dock__hd,
+  .s2-dock__bd,
+  .pad-card__head,
+  .pad-card__body,
+  .pad-card__footer,
+  .pad-dock-card__head,
+  .pad-dock-card__body,
+  .cap-dialog__head,
+  .run-history-drawer__head
+) {
+  background: transparent !important;
+  border-color: #3d3d3f !important;
+}
+
+html.dark .content-shell :is(.sa, .pad, .iaa, .s2) :is(
+  .sa-drop,
+  .sa-drop__ico,
+  .iaa-drop,
+  .iaa-drop__ico,
+  .s2-drop,
+  .s2-drop__ico,
+  .pad-drop,
+  .pad-drop__icon,
+  .pad-input,
+  .pad-input-wrap,
+  .pad-path
+) {
+  background: #1f1f1f !important;
+  border-color: #3d3d3f !important;
+  color: #cfd3dc !important;
+}
+
+html.dark .content-shell :is(.sa, .pad, .iaa, .s2) :is(
+  .sa-drop--on,
+  .iaa-drop--on,
+  .s2-drop--on,
+  .pad-drop--on,
+  .sa-pill--on,
+  .iaa-pill--on,
+  .s2-pill--on,
+  .pad-pill--ok,
+  .sa-chip--ok,
+  .iaa-chip--ok,
+  .s2-chip--ok,
+  .pad-chip--ok
+) {
+  background: rgba(16, 185, 129, 0.16) !important;
+  border-color: rgba(16, 185, 129, 0.38) !important;
+  color: #86efac !important;
+}
+
+html.dark .content-shell :is(.sa, .pad, .iaa, .s2) :is(
+  .sa-pill--off,
+  .iaa-pill--off,
+  .s2-pill--off
+) {
+  background: rgba(239, 68, 68, 0.14) !important;
+  border-color: rgba(239, 68, 68, 0.34) !important;
+  color: #fca5a5 !important;
+}
+
+html.dark .content-shell :is(.sa, .pad, .iaa, .s2) :is(
+  .sa-helper,
+  .iaa-helper,
+  .s2-helper,
+  .pad-helper,
+  .sa-chip--warn,
+  .iaa-chip--warn,
+  .s2-chip--warn,
+  .pad-chip--warn
+) {
+  background: rgba(245, 158, 11, 0.14) !important;
+  border-color: rgba(245, 158, 11, 0.34) !important;
+  color: #fbbf24 !important;
+}
+
+html.dark .content-shell :is(.sa, .pad, .iaa, .s2) :is(
+  .sa-step:hover,
+  .iaa-step:hover,
+  .s2-step:hover,
+  .pad-step:hover
+) {
+  background: #1f1f1f !important;
+}
+
+html.dark .content-shell :is(.sa, .pad, .iaa, .s2) :is(
+  h1,
+  h2,
+  h3,
+  strong,
+  em,
+  label,
+  .browser-visibility-switch__label,
+  .run-history-row__main b,
+  .run-history-files__head strong,
+  .cap-field > span,
+  .cap-profile-trigger__text strong,
+  .cap-profile-option__main strong,
+  .acp-combo-option strong
+) {
+  color: #e5eaf3 !important;
+}
+
+html.dark .content-shell :is(.sa, .pad, .iaa, .s2) :is(
+  p,
+  small,
+  .cap-profile-trigger__text small,
+  .cap-profile-option__main small,
+  .run-history-trigger__text small,
+  .run-history-row small,
+  .run-history-file small,
+  .run-history-empty,
+  .acp-combo-option small
+) {
+  color: #a3a6ad !important;
+}
+
+html.dark .content-shell :is(.wa-page, .ap-shell, .runs-page, .tpl-page) {
+  background: #000000 !important;
+  color: #cfd3dc !important;
+}
+
+html.dark .content-shell :is(.wa-page, .ap-shell, .runs-page, .tpl-page) :is(
+  .wa-hero,
+  .wa-search,
+  .wa-stat-chip,
+  .wa-card,
+  .wa-empty,
+  .wa-chip,
+  .wa-btn:not(.wa-btn--primary),
+  .ap-search,
+  .ap-badge,
+  .ap-stat,
+  .ap-card,
+  .ap-chip,
+  .ap-card__tag,
+  .ap-btn--ghost,
+  .ap-btn--soon,
+  .ap-btn--offline,
+  .ap-empty,
+  .runs-toolbar,
+  .metric-chip,
+  .card,
+  .card-head,
+  .badge,
+  .btn:not(.btn-primary),
+  .btn-icon,
+  .btn-ghost,
+  .select-trigger,
+  .select-menu,
+  .select-option,
+  .keyword-input input,
+  .editor-bar,
+  .toolbar-empty,
+  .selected-summary,
+  .template-type-group,
+  .template-type-pill,
+  .template-type-check,
+  .mini-input .el-input__wrapper,
+  .custom-select .el-select__wrapper
+) {
+  background: #141414 !important;
+  border-color: #3d3d3f !important;
+  color: #cfd3dc !important;
+  box-shadow: none !important;
+}
+
+html.dark .content-shell :is(.wa-page, .ap-shell, .runs-page, .tpl-page) :is(
+  .wa-search input,
+  .ap-search input,
+  .keyword-input input,
+  .el-input__inner,
+  .el-select__selected-item,
+  .el-select__placeholder
+) {
+  color: #cfd3dc !important;
+}
+
+html.dark .content-shell :is(.wa-page, .ap-shell, .runs-page, .tpl-page) :is(
+  .wa-search:focus-within,
+  .ap-search:focus-within,
+  .select-trigger:hover,
+  .select-option:hover,
+  .select-option.active,
+  .template-type-pill:hover:not(:disabled),
+  .template-type-pill.active,
+  .btn:hover:not(:disabled),
+  .btn-icon:hover:not(:disabled),
+  .btn-ghost:hover:not(:disabled),
+  .wa-btn:hover:not(:disabled):not(.wa-btn--primary),
+  .ap-btn--ghost:hover:not(:disabled)
+) {
+  background: rgba(var(--el-color-primary-rgb), 0.16) !important;
+  border-color: rgba(var(--el-color-primary-rgb), 0.36) !important;
+  color: var(--el-color-primary) !important;
+}
+
+html.dark .content-shell :is(.wa-page, .ap-shell, .runs-page, .tpl-page) :is(
+  .wa-tag--success,
+  .ap-card__tag--online,
+  .dot--success,
+  .template-type-pill.active .template-type-check
+) {
+  background: rgba(16, 185, 129, 0.16) !important;
+  border-color: rgba(16, 185, 129, 0.36) !important;
+  color: #86efac !important;
+}
+
+html.dark .content-shell :is(.wa-page, .ap-shell, .runs-page, .tpl-page) :is(
+  .wa-tag--warning,
+  .ap-card__tag--soon,
+  .dot--running
+) {
+  background: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(245, 158, 11, 0.36) !important;
+  color: #fbbf24 !important;
+}
+
+html.dark .content-shell :is(.wa-page, .ap-shell, .runs-page, .tpl-page) :is(
+  .wa-tag--danger,
+  .runs-error
+) {
+  background: rgba(239, 68, 68, 0.16) !important;
+  border-color: rgba(239, 68, 68, 0.36) !important;
+  color: #fca5a5 !important;
+}
+
+html.dark .content-shell :is(.wa-page, .ap-shell, .runs-page, .tpl-page) :is(
+  h1,
+  h2,
+  h3,
+  strong,
+  .wa-card__info strong,
+  .wa-stat-chip strong,
+  .ap-card__title,
+  .ap-stat__num,
+  .header-title h2,
+  .metric-value,
+  .card-head strong,
+  .toolbar-empty strong,
+  .selected-summary-text
+) {
+  color: #e5eaf3 !important;
+}
+
+html.dark .content-shell :is(.wa-page, .ap-shell, .runs-page, .tpl-page) :is(
+  p,
+  small,
+  span,
+  .wa-card__desc,
+  .wa-card__info span,
+  .wa-hero__count,
+  .wa-stat-chip__label,
+  .ap-card__desc,
+  .ap-card__sub,
+  .ap-stat__label,
+  .header-sub,
+  .metric-label,
+  .toolbar-empty span,
+  .selected-summary-sep
+) {
+  color: #a3a6ad !important;
+}
+
+html.dark .content-shell :is(.runs-page, .tpl-page) :is(
+  table,
+  thead,
+  tbody,
+  tr,
+  th,
+  td,
+  .table-wrap
+) {
+  background: #141414 !important;
+  border-color: #3d3d3f !important;
+  color: #cfd3dc !important;
+}
+
+html.dark .content-shell :is(.runs-page, .tpl-page) th {
+  background: #1f1f1f !important;
+  color: #e5eaf3 !important;
+}
+
+html.dark .content-shell .ru-page :is(
+  .ru-head,
+  .ru-stat,
+  .ru-toolbar,
+  .ru-timeline,
+  .ru-loading,
+  .ru-empty,
+  .ru-page-chip,
+  .ru-path,
+  .ru-record__dot
+) {
+  background: #141414 !important;
+  border-color: #3d3d3f !important;
+  color: #e5eaf3 !important;
+  box-shadow: none !important;
+}
+
+html.dark .content-shell .ru-page .ru-head {
+  background:
+    linear-gradient(145deg, rgba(20, 20, 20, 0.98), rgba(13, 39, 38, 0.72)) !important;
+}
+
+html.dark .content-shell .ru-page :is(.ru-source-note, .ru-alert) {
+  background: rgba(245, 158, 11, 0.14) !important;
+  border-color: rgba(245, 158, 11, 0.34) !important;
+  color: #fbbf24 !important;
+}
+
+html.dark .content-shell .ru-page :is(.ru-record__line) {
+  background: #3d3d3f !important;
+}
+
+html.dark .content-shell .ru-page :is(.ru-record__desc, .ru-version, .ru-date) {
+  color: #a3a6ad !important;
+}
+
+html.dark .content-shell .ru-page .ru-badge--added {
+  background: rgba(16, 185, 129, 0.18) !important;
+  color: #86efac !important;
+}
+
+html.dark .content-shell .ru-page .ru-badge--improved {
+  background: rgba(14, 165, 233, 0.18) !important;
+  color: #7dd3fc !important;
+}
+
+html.dark .content-shell .ru-page .ru-badge--fixed {
+  background: rgba(245, 158, 11, 0.18) !important;
+  color: #fbbf24 !important;
+}
+
+html.dark .content-shell .sb-workbench :is(
+  .sb-hero,
+  .sb-downloads,
+  .sb-card,
+  .sb-side-card,
+  .sb-status,
+  .sb-flow,
+  .sb-progress,
+  .sb-export-btn,
+  .st-lang-switch,
+  .st-lang-dropdown
+) {
+  background: #141414 !important;
+  border-color: #3d3d3f !important;
+  color: #cfd3dc !important;
+  box-shadow: none !important;
+}
+
+html.dark .content-shell .sb-workbench :is(.sb-status, .sb-flow, .sb-progress) {
+  background: #1f1f1f !important;
+}
+
+html.dark .content-shell .sb-workbench .sb-card--featured {
+  background:
+    linear-gradient(180deg, rgba(13, 148, 136, 0.12), #141414 42%) !important;
+}
+
+html.dark .content-shell .sb-workbench :is(.sb-hero__mode, .sb-pill, .sb-side-card__head-icon, .sb-card__icon-ring) {
+  background: rgba(var(--el-color-primary-rgb), 0.16) !important;
+  border-color: rgba(var(--el-color-primary-rgb), 0.32) !important;
+  color: var(--el-color-primary) !important;
+}
+
+html.dark .content-shell .sb-workbench :is(.sb-flow__node, .sb-card__features, .st-lang-option) {
+  color: #cfd3dc !important;
+}
+
+html.dark .content-shell .sb-workbench .st-lang-option:is(:hover, .st-lang-option--active) {
+  background: rgba(var(--el-color-primary-rgb), 0.16) !important;
+  color: var(--el-color-primary) !important;
+}
+
+html.dark .content-shell .it-invoice-page :is(
+  .page-header,
+  .fast-reorder-bar,
+  .mini-upload-slot,
+  .card-source-selector,
+  .card-audit,
+  .card--focus,
+  .log-card,
+  .card-header,
+  .tab-header-slider,
+  .tab-slider-bar,
+  .tab-pane-header,
+  .dropzone,
+  .dropzone-icon,
+  .dropzone-file-capsule,
+  .table-wrap,
+  .textarea,
+  .node,
+  .actions-section .btn,
+  .btn,
+  .badge,
+  .slot-clear-btn
+) {
+  background: #141414 !important;
+  border-color: #3d3d3f !important;
+  color: #cfd3dc !important;
+  box-shadow: none !important;
+}
+
+html.dark .content-shell .it-invoice-page :is(.card-header, .tab-header-slider, .dropzone, .mini-upload-slot) {
+  background: #1f1f1f !important;
+}
+
+html.dark .content-shell .it-invoice-page :is(.brand-icon, .lightning-icon, .card-icon, .dropzone-icon) {
+  background: rgba(var(--el-color-primary-rgb), 0.16) !important;
+  color: var(--el-color-primary) !important;
+}
+
+html.dark .content-shell .it-invoice-page :is(th, td) {
+  border-color: #3d3d3f !important;
+  color: #cfd3dc !important;
+}
+
+html.dark .content-shell .it-invoice-page th {
+  background: #1f1f1f !important;
+  color: #e5eaf3 !important;
+}
+
+html.dark .content-shell :is(
+  [class$="__head"],
+  [class*="__head "],
+  [class$="__body"],
+  [class*="__body "],
+  [class$="__footer"],
+  [class*="__footer "],
+  [class$="-head"],
+  [class*="-head "],
+  [class$="-body"],
+  [class*="-body "],
+  [class$="-footer"],
+  [class*="-footer "],
+  .sa-card__bd,
+  .sa-card__ft,
+  .pad-card__head,
+  .pad-card__body,
+  .pad-card__footer,
+  .pad-dock-card__head,
+  .pad-dock-card__body
+) {
+  border-color: #3d3d3f !important;
+}
+
+html.dark .content-shell :is(
+  input,
+  textarea,
+  select,
+  .el-input__wrapper,
+  .el-select__wrapper,
+  .el-textarea__inner,
+  .pad-input,
+  .sa-input,
+  .iaa-input,
+  .s2-input,
+  .jane-filter input,
+  .keyword-input,
+  .filter-field,
+  .upload-dropzone,
+  .el-upload-dragger,
+  .pad-drop,
+  .sa-drop,
+  .iaa-drop,
+  .s2-drop,
+  .file-drop,
+  .file-empty,
+  .file-row,
+  .file-group,
+  .history-row,
+  .summary-item,
+  .service-card,
+  .status-card
+) {
+  background: #1f1f1f !important;
+  border-color: #3d3d3f !important;
+  color: #cfd3dc !important;
+  box-shadow: none !important;
+}
+
+html.dark .content-shell :is(
+  .pad-btn,
+  .pad-back,
+  .pad-tag,
+  .sa-btn,
+  .sa-back,
+  .iaa-btn,
+  .iaa-back,
+  .s2-btn,
+  .s2-back,
+  .wa-btn,
+  .jane-toolbar__btn,
+  .file-action,
+  .history-action
+):not([class*="--run"]):not([class*="--primary"]):not([class*="--execute"]) {
+  background: #1f1f1f !important;
+  border-color: #3d3d3f !important;
+  color: #cfd3dc !important;
+}
+
+html.dark .content-shell :is(
+  .pad-btn,
+  .pad-back,
+  .sa-btn,
+  .sa-back,
+  .iaa-btn,
+  .iaa-back,
+  .s2-btn,
+  .s2-back,
+  .wa-btn,
+  .jane-toolbar__btn
+):not([class*="--run"]):not([class*="--primary"]):not([class*="--execute"]):hover:not(:disabled) {
+  background: #2a2a2a !important;
+  border-color: #4c4d4f !important;
+  color: #e5eaf3 !important;
+}
+
+html.dark .content-shell :is(
+  .pad-card__icon,
+  .pad-drop__icon,
+  .sa-card__hd-ico,
+  .sa-drop__ico,
+  .iaa-card__hd-ico,
+  .s2-card__hd-ico,
+  .file-upload-icon,
+  .profile-menu-icon
+) {
+  background: rgba(var(--el-color-primary-rgb), 0.18) !important;
+  color: var(--el-color-primary) !important;
+}
+
+html.dark .content-shell :is(
+  .pad-status,
+  .pad-alert,
+  .pad-helper,
+  .pad-progress,
+  .sa-status,
+  .sa-progress,
+  .sa-helper,
+  .iaa-status,
+  .s2-status,
+  .message-card,
+  .notice-card
+) {
+  background: #1f1f1f !important;
+  border-color: #3d3d3f !important;
+  color: #cfd3dc !important;
+}
+
+html.dark .content-shell :is(
+  .pad-pill--ok,
+  .pad-chip--ok,
+  .pad-status--ok,
+  .sa-status--success,
+  .s2-status--success,
+  .iaa-status--success,
+  [class*="--success"],
+  [class*="--ok"]
+) {
+  background: rgba(34, 197, 94, 0.14) !important;
+  border-color: rgba(34, 197, 94, 0.34) !important;
+  color: #86efac !important;
+}
+
+html.dark .content-shell :is(
+  .pad-chip--warn,
+  .pad-alert--warning,
+  .sa-status--warning,
+  .s2-status--warning,
+  .iaa-status--warning,
+  [class*="--warning"],
+  [class*="--warn"]
+) {
+  background: rgba(245, 158, 11, 0.14) !important;
+  border-color: rgba(245, 158, 11, 0.34) !important;
+  color: #fbbf24 !important;
+}
+
+html.dark .content-shell :is(
+  .pad-pill--off,
+  .pad-status--error,
+  .pad-alert--error,
+  .sa-status--error,
+  .s2-status--error,
+  .iaa-status--error,
+  [class*="--error"],
+  [class*="--danger"],
+  [class*="--err"]
+) {
+  background: rgba(239, 68, 68, 0.14) !important;
+  border-color: rgba(239, 68, 68, 0.34) !important;
+  color: #fca5a5 !important;
+}
+
+html.dark .content-shell :is(
+  .pad-status--info,
+  .pad-alert--info,
+  .sa-status--info,
+  .s2-status--info,
+  .iaa-status--info,
+  [class*="--info"]
+) {
+  background: rgba(14, 165, 233, 0.14) !important;
+  border-color: rgba(14, 165, 233, 0.34) !important;
+  color: #7dd3fc !important;
+}
+
+html.dark .content-shell :is(
+  h1,
+  h2,
+  h3,
+  h4,
+  strong,
+  b,
+  label,
+  .pad-field > span,
+  .sa-field > span,
+  .iaa-field > span,
+  .s2-field > span
+) {
+  color: #e5eaf3 !important;
+}
+
+html.dark .content-shell :is(
+  p,
+  small,
+  .muted,
+  .desc,
+  .description,
+  [class$="__desc"],
+  [class*="__desc "],
+  [class$="__sub"],
+  [class*="__sub "],
+  [class$="__subtitle"],
+  [class*="__subtitle "],
+  [class$="__meta"],
+  [class*="__meta "]
+) {
+  color: #a3a6ad !important;
+}
+
+html.dark .content-shell :is(.pad-progress__track, .sa-progress__track, .s2-progress__track, .iaa-progress__track) {
+  background: #2a2a2a !important;
+}
+
+html.dark .content-shell :is(.pad-dock-pre, pre, code) {
+  background: #0f0f10 !important;
+  border-color: #3d3d3f !important;
+  color: #cfd3dc !important;
 }
 
 html.dark .topbar,

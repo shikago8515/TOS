@@ -35,6 +35,7 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
     log,
     safePageTitle,
     safePageUrl,
+    showAutomationBadge,
     workbook,
   } = options;
 
@@ -65,6 +66,20 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
   let previewResult = createSkippedPreviewResult("not-reached");
   let currentInvoiceNumber = invoiceNumber;
   const processedInvoiceResults = [];
+  const showTcInvBadge = async (message, details = {}) => {
+    if (typeof showAutomationBadge !== "function") return;
+    await showAutomationBadge(page, {
+      title: "TC INV 自动化",
+      message,
+      details: {
+        phase: "tc-inv",
+        inputFileName,
+        invoiceNumber: currentInvoiceNumber || invoiceNumber,
+        totalCount: invoiceNumbersToProcess.length,
+        ...details,
+      },
+    });
+  };
 
   try {
     browser = await engine.launch(launchOptions);
@@ -73,15 +88,28 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
     page.setDefaultTimeout(config.navigationTimeoutMs);
     page.setDefaultNavigationTimeout(config.navigationTimeoutMs);
 
+    await showTcInvBadge("正在打开 Infor Nexus 登录页", {
+      phase: "open-login",
+    });
+
     await openLoginPageWithRetry(page, config, log, activeRun.runId);
+    await showTcInvBadge("正在确认 Infor Nexus 登录状态", {
+      phase: "login",
+    });
     await ensureLoggedIn(page, credentials);
     await page.waitForTimeout(config.postLoginWaitMs);
     homeOpened = true;
+    await showTcInvBadge("登录完成，正在打开 Invoices 页面", {
+      phase: "open-invoices",
+    });
     latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, "home");
 
     stage = "打开 Invoices 页面";
     const navigationMode = await openInvoicesPage(page, config, log, activeRun.runId);
     invoicesOpened = true;
+    await showTcInvBadge("Invoices 页面已打开", {
+      phase: "invoices-ready",
+    });
     latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, "invoices");
 
     for (let invoiceIndex = 0; invoiceIndex < invoiceNumbersToProcess.length; invoiceIndex += 1) {
@@ -97,16 +125,31 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
       try {
         if (invoiceIndex > 0) {
           stage = `返回 Invoices 页面 (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
+          await showTcInvBadge(`正在返回 Invoices 页面 (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`, {
+            phase: "open-invoices",
+            currentCount: invoiceOrdinal,
+            invoiceNumber: currentInvoiceNumber,
+          });
           await openInvoicesPage(page, config, log, activeRun.runId);
           latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, `invoices-${invoiceOrdinal}`);
         }
 
         stage = `输入 Invoice# ${currentInvoiceNumber} 并点击 Apply (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
+        await showTcInvBadge(`正在查询 Invoice ${currentInvoiceNumber}`, {
+          phase: "invoice-search",
+          currentCount: invoiceOrdinal,
+          invoiceNumber: currentInvoiceNumber,
+        });
         await applyInvoiceFilter(page, currentInvoiceNumber, config);
         invoiceFilterApplied = true;
         latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, `applied-${invoiceOrdinal}`);
 
         stage = `打开 Invoice ${currentInvoiceNumber} 详情页 (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
+        await showTcInvBadge(`正在打开 Invoice ${currentInvoiceNumber} 详情页`, {
+          phase: "invoice-detail",
+          currentCount: invoiceOrdinal,
+          invoiceNumber: currentInvoiceNumber,
+        });
         clickedInvoiceText = await openInvoiceDetail(page, currentInvoiceNumber, config);
         invoiceDetailOpened = true;
         latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, `detail-${invoiceOrdinal}`);
@@ -126,20 +169,42 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
             previewResult,
             finalUrl: safePageUrl(page),
           });
+          await showTcInvBadge(`Invoice ${currentInvoiceNumber} 已完成`, {
+            phase: "invoice-complete",
+            currentCount: invoiceOrdinal,
+            completedCount: processedInvoiceResults.filter((item) => item.ok).length,
+            failedCount: processedInvoiceResults.filter((item) => !item.ok).length,
+            invoiceNumber: currentInvoiceNumber,
+          });
           continue;
         }
 
         stage = `填 Cargo handover/FCR date (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
+        await showTcInvBadge(`正在处理 Invoice ${currentInvoiceNumber} 的 Cargo handover/FCR date`, {
+          phase: "invoice-date",
+          currentCount: invoiceOrdinal,
+          invoiceNumber: currentInvoiceNumber,
+        });
         cargoHandoverDateResult = await fillOptionalCargoHandoverFcrDate(page, currentPoddDate, config, log, activeRun.runId);
         if (cargoHandoverDateResult.attempted) {
           latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, `detail-podd-${invoiceOrdinal}`);
         }
 
         stage = `打开 Build 并录入费用 (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
+        await showTcInvBadge(`正在处理 Invoice ${currentInvoiceNumber} 的 Build 费用`, {
+          phase: "invoice-build",
+          currentCount: invoiceOrdinal,
+          invoiceNumber: currentInvoiceNumber,
+        });
         buildAdjustmentResult = await openBuildStepAndApplyAdjustments(page, currentInvoiceAdjustments, config, log, activeRun.runId);
         latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, `build-charge-${invoiceOrdinal}`);
 
         stage = `打开 Preview (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
+        await showTcInvBadge(`正在打开 Invoice ${currentInvoiceNumber} Preview`, {
+          phase: "invoice-preview",
+          currentCount: invoiceOrdinal,
+          invoiceNumber: currentInvoiceNumber,
+        });
         previewResult = await openPreviewStep(page, config, log, activeRun.runId, currentInvoiceNumber);
         latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, `preview-${invoiceOrdinal}`);
 
@@ -153,6 +218,13 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
           buildAdjustmentResult,
           previewResult,
           finalUrl: safePageUrl(page),
+        });
+        await showTcInvBadge(`Invoice ${currentInvoiceNumber} 已完成`, {
+          phase: "invoice-complete",
+          currentCount: invoiceOrdinal,
+          completedCount: processedInvoiceResults.filter((item) => item.ok).length,
+          failedCount: processedInvoiceResults.filter((item) => !item.ok).length,
+          invoiceNumber: currentInvoiceNumber,
         });
       } catch (invoiceError) {
         const invoiceErrorMessage = invoiceError instanceof Error ? invoiceError.message : String(invoiceError || "");
@@ -171,6 +243,13 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
           finalUrl: safePageUrl(page),
           latestScreenshotPath,
         });
+        await showTcInvBadge(`Invoice ${currentInvoiceNumber} 处理失败，已记录`, {
+          phase: "failed",
+          currentCount: invoiceOrdinal,
+          completedCount: processedInvoiceResults.filter((item) => item.ok).length,
+          failedCount: processedInvoiceResults.filter((item) => !item.ok).length,
+          invoiceNumber: currentInvoiceNumber,
+        });
         log("TC INV invoice failed, continuing with next invoice.", {
           runId: activeRun.runId,
           invoiceNumber: currentInvoiceNumber,
@@ -181,6 +260,18 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
     }
 
     const invoiceSummary = summarizeInvoiceResults(processedInvoiceResults, invoiceNumbersToProcess.length);
+    await showTcInvBadge(
+      invoiceSummary.failedInvoiceCount > 0
+        ? "TC INV 自动化已完成，存在失败记录"
+        : "TC INV 自动化已全部完成",
+      {
+        phase: invoiceSummary.failedInvoiceCount > 0 ? "failed" : "complete",
+        completedCount: invoiceSummary.completedInvoiceCount,
+        failedCount: invoiceSummary.failedInvoiceCount,
+        currentCount: invoiceSummary.attemptedInvoiceCount,
+        totalCount: invoiceSummary.attemptedInvoiceCount,
+      },
+    );
     const finalUrl = safePageUrl(page);
     const title = await safePageTitle(page);
     log("TC INV workflow opened invoice detail page.", {
@@ -249,6 +340,13 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
     const finalUrl = safePageUrl(page);
     const title = await safePageTitle(page);
     const invoiceSummary = summarizeInvoiceResults(processedInvoiceResults, invoiceNumbersToProcess.length);
+    await showTcInvBadge("TC INV 自动化失败，已记录错误信息", {
+      phase: "failed",
+      completedCount: invoiceSummary.completedInvoiceCount,
+      failedCount: invoiceSummary.failedInvoiceCount,
+      currentCount: invoiceSummary.attemptedInvoiceCount,
+      totalCount: invoiceSummary.attemptedInvoiceCount,
+    });
 
     if (page && config.keepBrowserOpenOnErrorMs > 0) {
       await page.waitForTimeout(config.keepBrowserOpenOnErrorMs).catch(() => {});
