@@ -9,6 +9,7 @@ import {
   postFormData,
   readResponseMessage,
   requestBackendJson,
+  type BackendTarget,
 } from '../../shared/api/backendClient'
 
 const moduleName = 'web-automation'
@@ -653,6 +654,7 @@ export async function fetchAutomationRuns(params: {
   keyword?: string
   page?: number
   pageSize?: number
+  backendTarget?: BackendTarget
 } = {}): Promise<{ runs: AutomationRunRecord[]; pagination: { page: number; pageSize: number; total: number } }> {
   const query = new URLSearchParams()
   if (params.automationId) query.set('automationId', params.automationId)
@@ -667,6 +669,7 @@ export async function fetchAutomationRuns(params: {
     pagination?: { page?: number; pageSize?: number; total?: number }
   }>({
     path: `/api/automation/runs?${query.toString()}`,
+    backendTarget: params.backendTarget,
   })
   return {
     runs: Array.isArray(payload.runs) ? payload.runs : [],

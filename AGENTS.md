@@ -64,9 +64,9 @@
 8. Excel 处理型页面优先复用 `shared/ui/excel-process`、`FilePrecheckPanel`、`ProcessHistoryPanel`、`ResultSummary`、`shared/process` 与 `shared/styles/jane-page.scss`；页面内只保留业务字段、按钮文案、API 参数映射、结果摘要转换和历史 module id 等差异。
 9. 当左侧导航和路由已经表达子流程时，不在页面内容区重复做大卡片式流程切换入口，除非产品明确要求。
 10. 当前前端已配置低侵入 ESLint 静态门禁，命令以 `tms-frontend/package.json` 为准，当前有 `npm run lint`、`npm run typecheck`、`npm run test` 和 `npm run build`；尚未配置 Prettier，不要在规则或报告中声称已经运行不存在的格式化命令。
-11. 本地开发默认前端入口 `npm run dev:frontend` 必须连接本机后端 `http://127.0.0.1:8000`；不得让默认 `dev` 脚本加载 `--mode server` 或 `tms-frontend/.env.server`。
-12. 只有显式运行 `npm run dev:frontend:server` 时，才允许读取 `tms-frontend/.env.server` 中的公开 `VITE_BACKEND_URL` 连接服务器后端；切换 local/server 模式前必须停止旧的 `5174` Vite 进程。
-13. 只有显式运行 `npm run dev:frontend:hybrid` 时，才使用“服务器共享数据接口 + 本地执行接口”的混合联调模式；入口和分流规则以 `docs/development-hybrid-backend.md` 为准。
+11. 本地开发默认前端入口 `npm run dev:frontend` 使用“服务器共享数据接口 + 本地执行接口”的 hybrid 模式；不得让默认 `dev` 脚本加载 `--mode server` 或 `tms-frontend/.env.server`。
+12. 纯本地后端联调必须显式运行 `npm run dev:frontend:local`；全量服务器联调必须显式运行 `npm run dev:frontend:server`，该模式才允许读取 `tms-frontend/.env.server` 中的公开 `VITE_BACKEND_URL`。
+13. `npm run dev:frontend` 与 `npm run dev:frontend:hybrid` 等价；切换 local/server/hybrid 模式前必须停止旧的 `5174` Vite 进程，分流规则以 `docs/development-hybrid-backend.md` 为准。
 14. 前端页面出现“无法连接后端服务”时，先检查 Vite 实际注入的 `import.meta.env`、当前 `5174` 前端启动模式和 `npm run check:backend-version`，不得直接判断为业务模块处理失败。
 15. 运行 `npm run version:bump`、切换分支、拉取同事更新或修改 `tms-backend/app_version.py` 后，先运行 `npm run dev:backend:restart` 和 `npm run check:backend-version`，再刷新本地 `5174` 前端页面，避免旧 `8000` 后端进程继续返回上一版本。
 

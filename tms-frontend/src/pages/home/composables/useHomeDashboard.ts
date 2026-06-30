@@ -250,11 +250,12 @@ export function useHomeDashboard() {
 
     try {
       const [automationResult, processHistoryResult] = await Promise.allSettled([
-        fetchAutomationRuns({ page: 1, pageSize: 80 }),
+        fetchAutomationRuns({ page: 1, pageSize: 80, backendTarget: 'remote' }),
         fetchPersistedProcessHistoryRecords({
           moduleIds: homeDashboardModules.map((module) => module.id),
           page: 1,
           pageSize: 80,
+          backendTarget: 'remote',
         }),
       ])
 
