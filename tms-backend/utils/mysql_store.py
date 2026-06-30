@@ -953,7 +953,7 @@ def upsert_process_history_record(record: dict[str, Any]) -> dict[str, Any]:
                   (activity_id, module_id, person_id, activity_type, activity_name,
                    status, status_label, message, technical_message, metadata_json,
                    duration_ms, created_at, source_system)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'frontend.process-history')
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                   module_id = VALUES(module_id),
                   person_id = VALUES(person_id),
@@ -981,6 +981,7 @@ def upsert_process_history_record(record: dict[str, Any]) -> dict[str, Any]:
                     json.dumps(metadata, ensure_ascii=False),
                     max(0, int(record.get("duration_ms") or 0)),
                     record.get("created_at"),
+                    record.get("source_system") or "frontend.process-history",
                 ),
             )
             if output_file:
@@ -1017,8 +1018,17 @@ def get_process_history_record(record_id: str) -> dict[str, Any] | None:
                        JSON_EXTRACT(ar.metadata_json, '$.inputFiles') AS input_files_json,
                        JSON_UNQUOTE(JSON_EXTRACT(ar.metadata_json, '$.outputFile')) AS output_file,
                        JSON_EXTRACT(ar.metadata_json, '$.summary') AS summary_json,
+                       af.file_id AS result_file_id,
+                       af.file_name AS result_file_name,
+                       af.content_type AS result_file_content_type,
+                       af.file_size AS result_file_size,
+                       af.sha256 AS result_file_sha256,
                        ar.created_at, ar.updated_at
                 FROM tos_activity_records ar
+                LEFT JOIN tos_activity_files af
+                  ON af.activity_id = ar.activity_id
+                 AND af.file_role = 'result_file'
+                 AND af.storage_provider = 'minio'
                 WHERE ar.activity_id = %s AND ar.activity_type <> 'automation'
                 LIMIT 1
                 """,
@@ -1053,10 +1063,19 @@ def list_process_history_records(
                        JSON_EXTRACT(ar.metadata_json, '$.inputFiles') AS input_files_json,
                        JSON_UNQUOTE(JSON_EXTRACT(ar.metadata_json, '$.outputFile')) AS output_file,
                        JSON_EXTRACT(ar.metadata_json, '$.summary') AS summary_json,
+                       af.file_id AS result_file_id,
+                       af.file_name AS result_file_name,
+                       af.content_type AS result_file_content_type,
+                       af.file_size AS result_file_size,
+                       af.sha256 AS result_file_sha256,
                        ar.created_at, ar.updated_at
                 FROM tos_activity_records ar
+                LEFT JOIN tos_activity_files af
+                  ON af.activity_id = ar.activity_id
+                 AND af.file_role = 'result_file'
+                 AND af.storage_provider = 'minio'
                 {where_clause}
-                ORDER BY created_at DESC, id DESC
+                ORDER BY ar.created_at DESC, ar.id DESC
                 LIMIT %s OFFSET %s
                 """,
                 tuple(params),
@@ -1151,6 +1170,94 @@ def insert_excel_upload_backup(backup: dict[str, Any]) -> dict[str, Any]:
             row = cursor.fetchone()
         connection.commit()
     return row or {}
+
+
+def insert_process_result_file(file_record: dict[str, Any]) -> dict[str, Any]:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO tos_activity_files
+                  (activity_id, file_role, file_role_label, storage_provider,
+                   bucket, object_key, file_name, content_type, file_size, sha256)
+                VALUES (%s, 'result_file', '结果文件', 'minio', %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                  bucket = VALUES(bucket),
+                  object_key = VALUES(object_key),
+                  file_name = VALUES(file_name),
+                  content_type = VALUES(content_type),
+                  file_size = VALUES(file_size),
+                  sha256 = VALUES(sha256)
+                """,
+                (
+                    file_record["request_id"],
+                    file_record["bucket"],
+                    file_record["object_key"],
+                    file_record.get("original_filename", ""),
+                    file_record.get("content_type", ""),
+                    file_record.get("file_size", 0),
+                    file_record.get("sha256", ""),
+                ),
+            )
+            file_id = cursor.lastrowid
+            if not file_id:
+                cursor.execute(
+                    """
+                    SELECT file_id AS id
+                    FROM tos_activity_files
+                    WHERE activity_id = %s
+                      AND file_role = 'result_file'
+                      AND object_key = %s
+                      AND file_name = %s
+                    LIMIT 1
+                    """,
+                    (
+                        file_record["request_id"],
+                        file_record["object_key"],
+                        file_record.get("original_filename", ""),
+                    ),
+                )
+                existing = cursor.fetchone() or {}
+                file_id = int(existing.get("id") or 0)
+            cursor.execute(
+                """
+                SELECT file_id AS id, activity_id AS request_id, file_role,
+                       bucket, object_key, file_name AS original_filename,
+                       content_type, file_size, sha256, created_at
+                FROM tos_activity_files
+                WHERE file_id = %s
+                LIMIT 1
+                """,
+                (file_id,),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    return row or {}
+
+
+def get_process_history_result_file(file_id: int) -> dict[str, Any] | None:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT af.file_id AS id, af.activity_id AS record_id, af.file_role,
+                       af.bucket, af.object_key, af.file_name AS original_filename,
+                       af.content_type, af.file_size, af.sha256, af.created_at
+                FROM tos_activity_files af
+                INNER JOIN tos_activity_records ar
+                  ON ar.activity_id = af.activity_id
+                WHERE af.file_id = %s
+                  AND af.file_role = 'result_file'
+                  AND af.storage_provider = 'minio'
+                  AND ar.activity_type <> 'automation'
+                LIMIT 1
+                """,
+                (file_id,),
+            )
+            row = cursor.fetchone()
+    return row
 
 
 def list_automation_run_files(run_id: str) -> list[dict[str, Any]]:

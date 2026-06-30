@@ -22,7 +22,10 @@ test('disables differential updater downloads for NSIS releases', () => {
 test('does not use GitHub releases as the default desktop update feed', () => {
   const mainSource = fs.readFileSync(mainProcessPath, 'utf8')
 
-  assert.match(mainSource, /DEFAULT_UPDATE_FEED_URL\s*=\s*''/)
+  assert.match(
+    mainSource,
+    /DEFAULT_UPDATE_FEED_URL\s*=\s*process\.env\.TOS_UPDATE_FEED_URL\s*\|\|\s*process\.env\.TMS_UPDATE_FEED_URL\s*\|\|\s*''/,
+  )
   assert.doesNotMatch(
     mainSource,
     /DEFAULT_UPDATE_FEED_URL\s*=\s*['"]https:\/\/github\.com\/shikago8515\/TOS\/releases\/latest\/download\//,

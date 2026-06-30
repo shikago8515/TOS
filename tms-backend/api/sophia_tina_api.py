@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from modules.sophia_tina_module import SophiaTinaModule
+from utils.excel_result_history import archive_process_output_history
 from utils.excel_upload_backup import ExcelUploadBackupContext
 from utils.file_utils import (
     copy_output_to_directory,
@@ -215,7 +216,13 @@ async def process_sophia_tina(
                 "working_count": result['working_count'],
                 "result_count": result.get('result_count', 0),
                 "diagnostics_count": result.get('diagnostics_count', 0),
-                "output_file": output_filename
+                "output_file": output_filename,
+                **archive_process_output_history(
+                    upload_dir=UPLOAD_DIR,
+                    module_id=MODULE_ID,
+                    request_id=request_id,
+                    output_filename=output_filename,
+                ),
             }
         else:
             return {

@@ -13,6 +13,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from modules.eric_module import EricModule
+from utils.excel_result_history import archive_process_output_history
 from utils.excel_upload_backup import ExcelUploadBackupContext
 from utils.file_utils import copy_upload_to_path
 
@@ -133,7 +134,13 @@ async def process_eric(
                 "message": result["message"],
                 "logs": result["logs"],
                 "row_count": result["row_count"],
-                "output_file": output_filename
+                "output_file": output_filename,
+                **archive_process_output_history(
+                    upload_dir=UPLOAD_DIR,
+                    module_id=MODULE_ID,
+                    request_id=request_id,
+                    output_filename=output_filename,
+                ),
             }
         return {
             "success": False,
@@ -211,6 +218,12 @@ async def reconcile_eric(
                 "difference_count": result["difference_count"],
                 "po_difference_count": result["po_difference_count"],
                 "size_check_count": result["size_check_count"],
+                **archive_process_output_history(
+                    upload_dir=UPLOAD_DIR,
+                    module_id=MODULE_ID,
+                    request_id=request_id,
+                    output_filename=output_filename,
+                ),
             }
 
         return {

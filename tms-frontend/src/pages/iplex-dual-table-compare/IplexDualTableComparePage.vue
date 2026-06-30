@@ -101,10 +101,13 @@ import {
   appendModuleHistory,
   clearModuleHistory,
   loadModuleHistory,
+  readProcessHistoryMetadata,
+  type BackendProcessHistoryMetadata,
   type ProcessHistoryRecord,
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
+import { useProcessHistoryResultDownload } from '../../shared/process/useProcessHistoryResultDownload'
 import {
   buildExcelFileGroups,
   ExcelProcessPageShell,
@@ -147,6 +150,20 @@ const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(iplexDualTableCompareModuleId),
 )
 const { text } = useAppLanguage()
+
+const {
+  hasProcessHistoryRecords,
+  latestHistoryResultRecord,
+  historyResultToolbarTitle,
+  downloadLatestHistoryResult,
+} = useProcessHistoryResultDownload({
+  historyRecords,
+  processing,
+  onError: (nextMessage) => {
+    success.value = false
+    message.value = nextMessage
+  },
+})
 
 const uploadFields = computed<ExcelFileField[]>(() => [
   {
@@ -217,6 +234,15 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     icon: 'download',
     visible: success.value && Boolean(resultFile.value),
     onClick: downloadResult,
+  },
+  {
+    id: 'download-history-result',
+    label: '下载历史结果',
+    icon: 'download-cloud',
+    visible: hasProcessHistoryRecords.value,
+    disabled: inspecting.value || processing.value || !latestHistoryResultRecord.value,
+    title: historyResultToolbarTitle.value,
+    onClick: downloadLatestHistoryResult,
   },
   {
     id: 'process',
@@ -305,7 +331,7 @@ async function startProcess(): Promise<void> {
     message.value = response.message
     summaryItems.value = buildIplexDualTableCompareSummary(response)
     previewRows.value = getIplexDualTablePreviewRows(response)
-    recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles)
+    recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles, response)
   } catch (error) {
     success.value = false
     message.value = readErrorMessage(error, '处理失败，请确认文件模板和固定业务列')
@@ -354,8 +380,10 @@ function recordHistory(
   status: ProcessHistoryStatus,
   startedAt: number,
   inputFiles: string[],
+  metadata: BackendProcessHistoryMetadata = {},
 ): void {
   historyRecords.value = appendModuleHistory({
+    ...readProcessHistoryMetadata(metadata),
     moduleId: iplexDualTableCompareModuleId,
     moduleName: iplexDualTableCompareModuleName,
     status,

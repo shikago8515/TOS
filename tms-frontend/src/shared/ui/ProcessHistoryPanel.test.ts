@@ -16,6 +16,14 @@ function extractCssRule(source: string, selector: string): string {
 }
 
 describe('ProcessHistoryPanel styles', () => {
+  it('keeps result downloads out of individual history rows', () => {
+    const source = readComponentSource()
+
+    expect(source).not.toContain('downloadHistoryResult(record)')
+    expect(source).not.toContain('downloadUrlAsFile')
+    expect(source).not.toContain('history-result-action')
+  })
+
   it('keeps history records inside an internal scroll region', () => {
     const source = readComponentSource()
     const historyListRule = extractCssRule(source, '.history-list')

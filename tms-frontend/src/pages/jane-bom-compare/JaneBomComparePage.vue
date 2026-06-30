@@ -47,10 +47,13 @@ import {
   appendModuleHistory,
   clearModuleHistory,
   loadModuleHistory,
+  readProcessHistoryMetadata,
+  type BackendProcessHistoryMetadata,
   type ProcessHistoryRecord,
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
+import { useProcessHistoryResultDownload } from '../../shared/process/useProcessHistoryResultDownload'
 import {
   buildExcelFileGroups,
   ExcelProcessPageShell,
@@ -86,6 +89,20 @@ const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(janeBomCompareModuleId),
 )
 const { text } = useAppLanguage()
+
+const {
+  hasProcessHistoryRecords,
+  latestHistoryResultRecord,
+  historyResultToolbarTitle,
+  downloadLatestHistoryResult,
+} = useProcessHistoryResultDownload({
+  historyRecords,
+  processing,
+  onError: (nextMessage) => {
+    success.value = false
+    message.value = nextMessage
+  },
+})
 
 const uploadFields = computed<ExcelFileField[]>(() => [
   {
@@ -147,6 +164,15 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     onClick: downloadResult,
   },
   {
+    id: 'download-history-result',
+    label: '下载历史结果',
+    icon: 'download-cloud',
+    visible: hasProcessHistoryRecords.value,
+    disabled: processing.value || !latestHistoryResultRecord.value,
+    title: historyResultToolbarTitle.value,
+    onClick: downloadLatestHistoryResult,
+  },
+  {
     id: 'process',
     label: processing.value ? '处理中...' : '开始核对',
     icon: processing.value ? 'loader' : 'shield-check',
@@ -205,7 +231,7 @@ async function startProcess(): Promise<void> {
       production: productionFiles.value.length,
       bomSummary: bomSummaryFiles.value.length,
     })
-    recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles)
+    recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles, response)
   } catch (error) {
     success.value = false
     message.value = readErrorMessage(error, '处理失败，请重试')
@@ -243,8 +269,10 @@ function recordHistory(
   status: ProcessHistoryStatus,
   startedAt: number,
   inputFiles: string[],
+  metadata: BackendProcessHistoryMetadata = {},
 ): void {
   historyRecords.value = appendModuleHistory({
+    ...readProcessHistoryMetadata(metadata),
     moduleId: janeBomCompareModuleId,
     moduleName: janeBomCompareModuleName,
     status,

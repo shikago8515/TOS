@@ -1,6 +1,6 @@
 import type { EricProcessResponse } from './ericApi'
 
-export const ericModuleId = 'excel-eric'
+export const ericModuleId = 'eric'
 export const ericModuleName = 'Excel数据处理整合工具 - Eric'
 
 export interface EricStatItem {

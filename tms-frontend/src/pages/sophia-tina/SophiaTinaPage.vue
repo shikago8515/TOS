@@ -48,10 +48,13 @@ import {
   appendModuleHistory,
   clearModuleHistory,
   loadModuleHistory,
+  readProcessHistoryMetadata,
+  type BackendProcessHistoryMetadata,
   type ProcessHistoryRecord,
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
+import { useProcessHistoryResultDownload } from '../../shared/process/useProcessHistoryResultDownload'
 import {
   buildExcelFileGroups,
   ExcelProcessPageShell,
@@ -86,6 +89,21 @@ const summaryItems = ref<ProcessSummaryItem[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(loadModuleHistory(sophiaTinaModuleId))
 const messageTone = ref<ExcelNoticeTone>('info')
 const { text } = useAppLanguage()
+
+const {
+  hasProcessHistoryRecords,
+  latestHistoryResultRecord,
+  historyResultToolbarTitle,
+  downloadLatestHistoryResult,
+} = useProcessHistoryResultDownload({
+  historyRecords,
+  processing,
+  onError: (nextMessage) => {
+    success.value = false
+    messageTone.value = 'error'
+    message.value = nextMessage
+  },
+})
 
 const uploadFields = computed<ExcelFileField[]>(() => [
   {
@@ -175,6 +193,15 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     onClick: downloadResult,
   },
   {
+    id: 'download-history-result',
+    label: '下载历史结果',
+    icon: 'download-cloud',
+    visible: hasProcessHistoryRecords.value,
+    disabled: processing.value || !latestHistoryResultRecord.value,
+    title: historyResultToolbarTitle.value,
+    onClick: downloadLatestHistoryResult,
+  },
+  {
     id: 'process',
     label: processing.value ? '合并中...' : '开始合并',
     icon: processing.value ? 'loader' : 'play-circle',
@@ -253,7 +280,7 @@ async function startProcess(): Promise<void> {
       allocation: allocationFiles.value.length,
       shipmentMethod: shipmentMethodFiles.value.length,
     })
-    recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles)
+    recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles, response)
   } catch (error) {
     success.value = false
     messageTone.value = 'error'
@@ -296,8 +323,10 @@ function recordHistory(
   status: ProcessHistoryStatus,
   startedAt: number,
   inputFiles: string[],
+  metadata: BackendProcessHistoryMetadata = {},
 ): void {
   historyRecords.value = appendModuleHistory({
+    ...readProcessHistoryMetadata(metadata),
     moduleId: sophiaTinaModuleId,
     moduleName: sophiaTinaModuleName,
     status,

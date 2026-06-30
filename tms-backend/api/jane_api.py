@@ -17,6 +17,10 @@ from fastapi.responses import FileResponse
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from modules.jane_module import JaneModule
+from utils.excel_result_history import (
+    archive_excel_result_history,
+    process_history_response_fields,
+)
 from utils.excel_upload_backup import ExcelUploadBackupContext
 from utils.file_utils import (
     copy_output_to_directory,
@@ -90,6 +94,16 @@ def _backup_context(
     )
 
 
+def _archive_result_history(output_filename: str, request_id: str) -> dict[str, object]:
+    payload = archive_excel_result_history(
+        file_path=os.path.join(UPLOAD_DIR, output_filename),
+        module_id=MODULE_ID,
+        request_id=request_id,
+        original_filename=output_filename,
+    )
+    return process_history_response_fields(request_id, payload)
+
+
 @router.post("/test")
 async def test_jane(
     tms_file: UploadFile = File(...),
@@ -143,6 +157,7 @@ async def test_jane(
                 "logs": sanitize_output_logs(result.get("logs", []), output_path, output_filename),
                 "output_path": output_filename,
                 "output_file": output_filename,
+                **_archive_result_history(output_filename, request_id),
             }
         return result
     except HTTPException:
@@ -211,7 +226,8 @@ async def process_jane(
                 "message": _public_message(result['message'], output_path, output_filename),
                 "logs": sanitize_output_logs(result['logs'], output_path, output_filename),
                 "working_count": result['working_count'],
-                "output_file": output_filename
+                "output_file": output_filename,
+                **_archive_result_history(output_filename, request_id),
             }
         else:
             return {

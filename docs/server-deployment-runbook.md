@@ -173,6 +173,15 @@ mc ilm rule add ALIAS/tos-upload-backups --expire-days 180
 mc ilm rule ls ALIAS/tos-upload-backups
 ```
 
+Excel 处理结果历史文件保存到 `tos-results` bucket，MySQL 索引写入 `tos_activity_files`，`file_role='result_file'`。本地后端只调用服务器归档接口 `/api/process-history/result-files`，不得直连本机 MinIO 或在前端保存服务器写入 token。服务器应为结果历史预留 180 天清理策略：
+
+```bash
+mc ilm rule add ALIAS/tos-results --expire-days 180 --prefix process-results/
+mc ilm rule ls ALIAS/tos-results
+```
+
+服务器后端需要配置 `TOS_PROCESS_HISTORY_WRITE_TOKEN`，本地后端需要配置同值对应的 `TOS_PROCESS_HISTORY_ARCHIVE_TOKEN` 和服务器归档地址 `TOS_PROCESS_HISTORY_ARCHIVE_URL`。这些值只放在服务器私有环境变量、部署私有配置或本机私有启动环境中，不写入仓库。
+
 `ALIAS` 使用服务器 MinIO client 已配置的别名，不要把 MinIO access key 或 secret key 写入仓库、命令记录或交付文档。
 
 替换 TOS 桌面安装包时，先删除旧的 TOS desktop 对象：
@@ -194,6 +203,7 @@ tos-desktop-full/installers/*
 https://ai.tomwell.net:56130/tos/tos-desktop/download
 https://ai.tomwell.net:56130/tos/tos-desktop-full/download
 https://ai.tomwell.net:56130/tos/automation-helper/download
+https://ai.tomwell.net:56130/tos/desktop-api/api/process-history/files/{file_id}/download
 ```
 
 ## 从 Gitea main 默认部署

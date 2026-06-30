@@ -46,6 +46,8 @@
             </article>
           </div>
         </section>
+
+        <ProcessHistoryPanel :records="historyRecords" @clear="clearHistory" />
       </div>
     </div>
   </ExcelProcessPageShell>
@@ -55,8 +57,19 @@
 import { computed, ref } from 'vue'
 
 import { readErrorMessage } from '../../shared/api/backendClient'
-import { areRequiredFilesReady } from '../../shared/files/fileGroups'
+import { serializeInputFiles } from '../../shared/files/fileGroups'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
+import {
+  appendModuleHistory,
+  clearModuleHistory,
+  loadModuleHistory,
+  readProcessHistoryMetadata,
+  type BackendProcessHistoryMetadata,
+  type ProcessHistoryRecord,
+  type ProcessHistoryStatus,
+  type ProcessSummaryItem,
+} from '../../shared/process/processHistory'
+import { useProcessHistoryResultDownload } from '../../shared/process/useProcessHistoryResultDownload'
 import {
   buildExcelFileGroups,
   ExcelProcessPageShell,
@@ -68,6 +81,7 @@ import {
   type ExcelToolbarAction,
 } from '../../shared/ui/excel-process'
 import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
+import ProcessHistoryPanel from '../../shared/ui/ProcessHistoryPanel.vue'
 import {
   downloadEricResult,
   processEricFile,
@@ -75,6 +89,8 @@ import {
 } from './ericApi'
 import {
   buildEricStats,
+  ericModuleId,
+  ericModuleName,
   readEricDifferenceCount,
   readEricRowCount,
 } from './ericModel'
@@ -89,7 +105,23 @@ const logs = ref<string[]>([])
 const outputFile = ref('')
 const rowCount = ref('-')
 const differenceCount = ref('-')
+const historyRecords = ref<ProcessHistoryRecord[]>(loadModuleHistory(ericModuleId))
 const { text } = useAppLanguage()
+
+const {
+  hasProcessHistoryRecords,
+  latestHistoryResultRecord,
+  historyResultToolbarTitle,
+  downloadLatestHistoryResult,
+} = useProcessHistoryResultDownload({
+  historyRecords,
+  processing,
+  onError: (nextMessage) => {
+    success.value = false
+    message.value = nextMessage
+    logs.value = [nextMessage]
+  },
+})
 
 const packFile = computed(() => packFiles.value[0] ?? null)
 const yticFile = computed(() => yticFiles.value[0] ?? null)
@@ -139,6 +171,13 @@ const pageStats = computed<ExcelPageStat[]>(() => [
     iconText: 'ST',
     tone: success.value === true ? 'green' : success.value === false ? 'orange' : 'slate',
   },
+  {
+    id: 'history-records',
+    label: '处理记录',
+    value: historyRecords.value.length,
+    iconText: 'HI',
+    tone: 'slate',
+  },
 ])
 
 const toolbarStatus = computed(() => {
@@ -167,6 +206,15 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     icon: 'download',
     visible: success.value === true && Boolean(outputFile.value),
     onClick: downloadResult,
+  },
+  {
+    id: 'download-history-result',
+    label: '下载历史结果',
+    icon: 'download-cloud',
+    visible: hasProcessHistoryRecords.value,
+    disabled: processing.value || !latestHistoryResultRecord.value,
+    title: historyResultToolbarTitle.value,
+    onClick: downloadLatestHistoryResult,
   },
   {
     id: 'reconcile',
@@ -250,6 +298,9 @@ function validateYtic(): boolean {
 async function startReconcile(): Promise<void> {
   if (processing.value || !validatePack() || !validateYtic() || !packFile.value || !yticFile.value) return
 
+  const startedAt = Date.now()
+  const inputFiles = serializeInputFiles(fileGroups.value)
+
   processing.value = true
   resetResultState()
 
@@ -261,10 +312,12 @@ async function startReconcile(): Promise<void> {
       },
     )
     applyResponse(response, '核对完成', '核对失败')
+    recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles, response)
   } catch (error) {
     success.value = false
     message.value = readErrorMessage(error, '核对失败')
     logs.value = [message.value]
+    recordHistory('error', startedAt, inputFiles)
   } finally {
     processing.value = false
   }
@@ -272,6 +325,9 @@ async function startReconcile(): Promise<void> {
 
 async function startFinalDataOnly(): Promise<void> {
   if (processing.value || !validatePack() || !packFile.value) return
+
+  const startedAt = Date.now()
+  const inputFiles = serializeInputFiles(fileGroups.value)
 
   processing.value = true
   resetResultState()
@@ -284,10 +340,12 @@ async function startFinalDataOnly(): Promise<void> {
       },
     )
     applyResponse(response, 'Final_Data 生成完成', 'Final_Data 生成失败')
+    recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles, response)
   } catch (error) {
     success.value = false
     message.value = readErrorMessage(error, 'Final_Data 生成失败')
     logs.value = [message.value]
+    recordHistory('error', startedAt, inputFiles)
   } finally {
     processing.value = false
   }
@@ -315,6 +373,33 @@ function resetForm(): void {
 
 async function downloadResult(): Promise<void> {
   if (outputFile.value) await downloadEricResult(outputFile.value)
+}
+
+function recordHistory(
+  status: ProcessHistoryStatus,
+  startedAt: number,
+  inputFiles: string[],
+  metadata: BackendProcessHistoryMetadata = {},
+): void {
+  historyRecords.value = appendModuleHistory({
+    ...readProcessHistoryMetadata(metadata),
+    moduleId: ericModuleId,
+    moduleName: ericModuleName,
+    status,
+    durationMs: Date.now() - startedAt,
+    message: message.value || (status === 'success' ? '处理完成' : '处理失败'),
+    inputFiles,
+    outputFile: outputFile.value,
+    summary: statItems.value.map<ProcessSummaryItem>((item) => ({
+      label: item.label,
+      value: item.value,
+    })),
+  })
+}
+
+function clearHistory(): void {
+  clearModuleHistory(ericModuleId)
+  historyRecords.value = []
 }
 </script>
 

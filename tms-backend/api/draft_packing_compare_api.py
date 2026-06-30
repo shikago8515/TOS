@@ -13,6 +13,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from modules.draft_packing_compare_module import DraftPackingCompareModule
+from utils.excel_result_history import archive_process_output_history
 from utils.file_utils import (
     copy_output_to_directory,
     copy_upload_to_path,
@@ -28,6 +29,7 @@ draft_packing_compare_module = DraftPackingCompareModule()
 logger = logging.getLogger(__name__)
 
 ALLOWED_PDF_EXTENSIONS = {".pdf"}
+MODULE_ID = "draft-packing-compare"
 PROCESSING_ERROR_MESSAGE = "处理失败，请查看诊断日志或稍后重试"
 
 UPLOAD_DIR = os.path.join(
@@ -96,7 +98,8 @@ async def process_draft_packing_compare(
 ):
     """处理产地证与 Packing List PDF 核对。"""
 
-    work_dir = os.path.join(UPLOAD_DIR, f"draft_packing_compare_{uuid4().hex}")
+    request_id = uuid4().hex
+    work_dir = os.path.join(UPLOAD_DIR, f"draft_packing_compare_{request_id}")
     os.makedirs(work_dir, exist_ok=True)
 
     try:
@@ -144,6 +147,12 @@ async def process_draft_packing_compare(
             "sheet_count": result.get("sheet_count", 1),
             "draft_file_count": result.get("draft_file_count", len(draft_paths)),
             "packing_file_count": result.get("packing_file_count", len(packing_paths)),
+            **archive_process_output_history(
+                upload_dir=UPLOAD_DIR,
+                module_id=MODULE_ID,
+                request_id=request_id,
+                output_filename=output_filename,
+            ),
         }
     except HTTPException:
         raise
