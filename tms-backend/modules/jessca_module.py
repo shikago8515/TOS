@@ -241,6 +241,16 @@ class PackingComparisonRow:
 class JesscaModule:
     """Jessca 数据核对业务逻辑"""
 
+    FTY_DOCUMENTATION_CHARGE_LABELS: Set[str] = {
+        "DOCUMENTATIONCHARGE",
+        "DOCUMENTCHARGE",
+        "DOCCHARGE",
+        "DOCCHG",
+        "DOCUMENTATIONFEE",
+        "DOCUMENTFEE",
+        "DOCFEE",
+    }
+
     def __init__(self):
         pass
 
@@ -324,21 +334,25 @@ class JesscaModule:
                 self._normalize_invoice_text(adapter.get_cell_value(row_idx, col_idx))
                 for col_idx in range(adapter.get_col_count(row_idx))
             ]
-            labels = [text.strip().upper() for text in row_texts]
+            labels = {
+                self._normalize_invoice_summary_label(text)
+                for text in row_texts
+                if text
+            }
             if "TOTAL" in labels:
                 total_quantity = self._extract_total_quantity(adapter, row_idx)
                 total_amount = self._extract_last_numeric_value(adapter, row_idx)
                 currency = currency or self._extract_currency_from_row(adapter, row_idx)
-            if "FREIGHT CHARGE" in labels:
+            if "FREIGHTCHARGE" in labels:
                 freight_charge = self._extract_last_numeric_value(adapter, row_idx)
                 currency = currency or self._extract_currency_from_row(adapter, row_idx)
-            if "DOCUMENTATION CHARGE" in labels:
+            if self.FTY_DOCUMENTATION_CHARGE_LABELS & labels:
                 documentation_charge = self._extract_last_numeric_value(adapter, row_idx)
                 currency = currency or self._extract_currency_from_row(adapter, row_idx)
-            if "AGREED DISCOUNT" in labels:
+            if "AGREEDDISCOUNT" in labels:
                 agreed_discount = self._extract_last_numeric_value(adapter, row_idx)
                 currency = currency or self._extract_currency_from_row(adapter, row_idx)
-            if "FINAL TOTAL" in labels:
+            if "FINALTOTAL" in labels:
                 final_total_amount = self._extract_last_numeric_value(adapter, row_idx)
                 currency = currency or self._extract_currency_from_row(adapter, row_idx)
 
@@ -535,6 +549,11 @@ class JesscaModule:
         text = str(value or "").strip().upper()
         text = re.sub(r"\s+", "", text)
         return text.rstrip(":：")
+
+    @staticmethod
+    def _normalize_invoice_summary_label(value: Any) -> str:
+        text = str(value or "").strip().upper()
+        return re.sub(r"[^A-Z0-9]+", "", text)
 
     @staticmethod
     def _normalize_invoice_text(value: Any) -> str:

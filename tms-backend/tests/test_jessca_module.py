@@ -281,6 +281,28 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(summary.final_total_amount, 6301.06)
         self.assertEqual(summary.currency, "USD")
 
+    def test_read_invoice_summary_accepts_doc_charge_alias(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            invoice_path = os.path.join(temp_dir, "invoice.xlsx")
+            wb = Workbook()
+            ws = wb.active
+            ws.append(["PO NO.", "STOCK NO.", "COLOR", "DESCRIPTIONS", None, "QTY(PC)", "UNIT PRICE(PC)", None, "FOB"])
+            ws.append(["KID'S WOVEN DENIM JACKET,MAIN MATERIAL:100% COTTON"])
+            ws.append(["PO#", "0902638287", None, None, None, 100, "USD", 26.65, "USD", 2665.0])
+            ws.append(["ARTICLE NO.:", "KS1734"])
+            ws.append(["STYLE NO.:", "OJF26250703"])
+            ws.append([])
+            ws.append([None, None, "Total", None, None, 100, None, None, "USD", 2665.0])
+            ws.append([None, None, "FREIGHT CHARGE", None, None, None, None, None, "USD", 45.0])
+            ws.append([None, None, "DOC CHARGE", None, None, None, None, None, "USD", 100.0])
+            ws.append([None, None, "Final Total", None, None, None, None, None, "USD", 2810.0])
+            wb.save(invoice_path)
+
+            records = self.module.read_invoice_records(invoice_path)
+            summary = self.module.read_invoice_summary(invoice_path, records)
+
+        self.assertEqual(summary.documentation_charge, 100.0)
+
     def test_parse_optional_number_treats_parentheses_as_negative(self):
         self.assertEqual(self.module._parse_optional_number("(795.31)"), -795.31)
         self.assertEqual(
