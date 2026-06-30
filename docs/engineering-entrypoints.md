@@ -34,11 +34,11 @@
 
 ## 开发入口
 
-日常前端开发默认使用本地后端模式：`npm run dev:frontend` 必须连接 `http://127.0.0.1:8000`，不得读取 `tms-frontend/.env.server`。远程服务器联调必须显式使用 `npm run dev:frontend:server`，该模式才会读取 `tms-frontend/.env.server` 的公开 `VITE_BACKEND_URL`；Hybrid 联调必须显式使用 `npm run dev:frontend:hybrid`，用于“服务器共享数据接口 + 本地执行接口”的混合场景，具体分流规则见 `docs/development-hybrid-backend.md`。这些模式都占用 `http://127.0.0.1:5174`，同一时间只能运行一种模式；切换模式前先停止旧 Vite 进程。
+日常前端开发默认使用 Hybrid 模式：`npm run dev:frontend` 与 `npm run dev:frontend:hybrid` 等价，用于“服务器共享数据接口 + 本地执行接口”的混合场景，具体分流规则见 `docs/development-hybrid-backend.md`。纯本地后端联调必须显式使用 `npm run dev:frontend:local`，连接 `http://127.0.0.1:8000`；远程服务器联调必须显式使用 `npm run dev:frontend:server`，该模式才会读取 `tms-frontend/.env.server` 的公开 `VITE_BACKEND_URL`。这些模式都占用 `http://127.0.0.1:5174`，同一时间只能运行一种模式；切换模式前先停止旧 Vite 进程。
 
 | 命令 | 等价子项目命令 |
 | --- | --- |
-| `npm run dev:frontend` | `node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev`，默认本地后端模式 |
+| `npm run dev:frontend` | `node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev:hybrid`，默认 Hybrid 联调模式 |
 | `npm run dev:frontend:server` | `node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev:server`，显式服务器联调模式 |
 | `npm run dev:frontend:hybrid` | `node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev:hybrid`，显式 Hybrid 联调模式 |
 | `npm run dev:frontend:local` | `node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev:local`，显式本地后端模式 |
@@ -49,7 +49,7 @@
 
 1. `Invoke-RestMethod http://127.0.0.1:8000/` 能返回当前 `app-version.json` 版本。
 2. `npm run check:backend-version` 通过。
-3. Vite 实际输出的 `import.meta.env` 是否符合当前启动模式；只有 `dev:frontend:server` 和 `dev:frontend:hybrid` 会读取服务器后端相关公开配置。
+3. Vite 实际输出的 `import.meta.env` 是否符合当前启动模式；只有 `dev:frontend` / `dev:frontend:hybrid` 和 `dev:frontend:server` 会读取服务器后端相关公开配置。
 4. `netstat -ano | Select-String -Pattern ':5174|:8000'` 显示当前本地前后端进程符合预期。
 
 ## 边界

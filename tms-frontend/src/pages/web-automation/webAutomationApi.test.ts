@@ -4,6 +4,7 @@ import type { AutomationAppInfo } from '../../types/electronApi'
 import {
   createAutomationRunRecord,
   downloadAutomationRunFile,
+  fetchAutomationRuns,
   finishAutomationRunRecord,
   formatAutomationLauncherErrorMessage,
   getAutomationHelperUpdateMessage,
@@ -228,6 +229,9 @@ describe('webAutomationApi', () => {
     const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
     const originalXMLHttpRequest = globalThis.XMLHttpRequest
     const requests: Array<{ method: string; url: string; fields: Record<string, string>; hasSourceFile: boolean }> = []
+    vi.stubEnv('VITE_BACKEND_ROUTING_MODE', 'hybrid')
+    vi.stubEnv('VITE_REMOTE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos/desktop-api/')
+    vi.stubEnv('VITE_LOCAL_BACKEND_URL', 'http://127.0.0.1:8000/')
 
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
@@ -281,6 +285,7 @@ describe('webAutomationApi', () => {
       expect(requests).toHaveLength(1)
       expect(requests[0]).toMatchObject({
         method: 'POST',
+        url: 'http://127.0.0.1:8000/api/automation/runs',
         fields: {
           automation_id: 'ticket-owner-statistics',
           module_id: 'ticket-owner-statistics',
@@ -289,9 +294,9 @@ describe('webAutomationApi', () => {
         },
         hasSourceFile: false,
       })
-      expect(requests[0].url).toContain('/api/automation/runs')
     } finally {
       globalThis.XMLHttpRequest = originalXMLHttpRequest
+      vi.unstubAllEnvs()
       if (originalWindowDescriptor) {
         Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
       } else {
@@ -304,6 +309,9 @@ describe('webAutomationApi', () => {
     const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
     const originalFetch = globalThis.fetch
     const requests: Array<{ method: string; url: string; body: any }> = []
+    vi.stubEnv('VITE_BACKEND_ROUTING_MODE', 'hybrid')
+    vi.stubEnv('VITE_REMOTE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos/desktop-api/')
+    vi.stubEnv('VITE_LOCAL_BACKEND_URL', 'http://127.0.0.1:8000/')
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
       value: {
@@ -350,7 +358,7 @@ describe('webAutomationApi', () => {
       expect(payload.files[0].downloadPath).toBe('/api/automation/run-files/172/download')
       expect(requests).toHaveLength(1)
       expect(requests[0].method).toBe('PATCH')
-      expect(requests[0].url).toContain('/api/automation/runs/run-ticket-1')
+      expect(requests[0].url).toBe('http://127.0.0.1:8000/api/automation/runs/run-ticket-1')
       expect(requests[0].body.resultFiles).toEqual([{
         url: 'http://127.0.0.1:3002/artifacts/result.xlsx',
         fileRole: 'result_excel',
@@ -359,6 +367,58 @@ describe('webAutomationApi', () => {
       }])
     } finally {
       globalThis.fetch = originalFetch
+      vi.unstubAllEnvs()
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
+  })
+
+  it('can read automation runs from the remote backend when requested', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const originalFetch = globalThis.fetch
+    const requests: Array<{ method: string; url: string }> = []
+    vi.stubEnv('VITE_BACKEND_ROUTING_MODE', 'hybrid')
+    vi.stubEnv('VITE_REMOTE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos/desktop-api/')
+    vi.stubEnv('VITE_LOCAL_BACKEND_URL', 'http://127.0.0.1:8000/')
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location: { pathname: '/' },
+      },
+    })
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        method: String(init?.method || 'GET'),
+        url: String(input),
+      })
+      return new Response(JSON.stringify({
+        runs: [{ runId: 'remote-run-1', automationId: 'shipping-automation', moduleId: 'shipping-automation' }],
+        pagination: { page: 1, pageSize: 1, total: 1 },
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      })
+    }) as typeof fetch
+
+    try {
+      const payload = await fetchAutomationRuns({
+        page: 1,
+        pageSize: 1,
+        backendTarget: 'remote',
+      })
+
+      expect(payload.runs).toHaveLength(1)
+      expect(requests).toHaveLength(1)
+      expect(requests[0]).toEqual({
+        method: 'GET',
+        url: 'https://ai.tomwell.net:56130/tos/desktop-api/api/automation/runs?page=1&pageSize=1',
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+      vi.unstubAllEnvs()
       if (originalWindowDescriptor) {
         Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
       } else {

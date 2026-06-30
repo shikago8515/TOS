@@ -10,8 +10,8 @@ TOS 是一个 Windows x64 桌面工具，当前源码工作区由三部分组成
 
 ## 当前工程事实
 
-- 后端入口是 `tms-backend/main.py`，默认监听 `http://127.0.0.1:8000`，用于本机后端联调和 local dev。
-- 前端开发服务器由 `tms-frontend/package.json` 定义，当前是 `http://127.0.0.1:5174`；默认 `dev:frontend` 连接本地后端 `http://127.0.0.1:8000`，服务器联调必须显式使用 `dev:frontend:server`，混合联调使用 `dev:frontend:hybrid`，入口细节见 `docs/engineering-entrypoints.md` 和 `docs/development-hybrid-backend.md`。
+- 后端入口是 `tms-backend/main.py`，默认监听 `http://127.0.0.1:8000`，用于本机执行、Excel/PDF 处理和显式 local dev。
+- 前端开发服务器由 `tms-frontend/package.json` 定义，当前是 `http://127.0.0.1:5174`；默认 `dev:frontend` 使用 hybrid 模式（服务器共享数据接口 + 本地执行接口），纯本地联调必须显式使用 `dev:frontend:local`，全量服务器联调必须显式使用 `dev:frontend:server`，入口细节见 `docs/engineering-entrypoints.md` 和 `docs/development-hybrid-backend.md`。
 - Electron 打包默认使用 `tms-frontend/dist`；`TOS_FRONTEND_SOURCE=recovered` 仅用于紧急回退。
 - 仓库根目录 `package.json` 提供工程入口 scripts，用于编排前端、后端和 Electron 子项目的现有检查命令。
 - Gitea `main` 是当前服务器部署主线；本地改完后优先推送并合并到 Gitea `main`。
@@ -62,11 +62,12 @@ Gitea 检查环境使用同一套根目录入口：先运行 `npm run ci:install
 
 ```powershell
 npm run dev:frontend
+npm run dev:frontend:local
 npm run dev:frontend:server
 npm run dev:frontend:hybrid
 ```
 
-`dev:frontend` 连接本地后端；`dev:frontend:server` 全部连接服务器后端；`dev:frontend:hybrid` 用于服务器共享数据接口 + 本地执行接口的混合联调。
+`dev:frontend` 与 `dev:frontend:hybrid` 等价，默认用于服务器共享数据接口 + 本地执行接口的混合联调；`dev:frontend:local` 连接本地后端；`dev:frontend:server` 全部连接服务器后端。
 
 也可以进入子目录运行单项命令：
 

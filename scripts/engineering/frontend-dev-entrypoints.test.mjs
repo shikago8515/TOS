@@ -8,15 +8,17 @@ const scriptDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(scriptDir, '..', '..')
 const npmForwarder = 'node scripts/engineering/run-npm.mjs'
 
-test('default frontend dev entrypoint uses local backend mode', async () => {
+test('default frontend dev entrypoint uses hybrid backend mode', async () => {
   const rootPackage = await readJson(resolve(repoRoot, 'package.json'))
   const frontendPackage = await readJson(resolve(repoRoot, 'tms-frontend', 'package.json'))
 
-  assert.equal(rootPackage.scripts['dev:frontend'], `${npmForwarder} --prefix tms-frontend run dev`)
-  assert.equal(frontendPackage.scripts.dev, frontendPackage.scripts['dev:local'])
+  assert.equal(rootPackage.scripts['dev:frontend'], `${npmForwarder} --prefix tms-frontend run dev:hybrid`)
+  assert.equal(frontendPackage.scripts.dev, frontendPackage.scripts['dev:hybrid'])
   assert.match(frontendPackage.scripts.dev, /^vite\b/)
+  assert.match(frontendPackage.scripts.dev, /--mode\s+hybrid\b/)
   assert.doesNotMatch(frontendPackage.scripts.dev, /--mode\s+server\b/)
   assert.doesNotMatch(frontendPackage.scripts.dev, /VITE_BACKEND_URL/)
+  assert.doesNotMatch(frontendPackage.scripts['dev:local'], /--mode\s+hybrid\b/)
 })
 
 test('server frontend entrypoint is the only script that loads .env.server', async () => {
@@ -62,19 +64,22 @@ test('local dev entrypoints use the npm CLI wrapper instead of nested npm shims'
   assert.doesNotMatch(runNpm, /shell:\s*true/)
 })
 
-test('engineering docs keep local frontend dev and release update sync rules current', async () => {
+test('engineering docs keep hybrid frontend dev and release update sync rules current', async () => {
   const readme = await readFile(resolve(repoRoot, 'README.md'), 'utf8')
   const frontendReadme = await readFile(resolve(repoRoot, 'tms-frontend', 'README.md'), 'utf8')
   const electronReadme = await readFile(resolve(repoRoot, 'tms-electron-app', 'README.md'), 'utf8')
   const workflow = await readFile(resolve(repoRoot, 'docs', 'tos-ai-workflow.md'), 'utf8')
 
   assert.doesNotMatch(readme, /默认\s+`?dev:frontend`?.*server mode/)
-  assert.match(readme, /默认 `dev:frontend` .*本地后端/)
+  assert.match(readme, /默认 `dev:frontend` .*hybrid 模式/)
+  assert.match(readme, /`dev:frontend:local` .*本地/)
   assert.doesNotMatch(frontendReadme, /`npm run dev` 和 `npm run dev:server` 使用 server mode/)
-  assert.match(frontendReadme, /`npm run dev`.*本地后端/)
+  assert.match(frontendReadme, /`npm run dev`.*Hybrid 模式/)
+  assert.match(frontendReadme, /`npm run dev:local` .*纯本地后端模式/)
   assert.doesNotMatch(electronReadme, /默认由 `..\/tms-frontend` 的 server mode 提供/)
+  assert.match(electronReadme, /默认由 `..\/tms-frontend` 的 Hybrid dev 模式提供/)
   assert.match(electronReadme, /前端开发态加载：`http:\/\/127\.0\.0\.1:5174`/)
-  assert.match(workflow, /release_update_records/)
+  assert.match(workflow, /tos_release_records/)
   assert.match(workflow, /release:updates:pull/)
   assert.match(workflow, /release:updates:push:dry-run/)
   assert.match(workflow, /Gitea `main` push/)

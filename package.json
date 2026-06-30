@@ -20,7 +20,7 @@
     "version:bump": "node scripts/engineering/sync-version.mjs --bump",
     "server:package": "node scripts/engineering/package-server-update.mjs",
     "server:package:dry-run": "node scripts/engineering/package-server-update.mjs --dry-run",
-    "dev:frontend": "node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev",
+    "dev:frontend": "node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev:hybrid",
     "dev:frontend:server": "node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev:server",
     "dev:frontend:hybrid": "node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev:hybrid",
     "dev:frontend:local": "node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev:local",
