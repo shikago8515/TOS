@@ -6,14 +6,14 @@
 
 - 主进程入口：`main-simple.js`
 - preload：`preload.js`
-- 前端开发态加载：`http://127.0.0.1:5174`，默认由 `../tms-frontend` 的 local dev 模式提供
+- 前端开发态加载：`http://127.0.0.1:5174`，默认由 `../tms-frontend` 的 Hybrid dev 模式提供
 - 打包态默认加载：`dist-frontend/index.html`
 - 默认前端来源：`../tms-frontend/dist`
 - 紧急回退前端来源：`TOS_FRONTEND_SOURCE=recovered`
 - 后端源码打包来源：`../tms-backend`
-- 本机后端地址：`http://127.0.0.1:8000`，仅在 local mode 或本机后端联调时使用
+- 本机后端地址：`http://127.0.0.1:8000`，用于 Hybrid 模式下的本机执行接口，或显式 local mode 联调
 
-开发态 `npm run dev` 只启动 Electron。前端 local/server 模式由 `../tms-frontend` 控制；默认使用 local 模式连接 `http://127.0.0.1:8000`，只有显式运行根目录 `npm run dev:frontend:server` 时才读取 `.env.server`。同一时间 `5174` 只运行一种模式；根目录入口见 `../docs/engineering-entrypoints.md`。
+开发态 `npm run dev` 只启动 Electron。前端 hybrid/local/server 模式由 `../tms-frontend` 控制；默认 `npm run dev:frontend` 使用 Hybrid 模式，服务器共享数据接口读远程，本机执行接口仍连接 `http://127.0.0.1:8000`。只有显式运行根目录 `npm run dev:frontend:server` 时才读取 `.env.server`；纯本地联调使用 `npm run dev:frontend:local`。同一时间 `5174` 只运行一种模式；根目录入口见 `../docs/engineering-entrypoints.md`。
 
 ## 常用命令
 

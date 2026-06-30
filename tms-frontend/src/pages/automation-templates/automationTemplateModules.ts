@@ -31,6 +31,7 @@ const templateModuleDefinitions = [
   { id: 'infornexus-auto-add', templateTypes: defaultTemplateTypes },
   { id: 'po-auto-download', templateTypes: defaultTemplateTypes },
   { id: 'packing-list-auto-download', templateTypes: defaultTemplateTypes },
+  { id: 'excel-template-mapper-test', label: '通用 Excel 映射测试', templateTypes: defaultTemplateTypes },
 ] as const
 
 export const automationTemplateModuleIds = templateModuleDefinitions.map((definition) => definition.id)
@@ -41,7 +42,7 @@ export const automationTemplateModules: AutomationTemplateModuleOption[] = templ
     const entry = getWebAutomationEntry(id)
     return {
       id,
-      navLabel: entry?.title || id,
+      navLabel: 'label' in definition ? definition.label : entry?.title || id,
       order: index + 1,
       templateTypes: definition.templateTypes,
     }

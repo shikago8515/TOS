@@ -1,4 +1,4 @@
-import { requestBackendJson } from '../api/backendClient'
+import { requestBackendJson, type BackendTarget } from '../api/backendClient'
 
 export type ProcessHistoryStatus = 'success' | 'error'
 
@@ -29,6 +29,7 @@ export interface ProcessHistoryListParams {
   status?: ProcessHistoryStatus
   page?: number
   pageSize?: number
+  backendTarget?: BackendTarget
 }
 
 interface ProcessHistoryListResponse {
@@ -93,6 +94,7 @@ export async function fetchPersistedProcessHistoryRecords(
 
   const payload = await requestBackendJson<ProcessHistoryListResponse>({
     path: `${processHistoryPath}?${query.toString()}`,
+    backendTarget: params.backendTarget,
   })
   return Array.isArray(payload.records) ? payload.records : []
 }

@@ -9,6 +9,7 @@ Jane 成品表生成模块
 import os
 import openpyxl
 import pandas as pd
+import re
 from collections import Counter
 from datetime import datetime
 from openpyxl.cell.cell import MergedCell
@@ -213,6 +214,24 @@ class JaneModule:
         if len(text) > 1 and text[0].upper() == 'A' and text[1:].isdigit():
             return (1, int(text[1:]), text)
         return (2, 0, text)
+
+    @classmethod
+    def _natural_text_sort_key(cls, value: Any) -> Tuple[Tuple[int, Any], ...]:
+        text = cls._normalize_text(value).upper()
+        return tuple(
+            (0, int(part)) if part.isdigit() else (1, part)
+            for part in re.split(r'(\d+)', text)
+            if part
+        )
+
+    def _build_working_order(self, df: pd.DataFrame) -> List[str]:
+        working_by_key: Dict[str, str] = {}
+        for value in df['Working Number']:
+            working_text = self._normalize_text(value)
+            if not working_text:
+                continue
+            working_by_key.setdefault(working_text.upper(), working_text)
+        return sorted(working_by_key.values(), key=self._natural_text_sort_key)
 
     @staticmethod
     def _safe_sheet_name(value: Any, used_names: Optional[Set[str]] = None) -> str:
@@ -1719,7 +1738,7 @@ class JaneModule:
             log(f"\n📖 正在读取 country.xlsx 并计算单别统计...")
             country_lookup = self.read_country_table(country_path, result['logs'])
             df_filtered = self.sort_tms_rows_for_generation(df_filtered, country_lookup, result['logs'])
-            working_order = list(df_filtered['Working Number'].unique())
+            working_order = self._build_working_order(df_filtered)
             category_stats = self.calculate_category_statistics(df_filtered, country_lookup, result['logs'])
             log(f"✅ country.xlsx 读取完成：{len(country_lookup)} 个客户号映射")
             log(f"✅ 已计算 {len(category_stats)} 个 Working Number 的单别总件数")
