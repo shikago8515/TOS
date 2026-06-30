@@ -534,11 +534,14 @@ async function loadConfig() {
 
 function buildHealthPayload() {
   const activeRunList = Array.from(activeRuns.values());
+  const appId = String(process.env.TOS_AUTOMATION_APP_ID || "shipping-automation-demo").trim();
   const moduleVersion = String(process.env.TOS_AUTOMATION_MODULE_VERSION || "").trim();
   const moduleSource = String(process.env.TOS_AUTOMATION_MODULE_SOURCE || "bundled").trim();
   const desktopBridge = collectInforNexusDesktopBridgeDiagnostics();
   return {
     ok: true,
+    appId,
+    port: config.port,
     version: executorVersion,
     helperVersion: executorVersion,
     moduleVersion,
@@ -565,6 +568,7 @@ function buildHealthPayload() {
     },
     config: {
       version: executorVersion,
+      appId,
       moduleVersion,
       moduleSource,
       loginUrl: config.loginUrl,

@@ -9,6 +9,20 @@ const { execFile, spawn } = require('child_process')
 const DEFAULT_AUTOMATION_MODULE_MANIFEST_URL = 'https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/automation-modules'
 const AUTOMATION_MODULE_CACHE_DIR = 'automation-module-cache'
 
+function execFileAsync(file, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, options, (error, stdout, stderr) => {
+      if (error) {
+        error.stdout = stdout
+        error.stderr = stderr
+        reject(error)
+        return
+      }
+      resolve({ stdout, stderr })
+    })
+  })
+}
+
 function resolveUserDataDir(options = {}) {
   const explicitDir = typeof options.userDataDir === 'string' ? options.userDataDir.trim() : ''
   if (explicitDir) {
@@ -241,8 +255,30 @@ async function launchAutomationApp(appId, options) {
       }
     }
 
+    if (isAutomationAppBusy(runningHealth)) {
+      return {
+        success: true,
+        alreadyRunning: true,
+        updatePending: true,
+        appId,
+        url: automationApp.url,
+        source: runningHealth.moduleSource || runningHealth.automationModuleSource || 'running',
+        version: runningHealth.moduleVersion || runningHealth.automationModuleVersion || '',
+        pendingSource: automationApp.moduleSource || 'bundled',
+        pendingVersion: automationApp.version || '',
+        pendingSha256: automationApp.packageSha256 || '',
+        message: `Automation app ${appId} is busy. The downloaded module will be switched after the current task finishes.`,
+      }
+    }
+
     stopAutomationApp(appId, options)
-    const stopped = await waitForAutomationAppToStop(automationApp)
+    let stopped = await waitForAutomationAppToStop(automationApp)
+    if (!stopped && shouldAutoStopUnmanagedAutomationApp(automationApp, runningHealth, { forceUpdate })) {
+      const unmanagedStop = await stopUnmanagedAutomationAppByPort(automationApp)
+      if (unmanagedStop.success) {
+        stopped = await waitForAutomationAppToStop(automationApp, 8000)
+      }
+    }
     if (!stopped) {
       return {
         success: false,
@@ -256,7 +292,7 @@ async function launchAutomationApp(appId, options) {
 
   const tracked = processMap.get(appId)
   if (tracked && tracked.child && !tracked.child.killed) {
-    if (automationApp.moduleSource !== 'remote-cache') {
+    if (automationApp.moduleSource !== 'remote-cache' && !forceUpdate) {
       return {
         success: true,
         alreadyRunning: true,
@@ -295,6 +331,7 @@ async function launchAutomationApp(appId, options) {
     TMS_PLAYWRIGHT_DATA_DIR: dataDir,
     TMS_AUTOMATION_APP_ROOT: options.automationAppRoot,
     TMS_AUTOMATION_SHARED_EXECUTOR_ROOT: getSharedExecutorRoot(options.automationAppRoot),
+    TOS_AUTOMATION_APP_ID: String(appId),
     TOS_AUTOMATION_MODULE_VERSION: String(automationApp.version || ''),
     TOS_AUTOMATION_MODULE_SOURCE: String(automationApp.moduleSource || automationApp.source || 'bundled'),
     TOS_AUTOMATION_MODULE_SHA256: String(automationApp.packageSha256 || ''),
@@ -395,7 +432,7 @@ async function waitForAutomationAppToStop(automationApp, timeoutMs = 5000) {
 
 function shouldReuseRunningAutomationApp(automationApp, health, options = {}) {
   if ((automationApp.moduleSource || automationApp.source) !== 'remote-cache') {
-    return true
+    return !options.forceUpdate
   }
 
   const runningModuleVersion = String(
@@ -428,6 +465,127 @@ function shouldReuseRunningAutomationApp(automationApp, health, options = {}) {
   }
 
   return runningSha === desiredSha
+}
+
+function isAutomationAppBusy(health) {
+  if (!health || typeof health !== 'object') {
+    return false
+  }
+
+  if (health.busy === true || health.isBusy === true) {
+    return true
+  }
+
+  const activeRunCount = Number(
+    health.activeRunCount
+    || health.activeRuns?.length
+    || health.config?.activeRunCount
+    || 0,
+  )
+  if (Number.isFinite(activeRunCount) && activeRunCount > 0) {
+    return true
+  }
+
+  return Boolean(health.activeRun)
+}
+
+function shouldAutoStopUnmanagedAutomationApp(automationApp, health, options = {}) {
+  if (!options.forceUpdate || !health || health.ok !== true) {
+    return false
+  }
+
+  const runningAppId = String(health.appId || health.automationAppId || health.config?.appId || '').trim()
+  if (runningAppId && runningAppId === automationApp.id) {
+    return true
+  }
+
+  const desiredSha = normalizePackageSha(automationApp.packageSha256)
+  const runningSha = normalizePackageSha(
+    health.moduleSha256
+    || health.automationModuleSha256
+    || health.config?.moduleSha256
+    || '',
+  )
+  if (desiredSha && runningSha && desiredSha === runningSha) {
+    return true
+  }
+
+  const hasAutomationHealthShape = Boolean(
+    health.moduleVersion
+    || health.automationModuleVersion
+    || health.moduleSource
+    || health.capabilities
+    || health.activeRun !== undefined
+    || health.activeRunCount !== undefined
+  )
+  const runningPort = Number(health.port || health.config?.port || 0)
+  const expectedPort = Number(automationApp.port || automationApp.defaultPort || 0)
+  return hasAutomationHealthShape && expectedPort > 0 && runningPort === expectedPort
+}
+
+async function stopUnmanagedAutomationAppByPort(automationApp) {
+  const port = Number(automationApp.port || automationApp.defaultPort || 0)
+  if (!port) {
+    return { success: false, error: 'Automation app port is unknown.' }
+  }
+
+  const pid = await findListeningPidByPort(port)
+  if (!pid || pid === process.pid) {
+    return { success: false, error: `No external PID found for port ${port}.` }
+  }
+
+  try {
+    if (process.platform === 'win32') {
+      await execFileAsync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true })
+    } else {
+      process.kill(pid, 'SIGTERM')
+    }
+    return { success: true, pid, port }
+  } catch (error) {
+    return {
+      success: false,
+      pid,
+      port,
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
+async function findListeningPidByPort(port) {
+  if (process.platform === 'win32') {
+    return findWindowsListeningPidByPort(port)
+  }
+  return findUnixListeningPidByPort(port)
+}
+
+async function findWindowsListeningPidByPort(port) {
+  try {
+    const { stdout } = await execFileAsync('netstat.exe', ['-ano', '-p', 'tcp'], { windowsHide: true })
+    const portPattern = new RegExp(`[:.]${port}\\s+`, 'i')
+    for (const line of String(stdout || '').split(/\r?\n/)) {
+      if (!/\bLISTENING\b/i.test(line) || !portPattern.test(line)) {
+        continue
+      }
+      const parts = line.trim().split(/\s+/)
+      const pid = Number(parts[parts.length - 1])
+      if (Number.isFinite(pid) && pid > 0) {
+        return pid
+      }
+    }
+  } catch (_error) {
+    return 0
+  }
+  return 0
+}
+
+async function findUnixListeningPidByPort(port) {
+  try {
+    const { stdout } = await execFileAsync('sh', ['-c', `lsof -ti tcp:${Number(port)} -sTCP:LISTEN | head -n 1`])
+    const pid = Number(String(stdout || '').trim())
+    return Number.isFinite(pid) && pid > 0 ? pid : 0
+  } catch (_error) {
+    return 0
+  }
 }
 
 function shutdownAutomationApps(options) {
@@ -490,6 +648,133 @@ async function resolveAutomationAppRuntime(appId, options, updateOptions = {}) {
   }
 
   return selected
+}
+
+async function syncAutomationModules(options = {}) {
+  const startedAt = new Date().toISOString()
+  const manifestUrl = resolveAutomationModuleManifestUrl(options)
+  const result = {
+    ok: true,
+    startedAt,
+    finishedAt: '',
+    manifestUrl,
+    enabled: options.enableModuleUpdates !== false,
+    checked: 0,
+    installed: 0,
+    upToDate: 0,
+    skipped: 0,
+    blocked: 0,
+    failed: 0,
+    pendingRestart: 0,
+    modules: [],
+  }
+
+  if (options.enableModuleUpdates === false) {
+    result.finishedAt = new Date().toISOString()
+    result.skippedReason = 'module-updates-disabled'
+    return result
+  }
+
+  if (!manifestUrl) {
+    result.ok = false
+    result.finishedAt = new Date().toISOString()
+    result.error = 'Automation module manifest URL is empty.'
+    return result
+  }
+
+  const manifest = await requestJson(manifestUrl, Number(options.moduleManifestTimeoutMs || 3500))
+  if (!manifest || manifest.ok === false) {
+    result.ok = false
+    result.finishedAt = new Date().toISOString()
+    result.error = 'Automation module manifest is unavailable.'
+    return result
+  }
+
+  const remoteModules = new Map(
+    normalizeManifestModules(manifest).map((item) => [item.id, item]),
+  )
+  const registry = loadAutomationAppRegistry(options.automationAppRoot)
+
+  for (const registryApp of registry) {
+    const bundled = buildAutomationAppRuntime(
+      registryApp,
+      getAutomationAppPath(options.automationAppRoot, registryApp),
+      'bundled',
+    )
+    const cached = readCachedAutomationModule(registryApp, options)
+    const selected = chooseNewestAutomationApp(bundled, cached)
+    const moduleResult = {
+      id: registryApp.id,
+      name: registryApp.name || registryApp.id,
+      selectedVersion: selected.version || '',
+      selectedSource: selected.moduleSource || selected.source || 'bundled',
+      status: 'up-to-date',
+    }
+
+    result.checked += 1
+    const remoteInfo = remoteModules.get(registryApp.id)
+    if (!remoteInfo) {
+      moduleResult.status = 'skipped'
+      moduleResult.reason = 'not-in-manifest'
+      result.skipped += 1
+      result.modules.push(moduleResult)
+      continue
+    }
+
+    const remoteModule = normalizeRemoteAutomationModule(remoteInfo, bundled, manifestUrl)
+    moduleResult.remoteVersion = remoteModule.version || ''
+    moduleResult.remoteSha256 = normalizePackageSha(remoteModule.packageSha256)
+
+    if (!shouldInstallRemoteModule(remoteModule, selected, { forceUpdate: options.forceUpdate })) {
+      result.upToDate += 1
+      result.modules.push(moduleResult)
+      continue
+    }
+
+    if (!isHelperVersionCompatible(options.helperVersion, remoteModule.requiredHelperVersion)) {
+      moduleResult.status = 'blocked'
+      moduleResult.code = 'HELPER_VERSION_TOO_OLD'
+      moduleResult.requiredHelperVersion = remoteModule.requiredHelperVersion || ''
+      moduleResult.helperVersion = String(options.helperVersion || '')
+      moduleResult.message = `Automation module ${registryApp.id} requires TOS automation helper ${remoteModule.requiredHelperVersion} or later. Current helper: ${options.helperVersion || 'unknown'}.`
+      result.blocked += 1
+      result.modules.push(moduleResult)
+      continue
+    }
+
+    try {
+      const installed = await installAutomationModule(remoteModule, options)
+      moduleResult.status = 'installed'
+      moduleResult.installedVersion = installed.version || ''
+      moduleResult.installedSha256 = normalizePackageSha(installed.packageSha256)
+      result.installed += 1
+
+      const runningHealth = await requestAutomationAppHealthPayload(installed, Number(options.moduleHealthTimeoutMs || 700))
+      if (runningHealth) {
+        moduleResult.status = 'installed-pending-restart'
+        moduleResult.pendingRestart = true
+        moduleResult.runningVersion = runningHealth.moduleVersion || runningHealth.automationModuleVersion || ''
+        moduleResult.runningSha256 = normalizePackageSha(
+          runningHealth.moduleSha256
+          || runningHealth.automationModuleSha256
+          || runningHealth.config?.moduleSha256
+          || '',
+        )
+        moduleResult.runningBusy = isAutomationAppBusy(runningHealth)
+        result.pendingRestart += 1
+      }
+    } catch (error) {
+      moduleResult.status = 'failed'
+      moduleResult.error = error instanceof Error ? error.message : String(error)
+      result.failed += 1
+    }
+
+    result.modules.push(moduleResult)
+  }
+
+  result.ok = result.failed === 0 && result.blocked === 0
+  result.finishedAt = new Date().toISOString()
+  return result
 }
 
 async function getRemoteAutomationModule(appId, bundledApp, options) {
@@ -1015,14 +1300,17 @@ module.exports = {
   getAutomationApps,
   getAutomationDataDir,
   getAutomationModuleCacheRoot,
+  isAutomationAppBusy,
   launchAutomationApp,
   loadAutomationAppRegistry,
   requestAutomationAppHealth,
+  requestAutomationAppHealthPayload,
   requestJson,
   resolveAutomationAppRuntime,
   resolveAutomationModuleManifestUrl,
   resolveUserDataDir,
   shutdownAutomationApps,
+  syncAutomationModules,
   stopAutomationApp,
   waitForAutomationApp,
 }

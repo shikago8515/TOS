@@ -126,7 +126,7 @@
                     <div class="pad-drop__icon"><AppIcon name="upload" /></div>
                     <div class="pad-drop__text">
                       <strong>{{ text('点击或拖入 Excel 文件') }}</strong>
-                      <small>{{ text('请包含 PO NUMBER 和 STATUS 列') }}</small>
+                      <small>{{ text('请包含 PO# 和 Invoice# 列') }}</small>
                     </div>
                   </template>
                   <div v-if="isDragging" class="pad-drop__overlay">{{ text('释放以上传文件') }}</div>
@@ -188,6 +188,18 @@
                 {{ filePath }}
               </div>
             </div>
+
+            <div v-if="failedPackingListBatches.length" class="pad-result-paths pad-result-paths--failed">
+              <div class="pad-result-paths__title">
+                <AppIcon name="alert-circle" />
+                <span>{{ text('未下载成功批次') }}</span>
+              </div>
+              <div v-for="batch in failedPackingListBatches" :key="batch.no" class="pad-result-path">
+                <strong>{{ batch.no || text('未填写 Invoice#') }}</strong>
+                <span>{{ text('PO') }}: {{ batch.poNumbers.join(', ') || '-' }}</span>
+                <small v-if="batch.error">{{ batch.error }}</small>
+              </div>
+            </div>
           </section>
         </main>
 
@@ -219,7 +231,7 @@
             </div>
           </section>
 
-          <AutomationRunHistoryPanel :automation-id="entry.id" :refresh-signal="lastRawResponse" />
+          <AutomationRunHistoryPanel :automation-id="entry.id" :refresh-signal="historyRefreshSignal" />
 
           <section class="pad-dock-card pad-dock-card--grow">
             <div class="pad-dock-card__head">
@@ -287,11 +299,12 @@ import { showAppAlert } from '../../../shared/ui/appAlert'
 import AutomationAccountProfileManager from '../../web-automation/components/AutomationAccountProfileManager.vue'
 import AutomationRunHistoryPanel from '../../web-automation/components/AutomationRunHistoryPanel.vue'
 import type { AutomationAppInfo } from '../../../types/electronApi'
-import type { AutomationRunRecord, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
+import type { AutomationRunFileInput, AutomationRunRecord, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {
   createAutomationRunRecord,
   downloadAutomationTemplate,
   fetchAutomationApps,
+  fetchAutomationRuns,
   fetchAutomationTemplates,
   findLocalExecutorActiveRun,
   finishAutomationRunRecord,
@@ -315,6 +328,7 @@ import { getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNotic
 
 const ENTRY_ID = 'packing-list-auto-download'
 const DOWNLOAD_DIR_STORAGE_KEY = 'tos-packing-list-auto-download-directory'
+const PENDING_RUN_STORAGE_KEY = 'tos-packing-list-auto-download-pending-run'
 
 type CredentialProfileRef = {
   refresh: (accountKey?: string) => Promise<void>
@@ -322,6 +336,7 @@ type CredentialProfileRef = {
 }
 type CredentialProfileState = { hasStoredCredentials: boolean; username: string; accountKey: string }
 type CredentialNotice = { tone: WebAutomationNoticeTone; message: string }
+type FailedPackingListBatch = { no: string; poNumbers: string[]; error: string }
 
 const router = useRouter()
 const { text } = useAppLanguage()
@@ -356,10 +371,12 @@ const statusText = ref('')
 const lastResult = ref<Record<string, any> | null>(null)
 const lastRawResponse = ref('')
 const runProgress = ref<Record<string, any> | null>(null)
+const historyRefreshSignal = ref(0)
 let progressTimer: number | null = null
+let reconcilingRunRecord = false
 
 const steps = [
-  { title: '上传 Excel 文件', desc: '读取 PO NUMBER 和 STATUS 列生成箱单下载清单。' },
+  { title: '上传 Excel 文件', desc: '读取 PO# 和 Invoice# 列生成箱单下载清单。' },
   { title: '选择保存目录', desc: '文件会直接保存到用户电脑指定目录。' },
   { title: '请求下载优先', desc: '本机执行器优先使用登录态发起箱单下载请求。' },
   { title: '查看下载结果', desc: '完成数量、失败箱单和保存路径会返回页面。' },
@@ -433,6 +450,7 @@ const downloadedPdfPaths = computed(() => {
   ]
   return Array.from(new Set(paths)).slice(0, 8)
 })
+const failedPackingListBatches = computed(() => extractFailedPackingListBatches(lastResult.value).slice(0, 30))
 const messageIconName = computed(() => {
   if (messageTone.value === 'success') return 'check-circle'
   if (messageTone.value === 'error') return 'alert-circle'
@@ -501,6 +519,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
       activeApp.value = { ...activeApp.value, running: true }
     }
     syncActiveRunViewFromHealth()
+    await reconcilePendingRunRecordFromHealth(executorHealth.value)
     const updateMessage = getAutomationHelperUpdateMessage(executorHealth.value, activeApp.value)
     if (updateMessage) {
       messageTone.value = 'warning'
@@ -876,7 +895,7 @@ function validatePackingListDownloadInputs(): boolean {
     return showRunRequirementDialog('当前入口不存在，请从 Jessica 浏览器自动化菜单重新进入。')
   }
   if (!selectedFile.value) {
-    return showRunRequirementDialog('请先上传 Excel 文件，文件需包含 PO NUMBER 和 STATUS 列。')
+    return showRunRequirementDialog('请先上传 Excel 文件，文件需包含 PO# 和 Invoice# 列。')
   }
   if (!saveDirectory.value.trim()) {
     return showRunRequirementDialog('请先选择或填写下载保存目录。')
@@ -945,7 +964,11 @@ async function runPackingListAutoDownload(): Promise<void> {
     const json = safeParseJson(raw)
     const finalProgress = extractRunProgress(json)
     if (finalProgress) runProgress.value = finalProgress
-    await finishBackendRunRecord(runRecord, response.ok && Boolean(json?.ok), json?.message || '', json)
+    await finishBackendRunRecord(runRecord, response.ok && Boolean(json?.ok), json?.message || '', json).catch(async (error) => {
+      await recordWebAutomationEvent('packing-list-auto-download-run-record-finish-failure', {
+        error: readErrorMessage(error, 'finish run failed'),
+      })
+    })
 
     if (!response.ok) {
       const friendlyMessage = buildExecutorResponseMessage(response, raw, json)
@@ -955,6 +978,7 @@ async function runPackingListAutoDownload(): Promise<void> {
       lastResult.value = { ...(json || {}), ok: false, message: statusText.value }
       messageTone.value = 'error'
       message.value = statusText.value
+      void showAppAlert(statusText.value, { tone: 'error' })
       return
     }
 
@@ -974,6 +998,7 @@ async function runPackingListAutoDownload(): Promise<void> {
       lastResult.value = json
       messageTone.value = 'success'
       message.value = text('执行完成。')
+      void showAppAlert(statusText.value, { tone: 'success' })
       return
     }
 
@@ -982,6 +1007,7 @@ async function runPackingListAutoDownload(): Promise<void> {
     lastResult.value = { ...(json || {}), ok: false, message: statusText.value }
     messageTone.value = 'warning'
     message.value = text('已触发，结果未确认。')
+    void showAppAlert(statusText.value, { tone: 'warning' })
   } catch (error) {
     const friendlyMessage = formatAutomationExecutorMessage(readErrorMessage(error, text('网络错误')), '自动化执行异常。')
     statusLabel.value = '异常'
@@ -989,6 +1015,7 @@ async function runPackingListAutoDownload(): Promise<void> {
     lastResult.value = { ok: false, message: statusText.value }
     messageTone.value = 'error'
     message.value = friendlyMessage
+    void showAppAlert(friendlyMessage, { tone: 'error' })
     await finishBackendRunRecord(runRecord, false, statusText.value, { ok: false, message: statusText.value }).catch(() => {})
   } finally {
     stopProgressPolling()
@@ -1027,9 +1054,7 @@ function normalizePackingListAutoDownloadUsername(value: string): string {
 }
 
 async function ensureReady(): Promise<boolean> {
-  if (entry && activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) {
-    await startActiveApp(true)
-  } else if (!executorHealth.value?.ok) {
+  if (entry && !isLocalExecutorBusy(executorHealth.value)) {
     await startActiveApp(true)
   }
   await refreshExecutorState(true).catch(() => {})
@@ -1047,7 +1072,12 @@ function setNotReady(): void {
 async function createBackendRunRecord(file: File): Promise<AutomationRunRecord | null> {
   if (!entry) return null
   try {
-    return await createAutomationRunRecord(entry.id, file, entry.title)
+    const record = await createAutomationRunRecord(entry.id, file, entry.title)
+    if (record?.runId) {
+      writePendingRunRecord(record)
+      bumpRunHistoryRefresh()
+    }
+    return record
   } catch (error) {
     await recordWebAutomationEvent('packing-list-auto-download-run-record-create-failure', {
       error: readErrorMessage(error, 'create run failed'),
@@ -1068,7 +1098,164 @@ async function finishBackendRunRecord(
     ok ? 'success' : 'failed',
     messageText || (ok ? 'completed' : 'failed'),
     payload,
+    collectResultFiles(payload),
   )
+  clearPendingRunRecord(record.runId)
+  bumpRunHistoryRefresh()
+}
+
+function bumpRunHistoryRefresh(): void {
+  historyRefreshSignal.value += 1
+}
+
+function writePendingRunRecord(record: AutomationRunRecord): void {
+  try {
+    window.localStorage.setItem(PENDING_RUN_STORAGE_KEY, JSON.stringify({
+      runId: record.runId,
+      automationId: entry?.id || ENTRY_ID,
+      startedAt: record.startedAt || record.createdAt || new Date().toISOString(),
+    }))
+  } catch {
+    // Best-effort only; normal in-page completion still finishes the run record.
+  }
+}
+
+function readPendingRunRecord(): { runId: string; automationId?: string; startedAt?: string } | null {
+  try {
+    const raw = window.localStorage.getItem(PENDING_RUN_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : null
+    return parsed?.runId ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function clearPendingRunRecord(runId?: string): void {
+  const pending = readPendingRunRecord()
+  if (runId && pending?.runId && pending.runId !== runId) return
+  try {
+    window.localStorage.removeItem(PENDING_RUN_STORAGE_KEY)
+  } catch {
+    // Ignore storage cleanup errors.
+  }
+}
+
+async function reconcilePendingRunRecordFromHealth(health: LocalExecutorHealth | null | undefined): Promise<void> {
+  if (!entry || reconcilingRunRecord) return
+  if (findPackingListAutoDownloadActiveRun(health)) return
+  const completedRun = getPackingListCompletedRunFromHealth(health)
+  if (!completedRun) return
+
+  reconcilingRunRecord = true
+  try {
+    const pending = readPendingRunRecord()
+    if (pending?.runId && (!pending.automationId || pending.automationId === entry.id)) {
+      await finishRunRecordFromExecutor(pending.runId, completedRun)
+      return
+    }
+
+    const payload = await fetchAutomationRuns({
+      automationId: entry.id,
+      page: 1,
+      pageSize: 5,
+    })
+    const dangling = payload.runs.find((run) => (
+      isDanglingRunRecord(run)
+        && completedRunIsAfterRecord(completedRun, run)
+    ))
+    if (dangling?.runId) {
+      await finishRunRecordFromExecutor(dangling.runId, completedRun)
+    }
+  } catch (error) {
+    await recordWebAutomationEvent('packing-list-auto-download-run-record-reconcile-failure', {
+      error: readErrorMessage(error, 'reconcile run failed'),
+    })
+  } finally {
+    reconcilingRunRecord = false
+  }
+}
+
+async function finishRunRecordFromExecutor(runId: string, executorRun: Record<string, any>): Promise<void> {
+  const ok = Boolean(executorRun.ok)
+  const messageText = String(executorRun.message || (ok ? 'completed' : 'failed'))
+  await finishAutomationRunRecord(
+    runId,
+    ok ? 'success' : 'failed',
+    messageText,
+    executorRun,
+    collectResultFiles(executorRun),
+  )
+  clearPendingRunRecord(runId)
+  bumpRunHistoryRefresh()
+}
+
+function collectResultFiles(payload: Record<string, any> | null): AutomationRunFileInput[] {
+  const urls = payload?.artifacts?.downloadUrls
+  if (!urls || typeof urls !== 'object') return []
+  return [
+    buildRunFileInput(urls.resultExcelUrl, 'result_excel', 'packing-list-auto-download-result.xlsx'),
+    buildRunFileInput(urls.resultJsonUrl, 'result_json', 'packing-list-auto-download-result.json'),
+    buildRunFileInput(
+      urls.failedPackingListExcelUrl || urls.failedPoExcelUrl || urls.failedRowsExcelUrl,
+      'failed_rows_excel',
+      'packing-list-auto-download-failed-rows.xlsx',
+    ),
+    buildRunFileInput(
+      urls.failedPackingListJsonUrl || urls.failedPoJsonUrl || urls.failedRowsJsonUrl,
+      'failed_rows_json',
+      'packing-list-auto-download-failed-rows.json',
+    ),
+  ].filter((item): item is AutomationRunFileInput => Boolean(item))
+}
+
+function buildRunFileInput(rawPath: unknown, fileRole: string, fileName: string): AutomationRunFileInput | null {
+  const url = buildArtifactUrl(rawPath)
+  return url ? { url, fileRole, fileName } : null
+}
+
+function buildArtifactUrl(rawPath: unknown): string {
+  const normalizedPath = String(rawPath || '').trim()
+  if (!normalizedPath) return ''
+  if (/^https?:\/\//i.test(normalizedPath)) return normalizedPath
+  const baseUrl = String(entry?.executorBaseUrl || '').replace(/\/+$/, '')
+  return baseUrl ? `${baseUrl}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}` : ''
+}
+
+function getPackingListCompletedRunFromHealth(health: LocalExecutorHealth | null | undefined): Record<string, any> | null {
+  const candidates: Record<string, any>[] = []
+  if (health?.lastRun && typeof health.lastRun === 'object') candidates.push(health.lastRun as Record<string, any>)
+  if (Array.isArray(health?.recentRuns)) {
+    for (const item of health.recentRuns) {
+      if (item && typeof item === 'object') candidates.push(item as Record<string, any>)
+    }
+  }
+  return candidates.find(isCompletedPackingListExecutorRun) || null
+}
+
+function isCompletedPackingListExecutorRun(run: Record<string, any>): boolean {
+  if (!isPackingListExecutorRun(run)) return false
+  return Boolean(run.finishedAt || run.generatedAt || typeof run.ok === 'boolean')
+}
+
+function isPackingListExecutorRun(run: Record<string, any>): boolean {
+  const action = String(run.action || '').trim()
+  const inputMode = String(run.inputMode || '').trim()
+  const automationId = String(run.automationId || '').trim()
+  return action === 'run-packing-list-auto-download-file'
+    || inputMode === 'packing-list-auto-download'
+    || automationId === ENTRY_ID
+}
+
+function isDanglingRunRecord(run: AutomationRunRecord): boolean {
+  const status = String(run.status || '').trim().toLowerCase()
+  return ['running', 'started', 'pending', 'processing', ''].includes(status)
+}
+
+function completedRunIsAfterRecord(executorRun: Record<string, any>, record: AutomationRunRecord): boolean {
+  const completedAt = Date.parse(String(executorRun.finishedAt || executorRun.generatedAt || executorRun.startedAt || ''))
+  const recordStartedAt = Date.parse(String(record.startedAt || record.createdAt || ''))
+  if (!Number.isFinite(completedAt) || !Number.isFinite(recordStartedAt)) return true
+  return completedAt >= recordStartedAt
 }
 
 async function fileToBase64(file: File): Promise<string> {
@@ -1120,6 +1307,30 @@ function extractDownloadedPdfPaths(payload: Record<string, any> | null | undefin
     }
   }
   return Array.from(new Set(values))
+}
+
+function extractFailedPackingListBatches(payload: Record<string, any> | null | undefined): FailedPackingListBatch[] {
+  if (!payload || typeof payload !== 'object') return []
+  const source = Array.isArray(payload.failedPackingLists)
+    ? payload.failedPackingLists
+    : Array.isArray(payload.failedNoBatches)
+      ? payload.failedNoBatches
+      : []
+
+  return source.map((item: any) => {
+    const poNumbers = Array.isArray(item?.poNumbers)
+      ? item.poNumbers
+      : Array.isArray(item?.failedPoNumbers)
+        ? item.failedPoNumbers
+        : Array.isArray(item?.attemptedPoNumbers)
+          ? item.attemptedPoNumbers
+          : []
+    return {
+      no: String(item?.no || '').trim(),
+      poNumbers: poNumbers.map((value: unknown) => String(value || '').trim()).filter(Boolean),
+      error: String(item?.error || '').trim(),
+    }
+  }).filter((item) => item.no || item.poNumbers.length > 0 || item.error)
 }
 
 function buildExecutorResponseMessage(
@@ -1747,6 +1958,12 @@ function goBack(): void {
   border-radius: 10px;
   background: #f0fdf4;
   color: #14532d;
+
+  &--failed {
+    border-color: #fecaca;
+    background: #fff7ed;
+    color: #7f1d1d;
+  }
 }
 
 .pad-result-paths__title {
@@ -1766,6 +1983,22 @@ function goBack(): void {
   font-size: 11px;
   line-height: 1.45;
   word-break: break-all;
+
+  strong,
+  span,
+  small {
+    display: block;
+  }
+
+  strong {
+    margin-bottom: 3px;
+    font-size: 12px;
+  }
+
+  small {
+    margin-top: 3px;
+    color: #991b1b;
+  }
 
   + .pad-result-path {
     margin-top: 5px;

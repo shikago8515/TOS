@@ -19,9 +19,9 @@
       <aside v-if="drawerOpen" class="run-history-drawer" :style="drawerThemeStyle" role="dialog" aria-modal="true" :aria-label="text('执行记录')">
         <header class="run-history-drawer__head">
           <div>
-            <p>Automation Runs</p>
+            <p>{{ text('运行记录') }}</p>
             <h2>{{ text('执行记录') }}</h2>
-            <span>{{ text('查看本页面最近') }} {{ runs.length }} {{ text('次执行、源文件和结果归档。') }}</span>
+            <span>{{ text('最近') }} {{ runs.length }} {{ text('次任务') }}</span>
           </div>
           <button class="run-history-icon-btn" type="button" @click="closeDrawer">
             <AppIcon name="x" />
@@ -35,26 +35,55 @@
           </button>
           <button class="run-history-action run-history-action--primary" type="button" @click="openAllRuns">
             <AppIcon name="external-link" />
-            {{ text('全部记录') }}
+            {{ text('全部') }}
           </button>
         </div>
 
+        <div class="run-history-date-filter">
+          <el-date-picker
+            v-model="dateFrom"
+            type="date"
+            value-format="YYYY-MM-DD"
+            :placeholder="text('开始日期')"
+            clearable
+            @change="reloadRuns"
+          />
+          <span>-</span>
+          <el-date-picker
+            v-model="dateTo"
+            type="date"
+            value-format="YYYY-MM-DD"
+            :placeholder="text('结束日期')"
+            clearable
+            @change="reloadRuns"
+          />
+        </div>
+
         <div v-if="runs.length" class="run-history-list">
-          <button
+          <div
             v-for="run in runs"
             :key="run.runId"
             class="run-history-row"
             :class="{ 'run-history-row--active': expandedRunId === run.runId }"
-            type="button"
-            @click="toggleRun(run)"
           >
-            <span class="run-history-row__status" :class="`run-history-row__status--${run.status}`" />
+            <button class="run-history-row__body" type="button" @click="toggleRun(run)">
+            <span class="run-history-row__status" :class="`run-history-row__status--${statusKey(run.status)}`" />
             <span class="run-history-row__main">
-              <b>{{ run.message ? text(run.message) : statusLabel(run.status) }}</b>
-              <small>{{ formatDate(run.startedAt || run.createdAt) }} · {{ run.runId }}</small>
+              <b>{{ statusLabel(run.status) }}</b>
+              <small>{{ run.finishedAtBeijing || run.startedAtBeijing || run.createdAtBeijing || formatDate(run.finishedAt || run.startedAt || run.createdAt) }}</small>
             </span>
-            <em>{{ statusLabel(run.status) }}</em>
-          </button>
+            <em>{{ run.finishedAt ? text('完成') : text('详情') }}</em>
+            </button>
+            <button
+              class="run-history-row__delete"
+              type="button"
+              :disabled="deletingRunId === run.runId"
+              :title="text('删除执行记录')"
+              @click.stop="deleteRun(run)"
+            >
+              <AppIcon :name="deletingRunId === run.runId ? 'loader' : 'trash'" :class="{ spin: deletingRunId === run.runId }" />
+            </button>
+          </div>
         </div>
         <div v-else class="run-history-empty">
           {{ loading ? text('正在读取执行记录...') : text('暂无执行记录') }}
@@ -63,7 +92,7 @@
         <section class="run-history-files">
           <div class="run-history-files__head">
             <strong>{{ text('归档文件') }}</strong>
-            <span v-if="expandedRunId">{{ expandedRunId }}</span>
+            <span v-if="expandedRunId">{{ text('已选择记录') }}</span>
             <span v-else>{{ text('选择一条记录查看文件') }}</span>
           </div>
           <div v-if="detailLoading" class="run-history-empty">{{ text('正在读取归档文件...') }}</div>
@@ -86,10 +115,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 import { showAppAlert } from '../../../shared/ui/appAlert'
 import {
+  deleteAutomationRunRecord,
   downloadAutomationRunFile,
   fetchAutomationRunDetail,
   fetchAutomationRuns,
@@ -117,12 +148,15 @@ const detailLoading = ref(false)
 const runs = ref<AutomationRunRecord[]>([])
 const files = ref<AutomationRunFileRecord[]>([])
 const expandedRunId = ref('')
+const deletingRunId = ref('')
+const dateFrom = ref('')
+const dateTo = ref('')
 
 const triggerSummary = computed(() => {
   if (loading.value) return text('同步中')
   if (!runs.value.length) return text('暂无记录')
   const latest = runs.value[0]
-  return `${statusLabel(latest.status)} · ${formatDate(latest.startedAt || latest.createdAt)}`
+  return `${statusLabel(latest.status)} · ${formatRunDate(latest)}`
 })
 
 onMounted(() => {
@@ -139,12 +173,20 @@ watch(() => props.refreshSignal, () => {
   void loadRuns()
 })
 
+function reloadRuns(): void {
+  expandedRunId.value = ''
+  files.value = []
+  void loadRuns()
+}
+
 async function loadRuns(): Promise<void> {
   if (!props.automationId) return
   loading.value = true
   try {
     const payload = await fetchAutomationRuns({
       automationId: props.automationId,
+      dateFrom: dateFrom.value || undefined,
+      dateTo: dateTo.value || undefined,
       page: 1,
       pageSize: props.pageSize,
     })
@@ -188,6 +230,50 @@ async function downloadFile(file: AutomationRunFileRecord): Promise<void> {
   }
 }
 
+async function deleteRun(run: AutomationRunRecord): Promise<void> {
+  if (deletingRunId.value) return
+  const confirmed = await confirmDeleteRun()
+  if (!confirmed) return
+  deletingRunId.value = run.runId
+  try {
+    await deleteAutomationRunRecord(run.runId)
+    runs.value = runs.value.filter((item) => item.runId !== run.runId)
+    if (expandedRunId.value === run.runId) {
+      expandedRunId.value = ''
+      files.value = []
+    }
+    void showAppAlert(text('执行记录已删除。'), {
+      tone: 'success',
+      compact: true,
+      autoCloseMs: 1000,
+    })
+  } catch (error) {
+    void showAppAlert(text(readErrorMessage(error, '删除执行记录失败。')), { tone: 'warning' })
+  } finally {
+    deletingRunId.value = ''
+    void loadRuns()
+  }
+}
+
+async function confirmDeleteRun(): Promise<boolean> {
+  try {
+    await ElMessageBox.confirm(
+      text('确认删除这条执行记录？'),
+      text('删除执行记录'),
+      {
+        confirmButtonText: text('确认删除'),
+        cancelButtonText: text('取消'),
+        type: 'warning',
+        closeOnClickModal: false,
+        distinguishCancelAndClose: true,
+      },
+    )
+    return true
+  } catch {
+    return false
+  }
+}
+
 function openAllRuns(): void {
   closeDrawer()
   void router.push({ path: '/automation-runs', query: { automationId: props.automationId } })
@@ -196,11 +282,20 @@ function openAllRuns(): void {
 function statusLabel(status: string): string {
   const labels: Record<string, string> = {
     running: '执行中',
+    started: '执行中',
+    pending: '执行中',
+    processing: '执行中',
     success: '成功',
     failed: '失败',
     canceled: '已取消',
   }
-  return labels[status] ? text(labels[status]) : status || '-'
+  return labels[statusKey(status)] ? text(labels[statusKey(status)]) : status || '-'
+}
+
+function statusKey(status: string): string {
+  const normalized = String(status || '').trim().toLowerCase()
+  if (['started', 'pending', 'processing'].includes(normalized)) return 'running'
+  return normalized || 'running'
 }
 
 function fileRoleLabel(role: string): string {
@@ -218,8 +313,19 @@ function fileRoleLabel(role: string): string {
 
 function formatDate(value?: string): string {
   if (!value) return '-'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(isEnglish.value ? 'en-US' : 'zh-CN', { hour12: false })
+  const date = new Date(normalizeBackendDate(value))
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(isEnglish.value ? 'en-US' : 'zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' })
+}
+
+function formatRunDate(run: AutomationRunRecord): string {
+  return run.finishedAtBeijing || run.startedAtBeijing || run.createdAtBeijing || formatDate(run.finishedAt || run.startedAt || run.createdAt)
+}
+
+function normalizeBackendDate(value: string): string {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return trimmed
+  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(trimmed)) return trimmed
+  return `${trimmed}Z`
 }
 
 function readErrorMessage(error: unknown, fallback: string): string {
@@ -385,6 +491,32 @@ function syncDrawerTheme(): void {
   padding: 14px 22px;
   border-bottom: 1px solid color-mix(in srgb, var(--history-border) 70%, #fff);
 }
+.run-history-date-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 22px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--history-border) 70%, #fff);
+}
+.run-history-date-filter :deep(.el-date-editor.el-input) {
+  flex: 1;
+  width: 0;
+}
+.run-history-date-filter :deep(.el-input__wrapper) {
+  min-height: 32px;
+  border: 1px solid var(--history-border);
+  border-radius: calc(var(--history-radius) - 2px);
+  background: #fff;
+  box-shadow: none;
+}
+.run-history-date-filter :deep(.el-input__inner) {
+  font-size: 11px;
+  font-weight: 700;
+}
+.run-history-date-filter > span {
+  color: var(--history-muted);
+  font-size: 12px;
+}
 .run-history-action {
   min-height: 34px;
   padding: 0 12px;
@@ -407,21 +539,53 @@ function syncDrawerTheme(): void {
 }
 .run-history-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   width: 100%;
-  padding: 11px 10px;
+  padding: 0;
   border: 1px solid transparent;
   border-radius: var(--history-radius);
   background: #fff;
   text-align: left;
-  cursor: pointer;
 }
 .run-history-row:hover,
 .run-history-row--active {
   background: color-mix(in srgb, var(--history-soft) 42%, #fff);
   border-color: color-mix(in srgb, var(--history-accent) 34%, #fff);
+}
+.run-history-row__body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 46px;
+  padding: 10px 4px 10px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.run-history-row__delete {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-right: 5px;
+  border: 0;
+  border-radius: calc(var(--history-radius) - 3px);
+  background: transparent;
+  color: var(--history-danger);
+  cursor: pointer;
+}
+.run-history-row__delete:hover:not(:disabled) {
+  background: #fef2f2;
+}
+.run-history-row__delete:disabled {
+  opacity: .5;
+  cursor: wait;
 }
 .run-history-row__status {
   width: 8px;

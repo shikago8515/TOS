@@ -9,10 +9,13 @@ const { launchAdidasMaterialsCollector } = require('./adidas-materials-direct')
 const {
   getAutomationApps,
   getAutomationAppById,
+  isAutomationAppBusy,
   launchAutomationApp,
   loadAutomationAppRegistry,
+  requestAutomationAppHealthPayload,
   resolveUserDataDir,
   shutdownAutomationApps,
+  syncAutomationModules,
   stopAutomationApp,
 } = require('./core')
 
@@ -28,6 +31,14 @@ const automationModuleManifestUrl = process.env.TOS_AUTOMATION_MODULE_MANIFEST_U
   || process.env.TMS_AUTOMATION_MODULE_MANIFEST_URL
   || 'https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/automation-modules'
 const enableModuleUpdates = process.env.TOS_AUTOMATION_MODULE_UPDATES !== '0'
+const moduleSyncIntervalMs = Math.max(
+  Number(process.env.TOS_AUTOMATION_MODULE_SYNC_INTERVAL_MS || 15 * 60 * 1000),
+  60 * 1000,
+)
+const pendingModuleRestartIntervalMs = Math.max(
+  Number(process.env.TOS_AUTOMATION_MODULE_PENDING_RESTART_INTERVAL_MS || 5000),
+  1000,
+)
 const automationAppRoot = process.env.TMS_AUTOMATION_APP_ROOT
   ? path.resolve(process.env.TMS_AUTOMATION_APP_ROOT)
   : path.resolve(__dirname, '..', 'automation-apps')
@@ -47,6 +58,17 @@ const sharedOptions = {
   baseEnv: helperVersion
     ? { TOS_AUTOMATION_HELPER_VERSION: helperVersion }
     : {},
+}
+
+const moduleSyncState = {
+  running: false,
+  startedAt: '',
+  finishedAt: '',
+  lastReason: '',
+  lastResult: null,
+  lastError: '',
+  pendingRestarts: new Map(),
+  appliedRestarts: [],
 }
 
 const server = http.createServer(async (req, res) => {
@@ -79,6 +101,7 @@ const server = http.createServer(async (req, res) => {
         automationModuleManifestUrl,
         enableModuleUpdates,
         trackedAppCount: processMap.size,
+        moduleSync: toPublicModuleSyncState(),
       })
       return
     }
@@ -98,6 +121,26 @@ const server = http.createServer(async (req, res) => {
 
       const result = await downloadLatestHelperInstaller(status)
       sendJson(res, result.success ? 200 : 500, result)
+      return
+    }
+
+    if (req.method === 'GET' && requestUrl.pathname === '/api/modules/sync-status') {
+      sendJson(res, 200, {
+        ok: true,
+        ...toPublicModuleSyncState(),
+      })
+      return
+    }
+
+    if (req.method === 'POST' && requestUrl.pathname === '/api/modules/sync-all') {
+      const requestBody = await readJsonBody(req)
+      const forceUpdate = readBooleanParam(requestUrl.searchParams.get('forceUpdate'))
+        || readBooleanParam(requestBody.forceUpdate)
+      const result = await runAutomationModuleSync({
+        reason: 'manual',
+        forceUpdate,
+      })
+      sendJson(res, result.ok === false ? 502 : 200, result)
       return
     }
 
@@ -133,6 +176,9 @@ const server = http.createServer(async (req, res) => {
       const result = action === 'start'
         ? await launchAutomationApp(appId, { ...sharedOptions, forceUpdate })
         : stopAutomationApp(appId, sharedOptions)
+      if (action === 'start' && result && result.updatePending) {
+        markModuleRestartPending(appId, result)
+      }
       sendJson(res, result.success ? 200 : 500, toPublicAutomationResult(result, appId))
       return
     }
@@ -153,7 +199,241 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(port, host, () => {
   console.log(`Automation launcher listening on http://${host}:${port}`)
+  startAutomationModuleBackgroundSync()
 })
+
+function startAutomationModuleBackgroundSync() {
+  if (!enableModuleUpdates) {
+    return
+  }
+
+  const startupTimer = setTimeout(() => {
+    runAutomationModuleSync({ reason: 'startup' }).catch((error) => {
+      console.error(`Automation module startup sync failed: ${error.message}`)
+    })
+  }, 1500)
+  startupTimer.unref?.()
+
+  const syncTimer = setInterval(() => {
+    runAutomationModuleSync({ reason: 'background' }).catch((error) => {
+      console.error(`Automation module background sync failed: ${error.message}`)
+    })
+  }, moduleSyncIntervalMs)
+  syncTimer.unref?.()
+
+  const pendingTimer = setInterval(() => {
+    reconcilePendingModuleRestarts().catch((error) => {
+      console.error(`Automation module pending restart check failed: ${error.message}`)
+    })
+  }, pendingModuleRestartIntervalMs)
+  pendingTimer.unref?.()
+}
+
+async function runAutomationModuleSync(options = {}) {
+  if (!enableModuleUpdates) {
+    return {
+      ok: true,
+      running: false,
+      enabled: false,
+      skippedReason: 'module-updates-disabled',
+      pendingRestarts: toPublicPendingRestarts(),
+    }
+  }
+
+  if (moduleSyncState.running) {
+    return {
+      ok: true,
+      running: true,
+      ...toPublicModuleSyncState(),
+    }
+  }
+
+  moduleSyncState.running = true
+  moduleSyncState.startedAt = new Date().toISOString()
+  moduleSyncState.finishedAt = ''
+  moduleSyncState.lastReason = options.reason || 'manual'
+  moduleSyncState.lastError = ''
+
+  try {
+    const result = await syncAutomationModules({
+      ...sharedOptions,
+      forceUpdate: Boolean(options.forceUpdate),
+    })
+    moduleSyncState.lastResult = result
+    moduleSyncState.lastError = result.error || ''
+    queuePendingRestartsFromSyncResult(result, options.reason || 'manual')
+    return {
+      ...result,
+      running: false,
+      reason: moduleSyncState.lastReason,
+      pendingRestarts: toPublicPendingRestarts(),
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    moduleSyncState.lastError = message
+    const result = {
+      ok: false,
+      running: false,
+      reason: moduleSyncState.lastReason,
+      startedAt: moduleSyncState.startedAt,
+      finishedAt: new Date().toISOString(),
+      error: message,
+      pendingRestarts: toPublicPendingRestarts(),
+    }
+    moduleSyncState.lastResult = result
+    return result
+  } finally {
+    moduleSyncState.running = false
+    moduleSyncState.finishedAt = new Date().toISOString()
+  }
+}
+
+function queuePendingRestartsFromSyncResult(result, reason) {
+  const modules = Array.isArray(result?.modules) ? result.modules : []
+  for (const item of modules) {
+    if (item && item.pendingRestart && item.id) {
+      markModuleRestartPending(item.id, {
+        reason,
+        pendingVersion: item.installedVersion || item.remoteVersion || '',
+        pendingSha256: item.installedSha256 || item.remoteSha256 || '',
+        runningVersion: item.runningVersion || '',
+        runningSha256: item.runningSha256 || '',
+        runningBusy: Boolean(item.runningBusy),
+      })
+    }
+  }
+}
+
+function markModuleRestartPending(appId, details = {}) {
+  if (!appId) {
+    return
+  }
+
+  const previous = moduleSyncState.pendingRestarts.get(appId) || {}
+  moduleSyncState.pendingRestarts.set(appId, {
+    ...previous,
+    ...details,
+    appId,
+    markedAt: previous.markedAt || new Date().toISOString(),
+    lastCheckedAt: new Date().toISOString(),
+  })
+}
+
+async function reconcilePendingModuleRestarts() {
+  if (!moduleSyncState.pendingRestarts.size) {
+    return
+  }
+
+  for (const [appId, pending] of Array.from(moduleSyncState.pendingRestarts.entries())) {
+    const automationApp = getAutomationAppById(appId, sharedOptions)
+    if (!automationApp) {
+      moduleSyncState.pendingRestarts.delete(appId)
+      continue
+    }
+
+    const health = await requestAutomationAppHealthPayload(automationApp, 700)
+    if (!health) {
+      recordModuleRestartApplied(appId, pending, 'applied-after-stop')
+      moduleSyncState.pendingRestarts.delete(appId)
+      continue
+    }
+
+    if (isAutomationAppBusy(health)) {
+      moduleSyncState.pendingRestarts.set(appId, {
+        ...pending,
+        lastCheckedAt: new Date().toISOString(),
+        runningBusy: true,
+      })
+      continue
+    }
+
+    const launchResult = await launchAutomationApp(appId, { ...sharedOptions, forceUpdate: true })
+    if (launchResult.success && !launchResult.updatePending) {
+      recordModuleRestartApplied(appId, pending, 'restarted-idle')
+      moduleSyncState.pendingRestarts.delete(appId)
+      continue
+    }
+
+    moduleSyncState.pendingRestarts.set(appId, {
+      ...pending,
+      lastCheckedAt: new Date().toISOString(),
+      lastError: launchResult.error || launchResult.message || 'Pending restart did not complete.',
+      runningBusy: Boolean(launchResult.updatePending),
+    })
+  }
+}
+
+function recordModuleRestartApplied(appId, pending, mode) {
+  moduleSyncState.appliedRestarts.unshift({
+    appId,
+    mode,
+    pendingVersion: pending?.pendingVersion || '',
+    pendingSha256: pending?.pendingSha256 || '',
+    runningVersion: pending?.runningVersion || '',
+    runningSha256: pending?.runningSha256 || '',
+    markedAt: pending?.markedAt || '',
+    appliedAt: new Date().toISOString(),
+  })
+  moduleSyncState.appliedRestarts = moduleSyncState.appliedRestarts.slice(0, 20)
+}
+
+function toPublicModuleSyncState() {
+  return {
+    running: moduleSyncState.running,
+    startedAt: moduleSyncState.startedAt,
+    finishedAt: moduleSyncState.finishedAt,
+    lastReason: moduleSyncState.lastReason,
+    lastError: moduleSyncState.lastError,
+    lastResult: moduleSyncState.lastResult ? summarizeModuleSyncResult(moduleSyncState.lastResult) : null,
+    pendingRestarts: toPublicPendingRestarts(),
+    appliedRestarts: moduleSyncState.appliedRestarts,
+  }
+}
+
+function summarizeModuleSyncResult(result) {
+  if (!result || typeof result !== 'object') {
+    return null
+  }
+
+  return {
+    ok: result.ok !== false,
+    startedAt: result.startedAt || '',
+    finishedAt: result.finishedAt || '',
+    checked: Number(result.checked || 0),
+    installed: Number(result.installed || 0),
+    upToDate: Number(result.upToDate || 0),
+    skipped: Number(result.skipped || 0),
+    blocked: Number(result.blocked || 0),
+    failed: Number(result.failed || 0),
+    pendingRestart: Number(result.pendingRestart || 0),
+    error: result.error || '',
+    modules: Array.isArray(result.modules)
+      ? result.modules.map((item) => ({
+          id: item.id,
+          status: item.status,
+          selectedVersion: item.selectedVersion || '',
+          remoteVersion: item.remoteVersion || '',
+          installedVersion: item.installedVersion || '',
+          pendingRestart: Boolean(item.pendingRestart),
+          error: item.error || item.message || '',
+        }))
+      : [],
+  }
+}
+
+function toPublicPendingRestarts() {
+  return Array.from(moduleSyncState.pendingRestarts.values()).map((item) => ({
+    appId: item.appId,
+    pendingVersion: item.pendingVersion || '',
+    pendingSha256: item.pendingSha256 || '',
+    runningVersion: item.runningVersion || '',
+    runningSha256: item.runningSha256 || '',
+    runningBusy: Boolean(item.runningBusy),
+    markedAt: item.markedAt || '',
+    lastCheckedAt: item.lastCheckedAt || '',
+    lastError: item.lastError || '',
+  }))
+}
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -272,6 +552,9 @@ async function proxyAutomationAppRequest(appId, proxyPath, clientReq, clientRes)
         logPath: launchResult.logPath,
       })
       return
+    }
+    if (launchResult.updatePending) {
+      markModuleRestartPending(appId, launchResult)
     }
     automationApp = getAutomationAppById(appId, sharedOptions) || automationApp
   }

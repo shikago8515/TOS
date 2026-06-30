@@ -7,6 +7,8 @@ export type AppAlertOptions = {
   confirmText?: string
   cancelText?: string
   tone?: AppAlertTone
+  autoCloseMs?: number
+  compact?: boolean
 }
 
 export type AppAlertRequest = Required<AppAlertOptions> & {
@@ -54,6 +56,8 @@ export function showAppConfirm(message: string, options: AppAlertOptions = {}): 
       title: options.title || DEFAULT_TITLES[tone],
       confirmText: options.confirmText || '确定',
       cancelText: options.cancelText || '',
+      autoCloseMs: Math.max(0, Number(options.autoCloseMs || 0)),
+      compact: Boolean(options.compact),
       resolve,
     }
     nextAlertId += 1

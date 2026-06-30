@@ -39,9 +39,9 @@ const AUTOMATION_LAUNCHER_PORT = 3210;
 const AUTOMATION_LAUNCHER_URL = `http://${AUTOMATION_LAUNCHER_HOST}:${AUTOMATION_LAUNCHER_PORT}`;
 const AUTOMATION_PROTOCOL = 'tos';
 const AUTOMATION_LAUNCHER_BACKGROUND_FLAG = '--automation-launcher-background';
-const DEFAULT_UPDATE_FEED_URL = '';
 const DEFAULT_INSTALLER_MANIFEST_URL = process.env.TOS_INSTALLER_MANIFEST_URL
   || 'https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/installer-versions';
+const DEFAULT_UPDATE_FEED_URL = process.env.TOS_UPDATE_FEED_URL || process.env.TMS_UPDATE_FEED_URL || '';
 const UPDATE_SOURCE_CONFIG_FILE = 'update-source.json';
 const UPDATE_STATUS_CHANNEL = 'update-status';
 const MANUAL_DOWNLOADS_FILE = 'manual-downloads.json';
@@ -131,6 +131,29 @@ function readConfiguredUpdateFeed() {
 
 function isPlaceholderUpdateFeedUrl(url) {
   return /your-server\.example\.com/i.test(url);
+}
+
+function resolveInstallerPackageDownloadUrl(downloadPath) {
+  const rawPath = typeof downloadPath === 'string' ? downloadPath.trim() : '';
+  if (!rawPath) return '';
+
+  try {
+    if (/^https?:\/\//i.test(rawPath)) {
+      return new URL(rawPath).toString();
+    }
+
+    const manifestUrl = new URL(DEFAULT_INSTALLER_MANIFEST_URL);
+    if (rawPath.startsWith('/api/')) {
+      const backendPrefix = manifestUrl.pathname.includes('/tos/desktop-api/')
+        ? '/tos/desktop-api'
+        : '';
+      return `${manifestUrl.origin}${backendPrefix}${rawPath}`;
+    }
+
+    return new URL(rawPath, DEFAULT_INSTALLER_MANIFEST_URL).toString();
+  } catch (_error) {
+    return '';
+  }
 }
 
 function getPublicUpdateStatus() {
@@ -299,12 +322,14 @@ function compareVersionStrings(left, right) {
   return 0;
 }
 
-function normalizeInstallerManifestDownload(payload, currentVersion) {
+function normalizeInstallerManifestDownload(payload, currentVersion, options = {}) {
   if (!payload || typeof payload !== 'object') return null;
+  const requireNewerVersion = options.requireNewerVersion !== false;
   const version = typeof payload.version === 'string' && payload.version.trim()
     ? payload.version.trim()
     : '';
-  if (!version || compareVersionStrings(version, currentVersion) <= 0) return null;
+  if (!version) return null;
+  if (requireNewerVersion && compareVersionStrings(version, currentVersion) <= 0) return null;
 
   const packages = Array.isArray(payload.packages) ? payload.packages : [];
   const packageInfo = packages.find((item) => item && item.id === 'tos-desktop-full')
@@ -313,10 +338,8 @@ function normalizeInstallerManifestDownload(payload, currentVersion) {
     return null;
   }
 
-  let resolvedUrl;
-  try {
-    resolvedUrl = new URL(packageInfo.downloadPath, DEFAULT_INSTALLER_MANIFEST_URL).toString();
-  } catch (_error) {
+  const resolvedUrl = resolveInstallerPackageDownloadUrl(packageInfo.downloadPath);
+  if (!resolvedUrl) {
     return null;
   }
 
@@ -602,7 +625,8 @@ async function openManualDownload() {
   configureAutoUpdater();
 
   if (!updateFeedUrl || isPlaceholderUpdateFeedUrl(updateFeedUrl)) {
-    return buildUpdateErrorResult('请先配置正式更新地址，再下载免安装版。', 'not-configured');
+    emitUpdateStatus({ status: 'checking', checking: true, downloading: false, error: null });
+    await checkServerInstallerManifestForUpdates();
   }
 
   let manualDownload = updateState.manualDownload;
@@ -610,6 +634,29 @@ async function openManualDownload() {
     manualDownload = await fetchManualDownloads(updateState.updateInfo && updateState.updateInfo.version);
     if (manualDownload) {
       emitUpdateStatus({ manualDownload });
+    }
+  }
+
+  if (!manualDownload) {
+    try {
+      const payload = await requestRemoteJson(DEFAULT_INSTALLER_MANIFEST_URL, 6000);
+      const manifestDownload = normalizeInstallerManifestDownload(payload, app.getVersion(), {
+        requireNewerVersion: false
+      });
+      if (manifestDownload) {
+        manualDownload = manifestDownload.manualDownload;
+        emitUpdateStatus({
+          updateInfo: manifestDownload.updateInfo,
+          manualDownload,
+          feedUrl: DEFAULT_INSTALLER_MANIFEST_URL,
+          feedUrlSource: 'server-manifest',
+          error: null
+        });
+      }
+    } catch (error) {
+      writeDiagnosticEvent('updater', 'installer-manifest-manual-download-failure', {
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   }
 

@@ -721,6 +721,8 @@ def list_automation_runs(
     module_id: str | None = None,
     status: str | None = None,
     keyword: str | None = None,
+    started_from: datetime | None = None,
+    started_to: datetime | None = None,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
     ensure_schema()
@@ -731,6 +733,8 @@ def list_automation_runs(
         module_id=module_id,
         status=status,
         keyword=keyword,
+        started_from=started_from,
+        started_to=started_to,
     )
     params.extend([safe_limit, safe_offset])
     with mysql_connection() as connection:
@@ -757,6 +761,8 @@ def count_automation_runs(
     module_id: str | None = None,
     status: str | None = None,
     keyword: str | None = None,
+    started_from: datetime | None = None,
+    started_to: datetime | None = None,
 ) -> int:
     ensure_schema()
     where_clause, params = _build_automation_run_filters(
@@ -764,6 +770,8 @@ def count_automation_runs(
         module_id=module_id,
         status=status,
         keyword=keyword,
+        started_from=started_from,
+        started_to=started_to,
     )
     with mysql_connection() as connection:
         with connection.cursor() as cursor:
@@ -785,6 +793,8 @@ def _build_automation_run_filters(
     module_id: str | None = None,
     status: str | None = None,
     keyword: str | None = None,
+    started_from: datetime | None = None,
+    started_to: datetime | None = None,
 ) -> tuple[str, list[Any]]:
     conditions: list[str] = []
     params: list[Any] = []
@@ -796,12 +806,23 @@ def _build_automation_run_filters(
         params.append(module_id)
     conditions.append("activity_type = 'automation'")
     if status:
-        conditions.append("status = %s")
-        params.append(status)
+        normalized_status = str(status or "").strip().lower()
+        if normalized_status == "running":
+            conditions.append("status IN (%s, %s, %s, %s)")
+            params.extend(["running", "started", "pending", "processing"])
+        else:
+            conditions.append("status = %s")
+            params.append(status)
     if keyword:
         pattern = f"%{keyword}%"
         conditions.append("(activity_id LIKE %s OR activity_name LIKE %s OR message LIKE %s)")
         params.extend([pattern, pattern, pattern])
+    if started_from:
+        conditions.append("COALESCE(started_at, created_at) >= %s")
+        params.append(started_from)
+    if started_to:
+        conditions.append("COALESCE(started_at, created_at) < %s")
+        params.append(started_to)
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     return where_clause, params
 
@@ -841,6 +862,34 @@ def update_automation_run(
             )
         connection.commit()
     return get_automation_run(run_id) or {}
+
+
+def delete_automation_run(run_id: str) -> dict[str, int | bool]:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM tos_activity_files
+                WHERE activity_id = %s
+                """,
+                (run_id,),
+            )
+            deleted_files = cursor.rowcount
+            cursor.execute(
+                """
+                DELETE FROM tos_activity_records
+                WHERE activity_id = %s AND activity_type = 'automation'
+                """,
+                (run_id,),
+            )
+            deleted_runs = cursor.rowcount
+        connection.commit()
+    return {
+        "deleted": deleted_runs > 0,
+        "deletedRuns": deleted_runs,
+        "deletedFiles": deleted_files,
+    }
 
 
 def insert_automation_run_file(file_record: dict[str, Any]) -> dict[str, Any]:

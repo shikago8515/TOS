@@ -247,6 +247,16 @@
             </div>
             <div class="sa-dock__bd">
               <BrowserVisibilitySwitch v-model="showBrowserView" />
+              <label v-if="isTicketOwnerStatisticsScenario" class="sa-browser-progress-toggle">
+                <span class="sa-browser-progress-toggle__text">
+                  <AppIcon name="monitor-code" />
+                  <span>{{ text('浏览器内进度提示') }}</span>
+                </span>
+                <input v-model="showBrowserProgressOverlay" type="checkbox" />
+              </label>
+              <small v-if="isTicketOwnerStatisticsScenario" class="sa-browser-progress-hint">
+                {{ showBrowserProgressOverlay ? text('SAP 浏览器左上角会显示当前进度。') : text('已关闭浏览器内浮层，TOS 页面仍会显示进度。') }}
+              </small>
               <div class="sa-btn-grid">
                 <button class="sa-btn sa-btn--pri" :disabled="!canLaunchActiveApp" @click="startActiveApp(false)">
                   <AppIcon name="play-circle" />{{ launching ? text('启动中...') : text('启动') }}
@@ -346,7 +356,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'; import { useRoute, useRouter } from 'vue-router'; import AppIcon from '../../shared/ui/AppIcon.vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'; import { useRoute, useRouter } from 'vue-router'; import AppIcon from '../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../shared/ui/BrowserVisibilitySwitch.vue'
 import AutomationRunHistoryPanel from './components/AutomationRunHistoryPanel.vue'
 import { downloadUrlAsFile } from '../../shared/api/backendClient'
@@ -360,6 +370,7 @@ import { useAppLanguage } from '../../shared/i18n/appLanguage'
 const route = useRoute(); const router = useRouter(); const { text } = useAppLanguage()
 const DSU = ''; const DSP = ''; const DMU = ''; const DMP = ''
 const electronSupported = hasElectronAutomationSupport()
+const BROWSER_PROGRESS_OVERLAY_STORAGE_KEY = 'tos.ticketOwner.showBrowserProgressOverlay'
 const activeApp = ref<AutomationAppInfo | null>(null); const executorHealth = ref<LocalExecutorHealth | null>(null); const executorCredentials = ref<ExecutorCredentials | null>(null); const automationTemplates = ref<AutomationTemplate[]>([])
 const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false); const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false); const sending = ref(false); const restoredActiveRun = ref(false); const credentialsHydrated = ref(false)
 const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info'); const isHealthLogOpen = ref(false); const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
@@ -368,6 +379,7 @@ const selectedFile = ref<File | null>(null); const ticketReleaseFile = ref<File 
 const shippingUsername = ref(DSU); const shippingPassword = ref(DSP); const showShippingPassword = ref(true)
 const microsoftUsername = ref(DMU); const microsoftPassword = ref(DMP); const showMicrosoftPassword = ref(true)
 const showBrowserView = ref(true)
+const showBrowserProgressOverlay = ref(loadBooleanPreference(BROWSER_PROGRESS_OVERLAY_STORAGE_KEY, true))
 const statusText = ref(''); const statusLabel = ref('待命'); const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
 const ticketOwnerProgressPercent = ref(0); const ticketOwnerProgressText = ref('')
 let ticketOwnerProgressTimer: number | null = null
@@ -421,8 +433,32 @@ const credentialStatusText = computed(() => { const sn = loginSiteName.value; re
 const canRunShippingAutomation = computed(() => !sending.value)
 const canRunDirectExecutor = computed(() => !sending.value)
 
+watch(showBrowserProgressOverlay, (value) => saveBooleanPreference(BROWSER_PROGRESS_OVERLAY_STORAGE_KEY, value))
+
 onMounted(() => { void initializeScenario() })
 onBeforeUnmount(() => { stopTicketOwnerProgress(); stopActiveRunStatePolling() })
+
+function loadBooleanPreference(key: string, fallback: boolean): boolean {
+  if (typeof window === 'undefined') return fallback
+  try {
+    const value = window.localStorage.getItem(key)
+    if (value === '1' || value === 'true') return true
+    if (value === '0' || value === 'false') return false
+  } catch {
+    return fallback
+  }
+  return fallback
+}
+
+function saveBooleanPreference(key: string, value: boolean): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(key, value ? '1' : '0')
+  } catch {
+    // localStorage may be unavailable in restricted browser shells.
+  }
+}
+
 async function initializeScenario(): Promise<void> {
   if (isShippingScenario.value) { shippingUsername.value = shippingUsername.value || DSU; shippingPassword.value = shippingPassword.value || DSP; statusLabel.value = '待命'; statusText.value = '等待上传万代 Excel 并执行 Shipping。' }
   else if (isInfornexusAutoAddScenario.value) { shippingUsername.value = shippingUsername.value || DSU; shippingPassword.value = shippingPassword.value || DSP; statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行 Infornexus 自动搜索添加。' }
@@ -846,6 +882,9 @@ async function sendDirectToExecutor(): Promise<void> {
     const rr = await createBackendRunRecord(file ?? null)
     const cp = isMicrosoftScenario.value ? await resolveRunCredentialsPayload(microsoftUsername.value, microsoftPassword.value) : {}
     const requestBody: Record<string, unknown> = { token: entry.value?.localExecutorToken || '', headless: !showBrowserView.value, ...cp }
+    if (isTicketOwnerStatisticsScenario.value) {
+      requestBody.showBrowserProgressOverlay = showBrowserProgressOverlay.value
+    }
     if (file) {
       requestBody.fileName = file.name
       requestBody.fileBase64 = await fileToBase64(file)
@@ -1582,6 +1621,46 @@ function readErrorMessage(e: unknown, fb: string): string { return e instanceof 
 .sa-drawer-slide-enter-from,
 .sa-drawer-slide-leave-to {
   transform: translateX(100%);
+}
+
+.sa-browser-progress-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid #e0f2fe;
+  border-radius: 10px;
+  background: #f8fcff;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 700;
+  box-sizing: border-box;
+}
+.sa-browser-progress-toggle__text {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.sa-browser-progress-toggle__text span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sa-browser-progress-toggle input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  accent-color: #0ea5e9;
+}
+.sa-browser-progress-hint {
+  display: block;
+  margin: -2px 0 8px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
 }
 </style>
 

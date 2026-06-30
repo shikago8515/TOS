@@ -278,7 +278,7 @@ import AutomationAccountProfileManager from '../../web-automation/components/Aut
 import AutomationRunHistoryPanel from '../../web-automation/components/AutomationRunHistoryPanel.vue'
 import { buildBackendDownloadUrl } from '../../../shared/api/backendClient'
 import type { AutomationAppInfo } from '../../../types/electronApi'
-import type { AutomationRunRecord, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
+import type { AutomationRunFileInput, AutomationRunRecord, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {
   createAutomationRunRecord,
   fetchAutomationApps,
@@ -1069,7 +1069,32 @@ async function finishBackendRunRecord(
     ok ? 'success' : 'failed',
     messageText || (ok ? 'completed' : 'failed'),
     payload,
+    collectResultFiles(payload),
   )
+}
+
+function collectResultFiles(payload: Record<string, any> | null): AutomationRunFileInput[] {
+  const urls = payload?.artifacts?.downloadUrls
+  if (!urls || typeof urls !== 'object') return []
+  return [
+    buildRunFileInput(urls.resultExcelUrl, 'result_excel', 'po-auto-download-result.xlsx'),
+    buildRunFileInput(urls.resultJsonUrl, 'result_json', 'po-auto-download-result.json'),
+    buildRunFileInput(urls.failedPoExcelUrl || urls.failedRowsExcelUrl, 'failed_rows_excel', 'po-auto-download-failed-rows.xlsx'),
+    buildRunFileInput(urls.failedPoJsonUrl || urls.failedRowsJsonUrl, 'failed_rows_json', 'po-auto-download-failed-rows.json'),
+  ].filter((item): item is AutomationRunFileInput => Boolean(item))
+}
+
+function buildRunFileInput(rawPath: unknown, fileRole: string, fileName: string): AutomationRunFileInput | null {
+  const url = buildArtifactUrl(rawPath)
+  return url ? { url, fileRole, fileName } : null
+}
+
+function buildArtifactUrl(rawPath: unknown): string {
+  const normalizedPath = String(rawPath || '').trim()
+  if (!normalizedPath) return ''
+  if (/^https?:\/\//i.test(normalizedPath)) return normalizedPath
+  const baseUrl = String(entry?.executorBaseUrl || '').replace(/\/+$/, '')
+  return baseUrl ? `${baseUrl}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}` : ''
 }
 
 async function fileToBase64(file: File): Promise<string> {

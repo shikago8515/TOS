@@ -24,6 +24,15 @@ const PO_HEADER_ALIASES = new Set([
 ]);
 
 const NO_HEADER_ALIASES = new Set([
+  "invoice",
+  "invoice#",
+  "invoiceno",
+  "invoicenumber",
+  "invoiceid",
+  "inv",
+  "inv#",
+  "invno",
+  "invnumber",
   "no",
   "no.",
   "number",
@@ -87,7 +96,7 @@ export function validatePackingListWorkbookPayload(body, deps) {
 
   const groups = collectNoGroups(rows);
   if (groups.length === 0) {
-    const error = new Error("自动下载箱单 Excel 未找到 NO 批次。请确认第一行表头包含 NO，且至少第一条 PO 行填写了 NO。");
+    const error = new Error("自动下载箱单 Excel 未找到 Invoice# 批次。请确认第一行表头包含 Invoice# 或 NO，且至少第一条 PO 行填写了批次号。");
     error.statusCode = 400;
     throw error;
   }

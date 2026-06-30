@@ -590,6 +590,7 @@ function normalizeRunOptions(body) {
     navigationTimeoutMs: toNumber(body?.navigationTimeoutMs, config.navigationTimeoutMs),
     postLoginWaitMs: toNumber(body?.postLoginWaitMs, config.postLoginWaitMs),
     staySignedInAction: String(body?.staySignedInAction || config.staySignedInAction),
+    showBrowserProgressOverlay: body?.showBrowserProgressOverlay !== false,
     keepBrowserOpenOnErrorMs: toNumber(
       body?.keepBrowserOpenOnErrorMs,
       config.keepBrowserOpenOnErrorMs
@@ -624,16 +625,22 @@ async function runLogin(rows, options) {
         ? "SAP BTP 登录自动化"
         : "SAP BTP PO Decision 自动化"
   ));
-  const showRunBadge = async (message, details = {}) => showAutomationBadge(page, {
-    title: workflowTitle,
-    message,
-    details: {
-      phase: "sap-btp-login",
-      workflowMode,
-      totalCount: Array.isArray(rows) ? rows.length : 0,
-      ...details,
-    },
-  });
+  const showRunBadge = async (message, details = {}) => {
+    if (options.showBrowserProgressOverlay === false) {
+      await removeAutomationBadge(page);
+      return;
+    }
+    await showAutomationBadge(page, {
+      title: workflowTitle,
+      message,
+      details: {
+        phase: "sap-btp-login",
+        workflowMode,
+        totalCount: Array.isArray(rows) ? rows.length : 0,
+        ...details,
+      },
+    });
+  };
 
   try {
     browser = await engine.launch(browserLaunchOptions);
@@ -3157,12 +3164,15 @@ async function readJsonIfExists(filePath, fallback) {
 }
 
 function buildHealthPayload() {
+  const appId = String(process.env.TOS_AUTOMATION_APP_ID || "microsoft-login-n8n-demo").trim();
   const helperVersion = String(process.env.TOS_AUTOMATION_HELPER_VERSION || "").trim();
   const moduleVersion = String(process.env.TOS_AUTOMATION_MODULE_VERSION || "").trim();
   const moduleSource = String(process.env.TOS_AUTOMATION_MODULE_SOURCE || "bundled").trim();
   const moduleSha256 = String(process.env.TOS_AUTOMATION_MODULE_SHA256 || "").trim();
   return {
     ok: true,
+    appId,
+    port: config.port,
     version: helperVersion,
     helperVersion,
     moduleVersion,
@@ -3186,6 +3196,7 @@ function buildHealthPayload() {
     config: {
       host: config.host,
       port: config.port,
+      appId,
       browser: config.browser,
       headless: config.headless,
       slowMo: config.slowMo,
@@ -3237,6 +3248,24 @@ async function showAutomationBadge(target, options = {}) {
   };
 
   await Promise.allSettled(uniqueTargets.map((item) => injectAutomationBadge(item, payload)));
+}
+
+async function removeAutomationBadge(target) {
+  if (!target || typeof target.evaluate !== "function" || isPageClosed(target)) {
+    return;
+  }
+  const targets = [target];
+  if (typeof target.frames === "function") {
+    targets.push(...target.frames());
+  }
+  await Promise.allSettled(
+    Array.from(new Set(targets))
+      .filter((item) => item && typeof item.evaluate === "function")
+      .map((item) => item.evaluate(() => {
+        document.getElementById("tos-browser-automation-status-badge")?.remove();
+        document.getElementById("tos-ticket-owner-progress")?.remove();
+      }))
+  );
 }
 
 function normalizeAutomationBadgeDetails(details = {}) {

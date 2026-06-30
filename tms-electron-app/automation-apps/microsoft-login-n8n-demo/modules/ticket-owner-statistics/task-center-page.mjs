@@ -34,8 +34,10 @@ import {
 const TASK_CENTER_TILE_SELECTORS = [
   "#__tile32",
   "a[href*='taskcenter-display']",
-  "text=Task Center",
+  "text=/^Task Center$/",
 ];
+
+const TASK_CENTER_INBOX_HASH = "taskcenter-display?sap-ui-app-id-hint=saas_approuter_com.sap.bpm.tc.inbox&/";
 
 const TASK_CENTER_READY_SELECTORS = [
   "#application-taskcenter-display-component---worklist--taskDefinitionFilter-arrow",
@@ -59,6 +61,7 @@ const DEFAULT_DETAIL_CONCURRENCY = 3;
 const DEFAULT_DETAIL_PAGE_TIMEOUT_MS = 18000;
 
 export async function collectTicketOwnerStatistics(page, options = {}) {
+  page.__tosTicketOwnerProgressOverlayEnabled = options.showBrowserProgressOverlay !== false;
   const timeoutMs = Number(options.navigationTimeoutMs || 45000);
   const maxTicketCount = normalizePositiveInteger(options.maxTicketCount, 200);
   const excelLookups = options.excelLookups || null;
@@ -356,6 +359,9 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
         );
         const claim = await claimTaskIfAvailable(page);
         const openInApp = await openSelectedTaskInApp(page, timeoutMs);
+        if (openInApp?.appPage) {
+          openInApp.appPage.__tosTicketOwnerProgressOverlayEnabled = options.showBrowserProgressOverlay !== false;
+        }
         await showTicketOwnerProgress(
           openInApp.appPage,
           "正在采集 A/B/C 字段",
@@ -675,25 +681,124 @@ async function openTaskCenter(page, timeoutMs) {
     if (isTaskCenterDetailUrl(page.url())) {
       return false;
     }
+    await normalizeTaskCenterInboxRoute(page, timeoutMs);
     await waitForTaskCenterReady(page, timeoutMs);
     return;
   }
 
   await waitForAny(page, TASK_CENTER_TILE_SELECTORS, timeoutMs);
-  await clickFirstVisible(page, TASK_CENTER_TILE_SELECTORS);
+  const clicked = await clickTaskCenterTile(page);
+  if (!clicked) {
+    const targetUrl = buildTaskCenterUrl(page.url());
+    if (targetUrl) {
+      await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: Math.min(timeoutMs, 20000) });
+    } else {
+      await clickFirstVisible(page, TASK_CENTER_TILE_SELECTORS);
+    }
+  }
   await waitFor(async () => {
     return page.url().includes("taskcenter-display") || await anyVisible(page, TASK_CENTER_READY_SELECTORS);
   }, timeoutMs, 250);
   await waitForTaskCenterReady(page, timeoutMs);
 }
 
+function buildTaskCenterUrl(currentUrl) {
+  try {
+    const url = new URL(currentUrl);
+    if (!url.origin || !url.pathname.includes("/site")) {
+      return "";
+    }
+    url.searchParams.delete("sap-ushell-config");
+    url.hash = TASK_CENTER_INBOX_HASH;
+    return normalizeTaskCenterUrl(url.toString());
+  } catch (_error) {
+    return "";
+  }
+}
+
+async function normalizeTaskCenterInboxRoute(page, timeoutMs) {
+  const currentUrl = page.url();
+  const parsedUrl = parseUrl(currentUrl);
+  const normalizedUrl = normalizeTaskCenterUrl(currentUrl);
+  if (
+    !currentUrl.includes("taskcenter-display") ||
+    isTaskCenterDetailUrl(currentUrl) ||
+    (
+      currentUrl.includes("&/") &&
+      currentUrl === normalizedUrl &&
+      parsedUrl?.searchParams?.get("sap-ushell-config") !== "lean"
+    )
+  ) {
+    return false;
+  }
+
+  const targetUrl = buildTaskCenterUrl(currentUrl);
+  if (!targetUrl || targetUrl === currentUrl) {
+    return false;
+  }
+
+  await page.goto(targetUrl, {
+    waitUntil: "domcontentloaded",
+    timeout: Math.min(timeoutMs, 20000),
+  });
+  await pageWait(page, 1200);
+  return true;
+}
+
+function normalizeTaskCenterUrl(value) {
+  return String(value || "").replace(/&\/(?:&\/)+/g, "&/");
+}
+
+function parseUrl(value) {
+  try {
+    return new URL(value);
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function clickTaskCenterTile(page) {
+  for (const target of listTargets(page)) {
+    const clicked = await target.evaluate(() => {
+      const isTosOverlay = (element) => Boolean(element?.closest?.(
+        "#tos-ticket-owner-progress, #tos-browser-automation-status-badge, [data-tos-ticket-owner-progress='true']"
+      ));
+      const textOf = (element) => String(element?.innerText || element?.textContent || "")
+        .replace(/\s+/g, " ")
+        .trim();
+      const candidates = [
+        ...document.querySelectorAll("#__tile32, a[href*='taskcenter-display'], [role='button'], .sapMGT, .sapMGenericTile"),
+      ];
+      const tile = candidates.find((element) => {
+        if (!element || isTosOverlay(element)) {
+          return false;
+        }
+        const text = textOf(element);
+        return /\bTask Center\b/i.test(text);
+      });
+      if (!tile) {
+        return false;
+      }
+      tile.scrollIntoView({ block: "center", inline: "center" });
+      tile.click();
+      return true;
+    }).catch(() => false);
+    if (clicked) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function waitForTaskCenterReady(page, timeoutMs) {
+  await normalizeTaskCenterInboxRoute(page, timeoutMs).catch(() => false);
+
   const ready = await waitFor(async () => {
     return (
       await anyVisible(page, TASK_CENTER_READY_SELECTORS) ||
       await isTaskCenterSurfaceReady(page)
     );
-  }, Math.max(timeoutMs, 60000), 500)
+  }, 25000, 500)
     .then(() => true)
     .catch(() => false);
 
@@ -703,7 +808,54 @@ async function waitForTaskCenterReady(page, timeoutMs) {
   }
 
   const debug = await collectPageDebug(page);
+  if (isTaskCenterShellOnly(debug)) {
+    const targetUrl = buildTaskCenterUrl(page.url());
+    if (targetUrl) {
+      await page.goto(targetUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: Math.min(timeoutMs, 20000),
+      }).catch(async () => {
+        await page.reload({ waitUntil: "domcontentloaded", timeout: Math.min(timeoutMs, 20000) }).catch(() => {});
+      });
+    } else {
+      await page.reload({ waitUntil: "domcontentloaded", timeout: Math.min(timeoutMs, 20000) }).catch(() => {});
+    }
+
+    const recovered = await waitFor(async () => {
+      return (
+        await anyVisible(page, TASK_CENTER_READY_SELECTORS) ||
+        await isTaskCenterSurfaceReady(page)
+      );
+    }, 90000, 500)
+      .then(() => true)
+      .catch(() => false);
+
+    if (recovered) {
+      await pageWait(page, 600);
+      return;
+    }
+  }
   throw new Error(`Task Center 页面没有就绪，无法开始采集。Debug: ${JSON.stringify(debug)}`);
+}
+
+function isTaskCenterShellOnly(debug) {
+  const url = String(debug?.url || "");
+  const title = normalizeComparable(debug?.title || "");
+  const bodyText = normalizeText(debug?.bodyTextSnippet || "");
+  const comparableBody = normalizeComparable(bodyText);
+  if (!url.includes("taskcenter-display") || !title.includes("task center")) {
+    return false;
+  }
+  if (!comparableBody.includes("task center")) {
+    return false;
+  }
+  return !(
+    comparableBody.includes("task type") ||
+    comparableBody.includes("adapt filters") ||
+    comparableBody.includes("claim") ||
+    comparableBody.includes("release") ||
+    /\bTasks\s*\(/i.test(bodyText)
+  );
 }
 
 async function configureTicketOwnerTaskTypeFilter(page, timeoutMs) {
@@ -1028,6 +1180,7 @@ async function processTicketOwnerDetailTask(taskCenterPage, task, options = {}) 
     }
 
     taskPage = await openTaskCenterTaskLink(taskCenterPage, task.uiLink, timeoutMs);
+    taskPage.__tosTicketOwnerProgressOverlayEnabled = options.showBrowserProgressOverlay !== false;
     await showTicketOwnerProgress(
       taskPage,
       formatProgressMessage("正在认领并打开详情页", options.progressState),
@@ -1036,6 +1189,9 @@ async function processTicketOwnerDetailTask(taskCenterPage, task, options = {}) 
     );
     claim = await claimTaskIfAvailable(taskPage);
     openInApp = await openSelectedTaskInApp(taskPage, timeoutMs);
+    if (openInApp?.appPage) {
+      openInApp.appPage.__tosTicketOwnerProgressOverlayEnabled = options.showBrowserProgressOverlay !== false;
+    }
     await showTicketOwnerProgress(
       openInApp.appPage,
       formatProgressMessage("正在采集 A/B/C 字段", options.progressState),

@@ -5,7 +5,7 @@ import binascii
 from io import BytesIO
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, time, timedelta, timezone
 from typing import Any
 from urllib.parse import quote
 from uuid import uuid4
@@ -32,6 +32,7 @@ from utils.mysql_store import (
     count_automation_runs,
     create_automation_run,
     delete_automation_credentials,
+    delete_automation_run,
     delete_excel_template,
     get_automation_run_file,
     get_automation_credentials,
@@ -51,6 +52,7 @@ from utils.mysql_store import (
 
 router = APIRouter(prefix="/automation", tags=["Automation Storage"])
 logger = logging.getLogger(__name__)
+BEIJING_TZ = timezone(timedelta(hours=8))
 
 INFOR_NEXUS_SHARED_CREDENTIAL_IDS = (
     "shipping-automation",
@@ -387,17 +389,31 @@ async def finish_run(run_id: str, payload: RunUpdatePayload) -> dict[str, Any]:
     }
 
 
+@router.delete("/runs/{run_id}")
+def delete_run(run_id: str) -> dict[str, Any]:
+    if not get_automation_run(run_id):
+        raise HTTPException(status_code=404, detail="Automation run was not found.")
+    deleted = delete_automation_run(run_id)
+    return {
+        "ok": True,
+        **deleted,
+    }
+
+
 @router.get("/runs")
 def read_runs(
     automationId: str | None = Query(None),
     moduleId: str | None = Query(None),
     status: str | None = Query(None),
     keyword: str | None = Query(None),
+    dateFrom: str | None = Query(None),
+    dateTo: str | None = Query(None),
     page: int = Query(1, ge=1),
     pageSize: int = Query(30, ge=1, le=100),
     limit: int | None = Query(None, ge=1, le=100),
 ) -> dict[str, Any]:
     try:
+        started_from, started_to = _parse_beijing_date_range(dateFrom, dateTo)
         effective_page_size = limit or pageSize
         offset = (page - 1) * effective_page_size
         total = count_automation_runs(
@@ -405,6 +421,8 @@ def read_runs(
             module_id=moduleId,
             status=status,
             keyword=keyword,
+            started_from=started_from,
+            started_to=started_to,
         )
         runs = [
             _run_payload(row)
@@ -414,6 +432,8 @@ def read_runs(
                 module_id=moduleId,
                 status=status,
                 keyword=keyword,
+                started_from=started_from,
+                started_to=started_to,
                 offset=offset,
             )
         ]
@@ -605,6 +625,10 @@ def _attachment_content_disposition(filename: str) -> str:
 
 
 def _run_payload(row: dict[str, Any]) -> dict[str, Any]:
+    started_at = row.get("started_at")
+    finished_at = row.get("finished_at")
+    created_at = row.get("created_at")
+    updated_at = row.get("updated_at")
     return {
         "runId": row["run_id"],
         "automationId": row["automation_id"],
@@ -613,10 +637,15 @@ def _run_payload(row: dict[str, Any]) -> dict[str, Any]:
         "status": row.get("status", ""),
         "message": row.get("message", ""),
         "result": _safe_json_loads(row.get("result_json")),
-        "startedAt": _format_datetime(row.get("started_at")),
-        "finishedAt": _format_datetime(row.get("finished_at")),
-        "createdAt": _format_datetime(row.get("created_at")),
-        "updatedAt": _format_datetime(row.get("updated_at")),
+        "startedAt": _format_datetime(started_at),
+        "finishedAt": _format_datetime(finished_at),
+        "createdAt": _format_datetime(created_at),
+        "updatedAt": _format_datetime(updated_at),
+        "startedAtBeijing": _format_beijing_datetime(started_at),
+        "finishedAtBeijing": _format_beijing_datetime(finished_at),
+        "createdAtBeijing": _format_beijing_datetime(created_at),
+        "updatedAtBeijing": _format_beijing_datetime(updated_at),
+        "durationSeconds": _duration_seconds(started_at, finished_at),
     }
 
 
@@ -963,7 +992,53 @@ def _safe_json_loads(value: Any) -> Any:
         return None
 
 
+def _parse_beijing_date_range(date_from: str | None, date_to: str | None) -> tuple[datetime | None, datetime | None]:
+    start_date = _parse_date_only(date_from)
+    end_date = _parse_date_only(date_to)
+    started_from = _beijing_date_to_utc_naive(start_date) if start_date else None
+    if end_date:
+        started_to = _beijing_date_to_utc_naive(end_date + timedelta(days=1))
+    elif start_date:
+        started_to = _beijing_date_to_utc_naive(start_date + timedelta(days=1))
+    else:
+        started_to = None
+    return started_from, started_to
+
+
+def _parse_date_only(value: str | None):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw[:10], "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="日期筛选格式应为 YYYY-MM-DD。") from exc
+
+
+def _beijing_date_to_utc_naive(value) -> datetime:
+    beijing_dt = datetime.combine(value, time.min, tzinfo=BEIJING_TZ)
+    return beijing_dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 def _format_datetime(value: Any) -> str:
     if hasattr(value, "isoformat"):
         return value.isoformat()
     return str(value or "")
+
+
+def _format_beijing_datetime(value: Any) -> str:
+    if not isinstance(value, datetime):
+        return str(value or "")
+    source = value
+    if source.tzinfo is None:
+        source = source.replace(tzinfo=timezone.utc)
+    return source.astimezone(BEIJING_TZ).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _duration_seconds(started_at: Any, finished_at: Any) -> int | None:
+    if not isinstance(started_at, datetime) or not isinstance(finished_at, datetime):
+        return None
+    started = started_at.replace(tzinfo=timezone.utc) if started_at.tzinfo is None else started_at.astimezone(timezone.utc)
+    finished = finished_at.replace(tzinfo=timezone.utc) if finished_at.tzinfo is None else finished_at.astimezone(timezone.utc)
+    seconds = int((finished - started).total_seconds())
+    return seconds if seconds >= 0 else None

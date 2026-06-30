@@ -13,7 +13,10 @@ export async function reportTicketOwnerProgress(target, options, progress = {}) 
     target,
     formatProgressMessage(normalized.message, normalized),
     normalized.percent,
-    normalized
+    {
+      ...normalized,
+      showBrowserProgressOverlay: options?.showBrowserProgressOverlay !== false,
+    }
   );
 }
 
@@ -36,11 +39,29 @@ export async function showTicketOwnerProgress(target, message, percent = 0, deta
     targets.push(...target.frames());
   }
 
+  if (
+    details?.showBrowserProgressOverlay === false ||
+    target.__tosTicketOwnerProgressOverlayEnabled === false
+  ) {
+    await Promise.all(
+      targets.map((progressTarget) =>
+        removeTicketOwnerProgress(progressTarget)
+      )
+    );
+    return;
+  }
+
   await Promise.all(
     targets.map((progressTarget) =>
       injectTicketOwnerProgress(progressTarget, message, safePercent, details)
     )
   );
+}
+
+async function removeTicketOwnerProgress(target) {
+  await target.evaluate(() => {
+    document.getElementById("tos-ticket-owner-progress")?.remove();
+  }).catch(() => {});
 }
 
 function progressDetailsFromState(state = {}) {
@@ -146,6 +167,7 @@ async function injectTicketOwnerProgress(target, message, percent, details = {})
       root.id = id;
       root.setAttribute("role", "status");
       root.setAttribute("aria-live", "polite");
+      root.setAttribute("aria-hidden", "true");
       root.setAttribute("data-tos-ticket-owner-progress", "true");
       root.style.cssText = [
         "position:fixed",
@@ -193,6 +215,11 @@ async function injectTicketOwnerProgress(target, message, percent, details = {})
       root.append(title, messageNode, metaNode, track);
       document.documentElement.appendChild(root);
     }
+
+    root.style.pointerEvents = "none";
+    root.querySelectorAll("*").forEach((element) => {
+      element.style.pointerEvents = "none";
+    });
 
     const phase = String(progressDetails?.phase || "");
     const isFailed = phase === "failed" || phase === "error";

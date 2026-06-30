@@ -1,4 +1,4 @@
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { inflateSync, unzipSync } from "node:zlib";
 import { downloadPackingManifestPdfByDetailRequest } from "./detail-request.mjs";
@@ -85,6 +85,9 @@ export async function runPackingListAutoDownloadWorkflow(options) {
   const downloadedFilePaths = browserResult.groupResults
     .filter((item) => item.ok && item.filePath)
     .map((item) => item.filePath);
+  const failedPackingLists = browserResult.groupResults
+    .filter((item) => !item.ok)
+    .map((item) => normalizeFailedPackingListResult(item));
   const firstSuccessfulAttempt = browserResult.groupResults
     .flatMap((group) => group.attempts || [])
     .find((attempt) => attempt.ok);
@@ -123,6 +126,8 @@ export async function runPackingListAutoDownloadWorkflow(options) {
     completedPoCount: downloadedPackingListCount,
     failedPackingListCount,
     failedPoCount: failedPackingListCount,
+    failedPackingLists,
+    failedNoBatches: failedPackingLists,
     downloadedFilePaths,
     firstDownloadedFilePath: downloadedFilePaths[0] || "",
     groupResults: browserResult.groupResults,
@@ -480,7 +485,67 @@ async function processPackingManifestGroup(options) {
         currentPackingListNumbers: [no],
         currentPoNumbers: [poNumber],
       });
-      const fillResult = await fillPackingManifestPoFilter(page, poInput, poNumber, config);
+      let fillResult = null;
+      const maxFilterAttempts = 3;
+      for (let filterAttempt = 1; filterAttempt <= maxFilterAttempts; filterAttempt += 1) {
+        const currentPoInput = filterAttempt === 1
+          ? poInput
+          : await resolvePackingManifestPoInput(page, config);
+        fillResult = await fillPackingManifestPoFilter(page, currentPoInput, poNumber, config);
+        if (!isPackingManifestFilterStillPending(fillResult)) {
+          break;
+        }
+        log("Packing List PO filter did not apply to current PO; retrying from a clean query page.", {
+          runId: activeRun.runId,
+          no,
+          poNumber,
+          filterAttempt,
+          reason: fillResult.searchOutcome?.reason || "",
+        });
+        await showPackingListAutomationBadge(page, `PO ${poNumber} filter not applied; retry ${filterAttempt}/${maxFilterAttempts}`, {
+          phase: "retry-po-filter",
+          no,
+          poNumber,
+          totalCount: groupTotal,
+          completedCount: groupIndex,
+          attemptedCount: poIndex + 1,
+          currentPoIndex: poIndex + 1,
+          totalPoCount: poNumbers.length,
+        });
+        if (filterAttempt >= maxFilterAttempts) {
+          break;
+        }
+        await page.goto(packingManifestUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: Math.min(Number(config.navigationTimeoutMs) || 30000, 12000),
+        }).catch(() => null);
+        await waitForPageSettled(page, config);
+        await openPackingManifestSearchPage(page, packingManifestUrl, config, poNumber);
+      }
+      if (isPackingManifestFilterStillPending(fillResult)) {
+        const debugSnapshot = await writePackingManifestDebugSnapshot({
+          downloadDirectory,
+          no,
+          page,
+          poNumber,
+          reason: "po-filter-not-applied",
+          runId: activeRun.runId,
+        }).catch((error) => ({
+          error: error instanceof Error ? error.message : String(error || ""),
+        }));
+        attempts.push({
+          ok: false,
+          no,
+          poNumber,
+          poFilterFilled: true,
+          ...fillResult,
+          debugSnapshot,
+          step: "po-filter-apply",
+          noResults: false,
+          error: `PO ${poNumber} filter was not applied after ${maxFilterAttempts} attempts.`,
+        });
+        continue;
+      }
       await showPackingListAutomationBadge(page, `PO ${poNumber} 已 Apply，正在读取结果`, {
         phase: "wait-result",
         no,
@@ -653,6 +718,8 @@ async function processPackingManifestGroup(options) {
       return {
         ok: true,
         no,
+        poNumbers,
+        attemptedPoNumbers: attempts.map((item) => item.poNumber).filter(Boolean),
         successfulPoNumber: poNumber,
         attemptedPoCount: attempts.length,
         totalPoCount: poNumbers.length,
@@ -663,20 +730,34 @@ async function processPackingManifestGroup(options) {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error || "");
+      const page = pageRef?.current;
+      const debugSnapshot = page && !page.isClosed()
+        ? await writePackingManifestDebugSnapshot({
+          downloadDirectory,
+          no,
+          page,
+          poNumber,
+          reason: message.includes("Apply") ? "apply-button-not-found" : "attempt-error",
+          runId: activeRun.runId,
+        }).catch((snapshotError) => ({
+          error: snapshotError instanceof Error ? snapshotError.message : String(snapshotError || ""),
+        }))
+        : null;
       attempts.push({
         ok: false,
         no,
         poNumber,
         step: "download",
         error: message,
+        debugSnapshot,
       });
       log("Packing List PO attempt failed, trying next PO in same NO group.", {
         runId: activeRun.runId,
         no,
         poNumber,
         message,
+        debugSnapshot,
       });
-      const page = pageRef?.current;
       if (page && !page.isClosed()) {
         await showPackingListAutomationBadge(page, `PO ${poNumber} 下载失败，继续下一个`, {
           phase: "error",
@@ -696,6 +777,9 @@ async function processPackingManifestGroup(options) {
   return {
     ok: false,
     no,
+    poNumbers,
+    attemptedPoNumbers: attempts.map((item) => item.poNumber).filter(Boolean),
+    failedPoNumbers: poNumbers,
     successfulPoNumber: "",
     attemptedPoCount: attempts.length,
     totalPoCount: poNumbers.length,
@@ -706,6 +790,29 @@ async function processPackingManifestGroup(options) {
 
 function failedCountFromGroupResults(groupResults = []) {
   return Array.isArray(groupResults) ? groupResults.filter((item) => !item?.ok).length : 0;
+}
+
+function normalizeFailedPackingListResult(item) {
+  const attempts = Array.isArray(item?.attempts) ? item.attempts : [];
+  const attemptedPoNumbers = attempts.map((attempt) => attempt?.poNumber).filter(Boolean);
+  return {
+    no: item?.no || "",
+    poNumbers: Array.isArray(item?.poNumbers) ? item.poNumbers : [],
+    attemptedPoNumbers,
+    failedPoNumbers: Array.isArray(item?.failedPoNumbers) ? item.failedPoNumbers : (Array.isArray(item?.poNumbers) ? item.poNumbers : attemptedPoNumbers),
+    attemptedPoCount: item?.attemptedPoCount || attemptedPoNumbers.length,
+    totalPoCount: item?.totalPoCount || (Array.isArray(item?.poNumbers) ? item.poNumbers.length : 0),
+    error: item?.error || attempts.find((attempt) => attempt?.error)?.error || "",
+    attempts: attempts.map((attempt) => ({
+      no: attempt?.no || item?.no || "",
+      poNumber: attempt?.poNumber || "",
+      step: attempt?.step || "",
+      noResults: Boolean(attempt?.noResults),
+      error: attempt?.error || "",
+      debugSnapshot: attempt?.debugSnapshot || null,
+      linkDiagnostics: attempt?.linkDiagnostics || [],
+    })),
+  };
 }
 
 async function ensurePackingManifestWorkingPage({ activeRun, config, context, log, pageRef }) {
@@ -1157,11 +1264,8 @@ async function extractPackingManifestResultLinkInfoFromResponse(response, baseUr
   if (!response) return null;
   const variants = await readResponseTextVariants(response);
   const expectedPo = String(poNumber || "").trim();
-  if (expectedPo && !variants.some((text) => String(text || "").includes(expectedPo))) {
-    return null;
-  }
   for (const text of variants) {
-    const linkInfo = extractPackingManifestResultLinkInfoFromText(text, baseUrl);
+    const linkInfo = extractPackingManifestResultLinkInfoFromText(text, baseUrl, expectedPo);
     if (linkInfo?.href) {
       return {
         ...linkInfo,
@@ -1194,7 +1298,7 @@ async function readResponseTextVariants(response) {
   return variants;
 }
 
-function extractPackingManifestResultLinkInfoFromText(text, baseUrl) {
+function extractPackingManifestResultLinkInfoFromText(text, baseUrl, poNumber = "") {
   const variants = [
     String(text || ""),
     htmlDecode(String(text || "")),
@@ -1203,14 +1307,16 @@ function extractPackingManifestResultLinkInfoFromText(text, baseUrl) {
   ].filter(Boolean);
 
   for (const variant of variants) {
-    const href = findPackingManifestPageResolverHref(variant);
+    const hrefs = findPackingManifestPageResolverHrefs(variant);
+    const href = hrefs.find((candidate) => packingManifestCandidateMatchesPo(variant, candidate, poNumber));
     if (href) {
       return buildPackingManifestLinkInfoFromHref(href, baseUrl, "response-href");
     }
   }
 
   for (const variant of variants) {
-    const folderId = findPackingManifestFolderId(variant);
+    const folderId = findPackingManifestFolderIds(variant)
+      .find((candidate) => packingManifestCandidateMatchesPo(variant, candidate, poNumber));
     if (folderId) {
       const href = `PageResolver.jsp?pageResolverType=OrdersViewDocumentResolver&folderId=${folderId}&docType=PackingManifest`;
       return buildPackingManifestLinkInfoFromHref(href, baseUrl, "response-folder-id");
@@ -1220,37 +1326,86 @@ function extractPackingManifestResultLinkInfoFromText(text, baseUrl) {
 }
 
 function findPackingManifestPageResolverHref(text) {
+  return findPackingManifestPageResolverHrefs(text)[0] || "";
+}
+
+function findPackingManifestPageResolverHrefs(text) {
   const patterns = [
     /href\s*=\s*\\?["']([^"']*PageResolver\.jsp[^"']*OrdersViewDocumentResolver[^"']*docType=PackingManifest[^"']*)\\?["']/gi,
     /\\?["']([^"']*PageResolver\.jsp[^"']*OrdersViewDocumentResolver[^"']*docType=PackingManifest[^"']*)\\?["']/gi,
     /\b(PageResolver\.jsp\?[^"'<>\\\s]*OrdersViewDocumentResolver[^"'<>\\\s]*docType=PackingManifest[^"'<>\\\s]*)/gi,
     /\b(\/en\/trade\/PageResolver\.jsp\?[^"'<>\\\s]*OrdersViewDocumentResolver[^"'<>\\\s]*docType=PackingManifest[^"'<>\\\s]*)/gi,
   ];
+  const hrefs = [];
   for (const pattern of patterns) {
-    const match = pattern.exec(text);
-    if (match?.[1]) {
-      return cleanExtractedHref(match[1]);
+    pattern.lastIndex = 0;
+    for (const match of String(text || "").matchAll(pattern)) {
+      if (match?.[1]) {
+        const href = cleanExtractedHref(match[1]);
+        if (href && !hrefs.includes(href)) {
+          hrefs.push(href);
+        }
+      }
     }
   }
-  return "";
+  return hrefs;
 }
 
 function findPackingManifestFolderId(text) {
+  return findPackingManifestFolderIds(text)[0] || "";
+}
+
+function findPackingManifestFolderIds(text) {
   if (!/docType=PackingManifest|OrdersViewDocumentResolver|PackingManifest/i.test(text)) {
-    return "";
+    return [];
   }
   const patterns = [
-    /folderId(?:=|%3D|\\?["']?\s*:\s*\\?["']?)(\d{6,})/i,
-    /ManifestFolder\?key=(\d{6,})/i,
-    /Packing\s*List\s*Ref\s*Number[\s\S]{0,500}?(\d{6,})/i,
+    /folderId(?:=|%3D|\\?["']?\s*:\s*\\?["']?)(\d{6,})/gi,
+    /ManifestFolder\?key=(\d{6,})/gi,
+    /Packing\s*List\s*Ref\s*Number[\s\S]{0,500}?(\d{6,})/gi,
   ];
+  const folderIds = [];
   for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match?.[1]) {
-      return match[1];
+    pattern.lastIndex = 0;
+    for (const match of String(text || "").matchAll(pattern)) {
+      if (match?.[1] && !folderIds.includes(match[1])) {
+        folderIds.push(match[1]);
+      }
     }
   }
-  return "";
+  return folderIds;
+}
+
+function packingManifestCandidateMatchesPo(text, candidate, poNumber = "") {
+  const expectedPo = String(poNumber || "").trim();
+  if (!expectedPo) return true;
+  const haystack = String(text || "");
+  const values = [candidate];
+  const folderId = extractFolderIdFromPackingManifestCandidate(candidate);
+  if (folderId) {
+    values.push(folderId);
+  }
+  for (const value of values.filter(Boolean)) {
+    let index = haystack.indexOf(value);
+    while (index >= 0) {
+      const context = haystack.slice(Math.max(0, index - 1200), index + value.length + 1800);
+      if (context.includes(expectedPo)) {
+        return true;
+      }
+      index = haystack.indexOf(value, index + value.length);
+    }
+  }
+  return false;
+}
+
+function extractFolderIdFromPackingManifestCandidate(candidate) {
+  const value = cleanExtractedHref(candidate);
+  try {
+    return new URL(value, "https://network.infornexus.com/en/trade/PackingManifestView.jsp").searchParams.get("folderId") || "";
+  } catch {
+    const match = value.match(/(?:folderId=|ManifestFolder\?key=)(\d{6,})/i);
+    return match?.[1] || "";
+  }
 }
 
 function buildPackingManifestLinkInfoFromHref(href, baseUrl, source) {
@@ -1335,6 +1490,14 @@ async function readPackingManifestSearchOutcome(root, poNumber = "") {
     const active = document.querySelector("#active") || document;
     const normalizedPo = String(searchedPoNumber || "").trim();
     const activeText = String(active?.innerText || "").replace(/\s+/g, " ").trim();
+    const bodyClone = document.body?.cloneNode(true);
+    bodyClone?.querySelectorAll?.("#tos-packing-list-auto-download-badge, #tos-packing-list-auto-download-progress")
+      ?.forEach((element) => element.remove());
+    const bodyText = String((bodyClone || document.body)?.innerText || "").replace(/\s+/g, " ").trim();
+    const hasCurrentPoInPage = !normalizedPo
+      || activeText.includes(normalizedPo)
+      || bodyText.includes(`PO Number(s) contains ${normalizedPo}`)
+      || bodyText.includes(`PO Number(s) contains ${normalizedPo} `);
     const firstCell = active.querySelector("td.preserveLineBreaks.first-cell-content") || active;
     const anchors = Array.from(firstCell.querySelectorAll("a[href]"));
     const pageResolverAnchor = anchors.find((anchor) => {
@@ -1397,6 +1560,15 @@ async function readPackingManifestSearchOutcome(root, poNumber = "") {
     const hasApplyPrompt = /^Please apply filter criteria$/i.test(noResultText);
     const hasNoResults = /^No Results$/i.test(noResultText);
     if (hasNoResults) {
+      if (!hasCurrentPoInPage) {
+        return {
+          pendingApply: true,
+          reason: "no-results-does-not-match-po",
+          text: bodyText.slice(0, 300),
+          activeText: activeText.slice(0, 300),
+          poNumber: normalizedPo,
+        };
+      }
       return {
         notFound: true,
         reason: "no-results-dom",
@@ -1412,6 +1584,15 @@ async function readPackingManifestSearchOutcome(root, poNumber = "") {
       poNumber: normalizedPo,
     };
   }, poNumber);
+}
+
+function isPackingManifestFilterStillPending(fillResult) {
+  if (!fillResult) return true;
+  if (fillResult.searchOutcome?.pendingApply) return true;
+  if (fillResult.searchOutcome?.notFound) return false;
+  if (fillResult.searchOutcome?.linkInfo?.href) return false;
+  if (fillResult.responseLinkInfo?.href) return false;
+  return !fillResult.filterApplied;
 }
 
 async function findPackingManifestDocumentLink(root) {
@@ -1470,14 +1651,13 @@ async function collectPackingManifestResultLinkDiagnostics(page) {
 
 async function writePackingManifestDebugSnapshot(options) {
   const {
-    downloadDirectory,
     no,
     page,
     poNumber,
     reason,
     runId,
   } = options;
-  const debugDirectory = path.join(downloadDirectory, "packing-list-debug");
+  const debugDirectory = resolvePackingManifestDebugDirectory(runId);
   await mkdir(debugDirectory, { recursive: true });
   const baseName = sanitizeFileName(`${runId || "run"}-${no || "no"}-${poNumber || "po"}-${reason || "debug"}`) || "packing-list-debug";
   const jsonPath = path.join(debugDirectory, `${baseName}.json`);
@@ -1509,6 +1689,54 @@ async function writePackingManifestDebugSnapshot(options) {
           className: String(anchor.className || ""),
           html: String(anchor.outerHTML || "").slice(0, 500),
         })).filter((item) => /PageResolver|PackingManifest|ManifestFolder|571/i.test(`${item.text} ${item.href} ${item.absoluteHref} ${item.html}`)).slice(0, 80),
+        clickables: Array.from(document.querySelectorAll("button, a, [role='button'], .btn, input[type='button'], input[type='submit'], span, div"))
+          .map((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+              tagName: String(element.tagName || ""),
+              text: String(element.textContent || element.value || element.getAttribute("aria-label") || element.getAttribute("title") || "").replace(/\s+/g, " ").trim().slice(0, 160),
+              className: String(element.className || "").slice(0, 200),
+              id: String(element.id || ""),
+              role: String(element.getAttribute("role") || ""),
+              title: String(element.getAttribute("title") || ""),
+              dataButtonName: String(element.getAttribute("data-buttonname") || ""),
+              type: String(element.getAttribute("type") || ""),
+              visible: rect.width > 0 && rect.height > 0,
+              rect: {
+                left: Math.round(rect.left),
+                top: Math.round(rect.top),
+                right: Math.round(rect.right),
+                bottom: Math.round(rect.bottom),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+              },
+              html: String(element.outerHTML || "").slice(0, 600),
+            };
+          })
+          .filter((item) => /Apply|Cancel|Filter|PO Number/i.test(`${item.text} ${item.className} ${item.id} ${item.title} ${item.dataButtonName} ${item.html}`))
+          .slice(0, 120),
+        filterCandidates: Array.from(document.querySelectorAll(".popover, .dropdown, .modal, .dialog, .filter, .constraint, [role='dialog'], div"))
+          .map((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+              tagName: String(element.tagName || ""),
+              className: String(element.className || "").slice(0, 200),
+              id: String(element.id || ""),
+              text: String(element.textContent || "").replace(/\s+/g, " ").trim().slice(0, 500),
+              visible: rect.width > 0 && rect.height > 0,
+              rect: {
+                left: Math.round(rect.left),
+                top: Math.round(rect.top),
+                right: Math.round(rect.right),
+                bottom: Math.round(rect.bottom),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+              },
+              html: String(element.outerHTML || "").slice(0, 1200),
+            };
+          })
+          .filter((item) => item.visible && /Filter|PO Number|Apply/i.test(`${item.text} ${item.className} ${item.html}`))
+          .slice(0, 80),
       };
     }));
     await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
@@ -1523,6 +1751,21 @@ async function writePackingManifestDebugSnapshot(options) {
     url: snapshot.url || "",
     pageClosed: snapshot.pageClosed,
   };
+}
+
+function resolvePackingManifestDebugDirectory(runId = "") {
+  const appDataRoot = process.env.APPDATA
+    ? path.join(process.env.APPDATA, "TOS-Automation-Helper", "automation-apps", "shipping-automation-demo")
+    : "";
+  const roots = [
+    process.env.TMS_PLAYWRIGHT_DATA_DIR,
+    process.env.TOS_AUTOMATION_APP_DATA_DIR,
+    appDataRoot,
+    process.cwd(),
+  ].map((item) => String(item || "").trim()).filter(Boolean);
+  const root = roots[0] || process.cwd();
+  const runFolder = sanitizeFileName(String(runId || "run")) || "run";
+  return path.join(root, "run-artifacts", "packing-list-debug", runFolder);
 }
 
 async function openPackingManifestDetail(page, resultLink, config, linkInfo = null) {
@@ -1758,30 +2001,47 @@ async function downloadPackingManifestPdfForGroup(options) {
   const baseName = sanitizeFileName(`Packing list ${groupNo}.pdf`) || "Packing list.pdf";
   const fileName = await nextAvailableFileName(downloadDirectory, baseName);
   const filePath = path.join(downloadDirectory, fileName);
-  const context = page.context();
+  let downloadPage = page;
+  let context = downloadPage.context();
+  const absoluteDetailUrl = detailUrl
+    ? new URL(detailUrl, downloadPage.url()).toString()
+    : "";
 
-  const directRequestResult = detailUrl
+  const directRequestResult = absoluteDetailUrl
     ? await downloadPackingManifestPdfByDetailRequest({
       context,
-      detailUrl,
+      detailUrl: absoluteDetailUrl,
       fileName,
       filePath,
       linkInfo,
-      referer: page.url(),
+      referer: downloadPage.url(),
     })
     : null;
   if (directRequestResult) {
     return directRequestResult;
   }
 
-  const directPdfUrl = await resolvePackingManifestPdfUrlFromDetailPage(page);
+  if (absoluteDetailUrl && isPackingManifestResultsUrl(downloadPage.url())) {
+    downloadPage = await openPackingManifestDetailByUrl(downloadPage, {
+      ...linkInfo,
+      href: absoluteDetailUrl,
+      rawHref: absoluteDetailUrl,
+    }, config);
+    context = downloadPage.context();
+  }
+
+  if (isPackingManifestResultsUrl(downloadPage.url())) {
+    throw new Error(`PackingManifest detail page was not opened; refusing to look for View PDF on the results page: ${absoluteDetailUrl || "missing detail url"}`);
+  }
+
+  const directPdfUrl = await resolvePackingManifestPdfUrlFromDetailPage(downloadPage);
   if (directPdfUrl) {
     const directFetchResult = await fetchAndSavePackingManifestPdfUrl({
       context,
       fileName,
       filePath,
       pdfUrl: directPdfUrl,
-      referer: page.url(),
+      referer: downloadPage.url(),
       source: "packing-manifest-pdf-request",
     });
     if (directFetchResult) {
@@ -1794,12 +2054,12 @@ async function downloadPackingManifestPdfForGroup(options) {
   ), {
     timeout: Math.min(PACKING_MANIFEST_PDF_WAIT_MS, 8000),
   }).catch(() => null);
-  const mainDownloadPromise = page.waitForEvent("download", {
+  const mainDownloadPromise = downloadPage.waitForEvent("download", {
     timeout: Math.min(PACKING_MANIFEST_PDF_WAIT_MS, 8000),
   }).catch(() => null);
 
-  const viewPdfItem = await openPackingManifestViewPdfMenuItem(page, config);
-  const popupPromise = page.waitForEvent("popup", { timeout: 8000 }).catch(() => null);
+  const viewPdfItem = await openPackingManifestViewPdfMenuItem(downloadPage, config);
+  const popupPromise = downloadPage.waitForEvent("popup", { timeout: 8000 }).catch(() => null);
   await viewPdfItem.click({ timeout: Math.min(config.navigationTimeoutMs, 8000) });
   const popup = await popupPromise;
   if (popup) {
@@ -1834,7 +2094,7 @@ async function downloadPackingManifestPdfForGroup(options) {
     }
   }
 
-  const pdfViewerPage = popup || page;
+  const pdfViewerPage = popup || downloadPage;
   if (pdfViewerPage) {
     await waitForPdfViewerSurface(pdfViewerPage, 5000);
     const viewerDownload = await triggerPdfViewerSaveDownload(pdfViewerPage, config);
@@ -2166,11 +2426,17 @@ async function findPdfEmbedSource(page, timeoutMs = 1000) {
 
 async function saveDownloadAs(download, filePath, fileName, source) {
   await download.saveAs(filePath);
+  const buffer = await readFile(filePath);
+  if (!isPdfBuffer(buffer)) {
+    await unlink(filePath).catch(() => {});
+    const preview = buffer.toString("utf8", 0, Math.min(buffer.length, 180));
+    throw new Error(`浏览器保存的箱单文件不是有效 PDF：${fileName} ${preview}`);
+  }
   return {
     fileName,
     filePath,
     downloadSource: source,
-    size: 0,
+    size: buffer.length,
   };
 }
 
@@ -2499,8 +2765,19 @@ async function locatePackingManifestPoInputInFilterPanel(root) {
 
 async function fillPackingManifestPoFilter(page, input, poNumber, config) {
   await input.click({ timeout: Math.min(config.navigationTimeoutMs, 900) }).catch(() => {});
-  await input.fill(poNumber, {
-    timeout: Math.min(Number(config.navigationTimeoutMs) || 30000, 1200),
+  await input.press(process.platform === "darwin" ? "Meta+A" : "Control+A", {
+    timeout: Math.min(Number(config.navigationTimeoutMs) || 30000, 800),
+  }).catch(() => {});
+  await input.press("Backspace", {
+    timeout: Math.min(Number(config.navigationTimeoutMs) || 30000, 800),
+  }).catch(() => {});
+  await input.type(poNumber, {
+    delay: 8,
+    timeout: Math.min(Number(config.navigationTimeoutMs) || 30000, 1800),
+  }).catch(async () => {
+    await input.fill(poNumber, {
+      timeout: Math.min(Number(config.navigationTimeoutMs) || 30000, 1200),
+    });
   }).catch(async () => {
     await input.evaluate((element, value) => {
       element.focus();
@@ -2513,6 +2790,7 @@ async function fillPackingManifestPoFilter(page, input, poNumber, config) {
     }, poNumber, { timeout: 1200 });
   });
   await dispatchInputEvents(input);
+  await commitPackingManifestPoInput(input, page);
 
   const actualValue = await input.inputValue({ timeout: 500 })
     .catch(() => input.evaluate((element) => element.value || "", undefined, { timeout: 600 }).catch(() => ""));
@@ -2520,26 +2798,58 @@ async function fillPackingManifestPoFilter(page, input, poNumber, config) {
     throw new Error(`箱单 PO Number(s) 输入框填入失败：期望 ${poNumber}，当前为 ${actualValue || "空值"}。`);
   }
 
-  const responsePromise = waitForFlexViewPost(page, Math.min(FLEX_VIEW_POST_WAIT_MS, 4000));
-  const applyClicked = await clickPackingManifestApplyButton(page, config);
+  const enterResponsePromise = waitForFlexViewPost(page, Math.min(FLEX_VIEW_POST_WAIT_MS, 1600));
+  await input.press("Enter", {
+    timeout: Math.min(Number(config.navigationTimeoutMs) || 30000, 900),
+  }).catch(() => {});
+  const enterResponse = await Promise.race([
+    enterResponsePromise,
+    delay(350).then(() => null),
+  ]).catch(() => null);
+  const responsePromise = enterResponse
+    ? Promise.resolve(enterResponse)
+    : waitForFlexViewPost(page, Math.min(FLEX_VIEW_POST_WAIT_MS, 4500));
+  let applyClicked = Boolean(enterResponse);
+  let earlyOutcome = null;
+  if (!enterResponse) {
+    try {
+      applyClicked = await clickPackingManifestApplyButton(page, config);
+    } catch (error) {
+      earlyOutcome = await waitForPackingManifestSearchOutcome(page, poNumber, 900).catch(() => null);
+      const hasCurrentChip = await hasPackingManifestPoFilterChip(page, poNumber).catch(() => false);
+      if (earlyOutcome?.notFound || earlyOutcome?.linkInfo?.href || hasCurrentChip) {
+        applyClicked = true;
+      } else {
+        throw error;
+      }
+    }
+  }
   if (!applyClicked) {
     throw new Error("箱单页面精确 Apply 按钮点击失败。");
   }
   await dispatchInputEvents(input);
-  const outcome = await waitForPackingManifestSearchOutcome(page, poNumber, PACKING_MANIFEST_APPLY_RESULT_FAST_WAIT_MS).catch(() => null);
+  const firstOutcome = earlyOutcome
+    || await waitForPackingManifestSearchOutcome(page, poNumber, PACKING_MANIFEST_APPLY_RESULT_FAST_WAIT_MS).catch(() => null);
   const response = await Promise.race([
     responsePromise,
-    delay(120).then(() => null),
+    delay(firstOutcome?.pendingApply ? 2400 : 500).then(() => null),
   ]).catch(() => null);
-
-  const responseLinkInfo = await extractPackingManifestResultLinkInfoFromResponse(response, page.url(), poNumber).catch(() => null);
-  const filterApplied = Boolean(response) || Boolean(outcome?.notFound) || Boolean(outcome?.linkInfo?.href) || await hasPackingManifestPoFilterChip(page, poNumber);
-
   if (response) {
     await waitForPageSettled(page, config);
   }
+  const outcome = (firstOutcome?.linkInfo?.href || firstOutcome?.notFound)
+    ? firstOutcome
+    : await waitForPackingManifestSearchOutcome(page, poNumber, response ? PACKING_MANIFEST_RESULT_WAIT_MS : 1800).catch(() => firstOutcome);
+
+  const responseLinkInfo = await extractPackingManifestResultLinkInfoFromResponse(response, page.url(), poNumber).catch(() => null);
+  const filterApplied = !outcome?.pendingApply
+    && (Boolean(outcome?.notFound)
+      || Boolean(outcome?.linkInfo?.href)
+      || Boolean(responseLinkInfo?.href)
+      || await hasPackingManifestPoFilterChip(page, poNumber));
 
   return {
+    applyClicked,
     flexViewPostObserved: Boolean(response),
     flexViewPostStatus: response?.status?.() || 0,
     flexViewPostUrl: response?.url?.() || "",
@@ -2561,11 +2871,39 @@ async function clickPackingManifestApplyButton(page, config) {
   let lastError = "";
   while (Date.now() < deadline) {
     for (const root of [page, ...page.frames()]) {
-      const applyButton = root.locator(exactApplySelector).first();
+      const applyButtons = root.locator(exactApplySelector);
+      const count = Math.min(await applyButtons.count().catch(() => 0), 8);
+      for (let index = count - 1; index >= 0; index -= 1) {
+        const applyButton = applyButtons.nth(index);
+        try {
+          await applyButton.click({
+            force: true,
+            timeout: 350,
+          });
+          return true;
+        } catch (error) {
+          lastError = error instanceof Error ? error.message : String(error || "");
+        }
+      }
+      const textApplyButtons = root.locator("button.btn-primary, button").filter({ hasText: /^Apply$/ });
+      const textCount = Math.min(await textApplyButtons.count().catch(() => 0), 10);
+      for (let index = textCount - 1; index >= 0; index -= 1) {
+        const applyButton = textApplyButtons.nth(index);
+        try {
+          await applyButton.click({
+            force: true,
+            timeout: 500,
+          });
+          return true;
+        } catch (error) {
+          lastError = error instanceof Error ? error.message : String(error || "");
+        }
+      }
+      const applyText = root.getByText(/^Apply$/).last();
       try {
-        await applyButton.click({
+        await applyText.click({
           force: true,
-          timeout: 350,
+          timeout: 500,
         });
         return true;
       } catch (error) {
@@ -2580,12 +2918,96 @@ async function clickPackingManifestApplyButton(page, config) {
 async function clickExactApplyButtonInDom(page, exactApplySelector) {
   for (const root of [page, ...page.frames()]) {
     const clicked = await root.evaluate((selector) => {
-      const button = document.querySelector(selector);
-      if (!button) return false;
-      if (button.disabled) return false;
-      button.scrollIntoView({ block: "center", inline: "center" });
-      button.click();
-      return true;
+      const isVisible = (element) => {
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== "none"
+          && style.visibility !== "hidden"
+          && Number(style.opacity || "1") > 0
+          && rect.width > 0
+          && rect.height > 0;
+      };
+      const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+      const isClickable = (element) => {
+        if (!element) return false;
+        const tagName = String(element.tagName || "").toLowerCase();
+        const className = String(element.className || "");
+        const role = String(element.getAttribute?.("role") || "");
+        return tagName === "button"
+          || tagName === "a"
+          || role === "button"
+          || className.includes("btn");
+      };
+      const clickableAncestor = (element) => {
+        let current = element;
+        while (current && current !== document.documentElement) {
+          if (isClickable(current)) return current;
+          current = current.parentElement;
+        }
+        return element;
+      };
+      const clickElement = (element) => {
+        if (!element || element.disabled) return false;
+        element.scrollIntoView({ block: "center", inline: "center" });
+        for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"]) {
+          element.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+        }
+        element.click();
+        return true;
+      };
+      const isFilterApplyElement = (element) => {
+        const text = normalize(element.textContent || element.value || element.getAttribute("aria-label") || element.getAttribute("title"));
+        const className = String(element.className || "");
+        if (text !== "Apply" || element.disabled || !isVisible(element)) return false;
+        if (!className.includes("btn-primary") && !className.includes("primary")) return false;
+        const container = element.closest(".popover, .dropdown, .modal, .dialog, .filter, .constraint, [role='dialog'], body");
+        const containerText = normalize(container?.textContent || "");
+        return /Filter/i.test(containerText) && /PO Number\(s\)/i.test(containerText);
+      };
+      const buttons = Array.from(document.querySelectorAll(selector));
+      const button = buttons.find((candidate) => !candidate.disabled && isVisible(candidate))
+        || Array.from(document.querySelectorAll("button, a, [role='button'], .btn, input[type='button'], input[type='submit'], span, div"))
+          .find(isFilterApplyElement)
+        || buttons.find((candidate) => !candidate.disabled)
+        || null;
+      if (button && clickElement(clickableAncestor(button))) {
+        return true;
+      }
+
+      const filterContainers = Array.from(document.querySelectorAll(".popover, .dropdown, .modal, .dialog, .filter, .constraint, [role='dialog'], div"))
+        .map((element) => ({
+          element,
+          rect: element.getBoundingClientRect(),
+          text: normalize(element.textContent || ""),
+        }))
+        .filter(({ rect, text }) => rect.width > 250
+          && rect.height > 180
+          && rect.right > 0
+          && rect.bottom > 0
+          && rect.left < window.innerWidth
+          && rect.top < window.innerHeight
+          && /Filter/i.test(text)
+          && /PO Number\(s\)/i.test(text)
+          && /\bApply\b/i.test(text))
+        .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+
+      for (const { rect } of filterContainers.slice(0, 3)) {
+        const points = [
+          { x: rect.right - 72, y: rect.bottom - 46 },
+          { x: rect.right - 88, y: rect.bottom - 48 },
+          { x: rect.right - 56, y: rect.bottom - 50 },
+        ];
+        for (const point of points) {
+          const x = Math.max(8, Math.min(window.innerWidth - 8, point.x));
+          const y = Math.max(8, Math.min(window.innerHeight - 8, point.y));
+          const target = clickableAncestor(document.elementFromPoint(x, y));
+          const targetText = normalize(target?.textContent || target?.value || target?.getAttribute?.("aria-label") || target?.getAttribute?.("title") || "");
+          if (target && /Apply/i.test(targetText) && clickElement(target)) {
+            return true;
+          }
+        }
+      }
+      return false;
     }, exactApplySelector).catch(() => false);
     if (clicked) {
       return true;
@@ -2627,9 +3049,21 @@ async function hasPackingManifestPoFilterChip(page, poNumber) {
 
 async function dispatchInputEvents(input) {
   await input.evaluate((element) => {
+    element.focus();
     element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new KeyboardEvent("keyup", { key: "0", bubbles: true, cancelable: true }));
     element.dispatchEvent(new Event("change", { bubbles: true }));
+    element.dispatchEvent(new FocusEvent("blur", { bubbles: true }));
   }, undefined, { timeout: 600 }).catch(() => {});
+}
+
+async function commitPackingManifestPoInput(input, page) {
+  await input.press("Tab", { timeout: 800 }).catch(async () => {
+    await input.evaluate((element) => {
+      element.blur();
+    }, undefined, { timeout: 600 }).catch(() => {});
+  });
+  await page.waitForTimeout(80).catch(() => {});
 }
 
 function waitForFlexViewPost(page, timeoutMs) {

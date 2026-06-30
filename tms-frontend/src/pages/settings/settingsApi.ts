@@ -10,8 +10,8 @@ import {
 } from '../../shared/api/backendClient'
 import { fallbackAppVersion } from '../../shared/version/appVersion'
 
-const defaultTosDesktopDownloadPath = 'https://ai.tomwell.net:56130/tos/tos-desktop/download'
-const defaultTosDesktopFullDownloadPath = 'https://ai.tomwell.net:56130/tos/tos-desktop-full/download'
+const defaultTosDesktopDownloadPath = '/api/system/config/tos-desktop/download'
+const defaultTosDesktopFullDownloadPath = '/api/system/config/tos-desktop-full/download'
 
 export interface ServerInstallerPackage {
   id: string

@@ -132,17 +132,34 @@ export function createPackingListAutoDownloadAutomation(deps) {
       };
     } catch (error) {
       const formatted = formatPackingListAutoDownloadError(error);
+      const failedAt = new Date().toISOString();
       log("Packing List auto download failed before response.", {
         runId: activeRun.runId,
         message: formatted.message,
         stage: formatted.stage,
+      });
+      recordCompletedRun({
+        runId: activeRun.runId,
+        startedAt: activeRun.startedAt,
+        finishedAt: failedAt,
+        ok: false,
+        status: "failed",
+        headless,
+        downloadDirectory,
+        inputFileName,
+        inputMode: "packing-list-auto-download",
+        automationImplemented: false,
+        stage: formatted.stage,
+        message: formatted.message,
+        detail: formatted.detail,
+        progress: activeRun.progress || null,
       });
       return {
         statusCode: formatted.statusCode,
         body: {
           ok: false,
           runId: activeRun.runId,
-          generatedAt: new Date().toISOString(),
+          generatedAt: failedAt,
           stage: formatted.stage,
           message: formatted.message,
           detail: formatted.detail,

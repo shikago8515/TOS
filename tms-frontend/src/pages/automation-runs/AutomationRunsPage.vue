@@ -77,6 +77,26 @@
           </el-select>
         </div>
 
+        <div class="date-filter">
+          <el-date-picker
+            v-model="filters.dateFrom"
+            type="date"
+            value-format="YYYY-MM-DD"
+            :placeholder="text('开始日期')"
+            clearable
+            @change="reloadFirstPage"
+          />
+          <span class="date-filter__sep">-</span>
+          <el-date-picker
+            v-model="filters.dateTo"
+            type="date"
+            value-format="YYYY-MM-DD"
+            :placeholder="text('结束日期')"
+            clearable
+            @change="reloadFirstPage"
+          />
+        </div>
+
         <!-- Keyword Input -->
         <div class="keyword-input">
           <el-input
@@ -122,6 +142,7 @@
                 <th>{{ text('状态') }}</th>
                 <th>{{ text('说明') }}</th>
                 <th>{{ text('耗时') }}</th>
+                <th>{{ text('操作') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -134,20 +155,30 @@
                 @click="selectRun(run)"
               >
                 <td>
-                  <span class="cell-date">{{ formatDate(run.startedAt || run.createdAt) }}</span>
+                  <span class="cell-date">{{ formatRunDate(run, 'started') }}</span>
                   <span class="cell-id">{{ run.runId }}</span>
                 </td>
                 <td><span class="tag">{{ moduleLabel(run.automationId) }}</span></td>
                 <td>
-                  <el-tag class="pill" :class="`pill--${run.status}`" disable-transitions>
+                  <el-tag class="pill" :class="`pill--${statusKey(run.status)}`" disable-transitions>
                     {{ statusLabel(run.status) }}
                   </el-tag>
                 </td>
                 <td class="cell-msg"><span class="msg-trunc" :title="run.message ? text(run.message) : '-'">{{ run.message ? text(run.message) : '-' }}</span></td>
                 <td><span class="cell-dur">{{ durationLabel(run) }}</span></td>
+                <td>
+                  <el-button
+                    class="row-delete"
+                    text
+                    :disabled="deletingRunId === run.runId"
+                    @click.stop="deleteRun(run)"
+                  >
+                    <AppIcon :name="deletingRunId === run.runId ? 'loader' : 'trash'" :class="{ spin: deletingRunId === run.runId }" />
+                  </el-button>
+                </td>
               </tr>
               <tr v-if="!runs.length && !loading">
-                <td colspan="5" class="empty-cell">
+                <td colspan="6" class="empty-cell">
                   <AppIcon name="inbox" class="empty-icon" />
                   <p>{{ text('暂无执行记录') }}</p>
                 </td>
@@ -182,23 +213,23 @@
               </div>
               <div class="ditem">
                 <small>{{ text('状态') }}</small>
-                <el-tag class="pill" :class="`pill--${selectedRun.status}`" disable-transitions>
+                <el-tag class="pill" :class="`pill--${statusKey(selectedRun.status)}`" disable-transitions>
                   {{ statusLabel(selectedRun.status) }}
                 </el-tag>
               </div>
               <div class="ditem">
                 <small>{{ text('开始时间') }}</small>
-                <b class="mono">{{ formatDate(selectedRun.startedAt || selectedRun.createdAt) }}</b>
+                <b class="mono">{{ formatRunDate(selectedRun, 'started') }}</b>
               </div>
               <div class="ditem">
                 <small>{{ text('结束时间') }}</small>
-                <b class="mono">{{ formatDate(selectedRun.finishedAt) || '-' }}</b>
+                <b class="mono">{{ formatRunDate(selectedRun, 'finished') || '-' }}</b>
               </div>
             </div>
 
             <!-- Message -->
-            <div class="msg-box" :class="`msg--${selectedRun.status}`">
-              <AppIcon :name="selectedRun.status === 'failed' ? 'alert-circle' : 'info'" class="msg-icon" />
+            <div class="msg-box" :class="`msg--${statusKey(selectedRun.status)}`">
+              <AppIcon :name="statusKey(selectedRun.status) === 'failed' ? 'alert-circle' : 'info'" class="msg-icon" />
               <span>{{ selectedRun.message ? text(selectedRun.message) : text('无执行说明。') }}</span>
             </div>
 
@@ -249,12 +280,14 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import { showAppAlert } from '../../shared/ui/appAlert'
 import { tosModules } from '../../domain/moduleCatalog'
 import { webAutomationEntries } from '../web-automation/webAutomationModel'
 import {
+  deleteAutomationRunRecord,
   downloadAutomationRunFile,
   fetchAutomationRunDetail,
   fetchAutomationRuns,
@@ -271,8 +304,9 @@ const { isEnglish, text } = useAppLanguage()
 const runs = ref<AutomationRunRecord[]>([])
 const selectedRun = ref<AutomationRunRecord | null>(null)
 const selectedFiles = ref<AutomationRunFileRecord[]>([])
+const deletingRunId = ref('')
 const pagination = reactive({ page: 1, pageSize: 30, total: 0 })
-const filters = reactive({ automationId: readAutomationIdQuery(route.query.automationId), status: '', keyword: '' })
+const filters = reactive({ automationId: readAutomationIdQuery(route.query.automationId), status: '', keyword: '', dateFrom: '', dateTo: '' })
 
 interface AutomationRunFilterOption {
   id: string
@@ -334,7 +368,7 @@ const automationModules = computed<AutomationRunFilterOption[]>(() => {
 })
 const visibleSuccessCount = computed(() => runs.value.filter((run) => run.status === 'success').length)
 const visibleFailedCount = computed(() => runs.value.filter((run) => run.status === 'failed').length)
-const visibleRunningCount = computed(() => runs.value.filter((run) => run.status === 'running').length)
+const visibleRunningCount = computed(() => runs.value.filter((run) => statusKey(run.status) === 'running').length)
 
 watch(
   () => route.query.automationId,
@@ -356,6 +390,8 @@ async function loadRuns(): Promise<void> {
       automationId: filters.automationId || undefined,
       status: filters.status || undefined,
       keyword: filters.keyword || undefined,
+      dateFrom: filters.dateFrom || undefined,
+      dateTo: filters.dateTo || undefined,
       page: pagination.page,
       pageSize: pagination.pageSize,
     })
@@ -420,6 +456,53 @@ async function downloadFile(file: AutomationRunFileRecord): Promise<void> {
   }
 }
 
+async function deleteRun(run: AutomationRunRecord): Promise<void> {
+  if (deletingRunId.value) return
+  const confirmed = await confirmDeleteRun()
+  if (!confirmed) return
+  deletingRunId.value = run.runId
+  try {
+    await deleteAutomationRunRecord(run.runId)
+    runs.value = runs.value.filter((item) => item.runId !== run.runId)
+    if (selectedRun.value?.runId === run.runId) {
+      selectedRun.value = null
+      selectedFiles.value = []
+    }
+    void showAppAlert(text('执行记录已删除。'), {
+      tone: 'success',
+      compact: true,
+      autoCloseMs: 1000,
+    })
+    if (!runs.value.length && pagination.page > 1) {
+      pagination.page -= 1
+    }
+    await loadRuns()
+  } catch (error) {
+    void showAppAlert(text(readErrorMessage(error, '删除执行记录失败。')), { tone: 'warning' })
+  } finally {
+    deletingRunId.value = ''
+  }
+}
+
+async function confirmDeleteRun(): Promise<boolean> {
+  try {
+    await ElMessageBox.confirm(
+      text('确认删除这条执行记录？'),
+      text('删除执行记录'),
+      {
+        confirmButtonText: text('确认删除'),
+        cancelButtonText: text('取消'),
+        type: 'warning',
+        closeOnClickModal: false,
+        distinguishCancelAndClose: true,
+      },
+    )
+    return true
+  } catch {
+    return false
+  }
+}
+
 // ---- Helpers ----
 function moduleLabel(automationId: string): string {
   return (
@@ -445,7 +528,13 @@ function statusLabel(status: string): string {
   const map: Record<string, string> = {
     running: '执行中', success: '成功', failed: '失败', canceled: '已取消',
   }
-  return map[status] ? text(map[status]) : status || ''
+  const key = statusKey(status)
+  return map[key] ? text(map[key]) : status || ''
+}
+function statusKey(status: string): string {
+  const normalized = String(status || '').trim().toLowerCase()
+  if (['started', 'pending', 'processing'].includes(normalized)) return 'running'
+  return normalized || 'running'
 }
 function fileRoleLabel(role: string): string {
   const map: Record<string, string> = {
@@ -456,13 +545,28 @@ function fileRoleLabel(role: string): string {
 }
 function formatDate(value?: string): string {
   if (!value) return ''
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(isEnglish.value ? 'en-US' : 'zh-CN', { hour12: false })
+  const date = new Date(normalizeBackendDate(value))
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(isEnglish.value ? 'en-US' : 'zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' })
+}
+function formatRunDate(run: AutomationRunRecord, field: 'started' | 'finished' | 'created' = 'started'): string {
+  if (field === 'finished') return run.finishedAtBeijing || formatDate(run.finishedAt)
+  if (field === 'created') return run.createdAtBeijing || formatDate(run.createdAt)
+  return run.startedAtBeijing || run.createdAtBeijing || formatDate(run.startedAt || run.createdAt)
+}
+function normalizeBackendDate(value: string): string {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return trimmed
+  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(trimmed)) return trimmed
+  return `${trimmed}Z`
 }
 function durationLabel(run: AutomationRunRecord): string {
+  if (typeof run.durationSeconds === 'number' && Number.isFinite(run.durationSeconds)) {
+    const seconds = Math.max(0, Math.round(run.durationSeconds))
+    return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+  }
   if (!run.startedAt || !run.finishedAt) return '-'
-  const started = new Date(run.startedAt).getTime()
-  const finished = new Date(run.finishedAt).getTime()
+  const started = new Date(normalizeBackendDate(run.startedAt)).getTime()
+  const finished = new Date(normalizeBackendDate(run.finishedAt)).getTime()
   if (!Number.isFinite(started) || !Number.isFinite(finished) || finished < started) return '-'
   const seconds = Math.round((finished - started) / 1000)
   return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`
@@ -755,6 +859,27 @@ function prettyJson(value: unknown): string {
   color: var(--slate-700);
   font-size: 12px;
   font-weight: 600;
+}
+.date-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 280px;
+  min-width: 250px;
+}
+.date-filter :deep(.el-date-editor.el-input) {
+  width: 122px;
+}
+.date-filter :deep(.el-input__wrapper) {
+  min-height: 34px;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-sm);
+  background: var(--slate-50);
+  box-shadow: none;
+}
+.date-filter__sep {
+  color: var(--slate-400);
+  font-size: 12px;
 }
 .select-trigger {
   display: inline-flex;
@@ -1077,6 +1202,15 @@ tbody tr.selected {
   font-size: 11px;
   color: var(--slate-400);
 }
+.row-delete {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--red-600);
+}
+.row-delete:hover:not(:disabled) {
+  background: var(--red-100);
+}
 .empty-cell {
   text-align: center;
   padding: 56px 20px;
@@ -1344,6 +1478,8 @@ tbody tr.selected {
     flex-wrap: wrap;
   }
   .custom-select { flex: 1; min-width: 130px; }
+  .date-filter { flex: 1 1 260px; min-width: 220px; }
+  .date-filter :deep(.el-date-editor.el-input) { flex: 1; width: auto; }
   .select-trigger { min-width: 0; width: 100%; }
   .keyword-input { max-width: none; flex: 2; min-width: 140px; }
 }

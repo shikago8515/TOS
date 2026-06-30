@@ -183,6 +183,11 @@ export interface AutomationRunRecord {
   finishedAt?: string
   createdAt?: string
   updatedAt?: string
+  startedAtBeijing?: string
+  finishedAtBeijing?: string
+  createdAtBeijing?: string
+  updatedAtBeijing?: string
+  durationSeconds?: number | null
 }
 
 export interface AutomationRunFileRecord {
@@ -651,6 +656,8 @@ export async function fetchAutomationRuns(params: {
   moduleId?: string
   status?: string
   keyword?: string
+  dateFrom?: string
+  dateTo?: string
   page?: number
   pageSize?: number
 } = {}): Promise<{ runs: AutomationRunRecord[]; pagination: { page: number; pageSize: number; total: number } }> {
@@ -659,6 +666,8 @@ export async function fetchAutomationRuns(params: {
   if (params.moduleId) query.set('moduleId', params.moduleId)
   if (params.status) query.set('status', params.status)
   if (params.keyword) query.set('keyword', params.keyword)
+  if (params.dateFrom) query.set('dateFrom', params.dateFrom)
+  if (params.dateTo) query.set('dateTo', params.dateTo)
   query.set('page', String(params.page || 1))
   query.set('pageSize', String(params.pageSize || 30))
 
@@ -702,6 +711,13 @@ export async function fetchAutomationRunFiles(runId: string): Promise<Automation
     path: `/api/automation/runs/${encodeURIComponent(runId)}/files`,
   })
   return Array.isArray(payload.files) ? payload.files : []
+}
+
+export async function deleteAutomationRunRecord(runId: string): Promise<void> {
+  await requestBackendJson<{ ok?: boolean }>({
+    method: 'DELETE',
+    path: `/api/automation/runs/${encodeURIComponent(runId)}`,
+  })
 }
 
 export function buildAutomationRunFileDownloadUrl(file: AutomationRunFileRecord): Promise<string> {

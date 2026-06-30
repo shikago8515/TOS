@@ -10,7 +10,13 @@
         <section
           ref="dialogRef"
           class="app-alert__dialog"
-          :class="`app-alert__dialog--${current.tone}`"
+          :class="[
+            `app-alert__dialog--${current.tone}`,
+            {
+              'app-alert__dialog--compact': current.compact,
+              'app-alert__dialog--auto-close': current.autoCloseMs > 0,
+            },
+          ]"
           role="alertdialog"
           aria-modal="true"
           :aria-labelledby="titleId"
@@ -57,6 +63,7 @@ const { text } = useAppLanguage()
 const current = computed(() => state.current)
 const dialogRef = ref<HTMLElement | null>(null)
 const confirmRef = ref<HTMLButtonElement | null>(null)
+let autoCloseTimer: number | undefined
 
 const titleId = computed(() => current.value ? `app-alert-title-${current.value.id}` : undefined)
 const messageId = computed(() => current.value ? `app-alert-message-${current.value.id}` : undefined)
@@ -83,14 +90,30 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  clearAutoCloseTimer()
   window.removeEventListener('keydown', handleKeyDown, true)
 })
 
 watch(current, async (value) => {
+  clearAutoCloseTimer()
   if (!value) return
   await nextTick()
   confirmRef.value?.focus()
+
+  if (value.autoCloseMs > 0) {
+    autoCloseTimer = window.setTimeout(() => {
+      if (state.current?.id === value.id) {
+        confirmAppAlert()
+      }
+    }, value.autoCloseMs)
+  }
 })
+
+function clearAutoCloseTimer(): void {
+  if (autoCloseTimer === undefined) return
+  window.clearTimeout(autoCloseTimer)
+  autoCloseTimer = undefined
+}
 </script>
 
 <style scoped>
@@ -264,6 +287,79 @@ watch(current, async (value) => {
 .app-alert__confirm:focus-visible {
   outline: 3px solid var(--confirm-border);
   outline-offset: 3px;
+}
+
+.app-alert__dialog--compact {
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 12px;
+  width: min(420px, calc(100vw - 32px));
+  padding: 18px 18px 16px;
+  border: 1px solid var(--el-border-color-lighter, #ebeef5);
+  border-radius: 8px;
+  background: var(--el-bg-color-overlay, #ffffff);
+  backdrop-filter: none;
+  box-shadow: var(--el-box-shadow-light, 0 0 12px rgba(0, 0, 0, 0.12));
+  color: var(--el-text-color-primary, #303133);
+}
+
+.app-alert__dialog--compact .app-alert__mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--el-color-success, #67c23a);
+}
+
+.app-alert__dialog--compact .app-alert__mark :deep(.app-icon) {
+  width: 24px;
+  height: 24px;
+}
+
+.app-alert__dialog--compact .app-alert__title {
+  color: var(--el-text-color-primary, #303133);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.app-alert__dialog--compact .app-alert__message {
+  margin-top: 8px;
+  color: var(--el-text-color-regular, #606266);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.app-alert__dialog--compact .app-alert__actions {
+  margin-top: 14px;
+}
+
+.app-alert__dialog--compact .app-alert__confirm {
+  min-width: 72px;
+  height: 32px;
+  padding: 0 15px;
+  border-color: var(--el-color-primary, #409eff);
+  border-radius: 4px;
+  background: var(--el-color-primary, #409eff);
+  box-shadow: none;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.app-alert__dialog--compact .app-alert__confirm:hover {
+  transform: none;
+  background: var(--el-color-primary-light-3, #79bbff);
+  border-color: var(--el-color-primary-light-3, #79bbff);
+  box-shadow: none;
+}
+
+.app-alert__dialog--compact .app-alert__confirm:focus-visible {
+  outline: 2px solid var(--el-color-primary-light-5, #a0cfff);
+  outline-offset: 2px;
+}
+
+.app-alert__dialog--compact.app-alert__dialog--auto-close .app-alert__actions {
+  margin-top: 12px;
 }
 
 .app-alert-enter-active,
