@@ -2,11 +2,15 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { AutomationAppInfo } from '../../types/electronApi'
 import {
+  buildAutomationRunFileDownloadUrl,
   createAutomationRunRecord,
   createPackingListAutoDownloadAttempt,
   createPackingListAutoDownloadBatch,
+  deleteAutomationRunRecord,
   downloadAutomationRunFile,
   fetchLatestPackingListAutoDownloadBatch,
+  fetchAutomationRunDetail,
+  fetchAutomationRunFiles,
   fetchAutomationRuns,
   finishAutomationRunRecord,
   formatAutomationLauncherErrorMessage,
@@ -736,6 +740,130 @@ describe('webAutomationApi', () => {
         method: 'GET',
         url: 'https://ai.tomwell.net:56130/tos/desktop-api/api/automation/runs?page=1&pageSize=1',
       })
+    } finally {
+      globalThis.fetch = originalFetch
+      vi.unstubAllEnvs()
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
+  })
+
+  it('can read and delete automation run records from the remote backend when requested', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const originalFetch = globalThis.fetch
+    const requests: Array<{ method: string; url: string }> = []
+    vi.stubEnv('VITE_BACKEND_ROUTING_MODE', 'hybrid')
+    vi.stubEnv('VITE_REMOTE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos/desktop-api/')
+    vi.stubEnv('VITE_LOCAL_BACKEND_URL', 'http://127.0.0.1:8000/')
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location: { pathname: '/' },
+      },
+    })
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const method = String(init?.method || 'GET')
+      const url = String(input)
+      requests.push({ method, url })
+      if (url.endsWith('/files')) {
+        return new Response(JSON.stringify({
+          files: [{ id: 172, runId: 'remote-run-1', downloadPath: '/api/automation/run-files/172/download' }],
+        }), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200,
+        })
+      }
+      if (method === 'DELETE') {
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200,
+        })
+      }
+      return new Response(JSON.stringify({
+        run: { runId: 'remote-run-1', automationId: 'shipping-automation', moduleId: 'shipping-automation' },
+        files: [],
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      })
+    }) as typeof fetch
+
+    try {
+      const detail = await fetchAutomationRunDetail('remote-run-1', { backendTarget: 'remote' })
+      const files = await fetchAutomationRunFiles('remote-run-1', { backendTarget: 'remote' })
+      await deleteAutomationRunRecord('remote-run-1', { backendTarget: 'remote' })
+
+      expect(detail.run.runId).toBe('remote-run-1')
+      expect(files).toHaveLength(1)
+      expect(requests).toEqual([{
+        method: 'GET',
+        url: 'https://ai.tomwell.net:56130/tos/desktop-api/api/automation/runs/remote-run-1',
+      }, {
+        method: 'GET',
+        url: 'https://ai.tomwell.net:56130/tos/desktop-api/api/automation/runs/remote-run-1/files',
+      }, {
+        method: 'DELETE',
+        url: 'https://ai.tomwell.net:56130/tos/desktop-api/api/automation/runs/remote-run-1',
+      }])
+    } finally {
+      globalThis.fetch = originalFetch
+      vi.unstubAllEnvs()
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
+  })
+
+  it('builds and uses remote automation run file download URLs when requested', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const originalFetch = globalThis.fetch
+    const requests: string[] = []
+    vi.stubEnv('VITE_BACKEND_ROUTING_MODE', 'hybrid')
+    vi.stubEnv('VITE_REMOTE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos/desktop-api/')
+    vi.stubEnv('VITE_LOCAL_BACKEND_URL', 'http://127.0.0.1:8000/')
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location: { pathname: '/' },
+      },
+    })
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      requests.push(String(input))
+      return new Response(JSON.stringify({
+        detail: 'remote download unavailable',
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 503,
+      })
+    }) as typeof fetch
+
+    const file = {
+      bucket: 'tos-run-files',
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      downloadPath: '/api/automation/run-files/172/download',
+      fileRole: 'result_excel',
+      fileSize: 100,
+      id: 172,
+      objectKey: 'runs/result.xlsx',
+      originalFilename: 'result.xlsx',
+      runId: 'remote-run-1',
+      sha256: 'abc123',
+      createdAt: '2026-06-26T00:00:00.000Z',
+    }
+
+    try {
+      await expect(buildAutomationRunFileDownloadUrl(file, 'remote')).resolves.toBe(
+        'https://ai.tomwell.net:56130/tos/desktop-api/api/automation/run-files/172/download',
+      )
+      await expect(downloadAutomationRunFile(file, 'remote')).rejects.toThrow('remote download unavailable')
+      expect(requests).toEqual([
+        'https://ai.tomwell.net:56130/tos/desktop-api/api/automation/run-files/172/download',
+      ])
     } finally {
       globalThis.fetch = originalFetch
       vi.unstubAllEnvs()

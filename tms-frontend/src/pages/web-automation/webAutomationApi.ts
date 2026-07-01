@@ -253,6 +253,10 @@ export interface AutomationRunFileInput {
   contentBase64?: string
 }
 
+interface AutomationRunBackendTargetOptions {
+  backendTarget?: BackendTarget
+}
+
 export interface PackingListCheckpointItem {
   no: string
   status: string
@@ -929,7 +933,10 @@ export async function fetchAutomationRuns(params: {
   }
 }
 
-export async function fetchAutomationRunDetail(runId: string): Promise<{
+export async function fetchAutomationRunDetail(
+  runId: string,
+  options: AutomationRunBackendTargetOptions = {},
+): Promise<{
   run: AutomationRunRecord
   files: AutomationRunFileRecord[]
 }> {
@@ -938,6 +945,7 @@ export async function fetchAutomationRunDetail(runId: string): Promise<{
     files?: AutomationRunFileRecord[]
   }>({
     path: `/api/automation/runs/${encodeURIComponent(runId)}`,
+    backendTarget: options.backendTarget,
   })
   if (!payload.run) {
     throw new Error('执行记录不存在。')
@@ -948,26 +956,40 @@ export async function fetchAutomationRunDetail(runId: string): Promise<{
   }
 }
 
-export async function fetchAutomationRunFiles(runId: string): Promise<AutomationRunFileRecord[]> {
+export async function fetchAutomationRunFiles(
+  runId: string,
+  options: AutomationRunBackendTargetOptions = {},
+): Promise<AutomationRunFileRecord[]> {
   const payload = await requestBackendJson<{ files?: AutomationRunFileRecord[] }>({
     path: `/api/automation/runs/${encodeURIComponent(runId)}/files`,
+    backendTarget: options.backendTarget,
   })
   return Array.isArray(payload.files) ? payload.files : []
 }
 
-export async function deleteAutomationRunRecord(runId: string): Promise<void> {
+export async function deleteAutomationRunRecord(
+  runId: string,
+  options: AutomationRunBackendTargetOptions = {},
+): Promise<void> {
   await requestBackendJson<{ ok?: boolean }>({
     method: 'DELETE',
     path: `/api/automation/runs/${encodeURIComponent(runId)}`,
+    backendTarget: options.backendTarget,
   })
 }
 
-export function buildAutomationRunFileDownloadUrl(file: AutomationRunFileRecord): Promise<string> {
-  return buildBackendDownloadUrl(file.downloadPath)
+export function buildAutomationRunFileDownloadUrl(
+  file: AutomationRunFileRecord,
+  backendTarget: BackendTarget = 'default',
+): Promise<string> {
+  return buildBackendDownloadUrl(file.downloadPath, backendTarget)
 }
 
-export async function downloadAutomationRunFile(file: AutomationRunFileRecord): Promise<void> {
-  const url = await buildAutomationRunFileDownloadUrl(file)
+export async function downloadAutomationRunFile(
+  file: AutomationRunFileRecord,
+  backendTarget: BackendTarget = 'default',
+): Promise<void> {
+  const url = await buildAutomationRunFileDownloadUrl(file, backendTarget)
   let response: Response
   try {
     response = await fetch(url, { method: 'GET' })
