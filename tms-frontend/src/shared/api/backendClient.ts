@@ -135,6 +135,8 @@ function shouldUseRemoteBackendByDefault(path: string): boolean {
     || normalizedPath.startsWith('/api/release-updates/')
     || normalizedPath === '/api/automation/templates'
     || normalizedPath.startsWith('/api/automation/templates/')
+    || normalizedPath === '/api/automation/packing-list-auto-download/batches'
+    || normalizedPath.startsWith('/api/automation/packing-list-auto-download/batches/')
     || normalizedPath === '/api/process-history/records'
     || normalizedPath.startsWith('/api/process-history/records/')
     || normalizedPath.startsWith('/api/process-history/files/')

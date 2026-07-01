@@ -764,7 +764,6 @@ export async function createPackingListAutoDownloadBatch(input: {
   const payload = await postFormData<{ batch?: PackingListBatchRecord }>({
     path: '/api/automation/packing-list-auto-download/batches',
     formData,
-    backendTarget: 'local',
   })
   if (!payload.batch) {
     throw new Error('自动下载箱单批次已创建，但后端未返回批次记录。')
@@ -775,7 +774,6 @@ export async function createPackingListAutoDownloadBatch(input: {
 export async function fetchLatestPackingListAutoDownloadBatch(): Promise<PackingListBatchRecord | null> {
   const payload = await requestBackendJson<{ batch?: PackingListBatchRecord | null }>({
     path: '/api/automation/packing-list-auto-download/batches/latest',
-    backendTarget: 'local',
   })
   return payload.batch || null
 }
@@ -783,7 +781,6 @@ export async function fetchLatestPackingListAutoDownloadBatch(): Promise<Packing
 export async function fetchPackingListAutoDownloadBatches(limit = 20): Promise<PackingListBatchRecord[]> {
   const payload = await requestBackendJson<{ batches?: PackingListBatchRecord[] }>({
     path: `/api/automation/packing-list-auto-download/batches?limit=${encodeURIComponent(String(limit))}`,
-    backendTarget: 'local',
   })
   return Array.isArray(payload.batches) ? payload.batches : []
 }
@@ -791,7 +788,6 @@ export async function fetchPackingListAutoDownloadBatches(limit = 20): Promise<P
 export async function fetchPackingListAutoDownloadBatch(batchId: string): Promise<PackingListBatchRecord | null> {
   const payload = await requestBackendJson<{ batch?: PackingListBatchRecord | null }>({
     path: `/api/automation/packing-list-auto-download/batches/${encodeURIComponent(batchId)}`,
-    backendTarget: 'local',
   })
   return payload.batch || null
 }
@@ -807,7 +803,6 @@ export async function createPackingListAutoDownloadAttempt(
       runId: input.runId || '',
       mode: input.mode || 'continue',
     },
-    backendTarget: 'local',
   })
   if (!payload.attempt) {
     throw new Error('自动下载箱单续跑 attempt 创建失败。')
@@ -827,7 +822,6 @@ export async function interruptPackingListAutoDownloadBatch(
       attemptId: input.attemptId || '',
       message: input.message || '',
     },
-    backendTarget: 'local',
   })
   return payload.batch || null
 }

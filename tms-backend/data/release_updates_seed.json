@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "builtin-0.9.8-beta.3.31-fixed-packing-list-batch-server-routing",
+    "version": "0.9.8-beta.3.31",
+    "releaseDate": "2026-07-01",
+    "category": "fixed",
+    "pageName": "自动下载箱单",
+    "pagePath": "/web-automation/scenarios/packing-list-auto-download",
+    "title": "修复断点续跑线上接口地址",
+    "description": "修复服务器页面读取自动下载箱单批次和断点续跑记录时错误访问本机 127.0.0.1:8000 的问题，线上环境会统一通过 /tos/desktop-api 访问服务器后端。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.31-improved-automation-module-silent-preupdate",
     "version": "0.9.8-beta.3.31",
     "category": "improved",
