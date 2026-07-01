@@ -53,7 +53,7 @@ import {
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
-import { useProcessHistoryResultDownload } from '../../shared/process/useProcessHistoryResultDownload'
+import { useProcessHistoryResultPageLink } from '../../shared/process/useProcessHistoryResultPageLink'
 import {
   buildExcelFileGroups,
   ExcelProcessPageShell,
@@ -91,16 +91,11 @@ const historyRecords = ref<ProcessHistoryRecord[]>(
 const { text } = useAppLanguage()
 
 const {
-  latestHistoryResultRecord,
   historyResultToolbarTitle,
-  downloadLatestHistoryResult,
-} = useProcessHistoryResultDownload({
-  historyRecords,
+  openHistoryResultPage,
+} = useProcessHistoryResultPageLink({
+  moduleId: janeBomCompareModuleId,
   processing,
-  onError: (nextMessage) => {
-    success.value = false
-    message.value = nextMessage
-  },
 })
 
 const uploadFields = computed<ExcelFileField[]>(() => [
@@ -166,9 +161,9 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     id: 'download-history-result',
     label: '下载历史结果',
     icon: 'download-cloud',
-    disabled: processing.value || !latestHistoryResultRecord.value,
+    disabled: processing.value,
     title: historyResultToolbarTitle.value,
-    onClick: downloadLatestHistoryResult,
+    onClick: openHistoryResultPage,
   },
   {
     id: 'process',

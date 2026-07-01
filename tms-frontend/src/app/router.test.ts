@@ -10,6 +10,7 @@ import JasonPdfReorderPage from '../pages/jason-pdf-reorder/JasonPdfReorderPage.
 import JaneInfornexusPage from '../pages/jane-infornexus/JaneInfornexusPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
 import ReleaseUpdatesPage from '../pages/release-updates/ReleaseUpdatesPage.vue'
+import ProcessHistoryResultsPage from '../pages/process-history/ProcessHistoryResultsPage.vue'
 import PackingListAutoDownloadPage from '../pages/packing-list-auto-download/PackingListAutoDownloadPage.vue'
 import PoAutoDownloadPage from '../pages/po-auto-download/PoAutoDownloadPage.vue'
 import ShippingAutomationPage from '../pages/shipping-automation/ShippingAutomationPage.vue'
@@ -188,6 +189,15 @@ describe('router', () => {
 
     expect(route?.name).toBe('release-updates')
     expect(route?.components?.default).toBe(ReleaseUpdatesPage)
+    expect(route?.components?.default).not.toBe(RoutePlaceholder)
+  })
+
+  it('routes personal process history results to its standalone page component', async () => {
+    const { router } = await import('./router')
+    const route = router.getRoutes().find((entry) => entry.path === '/process-history/:personId')
+
+    expect(route?.name).toBe('process-history-results')
+    expect(route?.components?.default).toBe(ProcessHistoryResultsPage)
     expect(route?.components?.default).not.toBe(RoutePlaceholder)
   })
 

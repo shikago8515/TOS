@@ -24,6 +24,7 @@ export interface ProcessHistoryResultFile {
 
 export interface ProcessHistoryRecord {
   id: string
+  personId?: string
   moduleId: string
   moduleName: string
   status: ProcessHistoryStatus
@@ -51,13 +52,29 @@ const processHistoryPath = '/api/process-history/records'
 export interface ProcessHistoryListParams {
   moduleIds?: string[]
   status?: ProcessHistoryStatus
+  personId?: string
+  createdFrom?: string
+  createdTo?: string
+  downloadableOnly?: boolean
   page?: number
   pageSize?: number
   backendTarget?: BackendTarget
 }
 
+export interface ProcessHistoryPagination {
+  page: number
+  pageSize: number
+  total: number
+}
+
+export interface ProcessHistoryPageResult {
+  records: ProcessHistoryRecord[]
+  pagination: ProcessHistoryPagination
+}
+
 interface ProcessHistoryListResponse {
   records?: ProcessHistoryRecord[]
+  pagination?: Partial<ProcessHistoryPagination>
 }
 
 interface ProcessHistorySaveResponse {
@@ -170,6 +187,12 @@ export function clearModuleHistory(moduleId: string): void {
 export async function fetchPersistedProcessHistoryRecords(
   params: ProcessHistoryListParams = {},
 ): Promise<ProcessHistoryRecord[]> {
+  return (await fetchPersistedProcessHistoryRecordPage(params)).records
+}
+
+export async function fetchPersistedProcessHistoryRecordPage(
+  params: ProcessHistoryListParams = {},
+): Promise<ProcessHistoryPageResult> {
   const query = new URLSearchParams()
   const moduleIds = (params.moduleIds || [])
     .map((moduleId) => moduleId.trim())
@@ -180,6 +203,21 @@ export async function fetchPersistedProcessHistoryRecords(
   if (params.status) {
     query.set('status', params.status)
   }
+  const personId = params.personId?.trim()
+  if (personId) {
+    query.set('personId', personId)
+  }
+  const createdFrom = params.createdFrom?.trim()
+  if (createdFrom) {
+    query.set('createdFrom', createdFrom)
+  }
+  const createdTo = params.createdTo?.trim()
+  if (createdTo) {
+    query.set('createdTo', createdTo)
+  }
+  if (params.downloadableOnly) {
+    query.set('downloadableOnly', 'true')
+  }
   query.set('page', String(params.page || 1))
   query.set('limit', String(params.pageSize || 80))
 
@@ -187,7 +225,16 @@ export async function fetchPersistedProcessHistoryRecords(
     path: `${processHistoryPath}?${query.toString()}`,
     backendTarget: params.backendTarget,
   })
-  return Array.isArray(payload.records) ? payload.records : []
+  const records = Array.isArray(payload.records) ? payload.records : []
+  const pagination = payload.pagination || {}
+  return {
+    records,
+    pagination: {
+      page: Number(pagination.page || params.page || 1),
+      pageSize: Number(pagination.pageSize || params.pageSize || 80),
+      total: Number(pagination.total || records.length),
+    },
+  }
 }
 
 export async function persistProcessHistoryRecord(

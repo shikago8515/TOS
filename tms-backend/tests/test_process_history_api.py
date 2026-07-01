@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from api import process_history_api
 from api.process_history_api import ProcessHistoryPayload
+from utils import mysql_store
 
 
 class ProcessHistoryApiTests(unittest.TestCase):
@@ -77,11 +78,74 @@ class ProcessHistoryApiTests(unittest.TestCase):
         self.assertEqual(response["records"][0]["moduleId"], "jessca")
         self.assertEqual(response["records"][0]["resultFile"]["filename"], "result.xlsx")
 
+    def test_read_process_history_records_filters_by_person_date_and_downloadable_results(self):
+        rows = [build_history_row({"person_id": "jane"})]
+        with patch.object(
+            process_history_api,
+            "count_process_history_records",
+            return_value=1,
+        ) as count_records, patch.object(
+            process_history_api,
+            "list_process_history_records",
+            return_value=rows,
+        ) as list_records:
+            response = process_history_api.read_process_history_records(
+                personId="jane",
+                createdFrom="2026-06-01T00:00:00Z",
+                createdTo="2026-07-01T00:00:00Z",
+                downloadableOnly=True,
+                status="success",
+                limit=25,
+                page=2,
+            )
+
+        created_from = datetime(2026, 6, 1, 0, 0, 0)
+        created_to = datetime(2026, 7, 1, 0, 0, 0)
+        count_records.assert_called_once_with(
+            [],
+            status="success",
+            person_id="jane",
+            created_from=created_from,
+            created_to=created_to,
+            downloadable_only=True,
+        )
+        list_records.assert_called_once_with(
+            [],
+            status="success",
+            person_id="jane",
+            created_from=created_from,
+            created_to=created_to,
+            downloadable_only=True,
+            limit=25,
+            offset=25,
+        )
+        self.assertEqual(response["pagination"]["page"], 2)
+        self.assertEqual(response["records"][0]["personId"], "jane")
+
     def test_read_process_history_records_rejects_unknown_status(self):
         with self.assertRaises(process_history_api.HTTPException) as context:
             process_history_api.read_process_history_records(status="running")
 
         self.assertEqual(context.exception.status_code, 400)
+
+    def test_process_history_store_filters_person_time_and_downloadable_only(self):
+        created_from = datetime(2026, 6, 1, 0, 0, 0)
+        created_to = datetime(2026, 7, 1, 0, 0, 0)
+
+        where_clause, params = mysql_store._build_process_history_filters(
+            status="success",
+            person_id="jane",
+            created_from=created_from,
+            created_to=created_to,
+            downloadable_only=True,
+        )
+
+        self.assertIn("ar.activity_type <> 'automation'", where_clause)
+        self.assertIn("ar.person_id = %s", where_clause)
+        self.assertIn("ar.created_at >= %s", where_clause)
+        self.assertIn("ar.created_at <= %s", where_clause)
+        self.assertIn("af_download.file_role = 'result_file'", where_clause)
+        self.assertEqual(params, ["success", "jane", created_from, created_to])
 
     def test_download_process_history_result_file_streams_minio_object(self):
         row = {
@@ -268,11 +332,12 @@ class ProcessHistoryApiTests(unittest.TestCase):
         self.assertEqual(context.exception.status_code, 503)
 
 
-def build_history_row():
-    return {
+def build_history_row(overrides=None):
+    row = {
         "id": 1,
         "record_id": "jessca-20260630010203",
         "module_id": "jessca",
+        "person_id": "jessica",
         "module_name": "Jessica Invoice",
         "status": "success",
         "duration_ms": 1234,
@@ -288,6 +353,9 @@ def build_history_row():
         "created_at": datetime(2026, 6, 30, 1, 2, 3),
         "updated_at": datetime(2026, 6, 30, 1, 2, 4),
     }
+    if overrides:
+        row.update(overrides)
+    return row
 
 
 class FakeObjectResponse:

@@ -23,6 +23,7 @@ import JesscaPage from '../pages/jessca/JesscaPage.vue'
 import PackingListAutoDownloadPage from '../pages/packing-list-auto-download/PackingListAutoDownloadPage.vue'
 import RoutePlaceholder from '../pages/RoutePlaceholder.vue'
 import ReleaseUpdatesPage from '../pages/release-updates/ReleaseUpdatesPage.vue'
+import ProcessHistoryResultsPage from '../pages/process-history/ProcessHistoryResultsPage.vue'
 import SettingsPage from '../pages/settings/SettingsPage.vue'
 import ShippingAutomationPage from '../pages/shipping-automation/ShippingAutomationPage.vue'
 import ShippingAutomation2Page from '../pages/shipping-automation-2/ShippingAutomation2Page.vue'
@@ -219,6 +220,14 @@ const utilityRoutes: RouteRecordRaw[] = [
     component: ReleaseUpdatesPage,
     meta: {
       title: '版本更新记录',
+    },
+  },
+  {
+    path: '/process-history/:personId',
+    name: 'process-history-results',
+    component: ProcessHistoryResultsPage,
+    meta: {
+      title: '历史结果',
     },
   },
 ]

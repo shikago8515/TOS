@@ -56,20 +56,38 @@ class ProcessHistoryPayload(BaseModel):
 def read_process_history_records(
     moduleIds: str | None = Query(None),
     status: str | None = Query(None),
+    personId: str | None = Query(None),
+    createdFrom: str | None = Query(None),
+    createdTo: str | None = Query(None),
+    downloadableOnly: bool = Query(False),
     limit: int = Query(80, ge=1, le=300),
     page: int = Query(1, ge=1),
 ) -> dict[str, Any]:
     module_id_list = _split_module_ids(moduleIds)
     normalized_status = _normalize_status(status)
+    normalized_person_id = _normalize_person_id(personId)
+    created_from = _parse_optional_datetime(createdFrom, "createdFrom")
+    created_to = _parse_optional_datetime(createdTo, "createdTo")
+    if created_from and created_to and created_from > created_to:
+        raise HTTPException(status_code=400, detail="createdFrom must not be later than createdTo.")
+    query_filters: dict[str, Any] = {"status": normalized_status}
+    if normalized_person_id:
+        query_filters["person_id"] = normalized_person_id
+    if created_from:
+        query_filters["created_from"] = created_from
+    if created_to:
+        query_filters["created_to"] = created_to
+    if downloadableOnly is True:
+        query_filters["downloadable_only"] = True
     offset = (page - 1) * limit
     try:
         total = count_process_history_records(
             module_id_list,
-            status=normalized_status,
+            **query_filters,
         )
         rows = list_process_history_records(
             module_id_list,
-            status=normalized_status,
+            **query_filters,
             limit=limit,
             offset=offset,
         )
@@ -221,6 +239,8 @@ def download_process_history_result_file(file_id: int):
 
 
 def _split_module_ids(raw_value: str | None) -> list[str]:
+    if not isinstance(raw_value, str):
+        return []
     return [
         item.strip()
         for item in str(raw_value or "").split(",")
@@ -268,12 +288,42 @@ def _summary_item_payload(item: ProcessSummaryItem) -> dict[str, Any]:
 
 
 def _normalize_status(value: str | None) -> str | None:
+    if not isinstance(value, str):
+        return None
     status = str(value or "").strip().lower()
     if not status:
         return None
     if status in {"success", "error"}:
         return status
     raise HTTPException(status_code=400, detail="处理历史状态只支持 success 或 error。")
+
+
+def _normalize_person_id(value: str | None) -> str | None:
+    if not isinstance(value, str):
+        return None
+    person_id = str(value or "").strip()
+    if not person_id:
+        return None
+    if len(person_id) > 64:
+        raise HTTPException(status_code=400, detail="personId is too long.")
+    return person_id
+
+
+def _parse_optional_datetime(value: str | None, field_name: str) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    raw_value = str(value or "").strip()
+    if not raw_value:
+        return None
+    try:
+        normalized_value = raw_value[:-1] + "+00:00" if raw_value.endswith("Z") else raw_value
+        parsed = datetime.fromisoformat(normalized_value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"{field_name} is not a valid ISO datetime.") from exc
+
+    if parsed.tzinfo is not None:
+        return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
 
 
 def _parse_created_at(value: str | None) -> datetime:
@@ -306,6 +356,8 @@ def _record_payload(row: dict[str, Any]) -> dict[str, Any]:
         "summary": _safe_json_list(row.get("summary_json")),
         "createdAt": _format_datetime(row.get("created_at")),
     }
+    if row.get("person_id"):
+        payload["personId"] = row["person_id"]
     if result_file:
         payload["resultFile"] = result_file
         payload["resultDownloadPath"] = result_file["downloadPath"]

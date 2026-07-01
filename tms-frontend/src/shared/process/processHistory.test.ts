@@ -165,6 +165,73 @@ describe('processHistory', () => {
     }
   })
 
+  it('serializes personal history filters for downloadable records', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const originalFetch = globalThis.fetch
+    const requests: Array<{ method: string; url: string }> = []
+    vi.stubEnv('VITE_BACKEND_ROUTING_MODE', 'hybrid')
+    vi.stubEnv('VITE_REMOTE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos/desktop-api/')
+    vi.stubEnv('VITE_LOCAL_BACKEND_URL', 'http://127.0.0.1:8000/')
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location: { pathname: '/' },
+      },
+    })
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        method: String(init?.method || 'GET'),
+        url: String(input),
+      })
+      return new Response(JSON.stringify({
+        records: [{
+          id: 'remote-process-1',
+          personId: 'jane',
+          moduleId: 'jane-bom-compare',
+          moduleName: 'Jane BOM Compare',
+          status: 'success',
+          durationMs: 1200,
+          message: 'completed',
+          inputFiles: ['source.xlsx'],
+          resultDownloadPath: '/api/process-history/files/42/download',
+          summary: [],
+          createdAt: '2026-06-30T03:30:00.000Z',
+        }],
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      })
+    }) as typeof fetch
+
+    try {
+      const records = await fetchPersistedProcessHistoryRecords({
+        personId: 'jane',
+        moduleIds: ['jane-bom-compare'],
+        createdFrom: '2026-06-01T00:00:00.000Z',
+        createdTo: '2026-07-01T00:00:00.000Z',
+        downloadableOnly: true,
+        page: 2,
+        pageSize: 30,
+        backendTarget: 'remote',
+      })
+
+      expect(records).toHaveLength(1)
+      expect(records[0].personId).toBe('jane')
+      expect(requests[0]).toEqual({
+        method: 'GET',
+        url: 'https://ai.tomwell.net:56130/tos/desktop-api/api/process-history/records?moduleIds=jane-bom-compare&personId=jane&createdFrom=2026-06-01T00%3A00%3A00.000Z&createdTo=2026-07-01T00%3A00%3A00.000Z&downloadableOnly=true&page=2&limit=30',
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+      vi.unstubAllEnvs()
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
+  })
+
   it('finds the latest downloadable process history record', () => {
     const downloadable = {
       id: 'history-2',

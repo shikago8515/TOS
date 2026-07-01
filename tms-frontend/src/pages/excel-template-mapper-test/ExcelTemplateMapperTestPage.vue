@@ -180,7 +180,7 @@ import {
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
-import { useProcessHistoryResultDownload } from '../../shared/process/useProcessHistoryResultDownload'
+import { useProcessHistoryResultPageLink } from '../../shared/process/useProcessHistoryResultPageLink'
 import {
   buildExcelFileGroups,
   ExcelProcessPageShell,
@@ -244,17 +244,11 @@ const historyRecords = ref<ProcessHistoryRecord[]>(
 )
 
 const {
-  latestHistoryResultRecord,
   historyResultToolbarTitle,
-  downloadLatestHistoryResult,
-} = useProcessHistoryResultDownload({
-  historyRecords,
+  openHistoryResultPage,
+} = useProcessHistoryResultPageLink({
+  moduleId: excelTemplateMapperModuleId,
   processing,
-  onError: (nextMessage) => {
-    success.value = false
-    messageTone.value = 'error'
-    message.value = nextMessage
-  },
 })
 
 const sourceFile = computed(() => sourceFiles.value[0] ?? null)
@@ -339,9 +333,9 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     id: 'download-history-result',
     label: '下载历史结果',
     icon: 'download-cloud',
-    disabled: processing.value || inspecting.value || !latestHistoryResultRecord.value,
+    disabled: processing.value || inspecting.value,
     title: historyResultToolbarTitle.value,
-    onClick: downloadLatestHistoryResult,
+    onClick: openHistoryResultPage,
   },
   {
     id: 'process',
