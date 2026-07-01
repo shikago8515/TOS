@@ -465,7 +465,7 @@ describe('webAutomationApi', () => {
     }
   })
 
-  it('creates packing-list auto-download batches through the local backend', async () => {
+  it('creates packing-list auto-download batches through the remote backend in hybrid mode', async () => {
     const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
     const originalXMLHttpRequest = globalThis.XMLHttpRequest
     const requests: Array<{
@@ -539,7 +539,7 @@ describe('webAutomationApi', () => {
       expect(requests).toHaveLength(1)
       expect(requests[0]).toMatchObject({
         method: 'POST',
-        url: 'http://127.0.0.1:8000/api/automation/packing-list-auto-download/batches',
+        url: 'https://ai.tomwell.net:56130/tos/desktop-api/api/automation/packing-list-auto-download/batches',
         fields: {
           run_id: 'run-plad',
           batch_name: 'packing list batch',
@@ -557,7 +557,7 @@ describe('webAutomationApi', () => {
     }
   })
 
-  it('reads and creates packing-list resume attempts through the local backend', async () => {
+  it('reads and creates packing-list resume attempts through the remote backend in hybrid mode', async () => {
     const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
     const originalFetch = globalThis.fetch
     const requests: Array<{ method: string; url: string; body: any }> = []
@@ -604,11 +604,11 @@ describe('webAutomationApi', () => {
       expect(attempt.attemptId).toBe('pla-1')
       expect(requests).toEqual([{
         method: 'GET',
-        url: 'http://127.0.0.1:8000/api/automation/packing-list-auto-download/batches/latest',
+        url: 'https://ai.tomwell.net:56130/tos/desktop-api/api/automation/packing-list-auto-download/batches/latest',
         body: null,
       }, {
         method: 'POST',
-        url: 'http://127.0.0.1:8000/api/automation/packing-list-auto-download/batches/plad-1/attempts',
+        url: 'https://ai.tomwell.net:56130/tos/desktop-api/api/automation/packing-list-auto-download/batches/plad-1/attempts',
         body: {
           runId: 'run-plad',
           mode: 'continue',
