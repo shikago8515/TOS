@@ -634,18 +634,6 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
       return
     }
 
-    if (activeApp.value && !activeApp.value.running && !sending.value) {
-      executorHealth.value = null
-      clearRestoredActiveRunState()
-      await markLatestBatchInterrupted(text('执行器当前未运行，未完成批次已标记为中断，可从断点继续。'))
-      await refreshCurrentBatch().catch(() => {})
-      if (!silent) {
-        messageTone.value = 'warning'
-        message.value = text('执行器未就绪。')
-      }
-      return
-    }
-
     executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl)
     await refreshCredentialProfile()
     if (activeApp.value) {
@@ -662,9 +650,14 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
       message.value = text('状态已刷新。')
     }
   } catch {
+    const appWasReportedStopped = Boolean(activeApp.value && !activeApp.value.running && !sending.value)
     executorHealth.value = null
     activeApp.value = activeApp.value || fallback
     clearRestoredActiveRunState()
+    if (appWasReportedStopped) {
+      await markLatestBatchInterrupted(text('执行器当前未运行，未完成批次已标记为中断，可从断点继续。'))
+      await refreshCurrentBatch().catch(() => {})
+    }
     if (!silent) {
       messageTone.value = 'warning'
       message.value = text('执行器未就绪。')
