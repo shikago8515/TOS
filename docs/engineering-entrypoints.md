@@ -80,5 +80,5 @@
 - 当前远端检查和发布以 Gitea `main` 为准，入口是 `.gitea/workflows/tos-check.yml`。
 - `main`、`codex/**` 分支 push，以及面向 `main` 的合并请求会运行完整 `npm run check`。
 - 只有 `refs/heads/main` push 且上一条提交不是 `chore(release):` 时，workflow 才会继续运行 `npm run release -- --no-ci`。
-- CI 会设置 `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`，并在 runner 内通过系统包安装 `nodejs`、`npm`、`python3`、`pip` 和 venv 支持；依赖安装与完整检查都会通过仓库内 `.venv` 暴露的 `PYTHON` 和 `PATH` 运行，避免在 Alpine runner 的 PEP 668 系统 Python 环境中直接安装后端依赖。Alpine CI 只为脚本级检查跳过 `rapidocr` 和 `onnxruntime` 这组可选 OCR engine runtime，正式后端 `requirements.txt` 仍保留完整依赖。当前远端检查不下载浏览器，也不做真实浏览器自动化 smoke。
+- CI 会设置 `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`，并在 runner 内通过系统包安装 `nodejs`、`npm`、`python3`、`pip`、venv 支持，以及 Electron 自动化脚本测试使用的 `zip`、`unzip`、`lsof`；依赖安装与完整检查都会通过仓库内 `.venv` 暴露的 `PYTHON` 和 `PATH` 运行，避免在 Alpine runner 的 PEP 668 系统 Python 环境中直接安装后端依赖。Alpine CI 只为脚本级检查跳过 `rapidocr` 和 `onnxruntime` 这组可选 OCR engine runtime，正式后端 `requirements.txt` 仍保留完整依赖。当前远端检查不下载浏览器，也不做真实浏览器自动化 smoke。
 - 远端检查不运行 `npm run pack`、`npm run build:win`、发布清单写入命令或任何上传发布产物的命令。
