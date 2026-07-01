@@ -1230,6 +1230,10 @@ function normalizePackingListAutoDownloadUsername(value: string): string {
 }
 
 async function ensureReady(): Promise<boolean> {
+  await refreshExecutorState(true).catch(() => {})
+  if (executorHealth.value?.ok) {
+    return true
+  }
   if (entry && !isLocalExecutorBusy(executorHealth.value)) {
     await startActiveApp(true)
   }
