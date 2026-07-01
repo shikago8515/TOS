@@ -26,5 +26,6 @@ describe('Excel process history toolbar actions', () => {
 
     expect(source).toContain("id: 'download-history-result'")
     expect(source).toContain('downloadLatestHistoryResult')
+    expect(source).not.toContain('visible: hasProcessHistoryRecords.value')
   })
 })

@@ -91,7 +91,6 @@ const historyRecords = ref<ProcessHistoryRecord[]>(
 const { text } = useAppLanguage()
 
 const {
-  hasProcessHistoryRecords,
   latestHistoryResultRecord,
   historyResultToolbarTitle,
   downloadLatestHistoryResult,
@@ -165,7 +164,6 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     id: 'download-history-result',
     label: '下载历史结果',
     icon: 'download-cloud',
-    visible: hasProcessHistoryRecords.value,
     disabled: processing.value || !latestHistoryResultRecord.value,
     title: historyResultToolbarTitle.value,
     onClick: downloadLatestHistoryResult,
