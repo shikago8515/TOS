@@ -12,7 +12,6 @@ const {
   getAutomationAppById,
   getAutomationApps,
   launchAutomationApp,
-  shutdownAutomationApps,
   syncAutomationModules,
 } = require('../automation-launcher/core')
 
@@ -169,7 +168,7 @@ test('automation launcher injects helper version when starting an app', async ()
       '0.9.8-beta.3.19',
     )
   } finally {
-    shutdownAutomationApps({ processMap })
+    await stopTestAutomationProcesses(processMap)
   }
 })
 
@@ -266,7 +265,7 @@ test('automation launcher installs a remote module when same version has a diffe
       sha256,
     )
   } finally {
-    shutdownAutomationApps({ processMap })
+    await stopTestAutomationProcesses(processMap)
     await server.close()
   }
 })
@@ -344,7 +343,7 @@ test('automation launcher syncs remote modules without starting apps', async () 
     assert.equal(app.packageSha256, sha256)
     assert(app.entryPath.includes(path.join('automation-module-cache', 'demo-app', '1.1.0', 'app')))
   } finally {
-    shutdownAutomationApps({ processMap })
+    await stopTestAutomationProcesses(processMap)
     await server.close()
   }
 })
@@ -461,8 +460,7 @@ test('automation launcher restarts an old running app when cached module is newe
       '1.1.0',
     )
   } finally {
-    shutdownAutomationApps({ processMap })
-    if (!oldChild.killed) oldChild.kill()
+    await stopTestAutomationProcesses(processMap, [{ child: oldChild, logFd: oldLogFd }])
   }
 })
 
@@ -579,8 +577,7 @@ test('automation launcher force update restarts same-version cached module when 
       'd'.repeat(64),
     )
   } finally {
-    shutdownAutomationApps({ processMap })
-    if (!oldChild.killed) oldChild.kill()
+    await stopTestAutomationProcesses(processMap, [{ child: oldChild, logFd: oldLogFd }])
   }
 })
 
@@ -696,12 +693,62 @@ test('automation launcher force update can reclaim an unmanaged executor for the
       '1.2.0',
     )
   } finally {
-    shutdownAutomationApps({ processMap })
-    if (!oldChild.killed) oldChild.kill()
-    try {
-      fs.closeSync(oldLogFd)
-    } catch (_error) {
-      // Ignore cleanup close failures.
+    await stopTestAutomationProcesses(processMap, [{ child: oldChild, logFd: oldLogFd }])
+  }
+})
+
+test('automation launcher test cleanup waits for spawned processes to exit before returning', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tos-launcher-cleanup-waits-'))
+  const childScriptPath = path.join(root, 'child.js')
+  const readyPath = path.join(root, 'ready.txt')
+  const exitedPath = path.join(root, 'exited.txt')
+  const logFd = fs.openSync(path.join(root, 'child.log'), 'a')
+  const processMap = new Map()
+
+  fs.writeFileSync(
+    childScriptPath,
+    [
+      "const fs = require('fs')",
+      "process.on('SIGTERM', () => {",
+      `  fs.writeFileSync(${JSON.stringify(exitedPath)}, 'exited')`,
+      "  process.exit(0)",
+      "})",
+      `fs.writeFileSync(${JSON.stringify(readyPath)}, 'ready')`,
+      "setInterval(() => {}, 1000)",
+    ].join('\n'),
+  )
+
+  const child = spawn(process.execPath, [childScriptPath], {
+    stdio: ['ignore', logFd, logFd],
+  })
+  processMap.set('demo-app', { child, logFd, logPath: path.join(root, 'child.log') })
+
+  let cleanupFinished = false
+  try {
+    const startedAt = Date.now()
+    while (!fs.existsSync(readyPath) && Date.now() - startedAt < 5000) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    assert.equal(fs.existsSync(readyPath), true)
+
+    await stopTestAutomationProcesses(processMap)
+    cleanupFinished = true
+
+    assert.equal(processMap.size, 0)
+    if (process.platform !== 'win32') {
+      assert.equal(fs.readFileSync(exitedPath, 'utf8'), 'exited')
+    }
+    assert.equal(child.exitCode !== null || child.signalCode !== null, true)
+  } finally {
+    if (!cleanupFinished) {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill()
+      }
+      try {
+        fs.closeSync(logFd)
+      } catch (_error) {
+        // Ignore cleanup close failures.
+      }
     }
   }
 })
@@ -716,6 +763,89 @@ function getFreePort() {
     })
     server.on('error', reject)
   })
+}
+
+async function stopTestAutomationProcesses(processMap, extraProcesses = []) {
+  const trackedProcesses = new Map()
+  for (const tracked of processMap.values()) {
+    if (tracked && tracked.child) {
+      trackedProcesses.set(tracked.child, tracked)
+    }
+  }
+  for (const processEntry of extraProcesses) {
+    const tracked = processEntry && processEntry.child ? processEntry : { child: processEntry }
+    if (tracked.child && !trackedProcesses.has(tracked.child)) {
+      trackedProcesses.set(tracked.child, tracked)
+    }
+  }
+
+  processMap.clear()
+  await Promise.all([...trackedProcesses.values()].map(stopTrackedProcessForTest))
+}
+
+function stopTrackedProcessForTest(tracked, timeoutMs = 5000) {
+  const child = tracked.child
+  if (!child) {
+    closeTrackedLogForTest(tracked)
+    return Promise.resolve()
+  }
+
+  if (child.exitCode !== null || child.signalCode !== null) {
+    closeTrackedLogForTest(tracked)
+    return Promise.resolve()
+  }
+
+  return new Promise((resolve) => {
+    let finished = false
+    let forceTimer = null
+    const finish = () => {
+      if (finished) {
+        return
+      }
+      finished = true
+      clearTimeout(termTimer)
+      if (forceTimer) {
+        clearTimeout(forceTimer)
+      }
+      child.off('exit', finish)
+      child.off('error', finish)
+      closeTrackedLogForTest(tracked)
+      resolve()
+    }
+
+    const termTimer = setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) {
+        try {
+          child.kill('SIGKILL')
+        } catch (_error) {
+          // Ignore cleanup kill failures.
+        }
+      }
+      forceTimer = setTimeout(finish, 1000)
+    }, timeoutMs)
+
+    child.once('exit', finish)
+    child.once('error', finish)
+
+    if (!child.killed) {
+      try {
+        child.kill('SIGTERM')
+      } catch (_error) {
+        finish()
+      }
+    }
+  })
+}
+
+function closeTrackedLogForTest(tracked) {
+  if (!tracked || tracked.logFd === undefined || tracked.logFd === null) {
+    return
+  }
+  try {
+    fs.closeSync(tracked.logFd)
+  } catch (_error) {
+    // Ignore cleanup close failures.
+  }
 }
 
 async function waitForHealth(url, timeoutMs = 15000) {
