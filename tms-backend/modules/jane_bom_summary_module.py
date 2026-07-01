@@ -33,6 +33,9 @@ class JaneBomSummaryModule:
         "Material Description",
         "Color",
     ]
+    SORT_HEADERS = ("Articles", "Factory", "Working #", "Pack", "Season")
+    MATERIAL_DESCRIPTION_REQUIRED_WORDS = ("RECYCLED", "COTTON")
+    MATERIAL_DESCRIPTION_HIGHLIGHT_FILL = PatternFill("solid", fgColor="FFF2CC")
     REQUIRED_PACK_COLUMNS = {
         "pack": "Pack",
         "season": "Season",
@@ -72,6 +75,18 @@ class JaneBomSummaryModule:
         if len(parts) >= 2:
             return parts[1]
         return ""
+
+    @classmethod
+    def _sort_output_rows(cls, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        return sorted(
+            rows,
+            key=lambda row: tuple(cls._normalize_key(row.get(header, "")) for header in cls.SORT_HEADERS),
+        )
+
+    @classmethod
+    def _material_description_needs_highlight(cls, value: Any) -> bool:
+        description = cls._normalize_key(value)
+        return not any(word in description for word in cls.MATERIAL_DESCRIPTION_REQUIRED_WORDS)
 
     def _read_pack_lookup(self, pack_path: str, logs: List[str]) -> Dict[Tuple[str, str], str]:
         wb = openpyxl.load_workbook(pack_path, data_only=True)
@@ -190,7 +205,7 @@ class JaneBomSummaryModule:
         ws.title = "Sheet1"
         ws.append(self.OUTPUT_HEADERS)
 
-        for row in rows:
+        for row in self._sort_output_rows(rows):
             ws.append([row.get(header, "") for header in self.OUTPUT_HEADERS])
 
         # 表头样式保持克制，便于用户继续筛选和编辑。
@@ -200,6 +215,12 @@ class JaneBomSummaryModule:
             cell.fill = header_fill
         ws.freeze_panes = "A2"
         ws.auto_filter.ref = ws.dimensions
+
+        description_column = self.OUTPUT_HEADERS.index("Material Description") + 1
+        for row_index in range(2, ws.max_row + 1):
+            cell = ws.cell(row=row_index, column=description_column)
+            if self._material_description_needs_highlight(cell.value):
+                cell.fill = self.MATERIAL_DESCRIPTION_HIGHLIGHT_FILL
 
         for column_cells in ws.columns:
             max_length = max(len(self._normalize_text(cell.value)) for cell in column_cells)
