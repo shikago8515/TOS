@@ -39,6 +39,13 @@ test('root frontend checks run lint before typecheck', async () => {
   assert.ok(quickTypecheckIndex > quickLintIndex)
 })
 
+test('root quick checks include changed-check planner tests', async () => {
+  const runChecks = await readFile(join(repoRoot, 'scripts', 'engineering', 'run-checks.mjs'), 'utf8')
+
+  assert.match(runChecks, /run-changed-checks-test/)
+  assert.match(runChecks, /scripts\/engineering\/run-changed-checks\.test\.mjs/)
+})
+
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
