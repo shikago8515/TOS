@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildDefaultHistoryRange,
+  filterDownloadableProcessRecords,
   filterLocalDownloadableProcessRecords,
   formatHistoryFileSize,
 } from './processHistoryResultsModel'
@@ -33,6 +34,15 @@ describe('processHistoryResultsModel', () => {
     )
 
     expect(records.map((record) => record.id)).toEqual(['excel-jane-bom-compare-2026-06-30T00:00:00.000Z'])
+  })
+
+  it('filters remote records without archived result download paths', () => {
+    const records = filterDownloadableProcessRecords([
+      buildRecord('downloadable', '2026-06-30T00:00:00.000Z', true),
+      buildRecord('local-only', '2026-06-30T00:00:00.000Z', false),
+    ])
+
+    expect(records.map((record) => record.id)).toEqual(['downloadable-2026-06-30T00:00:00.000Z'])
   })
 
   it('formats file sizes for table rows', () => {

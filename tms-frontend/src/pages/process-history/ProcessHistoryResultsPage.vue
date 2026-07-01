@@ -105,7 +105,7 @@
               <td>
                 <el-button
                   class="history-row-btn"
-                  :disabled="!record.resultDownloadPath || downloadingRecordId === record.id"
+                  :disabled="downloadingRecordId === record.id"
                   @click="downloadRecord(record)"
                 >
                   <AppIcon :name="downloadingRecordId === record.id ? 'loader' : 'download'" :class="{ 'history-spin': downloadingRecordId === record.id }" />
@@ -154,6 +154,7 @@ import {
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import {
   buildDefaultHistoryRange,
+  filterDownloadableProcessRecords,
   filterLocalDownloadableProcessRecords,
   formatHistoryFileSize,
   readHistoryFileName,
@@ -222,8 +223,13 @@ async function loadRecords(): Promise<void> {
       pageSize: pagination.pageSize,
       backendTarget: 'remote',
     })
-    records.value = payload.records
-    Object.assign(pagination, payload.pagination)
+    const downloadableRecords = filterDownloadableProcessRecords(payload.records)
+    const hiddenRecordCount = payload.records.length - downloadableRecords.length
+    records.value = downloadableRecords
+    Object.assign(pagination, {
+      ...payload.pagination,
+      total: Math.max(downloadableRecords.length, payload.pagination.total - hiddenRecordCount),
+    })
   } catch (error) {
     const fallbackRecords = filterLocalDownloadableProcessRecords(
       collectLocalPersonRecords(),

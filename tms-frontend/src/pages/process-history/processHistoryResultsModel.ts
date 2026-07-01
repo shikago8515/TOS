@@ -26,6 +26,12 @@ export function buildDefaultHistoryRange(now = new Date()): ProcessHistoryRange 
   }
 }
 
+export function filterDownloadableProcessRecords(
+  records: readonly ProcessHistoryRecord[],
+): ProcessHistoryRecord[] {
+  return records.filter((record) => Boolean(record.resultDownloadPath))
+}
+
 export function filterLocalDownloadableProcessRecords(
   records: readonly ProcessHistoryRecord[],
   filters: LocalProcessHistoryFilter,

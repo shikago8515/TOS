@@ -98,6 +98,12 @@ def read_process_history_records(
             detail="无法读取处理历史记录：MySQL 数据库暂时不可用，请检查后端数据库连接。",
         ) from exc
 
+    if downloadableOnly is True:
+        original_row_count = len(rows)
+        rows = [row for row in rows if _row_has_result_file(row)]
+        hidden_row_count = original_row_count - len(rows)
+        total = max(len(rows), total - hidden_row_count)
+
     return {
         "ok": True,
         "records": [_record_payload(row) for row in rows],
@@ -362,6 +368,10 @@ def _record_payload(row: dict[str, Any]) -> dict[str, Any]:
         payload["resultFile"] = result_file
         payload["resultDownloadPath"] = result_file["downloadPath"]
     return payload
+
+
+def _row_has_result_file(row: dict[str, Any]) -> bool:
+    return int(row.get("result_file_id") or 0) > 0
 
 
 def _result_file_payload(row: dict[str, Any]) -> dict[str, Any] | None:

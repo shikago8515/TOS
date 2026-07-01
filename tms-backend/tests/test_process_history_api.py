@@ -122,6 +122,43 @@ class ProcessHistoryApiTests(unittest.TestCase):
         self.assertEqual(response["pagination"]["page"], 2)
         self.assertEqual(response["records"][0]["personId"], "jane")
 
+    def test_read_process_history_records_downloadable_only_drops_rows_without_result_file(self):
+        rows = [
+            build_history_row({"record_id": "excel-jessca-downloadable"}),
+            build_history_row({
+                "record_id": "excel-jessca-local-only",
+                "result_file_id": None,
+                "result_file_name": None,
+                "result_file_content_type": None,
+                "result_file_size": None,
+                "result_file_sha256": None,
+            }),
+        ]
+
+        with patch.object(
+            process_history_api,
+            "count_process_history_records",
+            return_value=2,
+        ), patch.object(
+            process_history_api,
+            "list_process_history_records",
+            return_value=rows,
+        ):
+            response = process_history_api.read_process_history_records(
+                moduleIds="excel-jessca",
+                personId="jessica",
+                downloadableOnly=True,
+                limit=30,
+                page=1,
+            )
+
+        self.assertEqual(
+            [record["id"] for record in response["records"]],
+            ["excel-jessca-downloadable"],
+        )
+        self.assertEqual(response["pagination"]["total"], 1)
+        self.assertTrue(all(record.get("resultDownloadPath") for record in response["records"]))
+
     def test_read_process_history_records_rejects_unknown_status(self):
         with self.assertRaises(process_history_api.HTTPException) as context:
             process_history_api.read_process_history_records(status="running")
