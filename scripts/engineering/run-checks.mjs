@@ -43,6 +43,10 @@ const commandGroups = {
       '--test',
       'scripts/engineering/frontend-lint-gate.test.mjs',
     ]),
+    command('run-changed-checks-test', '.', process.execPath, [
+      '--test',
+      'scripts/engineering/run-changed-checks.test.mjs',
+    ]),
     command('restart-local-backend-test', '.', process.execPath, [
       '--test',
       'scripts/engineering/restart-local-backend.test.mjs',

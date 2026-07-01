@@ -6,6 +6,8 @@
     "check:frontend": "node scripts/engineering/run-checks.mjs frontend",
     "check:backend": "node scripts/engineering/run-checks.mjs backend",
     "check:electron": "node scripts/engineering/run-checks.mjs electron",
+    "check:changed": "node scripts/engineering/run-changed-checks.mjs",
+    "check:changed:dry-run": "node scripts/engineering/run-changed-checks.mjs --dry-run",
     "check:backend-version": "node scripts/engineering/check-backend-version.mjs",
     "ci:install": "node scripts/engineering/install-ci-deps.mjs",
     "test:version": "node --test scripts/engineering/sync-version.test.mjs",
