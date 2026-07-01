@@ -30,7 +30,7 @@ type FileRequirementOwner =
   | 'Sophia & Tina'
   | 'Jane'
   | 'Jane - BOM汇总'
-  | 'Jane - BOM核对'
+  | 'Jane - PRODUCTION核对'
   | 'Jane - OUTBOUND核对'
 
 interface FileRequirementGuideModel {
@@ -149,8 +149,8 @@ const guides: Record<FileRequirementOwner, FileRequirementGuideModel> = {
       '当前只汇总 BOM 里的 MAIN COMPONENT 物料，并按 Article/Color 展开。',
     ],
   },
-  'Jane - BOM核对': {
-    summary: 'T1 PRODUCTION 与 BOM汇总 面料核对',
+  'Jane - PRODUCTION核对': {
+    summary: 'T1 PRODUCTION 与 BOM汇总 PRODUCTION核对',
     files: [
       {
         name: 'T1 PRODUCTION 文件',
@@ -164,8 +164,9 @@ const guides: Record<FileRequirementOwner, FileRequirementGuideModel> = {
       },
     ],
     notes: [
-      '按 Style ID + Recording Facility ID 匹配 BOM汇总 的 Articles + Factory。',
-      '材料号或供应商不一致会标红；BOM汇总 有但生产表缺少的材料会写入诊断。',
+      '按 Style ID + Production Lot ID 分组检查 C-D-E-F 是否一致。',
+      '按 Style ID + Recording Facility ID 对比 BOM汇总 的 Articles + Factory 材料集合，多出的材料加删除线，缺少的材料补入新行。',
+      '按同 Style ID + Production Lot ID + Input Material UID/ID 计算料率。',
     ],
   },
   'Jane - OUTBOUND核对': {

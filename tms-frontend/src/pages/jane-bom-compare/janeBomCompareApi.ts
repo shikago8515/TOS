@@ -18,7 +18,10 @@ export interface JaneBomCompareProcessResponse {
   bom_material_row_count?: number
   checked_row_count?: number
   mismatch_cell_count?: number
+  inconsistent_group_count?: number
+  extra_material_row_count?: number
   missing_row_count?: number
+  rate_row_count?: number
   no_bom_key_count?: number
   logs?: string[]
 }
@@ -46,7 +49,7 @@ export async function downloadJaneBomCompareResult(filename: string): Promise<vo
   const anchor = document.createElement('a')
 
   anchor.href = downloadUrl
-  anchor.download = 'jane_bom_compare.xlsx'
+  anchor.download = 'production_compare.xlsx'
   anchor.rel = 'noopener'
   document.body.append(anchor)
   anchor.click()

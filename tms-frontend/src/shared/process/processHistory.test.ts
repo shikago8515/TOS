@@ -188,7 +188,7 @@ describe('processHistory', () => {
           id: 'remote-process-1',
           personId: 'jane',
           moduleId: 'jane-bom-compare',
-          moduleName: 'Jane BOM Compare',
+          moduleName: 'Jane PRODUCTION Compare',
           status: 'success',
           durationMs: 1200,
           message: 'completed',

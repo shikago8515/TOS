@@ -35,7 +35,7 @@ npm run check:backend
 | Sophia/Tina | `api/sophia_tina_api.py` | `modules/sophia_tina_module.py` |
 | Jane | `api/jane_api.py` | `modules/jane_module.py` |
 | Jane BOM Summary | `api/jane_bom_summary_api.py` | `modules/jane_bom_summary_module.py` |
-| Jane BOM Compare | `api/jane_bom_compare_api.py` | `modules/jane_bom_compare_module.py` |
+| Jane PRODUCTION Compare | `api/jane_bom_compare_api.py` | `modules/jane_bom_compare_module.py` |
 | Jane Outbound Compare | `api/jane_outbound_compare_api.py` | `modules/jane_outbound_compare_module.py` |
 | Eric | `api/eric_api.py` | `modules/eric_module.py` |
 | Jason PDF Reorder | `api/it_invoice_pdf_reorder_api.py` | `modules/it_invoice_pdf_reorder_module.py` |

@@ -1,7 +1,7 @@
 <template>
   <ExcelProcessPageShell
-    title="BOM核对"
-    subtitle="T1 PRODUCTION × BOM汇总 → 面料差异核对"
+    title="PRODUCTION核对"
+    subtitle="T1 PRODUCTION × BOM汇总 → PRODUCTION差异核对"
     :stats="pageStats"
     :toolbar-status="toolbarStatus"
     :actions="toolbarActions"
@@ -103,7 +103,7 @@ const uploadFields = computed<ExcelFileField[]>(() => [
     id: 'production',
     label: 'T1 PRODUCTION 文件',
     files: productionFiles.value,
-    hint: '输出会保留原表样式并标红差异',
+    hint: '检查 C-D-E-F、材料多缺并计算料率',
     accept: '.xlsx,.xlsm',
     acceptLabel: '支持 .xlsx / .xlsm',
     expectedCount: 1,
@@ -112,7 +112,7 @@ const uploadFields = computed<ExcelFileField[]>(() => [
     id: 'bom-summary',
     label: 'BOM汇总 文件',
     files: bomSummaryFiles.value,
-    hint: 'BOM汇总 生成的汇总文件',
+    hint: 'BOM汇总 生成的材料清单',
     accept: '.xlsx,.xlsm',
     acceptLabel: '支持 .xlsx / .xlsm',
     expectedCount: 1,
