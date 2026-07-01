@@ -151,7 +151,7 @@
             </div>
 
             <div class="pad-card__footer">
-              <button class="pad-btn pad-btn--run" type="button" :disabled="!canRunPackingListDownload" @click="runPackingListAutoDownload">
+              <button class="pad-btn pad-btn--run" type="button" :disabled="!canRunPackingListDownload" @click="() => runPackingListAutoDownload()">
                 <AppIcon :name="sending ? 'loader' : 'download-cloud'" :class="{ 'pad-spin': sending }" />
                 {{ sending ? text('执行中...') : text('上传 Excel 并下载箱单 PDF') }}
               </button>
@@ -233,6 +233,21 @@
 
           <AutomationRunHistoryPanel :automation-id="entry.id" :refresh-signal="historyRefreshSignal" />
 
+          <PackingListBatchResumeCard
+            :batch="latestBatch"
+            :batches="batchHistory"
+            :sending="sending"
+            :refreshing="batchRefreshing"
+            :history-loading="batchHistoryLoading"
+            :executor-active="batchExecutionActive"
+            @refresh="refreshLatestBatch"
+            @refresh-history="refreshBatchHistory"
+            @select-batch="selectHistoryBatch"
+            @continue="(batch) => runPackingListAutoDownload('continue', batch)"
+            @retry-failed="(batch) => runPackingListAutoDownload('retry-failed', batch)"
+            @notice="handleBatchFileNotice"
+          />
+
           <section class="pad-dock-card pad-dock-card--grow">
             <div class="pad-dock-card__head">
               <AppIcon name="workflow" />
@@ -286,6 +301,7 @@
         </div>
       </div>
     </transition>
+
   </div>
 </template>
 
@@ -298,20 +314,29 @@ import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.
 import { showAppAlert } from '../../../shared/ui/appAlert'
 import AutomationAccountProfileManager from '../../web-automation/components/AutomationAccountProfileManager.vue'
 import AutomationRunHistoryPanel from '../../web-automation/components/AutomationRunHistoryPanel.vue'
+import PackingListBatchResumeCard from './PackingListBatchResumeCard.vue'
 import type { AutomationAppInfo } from '../../../types/electronApi'
-import type { AutomationRunFileInput, AutomationRunRecord, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
+import type { AutomationRunFileInput, AutomationRunRecord, LocalExecutorHealth, PackingListBatchRecord } from '../../web-automation/webAutomationApi'
 import {
   createAutomationRunRecord,
+  createPackingListAutoDownloadAttempt,
+  createPackingListAutoDownloadBatch,
   downloadAutomationTemplate,
+  downloadPackingListBatchSourceAsBase64,
   fetchAutomationApps,
   fetchAutomationRuns,
   fetchAutomationTemplates,
+  fetchPackingListAutoDownloadBatch,
+  fetchPackingListAutoDownloadBatches,
+  fetchLatestPackingListAutoDownloadBatch,
   findLocalExecutorActiveRun,
   finishAutomationRunRecord,
+  getLocalAutomationBackendBaseUrl,
   getAutomationHelperUpdateMessage,
   hasElectronAutomationSupport,
   isLocalExecutorBusy,
   launchAutomationConsole,
+  interruptPackingListAutoDownloadBatch,
   openAutomationHelperDownload,
   primeLocalAutomationLauncherBoot,
   probeLocalAutomationLauncherHealth,
@@ -339,7 +364,7 @@ type CredentialNotice = { tone: WebAutomationNoticeTone; message: string }
 type FailedPackingListBatch = { no: string; poNumbers: string[]; error: string }
 
 const router = useRouter()
-const { text } = useAppLanguage()
+const { isEnglish, text } = useAppLanguage()
 const entry = getWebAutomationEntry(ENTRY_ID)
 const electronSupported = hasElectronAutomationSupport()
 
@@ -372,8 +397,13 @@ const lastResult = ref<Record<string, any> | null>(null)
 const lastRawResponse = ref('')
 const runProgress = ref<Record<string, any> | null>(null)
 const historyRefreshSignal = ref(0)
+const latestBatch = ref<PackingListBatchRecord | null>(null)
+const batchHistory = ref<PackingListBatchRecord[]>([])
+const batchRefreshing = ref(false)
+const batchHistoryLoading = ref(false)
 let progressTimer: number | null = null
 let reconcilingRunRecord = false
+let lastBatchProgressRefreshAt = 0
 
 const steps = [
   { title: '上传 Excel 文件', desc: '读取 PO# 和 Invoice# 列生成箱单下载清单。' },
@@ -401,6 +431,11 @@ const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReac
 const canLaunchActiveApp = computed(() => Boolean(entry?.appId) && !launching.value)
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
 const canRunPackingListDownload = computed(() => !sending.value)
+const batchExecutionActive = computed(() => Boolean(
+  sending.value
+    || restoredActiveRun.value
+    || findPackingListAutoDownloadActiveRun(executorHealth.value),
+))
 const inlineStatusClass = computed(() => {
   if (sending.value) return 'pad-status--info'
   if (lastResult.value?.ok) return 'pad-status--ok'
@@ -472,6 +507,7 @@ async function initializeScenario(): Promise<void> {
   statusText.value = text('等待上传 Excel 并填写箱单下载保存目录。')
   await refreshCredentialProfile()
   await refreshExecutorState(true)
+  await refreshLatestBatch()
   if (electronSupported && activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) {
     await startActiveApp(true)
   }
@@ -483,6 +519,91 @@ function restoreDownloadConfig(): void {
 
 function persistDownloadConfig(): void {
   window.localStorage.setItem(DOWNLOAD_DIR_STORAGE_KEY, saveDirectory.value.trim())
+}
+
+async function refreshLatestBatch(): Promise<void> {
+  if (batchRefreshing.value) return
+  batchRefreshing.value = true
+  try {
+    latestBatch.value = await fetchLatestPackingListAutoDownloadBatch()
+    await refreshBatchHistory()
+  } catch (error) {
+    await recordWebAutomationEvent('packing-list-auto-download-batch-refresh-failure', {
+      error: readErrorMessage(error, 'refresh batch failed'),
+    })
+  } finally {
+    batchRefreshing.value = false
+  }
+}
+
+async function refreshBatchHistory(): Promise<void> {
+  if (batchHistoryLoading.value) return
+  batchHistoryLoading.value = true
+  try {
+    batchHistory.value = await fetchPackingListAutoDownloadBatches(30)
+  } catch (error) {
+    await recordWebAutomationEvent('packing-list-auto-download-batch-history-refresh-failure', {
+      error: readErrorMessage(error, 'refresh batch history failed'),
+    })
+  } finally {
+    batchHistoryLoading.value = false
+  }
+}
+
+async function refreshCurrentBatch(): Promise<void> {
+  const batchId = latestBatch.value?.batchId
+  if (!batchId) {
+    await refreshLatestBatch()
+    return
+  }
+  if (batchRefreshing.value) return
+  batchRefreshing.value = true
+  try {
+    const batch = await fetchPackingListAutoDownloadBatch(batchId)
+    if (batch) {
+      latestBatch.value = batch
+      batchHistory.value = batchHistory.value.map((item) => (
+        item.batchId === batch.batchId ? batch : item
+      ))
+    }
+  } catch (error) {
+    await recordWebAutomationEvent('packing-list-auto-download-current-batch-refresh-failure', {
+      batchId,
+      error: readErrorMessage(error, 'refresh current batch failed'),
+    })
+  } finally {
+    batchRefreshing.value = false
+  }
+}
+
+function selectHistoryBatch(batch: PackingListBatchRecord): void {
+  latestBatch.value = batch
+  messageTone.value = 'info'
+  message.value = text('已切换断点批次，可继续未完成或查看文件。')
+}
+
+async function markLatestBatchInterrupted(reason: string): Promise<void> {
+  const batch = latestBatch.value || await fetchLatestPackingListAutoDownloadBatch().catch(() => null)
+  if (!batch?.batchId) return
+  const status = String(batch.status || '').toLowerCase()
+  if (['success', 'failed', 'partial', 'interrupted'].includes(status)) {
+    latestBatch.value = batch
+    return
+  }
+  try {
+    const checkpoint = batch.checkpoint || {}
+    const updatedBatch = await interruptPackingListAutoDownloadBatch(batch.batchId, {
+      runId: batch.runId || String(checkpoint.runId || ''),
+      attemptId: String(checkpoint.attemptId || ''),
+      message: reason,
+    })
+    latestBatch.value = updatedBatch || batch
+  } catch (error) {
+    await recordWebAutomationEvent('packing-list-auto-download-batch-interrupt-failure', {
+      batchId: batch.batchId,
+      error: readErrorMessage(error, 'interrupt batch failed'),
+    })
+  }
 }
 
 async function refreshExecutorState(silent: boolean): Promise<void> {
@@ -509,6 +630,18 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
       if (!silent) {
         messageTone.value = 'warning'
         message.value = text('未检测到本机自动化助手')
+      }
+      return
+    }
+
+    if (activeApp.value && !activeApp.value.running && !sending.value) {
+      executorHealth.value = null
+      clearRestoredActiveRunState()
+      await markLatestBatchInterrupted(text('执行器当前未运行，未完成批次已标记为中断，可从断点继续。'))
+      await refreshCurrentBatch().catch(() => {})
+      if (!silent) {
+        messageTone.value = 'warning'
+        message.value = text('执行器未就绪。')
       }
       return
     }
@@ -554,7 +687,11 @@ function syncActiveRunViewFromHealth(): void {
       statusText.value = formatRunProgress(progress)
     } else {
       const inputFileName = String(activeRun.inputFileName || '').trim()
-      statusText.value = inputFileName ? `执行器仍在下载 ${inputFileName}，请勿重复启动。` : text('执行器仍在下载箱单 PDF，请勿重复启动。')
+      statusText.value = inputFileName
+        ? isEnglish.value
+          ? `The executor is still downloading ${inputFileName}. Do not start it again.`
+          : `执行器仍在下载 ${inputFileName}，请勿重复启动。`
+        : text('执行器仍在下载箱单 PDF，请勿重复启动。')
     }
     startProgressPolling()
     return
@@ -611,6 +748,11 @@ async function pollRunProgress(): Promise<void> {
       runProgress.value = progress
       statusText.value = formatRunProgress(progress)
     }
+    const now = Date.now()
+    if (now - lastBatchProgressRefreshAt > 2500) {
+      lastBatchProgressRefreshAt = now
+      void refreshCurrentBatch()
+    }
   } catch {
     // Polling is best-effort; the final POST response still decides the result.
   }
@@ -629,7 +771,7 @@ function extractRunProgress(payload: Record<string, any> | LocalExecutorHealth |
 }
 
 function formatRunProgress(progress: Record<string, any>): string {
-  const phase = String(progress.phase || '执行中')
+  const phase = text(String(progress.phase || '执行中'))
   const total = Number(progress.activeCount || progress.totalCount || 0)
   const completed = Number(progress.completedCount || 0)
   const downloaded = Number(progress.downloadedCount || 0)
@@ -639,11 +781,14 @@ function formatRunProgress(progress: Record<string, any>): string {
     : Array.isArray(progress.currentInvoiceNumbers)
       ? progress.currentInvoiceNumbers
       : []
-  const current = currentValues.map((item: unknown) => String(item || '').trim()).filter(Boolean).slice(0, 3).join('、')
+  const current = currentValues.map((item: unknown) => String(item || '').trim()).filter(Boolean).slice(0, 3).join(isEnglish.value ? ', ' : '、')
   const countText = total > 0
-    ? `已处理 ${Math.max(0, completed)}/${total}，已下载 ${Math.max(0, downloaded)}，失败 ${Math.max(0, failed)}`
-    : String(progress.message || '正在处理')
-  return current ? `${phase} · ${countText}，当前 ${current}` : `${phase} · ${countText}`
+    ? isEnglish.value
+      ? `Processed ${Math.max(0, completed)}/${total}, downloaded ${Math.max(0, downloaded)}, failed ${Math.max(0, failed)}`
+      : `已处理 ${Math.max(0, completed)}/${total}，已下载 ${Math.max(0, downloaded)}，失败 ${Math.max(0, failed)}`
+    : text(String(progress.message || '正在处理'))
+  if (!current) return `${phase} · ${countText}`
+  return isEnglish.value ? `${phase} · ${countText}, current ${current}` : `${phase} · ${countText}，当前 ${current}`
 }
 
 async function refreshCredentialProfile(): Promise<void> {
@@ -657,6 +802,11 @@ function handleCredentialState(state: CredentialProfileState): void {
 }
 
 function handleCredentialNotice(notice: CredentialNotice): void {
+  messageTone.value = notice.tone
+  message.value = notice.message
+}
+
+function handleBatchFileNotice(notice: { tone: 'success' | 'error'; message: string }): void {
   messageTone.value = notice.tone
   message.value = notice.message
 }
@@ -695,6 +845,8 @@ async function stopActiveApp(): Promise<void> {
     executorHealth.value = null
     clearRestoredActiveRunState()
     if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }
+    await markLatestBatchInterrupted(text('用户已停止本机执行器，当前批次已中断，可从断点继续。'))
+    await refreshLatestBatch().catch(() => {})
     messageTone.value = 'success'
     message.value = text('执行器已停止。')
   } catch (error) {
@@ -702,6 +854,7 @@ async function stopActiveApp(): Promise<void> {
     message.value = readErrorMessage(error, text('停止执行器失败。'))
   } finally {
     launching.value = false
+    await refreshExecutorState(true).catch(() => {})
   }
 }
 
@@ -890,11 +1043,12 @@ function showRunRequirementDialog(rawMessage: string): false {
   return false
 }
 
-function validatePackingListDownloadInputs(): boolean {
+function validatePackingListDownloadInputs(options: { requireFile?: boolean } = {}): boolean {
+  const requireFile = options.requireFile !== false
   if (!entry) {
     return showRunRequirementDialog('当前入口不存在，请从 Jessica 浏览器自动化菜单重新进入。')
   }
-  if (!selectedFile.value) {
+  if (requireFile && !selectedFile.value) {
     return showRunRequirementDialog('请先上传 Excel 文件，文件需包含 PO# 和 Invoice# 列。')
   }
   if (!saveDirectory.value.trim()) {
@@ -913,9 +1067,13 @@ function validatePackingListDownloadInputs(): boolean {
   return true
 }
 
-async function runPackingListAutoDownload(): Promise<void> {
+async function runPackingListAutoDownload(
+  resumeMode: 'new' | 'continue' | 'retry-failed' | 'restart' = 'new',
+  batchToResume: PackingListBatchRecord | null = null,
+): Promise<void> {
   if (sending.value) return
-  if (!validatePackingListDownloadInputs()) return
+  const isResumeRun = resumeMode === 'continue' || resumeMode === 'retry-failed'
+  if (!validatePackingListDownloadInputs({ requireFile: !isResumeRun })) return
   if (!await ensureReady()) {
     setNotReady()
     void showAppAlert(statusText.value, { tone: 'warning' })
@@ -927,7 +1085,7 @@ async function runPackingListAutoDownload(): Promise<void> {
     return
   }
 
-  const file = selectedFile.value as File
+  const file = selectedFile.value
   persistDownloadConfig()
   sending.value = true
   statusLabel.value = '执行中'
@@ -936,18 +1094,39 @@ async function runPackingListAutoDownload(): Promise<void> {
   runProgress.value = null
   startProgressPolling()
 
-  const runRecord = await createBackendRunRecord(file)
+  const runRecord = isResumeRun && batchToResume?.runId
+    ? createRunRecordReference(batchToResume)
+    : await createBackendRunRecord(file)
 
   try {
-    const fileBase64 = await fileToBase64(file)
+    const batchContext = await preparePackingListBatchContext({
+      batchToResume,
+      file,
+      resumeMode,
+      runRecord,
+    })
     const credentialPayload = await buildCredentialPayload()
     const payload: Record<string, unknown> = {
-      fileName: file.name,
-      fileBase64,
+      fileName: batchContext.fileName,
+      fileBase64: batchContext.fileBase64,
       token: currentEntry.localExecutorToken,
       headless: !showBrowserView.value,
       downloadDirectory: saveDirectory.value.trim(),
       downloadMode: 'request-first',
+      backendBaseUrl: batchContext.backendBaseUrl,
+      backendRunId: runRecord?.runId || '',
+      batchId: batchContext.batch.batchId,
+      attemptId: batchContext.attempt.attemptId,
+      resumeMode,
+      checkpoint: {
+        enabled: true,
+        backendBaseUrl: batchContext.backendBaseUrl,
+        batchId: batchContext.batch.batchId,
+        attemptId: batchContext.attempt.attemptId,
+        runId: runRecord?.runId || '',
+        mode: resumeMode,
+        snapshot: batchContext.batch.checkpoint || null,
+      },
       ...credentialPayload,
     }
 
@@ -983,17 +1162,19 @@ async function runPackingListAutoDownload(): Promise<void> {
     }
 
     if (!json) {
-      throw new Error('无法解析响应。')
+      throw new Error(text('无法解析响应。'))
     }
 
     if (json?.ok) {
       const completed = Number(json.downloadedPackingListCount ?? json.downloadedInvoiceCount ?? json.downloadedPoCount ?? json.completedPoCount ?? 0)
       const total = Number(json.totalPackingListCount ?? json.totalInvoiceCount ?? json.totalPoCount ?? 0)
       const paths = extractDownloadedPdfPaths(json)
-      const pathSuffix = paths[0] ? ` 保存路径：${paths[0]}` : ''
+      const pathSuffix = paths[0] ? (isEnglish.value ? ` Saved to: ${paths[0]}` : ` 保存路径：${paths[0]}`) : ''
       statusLabel.value = '成功'
       statusText.value = total > 0
-        ? `箱单 PDF 下载完成。已下载 ${completed}/${total} 份箱单。${pathSuffix}`
+        ? isEnglish.value
+          ? `Packing List PDF download complete. Downloaded ${completed}/${total}.${pathSuffix}`
+          : `箱单 PDF 下载完成。已下载 ${completed}/${total} 份箱单。${pathSuffix}`
         : `${text('箱单 PDF 下载完成。')}${pathSuffix}`
       lastResult.value = json
       messageTone.value = 'success'
@@ -1009,7 +1190,7 @@ async function runPackingListAutoDownload(): Promise<void> {
     message.value = text('已触发，结果未确认。')
     void showAppAlert(statusText.value, { tone: 'warning' })
   } catch (error) {
-    const friendlyMessage = formatAutomationExecutorMessage(readErrorMessage(error, text('网络错误')), '自动化执行异常。')
+    const friendlyMessage = formatAutomationExecutorMessage(readErrorMessage(error, text('网络错误')), text('自动化执行异常。'))
     statusLabel.value = '异常'
     statusText.value = friendlyMessage
     lastResult.value = { ok: false, message: statusText.value }
@@ -1020,6 +1201,8 @@ async function runPackingListAutoDownload(): Promise<void> {
   } finally {
     stopProgressPolling()
     sending.value = false
+    await refreshCurrentBatch().catch(() => {})
+    await refreshBatchHistory().catch(() => {})
     await refreshExecutorState(true).catch(() => {})
   }
 }
@@ -1069,10 +1252,10 @@ function setNotReady(): void {
   message.value = text('执行器未就绪。')
 }
 
-async function createBackendRunRecord(file: File): Promise<AutomationRunRecord | null> {
+async function createBackendRunRecord(file: File | null): Promise<AutomationRunRecord | null> {
   if (!entry) return null
   try {
-    const record = await createAutomationRunRecord(entry.id, file, entry.title)
+    const record = await createAutomationRunRecord(entry.id, null, entry.title)
     if (record?.runId) {
       writePendingRunRecord(record)
       bumpRunHistoryRefresh()
@@ -1086,6 +1269,70 @@ async function createBackendRunRecord(file: File): Promise<AutomationRunRecord |
   }
 }
 
+function createRunRecordReference(batch: PackingListBatchRecord): AutomationRunRecord | null {
+  if (!batch.runId) return null
+  return {
+    runId: batch.runId,
+    automationId: entry?.id || ENTRY_ID,
+    moduleId: entry?.id || ENTRY_ID,
+    runName: batch.sourceFileName || batch.batchName || entry?.title || ENTRY_ID,
+    status: batch.status || 'running',
+    message: batch.message || '',
+  }
+}
+
+async function preparePackingListBatchContext(input: {
+  batchToResume: PackingListBatchRecord | null
+  file: File | null
+  resumeMode: 'new' | 'continue' | 'retry-failed' | 'restart'
+  runRecord: AutomationRunRecord | null
+}): Promise<{
+  attempt: { attemptId: string }
+  backendBaseUrl: string
+  batch: PackingListBatchRecord
+  fileBase64: string
+  fileName: string
+}> {
+  const backendBaseUrl = await getLocalAutomationBackendBaseUrl('/api/automation/packing-list-auto-download/batches')
+  const isResumeRun = input.resumeMode === 'continue' || input.resumeMode === 'retry-failed'
+  let batch = isResumeRun ? input.batchToResume : null
+  let fileName = input.file?.name || batch?.sourceFileName || 'packing-list.xlsx'
+  let fileBase64 = ''
+
+  if (isResumeRun) {
+    if (!batch) {
+      throw new Error(text('没有可继续的自动下载箱单批次。'))
+    }
+    const source = await downloadPackingListBatchSourceAsBase64(batch)
+    fileName = source.fileName
+    fileBase64 = source.fileBase64
+  } else {
+    if (!input.file) {
+      throw new Error(text('请先选择自动下载箱单 Excel。'))
+    }
+    batch = await createPackingListAutoDownloadBatch({
+      runId: input.runRecord?.runId || '',
+      batchName: input.file.name,
+      sourceFile: input.file,
+    })
+    fileBase64 = await fileToBase64(input.file)
+    fileName = input.file.name
+  }
+
+  const attempt = await createPackingListAutoDownloadAttempt(batch.batchId, {
+    runId: input.runRecord?.runId || '',
+    mode: input.resumeMode,
+  })
+  latestBatch.value = batch
+  return {
+    attempt,
+    backendBaseUrl,
+    batch,
+    fileBase64,
+    fileName,
+  }
+}
+
 async function finishBackendRunRecord(
   record: AutomationRunRecord | null,
   ok: boolean,
@@ -1093,15 +1340,64 @@ async function finishBackendRunRecord(
   payload: Record<string, any> | null,
 ): Promise<void> {
   if (!record?.runId) return
+  const finalStatus = resolvePackingListRunStatus(ok, payload)
   await finishAutomationRunRecord(
     record.runId,
-    ok ? 'success' : 'failed',
-    messageText || (ok ? 'completed' : 'failed'),
+    finalStatus,
+    messageText || defaultPackingListRunMessage(finalStatus),
     payload,
     collectResultFiles(payload),
   )
   clearPendingRunRecord(record.runId)
   bumpRunHistoryRefresh()
+}
+
+function resolvePackingListRunStatus(ok: boolean, payload: Record<string, any> | null): 'success' | 'partial' | 'failed' {
+  const completed = readPackingListCompletedCount(payload)
+  const total = readPackingListTotalCount(payload)
+  const failed = readPackingListFailedCount(payload)
+  if (total > 0 && completed >= total && failed <= 0) return 'success'
+  if (completed > 0) return 'partial'
+  if (ok && total <= 0 && failed <= 0) return 'success'
+  return 'failed'
+}
+
+function defaultPackingListRunMessage(status: 'success' | 'partial' | 'failed'): string {
+  if (status === 'success') return text('箱单 PDF 下载完成。')
+  if (status === 'partial') return text('箱单 PDF 已部分下载，可通过断点续跑继续未完成批次。')
+  return text('箱单 PDF 下载失败。')
+}
+
+function readPackingListCompletedCount(payload: Record<string, any> | null): number {
+  return Number(
+    payload?.downloadedPackingListCount
+      ?? payload?.completedPackingListCount
+      ?? payload?.downloadedInvoiceCount
+      ?? payload?.downloadedPoCount
+      ?? payload?.completedPoCount
+      ?? payload?.checkpoint?.completedCount
+      ?? 0,
+  )
+}
+
+function readPackingListTotalCount(payload: Record<string, any> | null): number {
+  return Number(
+    payload?.totalPackingListCount
+      ?? payload?.totalInvoiceCount
+      ?? payload?.totalPoCount
+      ?? payload?.checkpoint?.totalCount
+      ?? 0,
+  )
+}
+
+function readPackingListFailedCount(payload: Record<string, any> | null): number {
+  return Number(
+    payload?.failedPackingListCount
+      ?? payload?.failedInvoiceCount
+      ?? payload?.failedPoCount
+      ?? payload?.checkpoint?.failedCount
+      ?? 0,
+  )
 }
 
 function bumpRunHistoryRefresh(): void {
@@ -1337,11 +1633,11 @@ function buildExecutorResponseMessage(
   response: Response,
   raw: string,
   payload: { message?: unknown } | null,
-  fallback = '自动化执行失败。',
+  fallback = text('自动化执行失败。'),
 ): string {
   const rawMessage = typeof payload?.message === 'string' ? payload.message : ''
   if (response.status === 404 && /not\s*found/i.test(rawMessage || raw || '')) {
-    return '本机执行器缺少当前自动化接口，系统已同步最新自动化逻辑但接口仍不可用。请确认服务器 automation-modules 模块包已发布，或重启本机自动化执行器后再试。'
+    return text('本机执行器缺少当前自动化接口，系统已同步最新自动化逻辑但接口仍不可用。请确认服务器 automation-modules 模块包已发布，或重启本机自动化执行器后再试。')
   }
   if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback)
   if (!payload) {
@@ -1423,6 +1719,17 @@ function goBack(): void {
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
+  }
+
+  &__left {
+    flex: 1 1 auto;
+  }
+
+  &__right {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    flex: 0 1 auto;
   }
 
   &__icon {
@@ -1440,12 +1747,14 @@ function goBack(): void {
     margin: 0;
     font-size: 16px;
     font-weight: 800;
+    overflow-wrap: anywhere;
   }
 
   p {
     margin: 3px 0 0;
     font-size: 12px;
     color: var(--muted);
+    overflow-wrap: anywhere;
   }
 }
 
@@ -1472,6 +1781,8 @@ function goBack(): void {
   color: #475569;
   font-size: 12px;
   font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
   cursor: pointer;
   transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
 
@@ -1551,11 +1862,13 @@ function goBack(): void {
 .pad-chip {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 800;
-  white-space: nowrap;
+  line-height: 1.2;
+  text-align: center;
 }
 
 .pad-pill {
@@ -1879,6 +2192,7 @@ function goBack(): void {
 .pad-helper {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 9px;
 }
 
@@ -1889,6 +2203,8 @@ function goBack(): void {
   border-radius: 11px;
   font-size: 12px;
   font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 
   &--info {
     color: #1d4ed8;
@@ -2328,6 +2644,7 @@ function goBack(): void {
   .pad-dock {
     width: 100%;
   }
+
 }
 
 /* 执行器控制双列格栅 */
@@ -2342,8 +2659,9 @@ function goBack(): void {
 .sa-btn-grid .sa-btn {
   flex: 1;
   min-width: 0;
-  padding: 0 8px;
-  height: 32px;
+  padding: 6px 8px;
+  min-height: 32px;
+  height: auto;
   font-size: 11px;
   border: 1px solid var(--br);
   border-radius: 10px;
@@ -2355,6 +2673,9 @@ function goBack(): void {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
   :deep(.app-icon) { font-size: 13px; flex-shrink: 0; }
   &:hover:not(:disabled) { background: #f8fafc; border-color: #cbd5e1; transform: translateY(-1px); }
   &:disabled { opacity: .35; cursor: not-allowed; }

@@ -29,6 +29,7 @@
     "version": "0.9.8-beta.3.31",
     "appDir": "shipping-automation-demo",
     "entry": "bin/start.js",
+    "includeNodeModules": true,
     "defaultPort": 3003,
     "description": "登录 Infor Nexus 并自动进入 Print-Scan-Ship 的 Shipment Scan 弹窗。"
   }

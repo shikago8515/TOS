@@ -99,6 +99,8 @@ internal static class Program
                 throw new FileNotFoundException("Automation launcher bootstrap not found.", bootstrap);
             }
 
+            StopCompetingHelperProcesses(appHome);
+
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
                 FileName = nodeExe,
@@ -130,6 +132,73 @@ internal static class Program
                 MessageBoxIcon.Error
             );
             return 1;
+        }
+    }
+
+    private static void StopCompetingHelperProcesses(string currentAppHome)
+    {
+        int currentProcessId = Process.GetCurrentProcess().Id;
+        StopHelperProcessesByName("node", currentProcessId);
+        StopHelperProcessesByName("TOS-Automation-Helper", currentProcessId);
+    }
+
+    private static void StopHelperProcessesByName(string processName, int currentProcessId)
+    {
+        foreach (Process process in Process.GetProcessesByName(processName))
+        {
+            try
+            {
+                if (process.Id == currentProcessId)
+                {
+                    continue;
+                }
+
+                string modulePath = NormalizePath(process.MainModule == null ? null : process.MainModule.FileName);
+                if (!LooksLikeAutomationHelperPath(modulePath))
+                {
+                    continue;
+                }
+
+                process.Kill();
+                process.WaitForExit(5000);
+            }
+            catch
+            {
+                // Best effort only. If Windows denies access, the launcher start will surface the port conflict.
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+    }
+
+    private static bool LooksLikeAutomationHelperPath(string value)
+    {
+        string path = NormalizePath(value);
+        if (path.Length == 0)
+        {
+            return false;
+        }
+
+        return path.IndexOf(Path.DirectorySeparatorChar + "TOS-Automation-Helper" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) >= 0
+            || path.EndsWith(Path.DirectorySeparatorChar + "TOS-Automation-Helper.exe", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizePath(string value)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            return Path.GetFullPath(value.Trim().Trim('"'));
+        }
+        catch
+        {
+            return string.Empty;
         }
     }
 }
@@ -761,6 +830,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.IO.Compression;
+using System.Net;
 using System.Reflection;
 using System.Text;
 using System.Windows.Forms;
@@ -869,6 +939,77 @@ internal sealed class InstallerForm : Form
             }
         }
         return normalized;
+    }
+
+    private static bool HasRunningAutomationRisk()
+    {
+        try
+        {
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create("http://127.0.0.1:3210/health");
+            request.Timeout = 1500;
+            request.ReadWriteTimeout = 1500;
+            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+            using (Stream stream = response.GetResponseStream())
+            using (StreamReader reader = new StreamReader(stream))
+            {
+                string body = reader.ReadToEnd();
+                if (ExtractJsonNumber(body, "trackedAppCount") > 0)
+                {
+                    return true;
+                }
+                if (body.IndexOf("\"busy\": true", StringComparison.OrdinalIgnoreCase) >= 0
+                    || body.IndexOf("\"activeRun\":", StringComparison.OrdinalIgnoreCase) >= 0
+                    || ExtractJsonNumber(body, "activeRunCount") > 0)
+                {
+                    return true;
+                }
+            }
+        }
+        catch
+        {
+        }
+        return false;
+    }
+
+    private static int ExtractJsonNumber(string body, string propertyName)
+    {
+        if (string.IsNullOrEmpty(body) || string.IsNullOrEmpty(propertyName))
+        {
+            return 0;
+        }
+
+        string marker = "\"" + propertyName + "\"";
+        int index = body.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (index < 0)
+        {
+            return 0;
+        }
+
+        int colon = body.IndexOf(':', index + marker.Length);
+        if (colon < 0)
+        {
+            return 0;
+        }
+
+        int cursor = colon + 1;
+        while (cursor < body.Length && char.IsWhiteSpace(body[cursor]))
+        {
+            cursor++;
+        }
+
+        int start = cursor;
+        while (cursor < body.Length && char.IsDigit(body[cursor]))
+        {
+            cursor++;
+        }
+
+        if (cursor <= start)
+        {
+            return 0;
+        }
+
+        int value;
+        return int.TryParse(body.Substring(start, cursor - start), out value) ? value : 0;
     }
 
     private void BuildUi()
@@ -1098,6 +1239,23 @@ internal sealed class InstallerForm : Form
         }
 
         pathBox.Text = chosenDir;
+        if (HasRunningAutomationRisk())
+        {
+            DialogResult decision = MessageBox.Show(
+                this,
+                U("68c0 6d4b 5230 672c 673a 53ef 80fd 6709 0020 0054 004f 0053 0020 81ea 52a8 5316 4efb 52a1 6b63 5728 8fd0 884c 3002 000a 000a 7ee7 7eed 5b89 88c5 4f1a 505c 6b62 5f53 524d 5c0f 52a9 624b 548c 6267 884c 5668 ff0c 6b63 5728 8fd0 884c 7684 6d4f 89c8 5668 6d41 7a0b 3001 4e0b 8f7d 6587 4ef6 6216 6267 884c 8bb0 5f55 53ef 80fd 4e2d 65ad 3002 000a 000a 5efa 8bae 7b49 5f85 4efb 52a1 5b8c 6210 540e 518d 66f4 65b0 3002 662f 5426 4ecd 8981 7ee7 7eed ff1f"),
+                Text,
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2
+            );
+            if (decision != DialogResult.Yes)
+            {
+                status.Text = U("68c0 6d4b 5230 81ea 52a8 5316 4efb 52a1 6b63 5728 8fd0 884c ff0c 5df2 53d6 6d88 5b89 88c5 3002");
+                return;
+            }
+        }
+
         title.Text = U("6b63 5728 5b89 88c5");
         desc.Text = U("6b63 5728 5b89 88c5 0020 0054 004f 0053 0020 81ea 52a8 5316 52a9 624b ff0c 8bf7 7a0d 5019 3002");
         step1.ForeColor = Color.FromArgb(153, 246, 228);
@@ -1212,8 +1370,7 @@ internal sealed class InstallerForm : Form
 
         progressWorker.ReportProgress(8, U("6b63 5728 51c6 5907 5b89 88c5 76ee 5f55 002e 002e 002e"));
         Log("Killing old helper processes");
-        KillByPath(nodeExe);
-        KillByPath(launcherExe);
+        KillHelperProcesses();
 
         Directory.CreateDirectory(installDir);
         Log("Extract payload");
@@ -1366,6 +1523,64 @@ internal sealed class InstallerForm : Form
             }
         }
         Log("ExtractPayload complete");
+    }
+
+    private static void KillHelperProcesses()
+    {
+        KillHelperProcessesByName("node");
+        KillHelperProcessesByName("TOS-Automation-Helper");
+    }
+
+    private static void KillHelperProcessesByName(string processName)
+    {
+        foreach (Process process in Process.GetProcessesByName(processName))
+        {
+            try
+            {
+                string runningPath = process.MainModule == null ? null : process.MainModule.FileName;
+                if (LooksLikeAutomationHelperPath(runningPath))
+                {
+                    process.Kill();
+                    process.WaitForExit(5000);
+                }
+            }
+            catch
+            {
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+    }
+
+    private static bool LooksLikeAutomationHelperPath(string value)
+    {
+        string path = NormalizeProcessPath(value);
+        if (path.Length == 0)
+        {
+            return false;
+        }
+
+        return path.IndexOf(Path.DirectorySeparatorChar + "TOS-Automation-Helper" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) >= 0
+            || path.EndsWith(Path.DirectorySeparatorChar + "TOS-Automation-Helper.exe", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeProcessPath(string value)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            return Path.GetFullPath(value.Trim().Trim('"'));
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 
     private static void KillByPath(string exePath)

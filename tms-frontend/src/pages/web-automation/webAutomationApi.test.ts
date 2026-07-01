@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AutomationAppInfo } from '../../types/electronApi'
 import {
   createAutomationRunRecord,
+  createPackingListAutoDownloadAttempt,
+  createPackingListAutoDownloadBatch,
   downloadAutomationRunFile,
+  fetchLatestPackingListAutoDownloadBatch,
   fetchAutomationRuns,
   finishAutomationRunRecord,
   formatAutomationLauncherErrorMessage,
@@ -12,9 +15,12 @@ import {
   launchAutomationConsole,
   minimumAutomationHelperVersion,
   openInfornexusAutoAddSearchPage,
+  probeLocalAutomationLauncherHealthPayload,
+  probeLocalExecutorHealth,
+  syncLocalAutomationModules,
 } from './webAutomationApi'
 
-const compatibleHelperVersion = '0.9.8-beta.3.19'
+const compatibleHelperVersion = '0.9.8-beta.3.32'
 
 describe('webAutomationApi', () => {
   it('opens the Infornexus auto-add search page through the local executor', async () => {
@@ -100,6 +106,14 @@ describe('webAutomationApi', () => {
     )).toContain('Shipping 执行器')
   })
 
+  it('formats launcher proxy connection resets for stop/restart cases', () => {
+    const message = formatAutomationLauncherErrorMessage('Automation app proxy failed: read ECONNRESET')
+
+    expect(message).toContain('执行器连接已中断')
+    expect(message).toContain('重新启动执行器')
+    expect(message).not.toContain('ECONNRESET')
+  })
+
   it('does not require the helper to match a newer TOS app version', () => {
     const activeApp = createAutomationApp({
       version: '0.9.8-beta.3.28',
@@ -156,11 +170,11 @@ describe('webAutomationApi', () => {
       ok: true,
       helperVersion: compatibleHelperVersion,
     }, createAutomationApp({
-      requiredHelperVersion: '0.9.8-beta.3.27',
+      requiredHelperVersion: '0.9.8-beta.3.33',
     }))
 
     expect(message).toContain(compatibleHelperVersion)
-    expect(message).toContain('0.9.8-beta.3.27')
+    expect(message).toContain('0.9.8-beta.3.33')
   })
 
   it('passes forceUpdate to the desktop automation launcher', async () => {
@@ -223,6 +237,152 @@ describe('webAutomationApi', () => {
     expect(isLocalExecutorBusy({ ok: true, activeRunCount: 1 })).toBe(true)
     expect(isLocalExecutorBusy({ ok: true, busy: true })).toBe(true)
     expect(isLocalExecutorBusy({ ok: true, activeRuns: [{}] })).toBe(true)
+  })
+
+  it('allows slow local executor health probes before marking it disconnected', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const requests: string[] = []
+    const timeouts: number[] = []
+    const mockFetch = (async (input: RequestInfo | URL) => {
+      requests.push(String(input))
+      return new Response(JSON.stringify({
+        ok: true,
+        helperVersion: compatibleHelperVersion,
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      })
+    }) as typeof window.fetch
+    const mockWindow = {
+      clearTimeout: vi.fn(),
+      fetch: mockFetch,
+      setTimeout: vi.fn((_handler: TimerHandler, timeout?: number) => {
+        timeouts.push(Number(timeout))
+        return 1
+      }),
+    } as unknown as Pick<Window, 'clearTimeout' | 'fetch' | 'setTimeout'>
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: mockWindow,
+    })
+
+    try {
+      const health = await probeLocalExecutorHealth('http://127.0.0.1:3210/api/apps/shipping-automation-demo/proxy')
+
+      expect(health.ok).toBe(true)
+      expect(requests).toEqual([
+        'http://127.0.0.1:3210/api/apps/shipping-automation-demo/proxy/api/health',
+        'http://127.0.0.1:3210/api/apps/shipping-automation-demo/proxy/health',
+      ])
+      expect(timeouts).toEqual([2500, 2500])
+    } finally {
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
+  })
+
+  it('keeps launcher health probes quick without using the executor timeout', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const requests: string[] = []
+    const timeouts: number[] = []
+    const mockFetch = (async (input: RequestInfo | URL) => {
+      requests.push(String(input))
+      return new Response(JSON.stringify({
+        ok: true,
+        helperVersion: compatibleHelperVersion,
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      })
+    }) as typeof window.fetch
+    const mockWindow = {
+      clearTimeout: vi.fn(),
+      fetch: mockFetch,
+      setTimeout: vi.fn((_handler: TimerHandler, timeout?: number) => {
+        timeouts.push(Number(timeout))
+        return 1
+      }),
+    } as unknown as Pick<Window, 'clearTimeout' | 'fetch' | 'setTimeout'>
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: mockWindow,
+    })
+
+    try {
+      const health = await probeLocalAutomationLauncherHealthPayload()
+
+      expect(health?.ok).toBe(true)
+      expect(requests).toEqual(['http://127.0.0.1:3210/health'])
+      expect(timeouts).toEqual([1200])
+    } finally {
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
+  })
+
+  it('requests local automation module hot update through the launcher', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const requests: Array<{ body: Record<string, unknown>; method: string; url: string }> = []
+    const mockFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/health')) {
+        return new Response(JSON.stringify({
+          ok: true,
+          helperVersion: compatibleHelperVersion,
+        }), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200,
+        })
+      }
+
+      requests.push({
+        body: JSON.parse(String(init?.body || '{}')) as Record<string, unknown>,
+        method: String(init?.method || 'GET'),
+        url,
+      })
+      return new Response(JSON.stringify({
+        ok: true,
+        checked: 3,
+        installed: 1,
+        upToDate: 2,
+        pendingRestart: 0,
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      })
+    }) as typeof window.fetch
+    const mockWindow = {
+      clearTimeout: vi.fn(),
+      fetch: mockFetch,
+      setTimeout: vi.fn(() => 1),
+    } as unknown as Pick<Window, 'clearTimeout' | 'fetch' | 'setTimeout'>
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: mockWindow,
+    })
+
+    try {
+      const result = await syncLocalAutomationModules()
+
+      expect(result.installed).toBe(1)
+      expect(requests).toEqual([{
+        body: { forceUpdate: true },
+        method: 'POST',
+        url: 'http://127.0.0.1:3210/api/modules/sync-all',
+      }])
+    } finally {
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
   })
 
   it('creates an automation run record without requiring a source Excel file', async () => {
@@ -296,6 +456,166 @@ describe('webAutomationApi', () => {
       })
     } finally {
       globalThis.XMLHttpRequest = originalXMLHttpRequest
+      vi.unstubAllEnvs()
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
+  })
+
+  it('creates packing-list auto-download batches through the local backend', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const originalXMLHttpRequest = globalThis.XMLHttpRequest
+    const requests: Array<{
+      fields: Record<string, string>
+      hasSourceFile: boolean
+      method: string
+      url: string
+    }> = []
+    vi.stubEnv('VITE_BACKEND_ROUTING_MODE', 'hybrid')
+    vi.stubEnv('VITE_REMOTE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos/desktop-api/')
+    vi.stubEnv('VITE_LOCAL_BACKEND_URL', 'http://127.0.0.1:8000/')
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location: { pathname: '/' },
+      },
+    })
+
+    class MockXMLHttpRequest {
+      status = 200
+      responseText = JSON.stringify({
+        batch: {
+          batchId: 'plad-1',
+          bucket: 'tos-packing-list-auto-download',
+          objectPrefix: 'packing-list-auto-download/2026-07-01/plad-1',
+          sourceFile: {
+            bucket: 'tos-packing-list-auto-download',
+            downloadPath: '/api/automation/packing-list-auto-download/batches/plad-1/source/download',
+          },
+        },
+      })
+      upload = { onprogress: null as null | ((event: ProgressEvent) => void) }
+      onload: null | (() => void) = null
+      onerror: null | (() => void) = null
+      private method = ''
+      private url = ''
+
+      open(method: string, url: string): void {
+        this.method = method
+        this.url = url
+      }
+
+      send(formData: FormData): void {
+        const fields: Record<string, string> = {}
+        let hasSourceFile = false
+        for (const [key, value] of formData.entries()) {
+          if (key === 'source_file') {
+            hasSourceFile = true
+          } else {
+            fields[key] = String(value)
+          }
+        }
+        requests.push({ method: this.method, url: this.url, fields, hasSourceFile })
+        this.onload?.()
+      }
+    }
+    globalThis.XMLHttpRequest = MockXMLHttpRequest as unknown as typeof XMLHttpRequest
+
+    try {
+      const sourceFile = new File(['excel'], 'packing-list.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      const batch = await createPackingListAutoDownloadBatch({
+        runId: 'run-plad',
+        batchName: 'packing list batch',
+        sourceFile,
+      })
+
+      expect(batch.batchId).toBe('plad-1')
+      expect(batch.bucket).toBe('tos-packing-list-auto-download')
+      expect(requests).toHaveLength(1)
+      expect(requests[0]).toMatchObject({
+        method: 'POST',
+        url: 'http://127.0.0.1:8000/api/automation/packing-list-auto-download/batches',
+        fields: {
+          run_id: 'run-plad',
+          batch_name: 'packing list batch',
+        },
+        hasSourceFile: true,
+      })
+    } finally {
+      globalThis.XMLHttpRequest = originalXMLHttpRequest
+      vi.unstubAllEnvs()
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
+  })
+
+  it('reads and creates packing-list resume attempts through the local backend', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const originalFetch = globalThis.fetch
+    const requests: Array<{ method: string; url: string; body: any }> = []
+    vi.stubEnv('VITE_BACKEND_ROUTING_MODE', 'hybrid')
+    vi.stubEnv('VITE_REMOTE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos/desktop-api/')
+    vi.stubEnv('VITE_LOCAL_BACKEND_URL', 'http://127.0.0.1:8000/')
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location: { pathname: '/' },
+      },
+    })
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      requests.push({
+        method: String(init?.method || 'GET'),
+        url,
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+      })
+      if (url.endsWith('/latest')) {
+        return new Response(JSON.stringify({
+          batch: { batchId: 'plad-1', resumable: true },
+        }), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200,
+        })
+      }
+      return new Response(JSON.stringify({
+        attempt: { attemptId: 'pla-1', batchId: 'plad-1', mode: 'continue' },
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      })
+    }) as typeof fetch
+
+    try {
+      const latest = await fetchLatestPackingListAutoDownloadBatch()
+      const attempt = await createPackingListAutoDownloadAttempt('plad-1', {
+        runId: 'run-plad',
+        mode: 'continue',
+      })
+
+      expect(latest?.batchId).toBe('plad-1')
+      expect(attempt.attemptId).toBe('pla-1')
+      expect(requests).toEqual([{
+        method: 'GET',
+        url: 'http://127.0.0.1:8000/api/automation/packing-list-auto-download/batches/latest',
+        body: null,
+      }, {
+        method: 'POST',
+        url: 'http://127.0.0.1:8000/api/automation/packing-list-auto-download/batches/plad-1/attempts',
+        body: {
+          runId: 'run-plad',
+          mode: 'continue',
+        },
+      }])
+    } finally {
+      globalThis.fetch = originalFetch
       vi.unstubAllEnvs()
       if (originalWindowDescriptor) {
         Object.defineProperty(globalThis, 'window', originalWindowDescriptor)

@@ -27,10 +27,20 @@ import { showAppAlert } from '../../shared/ui/appAlert'
 import {
   openAutomationHelperDownload,
   probeLocalAutomationLauncherHealthPayload,
+  syncLocalAutomationModules,
 } from '../web-automation/webAutomationApi'
+import type { LocalAutomationModuleSyncResult } from '../web-automation/webAutomationApi'
 
 type NoticeTone = 'info' | 'success' | 'warning' | 'error'
 type UpdateAction = '' | 'init' | 'check' | 'download' | 'install' | 'manual'
+type HelperModuleSyncSummaryTone = 'info' | 'success' | 'warning' | 'danger'
+
+interface HelperModuleSyncSummaryItem {
+  key: string
+  label: string
+  value: number
+  tone: HelperModuleSyncSummaryTone
+}
 
 export function useSettingsPageModel() {
   const versionInfo = ref<AppVersionInfo>({
@@ -50,6 +60,9 @@ export function useSettingsPageModel() {
   const helperUpdateChecked = ref(false)
   const helperLocalVersion = ref('')
   const helperUpdateError = ref('')
+  const helperModuleSyncing = ref(false)
+  const helperModuleSyncResult = ref<LocalAutomationModuleSyncResult | null>(null)
+  const helperModuleSyncError = ref('')
   let unsubscribeUpdateStatus: (() => void) | undefined
   const { t, text } = useAppLanguage()
   
@@ -199,11 +212,19 @@ export function useSettingsPageModel() {
     return version ? formatDisplayVersion(version) : '-'
   })
   const helperUpdateView = computed(() => {
+    if (helperModuleSyncing.value) {
+      return {
+        label: '热更新中',
+        tagType: 'info',
+        message: '正在检测服务器自动化模块，并把最新功能逻辑同步到本机小助手。',
+      }
+    }
+
     if (helperUpdateChecking.value) {
       return {
         label: '检查中',
         tagType: 'info',
-        message: '正在读取本机网页桥接小助手和服务器安装包版本。',
+        message: '正在读取本机小助手壳子版本和服务器功能模块清单。',
       }
     }
 
@@ -215,11 +236,65 @@ export function useSettingsPageModel() {
       }
     }
 
+    if (helperModuleSyncError.value) {
+      return {
+        label: '热更新失败',
+        tagType: 'danger',
+        message: helperModuleSyncError.value,
+      }
+    }
+
+    if (helperModuleSyncResult.value) {
+      const result = helperModuleSyncResult.value
+      const installed = Number(result.installed || 0)
+      const failed = Number(result.failed || 0)
+      const blocked = Number(result.blocked || 0)
+      const pendingRestart = Number(result.pendingRestart || 0)
+
+      if (blocked > 0) {
+        return {
+          label: '壳子需更新',
+          tagType: 'warning',
+          message: '服务器功能模块要求更高版本的小助手壳子，请到下载中心安装最新完整包。',
+        }
+      }
+
+      if (failed > 0 || result.ok === false) {
+        return {
+          label: '部分失败',
+          tagType: 'danger',
+          message: result.error || '部分自动化功能模块热更新失败，请稍后重试。',
+        }
+      }
+
+      if (pendingRestart > 0) {
+        return {
+          label: '已下载待切换',
+          tagType: 'warning',
+          message: '新功能逻辑已下载。当前有执行器正在运行，本次任务结束后会自动切换到新模块。',
+        }
+      }
+
+      if (installed > 0) {
+        return {
+          label: '热更新完成',
+          tagType: 'success',
+          message: '自动化功能逻辑已同步到本机小助手，无需重新下载安装包。',
+        }
+      }
+
+      return {
+        label: '已是最新',
+        tagType: 'success',
+        message: '自动化功能逻辑已经和服务器保持一致，无需重新下载安装包。',
+      }
+    }
+
     if (!helperUpdateChecked.value) {
       return {
         label: '待检查',
         tagType: 'info',
-        message: '点击检查最新版后，会比对本机小助手与服务器最新安装包版本。',
+        message: '点击检查并热更新后，会先检测小助手壳子，再同步服务器最新功能逻辑。',
       }
     }
 
@@ -228,7 +303,7 @@ export function useSettingsPageModel() {
       return {
         label: '未检测到',
         tagType: 'warning',
-        message: '未检测到正在运行的本机自动化助手，可直接下载最新版安装包进行覆盖安装。',
+        message: '未检测到正在运行的本机小助手。请先启动小助手；如果仍然失败，请到下载中心安装最新完整包。',
       }
     }
 
@@ -244,9 +319,9 @@ export function useSettingsPageModel() {
     const versionDiff = compareVersionStrings(localVersion, serverVersion)
     if (versionDiff < 0) {
       return {
-        label: '发现新版',
+        label: '壳子有新版',
         tagType: 'warning',
-        message: '服务器已有新版小助手，建议下载最新版安装包并覆盖安装。',
+        message: '服务器已有新版小助手壳子。壳子能力变化无法靠热更新完成，请到下载中心安装最新完整包。',
       }
     }
 
@@ -259,11 +334,33 @@ export function useSettingsPageModel() {
     }
 
     return {
-      label: '已是最新',
+      label: '可热更新',
       tagType: 'success',
-      message: '当前小助手版本已经和服务器保持一致。',
+      message: '当前小助手壳子版本一致，可直接热更新里面的自动化功能逻辑。',
     }
   })
+  const helperModuleSyncSummary = computed<HelperModuleSyncSummaryItem[]>(() => {
+    const result = helperModuleSyncResult.value
+    if (!result) return []
+
+    const checked = Number(result.checked || 0)
+    const installed = Number(result.installed || 0)
+    const upToDate = Number(result.upToDate || 0)
+    const pendingRestart = Number(result.pendingRestart || 0)
+    const failed = Number(result.failed || 0)
+    const blocked = Number(result.blocked || 0)
+    return [
+      { key: 'checked', label: '已检查', value: checked, tone: 'info' },
+      { key: 'installed', label: '已更新', value: installed, tone: 'success' },
+      { key: 'upToDate', label: '已最新', value: upToDate, tone: 'success' },
+      { key: 'pendingRestart', label: '待切换', value: pendingRestart, tone: 'warning' },
+      { key: 'failed', label: '失败', value: failed, tone: 'danger' },
+      { key: 'blocked', label: '受限', value: blocked, tone: 'warning' },
+    ]
+  })
+  const helperHotUpdateButtonText = computed(() =>
+    helperModuleSyncing.value ? '热更新中...' : '检查并热更新功能模块',
+  )
   const emptyChangelogText = computed(() => {
     if (status.value?.status === 'available' || status.value?.status === 'downloaded') {
       return '更新源暂未提供 changelog.json'
@@ -423,6 +520,7 @@ export function useSettingsPageModel() {
 
     helperUpdateChecking.value = true
     helperUpdateError.value = ''
+    helperModuleSyncError.value = ''
 
     try {
       const [installerVersions, launcherHealth] = await Promise.all([
@@ -439,6 +537,56 @@ export function useSettingsPageModel() {
       helperUpdateError.value = readErrorMessage(error, '检查自动化助手版本失败')
     } finally {
       helperUpdateChecking.value = false
+    }
+  }
+
+  async function handleHelperHotUpdate(): Promise<void> {
+    if (helperModuleSyncing.value || helperUpdateChecking.value) {
+      return
+    }
+
+    helperModuleSyncing.value = true
+    helperUpdateError.value = ''
+    helperModuleSyncError.value = ''
+    helperModuleSyncResult.value = null
+    message.value = ''
+
+    try {
+      const [installerVersions, launcherHealth] = await Promise.all([
+        getServerInstallerVersions(),
+        probeLocalAutomationLauncherHealthPayload(),
+      ])
+      serverInstallerVersions.value = installerVersions
+      helperLocalVersion.value = String(
+        launcherHealth?.helperVersion || launcherHealth?.version || '',
+      ).trim()
+      helperUpdateChecked.value = true
+
+      if (!launcherHealth?.ok || !helperLocalVersion.value) {
+        throw new Error('未检测到正在运行的本机小助手。请先启动小助手；如果仍然失败，请到下载中心安装最新完整包。')
+      }
+
+      const serverVersion = helperUpdateServerRawVersion.value.trim()
+      if (serverVersion && compareVersionStrings(helperLocalVersion.value, serverVersion) < 0) {
+        throw new Error('本机小助手壳子版本低于服务器最新版本。壳子能力变化不能热更新，请到下载中心安装最新完整包。')
+      }
+
+      const result = await syncLocalAutomationModules({ forceUpdate: true })
+      helperModuleSyncResult.value = result
+
+      if (result.ok === false) {
+        throw new Error(result.error || '自动化功能模块热更新失败。')
+      }
+
+      messageTone.value = Number(result.pendingRestart || 0) > 0 ? 'warning' : 'success'
+      message.value = buildHelperModuleSyncMessage(result)
+    } catch (error) {
+      const errorMessage = readErrorMessage(error, '自动化功能模块热更新失败')
+      helperModuleSyncError.value = errorMessage
+      messageTone.value = 'error'
+      message.value = errorMessage
+    } finally {
+      helperModuleSyncing.value = false
     }
   }
 
@@ -574,6 +722,31 @@ export function useSettingsPageModel() {
     return fallback
   }
 
+  function buildHelperModuleSyncMessage(result: LocalAutomationModuleSyncResult): string {
+    const installed = Number(result.installed || 0)
+    const pendingRestart = Number(result.pendingRestart || 0)
+    const failed = Number(result.failed || 0)
+    const blocked = Number(result.blocked || 0)
+
+    if (blocked > 0) {
+      return '部分模块要求更新小助手壳子，请到下载中心安装最新完整包。'
+    }
+
+    if (failed > 0) {
+      return '部分自动化模块热更新失败，请稍后重试。'
+    }
+
+    if (pendingRestart > 0) {
+      return '新功能逻辑已下载。当前有执行器正在运行，任务结束后会自动切换。'
+    }
+
+    if (installed > 0) {
+      return '自动化功能模块热更新完成。'
+    }
+
+    return '自动化功能模块已经是最新。'
+  }
+
   function downloadJsonFile(payload: unknown, filename: string): void {
     if (typeof document === 'undefined') {
       return
@@ -678,12 +851,16 @@ export function useSettingsPageModel() {
     handleDownload,
     handleExportRuntimeParams,
     handleHelperDownload,
+    handleHelperHotUpdate,
     handleHelperUpdateCheck,
     handleInstall,
     handleManualDownload,
     hasCategorizedChangelog,
     hasDesktopUpdateSupport,
     helperDownloading,
+    helperHotUpdateButtonText,
+    helperModuleSyncing,
+    helperModuleSyncSummary,
     helperUpdateChecking,
     helperUpdateCurrentVersion,
     helperUpdateServerVersion,

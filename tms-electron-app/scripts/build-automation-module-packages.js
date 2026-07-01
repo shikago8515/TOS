@@ -82,7 +82,9 @@ function buildAutomationModulePackage(app) {
 
   fs.rmSync(stagingRoot, { recursive: true, force: true })
   fs.mkdirSync(stagingRoot, { recursive: true })
-  copyFiltered(sourceDir, stagingRoot)
+  copyFiltered(sourceDir, stagingRoot, {
+    includeNodeModules: Boolean(app.includeNodeModules),
+  })
   createZipFromDirectory(stagingRoot, zipPath)
   fs.rmSync(stagingRoot, { recursive: true, force: true })
 
@@ -108,9 +110,9 @@ function buildAutomationModulePackage(app) {
   }
 }
 
-function copyFiltered(sourceDir, targetDir) {
+function copyFiltered(sourceDir, targetDir, copyOptions = {}) {
   for (const item of fs.readdirSync(sourceDir, { withFileTypes: true })) {
-    if (shouldSkipItem(item.name, item.isDirectory())) {
+    if (shouldSkipItem(item.name, item.isDirectory(), copyOptions)) {
       continue
     }
 
@@ -118,7 +120,7 @@ function copyFiltered(sourceDir, targetDir) {
     const targetPath = path.join(targetDir, item.name)
     if (item.isDirectory()) {
       fs.mkdirSync(targetPath, { recursive: true })
-      copyFiltered(sourcePath, targetPath)
+      copyFiltered(sourcePath, targetPath, copyOptions)
       continue
     }
 
@@ -126,9 +128,12 @@ function copyFiltered(sourceDir, targetDir) {
   }
 }
 
-function shouldSkipItem(name, isDirectory) {
+function shouldSkipItem(name, isDirectory, copyOptions = {}) {
   const lowerName = String(name || '').toLowerCase()
   if (isDirectory) {
+    if (lowerName === 'node_modules' && copyOptions.includeNodeModules) {
+      return false
+    }
     return [
       'node_modules',
       'uploads',

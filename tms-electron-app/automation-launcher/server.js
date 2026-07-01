@@ -439,6 +439,7 @@ function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Executor-Token, Authorization')
+  res.setHeader('Access-Control-Allow-Private-Network', 'true')
 }
 
 function resolveHelperVersion() {
@@ -576,6 +577,7 @@ async function proxyAutomationAppRequest(appId, proxyPath, clientReq, clientRes)
         'access-control-allow-origin': '*',
         'access-control-allow-methods': 'GET, POST, OPTIONS',
         'access-control-allow-headers': 'Content-Type, X-Executor-Token, Authorization',
+        'access-control-allow-private-network': 'true',
       }
       clientRes.writeHead(targetRes.statusCode || 502, responseHeaders)
       targetRes.pipe(clientRes)
@@ -585,9 +587,11 @@ async function proxyAutomationAppRequest(appId, proxyPath, clientReq, clientRes)
 
     targetReq.on('error', (error) => {
       if (!clientRes.headersSent) {
+        const proxyError = formatAutomationProxyErrorMessage(error)
         sendJson(clientRes, 502, {
           ok: false,
-          message: `Automation app proxy failed: ${error.message}`,
+          message: proxyError.message,
+          reason: proxyError.reason,
           appId,
         })
       } else {
@@ -598,6 +602,20 @@ async function proxyAutomationAppRequest(appId, proxyPath, clientReq, clientRes)
 
     clientReq.pipe(targetReq)
   })
+}
+
+function formatAutomationProxyErrorMessage(error) {
+  const reason = error instanceof Error ? error.message : String(error || '')
+  if (/ECONNRESET|socket hang up|ECONNABORTED|connection reset/i.test(reason)) {
+    return {
+      reason,
+      message: '执行器连接已中断：本机自动化执行器在处理请求时关闭了连接。常见原因是你点击了停止、执行器正在重启或热更新、自动化浏览器被关闭，或执行器进程异常退出。请等待右侧状态刷新；如果任务未完成，重新启动执行器后使用断点续跑继续未完成批次。',
+    }
+  }
+  return {
+    reason,
+    message: `Automation app proxy failed: ${reason}`,
+  }
 }
 
 function isHealthProxyPath(proxyPath) {

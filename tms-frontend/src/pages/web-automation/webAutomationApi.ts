@@ -6,6 +6,7 @@ import type {
 import {
   buildBackendDownloadUrl,
   downloadUrlAsFile,
+  getBackendBaseUrl,
   postFormData,
   readResponseMessage,
   requestBackendJson,
@@ -16,10 +17,10 @@ const moduleName = 'web-automation'
 const launcherBaseUrl = 'http://127.0.0.1:3210'
 const launcherProtocolUrl = 'tos://automation/launcher/start'
 const defaultAutomationHelperDownloadPath = '/api/system/config/automation-helper/download'
-const localHealthProbeTimeoutMs = 650
-const localLauncherProbeTimeoutMs = 650
+const localHealthProbeTimeoutMs = 2500
+const localLauncherProbeTimeoutMs = 1200
 const automationTemplateBackendTarget = 'remote'
-export const minimumAutomationHelperVersion = '0.9.8-beta.3.19'
+export const minimumAutomationHelperVersion = '0.9.8-beta.3.32'
 
 export interface InfornexusAutoAddManualSessionSummary {
   manualSessionId: string
@@ -124,6 +125,45 @@ export interface LocalAutomationLauncherHealth {
   pid?: number
 }
 
+export interface LocalAutomationModuleSyncItem {
+  id?: string
+  name?: string
+  status?: string
+  selectedVersion?: string
+  selectedSource?: string
+  remoteVersion?: string
+  installedVersion?: string
+  runningVersion?: string
+  pendingRestart?: boolean
+  runningBusy?: boolean
+  requiredHelperVersion?: string
+  helperVersion?: string
+  code?: string
+  reason?: string
+  message?: string
+  error?: string
+}
+
+export interface LocalAutomationModuleSyncResult {
+  ok?: boolean
+  enabled?: boolean
+  running?: boolean
+  checked?: number
+  installed?: number
+  upToDate?: number
+  skipped?: number
+  blocked?: number
+  failed?: number
+  pendingRestart?: number
+  startedAt?: string
+  finishedAt?: string
+  manifestUrl?: string
+  error?: string
+  skippedReason?: string
+  modules?: LocalAutomationModuleSyncItem[]
+  pendingRestarts?: LocalAutomationModuleSyncItem[]
+}
+
 export interface LaunchAutomationConsoleOptions {
   forceUpdate?: boolean
 }
@@ -211,6 +251,82 @@ export interface AutomationRunFileInput {
   fileRole: string
   contentType?: string
   contentBase64?: string
+}
+
+export interface PackingListCheckpointItem {
+  no: string
+  status: string
+  message?: string
+  poNumbers?: string[]
+  successfulPoNumber?: string
+  downloadedFilePath?: string
+  storedFiles?: Array<{
+    id?: number | null
+    fileRole?: string
+    originalFilename?: string
+    downloadPath?: string
+  }>
+}
+
+export interface AutomationStoredFileDownloadRef {
+  id?: number | null
+  fileRole?: string
+  originalFilename?: string
+  downloadPath?: string
+}
+
+export interface PackingListCheckpoint {
+  status?: string
+  message?: string
+  runId?: string
+  attemptId?: string
+  totalCount?: number
+  completedCount?: number
+  failedCount?: number
+  pendingCount?: number
+  items?: PackingListCheckpointItem[]
+  groupResults?: Array<Record<string, any>>
+  result?: Record<string, any> | null
+}
+
+export interface PackingListBatchRecord {
+  batchId: string
+  automationId: string
+  moduleId: string
+  runId: string
+  batchName: string
+  status: string
+  message: string
+  sourceFileName: string
+  sourceFileSha256: string
+  sourceFile?: {
+    originalFilename?: string
+    contentType?: string
+    fileSize?: number
+    sha256?: string
+    downloadPath?: string
+  }
+  totalCount: number
+  completedCount: number
+  failedCount: number
+  pendingCount: number
+  checkpoint: PackingListCheckpoint
+  bucket: string
+  objectPrefix: string
+  resumable: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface PackingListBatchAttempt {
+  attemptId: string
+  batchId: string
+  runId: string
+  mode: string
+  status: string
+  message: string
+  startedAt?: string
+  finishedAt?: string
 }
 
 export type AutomationHelperPanelOpenResult =
@@ -353,6 +469,10 @@ export async function openInfornexusAutoAddSearchPage(
 
 export function formatAutomationLauncherErrorMessage(message: string, appId?: string): string {
   const rawMessage = String(message || '').trim()
+  if (/Automation app proxy failed.*(ECONNRESET|socket hang up|ECONNABORTED)|read ECONNRESET|connection reset|socket hang up/i.test(rawMessage)) {
+    return '执行器连接已中断：本机自动化执行器在处理请求时关闭了连接。常见原因是你点击了停止、执行器正在重启或热更新、自动化浏览器被关闭，或执行器进程异常退出。请等待右侧状态刷新；如果任务未完成，重新启动执行器后使用断点续跑继续未完成批次。'
+  }
+
   if (/Unknown automation app:/i.test(rawMessage)) {
     const appLabel = appId === 'shipping-automation-demo' ? 'Shipping 执行器' : '对应执行器'
     return `本机自动化助手版本过旧或安装不完整，缺少 ${appLabel}。请安装最新 TOS 完整安装包或最新版小助手，重启小助手后再执行。`
@@ -370,6 +490,13 @@ export async function stopAutomationConsole(appId: string): Promise<ElectronActi
   } else {
     await ensureLocalAutomationLauncher()
     result = await requestLauncherJson<ElectronActionResult>('POST', `/api/apps/${encodeURIComponent(appId)}/stop`)
+  }
+
+  if (!result.success && result.error) {
+    result = {
+      ...result,
+      error: formatAutomationLauncherErrorMessage(result.error, appId),
+    }
   }
 
   await recordWebAutomationEvent(result.success ? 'stop-success' : 'stop-failure', {
@@ -624,6 +751,124 @@ export async function createAutomationRunRecord(
   return payload.run || null
 }
 
+export async function createPackingListAutoDownloadBatch(input: {
+  runId?: string
+  batchName?: string
+  sourceFile: File
+}): Promise<PackingListBatchRecord> {
+  const formData = new FormData()
+  formData.append('run_id', input.runId || '')
+  formData.append('batch_name', input.batchName || input.sourceFile.name)
+  formData.append('source_file', input.sourceFile)
+
+  const payload = await postFormData<{ batch?: PackingListBatchRecord }>({
+    path: '/api/automation/packing-list-auto-download/batches',
+    formData,
+    backendTarget: 'local',
+  })
+  if (!payload.batch) {
+    throw new Error('自动下载箱单批次已创建，但后端未返回批次记录。')
+  }
+  return payload.batch
+}
+
+export async function fetchLatestPackingListAutoDownloadBatch(): Promise<PackingListBatchRecord | null> {
+  const payload = await requestBackendJson<{ batch?: PackingListBatchRecord | null }>({
+    path: '/api/automation/packing-list-auto-download/batches/latest',
+    backendTarget: 'local',
+  })
+  return payload.batch || null
+}
+
+export async function fetchPackingListAutoDownloadBatches(limit = 20): Promise<PackingListBatchRecord[]> {
+  const payload = await requestBackendJson<{ batches?: PackingListBatchRecord[] }>({
+    path: `/api/automation/packing-list-auto-download/batches?limit=${encodeURIComponent(String(limit))}`,
+    backendTarget: 'local',
+  })
+  return Array.isArray(payload.batches) ? payload.batches : []
+}
+
+export async function fetchPackingListAutoDownloadBatch(batchId: string): Promise<PackingListBatchRecord | null> {
+  const payload = await requestBackendJson<{ batch?: PackingListBatchRecord | null }>({
+    path: `/api/automation/packing-list-auto-download/batches/${encodeURIComponent(batchId)}`,
+    backendTarget: 'local',
+  })
+  return payload.batch || null
+}
+
+export async function createPackingListAutoDownloadAttempt(
+  batchId: string,
+  input: { runId?: string; mode?: string },
+): Promise<PackingListBatchAttempt> {
+  const payload = await requestBackendJson<{ attempt?: PackingListBatchAttempt }>({
+    method: 'POST',
+    path: `/api/automation/packing-list-auto-download/batches/${encodeURIComponent(batchId)}/attempts`,
+    body: {
+      runId: input.runId || '',
+      mode: input.mode || 'continue',
+    },
+    backendTarget: 'local',
+  })
+  if (!payload.attempt) {
+    throw new Error('自动下载箱单续跑 attempt 创建失败。')
+  }
+  return payload.attempt
+}
+
+export async function interruptPackingListAutoDownloadBatch(
+  batchId: string,
+  input: { runId?: string; attemptId?: string; message?: string } = {},
+): Promise<PackingListBatchRecord | null> {
+  const payload = await requestBackendJson<{ batch?: PackingListBatchRecord | null }>({
+    method: 'POST',
+    path: `/api/automation/packing-list-auto-download/batches/${encodeURIComponent(batchId)}/interrupt`,
+    body: {
+      runId: input.runId || '',
+      attemptId: input.attemptId || '',
+      message: input.message || '',
+    },
+    backendTarget: 'local',
+  })
+  return payload.batch || null
+}
+
+export async function downloadPackingListBatchSourceAsBase64(batch: PackingListBatchRecord): Promise<{
+  fileName: string
+  fileBase64: string
+}> {
+  const downloadPath = batch.sourceFile?.downloadPath
+  if (!downloadPath) {
+    throw new Error('该自动下载箱单批次没有源 Excel 文件，无法继续。')
+  }
+  const url = await buildBackendDownloadUrl(downloadPath, 'local')
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`批次源 Excel 下载失败：HTTP ${response.status}`)
+  }
+  const blob = await response.blob()
+  const fileBase64 = await blobToBase64(blob)
+  return {
+    fileName: batch.sourceFile?.originalFilename || batch.sourceFileName || 'packing-list.xlsx',
+    fileBase64,
+  }
+}
+
+export async function getLocalAutomationBackendBaseUrl(path = '/api/automation/runs'): Promise<string> {
+  return getBackendBaseUrl('local', path)
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result || '')
+      resolve(result.includes(',') ? result.split(',').pop() || '' : result)
+    }
+    reader.onerror = () => reject(reader.error || new Error('读取批次源 Excel 失败。'))
+    reader.readAsDataURL(blob)
+  })
+}
+
 export async function finishAutomationRunRecord(
   runId: string,
   status: string,
@@ -753,12 +998,56 @@ export async function downloadAutomationRunFile(file: AutomationRunFileRecord): 
   URL.revokeObjectURL(objectUrl)
 }
 
+export async function downloadAutomationStoredFile(file: AutomationStoredFileDownloadRef): Promise<void> {
+  const downloadPath = String(file.downloadPath || '').trim()
+  if (!downloadPath) {
+    throw new Error('文件下载地址不存在，请刷新批次后再试。')
+  }
+  const url = await buildBackendDownloadUrl(downloadPath, 'local')
+  let response: Response
+  try {
+    response = await fetch(url, { method: 'GET' })
+  } catch (_error) {
+    throw new Error('无法连接后端服务，文件下载失败。请确认本地后端或服务器后端正在运行。')
+  }
+
+  if (!response.ok) {
+    const rawText = await response.text().catch(() => '')
+    throw new Error(readAutomationRunFileDownloadErrorMessage(rawText, response.status, downloadPath))
+  }
+
+  const blob = await response.blob()
+  const objectUrl = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = objectUrl
+  anchor.rel = 'noopener'
+  anchor.download = readAutomationStoredFileDownloadFilename(response, file)
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(objectUrl)
+}
+
 export async function probeLocalAutomationLauncherHealth(): Promise<boolean> {
   return Boolean(await fetchLocalAutomationLauncherHealth())
 }
 
 export async function probeLocalAutomationLauncherHealthPayload(): Promise<LocalAutomationLauncherHealth | null> {
   return fetchLocalAutomationLauncherHealth()
+}
+
+export async function syncLocalAutomationModules(
+  options: { forceUpdate?: boolean } = {},
+): Promise<LocalAutomationModuleSyncResult> {
+  await ensureLocalAutomationLauncher()
+  return requestLauncherJson<LocalAutomationModuleSyncResult>('POST', '/api/modules/sync-all', {
+    forceUpdate: options.forceUpdate !== false,
+  })
+}
+
+export async function fetchLocalAutomationModuleSyncStatus(): Promise<LocalAutomationModuleSyncResult> {
+  await ensureLocalAutomationLauncher()
+  return requestLauncherJson<LocalAutomationModuleSyncResult>('GET', '/api/modules/sync-status')
 }
 
 async function ensureLocalAutomationLauncher(): Promise<void> {
@@ -883,6 +1172,10 @@ function readAutomationRunFileDownloadErrorMessage(rawText: string, status: numb
 }
 
 function readAutomationRunFileDownloadFilename(response: Response, file: AutomationRunFileRecord): string {
+  return readAutomationStoredFileDownloadFilename(response, file)
+}
+
+function readAutomationStoredFileDownloadFilename(response: Response, file: AutomationStoredFileDownloadRef): string {
   const disposition = response.headers.get('content-disposition') || ''
   const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i)
   if (utf8Match?.[1]) {
@@ -898,7 +1191,7 @@ function readAutomationRunFileDownloadFilename(response: Response, file: Automat
     return asciiMatch[1].trim()
   }
 
-  return file.originalFilename || file.fileRole || 'automation-run-file'
+  return file.originalFilename || file.fileRole || `automation-file-${file.id || Date.now()}`
 }
 
 async function probeAutomationHelperUpdatePanel(): Promise<'available' | 'unsupported' | 'not-running'> {

@@ -1,5 +1,6 @@
 import os
 import base64
+import json
 import tempfile
 import unittest
 from datetime import datetime
@@ -11,10 +12,12 @@ from unittest.mock import AsyncMock, patch
 from openpyxl import load_workbook
 
 from api import automation_storage_api
-from utils import credential_crypto
+from utils import credential_crypto, mysql_store
 from utils.credential_crypto import decrypt_secret, encrypt_secret
 from utils.mysql_store import SCHEMA_DDL
 from api.automation_storage_api import (
+    PackingListCheckpointFilePayload,
+    PackingListCheckpointPayload,
     RunFilePayload,
     RunUpdatePayload,
     _attachment_content_disposition,
@@ -40,6 +43,136 @@ class AutomationStorageTests(unittest.TestCase):
         self.assertIn("tos_release_records", schema_text)
         self.assertNotIn("CREATE TABLE IF NOT EXISTS automation_runs", schema_text)
         self.assertNotIn("CREATE TABLE IF NOT EXISTS excel_templates", schema_text)
+
+    def test_list_automation_runs_uses_lightweight_columns(self):
+        executed_sql: list[str] = []
+
+        class CursorContext:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def execute(self, sql, _params=()):
+                executed_sql.append(sql)
+
+            def fetchall(self):
+                return []
+
+        class ConnectionContext:
+            def __enter__(self):
+                return SimpleNamespace(cursor=lambda: CursorContext())
+
+            def __exit__(self, *_args):
+                return False
+
+        with patch.object(mysql_store, "ensure_schema"), \
+             patch.object(mysql_store, "mysql_connection", return_value=ConnectionContext()):
+            rows = mysql_store.list_automation_runs(limit=80)
+
+        self.assertEqual(rows, [])
+        self.assertEqual(len(executed_sql), 1)
+        self.assertNotIn("result_json", executed_sql[0].lower())
+        self.assertIn("started_at", executed_sql[0].lower())
+
+    def test_list_automation_batches_can_use_lightweight_columns(self):
+        executed_sql: list[str] = []
+
+        class CursorContext:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def execute(self, sql, _params=()):
+                executed_sql.append(sql)
+
+            def fetchall(self):
+                return []
+
+        class ConnectionContext:
+            def __enter__(self):
+                return SimpleNamespace(cursor=lambda: CursorContext())
+
+            def __exit__(self, *_args):
+                return False
+
+        with patch.object(mysql_store, "ensure_schema"), \
+             patch.object(mysql_store, "mysql_connection", return_value=ConnectionContext()):
+            rows = mysql_store.list_automation_batches(
+                "packing-list-auto-download",
+                limit=20,
+                include_payloads=False,
+            )
+
+        self.assertEqual(rows, [])
+        self.assertEqual(len(executed_sql), 1)
+        sql = executed_sql[0].lower()
+        self.assertNotIn("checkpoint_json", sql)
+        self.assertNotIn("source_file_json", sql)
+        self.assertIn("total_count", sql)
+
+    def test_latest_packing_list_batch_only_loads_full_resumable_batch(self):
+        lightweight_rows = [
+            {
+                "batch_id": "completed-batch",
+                "automation_id": "packing-list-auto-download",
+                "module_id": "packing-list-auto-download",
+                "run_id": "run-1",
+                "batch_name": "done",
+                "source_file_name": "done.xlsx",
+                "source_file_sha256": "",
+                "status": "success",
+                "message": "",
+                "total_count": 1,
+                "completed_count": 1,
+                "failed_count": 0,
+                "pending_count": 0,
+                "bucket": "tos-packing-list-auto-download",
+                "object_prefix": "",
+                "created_at": datetime(2026, 7, 1, 8, 0, 0),
+                "updated_at": datetime(2026, 7, 1, 8, 0, 0),
+            },
+            {
+                "batch_id": "resumable-batch",
+                "automation_id": "packing-list-auto-download",
+                "module_id": "packing-list-auto-download",
+                "run_id": "run-2",
+                "batch_name": "pending",
+                "source_file_name": "pending.xlsx",
+                "source_file_sha256": "",
+                "status": "pending",
+                "message": "",
+                "total_count": 10,
+                "completed_count": 3,
+                "failed_count": 0,
+                "pending_count": 7,
+                "bucket": "tos-packing-list-auto-download",
+                "object_prefix": "",
+                "created_at": datetime(2026, 7, 1, 9, 0, 0),
+                "updated_at": datetime(2026, 7, 1, 9, 0, 0),
+            },
+        ]
+        full_row = packing_list_batch_row({
+            **lightweight_rows[1],
+            "source_file": {"downloadPath": "/download/source.xlsx"},
+            "checkpoint": {"items": [{"no": "NO-001", "status": "pending"}]},
+        })
+
+        with patch.object(automation_storage_api, "list_automation_batches", return_value=lightweight_rows) as list_batches, \
+             patch.object(automation_storage_api, "get_automation_batch", return_value=full_row) as get_batch:
+            response = automation_storage_api.read_latest_packing_list_batch()
+
+        list_batches.assert_called_once_with(
+            "packing-list-auto-download",
+            limit=20,
+            include_payloads=False,
+        )
+        get_batch.assert_called_once_with("resumable-batch")
+        self.assertEqual(response["batch"]["batchId"], "resumable-batch")
+        self.assertEqual(response["batch"]["checkpoint"]["items"][0]["no"], "NO-001")
 
     def test_credentials_encrypt_and_decrypt_with_local_key_file(self):
         original_key_file = os.environ.get(credential_crypto.CREDENTIAL_KEY_FILE_ENV)
@@ -272,6 +405,171 @@ class AutomationStorageTests(unittest.TestCase):
         self.assertEqual(put_object.call_args.kwargs["content"], b"excel-bytes")
         download_url.assert_not_called()
 
+    def test_packing_list_batch_uses_dedicated_bucket_and_date_batch_prefix(self):
+        stored_batch_rows = []
+
+        class FakeUploadFile:
+            filename = "source.xlsx"
+            content_type = automation_storage_api.EXCEL_CONTENT_TYPE
+
+            async def read(self):
+                return b"excel-source"
+
+        def fake_create_automation_batch(batch):
+            row = packing_list_batch_row(batch)
+            stored_batch_rows.append(row)
+            return row
+
+        with patch.object(automation_storage_api, "get_minio_bucket", return_value="tos-packing-list-auto-download") as get_bucket, \
+             patch.object(automation_storage_api, "put_object_bytes", return_value={
+                 "file_size": len(b"excel-source"),
+                 "sha256": "f" * 64,
+             }) as put_object, \
+             patch.object(automation_storage_api, "create_automation_batch", side_effect=fake_create_automation_batch), \
+             patch.object(automation_storage_api, "insert_automation_run_file", return_value={
+                 "id": 31,
+                 "run_id": "run-plad",
+                 "file_role": "source_excel",
+                 "bucket": "tos-packing-list-auto-download",
+                 "object_key": "packing-list-auto-download/2026-07-01/plad/source/source.xlsx",
+                 "original_filename": "source.xlsx",
+                 "content_type": automation_storage_api.EXCEL_CONTENT_TYPE,
+                 "file_size": len(b"excel-source"),
+                 "sha256": "f" * 64,
+                 "created_at": datetime(2026, 7, 1, 8, 0, 0),
+             }):
+            response = run_async(automation_storage_api.create_packing_list_batch(
+                run_id="run-plad",
+                batch_name="test batch",
+                source_file=FakeUploadFile(),
+            ))
+
+        self.assertTrue(response["ok"])
+        get_bucket.assert_called_once_with("packing_list_auto_download")
+        put_kwargs = put_object.call_args.kwargs
+        self.assertEqual(put_kwargs["bucket"], "tos-packing-list-auto-download")
+        self.assertRegex(
+            put_kwargs["object_key"],
+            r"^packing-list-auto-download/\d{4}-\d{2}-\d{2}/plad-\d{14}-[a-f0-9]{8}/source/source\.xlsx$",
+        )
+        self.assertEqual(response["batch"]["bucket"], "tos-packing-list-auto-download")
+        self.assertEqual(response["batch"]["sourceFile"]["bucket"], "tos-packing-list-auto-download")
+        self.assertEqual(stored_batch_rows[0]["automation_id"], "packing-list-auto-download")
+
+    def test_packing_list_checkpoint_marks_interrupted_and_stores_files_under_attempt(self):
+        batch_row = packing_list_batch_row({
+            "batch_id": "plad-20260701100000-abcd1234",
+            "automation_id": "packing-list-auto-download",
+            "module_id": "packing-list-auto-download",
+            "run_id": "run-plad",
+            "batch_name": "source.xlsx",
+            "source_file_name": "source.xlsx",
+            "source_file_sha256": "f" * 64,
+            "source_file": {
+                "bucket": "tos-packing-list-auto-download",
+                "objectKey": "packing-list-auto-download/2026-07-01/plad-20260701100000-abcd1234/source/source.xlsx",
+                "originalFilename": "source.xlsx",
+            },
+            "status": "running",
+            "message": "running",
+            "total_count": 3,
+            "completed_count": 1,
+            "failed_count": 0,
+            "pending_count": 2,
+            "checkpoint": {
+                "items": [
+                    {"no": "NO-001", "status": "success"},
+                    {"no": "NO-002", "status": "pending"},
+                    {"no": "NO-003", "status": "pending"},
+                ],
+                "groupResults": [{"no": "NO-001", "ok": True, "filePath": "Packing list NO-001.pdf"}],
+            },
+            "bucket": "tos-packing-list-auto-download",
+            "object_prefix": "packing-list-auto-download/2026-07-01/plad-20260701100000-abcd1234",
+        })
+        updated_rows = []
+
+        def fake_update_batch(_batch_id, update):
+            row = packing_list_batch_row({
+                **batch_row,
+                "status": update["status"],
+                "message": update["message"],
+                "total_count": update["total_count"],
+                "completed_count": update["completed_count"],
+                "failed_count": update["failed_count"],
+                "pending_count": update["pending_count"],
+                "checkpoint": update["checkpoint"],
+            })
+            updated_rows.append(row)
+            return row
+
+        payload = PackingListCheckpointPayload(
+            runId="run-plad",
+            attemptId="pla-attempt-1",
+            mode="continue",
+            status="interrupted",
+            message="browser closed",
+            checkpoint={
+                "items": [
+                    {"no": "NO-001", "status": "success"},
+                    {"no": "NO-002", "status": "pending"},
+                    {"no": "NO-003", "status": "pending"},
+                ],
+                "groupResults": [{"no": "NO-001", "ok": True, "filePath": "Packing list NO-001.pdf"}],
+            },
+            groupResult={"no": "NO-001", "ok": True, "filePath": "Packing list NO-001.pdf"},
+            files=[PackingListCheckpointFilePayload(
+                fileName="Packing list NO-001.pdf",
+                fileRole="packing_list_pdf",
+                contentType="application/pdf",
+                contentBase64=base64.b64encode(b"%PDF-1.4").decode("ascii"),
+            )],
+        )
+
+        with patch.object(automation_storage_api, "get_automation_batch", return_value=batch_row), \
+             patch.object(automation_storage_api, "get_automation_batch_attempt", return_value=None), \
+             patch.object(automation_storage_api, "create_automation_batch_attempt") as create_attempt, \
+             patch.object(automation_storage_api, "update_automation_batch_checkpoint", side_effect=fake_update_batch) as update_batch, \
+             patch.object(automation_storage_api, "update_automation_batch_attempt") as update_attempt, \
+             patch.object(automation_storage_api, "put_object_bytes", return_value={
+                 "file_size": len(b"%PDF-1.4"),
+                 "sha256": "a" * 64,
+             }) as put_object, \
+             patch.object(automation_storage_api, "insert_automation_run_file", return_value={
+                 "id": 32,
+                 "run_id": "run-plad",
+                 "file_role": "packing_list_pdf",
+                 "bucket": "tos-packing-list-auto-download",
+                 "object_key": "packing-list-auto-download/2026-07-01/plad-20260701100000-abcd1234/pla-attempt-1/packing_list_pdf/file.pdf",
+                 "original_filename": "Packing list NO-001.pdf",
+                 "content_type": "application/pdf",
+                 "file_size": len(b"%PDF-1.4"),
+                 "sha256": "a" * 64,
+                 "created_at": datetime(2026, 7, 1, 8, 0, 0),
+             }):
+            response = automation_storage_api.write_packing_list_checkpoint(
+                "plad-20260701100000-abcd1234",
+                payload,
+            )
+
+        self.assertTrue(response["ok"])
+        create_attempt.assert_called_once()
+        update_batch.assert_called_once()
+        update_attempt.assert_called_once()
+        self.assertEqual(response["batch"]["status"], "interrupted")
+        self.assertTrue(response["batch"]["resumable"])
+        self.assertEqual(response["batch"]["completedCount"], 1)
+        self.assertEqual(response["batch"]["pendingCount"], 2)
+        put_kwargs = put_object.call_args.kwargs
+        self.assertEqual(put_kwargs["bucket"], "tos-packing-list-auto-download")
+        self.assertRegex(
+            put_kwargs["object_key"],
+            r"^packing-list-auto-download/2026-07-01/plad-20260701100000-abcd1234/pla-attempt-1/packing_list_pdf/\d{20}-Packing-list-NO-001\.pdf$",
+        )
+        stored_checkpoint = _safe_json(updated_rows[0]["checkpoint_json"])
+        self.assertEqual(stored_checkpoint["status"], "interrupted")
+        self.assertEqual(stored_checkpoint["items"][0]["storedFiles"][0]["bucket"], "tos-packing-list-auto-download")
+
     def test_ticket_owner_result_excel_is_built_on_server(self):
         existing_row = build_run_row("run-ticket", status="running")
         existing_row["automation_id"] = "ticket-owner-statistics"
@@ -459,6 +757,41 @@ def build_run_row(run_id, status="running", message="started"):
         "created_at": now,
         "updated_at": now,
     }
+
+
+def packing_list_batch_row(batch):
+    now = datetime(2026, 7, 1, 8, 0, 0)
+    source_file = batch.get("source_file") or _safe_json(batch.get("source_file_json")) or {}
+    checkpoint = batch.get("checkpoint") or _safe_json(batch.get("checkpoint_json")) or {}
+    return {
+        "batch_id": batch.get("batch_id", "plad-20260701080000-abcdef12"),
+        "automation_id": batch.get("automation_id", "packing-list-auto-download"),
+        "module_id": batch.get("module_id", "packing-list-auto-download"),
+        "run_id": batch.get("run_id", ""),
+        "batch_name": batch.get("batch_name", ""),
+        "source_file_name": batch.get("source_file_name", ""),
+        "source_file_sha256": batch.get("source_file_sha256", ""),
+        "source_file_json": json.dumps(source_file, ensure_ascii=False),
+        "status": batch.get("status", "pending"),
+        "message": batch.get("message", ""),
+        "total_count": batch.get("total_count", 0),
+        "completed_count": batch.get("completed_count", 0),
+        "failed_count": batch.get("failed_count", 0),
+        "pending_count": batch.get("pending_count", 0),
+        "checkpoint_json": json.dumps(checkpoint, ensure_ascii=False),
+        "bucket": batch.get("bucket", "tos-packing-list-auto-download"),
+        "object_prefix": batch.get("object_prefix", "packing-list-auto-download/2026-07-01/plad-20260701080000-abcdef12"),
+        "created_at": batch.get("created_at", now),
+        "updated_at": batch.get("updated_at", now),
+    }
+
+
+def _safe_json(value):
+    if isinstance(value, dict):
+        return value
+    if not value:
+        return {}
+    return json.loads(value)
 
 
 def run_async(awaitable):

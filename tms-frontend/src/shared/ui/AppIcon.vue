@@ -254,6 +254,11 @@
       <line x1="12" y1="15" x2="12" y2="3" />
     </template>
 
+    <template v-else-if="iconName === 'x' || iconName === 'close'">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </template>
+
     <template v-else-if="iconName === 'file-search'">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <polyline points="14 2 14 8 20 8" />

@@ -374,7 +374,7 @@
           </span>
           <div>
             <h3>{{ text('TOS 自动化助手更新') }}</h3>
-            <p>{{ text('检查本机网页桥接小助手是否为服务器最新版本，并下载最新版安装包进行覆盖安装。') }}</p>
+            <p>{{ text('优先检查并热更新本机小助手功能模块；如果提示壳子版本过旧，请到下载中心安装最新完整包。') }}</p>
           </div>
         </div>
       </template>
@@ -404,25 +404,35 @@
             <span>{{ text('服务器最新版本') }}</span>
             <strong>{{ helperUpdateServerVersion }}</strong>
           </div>
+          <div
+            v-if="helperModuleSyncSummary.length"
+            class="sb-helper-dialog__version-row sb-helper-dialog__version-row--stack"
+          >
+            <span>{{ text('功能模块热更新') }}</span>
+            <div class="sb-helper-sync-grid">
+              <span
+                v-for="item in helperModuleSyncSummary"
+                :key="item.key"
+                class="sb-helper-sync-stat"
+                :class="`is-${item.tone}`"
+              >
+                <strong>{{ item.value }}</strong>
+                <em>{{ text(item.label) }}</em>
+              </span>
+            </div>
+          </div>
         </section>
 
         <footer class="sb-helper-dialog__actions">
           <el-button
-            :loading="helperUpdateChecking"
-            :disabled="helperUpdateChecking || helperDownloading"
-            @click="handleHelperUpdateCheck"
+            class="sb-helper-dialog__hot-update-btn"
+            type="primary"
+            :loading="helperModuleSyncing"
+            :disabled="helperModuleSyncing || helperUpdateChecking || helperDownloading"
+            @click="handleHelperHotUpdate"
           >
             <el-icon><Refresh /></el-icon>
-            {{ text('检查最新版') }}
-          </el-button>
-          <el-button
-            type="primary"
-            :loading="helperDownloading"
-            :disabled="helperDownloading || helperUpdateChecking"
-            @click="handleHelperDownload"
-          >
-            <el-icon><Download /></el-icon>
-            {{ text('下载并打开安装包') }}
+            {{ text(helperHotUpdateButtonText) }}
           </el-button>
         </footer>
       </div>
@@ -468,11 +478,15 @@ const {
   handleDownload,
   handleExportRuntimeParams,
   handleHelperDownload,
+  handleHelperHotUpdate,
   handleHelperUpdateCheck,
   handleInstall,
   handleManualDownload,
   hasDesktopUpdateSupport,
   helperDownloading,
+  helperHotUpdateButtonText,
+  helperModuleSyncing,
+  helperModuleSyncSummary,
   helperUpdateChecking,
   helperUpdateCurrentVersion,
   helperUpdateServerVersion,
@@ -1018,15 +1032,17 @@ function openHelperUpdateDialog(): void {
 
   li {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 7px;
     min-width: 0;
-    white-space: nowrap;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
 
     .el-icon {
       flex-shrink: 0;
       color: var(--sb-teal-600);
       font-size: 13px;
+      margin-top: 1px;
     }
   }
 }
@@ -1059,11 +1075,15 @@ function openHelperUpdateDialog(): void {
 /* Card Buttons */
 .sb-card__btn {
   width: 100%;
-  height: 44px;
+  min-height: 44px;
+  height: auto;
   margin: 0;
+  padding: 8px 12px;
   border-radius: 10px;
   font-weight: 800;
   font-size: 13px;
+  line-height: 1.2;
+  white-space: normal;
   transition: transform 0.15s ease;
 
   &:active:not(:disabled) {
@@ -1073,16 +1093,20 @@ function openHelperUpdateDialog(): void {
 
 .sb-card__actions {
   display: grid;
-  grid-template-rows: repeat(2, 42px);
+  grid-template-rows: repeat(2, minmax(42px, auto));
   gap: 8px;
   align-content: end;
 
   .el-button {
     width: 100%;
-    height: 42px;
+    min-height: 42px;
+    height: auto;
     margin: 0;
+    padding: 8px 12px;
     border-radius: 10px;
     font-weight: 800;
+    line-height: 1.2;
+    white-space: normal;
     transition: transform 0.15s ease;
 
     &:active:not(:disabled) {
@@ -1236,7 +1260,10 @@ function openHelperUpdateDialog(): void {
   color: #1c2b4a;
   font-size: 11px;
   font-weight: 800;
-  white-space: nowrap;
+  min-width: 0;
+  text-align: center;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 
   .el-icon {
     color: #203253;
@@ -1573,6 +1600,14 @@ function openHelperUpdateDialog(): void {
   border-bottom: 1px solid var(--helper-dialog-border-soft);
 }
 
+:global(.sb-helper-dialog__version-row--stack) {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  padding: 12px 16px;
+}
+
 :global(.sb-helper-dialog__version-row:last-child) {
   border-bottom: 0;
 }
@@ -1593,6 +1628,59 @@ function openHelperUpdateDialog(): void {
   white-space: nowrap;
 }
 
+:global(.sb-helper-dialog__version-row--stack strong) {
+  text-align: left;
+  white-space: normal;
+}
+
+:global(.sb-helper-sync-grid) {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+:global(.sb-helper-sync-stat) {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--helper-dialog-border-soft);
+  border-radius: 10px;
+  background: var(--helper-dialog-soft);
+}
+
+:global(.sb-helper-sync-stat strong) {
+  color: var(--helper-dialog-heading);
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1;
+  text-align: left;
+  white-space: nowrap;
+}
+
+:global(.sb-helper-sync-stat em) {
+  min-width: 0;
+  color: var(--helper-dialog-muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+:global(.sb-helper-sync-stat.is-success strong) {
+  color: #10b981;
+}
+
+:global(.sb-helper-sync-stat.is-warning strong) {
+  color: #d97706;
+}
+
+:global(.sb-helper-sync-stat.is-danger strong) {
+  color: #ef4444;
+}
+
 :global(.sb-helper-dialog__actions) {
   display: flex;
   justify-content: flex-end;
@@ -1602,9 +1690,13 @@ function openHelperUpdateDialog(): void {
 
 :global(.sb-helper-dialog__actions .el-button) {
   min-width: 126px;
-  height: 38px;
+  min-height: 38px;
+  height: auto;
+  padding: 8px 14px;
   border-radius: 10px;
   font-weight: 800;
+  line-height: 1.2;
+  white-space: normal;
 }
 
 :global(html.dark .sb-helper-update-dialog) {

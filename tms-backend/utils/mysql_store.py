@@ -743,7 +743,7 @@ def list_automation_runs(
                 f"""
                 SELECT activity_id AS run_id, module_id AS automation_id, module_id,
                        activity_name AS run_name, status, message,
-                       result_json, started_at, finished_at, created_at, updated_at
+                       started_at, finished_at, created_at, updated_at
                 FROM tos_activity_records
                 {where_clause}
                 ORDER BY created_at DESC
@@ -932,6 +932,241 @@ def insert_automation_run_file(file_record: dict[str, Any]) -> dict[str, Any]:
             row = cursor.fetchone()
         connection.commit()
     return row or {}
+
+
+def create_automation_batch(batch: dict[str, Any]) -> dict[str, Any]:
+    ensure_schema()
+    checkpoint_json = json.dumps(batch.get("checkpoint") or {}, ensure_ascii=False)
+    source_file_json = json.dumps(batch.get("source_file") or {}, ensure_ascii=False)
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO tos_automation_batches
+                  (batch_id, automation_id, module_id, run_id, batch_name,
+                   source_file_name, source_file_sha256, source_file_json,
+                   status, message, total_count, completed_count, failed_count, pending_count,
+                   checkpoint_json, bucket, object_prefix, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON DUPLICATE KEY UPDATE
+                  automation_id = VALUES(automation_id),
+                  module_id = VALUES(module_id),
+                  run_id = VALUES(run_id),
+                  batch_name = VALUES(batch_name),
+                  source_file_name = VALUES(source_file_name),
+                  source_file_sha256 = VALUES(source_file_sha256),
+                  source_file_json = VALUES(source_file_json),
+                  status = VALUES(status),
+                  message = VALUES(message),
+                  total_count = VALUES(total_count),
+                  completed_count = VALUES(completed_count),
+                  failed_count = VALUES(failed_count),
+                  pending_count = VALUES(pending_count),
+                  checkpoint_json = VALUES(checkpoint_json),
+                  bucket = VALUES(bucket),
+                  object_prefix = VALUES(object_prefix),
+                  updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    batch["batch_id"],
+                    batch["automation_id"],
+                    batch.get("module_id") or batch["automation_id"],
+                    batch.get("run_id", ""),
+                    batch.get("batch_name", ""),
+                    batch.get("source_file_name", ""),
+                    batch.get("source_file_sha256", ""),
+                    source_file_json,
+                    batch.get("status", "pending"),
+                    batch.get("message", ""),
+                    int(batch.get("total_count") or 0),
+                    int(batch.get("completed_count") or 0),
+                    int(batch.get("failed_count") or 0),
+                    int(batch.get("pending_count") or 0),
+                    checkpoint_json,
+                    batch.get("bucket", ""),
+                    batch.get("object_prefix", ""),
+                ),
+            )
+        connection.commit()
+    return get_automation_batch(batch["batch_id"]) or {}
+
+
+def get_automation_batch(batch_id: str) -> dict[str, Any] | None:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT batch_id, automation_id, module_id, run_id, batch_name,
+                       source_file_name, source_file_sha256, source_file_json,
+                       status, message, total_count, completed_count, failed_count, pending_count,
+                       checkpoint_json, bucket, object_prefix, created_at, updated_at
+                FROM tos_automation_batches
+                WHERE batch_id = %s
+                LIMIT 1
+                """,
+                (batch_id,),
+            )
+            row = cursor.fetchone()
+    return row
+
+
+def list_automation_batches(
+    automation_id: str,
+    *,
+    status: str | None = None,
+    limit: int = 20,
+    include_payloads: bool = True,
+) -> list[dict[str, Any]]:
+    ensure_schema()
+    safe_limit = max(1, min(int(limit or 20), 100))
+    conditions = ["automation_id = %s"]
+    params: list[Any] = [automation_id]
+    if status:
+        conditions.append("status = %s")
+        params.append(status)
+    params.append(safe_limit)
+    payload_columns = "source_file_json, checkpoint_json," if include_payloads else ""
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT batch_id, automation_id, module_id, run_id, batch_name,
+                       source_file_name, source_file_sha256, {payload_columns}
+                       status, message, total_count, completed_count, failed_count, pending_count,
+                       bucket, object_prefix, created_at, updated_at
+                FROM tos_automation_batches
+                WHERE {' AND '.join(conditions)}
+                ORDER BY updated_at DESC, created_at DESC
+                LIMIT %s
+                """,
+                tuple(params),
+            )
+            rows = cursor.fetchall()
+    return rows or []
+
+
+def update_automation_batch_checkpoint(
+    batch_id: str,
+    updates: dict[str, Any],
+) -> dict[str, Any] | None:
+    ensure_schema()
+    checkpoint_json = json.dumps(updates.get("checkpoint") or {}, ensure_ascii=False)
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE tos_automation_batches
+                SET run_id = COALESCE(NULLIF(%s, ''), run_id),
+                    status = %s,
+                    message = %s,
+                    total_count = %s,
+                    completed_count = %s,
+                    failed_count = %s,
+                    pending_count = %s,
+                    checkpoint_json = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE batch_id = %s
+                """,
+                (
+                    updates.get("run_id", ""),
+                    updates.get("status", "running"),
+                    updates.get("message", ""),
+                    int(updates.get("total_count") or 0),
+                    int(updates.get("completed_count") or 0),
+                    int(updates.get("failed_count") or 0),
+                    int(updates.get("pending_count") or 0),
+                    checkpoint_json,
+                    batch_id,
+                ),
+            )
+        connection.commit()
+    return get_automation_batch(batch_id)
+
+
+def create_automation_batch_attempt(attempt: dict[str, Any]) -> dict[str, Any]:
+    ensure_schema()
+    result_json = json.dumps(attempt.get("result") or {}, ensure_ascii=False)
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO tos_automation_batch_attempts
+                  (attempt_id, batch_id, run_id, mode, status, message,
+                   result_json, started_at, finished_at, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON DUPLICATE KEY UPDATE
+                  run_id = VALUES(run_id),
+                  mode = VALUES(mode),
+                  status = VALUES(status),
+                  message = VALUES(message),
+                  result_json = VALUES(result_json),
+                  started_at = VALUES(started_at),
+                  finished_at = VALUES(finished_at),
+                  updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    attempt["attempt_id"],
+                    attempt["batch_id"],
+                    attempt.get("run_id", ""),
+                    attempt.get("mode", "new"),
+                    attempt.get("status", "running"),
+                    attempt.get("message", ""),
+                    result_json,
+                    attempt.get("started_at"),
+                    attempt.get("finished_at"),
+                ),
+            )
+        connection.commit()
+    return get_automation_batch_attempt(attempt["attempt_id"]) or {}
+
+
+def update_automation_batch_attempt(
+    attempt_id: str,
+    updates: dict[str, Any],
+) -> dict[str, Any] | None:
+    ensure_schema()
+    result_json = json.dumps(updates.get("result") or {}, ensure_ascii=False)
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE tos_automation_batch_attempts
+                SET status = %s,
+                    message = %s,
+                    result_json = %s,
+                    finished_at = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE attempt_id = %s
+                """,
+                (
+                    updates.get("status", "running"),
+                    updates.get("message", ""),
+                    result_json,
+                    updates.get("finished_at"),
+                    attempt_id,
+                ),
+            )
+        connection.commit()
+    return get_automation_batch_attempt(attempt_id)
+
+
+def get_automation_batch_attempt(attempt_id: str) -> dict[str, Any] | None:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT attempt_id, batch_id, run_id, mode, status, message,
+                       result_json, started_at, finished_at, created_at, updated_at
+                FROM tos_automation_batch_attempts
+                WHERE attempt_id = %s
+                LIMIT 1
+                """,
+                (attempt_id,),
+            )
+            row = cursor.fetchone()
+    return row
 
 
 def upsert_process_history_record(record: dict[str, Any]) -> dict[str, Any]:
@@ -1607,6 +1842,49 @@ SCHEMA_DDL = [
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       KEY idx_tos_activity_files_activity (activity_id, created_at),
       UNIQUE KEY uq_tos_activity_file_object (activity_id, file_role, object_key(191), file_name(191))
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tos_automation_batches (
+      batch_id VARCHAR(128) NOT NULL PRIMARY KEY,
+      automation_id VARCHAR(128) NOT NULL,
+      module_id VARCHAR(128) NOT NULL,
+      run_id VARCHAR(128) NOT NULL DEFAULT '',
+      batch_name VARCHAR(255) NOT NULL DEFAULT '',
+      source_file_name VARCHAR(255) NOT NULL DEFAULT '',
+      source_file_sha256 CHAR(64) NOT NULL DEFAULT '',
+      source_file_json LONGTEXT NULL,
+      status VARCHAR(32) NOT NULL DEFAULT 'pending',
+      message TEXT NULL,
+      total_count INT NOT NULL DEFAULT 0,
+      completed_count INT NOT NULL DEFAULT 0,
+      failed_count INT NOT NULL DEFAULT 0,
+      pending_count INT NOT NULL DEFAULT 0,
+      checkpoint_json LONGTEXT NULL,
+      bucket VARCHAR(128) NOT NULL DEFAULT '',
+      object_prefix VARCHAR(1024) NOT NULL DEFAULT '',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      KEY idx_tos_automation_batches_auto_updated (automation_id, updated_at),
+      KEY idx_tos_automation_batches_status_updated (status, updated_at),
+      KEY idx_tos_automation_batches_run (run_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS tos_automation_batch_attempts (
+      attempt_id VARCHAR(128) NOT NULL PRIMARY KEY,
+      batch_id VARCHAR(128) NOT NULL,
+      run_id VARCHAR(128) NOT NULL DEFAULT '',
+      mode VARCHAR(32) NOT NULL DEFAULT 'new',
+      status VARCHAR(32) NOT NULL DEFAULT 'running',
+      message TEXT NULL,
+      result_json LONGTEXT NULL,
+      started_at DATETIME NULL,
+      finished_at DATETIME NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      KEY idx_tos_automation_attempts_batch (batch_id, created_at),
+      KEY idx_tos_automation_attempts_run (run_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     """,
     """

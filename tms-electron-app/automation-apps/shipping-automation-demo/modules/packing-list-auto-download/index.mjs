@@ -1,6 +1,6 @@
 import { formatPackingListAutoDownloadError } from "./errors.mjs";
+import { runPackingListAutoDownloadLangGraphWorkflow } from "./langgraph-workflow.mjs";
 import { validatePackingListWorkbookPayload } from "./workbook.mjs";
-import { runPackingListAutoDownloadWorkflow } from "./workflow.mjs";
 
 export const moduleDefinition = {
   id: "packing-list-auto-download",
@@ -83,7 +83,7 @@ export function createPackingListAutoDownloadAutomation(deps) {
     });
 
     try {
-      const result = await runPackingListAutoDownloadWorkflow({
+      const result = await runPackingListAutoDownloadLangGraphWorkflow({
         activeRun,
         browserEngines,
         buildVisibleBrowserLaunchOptions,
@@ -94,6 +94,8 @@ export function createPackingListAutoDownloadAutomation(deps) {
         headless,
         inputFileName,
         log,
+        checkpoint: normalizeCheckpointConfig(body, activeRun.runId),
+        resumeMode: normalizeResumeMode(body?.resumeMode),
         safePageTitle,
         safePageUrl,
         workbook,
@@ -124,6 +126,9 @@ export function createPackingListAutoDownloadAutomation(deps) {
         firstDownloadedFilePath: result.firstDownloadedFilePath,
         groupResults: result.groupResults,
         progress: result.progress,
+        checkpoint: result.checkpoint || null,
+        resumeMode: result.resumeMode || normalizeResumeMode(body?.resumeMode),
+        langGraph: result.langGraph || null,
       });
 
       return {
@@ -153,6 +158,7 @@ export function createPackingListAutoDownloadAutomation(deps) {
         message: formatted.message,
         detail: formatted.detail,
         progress: activeRun.progress || null,
+        langGraph: error?.langGraph || activeRun.progress?.langGraph || null,
       });
       return {
         statusCode: formatted.statusCode,
@@ -166,6 +172,8 @@ export function createPackingListAutoDownloadAutomation(deps) {
           inputFileName,
           inputMode: "packing-list-auto-download",
           automationImplemented: false,
+          checkpoint: normalizeCheckpointConfig(body, activeRun.runId),
+          langGraph: error?.langGraph || activeRun.progress?.langGraph || null,
         },
       };
     } finally {
@@ -204,4 +212,31 @@ function resolveDownloadDirectory(body) {
     throw error;
   }
   return value;
+}
+
+function normalizeResumeMode(value) {
+  const mode = String(value || "").trim().toLowerCase();
+  return ["new", "restart", "continue", "retry-failed"].includes(mode) ? mode : "new";
+}
+
+function normalizeCheckpointConfig(body, runId) {
+  const checkpoint = body?.checkpoint && typeof body.checkpoint === "object" ? body.checkpoint : null;
+  const batchId = String(body?.batchId || checkpoint?.batchId || "").trim();
+  const backendBaseUrl = String(body?.backendBaseUrl || checkpoint?.backendBaseUrl || "").trim();
+  if (!batchId || !backendBaseUrl) {
+    return {
+      enabled: false,
+      batchId,
+      runId,
+    };
+  }
+  return {
+    enabled: body?.checkpointEnabled !== false,
+    backendBaseUrl,
+    batchId,
+    attemptId: String(body?.attemptId || checkpoint?.attemptId || "").trim(),
+    runId: String(body?.backendRunId || checkpoint?.runId || runId || "").trim(),
+    mode: normalizeResumeMode(body?.resumeMode || checkpoint?.mode),
+    snapshot: checkpoint?.snapshot && typeof checkpoint.snapshot === "object" ? checkpoint.snapshot : null,
+  };
 }

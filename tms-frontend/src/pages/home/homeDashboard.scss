@@ -240,6 +240,10 @@ html.dark .home-hero {
   z-index: 1;
 }
 
+.home-hero__text {
+  min-width: 0;
+}
+
 .home-hero__icon {
   width: 50px;
   height: 50px;
@@ -297,10 +301,12 @@ html.dark .home-hero {
 .home-hero__meta {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 10px;
+  min-width: 0;
   color: var(--hd-muted);
   font-size: 12px;
-  white-space: nowrap;
 }
 
 .home-hero__meta .hd-date-badge {
@@ -313,6 +319,7 @@ html.dark .home-hero {
   border: 1px solid rgba(13, 148, 136, 0.08);
   font-weight: 600;
   font-size: 11px;
+  white-space: nowrap;
   backdrop-filter: blur(4px);
 }
 .home-hero__meta .hd-date-badge .el-icon {
@@ -327,9 +334,11 @@ html.dark .home-hero__meta .hd-date-badge {
 .home-hero__meta .hd-refresh-badge {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
   gap: 4px;
   color: var(--hd-subtle);
   font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .home-hero__meta .el-button {
@@ -485,8 +494,9 @@ html.dark .home-hero__meta .el-button:hover {
 /* ── Panel Headers ── */
 .hd-panel-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -494,6 +504,8 @@ html.dark .home-hero__meta .el-button:hover {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  flex: 1 1 240px;
 }
 
 .hd-panel-head__icon {
@@ -533,6 +545,10 @@ html.dark .home-hero__meta .el-button:hover {
   background: rgba(100, 116, 139, 0.08);
 }
 
+.hd-panel-head__text {
+  min-width: 0;
+}
+
 .hd-panel-head__text h2 {
   font-size: 15px;
   font-weight: 800;
@@ -547,6 +563,7 @@ html.dark .home-hero__meta .el-button:hover {
   color: var(--hd-muted);
   font-size: 12px;
   line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .hd-panel-link {
@@ -675,11 +692,18 @@ html.dark .hd-person-row--idle .hd-person-row__avatar {
   color: #94a3b8;
 }
 
+.hd-person-row__main,
+.hd-activity-row__main,
+.hd-status-row__main {
+  min-width: 0;
+}
+
 .hd-person-row__main strong {
   font-size: 14px;
   font-weight: 700;
   color: var(--hd-text);
   display: block;
+  overflow-wrap: anywhere;
 }
 
 .hd-person-row__main small {
@@ -688,6 +712,7 @@ html.dark .hd-person-row--idle .hd-person-row__avatar {
   display: block;
   margin-top: 2px;
   line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .hd-person-row__main .hd-person-row__latest {
@@ -831,6 +856,7 @@ html.dark .hd-person-row--idle .hd-person-row__avatar {
   font-weight: 700;
   color: var(--hd-text);
   display: block;
+  overflow-wrap: anywhere;
 }
 .hd-activity-row__main small {
   font-size: 11px;
@@ -838,6 +864,7 @@ html.dark .hd-person-row--idle .hd-person-row__avatar {
   display: block;
   margin-top: 2px;
   line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .hd-activity-row__meta {
@@ -938,6 +965,7 @@ html.dark .hd-person-row--idle .hd-person-row__avatar {
   font-weight: 700;
   color: var(--hd-text);
   display: block;
+  overflow-wrap: anywhere;
 }
 .hd-status-row__main small {
   font-size: 11px;
@@ -945,6 +973,7 @@ html.dark .hd-person-row--idle .hd-person-row__avatar {
   display: block;
   margin-top: 2px;
   line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .hd-status-row__tag .el-tag {
