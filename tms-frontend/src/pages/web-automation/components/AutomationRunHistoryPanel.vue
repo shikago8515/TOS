@@ -37,9 +37,7 @@
             <AppIcon name="external-link" />
             {{ text('全部') }}
           </button>
-        </div>
-
-        <div class="run-history-date-filter">
+          <span class="run-history-toolbar-sep" />
           <el-date-picker
             v-model="dateFrom"
             type="date"
@@ -48,7 +46,7 @@
             clearable
             @change="reloadRuns"
           />
-          <span>-</span>
+          <span class="run-history-date-dash">-</span>
           <el-date-picker
             v-model="dateTo"
             type="date"
@@ -88,40 +86,28 @@
         <div v-else class="run-history-empty">
           {{ loading ? text('正在读取执行记录...') : text('暂无执行记录') }}
         </div>
-
-        <section class="run-history-files">
-          <div class="run-history-files__head">
-            <strong>{{ text('归档文件') }}</strong>
-            <span v-if="expandedRunId">{{ text('已选择记录') }}</span>
-            <span v-else>{{ text('选择一条记录查看文件') }}</span>
-          </div>
-          <div v-if="detailLoading" class="run-history-empty">{{ text('正在读取归档文件...') }}</div>
-          <template v-else-if="files.length">
-            <button v-for="file in files" :key="file.id" class="run-history-file" type="button" @click="downloadFile(file)">
-              <AppIcon name="download" />
-              <span>
-                <b>{{ fileRoleLabel(file.fileRole) }}</b>
-                <small>{{ file.originalFilename || file.fileRole }}</small>
-              </span>
-            </button>
-          </template>
-          <div v-else class="run-history-empty">{{ text('该记录暂无归档文件') }}</div>
-        </section>
       </aside>
     </transition>
+
+    <AutomationRunFilesModal
+      :open="filesModalOpen"
+      :files="files"
+      :loading="detailLoading"
+      @close="handleCloseFilesModal"
+    />
   </Teleport>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 import { showAppAlert } from '../../../shared/ui/appAlert'
+import AutomationRunFilesModal from '../../automation-runs/components/AutomationRunFilesModal.vue'
 import {
   deleteAutomationRunRecord,
-  downloadAutomationRunFile,
   fetchAutomationRunDetail,
   fetchAutomationRuns,
   type AutomationRunFileRecord,
@@ -147,6 +133,7 @@ const loading = ref(false)
 const detailLoading = ref(false)
 const runs = ref<AutomationRunRecord[]>([])
 const files = ref<AutomationRunFileRecord[]>([])
+const filesModalOpen = ref(false)
 const expandedRunId = ref('')
 const deletingRunId = ref('')
 const dateFrom = ref('')
@@ -161,6 +148,18 @@ const triggerSummary = computed(() => {
 
 onMounted(() => {
   void loadRuns()
+})
+
+onBeforeRouteLeave(() => {
+  resetOverlayState()
+})
+
+onDeactivated(() => {
+  resetOverlayState()
+})
+
+onBeforeUnmount(() => {
+  resetOverlayState()
 })
 
 watch(() => props.automationId, () => {
@@ -203,30 +202,39 @@ function openDrawer(): void {
 }
 
 function closeDrawer(): void {
+  resetOverlayState()
+}
+
+function resetOverlayState(): void {
   drawerOpen.value = false
+  filesModalOpen.value = false
+  files.value = []
+  expandedRunId.value = ''
+}
+
+function handleCloseFilesModal(): void {
+  filesModalOpen.value = false
+  closeDrawer()
 }
 
 async function toggleRun(run: AutomationRunRecord): Promise<void> {
   if (expandedRunId.value === run.runId) {
     expandedRunId.value = ''
     files.value = []
+    filesModalOpen.value = false
     return
   }
   expandedRunId.value = run.runId
+  files.value = []
+  if (!filesModalOpen.value) {
+    filesModalOpen.value = true
+  }
   detailLoading.value = true
   try {
     const detail = await fetchAutomationRunDetail(run.runId)
     files.value = detail.files
   } finally {
     detailLoading.value = false
-  }
-}
-
-async function downloadFile(file: AutomationRunFileRecord): Promise<void> {
-  try {
-    await downloadAutomationRunFile(file)
-  } catch (error) {
-    void showAppAlert(text(readErrorMessage(error, '执行文件下载失败。')), { tone: 'warning' })
   }
 }
 
@@ -296,19 +304,6 @@ function statusKey(status: string): string {
   const normalized = String(status || '').trim().toLowerCase()
   if (['started', 'pending', 'processing'].includes(normalized)) return 'running'
   return normalized || 'running'
-}
-
-function fileRoleLabel(role: string): string {
-  const labels: Record<string, string> = {
-    source_excel: '上传 Excel',
-    result_excel: '结果 Excel',
-    result_json: '结果 JSON',
-    failed_rows_excel: '失败明细',
-    failed_rows_json: '失败 JSON',
-    screenshot: '截图',
-    log: '日志',
-  }
-  return labels[role] ? text(labels[role]) : role
 }
 
 function formatDate(value?: string): string {
@@ -452,15 +447,12 @@ function syncDrawerTheme(): void {
   font-weight: 800;
 }
 .run-history-drawer__head span,
-.run-history-row small,
-.run-history-file small,
-.run-history-files__head span {
+.run-history-row small {
   color: var(--history-muted);
   font-size: 11px;
 }
 .run-history-icon-btn,
-.run-history-action,
-.run-history-file {
+.run-history-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -475,8 +467,7 @@ function syncDrawerTheme(): void {
   transition: transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease;
 }
 .run-history-icon-btn:hover,
-.run-history-action:hover,
-.run-history-file:hover {
+.run-history-action:hover {
   transform: translateY(-1px);
   border-color: var(--history-accent);
   background: color-mix(in srgb, var(--history-soft) 62%, #fff);
@@ -487,37 +478,45 @@ function syncDrawerTheme(): void {
 }
 .run-history-drawer__toolbar {
   display: flex;
-  gap: 8px;
-  padding: 14px 22px;
-  border-bottom: 1px solid color-mix(in srgb, var(--history-border) 70%, #fff);
-}
-.run-history-date-filter {
-  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 22px 12px;
+  gap: 7px;
+  padding: 10px 22px;
   border-bottom: 1px solid color-mix(in srgb, var(--history-border) 70%, #fff);
+
+  :deep(.el-date-editor.el-input) {
+    flex: 1;
+    min-width: 0;
+    width: 0;
+  }
+
+  :deep(.el-input__wrapper) {
+    min-height: 30px;
+    border: 1px solid var(--history-border);
+    border-radius: calc(var(--history-radius) - 2px);
+    background: #fff;
+    box-shadow: none;
+  }
+
+  :deep(.el-input__inner) {
+    font-size: 11px;
+  }
 }
-.run-history-date-filter :deep(.el-date-editor.el-input) {
-  flex: 1;
-  width: 0;
+
+.run-history-toolbar-sep {
+  width: 1px;
+  height: 22px;
+  margin: 0 3px;
+  background: var(--history-border);
 }
-.run-history-date-filter :deep(.el-input__wrapper) {
-  min-height: 32px;
-  border: 1px solid var(--history-border);
-  border-radius: calc(var(--history-radius) - 2px);
-  background: #fff;
-  box-shadow: none;
-}
-.run-history-date-filter :deep(.el-input__inner) {
-  font-size: 11px;
-  font-weight: 700;
-}
-.run-history-date-filter > span {
+
+.run-history-date-dash {
   color: var(--history-muted);
-  font-size: 12px;
+  font-size: 11px;
+  flex: 0 0 auto;
 }
+
 .run-history-action {
+  flex-shrink: 0;
   min-height: 34px;
   padding: 0 12px;
 }
@@ -615,42 +614,6 @@ function syncDrawerTheme(): void {
   font-size: 10px;
   font-style: normal;
   font-weight: 800;
-}
-.run-history-files {
-  flex-shrink: 0;
-  max-height: 34vh;
-  overflow: auto;
-  padding: 14px 22px 18px;
-  border-top: 1px solid var(--history-border);
-  background: color-mix(in srgb, var(--history-soft) 30%, #fff);
-}
-.run-history-files__head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 9px;
-}
-.run-history-files__head strong {
-  color: var(--history-ink);
-  font-size: 13px;
-}
-.run-history-file {
-  justify-content: flex-start;
-  width: 100%;
-  min-height: 40px;
-  margin-top: 7px;
-  padding: 7px 10px;
-  text-align: left;
-}
-.run-history-file span {
-  display: grid;
-  min-width: 0;
-}
-.run-history-file b,
-.run-history-file small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .run-history-empty {
   padding: 18px;

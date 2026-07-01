@@ -315,7 +315,7 @@ type CredentialProfileState = { hasStoredCredentials: boolean; username: string;
 type CredentialNotice = { tone: WebAutomationNoticeTone; message: string }
 
 const router = useRouter()
-const { text } = useAppLanguage()
+const { isEnglish, text } = useAppLanguage()
 const entry = getWebAutomationEntry(ENTRY_ID)
 const electronSupported = hasElectronAutomationSupport()
 
@@ -515,7 +515,11 @@ function syncActiveRunViewFromHealth(): void {
       statusText.value = formatRunProgress(progress)
     } else {
       const inputFileName = String(activeRun.inputFileName || '').trim()
-      statusText.value = inputFileName ? `执行器仍在下载 ${inputFileName}，请勿重复启动。` : text('执行器仍在下载 Invoice PDF，请勿重复启动。')
+      statusText.value = inputFileName
+        ? isEnglish.value
+          ? `The executor is still downloading ${inputFileName}. Do not start it again.`
+          : `执行器仍在下载 ${inputFileName}，请勿重复启动。`
+        : text('执行器仍在下载 Invoice PDF，请勿重复启动。')
     }
     startProgressPolling()
     return
@@ -590,18 +594,21 @@ function extractRunProgress(payload: Record<string, any> | LocalExecutorHealth |
 }
 
 function formatRunProgress(progress: Record<string, any>): string {
-  const phase = String(progress.phase || '执行中')
+  const phase = text(String(progress.phase || '执行中'))
   const total = Number(progress.activeCount || progress.totalCount || 0)
   const completed = Number(progress.completedCount || 0)
   const downloaded = Number(progress.downloadedCount || 0)
   const failed = Number(progress.failedCount || 0)
   const current = Array.isArray(progress.currentInvoiceNumbers)
-    ? progress.currentInvoiceNumbers.map((item: unknown) => String(item || '').trim()).filter(Boolean).slice(0, 3).join('、')
+    ? progress.currentInvoiceNumbers.map((item: unknown) => String(item || '').trim()).filter(Boolean).slice(0, 3).join(isEnglish.value ? ', ' : '、')
     : ''
   const countText = total > 0
-    ? `已处理 ${Math.max(0, completed)}/${total}，已下载 ${Math.max(0, downloaded)}，失败 ${Math.max(0, failed)}`
-    : String(progress.message || '正在处理')
-  return current ? `${phase} · ${countText}，当前 ${current}` : `${phase} · ${countText}`
+    ? isEnglish.value
+      ? `Processed ${Math.max(0, completed)}/${total}, downloaded ${Math.max(0, downloaded)}, failed ${Math.max(0, failed)}`
+      : `已处理 ${Math.max(0, completed)}/${total}，已下载 ${Math.max(0, downloaded)}，失败 ${Math.max(0, failed)}`
+    : text(String(progress.message || '正在处理'))
+  if (!current) return `${phase} · ${countText}`
+  return isEnglish.value ? `${phase} · ${countText}, current ${current}` : `${phase} · ${countText}，当前 ${current}`
 }
 
 async function refreshCredentialProfile(): Promise<void> {
@@ -962,7 +969,7 @@ async function runPoAutoDownload(): Promise<void> {
     }
 
     if (!json) {
-      throw new Error('无法解析响应。')
+      throw new Error(text('无法解析响应。'))
     }
 
     if (json?.ok) {
@@ -970,11 +977,14 @@ async function runPoAutoDownload(): Promise<void> {
       const total = Number(json.totalInvoiceCount ?? json.totalPoCount ?? 0)
       statusLabel.value = '成功'
       statusText.value = total > 0
-        ? `Invoice PDF 下载完成。已下载 ${completed}/${total} 个 Invoice。`
+        ? isEnglish.value
+          ? `Invoice PDF download complete. Downloaded ${completed}/${total}.`
+          : `Invoice PDF 下载完成。已下载 ${completed}/${total} 个 Invoice。`
         : text('Invoice PDF 下载完成。')
       lastResult.value = { ok: true, message: json.message }
       messageTone.value = 'success'
       message.value = text('执行完成。')
+      void showAppAlert(statusText.value, { tone: 'success' })
       return
     }
 
@@ -984,7 +994,7 @@ async function runPoAutoDownload(): Promise<void> {
     messageTone.value = 'warning'
     message.value = text('已触发，结果未确认。')
   } catch (error) {
-    const friendlyMessage = formatAutomationExecutorMessage(readErrorMessage(error, text('网络错误')), '自动化执行异常。')
+    const friendlyMessage = formatAutomationExecutorMessage(readErrorMessage(error, text('网络错误')), text('自动化执行异常。'))
     statusLabel.value = '异常'
     statusText.value = friendlyMessage
     lastResult.value = { ok: false, message: statusText.value }
@@ -1156,11 +1166,11 @@ function buildExecutorResponseMessage(
   response: Response,
   raw: string,
   payload: { message?: unknown } | null,
-  fallback = '自动化执行失败。',
+  fallback = text('自动化执行失败。'),
 ): string {
   const rawMessage = typeof payload?.message === 'string' ? payload.message : ''
   if (response.status === 404 && /not\s*found/i.test(rawMessage || raw || '')) {
-    return '本机执行器缺少当前自动化接口，系统已同步最新自动化逻辑但接口仍不可用。请确认服务器 automation-modules 模块包已发布，或重启本机自动化执行器后再试。'
+    return text('本机执行器缺少当前自动化接口，系统已同步最新自动化逻辑但接口仍不可用。请确认服务器 automation-modules 模块包已发布，或重启本机自动化执行器后再试。')
   }
   if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback)
   if (!payload) {
@@ -1238,6 +1248,17 @@ function goBack(): void {
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
+  }
+
+  &__left {
+    flex: 1 1 auto;
+  }
+
+  &__right {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    flex: 0 1 auto;
   }
 
   &__icon {
@@ -1255,12 +1276,14 @@ function goBack(): void {
     margin: 0;
     font-size: 16px;
     font-weight: 800;
+    overflow-wrap: anywhere;
   }
 
   p {
     margin: 3px 0 0;
     font-size: 12px;
     color: var(--muted);
+    overflow-wrap: anywhere;
   }
 }
 
@@ -1287,6 +1310,8 @@ function goBack(): void {
   color: #475569;
   font-size: 12px;
   font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
   cursor: pointer;
   transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
 
@@ -1366,11 +1391,13 @@ function goBack(): void {
 .pad-chip {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 800;
-  white-space: nowrap;
+  line-height: 1.2;
+  text-align: center;
 }
 
 .pad-pill {
@@ -1694,6 +1721,7 @@ function goBack(): void {
 .pad-helper {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 9px;
 }
 
@@ -1704,6 +1732,8 @@ function goBack(): void {
   border-radius: 11px;
   font-size: 12px;
   font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 
   &--info {
     color: #1d4ed8;
@@ -2103,8 +2133,9 @@ function goBack(): void {
 .sa-btn-grid .sa-btn {
   flex: 1;
   min-width: 0;
-  padding: 0 8px;
-  height: 32px;
+  padding: 6px 8px;
+  min-height: 32px;
+  height: auto;
   font-size: 11px;
   border: 1px solid var(--br);
   border-radius: 10px;
@@ -2116,6 +2147,9 @@ function goBack(): void {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
   :deep(.app-icon) { font-size: 13px; flex-shrink: 0; }
   &:hover:not(:disabled) { background: #f8fafc; border-color: #cbd5e1; transform: translateY(-1px); }
   &:disabled { opacity: .35; cursor: not-allowed; }

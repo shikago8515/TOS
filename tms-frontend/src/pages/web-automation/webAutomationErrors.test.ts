@@ -96,6 +96,27 @@ describe('webAutomationErrors', () => {
     expect(shouldShowAutomationErrorDialog(rawMessage)).toBe(true)
   })
 
+  it('formats automation proxy connection resets with actionable guidance', () => {
+    const rawMessage = 'Automation app proxy failed: read ECONNRESET'
+
+    const formattedMessage = formatAutomationExecutorMessage(rawMessage)
+    expect(formattedMessage).toContain('执行器连接已中断')
+    expect(formattedMessage).toContain('断点续跑')
+    expect(formattedMessage).not.toContain('Automation app proxy failed')
+    expect(shouldShowAutomationErrorDialog(rawMessage)).toBe(true)
+  })
+
+  it('formats outdated automation helper requirements with version details', () => {
+    const rawMessage = 'Automation module shipping-automation-demo requires TOS automation helper 0.9.8-beta.3.31 or later. Current helper: 0.9.8-beta.3.28. Please update TOS automation helper first.'
+
+    const formattedMessage = formatAutomationExecutorMessage(rawMessage)
+    expect(formattedMessage).toContain('本机自动化小助手版本过低')
+    expect(formattedMessage).toContain('0.9.8-beta.3.31')
+    expect(formattedMessage).toContain('0.9.8-beta.3.28')
+    expect(formattedMessage).not.toContain('Please update')
+    expect(shouldShowAutomationErrorDialog(rawMessage)).toBe(true)
+  })
+
   it('formats closed browser session errors', () => {
     const rawMessage = 'Target page, context or browser has been closed'
 

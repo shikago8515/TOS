@@ -30,19 +30,26 @@ from utils.minio_storage import (
 )
 from utils.mysql_store import (
     count_automation_runs,
+    create_automation_batch,
+    create_automation_batch_attempt,
     create_automation_run,
     delete_automation_credentials,
     delete_automation_run,
     delete_excel_template,
+    get_automation_batch,
+    get_automation_batch_attempt,
     get_automation_run_file,
     get_automation_credentials,
     get_automation_run,
     get_excel_template,
     insert_automation_run_file,
+    list_automation_batches,
     list_automation_credentials,
     list_automation_run_files,
     list_automation_runs,
     list_excel_templates,
+    update_automation_batch_attempt,
+    update_automation_batch_checkpoint,
     update_automation_run,
     update_excel_template,
     upsert_automation_credentials,
@@ -81,6 +88,9 @@ TICKET_OWNER_COLUMNS = (
 )
 TICKET_OWNER_EXCEL_NAME = "Ticket ownership.xlsx"
 EXCEL_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+PACKING_LIST_AUTOMATION_ID = "packing-list-auto-download"
+PACKING_LIST_BUCKET_KEY = "packing_list_auto_download"
+PACKING_LIST_OBJECT_ROOT = "packing-list-auto-download"
 
 
 class CredentialPayload(BaseModel):
@@ -102,6 +112,36 @@ class RunUpdatePayload(BaseModel):
     message: str = ""
     result: Any = None
     resultFiles: list[RunFilePayload] = Field(default_factory=list)
+
+
+class PackingListAttemptPayload(BaseModel):
+    runId: str = ""
+    mode: str = "new"
+
+
+class PackingListCheckpointFilePayload(BaseModel):
+    fileName: str
+    fileRole: str = "packing_list_pdf"
+    contentType: str = "application/pdf"
+    contentBase64: str
+
+
+class PackingListCheckpointPayload(BaseModel):
+    runId: str = ""
+    attemptId: str = ""
+    mode: str = "continue"
+    status: str = "running"
+    message: str = ""
+    checkpoint: dict[str, Any] = Field(default_factory=dict)
+    groupResult: dict[str, Any] | None = None
+    result: dict[str, Any] | None = None
+    files: list[PackingListCheckpointFilePayload] = Field(default_factory=list)
+
+
+class PackingListInterruptPayload(BaseModel):
+    runId: str = ""
+    attemptId: str = ""
+    message: str = "用户已停止本机执行器，当前批次已中断，可从断点继续。"
 
 
 class TemplateUpdatePayload(BaseModel):
@@ -342,6 +382,272 @@ async def create_run(
         "run": _run_payload(row),
         "files": [_run_file_payload(file_row) for file_row in files],
         "warnings": warnings,
+    }
+
+
+@router.post("/packing-list-auto-download/batches")
+async def create_packing_list_batch(
+    run_id: str = Form(""),
+    batch_name: str = Form(""),
+    source_file: UploadFile = File(...),
+) -> dict[str, Any]:
+    safe_filename = sanitize_object_segment(source_file.filename or "packing-list.xlsx")
+    if not safe_filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="自动下载箱单批次只支持 Excel 文件。")
+
+    content = await source_file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="自动下载箱单批次源 Excel 为空。")
+
+    now = datetime.utcnow()
+    batch_id = f"plad-{now.strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
+    date_folder = _packing_list_date_folder(now)
+    bucket = get_minio_bucket(PACKING_LIST_BUCKET_KEY)
+    object_prefix = f"{PACKING_LIST_OBJECT_ROOT}/{date_folder}/{batch_id}"
+    object_key = f"{object_prefix}/source/{safe_filename}"
+    storage_record = put_object_bytes(
+        bucket=bucket,
+        object_key=object_key,
+        content=content,
+        content_type=source_file.content_type or EXCEL_CONTENT_TYPE,
+    )
+    source_file_payload = {
+        "bucket": bucket,
+        "objectKey": object_key,
+        "originalFilename": safe_filename,
+        "contentType": source_file.content_type or EXCEL_CONTENT_TYPE,
+        "fileSize": storage_record["file_size"],
+        "sha256": storage_record["sha256"],
+        "downloadPath": f"/api/automation/packing-list-auto-download/batches/{batch_id}/source/download",
+    }
+    row = create_automation_batch({
+        "batch_id": batch_id,
+        "automation_id": PACKING_LIST_AUTOMATION_ID,
+        "module_id": PACKING_LIST_AUTOMATION_ID,
+        "run_id": run_id,
+        "batch_name": batch_name or safe_filename,
+        "source_file_name": safe_filename,
+        "source_file_sha256": storage_record["sha256"],
+        "source_file": source_file_payload,
+        "status": "pending",
+        "message": "批次已创建，等待执行。",
+        "total_count": 0,
+        "completed_count": 0,
+        "failed_count": 0,
+        "pending_count": 0,
+        "checkpoint": {
+            "batchId": batch_id,
+            "automationId": PACKING_LIST_AUTOMATION_ID,
+            "status": "pending",
+            "items": [],
+            "groupResults": [],
+            "createdAt": now.isoformat(),
+            "updatedAt": now.isoformat(),
+        },
+        "bucket": bucket,
+        "object_prefix": object_prefix,
+    })
+    file_row = None
+    if run_id:
+        file_row = insert_automation_run_file({
+            "run_id": run_id,
+            "file_role": "source_excel",
+            "bucket": bucket,
+            "object_key": object_key,
+            "original_filename": safe_filename,
+            "content_type": source_file.content_type or EXCEL_CONTENT_TYPE,
+            "file_size": storage_record["file_size"],
+            "sha256": storage_record["sha256"],
+        })
+    return {
+        "ok": True,
+        "batch": _packing_list_batch_payload(row),
+        "sourceFile": source_file_payload,
+        "file": _run_file_payload(file_row) if file_row else None,
+    }
+
+
+@router.get("/packing-list-auto-download/batches")
+def list_packing_list_batches(limit: int = Query(10, ge=1, le=50)) -> dict[str, Any]:
+    rows = list_automation_batches(PACKING_LIST_AUTOMATION_ID, limit=limit)
+    return {
+        "ok": True,
+        "batches": [_packing_list_batch_payload(row) for row in rows],
+    }
+
+
+@router.get("/packing-list-auto-download/batches/latest")
+def read_latest_packing_list_batch() -> dict[str, Any]:
+    rows = list_automation_batches(PACKING_LIST_AUTOMATION_ID, limit=20, include_payloads=False)
+    resumable_row = next((row for row in rows if _is_resumable_batch(row)), None)
+    if resumable_row:
+        resumable_row = get_automation_batch(resumable_row["batch_id"]) or resumable_row
+    return {
+        "ok": True,
+        "batch": _packing_list_batch_payload(resumable_row) if resumable_row else None,
+    }
+
+
+@router.get("/packing-list-auto-download/batches/{batch_id}")
+def read_packing_list_batch(batch_id: str) -> dict[str, Any]:
+    row = get_automation_batch(batch_id)
+    if not row or row.get("automation_id") != PACKING_LIST_AUTOMATION_ID:
+        raise HTTPException(status_code=404, detail="自动下载箱单批次不存在。")
+    return {
+        "ok": True,
+        "batch": _packing_list_batch_payload(row),
+    }
+
+
+@router.get("/packing-list-auto-download/batches/{batch_id}/source/download")
+def download_packing_list_batch_source(batch_id: str):
+    row = get_automation_batch(batch_id)
+    if not row or row.get("automation_id") != PACKING_LIST_AUTOMATION_ID:
+        raise HTTPException(status_code=404, detail="自动下载箱单批次不存在。")
+    source_file = _safe_json_loads(row.get("source_file_json")) or {}
+    bucket = source_file.get("bucket") or row.get("bucket")
+    object_key = source_file.get("objectKey") or source_file.get("object_key")
+    if not bucket or not object_key:
+        raise HTTPException(status_code=404, detail="该批次没有可下载的源 Excel。")
+    try:
+        response = get_object_response(bucket, object_key)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="批次源 Excel 暂时无法从 MinIO 下载。") from exc
+    filename = source_file.get("originalFilename") or row.get("source_file_name") or "packing-list.xlsx"
+    headers = {
+        "Content-Disposition": _attachment_content_disposition(filename),
+        "Cache-Control": "no-store",
+    }
+    return StreamingResponse(
+        response.stream(32 * 1024),
+        media_type=source_file.get("contentType") or EXCEL_CONTENT_TYPE,
+        headers=headers,
+        background=None,
+    )
+
+
+@router.post("/packing-list-auto-download/batches/{batch_id}/attempts")
+def create_packing_list_batch_attempt(batch_id: str, payload: PackingListAttemptPayload) -> dict[str, Any]:
+    row = get_automation_batch(batch_id)
+    if not row or row.get("automation_id") != PACKING_LIST_AUTOMATION_ID:
+        raise HTTPException(status_code=404, detail="自动下载箱单批次不存在。")
+    attempt_id = f"pla-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
+    attempt = create_automation_batch_attempt({
+        "attempt_id": attempt_id,
+        "batch_id": batch_id,
+        "run_id": payload.runId,
+        "mode": _normalize_packing_list_resume_mode(payload.mode),
+        "status": "running",
+        "message": "attempt started",
+        "started_at": datetime.utcnow(),
+    })
+    return {
+        "ok": True,
+        "attempt": _packing_list_attempt_payload(attempt),
+        "batch": _packing_list_batch_payload(row),
+    }
+
+
+@router.post("/packing-list-auto-download/batches/{batch_id}/checkpoint")
+def write_packing_list_checkpoint(batch_id: str, payload: PackingListCheckpointPayload) -> dict[str, Any]:
+    row = get_automation_batch(batch_id)
+    if not row or row.get("automation_id") != PACKING_LIST_AUTOMATION_ID:
+        raise HTTPException(status_code=404, detail="自动下载箱单批次不存在。")
+
+    attempt_id = payload.attemptId.strip()
+    if attempt_id and not get_automation_batch_attempt(attempt_id):
+        create_automation_batch_attempt({
+            "attempt_id": attempt_id,
+            "batch_id": batch_id,
+            "run_id": payload.runId,
+            "mode": _normalize_packing_list_resume_mode(payload.mode),
+            "status": "running",
+            "message": "attempt started from checkpoint write",
+            "started_at": datetime.utcnow(),
+        })
+
+    stored_files = [
+        _store_packing_list_checkpoint_file(row, payload, file_payload)
+        for file_payload in payload.files
+    ]
+    checkpoint = _merge_packing_list_checkpoint(
+        existing=_safe_json_loads(row.get("checkpoint_json")) or {},
+        payload=payload,
+        stored_files=stored_files,
+    )
+    counts = _packing_list_checkpoint_counts(checkpoint)
+    status = _normalize_packing_list_batch_status(payload.status, counts)
+    updated_row = update_automation_batch_checkpoint(batch_id, {
+        "run_id": payload.runId,
+        "status": status,
+        "message": payload.message or checkpoint.get("message", ""),
+        "total_count": counts["total"],
+        "completed_count": counts["completed"],
+        "failed_count": counts["failed"],
+        "pending_count": counts["pending"],
+        "checkpoint": checkpoint,
+    })
+    if attempt_id:
+        update_automation_batch_attempt(attempt_id, {
+            "status": status if status in {"success", "failed", "partial", "interrupted"} else "running",
+            "message": payload.message or checkpoint.get("message", ""),
+            "result": payload.result or {"checkpoint": checkpoint},
+            "finished_at": datetime.utcnow() if status in {"success", "failed", "partial", "interrupted"} else None,
+        })
+    return {
+        "ok": True,
+        "batch": _packing_list_batch_payload(updated_row or row),
+        "storedFiles": [_run_file_payload(file_row) for file_row in stored_files],
+    }
+
+
+@router.post("/packing-list-auto-download/batches/{batch_id}/interrupt")
+def interrupt_packing_list_batch(batch_id: str, payload: PackingListInterruptPayload) -> dict[str, Any]:
+    row = get_automation_batch(batch_id)
+    if not row or row.get("automation_id") != PACKING_LIST_AUTOMATION_ID:
+        raise HTTPException(status_code=404, detail="自动下载箱单批次不存在。")
+
+    current_status = str(row.get("status") or "").lower()
+    if current_status in {"success", "failed", "partial", "interrupted"}:
+        return {
+            "ok": True,
+            "batch": _packing_list_batch_payload(row),
+            "changed": False,
+        }
+
+    existing_checkpoint = _safe_json_loads(row.get("checkpoint_json")) or {}
+    now = datetime.utcnow().isoformat()
+    message = payload.message or "用户已停止本机执行器，当前批次已中断，可从断点继续。"
+    checkpoint = {
+        **existing_checkpoint,
+        "status": "interrupted",
+        "message": message,
+        "interruptedAt": now,
+        "updatedAt": now,
+    }
+    counts = _packing_list_checkpoint_counts(checkpoint)
+    updated_row = update_automation_batch_checkpoint(batch_id, {
+        "run_id": payload.runId or row.get("run_id", ""),
+        "status": "interrupted",
+        "message": message,
+        "total_count": counts["total"] or int(row.get("total_count") or 0),
+        "completed_count": counts["completed"] or int(row.get("completed_count") or 0),
+        "failed_count": counts["failed"] or int(row.get("failed_count") or 0),
+        "pending_count": counts["pending"] or int(row.get("pending_count") or 0),
+        "checkpoint": checkpoint,
+    })
+    attempt_id = payload.attemptId.strip() or str(checkpoint.get("attemptId") or "").strip()
+    if attempt_id:
+        update_automation_batch_attempt(attempt_id, {
+            "status": "interrupted",
+            "message": message,
+            "result": {"checkpoint": checkpoint},
+            "finished_at": datetime.utcnow(),
+        })
+    return {
+        "ok": True,
+        "batch": _packing_list_batch_payload(updated_row or row),
+        "changed": True,
     }
 
 
@@ -665,6 +971,263 @@ def _run_file_payload(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _packing_list_batch_payload(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    checkpoint = _safe_json_loads(row.get("checkpoint_json")) or {}
+    source_file = _safe_json_loads(row.get("source_file_json")) or {}
+    return {
+        "batchId": row["batch_id"],
+        "automationId": row.get("automation_id", PACKING_LIST_AUTOMATION_ID),
+        "moduleId": row.get("module_id", PACKING_LIST_AUTOMATION_ID),
+        "runId": row.get("run_id", ""),
+        "batchName": row.get("batch_name", ""),
+        "status": row.get("status", ""),
+        "message": row.get("message", ""),
+        "sourceFileName": row.get("source_file_name", ""),
+        "sourceFileSha256": row.get("source_file_sha256", ""),
+        "sourceFile": source_file,
+        "totalCount": int(row.get("total_count") or 0),
+        "completedCount": int(row.get("completed_count") or 0),
+        "failedCount": int(row.get("failed_count") or 0),
+        "pendingCount": int(row.get("pending_count") or 0),
+        "checkpoint": checkpoint,
+        "bucket": row.get("bucket", ""),
+        "objectPrefix": row.get("object_prefix", ""),
+        "resumable": _is_resumable_batch(row),
+        "createdAt": _format_datetime(row.get("created_at")),
+        "updatedAt": _format_datetime(row.get("updated_at")),
+    }
+
+
+def _packing_list_attempt_payload(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    return {
+        "attemptId": row["attempt_id"],
+        "batchId": row["batch_id"],
+        "runId": row.get("run_id", ""),
+        "mode": row.get("mode", ""),
+        "status": row.get("status", ""),
+        "message": row.get("message", ""),
+        "result": _safe_json_loads(row.get("result_json")) or {},
+        "startedAt": _format_datetime(row.get("started_at")),
+        "finishedAt": _format_datetime(row.get("finished_at")),
+        "createdAt": _format_datetime(row.get("created_at")),
+        "updatedAt": _format_datetime(row.get("updated_at")),
+    }
+
+
+def _is_resumable_batch(row: dict[str, Any]) -> bool:
+    status = str(row.get("status") or "").lower()
+    if status in {"success", "completed"}:
+        return False
+    total_count = int(row.get("total_count") or 0)
+    completed_count = int(row.get("completed_count") or 0)
+    return total_count == 0 or completed_count < total_count
+
+
+def _packing_list_date_folder(value: datetime | None = None) -> str:
+    source = value or datetime.utcnow()
+    if source.tzinfo is None:
+        source = source.replace(tzinfo=timezone.utc)
+    return source.astimezone(BEIJING_TZ).strftime("%Y-%m-%d")
+
+
+def _normalize_packing_list_resume_mode(value: str) -> str:
+    mode = str(value or "").strip().lower()
+    if mode in {"continue", "retry-failed", "restart", "new"}:
+        return mode
+    return "continue"
+
+
+def _normalize_packing_list_batch_status(status: str, counts: dict[str, int]) -> str:
+    raw = str(status or "").strip().lower()
+    if raw in {"interrupted", "failed"}:
+        return raw
+    if counts["total"] > 0 and counts["completed"] >= counts["total"]:
+        return "success"
+    if raw in {"success", "partial"}:
+        return "partial" if counts["failed"] or counts["pending"] else "success"
+    if counts["failed"] and counts["pending"] == 0:
+        return "partial"
+    return "running"
+
+
+def _merge_packing_list_checkpoint(
+    *,
+    existing: dict[str, Any],
+    payload: PackingListCheckpointPayload,
+    stored_files: list[dict[str, Any]],
+) -> dict[str, Any]:
+    now = datetime.utcnow().isoformat()
+    incoming = payload.checkpoint if isinstance(payload.checkpoint, dict) else {}
+    checkpoint = {
+        **existing,
+        **incoming,
+        "updatedAt": now,
+        "attemptId": payload.attemptId or incoming.get("attemptId") or existing.get("attemptId", ""),
+        "runId": payload.runId or incoming.get("runId") or existing.get("runId", ""),
+        "mode": _normalize_packing_list_resume_mode(payload.mode or incoming.get("mode", "")),
+        "message": payload.message or incoming.get("message") or existing.get("message", ""),
+    }
+
+    items_by_no: dict[str, dict[str, Any]] = {}
+    for item in existing.get("items") or []:
+        if isinstance(item, dict):
+            key = str(item.get("no") or item.get("groupKey") or "").strip()
+            if key:
+                items_by_no[key] = dict(item)
+    for item in incoming.get("items") or []:
+        if isinstance(item, dict):
+            key = str(item.get("no") or item.get("groupKey") or "").strip()
+            if key:
+                items_by_no[key] = {**items_by_no.get(key, {}), **item}
+
+    group_results_by_no: dict[str, dict[str, Any]] = {}
+    for group in existing.get("groupResults") or []:
+        if isinstance(group, dict):
+            key = str(group.get("no") or "").strip()
+            if key:
+                group_results_by_no[key] = dict(group)
+    for group in incoming.get("groupResults") or []:
+        if isinstance(group, dict):
+            key = str(group.get("no") or "").strip()
+            if key:
+                group_results_by_no[key] = {**group_results_by_no.get(key, {}), **group}
+
+    group_result = payload.groupResult or None
+    if isinstance(group_result, dict):
+        no = str(group_result.get("no") or "").strip()
+        if no:
+            group_files = [_stored_file_checkpoint_payload(row) for row in stored_files]
+            merged_group = {**group_results_by_no.get(no, {}), **group_result}
+            if group_files:
+                merged_group["storedFiles"] = group_files
+            group_results_by_no[no] = merged_group
+            item = {
+                **items_by_no.get(no, {}),
+                "no": no,
+                "status": "success" if group_result.get("ok") else "failed",
+                "message": group_result.get("error") or payload.message or "",
+                "poNumbers": group_result.get("poNumbers") or [],
+                "successfulPoNumber": group_result.get("successfulPoNumber") or "",
+                "downloadedFilePath": group_result.get("filePath") or "",
+                "updatedAt": now,
+            }
+            if group_files:
+                item["storedFiles"] = group_files
+            items_by_no[no] = item
+
+    result = payload.result if isinstance(payload.result, dict) else None
+    if result:
+        checkpoint["result"] = result
+        for group in result.get("groupResults") or []:
+            if isinstance(group, dict):
+                no = str(group.get("no") or "").strip()
+                if no:
+                    group_results_by_no[no] = {**group_results_by_no.get(no, {}), **group}
+                    items_by_no.setdefault(no, {
+                        "no": no,
+                        "status": "success" if group.get("ok") else "failed",
+                        "message": group.get("error") or "",
+                        "poNumbers": group.get("poNumbers") or [],
+                        "updatedAt": now,
+                    })
+
+    checkpoint["items"] = list(items_by_no.values())
+    checkpoint["groupResults"] = list(group_results_by_no.values())
+    counts = _packing_list_checkpoint_counts(checkpoint)
+    checkpoint.update({
+        "totalCount": counts["total"],
+        "completedCount": counts["completed"],
+        "failedCount": counts["failed"],
+        "pendingCount": counts["pending"],
+        "status": _normalize_packing_list_batch_status(payload.status, counts),
+    })
+    return checkpoint
+
+
+def _packing_list_checkpoint_counts(checkpoint: dict[str, Any]) -> dict[str, int]:
+    items = [item for item in (checkpoint.get("items") or []) if isinstance(item, dict)]
+    result = checkpoint.get("result") if isinstance(checkpoint.get("result"), dict) else {}
+    total = int(result.get("totalPackingListCount") or result.get("totalGroupCount") or checkpoint.get("totalCount") or len(items) or 0)
+    completed = sum(1 for item in items if str(item.get("status") or "").lower() == "success")
+    failed = sum(1 for item in items if str(item.get("status") or "").lower() in {"failed", "error"})
+    if not completed and result:
+        completed = int(result.get("downloadedPackingListCount") or 0)
+    if not failed and result:
+        failed = int(result.get("failedPackingListCount") or 0)
+    pending = max(0, total - completed - failed)
+    return {
+        "total": total,
+        "completed": completed,
+        "failed": failed,
+        "pending": pending,
+    }
+
+
+def _stored_file_checkpoint_payload(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": row.get("id"),
+        "fileRole": row.get("file_role", ""),
+        "bucket": row.get("bucket", ""),
+        "objectKey": row.get("object_key", ""),
+        "originalFilename": row.get("original_filename", ""),
+        "downloadPath": f"/api/automation/run-files/{row['id']}/download" if row.get("id") else "",
+    }
+
+
+def _store_packing_list_checkpoint_file(
+    batch_row: dict[str, Any],
+    payload: PackingListCheckpointPayload,
+    file_payload: PackingListCheckpointFilePayload,
+) -> dict[str, Any]:
+    try:
+        content = base64.b64decode(file_payload.contentBase64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid base64 checkpoint file content.") from exc
+
+    filename = sanitize_object_segment(file_payload.fileName or "packing-list.pdf")
+    file_role = sanitize_object_segment(file_payload.fileRole or "packing_list_pdf").replace("-", "_")
+    bucket = batch_row.get("bucket") or get_minio_bucket(PACKING_LIST_BUCKET_KEY)
+    object_prefix = str(batch_row.get("object_prefix") or "").strip()
+    if not object_prefix:
+        object_prefix = f"{PACKING_LIST_OBJECT_ROOT}/{_packing_list_date_folder()}/{batch_row['batch_id']}"
+    attempt_id = sanitize_object_segment(payload.attemptId or "attempt")
+    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+    object_key = f"{object_prefix}/{attempt_id}/{file_role}/{timestamp}-{filename}"
+    storage_record = put_object_bytes(
+        bucket=bucket,
+        object_key=object_key,
+        content=content,
+        content_type=file_payload.contentType or "application/octet-stream",
+    )
+    if not payload.runId:
+        return {
+            "id": None,
+            "run_id": "",
+            "file_role": file_role,
+            "bucket": bucket,
+            "object_key": object_key,
+            "original_filename": filename,
+            "content_type": file_payload.contentType or "application/octet-stream",
+            "file_size": storage_record["file_size"],
+            "sha256": storage_record["sha256"],
+            "created_at": datetime.utcnow(),
+        }
+    return insert_automation_run_file({
+        "run_id": payload.runId,
+        "file_role": file_role,
+        "bucket": bucket,
+        "object_key": object_key,
+        "original_filename": filename,
+        "content_type": file_payload.contentType or "application/octet-stream",
+        "file_size": storage_record["file_size"],
+        "sha256": storage_record["sha256"],
+    })
+
+
 async def _try_store_upload_file(
     *,
     run_id: str,
@@ -803,8 +1366,13 @@ async def _store_upload_file(
 
 def _store_result_json(run_id: str, automation_id: str, result: Any) -> dict[str, Any]:
     content = json.dumps(result, ensure_ascii=False, indent=2).encode("utf-8")
-    bucket = get_minio_bucket("results")
-    object_key = build_object_key("results", automation_id, run_id, "result.json")
+    if automation_id == PACKING_LIST_AUTOMATION_ID:
+        bucket = get_minio_bucket(PACKING_LIST_BUCKET_KEY)
+        object_prefix = _packing_list_result_object_prefix(run_id, result)
+        object_key = f"{object_prefix}/{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-result.json"
+    else:
+        bucket = get_minio_bucket("results")
+        object_key = build_object_key("results", automation_id, run_id, "result.json")
     storage_record = put_object_bytes(
         bucket=bucket,
         object_key=object_key,
@@ -821,6 +1389,21 @@ def _store_result_json(run_id: str, automation_id: str, result: Any) -> dict[str
         "file_size": storage_record["file_size"],
         "sha256": storage_record["sha256"],
     })
+
+
+def _packing_list_result_object_prefix(run_id: str, result: Any) -> str:
+    batch_id = ""
+    if isinstance(result, dict):
+        checkpoint = result.get("checkpoint")
+        if isinstance(checkpoint, dict):
+            batch_id = str(checkpoint.get("batchId") or "").strip()
+        batch_id = batch_id or str(result.get("batchId") or "").strip()
+    if batch_id:
+        row = get_automation_batch(batch_id)
+        if row and row.get("object_prefix"):
+            return f"{row['object_prefix']}/final"
+        return f"{PACKING_LIST_OBJECT_ROOT}/{_packing_list_date_folder()}/{sanitize_object_segment(batch_id)}/final"
+    return f"{PACKING_LIST_OBJECT_ROOT}/{_packing_list_date_folder()}/{sanitize_object_segment(run_id or 'run')}/final"
 
 
 def _store_result_file_bytes(

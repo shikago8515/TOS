@@ -33,6 +33,13 @@ export async function runPackingListAutoDownloadWorkflow(options) {
   const generatedAt = new Date().toISOString();
   const groups = Array.isArray(workbook?.groups) ? workbook.groups : [];
   const poNumbers = Array.isArray(workbook?.poNumbers) ? workbook.poNumbers : [];
+  const resumePlan = buildPackingListResumePlan({
+    checkpoint: options.resumeCheckpoint || options.checkpoint?.snapshot || options.checkpoint,
+    groups,
+    mode: options.resumeMode,
+  });
+  const runnableGroups = resumePlan.groups;
+  const runnablePoNumbers = collectPackingListPoNumbers(runnableGroups);
   if (groups.length === 0 || poNumbers.length === 0) {
     const error = new Error("自动下载箱单 Excel 中没有可用于查询的 PO 号。");
     error.statusCode = 400;
@@ -73,13 +80,1016 @@ export async function runPackingListAutoDownloadWorkflow(options) {
     credentials,
     downloadDirectory,
     ensureLoggedIn,
-    groups,
+    groups: runnableGroups,
+    allGroups: groups,
     headless,
     log,
     requestSession,
     safePageTitle,
     safePageUrl,
+    skippedGroupResults: resumePlan.skippedGroupResults,
+    checkpoint: options.checkpoint,
+    resumeMode: resumePlan.mode || options.resumeMode || "new",
   });
+  const groupResults = [
+    ...resumePlan.skippedGroupResults,
+    ...(browserResult.groupResults || []),
+  ];
+  const downloadedPackingListCount = groupResults.filter((item) => item.ok).length;
+  const failedPackingListCount = groupResults.length - downloadedPackingListCount;
+  const downloadedFilePaths = groupResults
+    .filter((item) => item.ok && item.filePath)
+    .map((item) => item.filePath);
+  const failedPackingLists = groupResults
+    .filter((item) => !item.ok)
+    .map((item) => normalizeFailedPackingListResult(item));
+  const firstSuccessfulAttempt = groupResults
+    .flatMap((group) => group.attempts || [])
+    .find((attempt) => attempt.ok);
+
+  const result = {
+    ok: failedPackingListCount === 0,
+    statusCode: failedPackingListCount === 0 ? 200 : 207,
+    runId: activeRun.runId,
+    generatedAt,
+    stage: "自动下载箱单 PDF 下载",
+    message: failedPackingListCount === 0
+      ? `自动下载箱单完成，已下载 ${downloadedPackingListCount}/${groups.length} 个 NO 批次。`
+      : `自动下载箱单未全部完成，已下载 ${downloadedPackingListCount}/${groups.length} 个 NO 批次，失败 ${failedPackingListCount} 个。`,
+    detail: "当前按 NO 批次处理：同一 NO 下 PO No1 逐个搜索，任意一个 PO 搜到 PackingManifest 并保存 PDF 后，该 NO 批次即算成功。",
+    inputFileName,
+    inputMode: "packing-list-auto-download",
+    automationImplemented: true,
+    downloadImplemented: true,
+    searchStepImplemented: true,
+    downloadDirectory,
+    homeOpened: true,
+    packingManifestOpened: browserResult.packingManifestOpened,
+    poFilterFilled: groupResults.some((item) => item.attempts?.some((attempt) => attempt.poFilterFilled)),
+    flexViewPostObserved: groupResults.some((item) => item.attempts?.some((attempt) => attempt.flexViewPostObserved)),
+    flexViewPostStatus: firstSuccessfulAttempt?.flexViewPostStatus || 0,
+    flexViewPostUrl: firstSuccessfulAttempt?.flexViewPostUrl || "",
+    authMethod: browserResult.authMethod || requestSession.authMethod,
+    finalUrl: browserResult.finalUrl,
+    title: browserResult.title,
+    searchedPoNumber: firstSuccessfulAttempt?.poNumber || poNumbers[0],
+    totalGroupCount: groups.length,
+    totalPoCount: poNumbers.length,
+    totalPackingListCount: groups.length,
+    downloadedPackingListCount,
+    downloadedPoCount: downloadedPackingListCount,
+    completedPoCount: downloadedPackingListCount,
+    failedPackingListCount,
+    failedPoCount: failedPackingListCount,
+    failedPackingLists,
+    failedNoBatches: failedPackingLists,
+    downloadedFilePaths,
+    firstDownloadedFilePath: downloadedFilePaths[0] || "",
+    groupResults,
+    poNumbers,
+    checkpoint: options.checkpoint || null,
+    resumeMode: resumePlan.mode || options.resumeMode || "new",
+    skippedPackingListCount: resumePlan.skippedGroupResults.length,
+    progress: activeRun?.progress || null,
+  };
+  await persistPackingListAutoDownloadCheckpoint(options, {
+    allGroups: groups,
+    groupResults,
+    result,
+    status: result.ok ? "success" : "partial",
+    message: result.message,
+  });
+  return result;
+}
+
+export async function preparePackingListAutoDownloadRun(options) {
+  const {
+    activeRun,
+    downloadDirectory,
+    workbook,
+  } = options;
+  const generatedAt = new Date().toISOString();
+  const groups = Array.isArray(workbook?.groups) ? workbook.groups : [];
+  const poNumbers = Array.isArray(workbook?.poNumbers) ? workbook.poNumbers : [];
+  const resumePlan = buildPackingListResumePlan({
+    checkpoint: options.resumeCheckpoint || options.checkpoint?.snapshot || options.checkpoint,
+    groups,
+    mode: options.resumeMode,
+  });
+  const runnableGroups = resumePlan.groups;
+  const runnablePoNumbers = collectPackingListPoNumbers(runnableGroups);
+  if (groups.length === 0 || poNumbers.length === 0) {
+    const error = new Error("自动下载箱单 Excel 中没有可用于查询的 PO 号。");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  await mkdir(downloadDirectory, { recursive: true });
+  setRunProgress(activeRun, {
+    phase: "LangGraph 初始化",
+    message: "正在准备自动下载箱单流程图。",
+    downloadDirectory,
+    totalCount: groups.length,
+    totalGroupCount: groups.length,
+    totalPoCount: poNumbers.length,
+    pendingGroupCount: runnableGroups.length,
+    skippedGroupCount: resumePlan.skippedGroupResults.length,
+    currentPackingListNumbers: [runnableGroups[0]?.no || ""].filter(Boolean),
+    currentPoNumbers: runnableGroups[0]?.poNumbers?.slice(0, 1) || [],
+  });
+
+  return {
+    generatedAt,
+    allGroups: groups,
+    groups: runnableGroups,
+    poNumbers: runnablePoNumbers,
+    totalPoNumbers: poNumbers,
+    resumePlan,
+    skippedGroupResults: resumePlan.skippedGroupResults,
+  };
+}
+
+export async function createPackingListAutoDownloadRequestSession(options) {
+  const {
+    activeRun,
+    browserEngines,
+    config,
+    credentials,
+    ensureLoggedIn,
+    log = () => {},
+  } = options;
+
+  setRunProgress(activeRun, {
+    phase: "登录 Infor Nexus",
+    message: "正在准备 Infor Nexus 登录会话。",
+  });
+
+  if (canUseBrowserLoginFallback({ browserEngines, config, ensureLoggedIn })) {
+    return {
+      authMethod: "browser-login-fallback",
+      cookieMap: {},
+      loginOrigin: resolveLoginOrigin(config.loginUrl),
+    };
+  }
+
+  return createPackingListHomeRequestSession({
+    config,
+    credentials,
+    log,
+    runId: activeRun.runId,
+  });
+}
+
+export async function openPackingListAutoDownloadBrowserSession(options) {
+  const {
+    activeRun,
+    browserEngines,
+    buildVisibleBrowserLaunchOptions,
+    config,
+    credentials,
+    ensureLoggedIn,
+    groups,
+    headless,
+    log = () => {},
+    requestSession,
+  } = options;
+  const engine = browserEngines?.[config.browser] || browserEngines?.chromium;
+  if (!engine) {
+    throw new Error("自动下载箱单无法打开浏览器：未找到可用 Playwright 浏览器引擎。");
+  }
+
+  const loginOrigin = requestSession?.loginOrigin || resolveLoginOrigin(config.loginUrl);
+  const homeUrl = new URL(INFORNEXUS_HOME_PATH, loginOrigin).toString();
+  const packingManifestUrl = new URL(PACKING_MANIFEST_VIEW_PATH, loginOrigin).toString();
+  let authMethod = requestSession?.authMethod || "request-login";
+  const launchOptions = {
+    slowMo: Number(config.packingListSlowMo ?? 0),
+    ...(config.launchOptions && typeof config.launchOptions === "object" ? config.launchOptions : {}),
+    headless: toBoolean(headless, config.headless),
+  };
+  const browserLaunchOptions = typeof buildVisibleBrowserLaunchOptions === "function"
+    ? buildVisibleBrowserLaunchOptions(launchOptions, config.browser)
+    : launchOptions;
+
+  let browser = null;
+  let context = null;
+  let page = null;
+  let browserLoginCompleted = false;
+  const groupResults = [];
+  try {
+    browser = await engine.launch(browserLaunchOptions);
+    context = await browser.newContext({
+      viewport: null,
+      acceptDownloads: true,
+    });
+    await addRequestSessionCookiesToContext(context, requestSession, loginOrigin);
+    page = await context.newPage();
+    page.setDefaultTimeout(config.navigationTimeoutMs);
+    page.setDefaultNavigationTimeout(config.navigationTimeoutMs);
+    await showPackingListAutomationBadge(page, "正在打开箱单查询页", {
+      phase: "open-home",
+      totalCount: groups.length,
+      completedCount: 0,
+    });
+
+    setRunProgress(activeRun, {
+      phase: "打开箱单页面",
+      message: "正在打开 PackingManifestView.jsp；如未登录会自动登录。",
+      currentPackingListNumbers: [groups[0]?.no || ""].filter(Boolean),
+      currentPoNumbers: groups[0]?.poNumbers?.slice(0, 1) || [],
+    });
+    await page.goto(homeUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: config.navigationTimeoutMs,
+    });
+    await waitForPageSettled(page, config);
+    await showPackingListAutomationBadge(page, "正在确认 Infor Nexus 登录状态", {
+      phase: "login-check",
+      totalCount: groups.length,
+      completedCount: 0,
+    });
+
+    if (await needsInforNexusLogin(page)) {
+      if (typeof ensureLoggedIn !== "function") {
+        throw new Error("自动下载箱单浏览器会话未登录，且缺少 ensureLoggedIn 登录辅助。");
+      }
+      log("Packing List auto-download request cookies did not open home; using visible login fallback.", {
+        runId: activeRun.runId,
+        url: page.url(),
+      });
+      authMethod = "browser-login-fallback";
+      await page.goto(config.loginUrl || `${loginOrigin}/`, {
+        waitUntil: "domcontentloaded",
+        timeout: config.navigationTimeoutMs,
+      });
+      await showPackingListAutomationBadge(page, "正在登录 Infor Nexus", {
+        phase: "browser-login",
+        totalCount: groups.length,
+        completedCount: 0,
+      });
+      await ensureLoggedIn(page, credentials);
+      browserLoginCompleted = true;
+      if (config.postLoginWaitMs > 0) {
+        await page.waitForTimeout(Math.min(config.postLoginWaitMs, 150)).catch(() => {});
+      }
+      await page.goto(homeUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: config.navigationTimeoutMs,
+      });
+      await waitForPageSettled(page, config);
+      await page.goto(packingManifestUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: config.navigationTimeoutMs,
+      });
+      await waitForPageSettled(page, config);
+      await showPackingListAutomationBadge(page, "登录完成，正在进入箱单页面", {
+        phase: "home-opened",
+        totalCount: groups.length,
+        completedCount: 0,
+      });
+    }
+
+    if (await needsInforNexusLogin(page)) {
+      throw new Error("自动下载箱单打开主页后仍停留在 Infor Nexus 登录页，请检查账号或 Access Code 状态。");
+    }
+
+    setRunProgress(activeRun, {
+      phase: "打开箱单页面",
+      message: "正在打开 PackingManifestView.jsp。",
+      homeOpened: true,
+      currentPackingListNumbers: [groups[0]?.no || ""].filter(Boolean),
+      currentPoNumbers: groups[0]?.poNumbers?.slice(0, 1) || [],
+    });
+    if (!isPackingManifestViewUrl(page.url())) {
+      await page.goto(packingManifestUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: config.navigationTimeoutMs,
+      });
+      await waitForPageSettled(page, config);
+    }
+    await showPackingListAutomationBadge(page, "已打开箱单查询页", {
+      phase: "packing-manifest",
+      totalCount: groups.length,
+      completedCount: 0,
+    });
+    if (await needsInforNexusLogin(page) && typeof ensureLoggedIn === "function") {
+      authMethod = "browser-login-fallback";
+      if (!browserLoginCompleted) {
+        await ensureLoggedIn(page, credentials);
+        browserLoginCompleted = true;
+        if (config.postLoginWaitMs > 0) {
+          await page.waitForTimeout(Math.min(config.postLoginWaitMs, 150)).catch(() => {});
+        }
+      }
+      await page.goto(packingManifestUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: config.navigationTimeoutMs,
+      });
+      await waitForPageSettled(page, config);
+      await showPackingListAutomationBadge(page, "已重新打开箱单查询页", {
+        phase: "packing-manifest",
+        totalCount: groups.length,
+        completedCount: 0,
+      });
+    }
+    if (await needsInforNexusLogin(page)) {
+      throw new Error("Infor Nexus 登录会话已失效：打开箱单页面时返回登录页。");
+    }
+
+    await ensurePackingManifestSearchReady(page, packingManifestUrl, config);
+
+    return {
+      authMethod,
+      browser,
+      context,
+      page,
+      pageRef: { current: page },
+      packingManifestOpened: true,
+      packingManifestUrl,
+    };
+  } catch (error) {
+    await persistPackingListAutoDownloadCheckpoint(options, {
+      allGroups: groups,
+      groupResults,
+      status: "interrupted",
+      message: error instanceof Error ? error.message : String(error || "Packing list automation interrupted."),
+    });
+    if (page && config.keepBrowserOpenOnErrorMs > 0) {
+      await page.waitForTimeout(config.keepBrowserOpenOnErrorMs).catch(() => {});
+    }
+    await context?.close().catch(() => {});
+    await browser?.close().catch(() => {});
+    throw error;
+  }
+}
+
+export async function processPackingListAutoDownloadGraphGroup(options) {
+  const {
+    activeRun,
+    config,
+    downloadDirectory,
+    group,
+    groupIndex,
+    groupResults,
+    groupTotal,
+    log = () => {},
+    session,
+  } = options;
+  const result = await processPackingManifestGroup({
+    activeRun,
+    config,
+    context: session.context,
+    downloadDirectory,
+    group,
+    groupIndex,
+    groupTotal,
+    log,
+    pageRef: session.pageRef,
+    packingManifestUrl: session.packingManifestUrl,
+  });
+  session.page = session.pageRef.current || session.page;
+
+  const nextGroupResults = [...(groupResults || []), result];
+  const downloadedCount = nextGroupResults.filter((item) => item.ok).length;
+  const failedCount = nextGroupResults.length - downloadedCount;
+  const downloadedFilePaths = nextGroupResults
+    .filter((item) => item.ok && item.filePath)
+    .map((item) => item.filePath);
+  setRunProgress(activeRun, {
+    phase: "下载箱单",
+    message: `已处理 ${nextGroupResults.length}/${groupTotal} 个 NO 批次，已下载 ${downloadedCount}，失败 ${failedCount}。`,
+    completedCount: nextGroupResults.length,
+    downloadedCount,
+    failedCount,
+    downloadedFilePaths,
+    lastDownloadedFilePath: downloadedFilePaths[downloadedFilePaths.length - 1] || "",
+    packingManifestOpened: true,
+    currentPackingListNumbers: [],
+    currentPoNumbers: [],
+  });
+  await showPackingListAutomationBadge(session.page, `已处理 ${nextGroupResults.length}/${groupTotal} 个 NO 批次`, {
+    phase: "group-progress",
+    totalCount: groupTotal,
+    completedCount: nextGroupResults.length,
+    successCount: downloadedCount,
+    failedCount,
+  });
+
+  return {
+    result,
+    session,
+  };
+}
+
+export async function preparePackingListPoFilterAttempt(options) {
+  const {
+    activeRun,
+    config,
+    downloadDirectory,
+    group,
+    groupIndex,
+    groupTotal,
+    log = () => {},
+    poIndex,
+    session,
+    attempts = [],
+  } = options;
+  const no = String(group?.no || "").trim();
+  const poNumbers = Array.isArray(group?.poNumbers) ? group.poNumbers : [];
+  const poNumber = String(poNumbers[poIndex] || "").trim();
+  if (!poNumber) {
+    return {
+      ok: false,
+      skipped: true,
+      attempt: null,
+      session,
+    };
+  }
+
+  setRunProgress(activeRun, {
+    phase: "搜索箱单",
+    message: `NO ${no} (${groupIndex + 1}/${groupTotal}) / PO ${poNumber} (${poIndex + 1}/${poNumbers.length})：正在准备搜索。`,
+    currentPackingListNumbers: [no],
+    currentPoNumbers: [poNumber],
+  });
+
+  let page = await ensurePackingManifestWorkingPage({
+    activeRun,
+    config,
+    context: session.context,
+    log,
+    pageRef: session.pageRef,
+  });
+  session.page = page;
+
+  await showPackingListAutomationBadge(page, `正在搜索 PO ${poNumber}`, {
+    phase: "search-po",
+    no,
+    poNumber,
+    totalCount: groupTotal,
+    completedCount: groupIndex,
+    attemptedCount: poIndex + 1,
+    currentPoIndex: poIndex + 1,
+    totalPoCount: poNumbers.length,
+  });
+
+  setRunProgress(activeRun, {
+    phase: "打开箱单筛选",
+    message: `NO ${no} / PO ${poNumber}: 正在打开筛选面板。`,
+    currentPackingListNumbers: [no],
+    currentPoNumbers: [poNumber],
+  });
+  await resetPackingManifestSearchPageAfterFailedAttempt({
+    attempts,
+    config,
+    groupIndex,
+    groupTotal,
+    no,
+    page,
+    packingManifestUrl: session.packingManifestUrl,
+    poIndex,
+    poNumber,
+    poNumbers,
+  });
+  await openPackingManifestSearchPage(page, session.packingManifestUrl, config, poNumber);
+
+  await showPackingListAutomationBadge(page, `正在定位 PO ${poNumber} 输入框`, {
+    phase: "locate-po-input",
+    no,
+    poNumber,
+    totalCount: groupTotal,
+    completedCount: groupIndex,
+    attemptedCount: poIndex + 1,
+    currentPoIndex: poIndex + 1,
+    totalPoCount: poNumbers.length,
+  });
+  setRunProgress(activeRun, {
+    phase: "定位 PO 输入框",
+    message: `NO ${no} / PO ${poNumber}: 正在定位 PO Number(s) 输入框。`,
+    currentPackingListNumbers: [no],
+    currentPoNumbers: [poNumber],
+  });
+  const poInput = await resolvePackingManifestPoInput(page, config);
+
+  await showPackingListAutomationBadge(page, `正在填写 PO ${poNumber} 并点击 Apply`, {
+    phase: "fill-po",
+    no,
+    poNumber,
+    totalCount: groupTotal,
+    completedCount: groupIndex,
+    attemptedCount: poIndex + 1,
+    currentPoIndex: poIndex + 1,
+    totalPoCount: poNumbers.length,
+  });
+  setRunProgress(activeRun, {
+    phase: "填写 PO",
+    message: `NO ${no} / PO ${poNumber}: 正在填写 PO 并点击 Apply。`,
+    currentPackingListNumbers: [no],
+    currentPoNumbers: [poNumber],
+  });
+
+  let fillResult = null;
+  const maxFilterAttempts = 3;
+  for (let filterAttempt = 1; filterAttempt <= maxFilterAttempts; filterAttempt += 1) {
+    const currentPoInput = filterAttempt === 1
+      ? poInput
+      : await resolvePackingManifestPoInput(page, config);
+    fillResult = await fillPackingManifestPoFilter(page, currentPoInput, poNumber, config);
+    if (!isPackingManifestFilterStillPending(fillResult)) {
+      break;
+    }
+    log("Packing List PO filter did not apply to current PO; retrying from a clean query page.", {
+      runId: activeRun.runId,
+      no,
+      poNumber,
+      filterAttempt,
+      reason: fillResult.searchOutcome?.reason || "",
+    });
+    await showPackingListAutomationBadge(page, `PO ${poNumber} filter not applied; retry ${filterAttempt}/${maxFilterAttempts}`, {
+      phase: "retry-po-filter",
+      no,
+      poNumber,
+      totalCount: groupTotal,
+      completedCount: groupIndex,
+      attemptedCount: poIndex + 1,
+      currentPoIndex: poIndex + 1,
+      totalPoCount: poNumbers.length,
+    });
+    if (filterAttempt >= maxFilterAttempts) {
+      break;
+    }
+    await page.goto(session.packingManifestUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: Math.min(Number(config.navigationTimeoutMs) || 30000, 12000),
+    }).catch(() => null);
+    await waitForPageSettled(page, config);
+    await openPackingManifestSearchPage(page, session.packingManifestUrl, config, poNumber);
+  }
+
+  if (isPackingManifestFilterStillPending(fillResult)) {
+    const debugSnapshot = await writePackingManifestDebugSnapshot({
+      downloadDirectory,
+      no,
+      page,
+      poNumber,
+      reason: "po-filter-not-applied",
+      runId: activeRun.runId,
+    }).catch((error) => ({
+      error: error instanceof Error ? error.message : String(error || ""),
+    }));
+    return {
+      ok: false,
+      session,
+      fillResult,
+      attempt: {
+        ok: false,
+        no,
+        poNumber,
+        poFilterFilled: true,
+        ...fillResult,
+        debugSnapshot,
+        step: "po-filter-apply",
+        noResults: false,
+        error: `PO ${poNumber} filter was not applied after ${maxFilterAttempts} attempts.`,
+      },
+    };
+  }
+
+  await showPackingListAutomationBadge(page, `PO ${poNumber} 已 Apply，正在读取结果`, {
+    phase: "wait-result",
+    no,
+    poNumber,
+    totalCount: groupTotal,
+    completedCount: groupIndex,
+    attemptedCount: poIndex + 1,
+    currentPoIndex: poIndex + 1,
+    totalPoCount: poNumbers.length,
+  });
+  setRunProgress(activeRun, {
+    phase: "等待箱单结果",
+    message: `NO ${no} / PO ${poNumber}: Apply 已触发，正在读取查询结果。`,
+    currentPackingListNumbers: [no],
+    currentPoNumbers: [poNumber],
+  });
+
+  return {
+    ok: true,
+    fillResult,
+    no,
+    page,
+    poNumber,
+    session,
+  };
+}
+
+export async function openPackingListPoSearchResultAttempt(options) {
+  const {
+    activeRun,
+    config,
+    downloadDirectory,
+    fillResult,
+    group,
+    groupIndex,
+    groupTotal,
+    log = () => {},
+    poIndex,
+    session,
+  } = options;
+  const no = String(group?.no || "").trim();
+  const poNumbers = Array.isArray(group?.poNumbers) ? group.poNumbers : [];
+  const poNumber = String(poNumbers[poIndex] || "").trim();
+  let page = session.pageRef?.current || session.page;
+  if (!page || page.isClosed()) {
+    page = await ensurePackingManifestWorkingPage({
+      activeRun,
+      config,
+      context: session.context,
+      log,
+      pageRef: session.pageRef,
+    });
+    session.page = page;
+  }
+
+  let openResult = fillResult.searchOutcome?.notFound
+    ? {
+        page,
+        linkInfo: null,
+        notFound: true,
+        reason: fillResult.searchOutcome.reason || "no-results",
+      }
+    : await openFirstPackingManifestSearchResult(
+        page,
+        fillResult.responseLinkInfo,
+        config,
+        poNumber,
+      );
+  if (openResult?.pageClosed || page.isClosed()) {
+    page = await ensurePackingManifestWorkingPage({
+      activeRun,
+      config,
+      context: session.context,
+      log,
+      pageRef: session.pageRef,
+    });
+    session.page = page;
+    openResult = await openFirstPackingManifestSearchResult(page, null, config, poNumber);
+  }
+
+  if (!openResult?.linkInfo) {
+    const noResults = Boolean(openResult?.notFound) || await hasNoPackingManifestResults(page, poNumber).catch(() => false);
+    const linkDiagnostics = await collectPackingManifestResultLinkDiagnostics(page);
+    const debugSnapshot = await writePackingManifestDebugSnapshot({
+      downloadDirectory,
+      no,
+      page,
+      poNumber,
+      reason: noResults ? "no-results" : "result-link-not-found",
+      runId: activeRun.runId,
+    }).catch((error) => ({
+      error: error instanceof Error ? error.message : String(error || ""),
+    }));
+    log(noResults ? "Packing List search returned no results." : "Packing List result link not found after search.", {
+      runId: activeRun.runId,
+      no,
+      poNumber,
+      finalUrl: page.isClosed() ? "page-closed" : page.url(),
+      linkDiagnosticsCount: linkDiagnostics.length,
+      debugSnapshot,
+    });
+    await showPackingListAutomationBadge(page, noResults
+      ? `PO ${poNumber} 搜索为空，继续下一个`
+      : `PO ${poNumber} 未找到详情链接，继续下一个`, {
+      phase: noResults ? "no-results" : "result-link-not-found",
+      no,
+      poNumber,
+      totalCount: groupTotal,
+      completedCount: groupIndex,
+      attemptedCount: poIndex + 1,
+      currentPoIndex: poIndex + 1,
+      totalPoCount: poNumbers.length,
+    });
+    return {
+      ok: false,
+      session,
+      openResult,
+      attempt: {
+        ok: false,
+        no,
+        poNumber,
+        poFilterFilled: true,
+        ...fillResult,
+        linkDiagnostics,
+        debugSnapshot,
+        step: "search-result",
+        noResults,
+        error: noResults
+          ? `PO ${poNumber} 搜索为空，已记录并继续下一个 PO。`
+          : `PO ${poNumber} 未搜到 PackingManifest 结果。`,
+      },
+    };
+  }
+
+  const linkInfo = openResult.linkInfo;
+  log("Packing List result link found.", {
+    runId: activeRun.runId,
+    no,
+    poNumber,
+    href: linkInfo.href || linkInfo.rawHref || "",
+    source: linkInfo.source || "",
+    text: linkInfo.text || "",
+  });
+  setRunProgress(activeRun, {
+    phase: "请求箱单详情",
+    message: `NO ${no} 的 PO ${poNumber} 已搜到结果，正在请求箱单详情并下载 PDF。`,
+    currentPackingListNumbers: [no],
+    currentPoNumbers: [poNumber],
+  });
+  const detailPage = openResult.page || page;
+  await showPackingListAutomationBadge(detailPage, `已搜到 PO ${poNumber}，正在下载箱单`, {
+    phase: "download-pdf",
+    no,
+    poNumber,
+    totalCount: groupTotal,
+    completedCount: groupIndex,
+    attemptedCount: poIndex + 1,
+    currentPoIndex: poIndex + 1,
+    totalPoCount: poNumbers.length,
+  });
+
+  return {
+    ok: true,
+    linkInfo,
+    openResult,
+    session,
+  };
+}
+
+export async function downloadPackingListPoPdfAttempt(options) {
+  const {
+    activeRun,
+    config,
+    downloadDirectory,
+    fillResult,
+    group,
+    groupIndex,
+    groupTotal,
+    linkInfo,
+    log = () => {},
+    openResult,
+    poIndex,
+    session,
+  } = options;
+  const no = String(group?.no || "").trim();
+  const poNumbers = Array.isArray(group?.poNumbers) ? group.poNumbers : [];
+  const poNumber = String(poNumbers[poIndex] || "").trim();
+  const page = session.pageRef?.current || session.page;
+  const detailPage = openResult.page || page;
+
+  log("Packing List detail request prepared.", {
+    runId: activeRun.runId,
+    no,
+    poNumber,
+    url: linkInfo.href || "",
+    browserUrl: detailPage.url(),
+  });
+  const downloadResult = await downloadPackingManifestPdfForGroup({
+    config,
+    downloadDirectory,
+    detailUrl: linkInfo.href,
+    groupNo: no,
+    linkInfo,
+    page: detailPage,
+  });
+  if (detailPage !== page && !detailPage.isClosed()) {
+    await detailPage.close().catch(() => {});
+  }
+  const attempt = {
+    ok: true,
+    no,
+    poNumber,
+    poFilterFilled: true,
+    ...fillResult,
+    linkInfo,
+    ...downloadResult,
+  };
+  log("Packing List NO group downloaded.", {
+    runId: activeRun.runId,
+    no,
+    poNumber,
+    filePath: downloadResult.filePath,
+  });
+  await showPackingListAutomationBadge(detailPage, `NO ${no} 已下载箱单`, {
+    phase: "group-downloaded",
+    no,
+    poNumber,
+    totalCount: groupTotal,
+    completedCount: groupIndex + 1,
+    successCount: groupIndex + 1,
+    attemptedCount: poIndex + 1,
+    currentPoIndex: poIndex + 1,
+    totalPoCount: poNumbers.length,
+  });
+
+  return {
+    ok: true,
+    attempt,
+    groupResult: {
+      ok: true,
+      no,
+      poNumbers,
+      attemptedPoNumbers: [poNumber],
+      successfulPoNumber: poNumber,
+      attemptedPoCount: 1,
+      totalPoCount: poNumbers.length,
+      attempts: [attempt],
+      fileName: downloadResult.fileName,
+      filePath: downloadResult.filePath,
+      downloadSource: downloadResult.downloadSource,
+    },
+    session,
+  };
+}
+
+export async function recordPackingListPoAttemptError(options) {
+  const {
+    activeRun,
+    downloadDirectory,
+    error,
+    group,
+    groupIndex,
+    groupTotal,
+    log = () => {},
+    poIndex,
+    session,
+  } = options;
+  const no = String(group?.no || "").trim();
+  const poNumbers = Array.isArray(group?.poNumbers) ? group.poNumbers : [];
+  const poNumber = String(poNumbers[poIndex] || "").trim();
+  const message = error instanceof Error ? error.message : String(error || "");
+  const page = session?.pageRef?.current || session?.page;
+  const debugSnapshot = page && !page.isClosed()
+    ? await writePackingManifestDebugSnapshot({
+      downloadDirectory,
+      no,
+      page,
+      poNumber,
+      reason: message.includes("Apply") ? "apply-button-not-found" : "attempt-error",
+      runId: activeRun.runId,
+    }).catch((snapshotError) => ({
+      error: snapshotError instanceof Error ? snapshotError.message : String(snapshotError || ""),
+    }))
+    : null;
+  const attempt = {
+    ok: false,
+    no,
+    poNumber,
+    step: "download",
+    error: message,
+    debugSnapshot,
+  };
+  log("Packing List PO attempt failed, trying next PO in same NO group.", {
+    runId: activeRun.runId,
+    no,
+    poNumber,
+    message,
+    debugSnapshot,
+  });
+  if (page && !page.isClosed()) {
+    await showPackingListAutomationBadge(page, `PO ${poNumber} 下载失败，继续下一个`, {
+      phase: "error",
+      no,
+      poNumber,
+      totalCount: groupTotal,
+      completedCount: groupIndex,
+      failedCount: 1,
+      attemptedCount: poIndex + 1,
+      currentPoIndex: poIndex + 1,
+      totalPoCount: poNumbers.length,
+    });
+  }
+  return attempt;
+}
+
+export function buildPackingListAutoDownloadFailedGroupResult({ group, attempts = [] }) {
+  const no = String(group?.no || "").trim();
+  const poNumbers = Array.isArray(group?.poNumbers) ? group.poNumbers : [];
+  return {
+    ok: false,
+    no,
+    poNumbers,
+    attemptedPoNumbers: attempts.map((item) => item.poNumber).filter(Boolean),
+    failedPoNumbers: poNumbers,
+    successfulPoNumber: "",
+    attemptedPoCount: attempts.length,
+    totalPoCount: poNumbers.length,
+    attempts,
+    error: `NO ${no} 中 ${poNumbers.length} 个 PO No1 均未成功下载箱单。`,
+  };
+}
+
+export async function updatePackingListAutoDownloadGroupProgress(options) {
+  const {
+    activeRun,
+    groupResults,
+    groupTotal,
+    session,
+  } = options;
+  const downloadedCount = groupResults.filter((item) => item.ok).length;
+  const failedCount = groupResults.length - downloadedCount;
+  const downloadedFilePaths = groupResults
+    .filter((item) => item.ok && item.filePath)
+    .map((item) => item.filePath);
+  setRunProgress(activeRun, {
+    phase: "下载箱单",
+    message: `已处理 ${groupResults.length}/${groupTotal} 个 NO 批次，已下载 ${downloadedCount}，失败 ${failedCount}。`,
+    completedCount: groupResults.length,
+    downloadedCount,
+    failedCount,
+    downloadedFilePaths,
+    lastDownloadedFilePath: downloadedFilePaths[downloadedFilePaths.length - 1] || "",
+    packingManifestOpened: true,
+    currentPackingListNumbers: [],
+    currentPoNumbers: [],
+  });
+  const page = session?.pageRef?.current || session?.page;
+  if (page && !page.isClosed()) {
+    await showPackingListAutomationBadge(page, `已处理 ${groupResults.length}/${groupTotal} 个 NO 批次`, {
+      phase: "group-progress",
+      totalCount: groupTotal,
+      completedCount: groupResults.length,
+      successCount: downloadedCount,
+      failedCount,
+    });
+  }
+}
+
+export async function finalizePackingListAutoDownloadBrowserSession(options) {
+  const {
+    activeRun,
+    config,
+    groups,
+    log = () => {},
+    groupResults,
+    safePageTitle,
+    safePageUrl,
+    session,
+  } = options;
+  const finalPage = session.pageRef?.current || session.page;
+  const finalDownloadedFilePaths = groupResults
+    .filter((item) => item.ok && item.filePath)
+    .map((item) => item.filePath);
+  await showPackingListAutomationBadge(finalPage, `自动下载箱单完成，已下载 ${finalDownloadedFilePaths.length}/${groups.length} 个 NO 批次`, {
+    phase: failedCountFromGroupResults(groupResults) > 0 ? "completed-with-failures" : "complete",
+    totalCount: groups.length,
+    completedCount: groupResults.length,
+    successCount: finalDownloadedFilePaths.length,
+    failedCount: failedCountFromGroupResults(groupResults),
+    meta: finalDownloadedFilePaths.slice(-2).map((filePath) => `保存 ${filePath}`),
+    filePath: finalDownloadedFilePaths[finalDownloadedFilePaths.length - 1] || "",
+  });
+  const finalUrl = typeof safePageUrl === "function" ? safePageUrl(finalPage) : finalPage.url();
+  const title = typeof safePageTitle === "function"
+    ? await safePageTitle(finalPage)
+    : await finalPage.title().catch(() => "");
+  log("Packing List auto-download processed NO groups through LangGraph.", {
+    runId: activeRun.runId,
+    finalUrl,
+    totalGroupCount: groups.length,
+    downloadedGroupCount: groupResults.filter((item) => item.ok).length,
+    failedGroupCount: groupResults.filter((item) => !item.ok).length,
+  });
+
+  if (config.keepBrowserOpenOnSuccessMs > 0) {
+    await finalPage.waitForTimeout(config.keepBrowserOpenOnSuccessMs).catch(() => {});
+  }
+
+  return {
+    packingManifestOpened: true,
+    groupResults,
+    authMethod: session.authMethod,
+    finalUrl,
+    title,
+  };
+}
+
+export async function closePackingListAutoDownloadBrowserSession(session) {
+  if (!session || typeof session !== "object") {
+    return;
+  }
+  await session.context?.close().catch(() => {});
+  await session.browser?.close().catch(() => {});
+}
+
+export function buildPackingListAutoDownloadResult(options) {
+  const {
+    activeRun,
+    browserResult,
+    inputFileName,
+    requestSession,
+    runState,
+  } = options;
+  const groups = Array.isArray(runState?.allGroups) ? runState.allGroups : (Array.isArray(runState?.groups) ? runState.groups : []);
+  const poNumbers = Array.isArray(runState?.totalPoNumbers) ? runState.totalPoNumbers : (Array.isArray(runState?.poNumbers) ? runState.poNumbers : []);
   const downloadedPackingListCount = browserResult.groupResults.filter((item) => item.ok).length;
   const failedPackingListCount = browserResult.groupResults.length - downloadedPackingListCount;
   const downloadedFilePaths = browserResult.groupResults
@@ -96,7 +1106,7 @@ export async function runPackingListAutoDownloadWorkflow(options) {
     ok: failedPackingListCount === 0,
     statusCode: failedPackingListCount === 0 ? 200 : 207,
     runId: activeRun.runId,
-    generatedAt,
+    generatedAt: runState.generatedAt,
     stage: "自动下载箱单 PDF 下载",
     message: failedPackingListCount === 0
       ? `自动下载箱单完成，已下载 ${downloadedPackingListCount}/${groups.length} 个 NO 批次。`
@@ -107,7 +1117,7 @@ export async function runPackingListAutoDownloadWorkflow(options) {
     automationImplemented: true,
     downloadImplemented: true,
     searchStepImplemented: true,
-    downloadDirectory,
+    downloadDirectory: options.downloadDirectory,
     homeOpened: true,
     packingManifestOpened: browserResult.packingManifestOpened,
     poFilterFilled: browserResult.groupResults.some((item) => item.attempts?.some((attempt) => attempt.poFilterFilled)),
@@ -146,11 +1156,13 @@ async function openPackingManifestAndDownloadGroups(options) {
     downloadDirectory,
     ensureLoggedIn,
     groups,
+    allGroups = groups,
     headless,
     log,
     requestSession,
     safePageTitle,
     safePageUrl,
+    skippedGroupResults = [],
   } = options;
   const engine = browserEngines?.[config.browser] || browserEngines?.chromium;
   if (!engine) {
@@ -174,6 +1186,7 @@ async function openPackingManifestAndDownloadGroups(options) {
   let context = null;
   let page = null;
   let browserLoginCompleted = false;
+  const groupResults = [];
   try {
     browser = await engine.launch(browserLaunchOptions);
     context = await browser.newContext({
@@ -297,7 +1310,6 @@ async function openPackingManifestAndDownloadGroups(options) {
     await ensurePackingManifestSearchReady(page, packingManifestUrl, config);
 
     const pageRef = { current: page };
-    const groupResults = [];
     for (let index = 0; index < groups.length; index += 1) {
       const group = groups[index];
       const result = await processPackingManifestGroup({
@@ -330,6 +1342,16 @@ async function openPackingManifestAndDownloadGroups(options) {
         packingManifestOpened: true,
         currentPackingListNumbers: [],
         currentPoNumbers: [],
+      });
+      await persistPackingListAutoDownloadCheckpoint(options, {
+        allGroups,
+        groupResult: result,
+        groupResults: [
+          ...skippedGroupResults,
+          ...groupResults,
+        ],
+        status: failedCount > 0 ? "partial" : "running",
+        message: `已处理 ${groupResults.length}/${groups.length} 个 NO 批次，已下载 ${downloadedCount}，失败 ${failedCount}。`,
       });
       await showPackingListAutomationBadge(page, `已处理 ${groupResults.length}/${groups.length} 个 NO 批次`, {
         phase: "group-progress",
@@ -377,6 +1399,15 @@ async function openPackingManifestAndDownloadGroups(options) {
       title,
     };
   } catch (error) {
+    await persistPackingListAutoDownloadCheckpoint(options, {
+      allGroups,
+      groupResults: [
+        ...skippedGroupResults,
+        ...groupResults,
+      ],
+      status: "interrupted",
+      message: error instanceof Error ? error.message : String(error || "Packing list automation interrupted."),
+    });
     if (page && config.keepBrowserOpenOnErrorMs > 0) {
       await page.waitForTimeout(config.keepBrowserOpenOnErrorMs).catch(() => {});
     }
@@ -786,6 +1817,204 @@ async function processPackingManifestGroup(options) {
     attempts,
     error: `NO ${no} 下 ${poNumbers.length} 个 PO No1 均未成功下载箱单。`,
   };
+}
+
+function buildPackingListResumePlan({ checkpoint, groups, mode }) {
+  const normalizedMode = normalizePackingListResumeMode(mode || checkpoint?.mode);
+  if (!checkpoint || normalizedMode === "new" || normalizedMode === "restart") {
+    return {
+      mode: normalizedMode,
+      groups,
+      skippedGroupResults: [],
+      previousGroupResults: [],
+    };
+  }
+
+  const previousGroupResults = Array.isArray(checkpoint.groupResults)
+    ? checkpoint.groupResults.filter((item) => item && typeof item === "object")
+    : [];
+  const items = Array.isArray(checkpoint.items)
+    ? checkpoint.items.filter((item) => item && typeof item === "object")
+    : [];
+  const successfulNos = new Set();
+  const failedNos = new Set();
+
+  for (const item of items) {
+    const no = String(item.no || item.groupKey || "").trim();
+    const status = String(item.status || "").trim().toLowerCase();
+    if (!no) continue;
+    if (status === "success") successfulNos.add(no);
+    if (["failed", "error", "interrupted"].includes(status)) failedNos.add(no);
+  }
+  for (const groupResult of previousGroupResults) {
+    const no = String(groupResult.no || "").trim();
+    if (!no) continue;
+    if (groupResult.ok) successfulNos.add(no);
+    else failedNos.add(no);
+  }
+
+  const skippedGroupResults = previousGroupResults
+    .filter((item) => item?.ok && successfulNos.has(String(item.no || "").trim()))
+    .map((item) => ({ ...item, resumedFromCheckpoint: true }));
+  const runnableGroups = groups.filter((group) => {
+    const no = String(group?.no || "").trim();
+    if (!no) return true;
+    if (normalizedMode === "retry-failed") {
+      return failedNos.has(no);
+    }
+    return !successfulNos.has(no);
+  });
+
+  return {
+    mode: normalizedMode,
+    groups: runnableGroups,
+    skippedGroupResults,
+    previousGroupResults,
+  };
+}
+
+function normalizePackingListResumeMode(mode) {
+  const value = String(mode || "").trim().toLowerCase();
+  return ["continue", "retry-failed", "restart", "new"].includes(value) ? value : "new";
+}
+
+function collectPackingListPoNumbers(groups) {
+  const seen = new Set();
+  const values = [];
+  for (const group of groups || []) {
+    for (const poNumber of group?.poNumbers || []) {
+      const normalized = String(poNumber || "").trim();
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      values.push(normalized);
+    }
+  }
+  return values;
+}
+
+async function persistPackingListAutoDownloadCheckpoint(options, input = {}) {
+  const checkpointConfig = options?.checkpoint;
+  if (!checkpointConfig?.enabled || !checkpointConfig.backendBaseUrl || !checkpointConfig.batchId) {
+    return;
+  }
+  const allGroups = Array.isArray(input.allGroups) ? input.allGroups : [];
+  const groupResults = Array.isArray(input.groupResults) ? input.groupResults : [];
+  const checkpoint = buildPackingListAutoDownloadCheckpointSnapshot({
+    allGroups,
+    groupResults,
+    mode: checkpointConfig.mode || options?.resumeMode || "continue",
+    message: input.message || input.result?.message || "",
+    result: input.result || null,
+    status: input.status || "running",
+  });
+  const payload = {
+    runId: checkpointConfig.runId || options?.activeRun?.runId || "",
+    attemptId: checkpointConfig.attemptId || "",
+    mode: checkpointConfig.mode || options?.resumeMode || "continue",
+    status: input.status || "running",
+    message: input.message || input.result?.message || "",
+    checkpoint,
+    groupResult: input.groupResult || null,
+    result: input.result || null,
+    files: await buildPackingListAutoDownloadCheckpointFiles(input),
+  };
+  const url = `${String(checkpointConfig.backendBaseUrl).replace(/\/+$/, "")}/api/automation/packing-list-auto-download/batches/${encodeURIComponent(checkpointConfig.batchId)}/checkpoint`;
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`checkpoint HTTP ${response.status}: ${text.slice(0, 300)}`);
+    }
+  } catch (error) {
+    options?.log?.("Packing List direct checkpoint persistence failed.", {
+      batchId: checkpointConfig.batchId,
+      attemptId: checkpointConfig.attemptId,
+      message: error instanceof Error ? error.message : String(error || ""),
+    });
+  }
+}
+
+function buildPackingListAutoDownloadCheckpointSnapshot({
+  allGroups,
+  groupResults,
+  mode,
+  message,
+  result,
+  status,
+}) {
+  const resultByNo = new Map();
+  for (const groupResult of groupResults || []) {
+    const no = String(groupResult?.no || "").trim();
+    if (!no) continue;
+    resultByNo.set(no, groupResult);
+  }
+  const items = (allGroups || []).map((group) => {
+    const no = String(group?.no || "").trim();
+    const groupResult = resultByNo.get(no);
+    if (!groupResult) {
+      return {
+        no,
+        status: "pending",
+        message: "",
+        poNumbers: group?.poNumbers || [],
+      };
+    }
+    return {
+      no,
+      status: groupResult.ok ? "success" : "failed",
+      message: groupResult.error || "",
+      poNumbers: groupResult.poNumbers || group?.poNumbers || [],
+      successfulPoNumber: groupResult.successfulPoNumber || "",
+      downloadedFilePath: groupResult.filePath || "",
+      updatedAt: new Date().toISOString(),
+    };
+  });
+  const completedCount = items.filter((item) => item.status === "success").length;
+  const failedCount = items.filter((item) => item.status === "failed").length;
+  const totalCount = items.length;
+  return {
+    mode,
+    status: status || (result?.ok ? "success" : (failedCount > 0 ? "partial" : "running")),
+    message: message || "",
+    totalCount,
+    completedCount,
+    failedCount,
+    pendingCount: Math.max(0, totalCount - completedCount - failedCount),
+    items,
+    groupResults,
+    result: result || null,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function buildPackingListAutoDownloadCheckpointFiles(input = {}) {
+  const files = [];
+  const groupResult = input.groupResult;
+  if (groupResult?.ok && groupResult.filePath) {
+    const content = await readFile(groupResult.filePath).catch(() => null);
+    if (content) {
+      files.push({
+        fileName: groupResult.fileName || `Packing list ${groupResult.no || "download"}.pdf`,
+        fileRole: "packing_list_pdf",
+        contentType: "application/pdf",
+        contentBase64: content.toString("base64"),
+      });
+    }
+  }
+  if (input.result) {
+    const resultContent = Buffer.from(JSON.stringify(input.result, null, 2), "utf8");
+    files.push({
+      fileName: "result.json",
+      fileRole: "result_json",
+      contentType: "application/json; charset=utf-8",
+      contentBase64: resultContent.toString("base64"),
+    });
+  }
+  return files;
 }
 
 function failedCountFromGroupResults(groupResults = []) {

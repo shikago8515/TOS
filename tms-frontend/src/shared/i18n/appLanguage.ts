@@ -473,6 +473,29 @@ const staticTextTranslations: Record<string, string> = {
     'Packing list auto-download template is missing. Upload it in the Excel Template Center first.',
   '执行器仍在下载箱单 PDF，请勿重复启动。': 'The executor is still downloading packing list PDFs. Do not start it again.',
   '执行器仍在下载 Invoice PDF，请勿重复启动。': 'The executor is still downloading Invoice PDFs. Do not start it again.',
+  '请先上传 Excel 文件，文件需包含 PO# 和 Invoice# 列。':
+    'Upload an Excel file first. It must include PO# and Invoice# columns.',
+  '请先上传 Excel 文件，文件需包含 INVOICE NUMBER 和 STATUS 列。':
+    'Upload an Excel file first. It must include INVOICE NUMBER and STATUS columns.',
+  '请先选择或填写下载保存目录。': 'Choose or enter the download folder first.',
+  '请先填写 User ID。': 'Enter the User ID first.',
+  '请先填写并保存 Infor Nexus 登录账号密码。':
+    'Enter and save the Infor Nexus login account and password first.',
+  '无法解析响应。': 'Unable to parse the response.',
+  '自动化执行失败。': 'Automation execution failed.',
+  '自动化执行异常。': 'Automation execution error.',
+  '本机执行器缺少当前自动化接口，系统已同步最新自动化逻辑但接口仍不可用。请确认服务器 automation-modules 模块包已发布，或重启本机自动化执行器后再试。':
+    'The local executor is missing the current automation API. The latest automation logic has been synced, but the API is still unavailable. Confirm the server automation-modules package has been published, or restart the local executor and try again.',
+  '没有可继续的自动下载箱单批次。': 'No packing list auto-download batch can be resumed.',
+  '请先选择自动下载箱单 Excel。': 'Choose the packing list auto-download Excel file first.',
+  断点续跑: 'Resume Checkpoint',
+  继续未完成: 'Continue Pending',
+  只重试失败: 'Retry Failed Only',
+  待继续: 'Pending',
+  暂无可续跑批次: 'No Resumable Batch',
+  '上传执行后，如果中途失败或中断，这里会出现“继续未完成”。':
+    'After an upload run fails or is interrupted, pending work will appear here.',
+  正在处理: 'Processing',
   'PO 自动下载模板未上传，请先上传到 MinIO。': 'PO auto-download template is missing. Upload it to MinIO first.',
   '请从 Jessica 浏览器自动化菜单重新进入。': 'Re-enter from the Jessica browser automation menu.',
   '请包含 PO NUMBER 和 STATUS 列': 'Include PO NUMBER and STATUS columns',
@@ -1619,6 +1642,67 @@ const staticTextTranslations: Record<string, string> = {
     'The local backend launcher is outdated and lacks the adidas web launcher API. Restart or update the backend launcher and try again.',
   '无法一键启动本机后台启动器。请确认已安装新版 TOS，且浏览器允许打开 tos://automation/launcher/start。':
     'Unable to start the local backend launcher automatically. Confirm the latest TOS is installed and the browser allows tos://automation/launcher/start.',
+  'TOS 自动化助手更新': 'TOS Automation Helper Update',
+  '优先检查并热更新本机小助手功能模块；如果提示壳子版本过旧，请到下载中心安装最新完整包。':
+    'Check and hot update local helper modules first. If the shell version is too old, install the latest full package from the Download Center.',
+  '功能模块热更新': 'Module Hot Update',
+  已检查: 'Checked',
+  已更新: 'Updated',
+  已最新: 'Latest',
+  待切换: 'Pending Switch',
+  受限: 'Blocked',
+  '检查并热更新功能模块': 'Check and Hot Update Modules',
+  '热更新中...': 'Hot Updating...',
+  热更新中: 'Hot Updating',
+  热更新失败: 'Hot Update Failed',
+  热更新完成: 'Hot Update Complete',
+  检查失败: 'Check Failed',
+  壳子需更新: 'Shell Update Required',
+  壳子有新版: 'Shell Update Available',
+  本机较新: 'Local Version Is Newer',
+  可热更新: 'Ready for Hot Update',
+  服务器未知: 'Server Version Unknown',
+  部分失败: 'Partially Failed',
+  已下载待切换: 'Downloaded, Pending Switch',
+  '正在检测服务器自动化模块，并把最新功能逻辑同步到本机小助手。':
+    'Checking server automation modules and syncing the latest logic to the local helper.',
+  '正在读取本机小助手壳子版本和服务器功能模块清单。':
+    'Reading the local helper shell version and server module manifest.',
+  '服务器功能模块要求更高版本的小助手壳子，请到下载中心安装最新完整包。':
+    'Server modules require a newer helper shell. Install the latest full package from the Download Center.',
+  '部分自动化功能模块热更新失败，请稍后重试。':
+    'Some automation modules failed to hot update. Try again later.',
+  '新功能逻辑已下载。当前有执行器正在运行，本次任务结束后会自动切换到新模块。':
+    'New logic has been downloaded. A runner is active, so it will switch after the current task finishes.',
+  '新功能逻辑已下载。当前有执行器正在运行，任务结束后会自动切换。':
+    'New logic has been downloaded. A runner is active, so it will switch after the current task finishes.',
+  '自动化功能逻辑已同步到本机小助手，无需重新下载安装包。':
+    'Automation logic has been synced to the local helper. No reinstall is required.',
+  '自动化功能逻辑已经和服务器保持一致，无需重新下载安装包。':
+    'Automation logic is already aligned with the server. No reinstall is required.',
+  '点击检查并热更新后，会先检测小助手壳子，再同步服务器最新功能逻辑。':
+    'Click hot update to check the helper shell first, then sync the latest server-side logic.',
+  '暂时无法读取服务器小助手版本，请稍后重新检查。':
+    'The server helper version cannot be read right now. Check again later.',
+  '服务器已有新版小助手壳子。壳子能力变化无法靠热更新完成，请到下载中心安装最新完整包。':
+    'A newer helper shell is available on the server. Shell capability changes need the latest full package from the Download Center.',
+  '本机小助手版本高于服务器记录，请确认服务器安装包清单是否已经更新。':
+    'The local helper is newer than the server record. Confirm the server installer manifest is up to date.',
+  '当前小助手壳子版本一致，可直接热更新里面的自动化功能逻辑。':
+    'The helper shell version matches, so the automation logic can be hot updated directly.',
+  '部分模块要求更新小助手壳子，请到下载中心安装最新完整包。':
+    'Some modules require a newer helper shell. Install the latest full package from the Download Center.',
+  '自动化功能模块热更新完成。':
+    'Automation modules were hot updated successfully.',
+  '自动化功能模块已经是最新。':
+    'Automation modules are already up to date.',
+  '自动化功能模块热更新失败。':
+    'Automation module hot update failed.',
+  自动化功能模块热更新失败: 'Automation module hot update failed',
+  '未检测到正在运行的本机小助手。请先启动小助手；如果仍然失败，请到下载中心安装最新完整包。':
+    'No running local helper was detected. Start the helper first. If it still fails, install the latest full package from the Download Center.',
+  '本机小助手壳子版本低于服务器最新版本。壳子能力变化不能热更新，请到下载中心安装最新完整包。':
+    'The local helper shell version is older than the server version. Shell capability changes cannot be hot updated. Install the latest full package from the Download Center.',
 }
 
 const normalizedStaticTextTranslations: Record<string, string> = Object.fromEntries(

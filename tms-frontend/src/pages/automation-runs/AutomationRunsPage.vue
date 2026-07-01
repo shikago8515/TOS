@@ -27,6 +27,11 @@
         <span class="metric-value">{{ visibleSuccessCount }}</span>
       </div>
       <div class="metric-chip">
+        <span class="metric-dot dot--partial"></span>
+        <span class="metric-label">{{ text('部分成功') }}</span>
+        <span class="metric-value">{{ visiblePartialCount }}</span>
+      </div>
+      <div class="metric-chip">
         <span class="metric-dot dot--failed"></span>
         <span class="metric-label">{{ text('失败') }}</span>
         <span class="metric-value">{{ visibleFailedCount }}</span>
@@ -230,39 +235,22 @@
             <!-- Message -->
             <div class="msg-box" :class="`msg--${statusKey(selectedRun.status)}`">
               <AppIcon :name="statusKey(selectedRun.status) === 'failed' ? 'alert-circle' : 'info'" class="msg-icon" />
-              <span>{{ selectedRun.message ? text(selectedRun.message) : text('无执行说明。') }}</span>
+              <span>{{ runDisplayMessage(selectedRun) }}</span>
             </div>
 
             <!-- Files -->
             <div class="files-block">
               <strong class="block-title">{{ text('归档文件') }}</strong>
-              <div class="file-list">
-                <el-button
-                  v-for="file in selectedFiles"
-                  :key="file.id"
-                  class="file-item"
-                  @click="downloadFile(file)"
-                >
-                  <span class="file-icon-wrap"><AppIcon name="file-text" /></span>
-                  <span class="file-info">
-                    <b :title="file.originalFilename || file.fileRole">{{ file.originalFilename || file.fileRole }}</b>
-                    <small>{{ fileRoleLabel(file.fileRole) }} · {{ formatSize(file.fileSize) }}</small>
-                  </span>
-                  <AppIcon name="download" class="dl-icon" />
-                </el-button>
-                <div v-if="!selectedFiles.length" class="empty-inline">
-                  <AppIcon name="file-minus" /> {{ text('暂无归档文件') }}
-                </div>
-              </div>
+              <button class="archive-entry" type="button" @click="filesModalOpen = true">
+                <span class="archive-entry__icon"><AppIcon name="files" /></span>
+                <span class="archive-entry__main">
+                  <b>{{ selectedFiles.length ? `${selectedFiles.length} ${text('个归档文件')}` : text('暂无归档文件') }}</b>
+                  <small>{{ selectedFiles.length ? text('打开后可全选、勾选或单独下载。') : text('该记录还没有可下载文件。') }}</small>
+                </span>
+                <span class="archive-entry__action">{{ text('打开') }}</span>
+              </button>
             </div>
 
-            <!-- JSON -->
-            <div class="json-block">
-              <strong class="block-title">{{ text('执行 JSON') }}</strong>
-              <div class="json-box">
-                <pre><code>{{ prettyJson(selectedRun.result) }}</code></pre>
-              </div>
-            </div>
           </template>
           <div v-else class="empty-detail">
             <div class="empty-detail-inner">
@@ -274,21 +262,29 @@
         </div>
       </section>
     </div>
+
+    <AutomationRunFilesModal
+      :open="filesModalOpen"
+      :files="selectedFiles"
+      :loading="detailLoading"
+      @close="closeFilesModal"
+    />
   </main>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue'
+import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import { showAppAlert } from '../../shared/ui/appAlert'
 import { tosModules } from '../../domain/moduleCatalog'
 import { webAutomationEntries } from '../web-automation/webAutomationModel'
+import { formatAutomationExecutorMessage } from '../web-automation/webAutomationErrors'
+import AutomationRunFilesModal from './components/AutomationRunFilesModal.vue'
 import {
   deleteAutomationRunRecord,
-  downloadAutomationRunFile,
   fetchAutomationRunDetail,
   fetchAutomationRuns,
   type AutomationRunFileRecord,
@@ -304,6 +300,7 @@ const { isEnglish, text } = useAppLanguage()
 const runs = ref<AutomationRunRecord[]>([])
 const selectedRun = ref<AutomationRunRecord | null>(null)
 const selectedFiles = ref<AutomationRunFileRecord[]>([])
+const filesModalOpen = ref(false)
 const deletingRunId = ref('')
 const pagination = reactive({ page: 1, pageSize: 30, total: 0 })
 const filters = reactive({ automationId: readAutomationIdQuery(route.query.automationId), status: '', keyword: '', dateFrom: '', dateTo: '' })
@@ -318,6 +315,7 @@ const statusOptions = computed(() => [
   { value: '', label: text('全部状态') },
   { value: 'running', label: text('执行中') },
   { value: 'success', label: text('成功') },
+  { value: 'partial', label: text('部分成功') },
   { value: 'failed', label: text('失败') },
   { value: 'canceled', label: text('已取消') },
 ])
@@ -347,6 +345,18 @@ onMounted(() => {
   void loadRuns()
 })
 
+onBeforeRouteLeave(() => {
+  closeFilesModal()
+})
+
+onDeactivated(() => {
+  closeFilesModal()
+})
+
+onBeforeUnmount(() => {
+  closeFilesModal()
+})
+
 // ---- Computed ----
 const automationModules = computed<AutomationRunFilterOption[]>(() => {
   const catalogOptions = tosModules
@@ -367,6 +377,7 @@ const automationModules = computed<AutomationRunFilterOption[]>(() => {
   return [...catalogOptions, ...scenarioOptions].sort((left, right) => left.order - right.order)
 })
 const visibleSuccessCount = computed(() => runs.value.filter((run) => run.status === 'success').length)
+const visiblePartialCount = computed(() => runs.value.filter((run) => run.status === 'partial').length)
 const visibleFailedCount = computed(() => runs.value.filter((run) => run.status === 'failed').length)
 const visibleRunningCount = computed(() => runs.value.filter((run) => statusKey(run.status) === 'running').length)
 
@@ -436,6 +447,7 @@ function readAutomationIdQuery(value: unknown): string {
 }
 
 async function selectRun(run: AutomationRunRecord): Promise<void> {
+  closeFilesModal()
   selectedRun.value = run
   selectedFiles.value = []
   detailLoading.value = true
@@ -448,12 +460,8 @@ async function selectRun(run: AutomationRunRecord): Promise<void> {
   }
 }
 
-async function downloadFile(file: AutomationRunFileRecord): Promise<void> {
-  try {
-    await downloadAutomationRunFile(file)
-  } catch (error) {
-    void showAppAlert(text(readErrorMessage(error, '执行文件下载失败。')), { tone: 'warning' })
-  }
+function closeFilesModal(): void {
+  filesModalOpen.value = false
 }
 
 async function deleteRun(run: AutomationRunRecord): Promise<void> {
@@ -526,7 +534,7 @@ function getScenarioLabel(automationId: string): string {
 
 function statusLabel(status: string): string {
   const map: Record<string, string> = {
-    running: '执行中', success: '成功', failed: '失败', canceled: '已取消',
+    running: '执行中', success: '成功', partial: '部分成功', failed: '失败', canceled: '已取消',
   }
   const key = statusKey(status)
   return map[key] ? text(map[key]) : status || ''
@@ -534,14 +542,8 @@ function statusLabel(status: string): string {
 function statusKey(status: string): string {
   const normalized = String(status || '').trim().toLowerCase()
   if (['started', 'pending', 'processing'].includes(normalized)) return 'running'
+  if (['partial', 'interrupted'].includes(normalized)) return 'partial'
   return normalized || 'running'
-}
-function fileRoleLabel(role: string): string {
-  const map: Record<string, string> = {
-    source_excel: '上传 Excel', result_excel: '结果 Excel', result_json: '结果 JSON',
-    failed_rows_excel: '失败明细', screenshot: '截图', log: '日志',
-  }
-  return map[role] ? text(map[role]) : role
 }
 function formatDate(value?: string): string {
   if (!value) return ''
@@ -571,15 +573,28 @@ function durationLabel(run: AutomationRunRecord): string {
   const seconds = Math.round((finished - started) / 1000)
   return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`
 }
-function formatSize(size: number): string {
-  if (!size) return '0 B'
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
-  return `${(size / 1024 / 1024).toFixed(1)} MB`
+
+function runDisplayMessage(run: AutomationRunRecord): string {
+  const raw = chooseRunMessage(run)
+  return text(formatAutomationExecutorMessage(raw, '无执行说明。'))
 }
-function prettyJson(value: unknown): string {
-  if (value == null) return '{}'
-  return JSON.stringify(value, null, 2)
+
+function chooseRunMessage(run: AutomationRunRecord): string {
+  const resultMessage = readResultMessage(run.result)
+  const runMessage = String(run.message || '').trim()
+  if (resultMessage && isGenericAutomationMessage(runMessage)) return resultMessage
+  return runMessage || resultMessage || ''
+}
+
+function readResultMessage(result: unknown): string {
+  if (!result || typeof result !== 'object') return ''
+  const message = (result as { message?: unknown; error?: unknown }).message
+  const error = (result as { message?: unknown; error?: unknown }).error
+  return String(message || error || '').trim()
+}
+
+function isGenericAutomationMessage(message: string): boolean {
+  return /Automation app proxy failed|read ECONNRESET|socket hang up|ECONNRESET|ECONNABORTED|connection reset/i.test(message)
 }
 </script>
 
@@ -788,6 +803,7 @@ function prettyJson(value: unknown): string {
 }
 .dot--total   { background: var(--slate-400); }
 .dot--success { background: var(--green-600); box-shadow: 0 0 0 3px rgba(5,150,105,.12); }
+.dot--partial { background: var(--amber-600); box-shadow: 0 0 0 3px rgba(217,119,6,.12); }
 .dot--failed  { background: var(--red-600); box-shadow: 0 0 0 3px rgba(220,38,38,.12); }
 .dot--running { background: var(--sky-600); box-shadow: 0 0 0 3px rgba(2,132,199,.12); animation: pulse-dot 2s infinite; }
 @keyframes pulse-dot {
@@ -1184,6 +1200,7 @@ tbody tr.selected {
   letter-spacing: 0.02em;
 }
 .pill--success  { background: var(--green-100); color: var(--green-600); }
+.pill--partial  { background: var(--amber-50); color: var(--amber-600); }
 .pill--failed   { background: var(--red-100); color: var(--red-600); }
 .pill--running  { background: var(--sky-100); color: var(--sky-600); }
 .pill--canceled { background: var(--slate-100); color: var(--slate-500); }
@@ -1321,6 +1338,11 @@ tbody tr.selected {
   border-color: var(--green-200);
   color: var(--green-700);
 }
+.msg--partial {
+  background: linear-gradient(135deg, var(--amber-50), #fef3c7);
+  border-color: #fde68a;
+  color: #92400e;
+}
 .msg-icon { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; }
 
 /* Block Titles */
@@ -1333,6 +1355,62 @@ tbody tr.selected {
 }
 
 /* Files */
+.archive-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--slate-200);
+  border-radius: 11px;
+  background: var(--white);
+  color: var(--slate-900);
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.archive-entry:hover {
+  border-color: #99f6e4;
+  background: var(--teal-50);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(13,148,136,.06);
+}
+.archive-entry__icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--teal-50);
+  color: var(--teal);
+  flex: 0 0 auto;
+}
+.archive-entry__main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.archive-entry__main b {
+  color: var(--slate-900);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.archive-entry__main small {
+  color: var(--slate-400);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.archive-entry__action {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #ccfbf1;
+  color: var(--teal-600);
+  font-size: 10px;
+  font-weight: 800;
+}
 .file-list {
   display: flex;
   flex-direction: column;
@@ -1409,23 +1487,6 @@ tbody tr.selected {
   background: var(--slate-50);
   border-radius: 8px;
   border: 1px dashed var(--slate-200);
-}
-
-/* JSON Block */
-.json-box {
-  background: #0f172a;
-  border-radius: 10px;
-  padding: 12px;
-  overflow: auto;
-  max-height: 260px;
-  box-shadow: inset 0 2px 4px rgba(0,0,0,.15);
-}
-.json-box pre {
-  margin: 0;
-  font-family: 'Fira Code', ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 11px;
-  line-height: 1.55;
-  color: #38bdf8;
 }
 
 /* Empty Detail */

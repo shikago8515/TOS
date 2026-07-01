@@ -22,6 +22,14 @@ interface AutomationFailurePayload {
 
 const automationValidationErrorRules: AutomationValidationErrorRule[] = [
   {
+    pattern: /Automation app proxy failed.*(ECONNRESET|socket hang up|ECONNABORTED)|read ECONNRESET|connection reset|socket hang up/i,
+    message: '执行器连接已中断：页面请求已经发送到本机自动化执行器，但连接在等待结果时被断开。常见原因是你点击了停止、执行器正在重启或热更新、自动化浏览器被关闭，或执行器进程异常退出。请先等待右侧状态刷新；如果任务未完成，可重新启动执行器，并在断点续跑里点击“继续未完成”。',
+  },
+  {
+    pattern: /requires TOS automation helper|Please update TOS automation helper/i,
+    message: '本机自动化小助手版本过低：当前小助手不是该自动化模块要求的版本。请到系统设置下载并安装最新小助手，然后重新启动执行器。',
+  },
+  {
     pattern: /Infor Nexus 登录需要 Access Code|Access Code.*e-Identity|without providing an Access Code/i,
     message: 'Infor Nexus 登录需要 Access Code：账号进入 e-Identity 验证流程。请检查 User ID / Password 是否正确，或联系管理员确认账号权限。',
   },
@@ -106,6 +114,11 @@ export function formatAutomationExecutorMessage(message: string | undefined, fal
     return rawMessage
   }
 
+  const helperVersionMatch = rawMessage.match(/Automation module\s+([^\s]+)\s+requires TOS automation helper\s+(.+?)\s+or later\.\s+Current helper:\s+(.+?)\.\s+Please update/i)
+  if (helperVersionMatch) {
+    return `本机自动化小助手版本过低：${helperVersionMatch[1]} 需要 ${helperVersionMatch[2]} 或更新版本，当前小助手是 ${helperVersionMatch[3]}。请到系统设置下载并安装最新小助手，然后重新启动执行器。`
+  }
+
   const validationRule = findAutomationValidationErrorRule(rawMessage)
   if (validationRule) {
     return validationRule.message
@@ -150,6 +163,10 @@ export function shouldShowAutomationErrorDialog(message: string | undefined): bo
 }
 
 export function showAutomationErrorDialog(message: string): void {
+  if (isAutomationConnectionInterruptedMessage(message)) {
+    void showAppAlert(message, { tone: 'warning', title: '执行器连接已中断' })
+    return
+  }
   void showAppAlert(message, { tone: 'error' })
 }
 
@@ -163,4 +180,8 @@ function findAutomationValidationErrorRule(message: string): AutomationValidatio
 
 function isLoginStageFailureMessage(message: string): boolean {
   return /Infor Nexus (登录失败|登录未建立下载会话|登录需要 Access Code)|request login/i.test(message)
+}
+
+function isAutomationConnectionInterruptedMessage(message: string): boolean {
+  return /执行器连接已中断|Automation app proxy failed.*(ECONNRESET|socket hang up|ECONNABORTED)|read ECONNRESET|connection reset|socket hang up/i.test(String(message || ''))
 }
