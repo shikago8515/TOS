@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
 
+import * as restartLocalBackend from './restart-local-backend.mjs'
 import {
   buildBackendStartOptions,
   buildPowerShellCommand,
@@ -19,6 +20,13 @@ test('root package exposes a backend restart command', async () => {
     packageJson.scripts['dev:backend:restart'],
     'node scripts/engineering/restart-local-backend.mjs',
   )
+})
+
+test('normalizes process executable basenames across Windows and POSIX paths', () => {
+  assert.equal(typeof restartLocalBackend.getProcessExecutableName, 'function')
+  assert.equal(restartLocalBackend.getProcessExecutableName('D:\\python313\\python.exe'), 'python.exe')
+  assert.equal(restartLocalBackend.getProcessExecutableName('/usr/bin/python3'), 'python3')
+  assert.equal(restartLocalBackend.getProcessExecutableName('python'), 'python')
 })
 
 test('identifies only local TOS Python backend processes as stoppable', () => {

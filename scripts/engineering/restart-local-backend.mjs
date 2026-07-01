@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
-import { basename, dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
@@ -16,6 +16,15 @@ export function normalizeBackendPayload(payload) {
   }
 }
 
+export function getProcessExecutableName(executablePath) {
+  const value = String(executablePath || '').trim()
+  if (!value) {
+    return ''
+  }
+  const parts = value.split(/[\\/]+/).filter(Boolean)
+  return parts[parts.length - 1] || ''
+}
+
 export function isTosLocalBackendProcess({
   processName,
   executablePath,
@@ -27,7 +36,7 @@ export function isTosLocalBackendProcess({
     return false
   }
 
-  const executableName = basename(String(executablePath || processName || '')).toLowerCase()
+  const executableName = getProcessExecutableName(executablePath || processName).toLowerCase()
   if (!/^python(?:\d+(?:\.\d+)*)?(?:\.exe)?$/.test(executableName)) {
     return false
   }
