@@ -17,6 +17,7 @@ from modules.iplex_dual_table_compare_module import (
     IplexDualTableCompareConfig,
     IplexDualTableCompareModule,
 )
+from utils.excel_result_history import archive_process_output_history
 from utils.excel_upload_backup import ExcelUploadBackupContext
 from utils.file_utils import (
     copy_output_to_directory,
@@ -188,6 +189,12 @@ async def process_iplex_dual_table_compare(
             "four_digit_mismatch_count": result["four_digit_mismatch_count"],
             "two_digit_mismatch_count": result["two_digit_mismatch_count"],
             "preview_rows": result["preview_rows"],
+            **archive_process_output_history(
+                upload_dir=UPLOAD_DIR,
+                module_id=MODULE_ID,
+                request_id=request_id,
+                output_filename=output_filename,
+            ),
         }
     except HTTPException:
         raise

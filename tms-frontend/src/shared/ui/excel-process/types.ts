@@ -16,6 +16,7 @@ export interface ExcelPageStat {
 export interface ExcelToolbarAction {
   id: string
   label: string
+  title?: string
   icon?: string
   primary?: boolean
   disabled?: boolean

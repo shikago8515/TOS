@@ -51,10 +51,13 @@ import {
   appendModuleHistory,
   clearModuleHistory,
   loadModuleHistory,
+  readProcessHistoryMetadata,
+  type BackendProcessHistoryMetadata,
   type ProcessHistoryRecord,
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
+import { useProcessHistoryResultDownload } from '../../shared/process/useProcessHistoryResultDownload'
 import {
   buildExcelFileGroups,
   ExcelProcessPageShell,
@@ -107,6 +110,20 @@ const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(tmsFinanceInternalReconciliationModuleId),
 )
 const { text } = useAppLanguage()
+
+const {
+  latestHistoryResultRecord,
+  historyResultToolbarTitle,
+  downloadLatestHistoryResult,
+} = useProcessHistoryResultDownload({
+  historyRecords,
+  processing,
+  onError: (nextMessage) => {
+    success.value = false
+    messageTone.value = 'error'
+    message.value = nextMessage
+  },
+})
 
 const activeProcess = computed<TmsFinanceProcessOption>(
   () => getTmsFinanceProcessById(activeProcessId.value),
@@ -178,6 +195,14 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     icon: 'download',
     visible: success.value && Boolean(resultFile.value),
     onClick: downloadResult,
+  },
+  {
+    id: 'download-history-result',
+    label: '下载历史结果',
+    icon: 'download-cloud',
+    disabled: processing.value || !latestHistoryResultRecord.value,
+    title: historyResultToolbarTitle.value,
+    onClick: downloadLatestHistoryResult,
   },
   {
     id: 'process',
@@ -275,7 +300,7 @@ async function startInternalReconciliationProcess(): Promise<void> {
     messageTone.value = response.success ? 'success' : 'error'
     message.value = response.error ? `${response.message} - ${response.error}` : response.message
     summaryItems.value = buildTmsFinanceInternalReconciliationSummary(response)
-    recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles)
+    recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles, response)
   } catch (error) {
     handleProcessError(error, startedAt, inputFiles)
   } finally {
@@ -318,7 +343,7 @@ async function startWorkSalesProcess(): Promise<void> {
     messageTone.value = response.success ? 'success' : 'error'
     message.value = response.error ? `${response.message} - ${response.error}` : response.message
     summaryItems.value = buildTmsFinanceWorkSalesSummary(response)
-    recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles)
+    recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles, response)
   } catch (error) {
     handleProcessError(error, startedAt, inputFiles)
   } finally {
@@ -386,8 +411,10 @@ function recordHistory(
   status: ProcessHistoryStatus,
   startedAt: number,
   inputFiles: string[],
+  metadata: BackendProcessHistoryMetadata = {},
 ): void {
   historyRecords.value = appendModuleHistory({
+    ...readProcessHistoryMetadata(metadata),
     moduleId: activeProcess.value.moduleId,
     moduleName: activeProcess.value.moduleName,
     status,

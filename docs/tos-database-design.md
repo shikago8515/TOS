@@ -103,19 +103,19 @@
 | `finished_at` | `datetime` | 是 |  |  | 完成时间。 |
 | `created_at` | `datetime` | 否 | IDX | `CURRENT_TIMESTAMP` | 业务发生时间。 |
 | `updated_at` | `timestamp` | 否 |  | `CURRENT_TIMESTAMP` | 更新时间，自动更新。 |
-| `source_system` | `varchar(96)` | 否 |  | `tos` | 数据来源，如 `web-automation`、`frontend.process-history`。 |
+| `source_system` | `varchar(96)` | 否 |  | `tos` | 数据来源，如 `web-automation`、`frontend.process-history`、`backend.result-history`。 |
 
 索引：`PRIMARY(id)`, `uq_tos_activity_id(activity_id)`, `idx_tos_activity_created(created_at)`, `idx_tos_activity_person_created(person_id, created_at)`, `idx_tos_activity_module_created(module_id, created_at)`, `idx_tos_activity_status_created(status, created_at)`, `idx_tos_activity_type_created(activity_type, created_at)`
 
 ### `tos_activity_files`
 
-用途：统一记录处理相关文件。自动化源文件、结果文件、失败明细、Excel 上传备份、本地输出都写入这里。
+用途：统一记录处理相关文件。自动化源文件、结果文件、失败明细、Excel 上传备份、Excel 历史结果文件、本地输出都写入这里。
 
 | 字段 | 类型 | 可空 | 键 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | `file_id` | `bigint unsigned` | 否 | PK |  | 自增主键。 |
 | `activity_id` | `varchar(128)` | 否 | IDX |  | 关联 `tos_activity_records.activity_id`。 |
-| `file_role` | `varchar(64)` | 否 |  |  | 文件角色，如 `source_excel`、`result_excel`、`upload_backup`。 |
+| `file_role` | `varchar(64)` | 否 |  |  | 文件角色，如 `source_excel`、`result_excel`、`result_file`、`upload_backup`。 |
 | `file_role_label` | `varchar(96)` | 否 |  |  | 中文文件角色。 |
 | `storage_provider` | `varchar(32)` | 否 |  | `minio` | 存储类型，如 `minio`、`local-path`。 |
 | `bucket` | `varchar(128)` | 否 |  |  | MinIO bucket。 |
@@ -187,4 +187,3 @@
 | `updated_at` | `timestamp` | 否 |  | `CURRENT_TIMESTAMP` | 更新时间，自动更新。 |
 
 索引：`PRIMARY(release_id)`, `uq_tos_release_key(release_key)`, `idx_tos_release_date(release_date, release_id)`, `idx_tos_release_page(page_path)`
-

@@ -18,6 +18,7 @@ from modules.excel_template_mapper_module import (
     ExcelTemplateMapperConfig,
     ExcelTemplateMapperModule,
 )
+from utils.excel_result_history import archive_process_output_history
 from utils.excel_upload_backup import ExcelUploadBackupContext
 from utils.file_utils import (
     copy_output_to_directory,
@@ -176,6 +177,12 @@ async def process_excel_template_mapper_files(
             "written_row_count": result["written_row_count"],
             "mapped_field_count": result["mapped_field_count"],
             "unmapped_required_fields": result["unmapped_required_fields"],
+            **archive_process_output_history(
+                upload_dir=UPLOAD_DIR,
+                module_id=MODULE_ID,
+                request_id=request_id,
+                output_filename=output_filename,
+            ),
         }
     except HTTPException:
         raise

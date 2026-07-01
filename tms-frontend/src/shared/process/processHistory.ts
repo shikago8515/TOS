@@ -1,4 +1,9 @@
-import { requestBackendJson, type BackendTarget } from '../api/backendClient'
+import {
+  buildBackendDownloadUrl,
+  downloadUrlAsFile,
+  requestBackendJson,
+  type BackendTarget,
+} from '../api/backendClient'
 
 export type ProcessHistoryStatus = 'success' | 'error'
 
@@ -6,6 +11,15 @@ export interface ProcessSummaryItem {
   label: string
   value: string
   note?: string
+}
+
+export interface ProcessHistoryResultFile {
+  id: number
+  filename: string
+  contentType?: string
+  fileSize?: number
+  sha256?: string
+  downloadPath: string
 }
 
 export interface ProcessHistoryRecord {
@@ -17,8 +31,18 @@ export interface ProcessHistoryRecord {
   message: string
   inputFiles: string[]
   outputFile?: string
+  resultFile?: ProcessHistoryResultFile
+  resultDownloadPath?: string
+  resultDownloadBackendTarget?: BackendTarget
+  historyWarnings?: string[]
   summary: ProcessSummaryItem[]
   createdAt: string
+}
+
+export type BackendProcessHistoryMetadata = object
+
+export type AppendProcessHistoryRecord = Omit<ProcessHistoryRecord, 'createdAt' | 'id'> & {
+  id?: string
 }
 
 const storagePrefix = 'tos.process-history.'
@@ -40,6 +64,73 @@ interface ProcessHistorySaveResponse {
   record?: ProcessHistoryRecord
 }
 
+export function readProcessHistoryMetadata(
+  payload: BackendProcessHistoryMetadata,
+): Partial<Pick<ProcessHistoryRecord, 'id' | 'resultDownloadPath' | 'resultDownloadBackendTarget' | 'resultFile' | 'historyWarnings'>> {
+  const metadata: Partial<Pick<ProcessHistoryRecord, 'id' | 'resultDownloadPath' | 'resultDownloadBackendTarget' | 'resultFile' | 'historyWarnings'>> = {}
+  const source = isObjectRecord(payload) ? payload : {}
+  const historyId = typeof source.history_id === 'string' ? source.history_id.trim() : ''
+  const resultDownloadPath = typeof source.result_download_path === 'string'
+    ? source.result_download_path.trim()
+    : ''
+  const resultDownloadBackendTarget = readBackendTarget(source.result_download_backend_target)
+  const historyWarnings = Array.isArray(source.history_warnings)
+    ? source.history_warnings
+        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        .map((item) => item.trim())
+    : []
+  const resultFile = source.result_file
+
+  if (historyId) {
+    metadata.id = historyId
+  }
+  if (resultDownloadPath) {
+    metadata.resultDownloadPath = resultDownloadPath
+  }
+  if (resultDownloadBackendTarget) {
+    metadata.resultDownloadBackendTarget = resultDownloadBackendTarget
+  }
+  if (historyWarnings.length > 0) {
+    metadata.historyWarnings = historyWarnings
+  }
+  if (isObjectRecord(resultFile)) {
+    const fileId = Number(resultFile.id || 0)
+    const filename = String(resultFile.filename || '').trim()
+    const downloadPath = String(resultFile.downloadPath || resultDownloadPath).trim()
+    if (fileId > 0 && filename && downloadPath) {
+      metadata.resultFile = {
+        id: fileId,
+        filename,
+        contentType: readOptionalString(resultFile.contentType),
+        fileSize: readOptionalNumber(resultFile.fileSize),
+        sha256: readOptionalString(resultFile.sha256),
+        downloadPath,
+      }
+    }
+  }
+
+  return metadata
+}
+
+function readBackendTarget(value: unknown): BackendTarget | undefined {
+  if (value === 'default' || value === 'local' || value === 'remote') {
+    return value
+  }
+  return undefined
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function readOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+function readOptionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' ? value : undefined
+}
+
 export function loadModuleHistory(moduleId: string): ProcessHistoryRecord[] {
   const raw = window.localStorage.getItem(storagePrefix + moduleId)
 
@@ -56,11 +147,11 @@ export function loadModuleHistory(moduleId: string): ProcessHistoryRecord[] {
 }
 
 export function appendModuleHistory(
-  record: Omit<ProcessHistoryRecord, 'id' | 'createdAt'>,
+  record: AppendProcessHistoryRecord,
 ): ProcessHistoryRecord[] {
   const nextRecord: ProcessHistoryRecord = {
     ...record,
-    id: `${record.moduleId}-${Date.now()}`,
+    id: record.id || `${record.moduleId}-${Date.now()}`,
     createdAt: new Date().toISOString(),
   }
   const records = [nextRecord, ...loadModuleHistory(record.moduleId)].slice(0, 20)
@@ -107,6 +198,33 @@ export async function persistProcessHistoryRecord(
     path: processHistoryPath,
     body: record,
     timeoutMs: 8000,
+    backendTarget: 'remote',
   })
   return payload.record || null
+}
+
+export function findLatestDownloadableHistoryRecord(
+  records: readonly ProcessHistoryRecord[],
+): ProcessHistoryRecord | null {
+  return records.find((record) => Boolean(record.resultDownloadPath)) ?? null
+}
+
+export async function buildProcessHistoryResultDownloadUrl(
+  record: ProcessHistoryRecord,
+): Promise<string> {
+  if (!record.resultDownloadPath) {
+    throw new Error('历史结果文件未归档，无法下载。')
+  }
+  return buildBackendDownloadUrl(
+    record.resultDownloadPath,
+    record.resultDownloadBackendTarget || 'remote',
+  )
+}
+
+export async function downloadProcessHistoryResult(record: ProcessHistoryRecord): Promise<void> {
+  const downloadUrl = await buildProcessHistoryResultDownloadUrl(record)
+  await downloadUrlAsFile(
+    downloadUrl,
+    record.resultFile?.filename || record.outputFile || 'process-result.xlsx',
+  )
 }

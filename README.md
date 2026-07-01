@@ -27,6 +27,7 @@ TOS 是一个 Windows x64 桌面工具，当前源码工作区由三部分组成
 - `docs/tos-ai-workflow.md`：TOS-AI 从 Gitea 同步、分支开发、版本、CI 到服务器发布的完整工作流。
 - `docs/server-deployment-runbook.md`：服务器 `~/TOS` 目录式 Docker Compose 更新、备份、验证和回滚流程。
 - `docs/server-deployment-runbook.md` 同时记录桌面安装包在服务器 MinIO Docker volume 中的物理位置、对象 key、旧安装包删除规则和公开下载代理地址。
+- `docs/excel-result-history.md`：Excel 处理结果历史归档、服务器下载、环境变量和验证说明。
 - `docs/frontend-tms-finance-parity.md`：TMS 财务页 parity 与复用边界说明。
 - `tms-backend/README.md`：后端运行、模块和测试说明。
 - `tms-electron-app/README.md`：Electron 运行、打包和发布说明。
@@ -56,7 +57,7 @@ npm run server:package
 
 正式服务器发布前必须先推送并合并到 Gitea `main`。服务器 `~/TOS` 目录不是 Git 仓库，不在 `~/TOS` 执行 `git pull`；只有 `~/TOS-source` 是跟踪 Gitea `main` 的源码目录。手动排障时才进入 `~/TOS-source` 执行 `git pull --ff-only origin main` 和 `bash scripts/server/deploy-gitea-main.sh`。
 
-Gitea 检查环境使用同一套根目录入口：先运行 `npm run ci:install` 安装依赖，再运行 `PYTHON=python3 npm run check`。该远端检查不触发 `npm run pack`、`npm run build:win` 或发布清单写入命令。
+Gitea 检查环境使用同一套根目录入口：先在 runner 的仓库工作区创建 `.venv`，通过该虚拟环境运行 `npm run ci:install` 安装依赖，再复用同一 `.venv` 运行 `npm run check`。Alpine CI 会跳过 `rapidocr` 和 `onnxruntime` 这组可选 OCR engine runtime，正式后端依赖文件仍保留完整依赖。该远端检查不触发 `npm run pack`、`npm run build:win` 或发布清单写入命令。
 
 常用前端开发入口：
 
@@ -102,6 +103,7 @@ npm run build:win
 - 前端新增或调整页面时同步 `src/domain/moduleCatalog.ts`、`src/app/routeCatalog.ts`、`src/app/router.ts`。
 - 当前模块入口以 `tms-frontend/src/domain/moduleCatalog.ts` 为准；旧 `/browser-plugins`、`/jessica-infornexus` 仅作为兼容重定向保留，不作为新功能入口。
 - 后端保持 `api/{module}_api.py` + `modules/{module}_module.py` 边界，上传和下载文件名必须做 basename、扩展名和目录边界校验。
+- Excel 处理历史结果下载由服务器归档接口持久化，规则见 `docs/excel-result-history.md`；不要把服务器 MinIO/MySQL 凭据或归档 token 写入仓库。
 - 未经明确要求，不执行 `git add`、`commit`、`push`、`pull`、`merge`、`rebase`、`reset` 或发布操作。
 
 ## 后续重点

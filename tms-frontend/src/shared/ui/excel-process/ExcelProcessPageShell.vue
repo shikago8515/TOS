@@ -29,6 +29,7 @@
           class="jane-toolbar__btn"
           :class="{ 'jane-toolbar__btn--primary': action.primary }"
           type="button"
+          :title="action.title ? text(action.title) : undefined"
           :disabled="action.disabled"
           @click="runAction(action)"
         >

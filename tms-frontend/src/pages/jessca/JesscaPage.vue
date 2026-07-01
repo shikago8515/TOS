@@ -49,10 +49,13 @@ import {
   appendModuleHistory,
   clearModuleHistory,
   loadModuleHistory,
+  readProcessHistoryMetadata,
+  type BackendProcessHistoryMetadata,
   type ProcessHistoryRecord,
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
+import { useProcessHistoryResultDownload } from '../../shared/process/useProcessHistoryResultDownload'
 import {
   buildExcelFileGroups,
   ExcelProcessPageShell,
@@ -81,6 +84,20 @@ const summaryItems = ref<ProcessSummaryItem[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(loadModuleHistory(jesscaModuleId))
 const messageTone = ref<ExcelNoticeTone>('info')
 const { text } = useAppLanguage()
+
+const {
+  latestHistoryResultRecord,
+  historyResultToolbarTitle,
+  downloadLatestHistoryResult,
+} = useProcessHistoryResultDownload({
+  historyRecords,
+  processing,
+  onError: (nextMessage) => {
+    success.value = false
+    messageTone.value = 'error'
+    message.value = nextMessage
+  },
+})
 
 const uploadFields = computed<ExcelFileField[]>(() => [
   {
@@ -152,6 +169,14 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     onClick: downloadResult,
   },
   {
+    id: 'download-history-result',
+    label: '下载历史结果',
+    icon: 'download-cloud',
+    disabled: processing.value || !latestHistoryResultRecord.value,
+    title: historyResultToolbarTitle.value,
+    onClick: downloadLatestHistoryResult,
+  },
+  {
     id: 'process',
     label: processing.value ? '核对中...' : '开始核对',
     icon: processing.value ? 'loader' : 'play-circle',
@@ -212,7 +237,7 @@ async function startProcess(): Promise<void> {
     messageTone.value = response.success ? 'success' : 'error'
     message.value = response.error ? `${response.message} - ${response.error}` : response.message
     summaryItems.value = buildJesscaSummary(response, invoiceFiles.value.length, tcInvoiceFiles.value.length)
-    recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles)
+    recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles, response)
   } catch (error) {
     success.value = false
     messageTone.value = 'error'
@@ -253,8 +278,10 @@ function recordHistory(
   status: ProcessHistoryStatus,
   startedAt: number,
   inputFiles: string[],
+  metadata: BackendProcessHistoryMetadata = {},
 ): void {
   historyRecords.value = appendModuleHistory({
+    ...readProcessHistoryMetadata(metadata),
     moduleId: jesscaModuleId,
     moduleName: jesscaModuleName,
     status,

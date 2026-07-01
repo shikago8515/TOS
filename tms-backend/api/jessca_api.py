@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from modules.jessca_module import JesscaModule
+from utils.excel_result_history import archive_process_output_history
 from utils.excel_upload_backup import ExcelUploadBackupContext
 from utils.file_utils import (
     copy_output_to_directory,
@@ -220,7 +221,13 @@ async def process_jessca(
                 "tc_summary_count": result.get('tc_summary_count', 0),
                 "tc_summary_issue_count": result.get('tc_summary_issue_count', 0),
                 "tc_total_issue_count": result.get('tc_total_issue_count', 0),
-                "output_file": output_filename
+                "output_file": output_filename,
+                **archive_process_output_history(
+                    upload_dir=UPLOAD_DIR,
+                    module_id=MODULE_ID,
+                    request_id=request_id,
+                    output_filename=output_filename,
+                ),
             }
         else:
             return {

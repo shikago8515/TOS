@@ -62,13 +62,14 @@
 6. 后端请求通过 `tms-frontend/src/shared/api/backendClient.ts` 或 feature API 模块；组件不要散落直接 `fetch`。少数本地 automation executor/launcher 直连属于显式例外，必须由 `scripts/engineering/frontend-direct-fetch-boundary.test.mjs` 白名单锁定。
 7. 文件上传、进度、结果展示、处理历史优先复用 `shared/ui` 和 `shared/process` 中已有组件。
 8. Excel 处理型页面优先复用 `shared/ui/excel-process`、`FilePrecheckPanel`、`ProcessHistoryPanel`、`ResultSummary`、`shared/process` 与 `shared/styles/jane-page.scss`；页面内只保留业务字段、按钮文案、API 参数映射、结果摘要转换和历史 module id 等差异。
-9. 当左侧导航和路由已经表达子流程时，不在页面内容区重复做大卡片式流程切换入口，除非产品明确要求。
-10. 当前前端已配置低侵入 ESLint 静态门禁，命令以 `tms-frontend/package.json` 为准，当前有 `npm run lint`、`npm run typecheck`、`npm run test` 和 `npm run build`；尚未配置 Prettier，不要在规则或报告中声称已经运行不存在的格式化命令。
-11. 本地开发默认前端入口 `npm run dev:frontend` 使用“服务器共享数据接口 + 本地执行接口”的 hybrid 模式；不得让默认 `dev` 脚本加载 `--mode server` 或 `tms-frontend/.env.server`。
-12. 纯本地后端联调必须显式运行 `npm run dev:frontend:local`；全量服务器联调必须显式运行 `npm run dev:frontend:server`，该模式才允许读取 `tms-frontend/.env.server` 中的公开 `VITE_BACKEND_URL`。
-13. `npm run dev:frontend` 与 `npm run dev:frontend:hybrid` 等价；切换 local/server/hybrid 模式前必须停止旧的 `5174` Vite 进程，分流规则以 `docs/development-hybrid-backend.md` 为准。
-14. 前端页面出现“无法连接后端服务”时，先检查 Vite 实际注入的 `import.meta.env`、当前 `5174` 前端启动模式和 `npm run check:backend-version`，不得直接判断为业务模块处理失败。
-15. 运行 `npm run version:bump`、切换分支、拉取同事更新或修改 `tms-backend/app_version.py` 后，先运行 `npm run dev:backend:restart` 和 `npm run check:backend-version`，再刷新本地 `5174` 前端页面，避免旧 `8000` 后端进程继续返回上一版本。
+9. Excel 处理型页面的历史结果下载入口统一放在顶部工具栏“下载历史结果”；右侧 `ProcessHistoryPanel` 只展示历史记录、输入文件和结果文件名，不在历史行内放下载按钮。
+10. 当左侧导航和路由已经表达子流程时，不在页面内容区重复做大卡片式流程切换入口，除非产品明确要求。
+11. 当前前端已配置低侵入 ESLint 静态门禁，命令以 `tms-frontend/package.json` 为准，当前有 `npm run lint`、`npm run typecheck`、`npm run test` 和 `npm run build`；尚未配置 Prettier，不要在规则或报告中声称已经运行不存在的格式化命令。
+12. 本地开发默认前端入口 `npm run dev:frontend` 使用“服务器共享数据接口 + 本地执行接口”的 hybrid 模式；不得让默认 `dev` 脚本加载 `--mode server` 或 `tms-frontend/.env.server`。
+13. 纯本地后端联调必须显式运行 `npm run dev:frontend:local`；全量服务器联调必须显式运行 `npm run dev:frontend:server`，该模式才允许读取 `tms-frontend/.env.server` 中的公开 `VITE_BACKEND_URL`。
+14. `npm run dev:frontend` 与 `npm run dev:frontend:hybrid` 等价；切换 local/server/hybrid 模式前必须停止旧的 `5174` Vite 进程，分流规则以 `docs/development-hybrid-backend.md` 为准。
+15. 前端页面出现“无法连接后端服务”时，先检查 Vite 实际注入的 `import.meta.env`、当前 `5174` 前端启动模式和 `npm run check:backend-version`，不得直接判断为业务模块处理失败。
+16. 运行 `npm run version:bump`、切换分支、拉取同事更新或修改 `tms-backend/app_version.py` 后，先运行 `npm run dev:backend:restart` 和 `npm run check:backend-version`，再刷新本地 `5174` 前端页面，避免旧 `8000` 后端进程继续返回上一版本。
 
 ## 浏览器自动化模块边界
 
@@ -143,7 +144,10 @@
 4. 所有上传文件名和下载文件名必须做 basename、扩展名和目录边界校验，避免路径遍历。
 5. 不新增 `HTTPException(status_code=500, detail=str(e))` 这类内部异常直出。对用户返回脱敏消息，内部细节写入受控日志或诊断信息。
 6. CORS 默认只允许本地前端来源；服务器或特殊部署必须通过 `TMS_CORS_ALLOW_ORIGINS` 显式配置允许来源。禁止恢复 `allow_origins=["*"]` + `allow_credentials=True`，除非先完成 Electron、浏览器和服务器暴露面的风险评估。
-7. 后端依赖当前使用 `requirements.txt`，不要为普通任务强制迁移到 `pyproject.toml`。
+7. Excel 处理结果历史归档统一走 `tms-backend/utils/excel_result_history.py`。本地后端不得默认直连本机 MinIO 保存历史结果；需要服务器持久化时，通过 `TOS_PROCESS_HISTORY_ARCHIVE_URL` + `TOS_PROCESS_HISTORY_ARCHIVE_TOKEN` 调用服务器 `/api/process-history/result-files`，由服务器后端写 `tos-results` 和 MySQL。
+8. 历史结果归档失败不得阻断当前 Excel 处理；当前结果仍保留旧 `/download/{filename}` 下载能力，响应中用 `history_warnings` 提示历史归档缺失。
+9. `TOS_PROCESS_HISTORY_WRITE_TOKEN`、`TOS_PROCESS_HISTORY_ARCHIVE_TOKEN`、MinIO access key/secret 和 MySQL 密码只能通过环境变量或已忽略的私有配置注入，禁止写入仓库、日志、remote URL 或提交信息。
+10. 后端依赖当前使用 `requirements.txt`，不要为普通任务强制迁移到 `pyproject.toml`。
 
 ## 版本更新记录边界
 
@@ -208,7 +212,7 @@ npm run server:package
 4. 正式大版本、Windows 桌面打包发布、自动更新或安装器链路改动，按发布敏感规则运行 `npm run check` 或发布专项验证。
 5. 若 `npm run check:quick` 超过 12-15 分钟，应先定位慢测试和重复覆盖，不得简单删除安全、契约、发布或部署关键测试。
 
-Gitea 检查环境通过 `npm run ci:install` 安装依赖，并用 `PYTHON=python3 npm run check` 做远端完整检查。远端检查不得顺手加入 `pack`、`build:win`、发布清单写入、上传或正式发布步骤；历史旧远端工作流不作为当前发布路径。
+Gitea 检查环境会先在 runner 的仓库工作区创建 `.venv`，通过该虚拟环境运行 `npm run ci:install` 安装依赖，并复用同一 `.venv` 运行 `npm run check` 做远端完整检查。Alpine CI 只为脚本级检查跳过 `rapidocr` 和 `onnxruntime` 这组可选 OCR engine runtime，正式后端 `requirements.txt` 仍保留完整依赖。远端检查不得顺手加入 `pack`、`build:win`、发布清单写入、上传或正式发布步骤；历史旧远端工作流不作为当前发布路径。
 
 用户可见改动默认由 `semantic-release` 根据 Conventional Commits 自动判断版本，并维护 `tms-frontend/src/shared/version/releaseNotes.json` 与 `tms-frontend/src/shared/version/releaseManifest.json`。普通功能、修复和文档清理不要手改 `releaseNotes.json` 或运行 `version:bump`；只有用户明确指定本地版本时才使用 `npm run version:set -- <version>`。
 `releaseNotes.json` 只描述当前版本变更；自动发布会重写 `added`、`improved`、`fixed` 数组。若确实手工指定版本，必须确认 `releaseNotes.json.version` 与 `app-version.json` 一致，并移除上一版本遗留条目。

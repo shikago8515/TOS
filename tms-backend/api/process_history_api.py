@@ -2,14 +2,27 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import secrets
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, Form, Header, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 
+from utils.excel_result_history import (
+    DEFAULT_RESULT_CONTENT_TYPE,
+    ExcelResultHistoryContext,
+    process_history_response_fields,
+    store_uploaded_process_result_file,
+)
+from utils.minio_storage import get_object_response, sanitize_object_segment
 from utils.mysql_store import (
     count_process_history_records,
+    get_process_history_result_file,
     list_process_history_records,
     upsert_process_history_record,
 )
@@ -17,6 +30,7 @@ from utils.mysql_store import (
 
 router = APIRouter(prefix="/process-history", tags=["Process History"])
 logger = logging.getLogger(__name__)
+HISTORY_WRITE_TOKEN_ENV = "TOS_PROCESS_HISTORY_WRITE_TOKEN"
 
 
 class ProcessSummaryItem(BaseModel):
@@ -107,12 +121,144 @@ def save_process_history_record(payload: ProcessHistoryPayload) -> dict[str, Any
     }
 
 
+@router.post("/result-files")
+def save_process_history_result_file(
+    moduleId: str = Form(...),
+    requestId: str = Form(...),
+    originalFilename: str = Form(""),
+    moduleName: str = Form(""),
+    status: str = Form("success"),
+    durationMs: int = Form(0),
+    message: str = Form(""),
+    inputFiles: str = Form("[]"),
+    outputFile: str = Form(""),
+    summary: str = Form("[]"),
+    createdAt: str | None = Form(None),
+    contentType: str = Form(""),
+    file: UploadFile = File(...),
+    history_write_token: str | None = Header(None, alias="X-TOS-History-Write-Token"),
+) -> dict[str, Any]:
+    _verify_history_write_token(history_write_token)
+    module_id = _required_form_value(moduleId, "moduleId")
+    request_id = _required_form_value(requestId, "requestId")
+    safe_filename = sanitize_object_segment(originalFilename or file.filename or "result.xlsx")
+    normalized_status = _normalize_status(status) or "success"
+    content_type = str(contentType or file.content_type or DEFAULT_RESULT_CONTENT_TYPE).strip()
+    history_record = {
+        "record_id": request_id,
+        "module_id": module_id,
+        "module_name": str(moduleName or "").strip(),
+        "status": normalized_status,
+        "duration_ms": max(0, int(durationMs or 0)),
+        "message": str(message or ""),
+        "input_files": _parse_json_list_field(inputFiles, "inputFiles"),
+        "output_file": sanitize_object_segment(outputFile or safe_filename),
+        "summary": _parse_json_list_field(summary, "summary"),
+        "created_at": _parse_created_at(createdAt),
+        "source_system": "backend.result-history",
+    }
+
+    try:
+        archive_payload = store_uploaded_process_result_file(
+            file=file,
+            context=ExcelResultHistoryContext(
+                module_id=module_id,
+                request_id=request_id,
+                original_filename=safe_filename,
+                content_type=content_type,
+            ),
+            history_record=history_record,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Failed to save process history result file: module_id=%s request_id=%s filename=%s",
+            module_id,
+            request_id,
+            safe_filename,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="处理结果历史文件暂时无法保存，请稍后重试或联系管理员检查服务器 MinIO 存储连接。",
+        ) from exc
+
+    return {
+        "ok": True,
+        **process_history_response_fields(request_id, archive_payload),
+    }
+
+
+@router.get("/files/{file_id}/download")
+def download_process_history_result_file(file_id: int):
+    row = get_process_history_result_file(file_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="处理结果文件不存在或已被清理。")
+
+    try:
+        response = get_object_response(row["bucket"], row["object_key"])
+    except Exception as exc:
+        logger.exception(
+            "Failed to download process history result file: file_id=%s bucket=%s object_key=%s",
+            file_id,
+            row.get("bucket"),
+            row.get("object_key"),
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="处理结果文件暂时无法下载，请稍后重试或联系管理员检查 MinIO 存储连接。",
+        ) from exc
+
+    filename = row.get("original_filename") or f"process-result-{file_id}.xlsx"
+    headers = {
+        "Content-Disposition": _attachment_content_disposition(filename),
+        "Cache-Control": "no-store",
+    }
+    return StreamingResponse(
+        response.stream(32 * 1024),
+        media_type=row.get("content_type") or "application/octet-stream",
+        headers=headers,
+        background=BackgroundTask(response.close),
+    )
+
+
 def _split_module_ids(raw_value: str | None) -> list[str]:
     return [
         item.strip()
         for item in str(raw_value or "").split(",")
         if item.strip()
     ]
+
+
+def _verify_history_write_token(token: str | None) -> None:
+    expected_token = os.environ.get(HISTORY_WRITE_TOKEN_ENV, "").strip()
+    if not expected_token:
+        raise HTTPException(
+            status_code=503,
+            detail="处理结果历史归档接口未配置写入 token，请联系管理员配置服务器后端。",
+        )
+    if not token or not secrets.compare_digest(str(token), expected_token):
+        raise HTTPException(status_code=401, detail="处理结果历史归档无权限。")
+
+
+def _required_form_value(value: str, field_name: str) -> str:
+    normalized_value = str(value or "").strip()
+    if not normalized_value:
+        raise HTTPException(status_code=400, detail=f"{field_name} 不能为空。")
+    if len(normalized_value) > 128:
+        raise HTTPException(status_code=400, detail=f"{field_name} 超过长度限制。")
+    return normalized_value
+
+
+def _parse_json_list_field(raw_value: str, field_name: str) -> list[Any]:
+    text = str(raw_value or "").strip()
+    if not text:
+        return []
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"{field_name} 不是有效的 JSON 数组。") from exc
+    if not isinstance(payload, list):
+        raise HTTPException(status_code=400, detail=f"{field_name} 必须是 JSON 数组。")
+    return payload
 
 
 def _summary_item_payload(item: ProcessSummaryItem) -> dict[str, Any]:
@@ -147,7 +293,8 @@ def _parse_created_at(value: str | None) -> datetime:
 
 
 def _record_payload(row: dict[str, Any]) -> dict[str, Any]:
-    return {
+    result_file = _result_file_payload(row)
+    payload = {
         "id": row["record_id"],
         "moduleId": row["module_id"],
         "moduleName": row.get("module_name", ""),
@@ -158,6 +305,24 @@ def _record_payload(row: dict[str, Any]) -> dict[str, Any]:
         "outputFile": row.get("output_file", ""),
         "summary": _safe_json_list(row.get("summary_json")),
         "createdAt": _format_datetime(row.get("created_at")),
+    }
+    if result_file:
+        payload["resultFile"] = result_file
+        payload["resultDownloadPath"] = result_file["downloadPath"]
+    return payload
+
+
+def _result_file_payload(row: dict[str, Any]) -> dict[str, Any] | None:
+    file_id = int(row.get("result_file_id") or 0)
+    if file_id <= 0:
+        return None
+    return {
+        "id": file_id,
+        "filename": row.get("result_file_name", ""),
+        "contentType": row.get("result_file_content_type", ""),
+        "fileSize": int(row.get("result_file_size") or 0),
+        "sha256": row.get("result_file_sha256", ""),
+        "downloadPath": f"/api/process-history/files/{file_id}/download",
     }
 
 
@@ -178,3 +343,10 @@ def _format_datetime(value: Any) -> str:
         utc_value = value.replace(tzinfo=timezone.utc)
         return utc_value.isoformat().replace("+00:00", "Z")
     return str(value or "")
+
+
+def _attachment_content_disposition(filename: str) -> str:
+    ascii_filename = filename.encode("ascii", errors="ignore").decode("ascii").strip()
+    fallback_filename = ascii_filename or "process-result.xlsx"
+    quoted_filename = quote(filename, safe="")
+    return f'attachment; filename="{fallback_filename}"; filename*=UTF-8\'\'{quoted_filename}'

@@ -11,7 +11,7 @@
 | `npm run check:backend` | 后端完整检查 | `python -m unittest discover tests/ -v`、`python -m compileall .` |
 | `npm run check:electron` | Electron 脚本测试 | 自动发现 `tms-electron-app/scripts/*.test.js` 并运行 `node --test` |
 | `npm run check` | 完整工程检查 | 工程脚本测试、前端完整检查、后端完整检查、Electron 脚本测试 |
-| `npm run ci:install` | Gitea 检查环境依赖安装 | 根目录、前端、Electron、Playwright console 的 `npm ci`，以及后端 `pip install -r requirements.txt` |
+| `npm run ci:install` | Gitea 检查环境依赖安装 | 根目录、前端、Electron、Playwright console 的 `npm ci`，以及在 CI `.venv` 中安装后端 `requirements.txt` |
 | `npm run test:server-package` | 服务器包脚本测试 | `node --test scripts/engineering/package-server-update.test.mjs` |
 | `npm run release:dry-run` | 自动发布预演 | 运行 `semantic-release --dry-run`，预览版本计算、CHANGELOG 和 release notes 生成 |
 | `npm run release` | 自动发布 | 由 Gitea 发布环境在 Gitea `main` push 后运行，生成版本提交、tag、当前 release notes、release manifest 和 Gitea Release |
@@ -80,5 +80,5 @@
 - 当前远端检查和发布以 Gitea `main` 为准，入口是 `.gitea/workflows/tos-check.yml`。
 - `main`、`codex/**` 分支 push，以及面向 `main` 的合并请求会运行完整 `npm run check`。
 - 只有 `refs/heads/main` push 且上一条提交不是 `chore(release):` 时，workflow 才会继续运行 `npm run release -- --no-ci`。
-- CI 会设置 `PYTHON=python3` 和 `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`，并在 runner 内通过系统包安装 `nodejs`、`npm`、`python3` 和 `pip`；当前远端检查只运行脚本级测试，不下载浏览器，也不做真实浏览器自动化 smoke。
+- CI 会设置 `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`，并在 runner 内通过系统包安装 `nodejs`、`npm`、`python3`、`pip` 和 venv 支持；依赖安装与完整检查都会通过仓库内 `.venv` 暴露的 `PYTHON` 和 `PATH` 运行，避免在 Alpine runner 的 PEP 668 系统 Python 环境中直接安装后端依赖。Alpine CI 只为脚本级检查跳过 `rapidocr` 和 `onnxruntime` 这组可选 OCR engine runtime，正式后端 `requirements.txt` 仍保留完整依赖。当前远端检查不下载浏览器，也不做真实浏览器自动化 smoke。
 - 远端检查不运行 `npm run pack`、`npm run build:win`、发布清单写入命令或任何上传发布产物的命令。

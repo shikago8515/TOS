@@ -52,8 +52,8 @@ test('server apply script posts release update records after deploy verification
 
   const backendWaitIndex = deployScript.indexOf(backendWait)
   const frontendWaitIndex = deployScript.indexOf(frontendWait)
-  const syncCallIndex = deployScript.lastIndexOf('\nsync_release_update_record\n')
-  const announcementSyncCallIndex = deployScript.lastIndexOf('\nsync_release_announcement\n')
+  const syncCallIndex = deployScript.search(/\r?\nsync_release_update_record\r?\n/)
+  const announcementSyncCallIndex = deployScript.search(/\r?\nsync_release_announcement\r?\n/)
 
   assert(backendWaitIndex > -1)
   assert(frontendWaitIndex > -1)

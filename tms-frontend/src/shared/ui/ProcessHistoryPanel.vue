@@ -41,11 +41,17 @@
               {{ text(`+${record.inputFiles.length - 4}`) }}
             </span>
           </div>
+          <div v-if="record.outputFile" class="history-result">
+            <span class="history-result__file">
+              <AppIcon name="file-spreadsheet" />
+              {{ text(record.resultFile?.filename || record.outputFile) }}
+            </span>
+          </div>
         </div>
       </article>
     </div>
 
-    <div v-else class="empty-history">
+    <div v-if="records.length === 0" class="empty-history">
       <AppIcon name="folder" />
       <p>{{ text('暂无处理记录') }}</p>
     </div>
@@ -359,6 +365,36 @@ time {
   color: #0d9488 !important;
   border-color: #a7f3d0 !important;
   font-weight: 700 !important;
+}
+
+.history-result {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.history-result__file {
+  max-width: 240px;
+  padding: 3px 10px;
+  overflow: hidden;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.history-result__file .app-icon {
+  width: 12px;
+  height: 12px;
+  color: #4f46e5;
 }
 
 /* --- Empty State --- */

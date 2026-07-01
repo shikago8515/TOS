@@ -15,6 +15,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from modules.tms_finance_work_sales_module import TmsFinanceWorkSalesModule
+from utils.excel_result_history import archive_process_output_history
 from utils.excel_upload_backup import ExcelUploadBackupContext
 from utils.file_utils import (
     copy_output_to_directory,
@@ -173,6 +174,12 @@ async def process_work_sales(
             "diagnostics": result["diagnostics"],
             "totals": result["totals"],
             "source_summary": result["source_summary"],
+            **archive_process_output_history(
+                upload_dir=UPLOAD_DIR,
+                module_id=MODULE_ID,
+                request_id=request_id,
+                output_filename=output_filename,
+            ),
         }
     except HTTPException:
         raise

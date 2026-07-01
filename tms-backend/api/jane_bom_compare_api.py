@@ -13,6 +13,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from modules.jane_bom_compare_module import JaneBomCompareModule
+from utils.excel_result_history import archive_process_output_history
 from utils.excel_upload_backup import ExcelUploadBackupContext
 from utils.file_utils import copy_upload_to_path
 
@@ -185,6 +186,12 @@ async def process_jane_bom_compare(
                 "missing_row_count": result["missing_row_count"],
                 "no_bom_key_count": result["no_bom_key_count"],
                 "output_file": output_filename,
+                **archive_process_output_history(
+                    upload_dir=UPLOAD_DIR,
+                    module_id=MODULE_ID,
+                    request_id=request_id,
+                    output_filename=output_filename,
+                ),
             }
 
         return {
