@@ -718,18 +718,38 @@ function getFreePort() {
   })
 }
 
-async function waitForHealth(url, timeoutMs = 5000) {
+async function waitForHealth(url, timeoutMs = 15000) {
   const startedAt = Date.now()
   while (Date.now() - startedAt < timeoutMs) {
-    try {
-      const response = await fetch(url)
-      if (response.ok) return true
-    } catch (_error) {
-      // Keep waiting while the test server starts.
+    if (await requestHealthOk(url)) {
+      return true
     }
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
   return false
+}
+
+function requestHealthOk(url, timeoutMs = 1000) {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (value) => {
+      if (!settled) {
+        settled = true
+        resolve(value)
+      }
+    }
+
+    const request = http.get(url, { timeout: timeoutMs }, (response) => {
+      const ok = response.statusCode >= 200 && response.statusCode < 300
+      response.resume()
+      finish(ok)
+    })
+    request.on('timeout', () => {
+      request.destroy()
+      finish(false)
+    })
+    request.on('error', () => finish(false))
+  })
 }
 
 function createZipFromDir(sourceDir, zipPath) {

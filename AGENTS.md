@@ -212,7 +212,7 @@ npm run server:package
 4. 正式大版本、Windows 桌面打包发布、自动更新或安装器链路改动，按发布敏感规则运行 `npm run check` 或发布专项验证。
 5. 若 `npm run check:quick` 超过 12-15 分钟，应先定位慢测试和重复覆盖，不得简单删除安全、契约、发布或部署关键测试。
 
-Gitea 检查环境会先在 runner 的仓库工作区创建 `.venv`，通过该虚拟环境运行 `npm run ci:install` 安装依赖，并复用同一 `.venv` 运行 `npm run check` 做远端完整检查。Alpine CI 只为脚本级检查跳过 `rapidocr` 和 `onnxruntime` 这组可选 OCR engine runtime，正式后端 `requirements.txt` 仍保留完整依赖。远端检查不得顺手加入 `pack`、`build:win`、发布清单写入、上传或正式发布步骤；历史旧远端工作流不作为当前发布路径。
+Gitea 检查环境会先在 runner 的仓库工作区创建 `.venv`，通过该虚拟环境运行 `npm run ci:install` 安装依赖，并复用同一 `.venv` 运行 `npm run check` 做远端完整检查。CI 系统包需包含 `nodejs`、`npm`、Python venv 支持，以及 Electron 自动化脚本测试使用的 `zip`、`unzip`、`lsof`。Alpine CI 只为脚本级检查跳过 `rapidocr` 和 `onnxruntime` 这组可选 OCR engine runtime，正式后端 `requirements.txt` 仍保留完整依赖。远端检查不得顺手加入 `pack`、`build:win`、发布清单写入、上传或正式发布步骤；历史旧远端工作流不作为当前发布路径。
 
 用户可见改动默认由 `semantic-release` 根据 Conventional Commits 自动判断版本，并维护 `tms-frontend/src/shared/version/releaseNotes.json` 与 `tms-frontend/src/shared/version/releaseManifest.json`。普通功能、修复和文档清理不要手改 `releaseNotes.json` 或运行 `version:bump`；只有用户明确指定本地版本时才使用 `npm run version:set -- <version>`。
 `releaseNotes.json` 只描述当前版本变更；自动发布会重写 `added`、`improved`、`fixed` 数组。若确实手工指定版本，必须确认 `releaseNotes.json.version` 与 `app-version.json` 一致，并移除上一版本遗留条目。
