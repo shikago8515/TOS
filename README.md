@@ -57,7 +57,7 @@ npm run server:package
 
 正式服务器发布前必须先推送并合并到 Gitea `main`。服务器 `~/TOS` 目录不是 Git 仓库，不在 `~/TOS` 执行 `git pull`；只有 `~/TOS-source` 是跟踪 Gitea `main` 的源码目录。手动排障时才进入 `~/TOS-source` 执行 `git pull --ff-only origin main` 和 `bash scripts/server/deploy-gitea-main.sh`。
 
-Gitea 检查环境使用同一套根目录入口：先在 runner 的仓库工作区创建 `.venv`，通过该虚拟环境运行 `npm run ci:install` 安装依赖，再复用同一 `.venv` 运行 `npm run check`。该远端检查不触发 `npm run pack`、`npm run build:win` 或发布清单写入命令。
+Gitea 检查环境使用同一套根目录入口：先在 runner 的仓库工作区创建 `.venv`，通过该虚拟环境运行 `npm run ci:install` 安装依赖，再复用同一 `.venv` 运行 `npm run check`。Alpine CI 会跳过 `rapidocr` 和 `onnxruntime` 这组可选 OCR engine runtime，正式后端依赖文件仍保留完整依赖。该远端检查不触发 `npm run pack`、`npm run build:win` 或发布清单写入命令。
 
 常用前端开发入口：
 
