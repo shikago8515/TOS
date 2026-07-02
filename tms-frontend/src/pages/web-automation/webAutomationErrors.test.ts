@@ -169,7 +169,7 @@ describe('webAutomationErrors', () => {
     }
 
     expect(appendAutomationFailureExamples('未完成', payload)).toBe(
-      '未完成 失败示例：INV-1: PDF dyncon URL was not found.；INV-3: PageResolver URL was not found.',
+      '未完成 失败示例：INV-1: PDF dyncon URL was not found.；INV-3: PageResolver URL was not found.；另有 1 条失败，请在右侧失败明细或失败明细 Excel 中查看。',
     )
   })
 
@@ -182,7 +182,7 @@ describe('webAutomationErrors', () => {
     }
 
     expect(appendAutomationFailureExamples('Invoice PDF 下载未完成。', payload)).toBe(
-      'Invoice PDF 下载未完成。 失败示例：17-06-26-1548: Infor Nexus 系统没有找到这个 Invoice 的可打开结果。请确认 Excel 中的 INVOICE NUMBER 是否正确、该发票是否已在 Infor Nexus 创建，或当前账号是否有权限查看。',
+      'Invoice PDF 下载未完成。 失败示例：17-06-26-1548: Infor Nexus 系统没有找到这个 Invoice 的可打开结果。请确认 Excel 中的 INVOICE NUMBER 是否正确、该发票是否已在 Infor Nexus 创建，或当前账号是否有权限查看。；另有 1 条失败，请在右侧失败明细或失败明细 Excel 中查看。',
     )
   })
 })
