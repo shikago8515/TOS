@@ -105,19 +105,11 @@ jobs:
           git config user.name "tos-release-bot"
           git config user.email "tos-release-bot@users.noreply.gitea.local"
           repo_url="${GITEA_SERVER_URL%/}/${GITEA_REPOSITORY}.git"
-          askpass="$(mktemp)"
-          cat > "$askpass" <<'EOF'
-          #!/bin/sh
-          case "$1" in
-            *Username*) printf '%s\n' "${GITEA_ACTOR:-tos-release-bot}" ;;
-            *Password*) printf '%s\n' "$GITEA_TOKEN" ;;
-            *) printf '\n' ;;
-          esac
-          EOF
-          chmod 700 "$askpass"
-          export GIT_ASKPASS="$askpass"
+          basic_auth="$(printf '%s:%s' "${GITEA_ACTOR:-tos-release-bot}" "$GITEA_TOKEN" | base64 | tr -d '\n')"
+          git config --local "http.${repo_url}.extraHeader" "Authorization: Basic $basic_auth"
+          unset basic_auth
           export GIT_TERMINAL_PROMPT=0
-          trap 'rm -f "$askpass"' EXIT
+          trap 'git config --local --unset-all "http.${repo_url}.extraHeader" >/dev/null 2>&1 || true' EXIT
           git remote set-url origin "$repo_url"
           git checkout -B main "$GITEA_SHA"
           git fetch origin main --tags --prune
