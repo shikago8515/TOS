@@ -101,20 +101,91 @@ def _installer_download_filename(
 
 
 def _manifest_filename_for_stable_object(package_id: str, object_key: str) -> str:
+    package = _manifest_package_for_stable_object(package_id, object_key)
+    return str(package.get("filename") or "").strip()
+
+
+def _manifest_file_size_for_stable_object(package_id: str, object_key: str) -> int | None:
+    package = _manifest_package_for_stable_object(package_id, object_key)
+    return _positive_int(package.get("fileSize") or package.get("file_size"))
+
+
+def _manifest_payload_file_size(package_id: str, object_key: str) -> int | None:
+    package = _manifest_package_for_stable_object(package_id, "")
+    payload = package.get("payload")
+    if not isinstance(payload, dict):
+        return None
+
+    payload_object_key = str(payload.get("objectKey") or payload.get("object_key") or "")
+    payload_versioned_object_key = str(
+        payload.get("versionedObjectKey") or payload.get("versioned_object_key") or ""
+    )
+    if object_key == payload_object_key:
+        return _positive_int(payload.get("fileSize") or payload.get("file_size"))
+    if object_key == payload_versioned_object_key:
+        return _positive_int(
+            payload.get("versionedFileSize")
+            or payload.get("versioned_file_size")
+            or payload.get("fileSize")
+            or payload.get("file_size")
+        )
+    return None
+
+
+def _manifest_package_for_stable_object(package_id: str, object_key: str) -> dict[str, Any]:
     manifest = read_installer_manifest()
     packages = manifest.get("packages")
     if not isinstance(packages, dict):
-        return ""
+        return {}
 
     package = packages.get(package_id)
     if not isinstance(package, dict):
-        return ""
+        return {}
 
     package_object_key = str(package.get("objectKey") or package.get("object_key") or "")
-    if package_object_key != object_key:
-        return ""
+    if object_key and package_object_key != object_key:
+        return {}
 
-    return str(package.get("filename") or "").strip()
+    return package
+
+
+def _positive_int(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _object_response_content_length(response: Any, fallback_size: Any = None) -> int | None:
+    headers = getattr(response, "headers", None)
+    if headers is not None:
+        for header_name in ("content-length", "Content-Length"):
+            try:
+                length = _positive_int(headers.get(header_name))
+            except Exception:
+                length = None
+            if length is not None:
+                return length
+
+    for attr_name in ("content_length", "length"):
+        length = _positive_int(getattr(response, attr_name, None))
+        if length is not None:
+            return length
+
+    return _positive_int(fallback_size)
+
+
+def _add_stream_download_headers(
+    headers: dict[str, str],
+    response: Any,
+    fallback_size: Any = None,
+) -> dict[str, str]:
+    length = _object_response_content_length(response, fallback_size)
+    if length is not None:
+        headers["Content-Length"] = str(length)
+        headers["Accept-Ranges"] = "bytes"
+    return headers
 
 
 class SystemConfigSummaryResponse(BaseModel):
@@ -283,6 +354,7 @@ async def automation_module_download(module_id: str) -> StreamingResponse:
         ),
         "Cache-Control": "no-store",
     }
+    _add_stream_download_headers(headers, response, normalized.get("fileSize"))
     return StreamingResponse(
         response.stream(64 * 1024),
         media_type=normalized["contentType"],
@@ -324,6 +396,11 @@ async def automation_helper_download() -> StreamingResponse:
         "Content-Disposition": f'attachment; filename="{filename}"',
         "Cache-Control": "no-store",
     }
+    _add_stream_download_headers(
+        headers,
+        response,
+        _manifest_file_size_for_stable_object("automation-helper", object_key),
+    )
     return StreamingResponse(
         response.stream(64 * 1024),
         media_type=str(helper_config.get("content_type") or HELPER_CONTENT_TYPE),
@@ -363,6 +440,11 @@ async def automation_helper_payload_download() -> StreamingResponse:
         "Content-Disposition": f'attachment; filename="{filename}"',
         "Cache-Control": "no-store",
     }
+    _add_stream_download_headers(
+        headers,
+        response,
+        _manifest_payload_file_size("automation-helper", object_key),
+    )
     return StreamingResponse(
         response.stream(64 * 1024),
         media_type=str(
@@ -411,6 +493,11 @@ async def automation_helper_versioned_payload_download(
         "Content-Disposition": f'attachment; filename="{filename}"',
         "Cache-Control": "no-store",
     }
+    _add_stream_download_headers(
+        headers,
+        response,
+        _manifest_payload_file_size("automation-helper", object_key),
+    )
     return StreamingResponse(
         response.stream(64 * 1024),
         media_type=str(
@@ -454,6 +541,11 @@ async def tos_desktop_download() -> StreamingResponse:
         "Content-Disposition": f'attachment; filename="{filename}"',
         "Cache-Control": "no-store",
     }
+    _add_stream_download_headers(
+        headers,
+        response,
+        _manifest_file_size_for_stable_object("tos-desktop", object_key),
+    )
     return StreamingResponse(
         response.stream(64 * 1024),
         media_type=str(desktop_config.get("content_type") or TOS_DESKTOP_CONTENT_TYPE),
@@ -495,6 +587,11 @@ async def tos_desktop_full_download() -> StreamingResponse:
         "Content-Disposition": f'attachment; filename="{filename}"',
         "Cache-Control": "no-store",
     }
+    _add_stream_download_headers(
+        headers,
+        response,
+        _manifest_file_size_for_stable_object("tos-desktop-full", object_key),
+    )
     return StreamingResponse(
         response.stream(64 * 1024),
         media_type=str(desktop_config.get("content_type") or TOS_DESKTOP_FULL_CONTENT_TYPE),
@@ -534,6 +631,11 @@ async def tos_desktop_payload_download() -> StreamingResponse:
         "Content-Disposition": f'attachment; filename="{filename}"',
         "Cache-Control": "no-store",
     }
+    _add_stream_download_headers(
+        headers,
+        response,
+        _manifest_payload_file_size("tos-desktop", object_key),
+    )
     return StreamingResponse(
         response.stream(64 * 1024),
         media_type=str(
@@ -582,6 +684,11 @@ async def tos_desktop_versioned_payload_download(
         "Content-Disposition": f'attachment; filename="{filename}"',
         "Cache-Control": "no-store",
     }
+    _add_stream_download_headers(
+        headers,
+        response,
+        _manifest_payload_file_size("tos-desktop", object_key),
+    )
     return StreamingResponse(
         response.stream(64 * 1024),
         media_type=str(
@@ -631,6 +738,7 @@ async def po_auto_download_template_download() -> StreamingResponse:
         ),
         "Cache-Control": "no-store",
     }
+    _add_stream_download_headers(headers, response)
     return StreamingResponse(
         response.stream(64 * 1024),
         media_type=template_config["content_type"],

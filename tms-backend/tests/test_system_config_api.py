@@ -8,8 +8,9 @@ from api import system_config_api
 
 
 class FakeObjectResponse:
-    def __init__(self, content: bytes) -> None:
+    def __init__(self, content: bytes, content_length: int | None = None) -> None:
         self.content = content
+        self.headers = {"content-length": str(content_length or len(content))}
         self.closed = False
 
     def stream(self, chunk_size: int):
@@ -213,6 +214,7 @@ class SystemConfigApiTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"PK module bytes")
+        self.assertEqual(response.headers["content-length"], str(len(b"PK module bytes")))
         self.assertEqual(requested_keys, ["automation-modules/shipping-automation-demo/shipping.zip"])
 
     def test_tos_desktop_download_streams_installer(self) -> None:
@@ -226,11 +228,13 @@ class SystemConfigApiTest(unittest.TestCase):
 
         with patch.object(system_config_api, "get_minio_bucket", return_value="tos-downloads"), \
              patch.object(system_config_api, "get_settings", return_value={}), \
+             patch.object(system_config_api, "read_installer_manifest", return_value={"packages": {}}), \
              patch.object(system_config_api, "get_object_response", side_effect=fake_get_object):
             response = self.client.get("/api/system/config/tos-desktop/download")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"MZ installer bytes")
+        self.assertEqual(response.headers["content-length"], str(len(b"MZ installer bytes")))
         self.assertIn(
             f"TOS-Desktop-Setup.{system_config_api.APP_VERSION}.exe",
             response.headers["content-disposition"],
@@ -265,6 +269,7 @@ class SystemConfigApiTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"MZ helper installer bytes")
+        self.assertEqual(response.headers["content-length"], str(len(b"MZ helper installer bytes")))
         self.assertIn(manifest_filename, response.headers["content-disposition"])
         self.assertEqual(requested_keys, ["automation-helper/TOS-Automation-Helper-Setup.exe"])
 
@@ -279,11 +284,13 @@ class SystemConfigApiTest(unittest.TestCase):
 
         with patch.object(system_config_api, "get_minio_bucket", return_value="tos-downloads"), \
              patch.object(system_config_api, "get_settings", return_value={}), \
+             patch.object(system_config_api, "read_installer_manifest", return_value={"packages": {}}), \
              patch.object(system_config_api, "get_object_response", side_effect=fake_get_object):
             response = self.client.get("/api/system/config/tos-desktop-full/download")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"MZ full installer bytes")
+        self.assertEqual(response.headers["content-length"], str(len(b"MZ full installer bytes")))
         self.assertIn(
             f"TOS-Desktop-Full-Setup.{system_config_api.APP_VERSION}.exe",
             response.headers["content-disposition"],
@@ -303,6 +310,7 @@ class SystemConfigApiTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"PK payload bytes")
+        self.assertEqual(response.headers["content-length"], str(len(b"PK payload bytes")))
         self.assertEqual(response.headers["content-type"].split(";")[0], "application/zip")
 
     def test_tos_desktop_versioned_payload_rejects_unsafe_sha(self) -> None:
@@ -328,6 +336,7 @@ class SystemConfigApiTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"PK versioned payload bytes")
+        self.assertEqual(response.headers["content-length"], str(len(b"PK versioned payload bytes")))
 
     def test_po_auto_download_template_status_reports_available_object(self) -> None:
         with patch.object(system_config_api, "get_minio_bucket", return_value="tos-templates"), \
