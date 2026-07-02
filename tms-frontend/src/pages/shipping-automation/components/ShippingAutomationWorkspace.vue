@@ -263,6 +263,13 @@ import {
   primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
   recordWebAutomationEvent, stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
+import {
+  getExecutorArtifactDownloadUrls,
+  readExecutorResponseText,
+  safeParseExecutorJson,
+  type ExecutorResponsePayload,
+  type LocalExecutorRun,
+} from '../../web-automation/automationExecutorResponse'
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
 import { DEFAULT_INFOR_NEXUS_USERNAME, normalizeInforNexusUsername } from '../../web-automation/webAutomationCredentials'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
@@ -367,7 +374,7 @@ function syncActiveRunViewFromHealth(): void {
   statusText.value = text('后台执行器任务已结束，请查看执行记录或重新开始。')
 }
 
-function findShippingActiveRun(health: LocalExecutorHealth | null | undefined): Record<string, any> | null {
+function findShippingActiveRun(health: LocalExecutorHealth | null | undefined): LocalExecutorRun | null {
   return findLocalExecutorActiveRun(health, (run) => String(run.action || '').trim() === 'run-shipping-file')
 }
 
@@ -480,12 +487,12 @@ async function resolveRunCredentialsPayload(): Promise<Record<string, string>> {
 
 function readErrorMessage(e: unknown, fb: string): string { return e instanceof Error && e.message ? e.message : fb }
 async function createBackendRunRecord(f: File): Promise<AutomationRunRecord | null> { if (!entry) return null; return createAutomationRunRecord(entry.id, f, entry.title) }
-async function finishBackendRunRecord(r: AutomationRunRecord | null, ok: boolean, msg: string, p: Record<string, any> | null): Promise<void> { if (!r?.runId) return; await finishAutomationRunRecord(r.runId, ok ? 'success' : 'failed', msg || (ok ? 'completed' : 'failed'), p, collectResultFiles(p)) }
-function collectResultFiles(p: Record<string, any> | null): AutomationRunFileInput[] {
-  const u = p?.artifacts?.downloadUrls; if (!u || typeof u !== 'object') return []
+async function finishBackendRunRecord(r: AutomationRunRecord | null, ok: boolean, msg: string, p: ExecutorResponsePayload | null): Promise<void> { if (!r?.runId) return; await finishAutomationRunRecord(r.runId, ok ? 'success' : 'failed', msg || (ok ? 'completed' : 'failed'), p, collectResultFiles(p)) }
+function collectResultFiles(p: ExecutorResponsePayload | null): AutomationRunFileInput[] {
+  const u = getExecutorArtifactDownloadUrls(p); if (!u) return []
   return [bfi(u.resultExcelUrl, 'result_excel', 'shipping-last-result.xlsx'), bfi(u.resultJsonUrl, 'result_json', 'shipping-last-result.json'), bfi(u.failedPoExcelUrl, 'failed_rows_excel', 'shipping-last-failed-po-rows.xlsx'), bfi(u.failedPoJsonUrl, 'failed_rows_json', 'shipping-last-failed-po-rows.json')].filter((x): x is AutomationRunFileInput => Boolean(x))
 }
-function bfi(rp: string, fr: string, fn: string): AutomationRunFileInput | null { const u = buildShippingArtifactUrl(rp); if (!u) return null; return { url: u, fileRole: fr, fileName: fn } }
+function bfi(rp: unknown, fr: string, fn: string): AutomationRunFileInput | null { const u = buildShippingArtifactUrl(rp); if (!u) return null; return { url: u, fileRole: fr, fileName: fn } }
 
 function showRunRequirementDialog(rawMessage: string): false {
   const localized = text(rawMessage)
@@ -519,12 +526,12 @@ async function runShipping(): Promise<void> {
   try {
     const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload()
     const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': currentEntry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: currentEntry.localExecutorToken, headless: !showBrowserView.value, ...cp, shipmentScanAction: 'assign-equipment-id' }) })
-    const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); updateShippingArtifactLinks(j)
-    await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j)
-    if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(j?.message || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }
+    const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseExecutorJson(raw); const executorMessage = readExecutorResponseText(j); updateShippingArtifactLinks(j)
+    await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), executorMessage, j)
+    if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(executorMessage || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }
     if (!j) throw new Error('无法解析响应。')
-    if (j?.ok && j?.shipmentScanOpened) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedPoCount ?? 0}/${j.totalPoCount ?? '?'} 个 PO。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }
-    statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。')
+    if (j?.ok && j?.shipmentScanOpened) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedPoCount ?? 0}/${j.totalPoCount ?? '?'} 个 PO。`; lastResult.value = { ok: true, message: executorMessage || undefined }; messageTone.value = 'success'; message.value = text('执行完成。'); return }
+    statusLabel.value = '未完成'; statusText.value = executorMessage || '未确认完成。'; lastResult.value = { ok: false, message: executorMessage || undefined }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。')
   } catch (e) { const m = formatAutomationExecutorMessage(readErrorMessage(e, '网络错误'), '自动化执行异常。'); statusLabel.value = '异常'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m }
   finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) }
 }
@@ -533,14 +540,13 @@ function setNotReady(): void { statusLabel.value = '未就绪'; statusText.value
 async function ensureReady(): Promise<boolean> { if (entry && activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) await startActiveApp(true); else if (!executorHealth.value?.ok) await startActiveApp(true); await refreshExecutorState(true).catch(() => {}); return Boolean(executorHealth.value?.ok) }
 async function fileToBase64(f: File): Promise<string> { const b = await f.arrayBuffer(); return arrayBufferToBase64(b) }
 function arrayBufferToBase64(b: ArrayBuffer): string { const bytes = new Uint8Array(b); const cs = 0x8000; let bin = ''; for (let i = 0; i < bytes.length; i += cs) { const chunk = bytes.subarray(i, i + cs); bin += String.fromCharCode(...chunk) }; return window.btoa(bin) }
-function safeParseJson(r: string): Record<string, any> | null { try { return r ? JSON.parse(r) : null } catch { return null } }
-function buildExecutorResponseMessage(res: Response, raw: string, payload: Record<string, any> | null, fallback = '自动化执行失败。'): string { const rawMessage = typeof payload?.message === 'string' ? payload.message : ''; if (res.status === 404 && /not\s*found/i.test(rawMessage || raw || '')) return '本机执行器缺少当前自动化接口，系统已同步最新自动化逻辑但接口仍不可用。请确认服务器 automation-modules 模块包已发布，或重启本机自动化执行器后再试。'; if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback); if (!payload) return formatAutomationExecutorMessage('JSON.parse: unexpected character at line 1 column 1 of the JSON data', fallback); return formatAutomationExecutorMessage(`HTTP ${res.status}`, fallback) }
-function updateShippingArtifactLinks(p: Record<string, any> | null): void {
-  const u = p?.artifacts?.downloadUrls; const re = buildShippingArtifactUrl(u?.resultExcelUrl)
+function buildExecutorResponseMessage(res: Response, raw: string, payload: ExecutorResponsePayload | null, fallback = '自动化执行失败。'): string { const rawMessage = readExecutorResponseText(payload); if (res.status === 404 && /not\s*found/i.test(rawMessage || raw || '')) return '本机执行器缺少当前自动化接口，系统已同步最新自动化逻辑但接口仍不可用。请确认服务器 automation-modules 模块包已发布，或重启本机自动化执行器后再试。'; if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback); if (!payload) return formatAutomationExecutorMessage('JSON.parse: unexpected character at line 1 column 1 of the JSON data', fallback); return formatAutomationExecutorMessage(`HTTP ${res.status}`, fallback) }
+function updateShippingArtifactLinks(p: ExecutorResponsePayload | null): void {
+  const u = getExecutorArtifactDownloadUrls(p); const re = buildShippingArtifactUrl(u?.resultExcelUrl)
   if (!re) { shippingArtifactLinks.value = null; return }
   shippingArtifactLinks.value = { resultExcelUrl: re, resultJsonUrl: buildShippingArtifactUrl(u?.resultJsonUrl) || undefined, failedPoExcelUrl: buildShippingArtifactUrl(u?.failedPoExcelUrl) || undefined, failedPoJsonUrl: buildShippingArtifactUrl(u?.failedPoJsonUrl) || undefined, failedRowCount: Number(p?.artifacts?.failedRowCount ?? 0) }
 }
-function buildShippingArtifactUrl(rp: string): string { const np = String(rp || '').trim(); if (!np) return ''; if (/^https?:\/\//i.test(np)) return np; const bu = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return bu ? `${bu}${np.startsWith('/') ? np : `/${np}`}` : '' }
+function buildShippingArtifactUrl(rp: unknown): string { const np = String(rp || '').trim(); if (!np) return ''; if (/^https?:\/\//i.test(np)) return np; const bu = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return bu ? `${bu}${np.startsWith('/') ? np : `/${np}`}` : '' }
 function downloadShippingArtifact(u: string | undefined, fn: string): void { if (!u) return; const a = document.createElement('a'); a.href = u; a.download = fn; a.rel = 'noopener'; document.body.append(a); a.click(); a.remove() }
 function createFallback(e: WebAutomationEntry): AutomationAppInfo { return { id: e.appId, name: e.title, description: e.description, provider: 'Playwright', category: '网页自动化', version: '', available: true, running: false, port: Number(new URL(e.executorBaseUrl).port || 0), url: e.executorBaseUrl } }
 function goBack(): void { if (window.history.length > 1) router.back(); else void router.push('/') }
