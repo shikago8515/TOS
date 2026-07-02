@@ -352,6 +352,16 @@ import { buildBackendDownloadUrl } from '../../../shared/api/backendClient'
 import type { AutomationAppInfo } from '../../../types/electronApi'
 import type { AutomationRunFileInput, AutomationRunRecord, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {
+  extractExecutorRunProgress,
+  getExecutorArtifactDownloadUrls,
+  isJsonRecord,
+  readExecutorResponseText,
+  safeParseExecutorJson,
+  type ExecutorProgress,
+  type ExecutorResponsePayload,
+  type LocalExecutorRun,
+} from '../../web-automation/automationExecutorResponse'
+import {
   createAutomationRunRecord,
   fetchAutomationApps,
   finishAutomationRunRecord,
@@ -434,7 +444,7 @@ const statusLabel = ref('待命')
 const statusText = ref('')
 const lastResult = ref<{ ok: boolean; message?: string } | null>(null)
 const lastRawResponse = ref('')
-const runProgress = ref<Record<string, any> | null>(null)
+const runProgress = ref<ExecutorProgress | null>(null)
 const failureDetails = ref<InvoiceFailureDetail[]>([])
 const resultFileLinks = ref<ResultFileLinks>({})
 let progressTimer: number | null = null
@@ -599,7 +609,7 @@ function syncActiveRunViewFromHealth(): void {
     sending.value = true
     lastResult.value = null
     statusLabel.value = '执行中'
-    const progress = extractRunProgress(executorHealth.value)
+    const progress = extractExecutorRunProgress(executorHealth.value)
     if (progress) {
       runProgress.value = progress
       statusText.value = formatRunProgress(progress)
@@ -628,7 +638,7 @@ function clearRestoredActiveRunState(): void {
   statusLabel.value = '待命'
 }
 
-function findPoAutoDownloadActiveRun(health: LocalExecutorHealth | null | undefined): Record<string, any> | null {
+function findPoAutoDownloadActiveRun(health: LocalExecutorHealth | null | undefined): LocalExecutorRun | null {
   return findLocalExecutorActiveRun(health, (run) => {
     const action = String(run.action || '').trim()
     const inputMode = String(run.inputMode || '').trim()
@@ -661,7 +671,7 @@ async function pollRunProgress(): Promise<void> {
       statusText.value = text('后台下载任务已结束，请查看执行记录或重新开始。')
       return
     }
-    const progress = extractRunProgress(health)
+    const progress = extractExecutorRunProgress(health)
     if (progress) {
       runProgress.value = progress
       statusText.value = formatRunProgress(progress)
@@ -671,19 +681,7 @@ async function pollRunProgress(): Promise<void> {
   }
 }
 
-function extractRunProgress(payload: Record<string, any> | LocalExecutorHealth | null | undefined): Record<string, any> | null {
-  const activeRun = payload?.activeRun as Record<string, any> | null | undefined
-  if (activeRun?.progress && typeof activeRun.progress === 'object') return activeRun.progress
-  const activeRuns = Array.isArray(payload?.activeRuns) ? payload.activeRuns as Record<string, any>[] : []
-  const firstProgress = activeRuns.find((item) => item?.progress)?.progress
-  if (firstProgress && typeof firstProgress === 'object') return firstProgress
-  const lastRun = payload?.lastRun as Record<string, any> | null | undefined
-  if (lastRun?.progress && typeof lastRun.progress === 'object') return lastRun.progress
-  const directProgress = (payload as Record<string, any> | null | undefined)?.progress
-  return directProgress && typeof directProgress === 'object' ? directProgress : null
-}
-
-function formatRunProgress(progress: Record<string, any>): string {
+function formatRunProgress(progress: ExecutorProgress): string {
   const phase = text(String(progress.phase || '执行中'))
   const total = Number(progress.activeInvoiceCount || progress.totalCount || progress.activeCount || 0)
   const completed = Number(progress.completedCount || 0)
@@ -830,7 +828,7 @@ async function selectSaveDirectory(): Promise<void> {
       }),
     })
     const raw = await response.text()
-    const result = safeParseJson(raw)
+    const result = safeParseExecutorJson(raw)
     if (response.status === 404) {
       messageTone.value = 'warning'
       message.value = text('本机自动化助手版本落后，请下载并安装最新版后重试。')
@@ -843,7 +841,7 @@ async function selectSaveDirectory(): Promise<void> {
     }
     if (!response.ok || !result?.ok || !result.path) {
       messageTone.value = 'error'
-      message.value = result?.message || text('选择目录失败。')
+      message.value = readExecutorResponseText(result) || text('选择目录失败。')
       return
     }
     saveDirectory.value = String(result.path)
@@ -864,7 +862,7 @@ async function downloadTemplate(): Promise<void> {
   try {
     const statusUrl = await buildBackendDownloadUrl(TEMPLATE_STATUS_PATH)
     const statusResponse = await fetch(statusUrl)
-    const statusPayload = safeParseJson(await statusResponse.text())
+    const statusPayload = safeParseExecutorJson(await statusResponse.text())
     if (!statusResponse.ok || statusPayload?.available !== true) {
       const errorMessage = readDownloadStatusMessage(
         statusPayload,
@@ -1049,17 +1047,17 @@ async function runPoAutoDownload(): Promise<void> {
     })
     const raw = await response.text()
     lastRawResponse.value = raw
-    const json = safeParseJson(raw)
+    const json = safeParseExecutorJson(raw)
     updateResultFileLinks(json)
     failureDetails.value = extractInvoiceFailureDetails(json)
-    const finalProgress = extractRunProgress(json)
+    const finalProgress = extractExecutorRunProgress(json)
     if (finalProgress) runProgress.value = finalProgress
-    await finishBackendRunRecord(runRecord, response.ok && Boolean(json?.ok), json?.message || '', json)
+    await finishBackendRunRecord(runRecord, response.ok && Boolean(json?.ok), readExecutorResponseText(json), json)
 
     if (!response.ok) {
       const friendlyMessage = buildExecutorResponseMessage(response, raw, json)
       const summaryMessage = buildPoDownloadSummaryMessage(json, friendlyMessage)
-      const shouldShowPrimaryErrorDialog = shouldShowAutomationErrorDialog(json?.message || friendlyMessage)
+      const shouldShowPrimaryErrorDialog = shouldShowAutomationErrorDialog(readExecutorResponseText(json) || friendlyMessage)
       if (shouldShowPrimaryErrorDialog) showAutomationErrorDialog(friendlyMessage)
       statusLabel.value = '未完成'
       statusText.value = summaryMessage
@@ -1085,7 +1083,7 @@ async function runPoAutoDownload(): Promise<void> {
           ? `Invoice PDF download complete. Downloaded ${completed}/${total}.`
           : `Invoice PDF 下载完成。已下载 ${completed}/${total} 个 Invoice。`
         : text('Invoice PDF 下载完成。')
-      lastResult.value = { ok: true, message: json.message }
+      lastResult.value = { ok: true, message: readExecutorResponseText(json) || undefined }
       messageTone.value = 'success'
       message.value = text('执行完成。')
       void showAppAlert(statusText.value, { tone: 'success' })
@@ -1093,7 +1091,7 @@ async function runPoAutoDownload(): Promise<void> {
     }
 
     statusLabel.value = '未完成'
-    statusText.value = buildPoDownloadSummaryMessage(json, json?.message || text('已触发，结果未确认。'))
+    statusText.value = buildPoDownloadSummaryMessage(json, readExecutorResponseText(json) || text('已触发，结果未确认。'))
     lastResult.value = { ok: false, message: statusText.value }
     messageTone.value = 'warning'
     message.value = statusText.value
@@ -1175,7 +1173,7 @@ async function finishBackendRunRecord(
   record: AutomationRunRecord | null,
   ok: boolean,
   messageText: string,
-  payload: Record<string, any> | null,
+  payload: ExecutorResponsePayload | null,
 ): Promise<void> {
   if (!record?.runId) return
   await finishAutomationRunRecord(
@@ -1187,9 +1185,9 @@ async function finishBackendRunRecord(
   )
 }
 
-function collectResultFiles(payload: Record<string, any> | null): AutomationRunFileInput[] {
-  const urls = payload?.artifacts?.downloadUrls
-  if (!urls || typeof urls !== 'object') return []
+function collectResultFiles(payload: ExecutorResponsePayload | null): AutomationRunFileInput[] {
+  const urls = getExecutorArtifactDownloadUrls(payload)
+  if (!urls) return []
   return [
     buildRunFileInput(urls.resultExcelUrl, 'result_excel', 'po-auto-download-result.xlsx'),
     buildRunFileInput(urls.resultJsonUrl, 'result_json', 'po-auto-download-result.json'),
@@ -1227,16 +1225,8 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return window.btoa(binary)
 }
 
-function safeParseJson(raw: string): Record<string, any> | null {
-  try {
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
-
 function readDownloadErrorMessage(raw: string, status: number, fallback: string): string {
-  const payload = safeParseJson(raw)
+  const payload = safeParseExecutorJson(raw)
   const detail = payload?.detail
   if (typeof detail === 'string' && detail.trim()) return detail.trim()
   const message = payload?.message
@@ -1244,7 +1234,7 @@ function readDownloadErrorMessage(raw: string, status: number, fallback: string)
   return status > 0 ? `${fallback} HTTP ${status}` : fallback
 }
 
-function readDownloadStatusMessage(payload: Record<string, any> | null, status: number, fallback: string): string {
+function readDownloadStatusMessage(payload: ExecutorResponsePayload | null, status: number, fallback: string): string {
   const message = payload?.message
   if (typeof message === 'string' && message.trim()) return message.trim()
   const detail = payload?.detail
@@ -1283,7 +1273,7 @@ function buildExecutorResponseMessage(
   return formatAutomationExecutorMessage(`HTTP ${response.status}`, fallback)
 }
 
-function buildPoDownloadSummaryMessage(payload: Record<string, any> | null, fallback: string): string {
+function buildPoDownloadSummaryMessage(payload: ExecutorResponsePayload | null, fallback: string): string {
   if (!payload || typeof payload !== 'object') return fallback
   const downloaded = normalizeCount(payload.downloadedInvoiceCount ?? payload.downloadedPoCount)
   const total = normalizeCount(payload.totalInvoiceCount ?? payload.totalPoCount)
@@ -1307,9 +1297,9 @@ function normalizeCount(value: unknown): number {
   return Number.isFinite(count) && count > 0 ? count : 0
 }
 
-function updateResultFileLinks(payload: Record<string, any> | null): void {
-  const urls = payload?.artifacts?.downloadUrls
-  if (!urls || typeof urls !== 'object') {
+function updateResultFileLinks(payload: ExecutorResponsePayload | null): void {
+  const urls = getExecutorArtifactDownloadUrls(payload)
+  if (!urls) {
     resultFileLinks.value = {}
     return
   }
@@ -1321,7 +1311,7 @@ function updateResultFileLinks(payload: Record<string, any> | null): void {
   }
 }
 
-function extractInvoiceFailureDetails(payload: Record<string, any> | null): InvoiceFailureDetail[] {
+function extractInvoiceFailureDetails(payload: ExecutorResponsePayload | null): InvoiceFailureDetail[] {
   const direct = Array.isArray(payload?.failedInvoiceDetails) ? payload.failedInvoiceDetails : []
   if (direct.length > 0) {
     return direct.map(normalizeFailureDetail).filter((item): item is InvoiceFailureDetail => Boolean(item))
@@ -1332,13 +1322,13 @@ function extractInvoiceFailureDetails(payload: Record<string, any> | null): Invo
       ? payload.poResults
       : []
   return results
-    .filter((item) => item && typeof item === 'object' && !item.ok)
+    .filter((item) => isJsonRecord(item) && !item.ok)
     .map(normalizeFailureDetail)
     .filter((item): item is InvoiceFailureDetail => Boolean(item))
 }
 
-function normalizeFailureDetail(raw: any): InvoiceFailureDetail | null {
-  if (!raw || typeof raw !== 'object') return null
+function normalizeFailureDetail(raw: unknown): InvoiceFailureDetail | null {
+  if (!isJsonRecord(raw)) return null
   const invoiceNumber = String(raw.invoiceNumber || raw.poNo || '').trim()
   const rowIndex = normalizeCount(raw.rowIndex)
   const error = formatAutomationExecutorMessage(
