@@ -269,6 +269,24 @@ export async function downloadUrlAsFile(
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 2500)
 }
 
+export function openUrlAsBrowserDownload(
+  url: string,
+  fallbackFilename = 'download',
+): void {
+  if (!url.trim()) {
+    throw new Error('下载地址为空，请刷新页面后重试。')
+  }
+
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.rel = 'noopener'
+  anchor.download = fallbackFilename
+  anchor.style.display = 'none'
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
+}
+
 export async function requestBackendJson<TResponse>({
   method = 'GET',
   path,

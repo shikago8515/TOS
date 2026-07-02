@@ -7,6 +7,7 @@ import {
   buildBackendDownloadUrl,
   downloadUrlAsFile,
   getBackendBaseUrl,
+  openUrlAsBrowserDownload,
   postFormData,
   readResponseMessage,
   requestBackendJson,
@@ -441,7 +442,7 @@ export async function resolveAutomationHelperDownloadUrl(): Promise<string> {
 
 export async function openAutomationHelperDownload(): Promise<void> {
   const downloadUrl = await resolveAutomationHelperDownloadUrl()
-  await downloadUrlAsFile(downloadUrl, 'TOS-Automation-Helper-Setup.exe')
+  openUrlAsBrowserDownload(downloadUrl, 'TOS-Automation-Helper-Setup.exe')
 }
 
 export async function openAutomationHelperPanel(): Promise<AutomationHelperPanelOpenResult> {

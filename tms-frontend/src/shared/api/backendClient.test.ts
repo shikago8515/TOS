@@ -8,6 +8,7 @@ import {
   downloadUrlAsFile,
   getBackendBaseUrl,
   isBackendVersionMismatchMessage,
+  openUrlAsBrowserDownload,
   postFormData,
   readErrorMessage,
   readResponseMessage,
@@ -255,6 +256,36 @@ describe('backendClient', () => {
         'TOS-Automation-Helper-Setup.exe',
       ),
     ).rejects.toThrow('TOS 自动化助手安装包未上传')
+  })
+
+  it('opens large installer downloads through the browser download manager without fetching the file as a blob', () => {
+    const fetchMock = vi.fn()
+    const anchor = {
+      href: '',
+      rel: '',
+      download: '',
+      style: { display: '' },
+      click: vi.fn(),
+      remove: vi.fn(),
+    }
+    const documentMock = {
+      createElement: vi.fn(() => anchor),
+      body: { append: vi.fn() },
+    }
+    vi.stubGlobal('document', documentMock)
+    vi.stubGlobal('fetch', fetchMock)
+
+    openUrlAsBrowserDownload(
+      '/tos/desktop-api/api/system/config/automation-helper/download',
+      'TOS-Automation-Helper-Setup.exe',
+    )
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(documentMock.createElement).toHaveBeenCalledWith('a')
+    expect(anchor.download).toBe('TOS-Automation-Helper-Setup.exe')
+    expect(anchor.style.display).toBe('none')
+    expect(anchor.click).toHaveBeenCalledTimes(1)
+    expect(anchor.remove).toHaveBeenCalledTimes(1)
   })
 
   it('reports status and path when an error response is not JSON', async () => {
