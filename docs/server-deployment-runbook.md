@@ -27,7 +27,8 @@
 cd D:\project\TOS-main
 
 git status --short --branch
-npm run check:quick
+npm run check:changed:dry-run
+npm run check:changed
 npm run server:package:dry-run
 npm run server:package
 ```

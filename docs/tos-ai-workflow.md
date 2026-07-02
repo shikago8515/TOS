@@ -50,8 +50,8 @@ git rebase gitea/main
 - 文档、规则、说明或低风险清理改动：通常只需 `check:changed` 规划出的 whitespace 或针对性检查。
 - 前端 UI、文案或局部路由小改：优先运行 `cd tms-frontend && npm run lint`、`npm run typecheck` 和相关 `vitest`。
 - 后端单模块小改：优先运行对应 `python -m unittest tests.test_xxx -v`。
-- 公共工具、前后端契约、依赖、版本发布、CI/CD、部署、打包、认证、下载等高风险改动，或 `check:changed` 建议升级时：运行 `npm run check:quick`。
-- 合并或推送 Gitea `main` 前：先按实际变更运行 `check:changed` 建议的检查；只有触及高风险边界、远端新增提交与当前改动有交集，或 `check:changed` 明确升级时，才在本地补跑 `npm run check:quick`。Gitea `main` push 后远端仍运行完整检查。
+- 公共工具、前后端契约、依赖、版本发布、CI/CD、部署、打包、认证、下载等高风险改动：仍先运行 `check:changed`，优先使用其映射出的 workflow、发布配置、服务器包、Electron 脚本或后端专项检查。
+- 合并或推送 Gitea `main` 前：确认当前 commit 已完成一次 `check:changed` 建议的本地检查；同一 commit 合并进本地 `main` 后不重复跑相同检查。只有远端新增提交与当前改动有交集、触及核心边界，或 `check:changed` 无法安全缩小范围时，才补跑专项检查或 `npm run check:quick`。Gitea `main` push 后远端仍运行完整检查。
 - 正式大版本、Windows 打包发布或自动更新链路：运行 `npm run check` 或发布专项验证。
 
 可用根目录检查入口：
@@ -66,11 +66,14 @@ npm run check:changed
 npm run check
 ```
 
-发布、部署、CI/CD、打包或版本链路相关改动至少运行：
+发布、部署、CI/CD、打包或版本链路相关改动先运行：
 
 ```powershell
-npm run check:quick
+npm run check:changed:dry-run
+npm run check:changed
 ```
+
+若 `check:changed` 无法安全映射到专项门禁，或改动触及 CI runner、发布、部署、打包、认证、版本生成等核心边界且没有专项检查覆盖，再升级到 `npm run check:quick`。
 
 ## 4. 自动版本与更新内容
 
@@ -140,14 +143,15 @@ npm run release:updates:pull
 git status --short --branch
 ```
 
-涉及版本发布、部署、CI/CD、打包或 `check:changed` 建议升级的高风险主线合并/推送时，必须补充：
+涉及版本发布、部署、CI/CD、打包或 `check:changed` 建议升级的高风险主线合并/推送时，按变更范围补充：
 
 ```powershell
 npm run check:backend-version
 npm run release:updates:dry-run
 npm run release:updates:push:dry-run
-npm run check:quick
 ```
+
+只有检查规划器无法安全缩小范围，或上述专项检查不能覆盖触及的核心边界时，才补跑 `npm run check:quick`。
 
 提交只包含当前任务相关文件：
 
@@ -157,9 +161,9 @@ git commit -m "类型: 描述"
 git push -u gitea codex/<topic>
 ```
 
-Gitea 远端检查以 Gitea `main` 和 `codex/**` 分支为准，远端检查运行完整 `npm run check`。触发正式自动版本发布时，Gitea Actions 使用内置 `GITEA_TOKEN` 在发布环境运行 `npm run release`；默认服务器部署不再依赖“先本机打包再上传”。
+Gitea 远端检查以 Gitea `main` push 和面向 `main` 的合并请求为准，远端检查运行完整 `npm run check`。`codex/**` 分支 push 不再触发远端全量 CI，避免分支阶段和 `main` 阶段重复检查。触发正式自动版本发布时，Gitea Actions 使用内置 `GITEA_TOKEN` 在发布环境运行 `npm run release`；默认服务器部署不再依赖“先本机打包再上传”。
 
-分支推送到 Gitea 后，合并进本地 `main`，在 `main` 上先运行 `npm run check:changed:dry-run` 并按建议执行 `npm run check:changed` 或升级后的专项检查；只有触及高风险边界时才在本地补跑 `npm run check:quick`，再推送 `main` 到 Gitea。Gitea 远端会在 `main` push 后继续运行完整检查。
+分支合并进本地 `main` 前，确认目标 commit 已按 `npm run check:changed` 建议完成一次本地检查；同一 commit 合并后不重复跑相同检查，直接推送 `main` 到 Gitea。Gitea 远端会在 `main` push 后继续运行完整检查。
 
 服务器正式发布前，必须满足：
 

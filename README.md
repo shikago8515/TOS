@@ -49,7 +49,7 @@ npm run server:package:dry-run
 
 `npm run check:quick` 运行工程脚本测试、前端 lint/typecheck/test、后端 unittest 和 Electron script tests；`npm run check` 运行工程脚本测试、完整前端、完整后端和 Electron 脚本检查。
 
-日常开发按风险分层验证：先运行 `npm run check:changed:dry-run` 查看当前分支和工作区建议的最小检查集；确认无误后可运行 `npm run check:changed` 执行。文档、规则或说明改动通常只需 whitespace 检查；前端 UI、文案或局部路由小改优先运行前端 `lint`、`typecheck` 和相关 `vitest`；后端单模块小改优先运行对应 `python -m unittest tests.test_xxx -v`。公共工具、前后端契约、依赖、版本发布、CI/CD、部署、打包、认证、下载等高风险改动，或 `check:changed` 建议升级时，再运行 `npm run check:quick`。Gitea `main` push 后远端仍运行完整检查。
+日常开发按风险分层验证：先运行 `npm run check:changed:dry-run` 查看当前分支和工作区建议的最小检查集；确认无误后可运行 `npm run check:changed` 执行。文档、规则或说明改动通常只需 whitespace 检查；前端 UI、文案或局部路由小改优先运行前端 `lint`、`typecheck` 和相关 `vitest`；后端单模块小改优先运行对应 `python -m unittest tests.test_xxx -v`。公共工具、前后端契约、依赖、版本发布、CI/CD、部署、打包、认证、下载等高风险改动也先走 `check:changed` 的专项映射；只有无法安全缩小范围或触及核心边界且没有专项门禁时，才运行 `npm run check:quick`。同一 commit 已完成本地检查后，合并进本地 `main` 不重复跑相同检查；Gitea `main` push 后远端仍运行完整检查。
 
 默认服务器发布在服务器执行 `deploy-tos`，通过 Gitea deploy key 免密拉取 `main`，再调用 `scripts/server/deploy-gitea-main.sh` 本地生成并应用服务器发布包。备用方案才在本机生成发布包：
 

@@ -211,8 +211,8 @@ npm run server:package
 1. 文档、规则、说明或低风险清理改动，先运行 `npm run check:changed:dry-run`；确认建议合理后运行 `npm run check:changed`。docs-only 改动应只规划 committed、staged 和 working tree 的 whitespace 检查。
 2. 小范围前端 UI、文案或局部路由改动，优先运行 `cd tms-frontend && npm run lint`、`npm run typecheck` 和相关 `vitest`；必要时再补 `npm run build`。
 3. 小范围后端单模块改动，优先运行对应 `python -m unittest tests.test_xxx -v`、相关 class 或相关 method；涉及语法或导入边界时再补 `python -m compileall .`。
-4. 涉及公共工具、前后端契约、依赖、版本发布、CI/CD、服务器部署、Electron 打包、认证、下载、发布/打包配置等高风险区域，或 `check:changed:dry-run` 建议升级时，运行 `npm run check:quick`。
-5. 合并或推送 Gitea `main` 前，先按实际变更运行 `check:changed` 建议的检查；只有本地改动或远端新增提交触及高风险边界、与当前改动文件有交集，或 `check:changed` 明确升级时，才在本地补跑 `npm run check:quick`。Gitea `main` push 后远端 CI 仍运行完整检查。
+4. 涉及公共工具、前后端契约、依赖、版本发布、CI/CD、服务器部署、Electron 打包、认证、下载、发布/打包配置等高风险区域时，先运行 `npm run check:changed:dry-run`，按其映射出的 workflow 配置测试、发布配置测试、服务器包测试、Electron 脚本测试或其他专项检查执行；只有检查规划器无法安全缩小范围，或变更触及 CI runner、发布、部署、打包、认证、版本生成等核心边界且没有专项门禁时，才升级到 `npm run check:quick`。
+5. 合并或推送 Gitea `main` 前，先确认当前 commit 已按 `check:changed` 建议完成一次本地检查；同一 commit 合并进本地 `main` 后不重复跑相同检查。推送 `gitea/main` 后以远端完整 CI 作为最终门禁；只有远端新增提交与当前改动有交集、触及核心边界，或 `check:changed` 明确升级时，才补跑对应专项检查或 `npm run check:quick`。
 6. 主线推送被拒绝或发现远端 `main` 前进时，先 `fetch` 并检查新增提交影响面。如果远端新增提交与当前改动无文件交集，且不涉及公共 API、发布、部署、下载、版本、认证等高风险区域，只需重新合并后运行针对性检查和 `git diff --check`；如果新增提交触及高风险区域或与当前改动文件有交集，运行相关专项测试。远端频繁前进时，不应每合并一次都重复全量运行，除非新增提交改变了高风险边界。
 7. 正式大版本、Windows 桌面打包发布、自动更新或安装器链路改动，按发布敏感规则运行 `npm run check` 或发布专项验证。
 8. 若 `npm run check:quick` 超过 12-15 分钟，应先定位慢测试和重复覆盖，不得简单删除安全、契约、发布或部署关键测试。

@@ -85,20 +85,56 @@ test('mixed frontend and backend changes escalate to the project quick gate', ()
   ])
 })
 
-test('high-risk engineering and package changes escalate to the project quick gate', () => {
+test('mapped frontend and backend changes run targeted checks without full project gate', () => {
+  assert.deepEqual(commandIds([
+    'tms-frontend/src/pages/jane/JanePage.vue',
+    'tms-backend/modules/jane_module.py',
+  ]), [
+    'frontend:lint',
+    'frontend:typecheck',
+    'frontend:test',
+    'backend:test:tests.test_jane_module',
+  ])
+})
+
+test('package and dependency changes still escalate to the project quick gate', () => {
   assert.deepEqual(commandIds([
     'package.json',
-    'scripts/engineering/run-checks.mjs',
   ]), [
     'root:check:quick',
   ])
 })
 
-test('validation planner changes escalate to the project quick gate', () => {
+test('Gitea workflow changes use the workflow config test without full project gate', () => {
+  assert.deepEqual(commandIds([
+    '.gitea/workflows/tos-check.yml',
+  ]), [
+    'engineering:gitea-workflow-config-test',
+  ])
+})
+
+test('validation planner changes use the planner test without full project gate', () => {
   assert.deepEqual(commandIds([
     'scripts/engineering/run-changed-checks.mjs',
   ]), [
-    'root:check:quick',
+    'engineering:run-changed-checks-test',
+  ])
+})
+
+test('server package script changes use server package checks without full project gate', () => {
+  assert.deepEqual(commandIds([
+    'scripts/engineering/package-server-update.mjs',
+  ]), [
+    'server:package-test',
+    'server:package:dry-run',
+  ])
+})
+
+test('Electron script test changes use the Electron check without full project gate', () => {
+  assert.deepEqual(commandIds([
+    'tms-electron-app/scripts/run-pack-default.test.js',
+  ]), [
+    'root:check:electron',
   ])
 })
 
