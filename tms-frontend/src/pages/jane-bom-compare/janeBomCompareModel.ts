@@ -56,6 +56,7 @@ export function buildJaneBomCompareSummary(
     {
       label: '红色单元格',
       value: String(response.mismatch_cell_count ?? '-'),
+      note: '包含 C-D-E-F、Material Reference 和 Supplier 差异',
     },
     {
       label: '结果文件',

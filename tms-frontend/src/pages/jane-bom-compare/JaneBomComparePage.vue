@@ -112,7 +112,7 @@ const uploadFields = computed<ExcelFileField[]>(() => [
     id: 'production',
     label: 'T1 PRODUCTION 文件',
     files: productionFiles.value,
-    hint: '检查 C-D-E-F、材料多缺并计算料率',
+    hint: '检查 C-D-E-F、材料多缺、Supplier 并计算料率',
     accept: '.xlsx,.xlsm',
     acceptLabel: '支持 .xlsx / .xlsm',
     expectedCount: 1,

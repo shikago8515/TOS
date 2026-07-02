@@ -298,6 +298,7 @@ class JaneBomCompareModuleTests(unittest.TestCase):
             self.assertEqual(result["bom_count"], 1)
             self.assertEqual(result["bom_material_row_count"], 6)
             self.assertEqual(result["checked_row_count"], 7)
+            self.assertEqual(result["mismatch_cell_count"], 10)
             self.assertEqual(result["inconsistent_group_count"], 1)
             self.assertEqual(result["extra_material_row_count"], 1)
             self.assertEqual(result["missing_row_count"], 1)
@@ -307,16 +308,26 @@ class JaneBomCompareModuleTests(unittest.TestCase):
             output_wb = openpyxl.load_workbook(result["output_path"], data_only=False)
             ws = output_wb["PRODUCTION"]
 
+            material_col = self._column_by_header(ws, "Input Material UID/ID")
+            correct_material_col = self._column_by_header(ws, "Correct Material Reference # (BOM)")
             rate_col = self._column_by_header(ws, "料率")
             used_units_col = self._column_by_header(ws, "Input Lot Quantity Used (In Units)")
             input_units_col = self._column_by_header(ws, "Input Units")
+            seller_col = self._column_by_header(ws, "Seller Facility ID")
+            correct_supplier_col = self._column_by_header(ws, "Correct Group Code Supplier (BOM)")
             detail_col = self._column_by_header(ws, "Check Detail")
             result_col = self._column_by_header(ws, "Check Result")
 
+            self.assertEqual(correct_material_col, material_col + 1)
             self.assertEqual(rate_col, used_units_col + 1)
             self.assertEqual(input_units_col, rate_col + 1)
-            self.assertEqual(ws.cell(row=2, column=rate_col).value, '=IFERROR(SUMIFS($K:$K,$A:$A,A2,$B:$B,B2,$G:$G,G2)/C2,"")')
+            self.assertEqual(correct_supplier_col, seller_col + 1)
+            self.assertEqual(ws.cell(row=2, column=rate_col).value, '=IFERROR(SUMIFS($L:$L,$A:$A,A2,$B:$B,B2,$G:$G,G2)/C2,"")')
             self.assertEqual(ws.cell(row=2, column=rate_col).number_format, "0.0000")
+            self.assertIsNone(ws.cell(row=2, column=correct_material_col).value)
+            self.assertEqual(self._fill_rgb(ws.cell(row=2, column=seller_col)), "FFFFC7CE")
+            self.assertEqual(ws.cell(row=2, column=correct_supplier_col).value, "1SB001")
+            self.assertIn("Seller Facility ID", ws.cell(row=2, column=detail_col).value)
 
             self.assertEqual(ws.cell(row=4, column=1).value, "LD1803")
             self.assertEqual(ws.cell(row=4, column=2).value, "OHO055-M-LD1803")
@@ -325,6 +336,8 @@ class JaneBomCompareModuleTests(unittest.TestCase):
             self.assertEqual(ws.cell(row=4, column=5).value, "2026-02-01")
             self.assertEqual(ws.cell(row=4, column=6).value, "3LP001")
             self.assertEqual(ws.cell(row=4, column=7).value, "62712089")
+            self.assertEqual(ws.cell(row=4, column=seller_col).value, "299002")
+            self.assertEqual(self._fill_rgb(ws.cell(row=4, column=seller_col)), "FFFFC7CE")
             self.assertIsNone(ws.cell(row=4, column=used_units_col).value)
             self.assertIsNone(ws.cell(row=4, column=rate_col).value)
             self.assertEqual(ws.cell(row=4, column=result_col).value, "需补入")
@@ -338,10 +351,15 @@ class JaneBomCompareModuleTests(unittest.TestCase):
             extra_row = self._rows_by_value(ws, 7, "70020122")[0]
             self.assertEqual(ws.cell(row=extra_row, column=result_col).value, "需删除")
             self.assertIn("Production 多出材料", ws.cell(row=extra_row, column=detail_col).value)
+            self.assertIn("Input Material UID/ID", ws.cell(row=extra_row, column=detail_col).value)
+            self.assertEqual(self._fill_rgb(ws.cell(row=extra_row, column=material_col)), "FFFFC7CE")
+            self.assertEqual(ws.cell(row=extra_row, column=correct_material_col).value, "70020171 / 62712089")
+            self.assertEqual(self._fill_rgb(ws.cell(row=extra_row, column=seller_col)), "FFFFC7CE")
+            self.assertEqual(ws.cell(row=extra_row, column=correct_supplier_col).value, "1SB001 / 299002")
             for column in range(1, ws.max_column + 1):
                 self.assertTrue(ws.cell(row=extra_row, column=column).font.strike)
 
-    def test_raw_bom_input_keeps_route_contract_without_supplier_compare(self):
+    def test_raw_bom_input_restores_material_and_supplier_compare(self):
         with tempfile.TemporaryDirectory() as folder:
             production_path = self._save_production_workbook(folder)
             bom_path = self._save_raw_bom_workbook(folder)
@@ -352,12 +370,16 @@ class JaneBomCompareModuleTests(unittest.TestCase):
             output_wb = openpyxl.load_workbook(result["output_path"], data_only=False)
             ws = output_wb["PRODUCTION"]
 
+            correct_material_col = self._column_by_header(ws, "Correct Material Reference # (BOM)")
             self._column_by_header(ws, "料率")
-            with self.assertRaises(AssertionError):
-                self._column_by_header(ws, "Correct Group Code Supplier (BOM)")
+            correct_supplier_col = self._column_by_header(ws, "Correct Group Code Supplier (BOM)")
 
             seller_col = self._column_by_header(ws, "Seller Facility ID")
-            self.assertNotEqual(self._fill_rgb(ws.cell(row=2, column=seller_col)), "FFFFC7CE")
+            detail_col = self._column_by_header(ws, "Check Detail")
+            self.assertIsNone(ws.cell(row=2, column=correct_material_col).value)
+            self.assertEqual(self._fill_rgb(ws.cell(row=2, column=seller_col)), "FFFFC7CE")
+            self.assertEqual(ws.cell(row=2, column=correct_supplier_col).value, "1SB001")
+            self.assertIn("Seller Facility ID", ws.cell(row=2, column=detail_col).value)
 
 
 if __name__ == "__main__":

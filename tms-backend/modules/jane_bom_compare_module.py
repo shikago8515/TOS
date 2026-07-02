@@ -56,6 +56,7 @@ class JaneBomCompareModule:
         "Recording Facility ID",
         "Input Material UID/ID",
         "Input Lot Quantity Used (In Units)",
+        "Seller Facility ID",
     ]
     REQUIRED_BOM_COLUMNS = [
         "Part Group #",
@@ -363,9 +364,25 @@ class JaneBomCompareModule:
             ws,
             header_row,
             columns,
+            "input material uid/id",
+            "correct material reference #",
+            "Correct Material Reference # (BOM)",
+        )
+        self._insert_column_after(
+            ws,
+            header_row,
+            columns,
             "input lot quantity used (in units)",
             "料率",
             "料率",
+        )
+        self._insert_column_after(
+            ws,
+            header_row,
+            columns,
+            "seller facility id",
+            "correct group code supplier",
+            "Correct Group Code Supplier (BOM)",
         )
         for key, header in self.DIAGNOSTIC_HEADERS:
             self._append_column(ws, header_row, columns, key, header)
@@ -591,6 +608,88 @@ class JaneBomCompareModule:
         ]
         return extra_rows, missing_materials
 
+    def _group_materials_by_ref(
+        self,
+        expected_materials: Sequence[BomMaterial],
+    ) -> Dict[str, List[BomMaterial]]:
+        materials_by_ref: Dict[str, List[BomMaterial]] = {}
+        for material in expected_materials:
+            material_key = self._normalize_key(material.material_ref)
+            if material_key:
+                materials_by_ref.setdefault(material_key, []).append(material)
+        return materials_by_ref
+
+    def _check_group_material_and_supplier_values(
+        self,
+        ws,
+        group: ProductionGroup,
+        columns: Dict[str, int],
+        expected_materials: Sequence[BomMaterial],
+    ) -> int:
+        materials_by_ref = self._group_materials_by_ref(expected_materials)
+        expected_material_text = self._join_unique(
+            [material.material_ref for material in expected_materials],
+        )
+        mismatch_cell_count = 0
+
+        for row_index in group.rows:
+            material_key = self._normalize_key(
+                ws.cell(row=row_index, column=columns["input material uid/id"]).value,
+            )
+            seller_key = self._normalize_key(
+                ws.cell(row=row_index, column=columns["seller facility id"]).value,
+            )
+
+            supplier_materials = materials_by_ref.get(material_key, [])
+            if not supplier_materials:
+                supplier_materials = list(expected_materials)
+                self._mark_red(ws.cell(row=row_index, column=columns["input material uid/id"]))
+                ws.cell(
+                    row=row_index,
+                    column=columns["correct material reference #"],
+                    value=expected_material_text,
+                )
+                self._set_row_diagnostic(
+                    ws,
+                    row_index,
+                    columns,
+                    "需核对",
+                    "值不一致：以 BOM 为准",
+                    "Input Material UID/ID 不在 BOM MAIN COMPONENT Material Reference # 中。",
+                    supplier_materials[0] if supplier_materials else None,
+                )
+                mismatch_cell_count += 1
+
+            expected_supplier_keys = {
+                self._normalize_key(material.group_code_supplier)
+                for material in supplier_materials
+                if self._normalize_key(material.group_code_supplier)
+            }
+            if not expected_supplier_keys:
+                continue
+
+            if not seller_key or seller_key not in expected_supplier_keys:
+                self._mark_red(ws.cell(row=row_index, column=columns["seller facility id"]))
+                ws.cell(
+                    row=row_index,
+                    column=columns["correct group code supplier"],
+                    value=self._join_unique(
+                        [material.group_code_supplier for material in supplier_materials],
+                    ),
+                )
+                self._set_row_diagnostic(
+                    ws,
+                    row_index,
+                    columns,
+                    "需核对",
+                    "值不一致：以 BOM 为准",
+                    "Seller Facility ID 与 BOM Group Code Supplier 不一致。",
+                    supplier_materials[0],
+                )
+                mismatch_cell_count += 1
+
+        return mismatch_cell_count
+
     def _insert_missing_material_rows(
         self,
         ws,
@@ -626,8 +725,9 @@ class JaneBomCompareModule:
                 ws.cell(row=insert_at, column=columns["input material uid/id"], value=material.material_ref)
                 ws.cell(row=insert_at, column=columns["input lot quantity used (in units)"], value=None)
                 ws.cell(row=insert_at, column=columns["料率"], value=None)
+                ws.cell(row=insert_at, column=columns["seller facility id"], value=material.group_code_supplier)
 
-                for column_key in ["recording facility id", "input material uid/id"]:
+                for column_key in ["recording facility id", "input material uid/id", "seller facility id"]:
                     self._mark_red(ws.cell(row=insert_at, column=columns[column_key]))
                 self._set_row_diagnostic(
                     ws,
@@ -782,6 +882,13 @@ class JaneBomCompareModule:
                         )
                         self._set_row_strike(production_ws, row_index, max_column)
                         extra_material_row_count += 1
+
+                mismatch_cell_count += self._check_group_material_and_supplier_values(
+                    production_ws,
+                    group,
+                    columns,
+                    expected_materials,
+                )
 
                 if missing_materials:
                     groups_with_missing.append((group, missing_materials))
