@@ -47,9 +47,11 @@ git rebase gitea/main
 按范围运行最接近的检查，日常开发不默认把 `npm run check:quick` 当成所有小改的起步门禁：
 
 - 不确定检查范围时，先运行 `npm run check:changed:dry-run` 查看建议；确认无误后运行 `npm run check:changed` 执行。
+- 文档、规则、说明或低风险清理改动：通常只需 `check:changed` 规划出的 whitespace 或针对性检查。
 - 前端 UI、文案或局部路由小改：优先运行 `cd tms-frontend && npm run lint`、`npm run typecheck` 和相关 `vitest`。
 - 后端单模块小改：优先运行对应 `python -m unittest tests.test_xxx -v`。
-- 公共工具、前后端契约、版本发布、CI/CD、部署、打包、合并 `main` 或推送 Gitea 主线前：必须运行 `npm run check:quick`。
+- 公共工具、前后端契约、依赖、版本发布、CI/CD、部署、打包、认证、下载等高风险改动，或 `check:changed` 建议升级时：运行 `npm run check:quick`。
+- 合并或推送 Gitea `main` 前：先按实际变更运行 `check:changed` 建议的检查；只有触及高风险边界、远端新增提交与当前改动有交集，或 `check:changed` 明确升级时，才在本地补跑 `npm run check:quick`。Gitea `main` push 后远端仍运行完整检查。
 - 正式大版本、Windows 打包发布或自动更新链路：运行 `npm run check` 或发布专项验证。
 
 可用根目录检查入口：
@@ -138,7 +140,7 @@ npm run release:updates:pull
 git status --short --branch
 ```
 
-涉及版本发布、部署、CI/CD、打包、主线合并或准备推送 Gitea 主线时，必须补充：
+涉及版本发布、部署、CI/CD、打包或 `check:changed` 建议升级的高风险主线合并/推送时，必须补充：
 
 ```powershell
 npm run check:backend-version
@@ -157,7 +159,7 @@ git push -u gitea codex/<topic>
 
 Gitea 远端检查以 Gitea `main` 和 `codex/**` 分支为准，远端检查运行完整 `npm run check`。触发正式自动版本发布时，Gitea Actions 使用内置 `GITEA_TOKEN` 在发布环境运行 `npm run release`；默认服务器部署不再依赖“先本机打包再上传”。
 
-分支推送到 Gitea 后，合并进本地 `main`，在 `main` 上运行 `npm run check:quick`，再推送 `main` 到 Gitea。
+分支推送到 Gitea 后，合并进本地 `main`，在 `main` 上先运行 `npm run check:changed:dry-run` 并按建议执行 `npm run check:changed` 或升级后的专项检查；只有触及高风险边界时才在本地补跑 `npm run check:quick`，再推送 `main` 到 Gitea。Gitea 远端会在 `main` push 后继续运行完整检查。
 
 服务器正式发布前，必须满足：
 

@@ -3,8 +3,8 @@ import test from 'node:test'
 
 import { planChangedChecks } from './run-changed-checks.mjs'
 
-function commandIds(files) {
-  return planChangedChecks(files).commands.map((command) => command.id)
+function commandIds(files, options) {
+  return planChangedChecks(files, options).commands.map((command) => command.id)
 }
 
 test('docs-only changes only require whitespace checks', () => {
@@ -13,8 +13,24 @@ test('docs-only changes only require whitespace checks', () => {
     'AGENTS.md',
     'docs/engineering-entrypoints.md',
   ]), [
-    'git:diff-check',
+    'git:diff-check:committed',
+    'git:diff-check:staged',
+    'git:diff-check:working-tree',
   ])
+})
+
+test('docs-only committed whitespace checks honor custom base refs', () => {
+  const plan = planChangedChecks([
+    'docs/engineering-entrypoints.md',
+  ], { base: 'main~1' })
+
+  assert.deepEqual(plan.commands[0], {
+    id: 'git:diff-check:committed',
+    label: 'git:diff-check:committed',
+    cwd: '.',
+    runner: 'git',
+    args: ['diff', '--check', 'main~1...HEAD'],
+  })
 })
 
 test('frontend source changes use frontend quick checks without full project gate', () => {
@@ -73,6 +89,14 @@ test('high-risk engineering and package changes escalate to the project quick ga
   assert.deepEqual(commandIds([
     'package.json',
     'scripts/engineering/run-checks.mjs',
+  ]), [
+    'root:check:quick',
+  ])
+})
+
+test('validation planner changes escalate to the project quick gate', () => {
+  assert.deepEqual(commandIds([
+    'scripts/engineering/run-changed-checks.mjs',
   ]), [
     'root:check:quick',
   ])

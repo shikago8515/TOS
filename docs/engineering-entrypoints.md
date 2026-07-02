@@ -31,7 +31,9 @@
 - 不确定该跑什么时，先运行 `npm run check:changed:dry-run`；确认建议合理后运行 `npm run check:changed`。
 - 前端 UI、文案或局部路由小改：运行 `cd tms-frontend && npm run lint`、`npm run typecheck` 和相关 `vitest`；需要确认构建产物时再运行 `npm run build`。
 - 后端单模块小改：运行对应 `python -m unittest tests.test_xxx -v`、class 或 method；涉及导入边界时再补 `python -m compileall .`。
-- 公共工具、前后端契约、版本发布、CI/CD、服务器部署、Electron 打包、合并 `main` 或推送 Gitea 主线前：运行 `npm run check:quick`。
+- 文档、规则、说明或低风险清理改动：先运行 `npm run check:changed:dry-run`，确认后运行 `npm run check:changed`；docs-only 改动应只规划 committed、staged 和 working tree 的 whitespace 检查。
+- 公共工具、前后端契约、依赖、版本发布、CI/CD、服务器部署、Electron 打包、认证、下载、发布/打包配置等高风险区域，或 `check:changed:dry-run` 建议升级时：运行 `npm run check:quick`。
+- 合并或推送 Gitea `main` 前：按实际变更运行 `check:changed` 建议的检查；只有触及高风险边界、远端新增提交与当前改动有交集，或 `check:changed` 明确升级时，才在本地补跑 `npm run check:quick`。Gitea `main` push 后远端仍运行完整检查。
 - 正式大版本、Windows 打包发布、自动更新或安装器链路：运行 `npm run check` 或 `AGENTS.md` 要求的发布专项验证。
 - `npm run check:quick` 若超过 12-15 分钟，应定位慢测试或重复覆盖，不直接移除安全、契约、发布、部署关键测试。
 
@@ -58,7 +60,7 @@
 ## 边界
 
 - 根目录入口不运行 `npm run pack`、`npm run build:win`、`verify:renderer-package`、`verify:release-package`、`write:update-changelog` 或 `write:manual-downloads`。
-- `check:changed` 是日常开发辅助入口，不替代合并 `main`、推送 Gitea 主线、服务器部署、CI/CD、发布或 Electron 打包前的 `check:quick`。
+- `check:changed` 是日常开发和低风险本地主线推送前的默认入口；服务器部署、CI/CD、发布、Electron 打包、高风险工程脚本或 `check:changed` 明确升级时仍使用 `check:quick`。
 - 发布、打包、更新清单和安装包校验仍按 `tms-electron-app/README.md` 与 `AGENTS.md` 的发布敏感规则单独执行。
 - `server:package` 只生成服务器 Docker Compose 部署用更新包，不生成 Windows Electron 安装包。默认服务器发布由 `scripts/server/deploy-gitea-main.sh` 在服务器 `~/TOS-source` 内调用；本机生成后手动上传只作为 Gitea 或服务器拉代码不可用时的备用流程。
 - 子项目原生命令仍然可用；根目录入口只是日常开发检查的统一编排层。

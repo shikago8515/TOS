@@ -16,13 +16,6 @@ const frontendQuickCommands = [
 
 const rootQuickCommand = npmCommand('root:check:quick', '.', ['run', 'check:quick'])
 const backendFullCommand = npmCommand('backend:full', '.', ['run', 'check:backend'])
-const diffCheckCommand = {
-  id: 'git:diff-check',
-  label: 'git:diff-check',
-  cwd: '.',
-  runner: 'git',
-  args: ['diff', '--check'],
-}
 
 export function planChangedChecks(inputFiles, options = {}) {
   const files = normalizeFiles(inputFiles)
@@ -38,8 +31,8 @@ export function planChangedChecks(inputFiles, options = {}) {
   if (files.every(isDocumentationFile)) {
     return {
       files,
-      commands: [diffCheckCommand],
-      reasons: ['Only documentation changes were detected; whitespace checks are enough.'],
+      commands: diffCheckCommands(options.base ?? defaultBase),
+      reasons: ['Only documentation changes were detected; committed, staged, and working-tree whitespace checks are enough.'],
     }
   }
 
@@ -162,6 +155,14 @@ function quickPlan(files, reason) {
   }
 }
 
+function diffCheckCommands(base) {
+  return [
+    gitCommand('git:diff-check:committed', ['diff', '--check', `${base}...HEAD`]),
+    gitCommand('git:diff-check:staged', ['diff', '--cached', '--check']),
+    gitCommand('git:diff-check:working-tree', ['diff', '--check']),
+  ]
+}
+
 function isDocumentationFile(file) {
   const normalized = normalizePath(file)
   return normalized.endsWith('.md')
@@ -252,6 +253,16 @@ function pythonCommand(id, cwd, args) {
     label: id,
     cwd,
     runner: 'python',
+    args,
+  }
+}
+
+function gitCommand(id, args) {
+  return {
+    id,
+    label: id,
+    cwd: '.',
+    runner: 'git',
     args,
   }
 }
@@ -461,7 +472,7 @@ async function main() {
   }
 
   const files = collectChangedFiles(options.base)
-  const plan = planChangedChecks(files, { repoRoot })
+  const plan = planChangedChecks(files, { repoRoot, base: options.base })
   printPlan(plan, options.base)
 
   if (options.dryRun || plan.commands.length === 0) {
