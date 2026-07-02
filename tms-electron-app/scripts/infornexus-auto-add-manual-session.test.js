@@ -11,6 +11,7 @@ test('manual auto-add search session opens Search.jsp and stays active', async (
   const fakePage = createFakePage(events)
   const fakeContext = createFakeContext(fakePage, events)
   const fakeBrowser = createFakeBrowser(fakeContext, events)
+  let readySession = null
   const manager = createInfornexusAutoAddManualSessionManager({
     browserEngines: {
       chromium: {
@@ -30,6 +31,10 @@ test('manual auto-add search session opens Search.jsp and stays active', async (
       events.push({ type: 'login', page, credentials })
     },
     log: () => {},
+    onManualSessionReady: async (session) => {
+      readySession = session
+      events.push({ type: 'manual-ready', manualSessionId: session.manualSessionId })
+    },
     safePageTitle: (page) => page.title(),
     safePageUrl: (page) => page.url(),
   })
@@ -43,6 +48,9 @@ test('manual auto-add search session opens Search.jsp and stays active', async (
   assert.equal(result.autoAddSearchUrl, expectedAutoAddSearchUrl)
   assert.equal(result.finalUrl, expectedAutoAddSearchUrl)
   assert.equal(manager.getSessionSummary().manualSessionId, 'manual-session-1')
+  assert.equal(readySession.manualSessionId, 'manual-session-1')
+  assert.equal(readySession.page, fakePage)
+  assert.equal(events.some((event) => event.type === 'manual-ready'), true)
   assert.equal(events.some((event) => event.type === 'context-close'), false)
   assert.equal(events.some((event) => event.type === 'browser-close'), false)
 

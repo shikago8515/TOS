@@ -122,9 +122,10 @@ import {
   resolveAutomationCredentials,
   saveExecutorCredentials,
 } from '../webAutomationApi'
-import { buildCredentialAccountKey, normalizeInforNexusUsername } from '../webAutomationCredentials'
+import { normalizeInforNexusUsername } from '../webAutomationCredentials'
 
 type NoticeTone = 'info' | 'success' | 'warning' | 'error'
+type UsernameMode = 'inforNexus' | 'plain'
 type ProfileState = { hasStoredCredentials: boolean; username: string; accountKey: string }
 type ResolvedProfile = { username: string; password: string; accountKey: string }
 type ProfileCache = {
@@ -141,6 +142,7 @@ const props = withDefaults(defineProps<{
   username?: string
   password?: string
   defaultUsername?: string
+  usernameMode?: UsernameMode
   extraActionLabel?: string
   extraActionIcon?: string
   extraActionDisabled?: boolean
@@ -150,6 +152,7 @@ const props = withDefaults(defineProps<{
   username: '',
   password: '',
   defaultUsername: '',
+  usernameMode: 'inforNexus',
   extraActionLabel: '',
   extraActionIcon: 'download',
   extraActionDisabled: false,
@@ -306,7 +309,7 @@ async function saveEditor(): Promise<void> {
   const password = draftPassword.value
   const fallbackKey = editorMode.value === 'edit'
     ? selectedCredentialKey.value
-    : (credentialOptions.value.length === 0 ? 'default' : buildCredentialAccountKey(username))
+    : (credentialOptions.value.length === 0 ? 'default' : buildProfileAccountKey(username))
   const accountKey = normalizeCredentialKey(draftName.value || fallbackKey)
   if (!username || !password) {
     emit('notice', { tone: 'warning', message: text('请先填写账号和密码。') })
@@ -497,7 +500,12 @@ function normalizeCredentialKey(value: string | undefined): string {
 }
 
 function formatUsername(value: string): string {
-  return normalizeInforNexusUsername(value)
+  const username = String(value || '').trim()
+  return props.usernameMode === 'plain' ? username : normalizeInforNexusUsername(username)
+}
+
+function buildProfileAccountKey(value: string): string {
+  return formatUsername(value) || 'default'
 }
 
 function credentialDisplayName(value: string): string {
@@ -590,8 +598,8 @@ defineExpose({
 }
 
 .cap-panel {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: end;
   gap: 8px;
   padding: 10px;
@@ -601,13 +609,14 @@ defineExpose({
 }
 
 .cap-panel__picker {
+  flex: 1 1 200px;
   min-width: 0;
 }
 
 .cap-actions {
   display: flex;
+  flex: 0 0 auto;
   flex-wrap: wrap;
-  justify-content: flex-end;
   gap: 8px;
 }
 

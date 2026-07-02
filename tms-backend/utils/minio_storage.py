@@ -18,6 +18,7 @@ DEFAULT_BUCKET_NAMES = {
     "downloads": "tos-downloads",
     "upload_backups": "tos-upload-backups",
     "packing_list_auto_download": "tos-packing-list-auto-download",
+    "ticket_owner_statistics": "tos-ticket-owner-statistics",
 }
 
 

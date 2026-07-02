@@ -171,6 +171,10 @@ export function createInfornexusAutoAddManualSessionManager(dependencies = {}) {
         phase: "ready",
       });
 
+      if (typeof dependencies.onManualSessionReady === "function") {
+        await dependencies.onManualSessionReady(session);
+      }
+
       log("Opened Infornexus auto-add manual search session.", {
         autoAddSearchUrl,
         finalUrl: session.finalUrl,

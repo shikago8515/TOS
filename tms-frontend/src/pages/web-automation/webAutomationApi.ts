@@ -333,6 +333,63 @@ export interface PackingListBatchAttempt {
   finishedAt?: string
 }
 
+export interface TicketOwnerSourceFileRef {
+  fileRole: string
+  label?: string
+  originalFilename?: string
+  contentType?: string
+  fileSize?: number
+  sha256?: string
+  downloadPath?: string
+}
+
+export interface TicketOwnerCheckpoint {
+  status?: string
+  message?: string
+  runId?: string
+  attemptId?: string
+  mode?: string
+  totalCount?: number
+  completedCount?: number
+  failedCount?: number
+  pendingCount?: number
+  items?: Array<Record<string, any>>
+  storedFiles?: AutomationStoredFileDownloadRef[]
+  result?: Record<string, any> | null
+}
+
+export interface TicketOwnerBatchRecord {
+  batchId: string
+  automationId: string
+  moduleId: string
+  runId: string
+  batchName: string
+  status: string
+  message: string
+  sourceFileName: string
+  sourceFileSha256: string
+  sourceFile?: {
+    files?: TicketOwnerSourceFileRef[]
+    bundle?: {
+      originalFilename?: string
+      contentType?: string
+      fileSize?: number
+      sha256?: string
+    } | null
+    downloadPath?: string
+  }
+  totalCount: number
+  completedCount: number
+  failedCount: number
+  pendingCount: number
+  checkpoint: TicketOwnerCheckpoint
+  resumable: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+
+export type TicketOwnerBatchAttempt = PackingListBatchAttempt
+
 export type AutomationHelperPanelOpenResult =
   | { status: 'opened'; message: string }
   | { status: 'not-running' | 'unsupported' | 'error'; message: string }
@@ -814,6 +871,74 @@ export async function createPackingListAutoDownloadAttempt(
   return payload.attempt
 }
 
+export async function createTicketOwnerStatisticsBatch(input: {
+  runId?: string
+  batchName?: string
+  releaseFile?: File | null
+  factoryPriceFile?: File | null
+}): Promise<TicketOwnerBatchRecord> {
+  const formData = new FormData()
+  formData.append('run_id', input.runId || '')
+  formData.append('batch_name', input.batchName || 'Ticket ownership')
+  if (input.releaseFile) formData.append('release_file', input.releaseFile)
+  if (input.factoryPriceFile) formData.append('factory_price_file', input.factoryPriceFile)
+
+  const payload = await postFormData<{ batch?: TicketOwnerBatchRecord }>({
+    path: '/api/automation/ticket-owner-statistics/batches',
+    formData,
+  })
+  if (!payload.batch) {
+    throw new Error('ticket 归属统计批次已创建，但后端未返回批次记录。')
+  }
+  return payload.batch
+}
+
+export async function fetchLatestTicketOwnerStatisticsBatch(): Promise<TicketOwnerBatchRecord | null> {
+  const payload = await requestBackendJson<{ batch?: TicketOwnerBatchRecord | null }>({
+    path: '/api/automation/ticket-owner-statistics/batches/latest',
+  })
+  return payload.batch || null
+}
+
+export async function fetchTicketOwnerStatisticsBatches(limit = 20): Promise<TicketOwnerBatchRecord[]> {
+  const payload = await requestBackendJson<{ batches?: TicketOwnerBatchRecord[] }>({
+    path: `/api/automation/ticket-owner-statistics/batches?limit=${encodeURIComponent(String(limit))}`,
+  })
+  return Array.isArray(payload.batches) ? payload.batches : []
+}
+
+export async function fetchTicketOwnerStatisticsBatch(batchId: string): Promise<TicketOwnerBatchRecord | null> {
+  const payload = await requestBackendJson<{ batch?: TicketOwnerBatchRecord | null }>({
+    path: `/api/automation/ticket-owner-statistics/batches/${encodeURIComponent(batchId)}`,
+  })
+  return payload.batch || null
+}
+
+export async function deleteTicketOwnerStatisticsBatch(batchId: string): Promise<void> {
+  await requestBackendJson<{ ok?: boolean }>({
+    method: 'DELETE',
+    path: `/api/automation/ticket-owner-statistics/batches/${encodeURIComponent(batchId)}`,
+  })
+}
+
+export async function createTicketOwnerStatisticsAttempt(
+  batchId: string,
+  input: { runId?: string; mode?: string },
+): Promise<TicketOwnerBatchAttempt> {
+  const payload = await requestBackendJson<{ attempt?: TicketOwnerBatchAttempt }>({
+    method: 'POST',
+    path: `/api/automation/ticket-owner-statistics/batches/${encodeURIComponent(batchId)}/attempts`,
+    body: {
+      runId: input.runId || '',
+      mode: input.mode || 'continue',
+    },
+  })
+  if (!payload.attempt) {
+    throw new Error('ticket 归属统计续跑 attempt 创建失败。')
+  }
+  return payload.attempt
+}
+
 export async function interruptPackingListAutoDownloadBatch(
   batchId: string,
   input: { runId?: string; attemptId?: string; message?: string } = {},
@@ -847,6 +972,27 @@ export async function downloadPackingListBatchSourceAsBase64(batch: PackingListB
   const fileBase64 = await blobToBase64(blob)
   return {
     fileName: batch.sourceFile?.originalFilename || batch.sourceFileName || 'packing-list.xlsx',
+    fileBase64,
+  }
+}
+
+export async function downloadTicketOwnerSourceFileAsBase64(file: TicketOwnerSourceFileRef): Promise<{
+  fileName: string
+  fileBase64: string
+}> {
+  const downloadPath = file.downloadPath
+  if (!downloadPath) {
+    throw new Error('该 ticket 归属批次的辅助 Excel 文件没有下载地址，无法续跑。')
+  }
+  const url = await buildBackendDownloadUrl(downloadPath, 'local')
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`ticket 归属辅助 Excel 下载失败：HTTP ${response.status}`)
+  }
+  const blob = await response.blob()
+  const fileBase64 = await blobToBase64(blob)
+  return {
+    fileName: file.originalFilename || `${file.fileRole || 'ticket-owner-source'}.xlsx`,
     fileBase64,
   }
 }

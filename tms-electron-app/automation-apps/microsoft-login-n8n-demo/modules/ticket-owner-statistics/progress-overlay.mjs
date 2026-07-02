@@ -34,10 +34,7 @@ export async function showTicketOwnerProgress(target, message, percent = 0, deta
     return;
   }
   const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
-  const targets = [target];
-  if (typeof target.frames === "function") {
-    targets.push(...target.frames());
-  }
+  const targets = collectProgressTargets(target);
 
   if (
     details?.showBrowserProgressOverlay === false ||
@@ -51,16 +48,27 @@ export async function showTicketOwnerProgress(target, message, percent = 0, deta
     return;
   }
 
-  await Promise.all(
-    targets.map((progressTarget) =>
-      injectTicketOwnerProgress(progressTarget, message, safePercent, details)
-    )
-  );
+  const [rootTarget, ...frameTargets] = targets;
+  await Promise.all(frameTargets.map((progressTarget) => removeTicketOwnerProgress(progressTarget)));
+  await injectTicketOwnerProgress(rootTarget, message, safePercent, details);
+}
+
+function collectProgressTargets(target) {
+  const targets = [target];
+  if (typeof target.frames === "function") {
+    targets.push(...target.frames());
+  }
+  return Array.from(new Set(targets)).filter((item) => item && typeof item.evaluate === "function");
 }
 
 async function removeTicketOwnerProgress(target) {
   await target.evaluate(() => {
-    document.getElementById("tos-ticket-owner-progress")?.remove();
+    document.querySelectorAll([
+      "#tos-ticket-owner-progress",
+      "[data-tos-ticket-owner-progress='true']",
+      "#tos-browser-automation-status-badge",
+      "[data-tos-browser-automation-badge='true']",
+    ].join(",")).forEach((element) => element.remove());
   }).catch(() => {});
 }
 
@@ -160,8 +168,17 @@ function formatProgressMessage(message, progress = {}) {
 async function injectTicketOwnerProgress(target, message, percent, details = {}) {
   await target.evaluate(({ message: progressMessage, percent: progressPercent, details: progressDetails }) => {
     const id = "tos-ticket-owner-progress";
-    document.getElementById("tos-browser-automation-status-badge")?.remove();
-    let root = document.getElementById(id);
+    document.querySelectorAll([
+      "#tos-browser-automation-status-badge",
+      "[data-tos-browser-automation-badge='true']",
+    ].join(",")).forEach((element) => element.remove());
+
+    const existingRoots = Array.from(document.querySelectorAll([
+      `#${id}`,
+      "[data-tos-ticket-owner-progress='true']",
+    ].join(",")));
+    let root = existingRoots[0] || null;
+    existingRoots.slice(1).forEach((element) => element.remove());
     if (!root) {
       root = document.createElement("div");
       root.id = id;
@@ -214,6 +231,14 @@ async function injectTicketOwnerProgress(target, message, percent, details = {})
 
       root.append(title, messageNode, metaNode, track);
       document.documentElement.appendChild(root);
+    }
+    root.querySelectorAll("[data-tos-ticket-owner-progress='true'], #tos-ticket-owner-progress").forEach((element) => {
+      if (element !== root) {
+        element.remove();
+      }
+    });
+    while (root.children.length > 4 && root.lastElementChild) {
+      root.lastElementChild.remove();
     }
 
     root.style.pointerEvents = "none";

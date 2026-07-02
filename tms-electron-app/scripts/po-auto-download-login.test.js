@@ -175,6 +175,23 @@ test('invoice download accepts active and new STATUS values', async () => {
   assert.equal(isDownloadableInvoiceStatus(''), false)
 })
 
+test('invoice request-flow errors are user-facing messages', async () => {
+  const {
+    buildInvoiceNotFoundMessage,
+    buildInvoicePdfNotAvailableMessage,
+  } = await import(poAutoDownloadModuleUrl)
+
+  const notFound = buildInvoiceNotFoundMessage('17-06-26-1548')
+  assert.match(notFound, /Infor Nexus 系统没有找到这个 Invoice/)
+  assert.match(notFound, /INVOICE NUMBER/)
+  assert.doesNotMatch(notFound, /PageResolver URL was not found/i)
+
+  const pdfUnavailable = buildInvoicePdfNotAvailableMessage('17-06-26-1548')
+  assert.match(pdfUnavailable, /系统没有返回可下载的 Invoice PDF/)
+  assert.match(pdfUnavailable, /手工打开该发票/)
+  assert.doesNotMatch(pdfUnavailable, /dyncon URL was not found/i)
+})
+
 async function withHttpServer(handler, callback) {
   const server = http.createServer((req, res) => {
     Promise.resolve(handler(req, res)).catch((error) => {

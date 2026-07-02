@@ -1,5 +1,6 @@
 import { formatPackingListAutoDownloadError } from "./errors.mjs";
 import { runPackingListAutoDownloadLangGraphWorkflow } from "./langgraph-workflow.mjs";
+import { preparePackingListRunDownloadDirectory } from "./download-directory.mjs";
 import { validatePackingListWorkbookPayload } from "./workbook.mjs";
 
 export const moduleDefinition = {
@@ -33,14 +34,20 @@ export function createPackingListAutoDownloadAutomation(deps) {
     let inputFileName = "";
     let credentials = null;
     let workbook = null;
+    let selectedDownloadDirectory = "";
     let downloadDirectory = "";
+    let downloadFolderName = "";
 
     try {
       inputFileName = normalizeUploadFileName(body);
       credentials = resolveCredentials(body);
       workbook = validatePackingListWorkbookPayload(body, deps);
       inputFileName = workbook.inputFileName;
-      downloadDirectory = resolveDownloadDirectory(body);
+      selectedDownloadDirectory = resolveDownloadDirectory(body);
+      const preparedDownloadDirectory = await preparePackingListRunDownloadDirectory(selectedDownloadDirectory);
+      selectedDownloadDirectory = preparedDownloadDirectory.selectedDownloadDirectory;
+      downloadDirectory = preparedDownloadDirectory.downloadDirectory;
+      downloadFolderName = preparedDownloadDirectory.downloadFolderName;
     } catch (error) {
       const formatted = formatPackingListAutoDownloadError(error);
       return {
@@ -67,12 +74,16 @@ export function createPackingListAutoDownloadAutomation(deps) {
       inputFileName,
       inputMode: "packing-list-auto-download",
       downloadDirectory,
+      selectedDownloadDirectory,
+      downloadFolderName,
       totalGroupCount: workbook.groups.length,
       totalPoCount: workbook.poNumbers.length,
       progress: {
         phase: "准备箱单查询",
         message: `已读取 ${workbook.groups.length} 个 NO 批次、${workbook.poNumbers.length} 个 PO 号，准备打开箱单页面。`,
         downloadDirectory,
+        selectedDownloadDirectory,
+        downloadFolderName,
         totalCount: workbook.groups.length,
         totalGroupCount: workbook.groups.length,
         totalPoCount: workbook.poNumbers.length,
@@ -90,6 +101,9 @@ export function createPackingListAutoDownloadAutomation(deps) {
         config,
         credentials,
         downloadDirectory,
+        downloadConcurrency: body?.downloadConcurrency ?? body?.concurrency,
+        selectedDownloadDirectory,
+        downloadFolderName,
         ensureLoggedIn,
         headless,
         inputFileName,
@@ -109,6 +123,8 @@ export function createPackingListAutoDownloadAutomation(deps) {
         finalUrl: result.finalUrl,
         headless,
         downloadDirectory,
+        selectedDownloadDirectory,
+        downloadFolderName,
         inputFileName,
         inputMode: "packing-list-auto-download",
         automationImplemented: result.automationImplemented,
@@ -151,6 +167,8 @@ export function createPackingListAutoDownloadAutomation(deps) {
         status: "failed",
         headless,
         downloadDirectory,
+        selectedDownloadDirectory,
+        downloadFolderName,
         inputFileName,
         inputMode: "packing-list-auto-download",
         automationImplemented: false,
@@ -169,6 +187,9 @@ export function createPackingListAutoDownloadAutomation(deps) {
           stage: formatted.stage,
           message: formatted.message,
           detail: formatted.detail,
+          downloadDirectory,
+          selectedDownloadDirectory,
+          downloadFolderName,
           inputFileName,
           inputMode: "packing-list-auto-download",
           automationImplemented: false,

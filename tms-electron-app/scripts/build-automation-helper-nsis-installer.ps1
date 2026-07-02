@@ -938,14 +938,13 @@ $nsisInstallIncomplete = U "5b89 88c5 6587 4ef6 4e0d 5b8c 6574 ff0c 8bf7 91cd 65
 $nsisRunningAutomationWarning = U "68c0 6d4b 5230 672c 673a 53ef 80fd 6709 0020 0054 004f 0053 0020 81ea 52a8 5316 4efb 52a1 6b63 5728 8fd0 884c 3002 7ee7 7eed 5b89 88c5 4f1a 505c 6b62 5f53 524d 5c0f 52a9 624b 548c 6267 884c 5668 ff0c 6b63 5728 8fd0 884c 7684 6d4f 89c8 5668 6d41 7a0b 3001 4e0b 8f7d 6587 4ef6 6216 6267 884c 8bb0 5f55 53ef 80fd 4e2d 65ad 3002 5efa 8bae 7b49 5f85 4efb 52a1 5b8c 6210 540e 518d 66f4 65b0 3002 662f 5426 4ecd 8981 7ee7 7eed ff1f"
 
 $payloadDirForNsis = $PayloadRoot.Replace("\", "\\")
+$payloadForNsis = $PayloadArchivePath.Replace("\", "\\")
 $verifierForNsis = $VerifierExePath.Replace("\", "\\")
-$downloaderForNsis = $DownloaderExePath.Replace("\", "\\")
 $extractorForNsis = $ExtractorExePath.Replace("\", "\\")
 $copierForNsis = $CopierExePath.Replace("\", "\\")
 $cleanupForNsis = $CleanupExePath.Replace("\", "\\")
 $installerPathForNsis = $InstallerPath.Replace("\", "\\")
 $resolvedPayloadUrl = $PayloadUrl.Replace("{sha256}", $PayloadSha256)
-$payloadUrlForNsis = $resolvedPayloadUrl.Replace('"', '%22')
 @"
 Unicode true
 SetCompressor /SOLID lzma
@@ -988,9 +987,9 @@ Section "$nsisAppName" SecMain
   SetOutPath "`$PLUGINSDIR"
   File /oname=TOS-Automation-Helper-Cleanup.exe "$cleanupForNsis"
   File /oname=TOS-Automation-Helper-Verify.exe "$verifierForNsis"
-  File /oname=TOS-Automation-Helper-Download.exe "$downloaderForNsis"
   File /oname=TOS-Automation-Helper-Extract.exe "$extractorForNsis"
   File /oname=TOS-Automation-Helper-Copy.exe "$copierForNsis"
+  File /oname=TOS-Automation-Helper-Payload.zip "$payloadForNsis"
 
   DetailPrint "Stopping old helper..."
   nsExec::ExecToLog 'cmd /c ""`$PLUGINSDIR\TOS-Automation-Helper-Cleanup.exe" "`$INSTDIR" >> "`$1" 2>&1"'
@@ -1021,11 +1020,13 @@ Section "$nsisAppName" SecMain
   Delete "`$INSTDIR\7za.exe"
   Delete "`$INSTDIR\TOS-Automation-Helper.exe"
 
-  DetailPrint "Downloading and verifying automation helper payload..."
-  nsExec::ExecToLog 'cmd /c ""`$PLUGINSDIR\TOS-Automation-Helper-Download.exe" "$payloadUrlForNsis" "`$PLUGINSDIR\TOS-Automation-Helper-Payload.zip" "$PayloadSha256" >> "`$1" 2>&1"'
+  DetailPrint "Verifying embedded automation helper payload..."
+  IfFileExists "`$PLUGINSDIR\TOS-Automation-Helper-Payload.zip" +2 0
+    Goto install_incomplete
+  nsExec::ExecToLog 'cmd /c ""`$PLUGINSDIR\TOS-Automation-Helper-Verify.exe" "`$PLUGINSDIR\TOS-Automation-Helper-Payload.zip" "$PayloadSha256" >> "`$1" 2>&1"'
   Pop `$0
   `${If} `$0 != 0
-    MessageBox MB_ICONSTOP "$nsisDownloadFailedPrefix`$0"
+    MessageBox MB_ICONSTOP "$nsisVerifyFailed"
     Abort
   `${EndIf}
 
@@ -1123,6 +1124,7 @@ $payload = Get-Item -LiteralPath $PayloadArchivePath
   payloadName = $PayloadArchiveName
   payloadSize = $payload.Length
   payloadSha256 = $PayloadSha256
-  payloadUrl = $resolvedPayloadUrl
-  builder = "NSIS"
+  payloadUrl = $null
+  builder = "NSIS-offline"
+  networkDuringInstall = $false
 } | ConvertTo-Json -Depth 3

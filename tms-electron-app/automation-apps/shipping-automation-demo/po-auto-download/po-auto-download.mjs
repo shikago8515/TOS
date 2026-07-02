@@ -2,8 +2,12 @@ import { access, mkdir, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
+import {
+  buildPoAutoDownloadFailureDetails,
+  persistPoAutoDownloadArtifacts,
+} from "./artifacts.mjs";
 
-const DEFAULT_CONCURRENCY = 3;
+const DEFAULT_CONCURRENCY = 6;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60000;
 const DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0";
 const INFORNEXUS_LOGIN_PATH = "/en/trade/login.jsp";
@@ -173,6 +177,7 @@ function toBoolean(value, fallback = false) {
 
 export function createPoAutoDownloadAutomation(deps) {
   const {
+    artifactsDir,
     browserEngines,
     buildVisibleBrowserLaunchOptions,
     config,
@@ -211,6 +216,7 @@ export function createPoAutoDownloadAutomation(deps) {
       progress: buildInitialProgress({
         downloadDirectory,
         inputFileName,
+        requestConcurrency,
         selectedDownloadDirectory,
         totalCount: poRows.length,
       }),
@@ -229,6 +235,7 @@ export function createPoAutoDownloadAutomation(deps) {
         requestConcurrency,
         runId: activeRun.runId,
       });
+      await attachPoAutoDownloadArtifacts(result, poRows, activeRun.runId);
 
       recordCompletedRun({
         runId: activeRun.runId,
@@ -242,6 +249,8 @@ export function createPoAutoDownloadAutomation(deps) {
         downloadMode: result.downloadMode,
         inputFileName,
         progress: result.progress,
+        artifacts: result.artifacts,
+        failedInvoiceDetails: result.failedInvoiceDetails,
         totalPoCount: result.totalPoCount,
         downloadedPoCount: result.downloadedPoCount,
         failedPoCount: result.failedPoCount,
@@ -253,6 +262,25 @@ export function createPoAutoDownloadAutomation(deps) {
       };
     } finally {
       unregisterActiveRun(activeRun.runId);
+    }
+  }
+
+  async function attachPoAutoDownloadArtifacts(result, rows, runId) {
+    result.failedInvoiceDetails = buildPoAutoDownloadFailureDetails(result, rows);
+    if (!artifactsDir) return;
+    try {
+      await persistPoAutoDownloadArtifacts({
+        artifactsDir,
+        result,
+        rows,
+        runId,
+        xlsx,
+      });
+    } catch (error) {
+      log("PO auto download artifact persistence failed.", {
+        runId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -281,6 +309,9 @@ export function createPoAutoDownloadAutomation(deps) {
       message: `已读取 ${poRows.length} 行，待下载 ${activeRows.length} 个 active/new Invoice。`,
       totalCount: poRows.length,
       activeCount: activeRows.length,
+      concurrencyCount: requestConcurrency,
+      downloadConcurrency: requestConcurrency,
+      requestConcurrency,
       skippedCount: skippedStatusResults.length,
       downloadDirectory,
       selectedDownloadDirectory,
@@ -315,6 +346,8 @@ export function createPoAutoDownloadAutomation(deps) {
         skippedInvoiceCount: skippedStatusResults.length,
         pendingDownloadPoCount: 0,
         downloadPending: false,
+        concurrencyCount: requestConcurrency,
+        downloadConcurrency: requestConcurrency,
         requestConcurrency,
         selectedDownloadDirectory,
         downloadDirectory,
@@ -337,6 +370,7 @@ export function createPoAutoDownloadAutomation(deps) {
       authSession = await createRequestAuthenticatedSession(credentials, { headless, runId });
       const progressTracker = createProgressTracker(activeRun, {
         activeCount: activeRows.length,
+        requestConcurrency,
         downloadDirectory,
         selectedDownloadDirectory,
         skippedCount: skippedStatusResults.length,
@@ -370,6 +404,10 @@ export function createPoAutoDownloadAutomation(deps) {
         completedCount: activeRows.length,
         downloadedCount: downloadedPoCount,
         failedCount: failedPoCount,
+        activeCount: 0,
+        concurrencyCount: requestConcurrency,
+        downloadConcurrency: requestConcurrency,
+        requestConcurrency,
         currentInvoiceNumbers: [],
       });
 
@@ -393,6 +431,8 @@ export function createPoAutoDownloadAutomation(deps) {
         skippedInvoiceCount: skippedStatusResults.length,
         pendingDownloadPoCount: 0,
         downloadPending: false,
+        concurrencyCount: requestConcurrency,
+        downloadConcurrency: requestConcurrency,
         requestConcurrency,
         selectedDownloadDirectory,
         downloadDirectory,
@@ -436,6 +476,8 @@ export function createPoAutoDownloadAutomation(deps) {
         skippedInvoiceCount: skippedStatusResults.length,
         pendingDownloadPoCount: 0,
         downloadPending: false,
+        concurrencyCount: requestConcurrency,
+        downloadConcurrency: requestConcurrency,
         requestConcurrency,
         selectedDownloadDirectory,
         downloadDirectory,
@@ -765,7 +807,9 @@ async function selectWindowsDirectory(initialDirectory) {
 
 function resolveRequestConcurrency(body, config) {
   const value = Number(
-    body?.requestConcurrency
+    body?.downloadConcurrency
+      || body?.concurrency
+      || body?.requestConcurrency
       || config?.poAutoDownload?.requestConcurrency
       || DEFAULT_CONCURRENCY,
   );
@@ -793,6 +837,9 @@ function buildInitialProgress(options = {}) {
     message: "等待上传 Excel 并发起下载。",
     totalCount: Number(options.totalCount || 0),
     activeCount: 0,
+    concurrencyCount: Number(options.requestConcurrency || 0),
+    downloadConcurrency: Number(options.requestConcurrency || 0),
+    requestConcurrency: Number(options.requestConcurrency || 0),
     completedCount: 0,
     downloadedCount: 0,
     failedCount: 0,
@@ -819,6 +866,8 @@ function setRunProgress(activeRun, patch = {}) {
 function createProgressTracker(activeRun, options = {}) {
   const current = new Set();
   const recentResults = [];
+  const totalActiveCount = Number(options.activeCount || 0);
+  const requestConcurrency = Number(options.requestConcurrency || 0);
   let completedCount = 0;
   let downloadedCount = 0;
   let failedCount = 0;
@@ -826,7 +875,11 @@ function createProgressTracker(activeRun, options = {}) {
   function update(patch = {}) {
     return setRunProgress(activeRun, {
       totalCount: Number(options.totalCount || 0),
-      activeCount: Number(options.activeCount || 0),
+      activeCount: current.size,
+      activeInvoiceCount: totalActiveCount,
+      concurrencyCount: requestConcurrency,
+      downloadConcurrency: requestConcurrency,
+      requestConcurrency,
       skippedCount: Number(options.skippedCount || 0),
       completedCount,
       downloadedCount,
@@ -1299,7 +1352,7 @@ async function downloadInvoicePdfFromRequestFlow(options) {
   const publicSearchResult = withoutHtml(searchResult);
   const pageResolverUrl = extractInvoicePageResolverUrl(searchHtml, loginOrigin, invoiceNumber);
   if (!pageResolverUrl) {
-    throw new Error(`Invoice ${invoiceNumber}: PageResolver URL was not found in InProgressInvoices response.`);
+    throw new Error(buildInvoiceNotFoundMessage(invoiceNumber));
   }
 
   const invoicePage = await fetchInvoicePage({
@@ -1312,7 +1365,7 @@ async function downloadInvoicePdfFromRequestFlow(options) {
   });
   const pdfUrl = extractInvoicePdfUrl(invoicePage.html, loginOrigin);
   if (!pdfUrl) {
-    throw new Error(`Invoice ${invoiceNumber}: PDF dyncon URL was not found in PageResolver response.`);
+    throw new Error(buildInvoicePdfNotAvailableMessage(invoiceNumber));
   }
 
   const pdfResult = await downloadInvoicePdfFile({
@@ -1334,6 +1387,20 @@ async function downloadInvoicePdfFromRequestFlow(options) {
     pdfUrl,
     ok: true,
   };
+}
+
+export function buildInvoiceNotFoundMessage(invoiceNumber) {
+  const label = formatInvoiceNumberForMessage(invoiceNumber);
+  return `Invoice ${label}: Infor Nexus 系统没有找到这个 Invoice 的可打开结果。请确认 Excel 中的 INVOICE NUMBER 是否正确、该发票是否已在 Infor Nexus 创建，或当前账号是否有权限查看。`;
+}
+
+export function buildInvoicePdfNotAvailableMessage(invoiceNumber) {
+  const label = formatInvoiceNumberForMessage(invoiceNumber);
+  return `Invoice ${label}: 已找到 Invoice 页面，但系统没有返回可下载的 Invoice PDF。可能是该发票还没有生成 PDF、未发布，或当前账号没有 PDF 下载权限；请在 Infor Nexus 手工打开该发票确认是否能下载。`;
+}
+
+function formatInvoiceNumberForMessage(invoiceNumber) {
+  return String(invoiceNumber || "").trim() || "(blank)";
 }
 
 async function fetchInvoicePage(options) {

@@ -167,7 +167,7 @@
             <div v-if="sending && runProgress" class="pad-progress">
               <div class="pad-progress__head">
                 <span>{{ text(progressPhase) }}</span>
-                <b>{{ progressCompleted }}/{{ progressTotal }}</b>
+                <b>{{ progressDownloaded }}/{{ progressTotal }}</b>
               </div>
               <div class="pad-progress__track">
                 <span :style="{ width: `${progressPercentage}%` }" />
@@ -449,22 +449,10 @@ const statusIconName = computed(() => {
   return 'activity'
 })
 const progressPhase = computed(() => String(runProgress.value?.phase || '执行中'))
-const progressTotal = computed(() => {
-  const total = Number(runProgress.value?.activeCount || runProgress.value?.totalCount || 0)
-  return Number.isFinite(total) && total > 0 ? total : 0
-})
-const progressCompleted = computed(() => {
-  const completed = Number(runProgress.value?.completedCount || 0)
-  return Number.isFinite(completed) && completed > 0 ? completed : 0
-})
-const progressDownloaded = computed(() => {
-  const downloaded = Number(runProgress.value?.downloadedCount || 0)
-  return Number.isFinite(downloaded) && downloaded > 0 ? downloaded : 0
-})
-const progressFailed = computed(() => {
-  const failed = Number(runProgress.value?.failedCount || 0)
-  return Number.isFinite(failed) && failed > 0 ? failed : 0
-})
+const progressTotal = computed(() => readProgressTotalCount(runProgress.value))
+const progressCompleted = computed(() => clampProgressCount(readProgressCompletedCount(runProgress.value), progressTotal.value))
+const progressDownloaded = computed(() => clampProgressCount(readProgressDownloadedCount(runProgress.value), progressTotal.value))
+const progressFailed = computed(() => clampProgressCount(readProgressFailedCount(runProgress.value), progressTotal.value))
 const progressPercentage = computed(() => {
   if (progressTotal.value <= 0) return sending.value ? 6 : 0
   return Math.min(100, Math.max(4, Math.round((progressCompleted.value / progressTotal.value) * 100)))
@@ -481,9 +469,11 @@ const downloadedPdfPaths = computed(() => {
   const paths = [
     ...extractDownloadedPdfPaths(lastResult.value),
     ...extractDownloadedPdfPaths(runProgress.value),
-    ...extractDownloadedPdfPaths((executorHealth.value as any)?.lastRun),
+    ...(sending.value ? [] : extractDownloadedPdfPaths((executorHealth.value as any)?.lastRun)),
   ]
-  return Array.from(new Set(paths)).slice(0, 8)
+  return Array.from(new Set(paths))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+    .slice(0, 8)
 })
 const failedPackingListBatches = computed(() => extractFailedPackingListBatches(lastResult.value).slice(0, 30))
 const messageIconName = computed(() => {
@@ -674,10 +664,9 @@ function syncActiveRunViewFromHealth(): void {
     sending.value = true
     lastResult.value = null
     statusLabel.value = '执行中'
-    const progress = extractRunProgress(executorHealth.value)
+    const progress = extractRunProgress(activeRun)
     if (progress) {
-      runProgress.value = progress
-      statusText.value = formatRunProgress(progress)
+      applyRunProgress(progress)
     } else {
       const inputFileName = String(activeRun.inputFileName || '').trim()
       statusText.value = inputFileName
@@ -736,10 +725,9 @@ async function pollRunProgress(): Promise<void> {
       statusText.value = text('后台下载任务已结束，请查看执行记录或重新开始。')
       return
     }
-    const progress = extractRunProgress(health)
+    const progress = extractRunProgress(findPackingListAutoDownloadActiveRun(health))
     if (progress) {
-      runProgress.value = progress
-      statusText.value = formatRunProgress(progress)
+      applyRunProgress(progress)
     }
     const now = Date.now()
     if (now - lastBatchProgressRefreshAt > 2500) {
@@ -753,22 +741,86 @@ async function pollRunProgress(): Promise<void> {
 
 function extractRunProgress(payload: Record<string, any> | LocalExecutorHealth | null | undefined): Record<string, any> | null {
   const activeRun = payload?.activeRun as Record<string, any> | null | undefined
-  if (activeRun?.progress && typeof activeRun.progress === 'object') return activeRun.progress
+  if (activeRun?.progress && typeof activeRun.progress === 'object') return attachProgressOwner(activeRun.progress, activeRun)
   const activeRuns = Array.isArray(payload?.activeRuns) ? payload.activeRuns as Record<string, any>[] : []
-  const firstProgress = activeRuns.find((item) => item?.progress)?.progress
-  if (firstProgress && typeof firstProgress === 'object') return firstProgress
-  const lastRun = payload?.lastRun as Record<string, any> | null | undefined
-  if (lastRun?.progress && typeof lastRun.progress === 'object') return lastRun.progress
+  const firstRunWithProgress = activeRuns.find((item) => item?.progress && typeof item.progress === 'object')
+  if (firstRunWithProgress?.progress) return attachProgressOwner(firstRunWithProgress.progress, firstRunWithProgress)
   const directProgress = (payload as Record<string, any> | null | undefined)?.progress
-  return directProgress && typeof directProgress === 'object' ? directProgress : null
+  return directProgress && typeof directProgress === 'object'
+    ? attachProgressOwner(directProgress, payload as Record<string, any>)
+    : null
+}
+
+function attachProgressOwner(progress: Record<string, any>, owner: Record<string, any> | null | undefined): Record<string, any> {
+  return {
+    ...progress,
+    runId: progress.runId ?? owner?.runId ?? owner?.backendRunId,
+    batchId: progress.batchId ?? owner?.batchId,
+    attemptId: progress.attemptId ?? owner?.attemptId,
+    inputFileName: progress.inputFileName ?? owner?.inputFileName,
+  }
+}
+
+function applyRunProgress(progress: Record<string, any>): void {
+  const normalized = mergeRunProgressSnapshot(runProgress.value, progress)
+  runProgress.value = normalized
+  statusText.value = formatRunProgress(normalized)
+}
+
+function mergeRunProgressSnapshot(
+  previous: Record<string, any> | null | undefined,
+  next: Record<string, any>,
+): Record<string, any> {
+  if (!previous || previous === next) return { ...next }
+  if (!isSameRunProgress(previous, next)) return { ...next }
+  const merged: Record<string, any> = { ...previous, ...next }
+  const total = Math.max(readProgressTotalCount(previous), readProgressTotalCount(next))
+  const completed = Math.max(readProgressCompletedCount(previous), readProgressCompletedCount(next))
+  const downloaded = Math.max(readProgressDownloadedCount(previous), readProgressDownloadedCount(next))
+  const failed = Math.max(readProgressFailedCount(previous), readProgressFailedCount(next))
+  if (total > 0) {
+    merged.totalGroupCount = total
+    merged.totalCount = total
+  }
+  merged.completedCount = clampProgressCount(completed, total)
+  merged.downloadedCount = clampProgressCount(downloaded, total)
+  merged.failedCount = clampProgressCount(failed, total)
+  const downloadedFilePaths = [
+    ...extractDownloadedPdfPaths(previous),
+    ...extractDownloadedPdfPaths(next),
+  ]
+  if (downloadedFilePaths.length) merged.downloadedFilePaths = Array.from(new Set(downloadedFilePaths))
+  if (!Array.isArray(next.currentPackingListNumbers) && Array.isArray(previous.currentPackingListNumbers)) {
+    merged.currentPackingListNumbers = previous.currentPackingListNumbers
+  }
+  if (!Array.isArray(next.currentInvoiceNumbers) && Array.isArray(previous.currentInvoiceNumbers)) {
+    merged.currentInvoiceNumbers = previous.currentInvoiceNumbers
+  }
+  return merged
+}
+
+function isSameRunProgress(previous: Record<string, any>, next: Record<string, any>): boolean {
+  const previousIdentity = readRunProgressIdentity(previous)
+  const nextIdentity = readRunProgressIdentity(next)
+  if (previousIdentity || nextIdentity) return previousIdentity === nextIdentity
+  return true
+}
+
+function readRunProgressIdentity(progress: Record<string, any> | null | undefined): string {
+  const runId = String(progress?.runId || '').trim()
+  const batchId = String(progress?.batchId || '').trim()
+  const attemptId = String(progress?.attemptId || '').trim()
+  if (runId) return `run:${runId}`
+  if (batchId || attemptId) return `batch:${batchId}:attempt:${attemptId}`
+  return ''
 }
 
 function formatRunProgress(progress: Record<string, any>): string {
   const phase = text(String(progress.phase || '执行中'))
-  const total = Number(progress.activeCount || progress.totalCount || 0)
-  const completed = Number(progress.completedCount || 0)
-  const downloaded = Number(progress.downloadedCount || 0)
-  const failed = Number(progress.failedCount || 0)
+  const total = readProgressTotalCount(progress)
+  const completed = clampProgressCount(readProgressCompletedCount(progress), total)
+  const downloaded = clampProgressCount(readProgressDownloadedCount(progress), total)
+  const failed = clampProgressCount(readProgressFailedCount(progress), total)
   const currentValues = Array.isArray(progress.currentPackingListNumbers)
     ? progress.currentPackingListNumbers
     : Array.isArray(progress.currentInvoiceNumbers)
@@ -777,11 +829,77 @@ function formatRunProgress(progress: Record<string, any>): string {
   const current = currentValues.map((item: unknown) => String(item || '').trim()).filter(Boolean).slice(0, 3).join(isEnglish.value ? ', ' : '、')
   const countText = total > 0
     ? isEnglish.value
-      ? `Processed ${Math.max(0, completed)}/${total}, downloaded ${Math.max(0, downloaded)}, failed ${Math.max(0, failed)}`
-      : `已处理 ${Math.max(0, completed)}/${total}，已下载 ${Math.max(0, downloaded)}，失败 ${Math.max(0, failed)}`
+      ? `Downloaded ${downloaded}/${total}, processed ${completed}/${total}, failed ${failed}`
+      : `已下载 ${downloaded}/${total}，已处理 ${completed}/${total}，失败 ${failed}`
     : text(String(progress.message || '正在处理'))
   if (!current) return `${phase} · ${countText}`
   return isEnglish.value ? `${phase} · ${countText}, current ${current}` : `${phase} · ${countText}，当前 ${current}`
+}
+
+function readProgressTotalCount(progress: Record<string, any> | null | undefined): number {
+  return toProgressCount(
+    progress?.totalGroupCount
+      ?? progress?.totalPackingListCount
+      ?? progress?.totalCount
+      ?? progress?.totalInvoiceCount
+      ?? progress?.totalPoCount
+      ?? progress?.checkpoint?.totalCount
+      ?? (Array.isArray(progress?.groupResults) ? progress.groupResults.length : 0),
+  )
+}
+
+function readProgressCompletedCount(progress: Record<string, any> | null | undefined): number {
+  const total = readProgressTotalCount(progress)
+  const completed = toProgressCount(
+    progress?.completedCount
+      ?? progress?.completedPackingListCount
+      ?? progress?.processedCount
+      ?? progress?.checkpoint?.completedCount,
+  )
+  const processed = Math.max(completed, readProgressDownloadedCount(progress) + readProgressFailedCount(progress))
+  return clampProgressCount(processed, total)
+}
+
+function readProgressDownloadedCount(progress: Record<string, any> | null | undefined): number {
+  const count = toProgressCount(
+    progress?.downloadedCount
+      ?? progress?.successCount
+      ?? progress?.downloadedPackingListCount
+      ?? progress?.downloadedInvoiceCount
+      ?? progress?.downloadedPoCount
+      ?? progress?.completedPoCount
+      ?? progress?.checkpoint?.downloadedCount,
+  )
+  if (count > 0) return count
+  if (Array.isArray(progress?.groupResults)) {
+    return progress.groupResults.filter((item: any) => Boolean(item?.ok)).length
+  }
+  return extractDownloadedPdfPaths(progress).length
+}
+
+function readProgressFailedCount(progress: Record<string, any> | null | undefined): number {
+  const count = toProgressCount(
+    progress?.failedCount
+      ?? progress?.failedPackingListCount
+      ?? progress?.failedInvoiceCount
+      ?? progress?.failedPoCount
+      ?? progress?.checkpoint?.failedCount,
+  )
+  if (count > 0) return count
+  if (Array.isArray(progress?.groupResults)) {
+    return progress.groupResults.filter((item: any) => item && item.ok === false).length
+  }
+  return 0
+}
+
+function toProgressCount(value: unknown): number {
+  const count = Number(value ?? 0)
+  return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0
+}
+
+function clampProgressCount(count: number, total: number): number {
+  const normalized = toProgressCount(count)
+  return total > 0 ? Math.min(normalized, total) : normalized
 }
 
 async function refreshCredentialProfile(): Promise<void> {
@@ -1135,7 +1253,7 @@ async function runPackingListAutoDownload(
     lastRawResponse.value = raw
     const json = safeParseJson(raw)
     const finalProgress = extractRunProgress(json)
-    if (finalProgress) runProgress.value = finalProgress
+    if (finalProgress) applyRunProgress(finalProgress)
     await finishBackendRunRecord(runRecord, response.ok && Boolean(json?.ok), json?.message || '', json).catch(async (error) => {
       await recordWebAutomationEvent('packing-list-auto-download-run-record-finish-failure', {
         error: readErrorMessage(error, 'finish run failed'),
@@ -1160,7 +1278,7 @@ async function runPackingListAutoDownload(
 
     if (json?.ok) {
       const completed = Number(json.downloadedPackingListCount ?? json.downloadedInvoiceCount ?? json.downloadedPoCount ?? json.completedPoCount ?? 0)
-      const total = Number(json.totalPackingListCount ?? json.totalInvoiceCount ?? json.totalPoCount ?? 0)
+      const total = Number(json.totalGroupCount ?? json.totalPackingListCount ?? json.totalInvoiceCount ?? json.totalPoCount ?? 0)
       const paths = extractDownloadedPdfPaths(json)
       const pathSuffix = paths[0] ? (isEnglish.value ? ` Saved to: ${paths[0]}` : ` 保存路径：${paths[0]}`) : ''
       statusLabel.value = '成功'
@@ -1379,7 +1497,8 @@ function readPackingListCompletedCount(payload: Record<string, any> | null): num
 
 function readPackingListTotalCount(payload: Record<string, any> | null): number {
   return Number(
-    payload?.totalPackingListCount
+    payload?.totalGroupCount
+      ?? payload?.totalPackingListCount
       ?? payload?.totalInvoiceCount
       ?? payload?.totalPoCount
       ?? payload?.checkpoint?.totalCount

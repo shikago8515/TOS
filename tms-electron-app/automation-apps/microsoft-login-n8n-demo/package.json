@@ -6,5 +6,8 @@
   "description": "Bundled Microsoft login + n8n + visible browser executor.",
   "scripts": {
     "start": "node bin/start.js"
+  },
+  "dependencies": {
+    "@langchain/langgraph": "1.4.7"
   }
 }

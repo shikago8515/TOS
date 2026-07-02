@@ -190,20 +190,30 @@
           </div>
 
           <div v-else class="plr-history-list">
-            <button
+            <div
               v-for="item in batches"
               :key="item.batchId"
               class="plr-history-item"
               :class="{ 'plr-history-item--active': item.batchId === batch?.batchId }"
-              type="button"
-              @click="chooseHistoryBatch(item)"
             >
-              <span class="plr-history-item__main">
-                <strong>{{ item.sourceFileName || item.batchName || item.batchId }}</strong>
-                <small>{{ formatBatchDate(item.updatedAt || item.createdAt) }} · {{ formatBatchStatus(item.status) }} · {{ formatBatchSummary(item) }}</small>
-              </span>
-              <span class="plr-history-item__action">{{ item.resumable ? text('选择续跑') : text('查看文件') }}</span>
-            </button>
+              <button class="plr-history-item__select" type="button" @click="chooseHistoryBatch(item)">
+                <span class="plr-history-item__main">
+                  <strong>{{ item.sourceFileName || item.batchName || item.batchId }}</strong>
+                  <small>{{ formatBatchDate(item.updatedAt || item.createdAt) }} · {{ formatBatchStatus(item.status) }} · {{ formatBatchSummary(item) }}</small>
+                </span>
+                <span class="plr-history-item__action">{{ item.resumable ? text('选择续跑') : text('查看文件') }}</span>
+              </button>
+              <button
+                v-if="allowDelete"
+                class="plr-history-item__delete"
+                type="button"
+                :disabled="sending || deletingBatchId === item.batchId"
+                @click.stop="emit('deleteBatch', item)"
+              >
+                <AppIcon :name="deletingBatchId === item.batchId ? 'loader' : 'trash-2'" :class="{ 'plr-spin': deletingBatchId === item.batchId }" />
+                <span>{{ text('删除') }}</span>
+              </button>
+            </div>
           </div>
         </section>
       </transition>
@@ -235,6 +245,8 @@ const props = defineProps<{
   refreshing: boolean
   historyLoading: boolean
   executorActive: boolean
+  allowDelete?: boolean
+  deletingBatchId?: string
 }>()
 
 const emit = defineEmits<{
@@ -243,6 +255,7 @@ const emit = defineEmits<{
   selectBatch: [batch: PackingListBatchRecord]
   continue: [batch: PackingListBatchRecord]
   retryFailed: [batch: PackingListBatchRecord]
+  deleteBatch: [batch: PackingListBatchRecord]
   notice: [notice: { tone: 'success' | 'error'; message: string }]
 }>()
 
@@ -465,7 +478,8 @@ function formatBatchSummary(batch: PackingListBatchRecord): string {
 
 function formatBatchDate(value: string | undefined): string {
   if (!value) return text('时间未知')
-  const date = new Date(value)
+  const normalized = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(value) ? value : `${value}Z`
+  const date = new Date(normalized)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString(isEnglish.value ? 'en-US' : 'zh-CN', {
     timeZone: 'Asia/Shanghai',
@@ -1015,7 +1029,6 @@ function readErrorMessage(error: unknown, fallback: string): string {
   background: var(--soft-surface, #fff);
   color: var(--soft-text, #1e293b);
   text-align: left;
-  cursor: pointer;
   transition: border-color .18s ease, background .18s ease;
 
   &:hover,
@@ -1023,6 +1036,21 @@ function readErrorMessage(error: unknown, fallback: string): string {
     border-color: var(--el-color-primary, #0f766e);
     background: var(--soft-accent-light, #f0fdfa);
   }
+}
+
+.plr-history-item__select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .plr-history-item__main {
@@ -1055,6 +1083,35 @@ function readErrorMessage(error: unknown, fallback: string): string {
   color: var(--el-color-primary, #0f766e);
   font-size: 10px;
   font-weight: 600;
+}
+
+.plr-history-item__delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  background: #fff;
+  color: #dc2626;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease;
+
+  &:hover:not(:disabled) {
+    border-color: #f87171;
+    background: #fff1f2;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: .55;
+  }
 }
 
 .plr-checkpoint {

@@ -76,53 +76,22 @@
 
             <!-- Credentials -->
             <div v-if="isInfornexusDirectScenario || isMicrosoftScenario" class="sa-card__bd">
-              <div class="sa-cred-grid">
-                <template v-if="isInfornexusDirectScenario">
-                  <label class="sa-field">
-                    <span>{{ text('User ID') }}</span>
-                    <div class="sa-inp-wrap">
-                      <AppIcon name="user" class="sa-inp-icon" />
-                      <input v-model.trim="shippingUsername" type="text" class="sa-inp" :placeholder="text('请输入 User ID')" autocomplete="username" />
-                    </div>
-                  </label>
-                  <label class="sa-field">
-                    <span>{{ text('Password') }}</span>
-                    <div class="sa-inp-wrap">
-                      <AppIcon name="shield-check" class="sa-inp-icon" />
-                      <input v-model="shippingPassword" :type="showShippingPassword ? 'text' : 'password'" class="sa-inp" placeholder="Enter password" autocomplete="current-password" />
-                      <button class="sa-inp__btn" type="button" @click="showShippingPassword = !showShippingPassword"><AppIcon name="eye" /></button>
-                    </div>
-                  </label>
-                </template>
-                <template v-else-if="isMicrosoftScenario">
-                  <label class="sa-field">
-                    <span>{{ text('Microsoft 账号') }}</span>
-                    <div class="sa-inp-wrap">
-                      <AppIcon name="user" class="sa-inp-icon" />
-                      <input v-model.trim="microsoftUsername" type="text" class="sa-inp" :placeholder="text('请输入 Microsoft 账号')" autocomplete="username" />
-                    </div>
-                  </label>
-                  <label class="sa-field">
-                    <span>{{ text('Microsoft 密码') }}</span>
-                    <div class="sa-inp-wrap">
-                      <AppIcon name="shield-check" class="sa-inp-icon" />
-                      <input v-model="microsoftPassword" :type="showMicrosoftPassword ? 'text' : 'password'" class="sa-inp" placeholder="Enter password" autocomplete="current-password" />
-                      <button class="sa-inp__btn" type="button" @click="showMicrosoftPassword = !showMicrosoftPassword"><AppIcon name="eye" /></button>
-                    </div>
-                  </label>
-                </template>
-              </div>
-              <div class="sa-cred-row">
-                <button class="sa-btn sa-btn--pri" :disabled="credentialSaving || !activeUsername || !activePassword" @click="saveCurrentCredentials">
-                  <AppIcon name="shield-check" />{{ credentialSaving ? text('保存中') : text('保存登录账号密码') }}
-                </button>
-                <button class="sa-btn" :disabled="credentialClearing || !hasStoredCredentials" @click="clearCurrentCredentials">
-                  <AppIcon name="stop-circle" />{{ text('清除') }}
-                </button>
-                <button v-if="requiresExcel" class="sa-btn" :disabled="templateLoading" @click="downloadPrimaryTemplate">
-                  <AppIcon name="download" />{{ templateButtonLabel }}
-                </button>
-              </div>
+              <AutomationAccountProfileManager
+                ref="credentialProfileRef"
+                v-model:selected-key="selectedCredentialKey"
+                v-model:username="activeCredentialUsername"
+                v-model:password="activeCredentialPassword"
+                :automation-id="entry.id"
+                :default-username="credentialDefaultUsername"
+                :username-mode="credentialUsernameMode"
+                :extra-action-label="requiresExcel ? templateButtonLabel : ''"
+                extra-action-icon="download"
+                :extra-action-disabled="templateLoading"
+                :extra-action-loading="templateLoading"
+                @state="handleCredentialState"
+                @notice="handleCredentialNotice"
+                @extra-action="downloadPrimaryTemplate"
+              />
             </div>
 
             <!-- File Dropzone -->
@@ -191,7 +160,7 @@
                 <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'sa-spin': sending }" />
                 <span>{{ sending ? text('执行中...') : text(directScenarioRunLabel) }}</span>
               </button>
-              <button v-else class="sa-btn sa-btn--execute" :disabled="!canRunDirectExecutor" @click="sendDirectToExecutor">
+              <button v-else class="sa-btn sa-btn--execute" :disabled="!canRunDirectExecutor" @click="runDirectExecutorFromButton">
                 <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'sa-spin': sending }" />
                 <span>{{ sending ? text('执行中...') : text(directRunButtonLabel) }}</span>
               </button>
@@ -210,6 +179,16 @@
               </div>
               <div class="sa-progress__track">
                 <span :style="{ width: `${ticketOwnerProgressPercent}%` }" />
+              </div>
+              <div v-if="ticketOwnerProgressStats.length" class="sa-progress__stats">
+                <span v-for="item in ticketOwnerProgressStats" :key="item.key" class="sa-progress__stat">
+                  <small>{{ text(item.label) }}</small>
+                  <b>{{ item.value }}</b>
+                </span>
+              </div>
+              <div v-if="ticketOwnerCurrentTickets.length" class="sa-progress__tickets">
+                <small>{{ text('正在处理') }}</small>
+                <span v-for="ticket in ticketOwnerCurrentTickets" :key="ticket" class="sa-progress__ticket">{{ ticket }}</span>
               </div>
             </div>
 
@@ -277,6 +256,12 @@
           </div>
 
           <AutomationRunHistoryPanel :automation-id="entry.id" :refresh-signal="lastRawResponse" />
+          <TicketOwnerBatchResumeCard
+            v-if="isTicketOwnerStatisticsScenario"
+            :sending="sending"
+            :refresh-signal="lastRawResponse"
+            @resume="resumeTicketOwnerBatch"
+          />
 
           <!-- Steps -->
           <div class="sa-dock-card sa-dock-card--flex">
@@ -358,33 +343,51 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'; import { useRoute, useRouter } from 'vue-router'; import AppIcon from '../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../shared/ui/BrowserVisibilitySwitch.vue'
+import AutomationAccountProfileManager from './components/AutomationAccountProfileManager.vue'
 import AutomationRunHistoryPanel from './components/AutomationRunHistoryPanel.vue'
+import TicketOwnerBatchResumeCard from './components/TicketOwnerBatchResumeCard.vue'
 import { downloadUrlAsFile } from '../../shared/api/backendClient'
 import { showAppAlert } from '../../shared/ui/appAlert'
-import type { AutomationAppInfo } from '../../types/electronApi'; import type { AutomationRunFileInput, AutomationRunFileRecord, AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from './webAutomationApi'
-import { buildAutomationRunFileDownloadUrl, clearExecutorCredentials, createAutomationRunRecord, downloadAutomationTemplate, fetchAutomationTemplates, fetchExecutorCredentials, openAutomationHelperDownload, fetchAutomationApps, finishAutomationRunRecord, getAutomationHelperUpdateMessage, hasElectronAutomationSupport, launchAutomationConsole, primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealthPayload, probeLocalExecutorHealth, recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole } from './webAutomationApi'
+import type { AutomationAppInfo } from '../../types/electronApi'; import type { AutomationRunFileInput, AutomationRunFileRecord, AutomationRunRecord, AutomationTemplate, LocalExecutorHealth, TicketOwnerBatchAttempt, TicketOwnerBatchRecord, TicketOwnerSourceFileRef } from './webAutomationApi'
+import { buildAutomationRunFileDownloadUrl, createAutomationRunRecord, createTicketOwnerStatisticsAttempt, createTicketOwnerStatisticsBatch, downloadAutomationTemplate, downloadTicketOwnerSourceFileAsBase64, fetchAutomationTemplates, getLocalAutomationBackendBaseUrl, openAutomationHelperDownload, fetchAutomationApps, finishAutomationRunRecord, getAutomationHelperUpdateMessage, hasElectronAutomationSupport, launchAutomationConsole, primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealthPayload, probeLocalExecutorHealth, recordWebAutomationEvent, stopAutomationConsole } from './webAutomationApi'
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from './webAutomationErrors'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from './webAutomationModel'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 
 const route = useRoute(); const router = useRouter(); const { text } = useAppLanguage()
 const DSU = ''; const DSP = ''; const DMU = ''; const DMP = ''
+type CredentialProfileRef = {
+  refresh: (accountKey?: string) => Promise<void>
+  resolveCredentials: () => Promise<{ username: string; password: string; accountKey: string }>
+}
+type CredentialProfileState = { hasStoredCredentials: boolean; username: string; accountKey: string }
+type CredentialNotice = { tone: WebAutomationNoticeTone; message: string }
 const electronSupported = hasElectronAutomationSupport()
 const BROWSER_PROGRESS_OVERLAY_STORAGE_KEY = 'tos.ticketOwner.showBrowserProgressOverlay'
-const activeApp = ref<AutomationAppInfo | null>(null); const executorHealth = ref<LocalExecutorHealth | null>(null); const executorCredentials = ref<ExecutorCredentials | null>(null); const automationTemplates = ref<AutomationTemplate[]>([])
-const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false); const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false); const sending = ref(false); const restoredActiveRun = ref(false); const credentialsHydrated = ref(false)
+const activeApp = ref<AutomationAppInfo | null>(null); const executorHealth = ref<LocalExecutorHealth | null>(null); const automationTemplates = ref<AutomationTemplate[]>([])
+const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false); const templateLoading = ref(false); const sending = ref(false); const restoredActiveRun = ref(false)
 const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info'); const isHealthLogOpen = ref(false); const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
 const ticketReleaseFileInput = ref<HTMLInputElement | null>(null); const ticketFactoryPriceFileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null); const ticketReleaseFile = ref<File | null>(null); const ticketFactoryPriceFile = ref<File | null>(null); const webhookUrl = ref('http://127.0.0.1:5678/webhook/microsoft-login-excel-demo')
-const shippingUsername = ref(DSU); const shippingPassword = ref(DSP); const showShippingPassword = ref(true)
-const microsoftUsername = ref(DMU); const microsoftPassword = ref(DMP); const showMicrosoftPassword = ref(true)
+const shippingUsername = ref(DSU); const shippingPassword = ref(DSP)
+const microsoftUsername = ref(DMU); const microsoftPassword = ref(DMP)
+const selectedCredentialKey = ref('default')
+const hasStoredCredentials = ref(false)
+const savedCredentialUsername = ref('')
+const credentialProfileRef = ref<CredentialProfileRef | null>(null)
 const showBrowserView = ref(true)
 const showBrowserProgressOverlay = ref(loadBooleanPreference(BROWSER_PROGRESS_OVERLAY_STORAGE_KEY, true))
 const statusText = ref(''); const statusLabel = ref('待命'); const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
 const ticketOwnerProgressPercent = ref(0); const ticketOwnerProgressText = ref('')
+type TicketOwnerProgressStat = { key: string; label: string; value: string }
+const ticketOwnerProgressStats = ref<TicketOwnerProgressStat[]>([])
+const ticketOwnerCurrentTickets = ref<string[]>([])
 let ticketOwnerProgressTimer: number | null = null
 let activeRunStateTimer: number | null = null
 type SAL = { resultExcelUrl: string; resultJsonUrl?: string; failedPoExcelUrl?: string; failedPoJsonUrl?: string; failedRowCount: number }
+type TicketOwnerResumeMode = 'new' | 'continue' | 'retry-failed' | 'restart'
+type TicketOwnerResumeRequest = { mode: Exclude<TicketOwnerResumeMode, 'new'>; batch: TicketOwnerBatchRecord }
+type TicketOwnerBatchContext = { batch: TicketOwnerBatchRecord; attempt: TicketOwnerBatchAttempt; mode: TicketOwnerResumeMode; payload: Record<string, unknown> }
 const shippingArtifactLinks = ref<SAL | null>(null)
 const autoDownloadedArtifactKey = ref('')
 
@@ -422,13 +425,25 @@ const canLaunchActiveApp = computed(() => Boolean(entry.value?.appId) && !launch
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
 const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
 const showTicketOwnerRunProgress = computed(() => isTicketOwnerStatisticsScenario.value && sending.value)
-const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
-const savedCredentialUsername = computed(() => executorCredentials.value?.username || '')
 const primaryTemplate = computed(() => automationTemplates.value[0] || null)
 const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
-const activeUsername = computed(() => isInfornexusDirectScenario.value ? shippingUsername.value : microsoftUsername.value)
-const activePassword = computed(() => isInfornexusDirectScenario.value ? shippingPassword.value : microsoftPassword.value)
 const loginSiteName = computed(() => isMicrosoftScenario.value ? 'Microsoft / SAP BTP' : 'Infor Nexus')
+const credentialDefaultUsername = computed(() => isMicrosoftScenario.value ? DMU : DSU)
+const credentialUsernameMode = computed<'plain' | 'inforNexus'>(() => isMicrosoftScenario.value ? 'plain' : 'inforNexus')
+const activeCredentialUsername = computed({
+  get: () => (isInfornexusDirectScenario.value ? shippingUsername.value : microsoftUsername.value),
+  set: (value: string) => {
+    if (isInfornexusDirectScenario.value) shippingUsername.value = value
+    else microsoftUsername.value = value
+  },
+})
+const activeCredentialPassword = computed({
+  get: () => (isInfornexusDirectScenario.value ? shippingPassword.value : microsoftPassword.value),
+  set: (value: string) => {
+    if (isInfornexusDirectScenario.value) shippingPassword.value = value
+    else microsoftPassword.value = value
+  },
+})
 const credentialStatusText = computed(() => { const sn = loginSiteName.value; return hasStoredCredentials.value ? `${text('已保存')} ${sn} ${text('登录账号')}: ${savedCredentialUsername.value}` : `${text('未保存')} ${sn} ${text('登录账号密码')}` })
 const canRunShippingAutomation = computed(() => !sending.value)
 const canRunDirectExecutor = computed(() => !sending.value)
@@ -463,7 +478,7 @@ async function initializeScenario(): Promise<void> {
   if (isShippingScenario.value) { shippingUsername.value = shippingUsername.value || DSU; shippingPassword.value = shippingPassword.value || DSP; statusLabel.value = '待命'; statusText.value = '等待上传万代 Excel 并执行 Shipping。' }
   else if (isInfornexusAutoAddScenario.value) { shippingUsername.value = shippingUsername.value || DSU; shippingPassword.value = shippingPassword.value || DSP; statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行 Infornexus 自动搜索添加。' }
   else if (isMicrosoftScenario.value) { microsoftUsername.value = microsoftUsername.value || DMU; microsoftPassword.value = microsoftPassword.value || DMP; statusLabel.value = '待命'; statusText.value = isTicketOwnerStatisticsScenario.value ? '等待启动浏览器采集并生成 Ticket ownership Excel。' : '等待上传 Excel 并执行。' }
-  await refreshAutomationTemplates(); await refreshExecutorCredentials(); await refreshExecutorState(true)
+  await refreshAutomationTemplates(); await refreshCredentialProfile(); await refreshExecutorState(true)
   if (electronSupported && shouldSyncActiveAppRuntime()) await startActiveApp(true, { forceUpdate: true })
 }
 async function refreshExecutorState(silent: boolean): Promise<void> {
@@ -494,7 +509,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
       return
     }
     executorHealth.value = await probeLocalExecutorHealth(entry.value.executorBaseUrl)
-    if (!silent || !isExecutorBusy()) await refreshExecutorCredentials()
+    if (!silent || !isExecutorBusy()) await refreshCredentialProfile()
     if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
     syncActiveRunViewFromHealth()
     const launcherHelperVersion = String(launcherHealth?.helperVersion || launcherHealth?.version || '').trim()
@@ -650,7 +665,50 @@ function applyTicketOwnerProgressFromRun(run: Record<string, any> | null | undef
   const percent = Number(progress.percent || 0)
   ticketOwnerProgressPercent.value = Number.isFinite(percent) ? Math.max(0, Math.min(100, Math.round(percent))) : 0
   ticketOwnerProgressText.value = formatTicketOwnerProgressText(progress) || String(progress.message || '正在统计 ticket 归属')
+  ticketOwnerProgressStats.value = buildTicketOwnerProgressStats(progress)
+  ticketOwnerCurrentTickets.value = normalizeTicketOwnerCurrentTickets(progress.currentTickets)
   return true
+}
+function toTicketOwnerProgressCount(value: unknown): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0
+}
+function formatTicketOwnerProgressRatio(done: number, total: number): string {
+  return total > 0 ? `${done}/${total}` : `${done}`
+}
+function normalizeTicketOwnerCurrentTickets(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 6)
+}
+function buildTicketOwnerProgressStats(progress: Record<string, any> | null): TicketOwnerProgressStat[] {
+  if (!progress) return []
+  const filteredTotal = toTicketOwnerProgressCount(progress.filteredTotalCount)
+  const taskCenterTotal = toTicketOwnerProgressCount(progress.taskCenterTotalCount)
+  const discovered = toTicketOwnerProgressCount(progress.discoveredTaskCount)
+  const planned = toTicketOwnerProgressCount(progress.plannedCount || progress.totalCount)
+  const total = toTicketOwnerProgressCount(progress.totalCount || progress.plannedCount)
+  const completed = toTicketOwnerProgressCount(progress.completedCount || progress.successCount)
+  const success = toTicketOwnerProgressCount(progress.successCount || progress.completedCount)
+  const attempted = toTicketOwnerProgressCount(progress.attemptedCount)
+  const failed = toTicketOwnerProgressCount(progress.failedCount)
+  const pending = toTicketOwnerProgressCount(progress.pendingCount)
+  const skipped = toTicketOwnerProgressCount(progress.skippedCount)
+  const active = toTicketOwnerProgressCount(progress.activeCount)
+  const concurrency = toTicketOwnerProgressCount(progress.concurrencyCount)
+  const stats: TicketOwnerProgressStat[] = []
+  if (filteredTotal > 0 || taskCenterTotal > 0) {
+    stats.push({ key: 'filtered', label: '筛选总数', value: taskCenterTotal > 0 ? `${filteredTotal}/${taskCenterTotal}` : `${filteredTotal}` })
+  }
+  if (discovered > 0 && discovered !== filteredTotal) stats.push({ key: 'discovered', label: '已识别', value: `${discovered}` })
+  if (planned > 0) stats.push({ key: 'planned', label: '计划处理', value: `${planned}` })
+  if (total > 0 || completed > 0 || success > 0) stats.push({ key: 'generated', label: '已生成', value: formatTicketOwnerProgressRatio(success || completed, total || planned) })
+  if (attempted > 0) stats.push({ key: 'attempted', label: '已尝试', value: `${attempted}` })
+  if (active > 0) stats.push({ key: 'active', label: '进行中', value: `${active}` })
+  if (pending > 0) stats.push({ key: 'pending', label: '待处理', value: `${pending}` })
+  if (failed > 0) stats.push({ key: 'failed', label: '未获取', value: `${failed}` })
+  if (skipped > 0) stats.push({ key: 'skipped', label: '非目标类型', value: `${skipped}` })
+  if (concurrency > 1) stats.push({ key: 'concurrency', label: '并发', value: `${concurrency}` })
+  return stats
 }
 function formatTicketOwnerProgressText(progress: Record<string, any> | null): string {
   if (!progress) return ''
@@ -688,38 +746,33 @@ function formatRunTime(value: string): string {
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString()
 }
-async function refreshExecutorCredentials(): Promise<void> {
+async function refreshCredentialProfile(accountKey = selectedCredentialKey.value): Promise<void> {
   if (!entry.value) return
   try {
-    executorCredentials.value = await fetchExecutorCredentials(entry.value.id)
-    const u = executorCredentials.value.username || ''
-    if (u && isInfornexusDirectScenario.value) shippingUsername.value = u
-    if (u && isMicrosoftScenario.value) microsoftUsername.value = u
-    if (executorCredentials.value.hasStoredCredentials && !credentialsHydrated.value) await fillStored()
-    if (!executorCredentials.value.hasStoredCredentials) credentialsHydrated.value = false
-  } catch {
-    executorCredentials.value = null
-    credentialsHydrated.value = false
+    await credentialProfileRef.value?.refresh(accountKey)
+  } catch (error) {
+    messageTone.value = 'error'
+    message.value = readErrorMessage(error, text('读取账号密码失败。'))
   }
 }
-async function fillStored(): Promise<void> {
-  if (!entry.value) return
-  const r = await resolveAutomationCredentials(entry.value.id)
-  if (isInfornexusDirectScenario.value) {
-    shippingUsername.value = r.username
-    shippingPassword.value = r.password
-  } else if (isMicrosoftScenario.value) {
-    microsoftUsername.value = r.username
-    microsoftPassword.value = r.password
-  }
-  credentialsHydrated.value = true
+
+function handleCredentialState(state: CredentialProfileState): void {
+  hasStoredCredentials.value = state.hasStoredCredentials
+  selectedCredentialKey.value = state.accountKey
+  savedCredentialUsername.value = state.username
+  if (!state.username) return
+  if (isInfornexusDirectScenario.value) shippingUsername.value = state.username
+  else if (isMicrosoftScenario.value) microsoftUsername.value = state.username
+}
+
+function handleCredentialNotice(notice: CredentialNotice): void {
+  messageTone.value = notice.tone
+  message.value = notice.message
 }
 async function refreshAutomationTemplates(): Promise<void> { if (!entry.value) return; templateLoading.value = true; try { automationTemplates.value = await fetchAutomationTemplates(entry.value.id) } catch { automationTemplates.value = [] } finally { templateLoading.value = false } }
 async function downloadPrimaryTemplate(): Promise<void> { try { await downloadAutomationTemplate(primaryTemplate.value); messageTone.value = 'success'; message.value = text('模板下载已开始。') } catch (e) { const m = readErrorMessage(e, text('模板下载失败。')); messageTone.value = 'warning'; message.value = m; void showAppAlert(m, { tone: 'warning' }) } }
 function downloadAutomationHelper(): void { void openAutomationHelperDownload() }
 function bootLocalHelper(): void { primeLocalAutomationLauncherBoot(); messageTone.value = 'info'; message.value = text('已尝试启动本机自动化助手。'); window.setTimeout(() => { void refreshExecutorState(true) }, 1200) }
-async function saveCurrentCredentials(): Promise<void> { if (!entry.value || credentialSaving.value) return; const u = activeUsername.value.trim(); const p = activePassword.value; if (!u || !p) { messageTone.value = 'warning'; message.value = text('请先填写账号和密码。'); return }; credentialSaving.value = true; try { executorCredentials.value = await saveExecutorCredentials(entry.value.id, u, p); credentialsHydrated.value = true; await refreshExecutorCredentials(); if (isInfornexusDirectScenario.value) { shippingUsername.value = executorCredentials.value.username || u; shippingPassword.value = p } else if (isMicrosoftScenario.value) { microsoftUsername.value = executorCredentials.value.username || u; microsoftPassword.value = p }; messageTone.value = 'success'; message.value = text('已保存。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('保存失败。')) } finally { credentialSaving.value = false } }
-async function clearCurrentCredentials(): Promise<void> { if (!entry.value || credentialClearing.value) return; credentialClearing.value = true; try { executorCredentials.value = await clearExecutorCredentials(entry.value.id); credentialsHydrated.value = false; messageTone.value = 'info'; message.value = text('已清除。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('清除失败。')) } finally { credentialClearing.value = false } }
 async function startActiveApp(silent: boolean, options: { forceUpdate?: boolean } = {}): Promise<void> { if (!entry.value || launching.value) return; if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot(); launching.value = true; try { const forceUpdate = options.forceUpdate !== false; const r = await launchAutomationConsole(entry.value.appId, { forceUpdate }); if (!r.success) throw new Error(r.error || '启动失败'); await refreshExecutorState(true); if (!silent) { messageTone.value = 'success'; message.value = forceUpdate ? text('已同步最新自动化逻辑。') : r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') } } catch (e) { const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.value.appId, entryId: entry.value.id, forceUpdate: options.forceUpdate !== false, error: m }); if (!silent) { messageTone.value = 'error'; message.value = m } } finally { launching.value = false } }
 async function stopActiveApp(): Promise<void> { if (!entry.value) return; try { const r = await stopAutomationConsole(entry.value.appId); if (!r.success) throw new Error(r.error || '停止失败'); executorHealth.value = null; clearRestoredActiveRunState(); if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }; await refreshExecutorState(true).catch(() => {}); messageTone.value = 'info'; message.value = text('执行器已停止。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('停止失败')) } }
 function handleFileSelect(e: Event): void { const f = getExcelFile((e.target as HTMLInputElement).files); if (f) setSelectedFile(f) }
@@ -743,8 +796,16 @@ function isInternalDragMove(e: DragEvent): boolean { const current = e.currentTa
 function resetDragging(): void { dragDepth.value = 0; isDragging.value = false }
 function formatSize(b: number): string { if (b < 1024) return `${b} B`; if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`; return `${(b / (1024 * 1024)).toFixed(1)} MB` }
 function resetWebhookUrl(): void { webhookUrl.value = entry.value?.webhookUrl || 'http://127.0.0.1:5678/webhook/microsoft-login-excel-demo' }
-async function resolveRunCredentialsPayload(uv: string, pv: string): Promise<Record<string, string>> { if (!entry.value) return {}; const u = uv.trim(); const tp = pv; if (tp.trim()) { if (!u) throw new Error('请填写账号密码。'); executorCredentials.value = await saveExecutorCredentials(entry.value.id, u, tp); await refreshExecutorCredentials(); applyCredUser(executorCredentials.value.username || u); return { username: u, password: tp } }; const r = await resolveAutomationCredentials(entry.value.id); applyCredUser(r.username); if (isInfornexusDirectScenario.value) shippingPassword.value = r.password; else if (isMicrosoftScenario.value) microsoftPassword.value = r.password; return { username: r.username, password: r.password } }
-function applyCredUser(u: string): void { if (!u) return; if (isInfornexusDirectScenario.value) shippingUsername.value = u; else if (isMicrosoftScenario.value) microsoftUsername.value = u }
+async function resolveRunCredentialsPayload(): Promise<Record<string, string>> {
+  if (!entry.value) return {}
+  const resolved = await credentialProfileRef.value?.resolveCredentials()
+  if (!resolved?.username || !resolved.password) throw new Error(text(`请先新增并保存 ${loginSiteName.value} 登录账号密码。`))
+  if (isInfornexusDirectScenario.value) shippingUsername.value = resolved.username
+  else if (isMicrosoftScenario.value) microsoftUsername.value = resolved.username
+  activeCredentialPassword.value = resolved.password
+  selectedCredentialKey.value = resolved.accountKey
+  return { username: resolved.username, password: resolved.password }
+}
 async function createBackendRunRecord(f: File | null = null): Promise<AutomationRunRecord | null> { if (!entry.value) return null; return createAutomationRunRecord(entry.value.id, f, entry.value.title) }
 async function finishBackendRunRecord(r: AutomationRunRecord | null, ok: boolean, msg: string, p: Record<string, any> | null): Promise<AutomationRunFileRecord[]> {
   if (!r?.runId) return []
@@ -805,12 +866,23 @@ function blobToBase64(blob: Blob): Promise<string> {
   })
 }
 async function applyPersistedArtifactLinks(files: AutomationRunFileRecord[]): Promise<void> {
-  if (!shippingArtifactLinks.value || files.length === 0) return
+  if (files.length === 0) return
   const byRole = new Map(files.map((file) => [file.fileRole, file]))
   const resultExcel = byRole.get('result_excel')
   const resultJson = byRole.get('result_json')
   const failedExcel = byRole.get('failed_rows_excel')
   const failedJson = byRole.get('failed_rows_json')
+  if (!shippingArtifactLinks.value) {
+    if (!resultExcel) return
+    shippingArtifactLinks.value = {
+      resultExcelUrl: await buildAutomationRunFileDownloadUrl(resultExcel),
+      resultJsonUrl: resultJson ? await buildAutomationRunFileDownloadUrl(resultJson) : undefined,
+      failedPoExcelUrl: failedExcel ? await buildAutomationRunFileDownloadUrl(failedExcel) : undefined,
+      failedPoJsonUrl: failedJson ? await buildAutomationRunFileDownloadUrl(failedJson) : undefined,
+      failedRowCount: 0,
+    }
+    return
+  }
   shippingArtifactLinks.value = {
     ...shippingArtifactLinks.value,
     resultExcelUrl: resultExcel ? await buildAutomationRunFileDownloadUrl(resultExcel) : shippingArtifactLinks.value.resultExcelUrl,
@@ -827,6 +899,8 @@ function validateDirectExecutorInputs(): boolean { if (!entry.value) return show
 function startTicketOwnerProgress(): void {
   if (!isTicketOwnerStatisticsScenario.value) return
   stopTicketOwnerProgress()
+  ticketOwnerProgressStats.value = []
+  ticketOwnerCurrentTickets.value = []
   const stages = [
     { at: 8, text: '正在启动浏览器并检查登录状态...' },
     { at: 18, text: '正在打开 SAP Task Center 并设置筛选条件...' },
@@ -852,15 +926,24 @@ function stopTicketOwnerProgress(done = false): void {
   if (done) {
     ticketOwnerProgressPercent.value = 100
     ticketOwnerProgressText.value = 'Ticket ownership Excel 已生成。'
+    ticketOwnerCurrentTickets.value = []
     return
   }
   ticketOwnerProgressPercent.value = 0
   ticketOwnerProgressText.value = ''
+  ticketOwnerProgressStats.value = []
+  ticketOwnerCurrentTickets.value = []
 }
 async function runInfornexusDirectWithExcel(): Promise<void> { if (isInfornexusAutoAddScenario.value) { await runInfornexusAutoAdd(); return }; await runShipping() }
-async function runShipping(): Promise<void> { if (sending.value) return; if (!validateShippingInputs()) return; if (!(await ensureReady())) { setNotReady(); void showAppAlert(statusText.value, { tone: 'warning' }); return }; const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload(shippingUsername.value, shippingPassword.value); const { res, raw, j } = await postExecutorWithModuleRetry(shippingExecutorRunUrl.value, { fileName: file.name, fileBase64: fb64, token: entry.value?.localExecutorToken || '', headless: !showBrowserView.value, ...cp }); lastRawResponse.value = raw; updateShippingArtifactLinks(j); await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(j?.message || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }; if (!j) throw new Error('无法解析响应。'); if (j?.ok && j?.shipmentScanOpened) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedPoCount ?? 0}/${j.totalPoCount ?? '?'} 个 PO。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }; statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。') } catch (e) { const m = formatAutomationExecutorMessage(readErrorMessage(e, '网络错误'), '自动化执行异常。'); statusLabel.value = '异常'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
-async function runInfornexusAutoAdd(): Promise<void> { if (sending.value) return; if (!validateAutoAddInputs()) return; if (!(await ensureReady())) { setNotReady(); void showAppAlert(statusText.value, { tone: 'warning' }); return }; const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload(shippingUsername.value, shippingPassword.value); const { res, raw, j } = await postExecutorWithModuleRetry(infornexusAutoAddExecutorRunUrl.value, { fileName: file.name, fileBase64: fb64, token: entry.value?.localExecutorToken || '', headless: !showBrowserView.value, ...cp }); lastRawResponse.value = raw; await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(j?.message || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }; if (!j) throw new Error('无法解析响应。'); if (j?.ok) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedIdCount ?? 0}/${j.totalIdCount ?? '?'} 个 ID。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }; statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。') } catch (e) { const m = formatAutomationExecutorMessage(readErrorMessage(e, '网络错误'), '自动化执行异常。'); statusLabel.value = '异常'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
-async function sendDirectToExecutor(): Promise<void> {
+async function runShipping(): Promise<void> { if (sending.value) return; if (!validateShippingInputs()) return; if (!(await ensureReady())) { setNotReady(); void showAppAlert(statusText.value, { tone: 'warning' }); return }; const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload(); const { res, raw, j } = await postExecutorWithModuleRetry(shippingExecutorRunUrl.value, { fileName: file.name, fileBase64: fb64, token: entry.value?.localExecutorToken || '', headless: !showBrowserView.value, ...cp }); lastRawResponse.value = raw; updateShippingArtifactLinks(j); await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(j?.message || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }; if (!j) throw new Error('无法解析响应。'); if (j?.ok && j?.shipmentScanOpened) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedPoCount ?? 0}/${j.totalPoCount ?? '?'} 个 PO。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }; statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。') } catch (e) { const m = formatAutomationExecutorMessage(readErrorMessage(e, '网络错误'), '自动化执行异常。'); statusLabel.value = '异常'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
+async function runInfornexusAutoAdd(): Promise<void> { if (sending.value) return; if (!validateAutoAddInputs()) return; if (!(await ensureReady())) { setNotReady(); void showAppAlert(statusText.value, { tone: 'warning' }); return }; const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload(); const { res, raw, j } = await postExecutorWithModuleRetry(infornexusAutoAddExecutorRunUrl.value, { fileName: file.name, fileBase64: fb64, token: entry.value?.localExecutorToken || '', headless: !showBrowserView.value, ...cp }); lastRawResponse.value = raw; await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(j?.message || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }; if (!j) throw new Error('无法解析响应。'); if (j?.ok) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedIdCount ?? 0}/${j.totalIdCount ?? '?'} 个 ID。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }; statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。') } catch (e) { const m = formatAutomationExecutorMessage(readErrorMessage(e, '网络错误'), '自动化执行异常。'); statusLabel.value = '异常'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
+async function resumeTicketOwnerBatch(request: TicketOwnerResumeRequest): Promise<void> {
+  await sendDirectToExecutor(request)
+}
+async function runDirectExecutorFromButton(): Promise<void> {
+  await sendDirectToExecutor()
+}
+async function sendDirectToExecutor(ticketOwnerResume?: TicketOwnerResumeRequest): Promise<void> {
   if (sending.value) return
   if (!validateDirectExecutorInputs()) return
   if (!(await ensureReady())) {
@@ -878,18 +961,25 @@ async function sendDirectToExecutor(): Promise<void> {
   lastRawResponse.value = ''
   message.value = ''
   startTicketOwnerProgress()
+  if (isTicketOwnerStatisticsScenario.value) startActiveRunStatePolling()
   try {
     const rr = await createBackendRunRecord(file ?? null)
-    const cp = isMicrosoftScenario.value ? await resolveRunCredentialsPayload(microsoftUsername.value, microsoftPassword.value) : {}
+    const cp = isMicrosoftScenario.value ? await resolveRunCredentialsPayload() : {}
     const requestBody: Record<string, unknown> = { token: entry.value?.localExecutorToken || '', headless: !showBrowserView.value, ...cp }
+    let ticketOwnerBatchContext: TicketOwnerBatchContext | null = null
     if (isTicketOwnerStatisticsScenario.value) {
       requestBody.showBrowserProgressOverlay = showBrowserProgressOverlay.value
+      ticketOwnerBatchContext = await prepareTicketOwnerBatchContext(rr?.runId || '', ticketOwnerResume)
+      Object.assign(requestBody, ticketOwnerBatchContext.payload)
     }
     if (file) {
       requestBody.fileName = file.name
       requestBody.fileBase64 = await fileToBase64(file)
     }
-    if (isTicketOwnerStatisticsScenario.value) await appendTicketOwnerLookupFiles(requestBody)
+    if (isTicketOwnerStatisticsScenario.value) {
+      if (ticketOwnerResume) await appendTicketOwnerLookupFilesFromBatch(requestBody, ticketOwnerResume.batch)
+      else await appendTicketOwnerLookupFiles(requestBody)
+    }
     const { res, raw, j } = await postExecutorWithModuleRetry(directExecutorRunUrl.value, requestBody)
     lastRawResponse.value = raw
     updateShippingArtifactLinks(j)
@@ -936,6 +1026,7 @@ async function sendDirectToExecutor(): Promise<void> {
     if (!lastResult.value?.ok) stopTicketOwnerProgress()
     sending.value = false
     await refreshExecutorState(true).catch(() => {})
+    if (!findCurrentScenarioActiveRun()) stopActiveRunStatePolling()
   }
 }
 function setNotReady(): void { statusLabel.value = '未就绪'; statusText.value = '本机执行器尚未就绪。'; lastResult.value = { ok: false, message: 'Executor is not ready.' }; messageTone.value = 'warning'; message.value = text('本机执行器未就绪。') }
@@ -970,6 +1061,39 @@ async function postExecutorJson(url: string, requestBody: Record<string, unknown
   const raw = await res.text()
   return { res, raw, j: safeParseJson(raw) }
 }
+async function prepareTicketOwnerBatchContext(runId: string, resume?: TicketOwnerResumeRequest): Promise<TicketOwnerBatchContext> {
+  const mode: TicketOwnerResumeMode = resume?.mode || 'new'
+  const batch = resume?.batch || await createTicketOwnerStatisticsBatch({
+    runId,
+    batchName: 'Ticket ownership',
+    releaseFile: ticketReleaseFile.value,
+    factoryPriceFile: ticketFactoryPriceFile.value,
+  })
+  const attempt = await createTicketOwnerStatisticsAttempt(batch.batchId, { runId, mode })
+  const backendBaseUrl = await getLocalAutomationBackendBaseUrl('/api/automation/ticket-owner-statistics/batches')
+  return {
+    batch,
+    attempt,
+    mode,
+    payload: {
+      backendBaseUrl,
+      backendRunId: runId,
+      batchId: batch.batchId,
+      attemptId: attempt.attemptId,
+      resumeMode: mode,
+      checkpointEnabled: true,
+      checkpoint: {
+        enabled: true,
+        backendBaseUrl,
+        batchId: batch.batchId,
+        attemptId: attempt.attemptId,
+        runId,
+        mode,
+        snapshot: batch.checkpoint || {},
+      },
+    },
+  }
+}
 async function appendTicketOwnerLookupFiles(requestBody: Record<string, unknown>): Promise<void> {
   if (ticketReleaseFile.value) {
     requestBody.releaseLookupFileName = ticketReleaseFile.value.name
@@ -978,6 +1102,23 @@ async function appendTicketOwnerLookupFiles(requestBody: Record<string, unknown>
   if (ticketFactoryPriceFile.value) {
     requestBody.factoryPriceFileName = ticketFactoryPriceFile.value.name
     requestBody.factoryPriceFileBase64 = await fileToBase64(ticketFactoryPriceFile.value)
+  }
+}
+async function appendTicketOwnerLookupFilesFromBatch(requestBody: Record<string, unknown>, batch: TicketOwnerBatchRecord): Promise<void> {
+  const sourceFiles = batch.sourceFile?.files || []
+  for (const sourceFile of sourceFiles) {
+    await appendTicketOwnerSourceFile(requestBody, sourceFile)
+  }
+}
+async function appendTicketOwnerSourceFile(requestBody: Record<string, unknown>, sourceFile: TicketOwnerSourceFileRef): Promise<void> {
+  if (!sourceFile?.downloadPath) return
+  const downloaded = await downloadTicketOwnerSourceFileAsBase64(sourceFile)
+  if (sourceFile.fileRole === 'release_lookup_excel') {
+    requestBody.releaseLookupFileName = downloaded.fileName
+    requestBody.releaseLookupFileBase64 = downloaded.fileBase64
+  } else if (sourceFile.fileRole === 'factory_price_excel') {
+    requestBody.factoryPriceFileName = downloaded.fileName
+    requestBody.factoryPriceFileBase64 = downloaded.fileBase64
   }
 }
 function shouldRetryAfterMissingExecutorRoute(res: Response, raw: string, payload: Record<string, any> | null): boolean {
@@ -1290,6 +1431,13 @@ function readErrorMessage(e: unknown, fb: string): string { return e instanceof 
   &__head b { flex-shrink: 0; font-size: 11px; color: #0369a1; }
   &__track { height: 7px; border-radius: 999px; overflow: hidden; background: #dbeafe; }
   &__track span { display: block; height: 100%; border-radius: inherit; background: #0ea5e9; transition: width .35s ease; }
+  &__stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(86px, 1fr)); gap: 8px; margin-top: 10px; }
+  &__stat { min-width: 0; padding: 7px 8px; border: 1px solid #bae6fd; border-radius: 8px; background: #fff; }
+  &__stat small { display: block; margin-bottom: 2px; font-size: 10px; line-height: 1.2; color: #64748b; white-space: nowrap; }
+  &__stat b { display: block; font-size: 13px; line-height: 1.2; color: #0f172a; overflow-wrap: anywhere; }
+  &__tickets { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 9px; font-size: 11px; color: #075985; }
+  &__tickets small { color: #64748b; }
+  &__ticket { max-width: 100%; padding: 2px 7px; border-radius: 999px; background: #e0f2fe; color: #0369a1; font-weight: 700; overflow-wrap: anywhere; }
 }
 
 /* ─── Artifacts Row ─── */
