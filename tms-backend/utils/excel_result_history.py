@@ -55,6 +55,30 @@ def normalize_process_history_module_id(module_id: str) -> str:
     return PROCESS_HISTORY_MODULE_ID_ALIASES.get(normalized, normalized)
 
 
+def expand_process_history_module_ids(module_ids: list[str]) -> list[str]:
+    expanded: list[str] = []
+    seen: set[str] = set()
+
+    def append_once(value: str) -> None:
+        normalized_value = str(value or "").strip()
+        if normalized_value and normalized_value not in seen:
+            seen.add(normalized_value)
+            expanded.append(normalized_value)
+
+    for module_id in module_ids:
+        normalized = str(module_id or "").strip()
+        if not normalized:
+            continue
+        canonical = normalize_process_history_module_id(normalized)
+        append_once(canonical)
+        append_once(normalized)
+        for alias, alias_canonical in PROCESS_HISTORY_MODULE_ID_ALIASES.items():
+            if alias_canonical == canonical:
+                append_once(alias)
+
+    return expanded
+
+
 def store_excel_result_history(
     file_path: str | Path,
     context: ExcelResultHistoryContext,

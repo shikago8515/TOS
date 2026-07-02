@@ -16,6 +16,7 @@ from starlette.background import BackgroundTask
 from utils.excel_result_history import (
     DEFAULT_RESULT_CONTENT_TYPE,
     ExcelResultHistoryContext,
+    expand_process_history_module_ids,
     normalize_process_history_module_id,
     process_history_response_fields,
     store_uploaded_process_result_file,
@@ -64,7 +65,7 @@ def read_process_history_records(
     limit: int = Query(80, ge=1, le=300),
     page: int = Query(1, ge=1),
 ) -> dict[str, Any]:
-    module_id_list = _split_module_ids(moduleIds)
+    module_id_list = expand_process_history_module_ids(_split_module_ids(moduleIds))
     normalized_status = _normalize_status(status)
     normalized_person_id = _normalize_person_id(personId)
     created_from = _parse_optional_datetime(createdFrom, "createdFrom")
@@ -121,7 +122,7 @@ def save_process_history_record(payload: ProcessHistoryPayload) -> dict[str, Any
     try:
         row = upsert_process_history_record({
             "record_id": payload.id,
-            "module_id": payload.moduleId,
+            "module_id": normalize_process_history_module_id(payload.moduleId),
             "module_name": payload.moduleName,
             "status": _normalize_status(payload.status) or "success",
             "duration_ms": payload.durationMs,
