@@ -68,47 +68,27 @@
               <span v-else class="iaa-chip iaa-chip--warn">{{ text('等待执行器') }}</span>
             </div>
 
-            <!-- Credential Notice -->
-            <div v-if="hasStoredCredentials" class="iaa-cred-note">
-              <AppIcon name="check-circle" />
-              <span>{{ text('已保存') }} Infor Nexus {{ text('登录账号') }}: {{ savedCredentialUsername }}</span>
-            </div>
-
-            <!-- Credentials -->
             <div class="iaa-card__bd">
-              <div class="iaa-cred-grid">
-                <label class="iaa-field">
-                  <span>{{ text('User ID') }}</span>
-                  <div class="iaa-inp-wrap">
-                    <AppIcon name="user" class="iaa-inp-icon" />
-                    <input v-model.trim="shippingUsername" type="text" class="iaa-inp" :placeholder="text('请输入 User ID')" autocomplete="username" />
-                  </div>
-                </label>
-                <label class="iaa-field">
-                  <span>{{ text('Password') }}</span>
-                  <div class="iaa-inp-wrap">
-                    <AppIcon name="shield-check" class="iaa-inp-icon" />
-                    <input v-model="shippingPassword" :type="showShippingPassword ? 'text' : 'password'" class="iaa-inp" placeholder="Enter password" autocomplete="current-password" />
-                    <button class="iaa-inp__btn" @click="showShippingPassword = !showShippingPassword"><AppIcon name="eye" /></button>
-                  </div>
-                </label>
-              </div>
-              <div class="iaa-cred-row">
-                <button class="iaa-btn iaa-btn--pri" :disabled="credentialSaving || !shippingUsername || !shippingPassword" @click="saveCurrentCredentials">
-                  <AppIcon name="shield-check" />{{ credentialSaving ? text('保存中') : text('保存登录账号密码') }}
-                </button>
-                <button class="iaa-btn" :disabled="credentialClearing || !hasStoredCredentials" @click="clearCurrentCredentials">
-                  <AppIcon name="stop-circle" />{{ text('清除') }}
-                </button>
-                <button class="iaa-btn" :disabled="templateLoading" @click="downloadPrimaryTemplate">
-                  <AppIcon name="download" />{{ templateButtonLabel }}
-                </button>
-              </div>
+              <AutomationAccountProfileManager
+                ref="credentialProfileRef"
+                v-model:selected-key="selectedCredentialKey"
+                v-model:username="shippingUsername"
+                v-model:password="shippingPassword"
+                :automation-id="entry?.id || ENTRY_ID"
+                :default-username="DEFAULT_INFOR_NEXUS_USERNAME"
+                @state="handleCredentialState"
+                @notice="handleCredentialNotice"
+              />
             </div>
 
             <!-- File Dropzone -->
             <div class="iaa-card__bd">
-              <label class="iaa-field"><span>{{ text('Excel 文件') }}</span></label>
+              <label class="iaa-field iaa-field--file-head">
+                <span>{{ text('Excel 文件') }}</span>
+                <button class="iaa-btn iaa-btn--template" type="button" :disabled="templateLoading" @click.stop="downloadPrimaryTemplate">
+                  <AppIcon :name="templateLoading ? 'loader' : 'download'" :class="{ 'iaa-spin': templateLoading }" />{{ templateButtonLabel }}
+                </button>
+              </label>
               <div class="iaa-drop" :class="{ 'iaa-drop--on': selectedFile, 'iaa-drop--over': isDragging }"
                 @click="openFilePicker" @dragenter.prevent="handleDragEnter" @dragover.prevent="handleDragOver" @dragleave.prevent="handleDragLeave" @drop.prevent="handleDrop">
                 <input ref="fileInput" type="file" accept=".xlsx,.xls" @click.stop @change="handleFileSelect" />
@@ -246,22 +226,30 @@ import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
 import { showAppAlert } from '../../../shared/ui/appAlert'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+import AutomationAccountProfileManager from '../../web-automation/components/AutomationAccountProfileManager.vue'
 import AutomationRunHistoryPanel from '../../web-automation/components/AutomationRunHistoryPanel.vue'
 import type { AutomationAppInfo } from '../../../types/electronApi'
-import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
+import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {
-  clearExecutorCredentials, createAutomationRunRecord, downloadAutomationTemplate,
-  fetchAutomationApps, fetchAutomationTemplates, fetchExecutorCredentials, finishAutomationRunRecord,
+  createAutomationRunRecord, downloadAutomationTemplate,
+  fetchAutomationApps, fetchAutomationTemplates, finishAutomationRunRecord,
   findLocalExecutorActiveRun,
   getAutomationHelperUpdateMessage,
   hasElectronAutomationSupport, isLocalExecutorBusy, launchAutomationConsole, openAutomationHelperDownload, openInfornexusAutoAddSearchPage,
   primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
-  recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole,
+  recordWebAutomationEvent, stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
+import { canRunWithCredentials, DEFAULT_INFOR_NEXUS_USERNAME, normalizeInforNexusUsername } from '../../web-automation/webAutomationCredentials'
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
 
 const ENTRY_ID = 'infornexus-auto-add'
+type CredentialProfileRef = {
+  refresh: (accountKey?: string) => Promise<void>
+  resolveCredentials: () => Promise<{ username: string; password: string; accountKey: string }>
+}
+type CredentialProfileState = { hasStoredCredentials: boolean; username: string; accountKey: string }
+type CredentialNotice = { tone: WebAutomationNoticeTone; message: string }
 
 const router = useRouter(); const { text } = useAppLanguage()
 const entry = getWebAutomationEntry(ENTRY_ID)
@@ -269,15 +257,17 @@ const electronSupported = hasElectronAutomationSupport()
 
 const activeApp = ref<AutomationAppInfo | null>(null)
 const executorHealth = ref<LocalExecutorHealth | null>(null)
-const executorCredentials = ref<ExecutorCredentials | null>(null)
 const automationTemplates = ref<AutomationTemplate[]>([])
 const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false)
-const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false); const sending = ref(false); const restoredActiveRun = ref(false)
+const templateLoading = ref(false); const sending = ref(false); const restoredActiveRun = ref(false)
 const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info')
 const isHealthLogOpen = ref(false)
 const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
-const shippingUsername = ref(''); const shippingPassword = ref(''); const showShippingPassword = ref(true)
+const shippingUsername = ref(DEFAULT_INFOR_NEXUS_USERNAME); const shippingPassword = ref('')
+const selectedCredentialKey = ref('default')
+const hasStoredCredentials = ref(false)
+const credentialProfileRef = ref<CredentialProfileRef | null>(null)
 const showBrowserView = ref(true)
 const statusText = ref(''); const statusLabel = ref('待命')
 const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
@@ -299,12 +289,16 @@ const statusIconName = computed(() => { if (sending.value) return 'loader'; if (
 const canLaunchActiveApp = computed(() => Boolean(entry?.appId) && !launching.value)
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
 const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
-const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
-const savedCredentialUsername = computed(() => executorCredentials.value?.username || '')
 const primaryTemplate = computed(() => automationTemplates.value[0] || null)
 const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
 const executorRunUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-infornexus-auto-add-file` : '' })
-const canRunShippingAutomation = computed(() => !sending.value)
+const canRunShippingAutomation = computed(() => canRunWithCredentials({
+  username: shippingUsername.value,
+  password: shippingPassword.value,
+  hasStoredCredentials: hasStoredCredentials.value,
+  hasSelectedFile: Boolean(selectedFile.value),
+  sending: sending.value,
+}))
 const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
 
 onMounted(() => { void initializeScenario() })
@@ -312,7 +306,7 @@ onBeforeUnmount(() => { stopActiveRunStatePolling() })
 
 async function initializeScenario(): Promise<void> {
   statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行 Infornexus 自动搜索添加。'
-  await refreshAutomationTemplates(); await refreshExecutorCredentials(); await refreshExecutorState(true)
+  await refreshAutomationTemplates(); await refreshCredentialProfile(); await refreshExecutorState(true)
   if (electronSupported && activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) await startActiveApp(true)
 }
 
@@ -322,7 +316,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
     launcherReachable.value = electronSupported ? true : await probeLocalAutomationLauncherHealth()
     if (electronSupported) { try { const apps = await fetchAutomationApps(); activeApp.value = apps.find((a) => a.id === entry?.appId) ?? fb } catch { activeApp.value = fb } } else { activeApp.value = fb }
     if (!electronSupported && !launcherReachable.value) { executorHealth.value = null; activeApp.value = fb; clearRestoredActiveRunState(); if (!silent) { messageTone.value = 'warning'; message.value = text('未检测到本机自动化助手。') }; return }
-    executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl); await refreshExecutorCredentials()
+    executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl); await refreshCredentialProfile()
     if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
     syncActiveRunViewFromHealth()
     const updateMessage = getAutomationHelperUpdateMessage(executorHealth.value, activeApp.value)
@@ -332,6 +326,30 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
     executorHealth.value = null; activeApp.value = activeApp.value || fb; clearRestoredActiveRunState()
     if (!silent) { messageTone.value = 'warning'; message.value = launcherReachable.value ? text('本机自动化助手已连接，执行器尚未启动。') : text('执行器未就绪。') }
   } finally { refreshing.value = false }
+}
+
+async function waitForExecutorHealthReady(timeoutMs = 15000): Promise<boolean> {
+  if (!entry) return false
+  const startedAt = Date.now()
+  let lastError = ''
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl)
+      if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
+      syncActiveRunViewFromHealth()
+      return true
+    } catch (error) {
+      lastError = readErrorMessage(error, 'executor health probe failed')
+      await new Promise((resolve) => window.setTimeout(resolve, 600))
+    }
+  }
+  await recordWebAutomationEvent('executor-health-wait-timeout', {
+    appId: entry.appId,
+    entryId: entry.id,
+    executorBaseUrl: entry.executorBaseUrl,
+    error: lastError,
+  })
+  return false
 }
 
 function syncActiveRunViewFromHealth(): void {
@@ -378,14 +396,17 @@ function clearRestoredActiveRunState(): void {
   statusLabel.value = '待命'
 }
 
-async function refreshExecutorCredentials(): Promise<void> {
-  if (!entry) return
-  try {
-    executorCredentials.value = await fetchExecutorCredentials(entry.id)
-    const u = executorCredentials.value.username || ''
-    if (u) shippingUsername.value = u
-    if (executorCredentials.value.hasStoredCredentials) { const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = r.username; shippingPassword.value = r.password }
-  } catch { executorCredentials.value = null }
+async function refreshCredentialProfile(): Promise<void> { await credentialProfileRef.value?.refresh(selectedCredentialKey.value) }
+
+function handleCredentialState(state: CredentialProfileState): void {
+  hasStoredCredentials.value = state.hasStoredCredentials
+  selectedCredentialKey.value = state.accountKey
+  if (state.username) shippingUsername.value = normalizeInforNexusUsername(state.username)
+}
+
+function handleCredentialNotice(notice: CredentialNotice): void {
+  messageTone.value = notice.tone
+  message.value = notice.message
 }
 
 async function refreshAutomationTemplates(): Promise<void> {
@@ -402,23 +423,6 @@ async function downloadPrimaryTemplate(): Promise<void> {
 function downloadAutomationHelper(): void { void openAutomationHelperDownload() }
 function bootLocalHelper(): void { primeLocalAutomationLauncherBoot(); messageTone.value = 'info'; message.value = text('已尝试启动本机自动化助手。'); window.setTimeout(() => { void refreshExecutorState(true) }, 1200) }
 
-async function saveCurrentCredentials(): Promise<void> {
-  if (!entry || credentialSaving.value) return
-  const u = shippingUsername.value.trim(); const p = shippingPassword.value
-  if (!u || !p) { messageTone.value = 'warning'; message.value = text('请先填写账号和密码。'); return }
-  credentialSaving.value = true
-  try { executorCredentials.value = await saveExecutorCredentials(entry.id, u, p); await refreshExecutorCredentials(); shippingPassword.value = p; messageTone.value = 'success'; message.value = text('已保存。') }
-  catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('保存失败。')) }
-  finally { credentialSaving.value = false }
-}
-
-async function clearCurrentCredentials(): Promise<void> {
-  if (!entry || credentialClearing.value) return; credentialClearing.value = true
-  try { executorCredentials.value = await clearExecutorCredentials(entry.id); messageTone.value = 'info'; message.value = text('已清除。') }
-  catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('清除失败。')) }
-  finally { credentialClearing.value = false }
-}
-
 async function startActiveApp(silent: boolean): Promise<void> {
   if (!entry || launching.value) return
   if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot()
@@ -427,7 +431,10 @@ async function startActiveApp(silent: boolean): Promise<void> {
     const shouldOpenManualSearchPage = !silent && showBrowserView.value
     const credentialsPayload = shouldOpenManualSearchPage ? await resolveRunCredentialsPayload() : null
     const r = await launchAutomationConsole(entry.appId); if (!r.success) throw new Error(r.error || '启动失败')
-    await refreshExecutorState(true)
+    if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
+    const executorReady = await waitForExecutorHealthReady()
+    if (!executorReady) throw new Error('执行器已启动，但健康检查暂时未连上。请点刷新，或稍后重新打开视图。')
+    await refreshCredentialProfile()
     if (shouldOpenManualSearchPage) {
       const opened = await openInfornexusAutoAddSearchPage({
         baseUrl: entry.executorBaseUrl,
@@ -480,8 +487,18 @@ function formatSize(b: number): string { if (b < 1024) return `${b} B`; if (b < 
 async function resolveRunCredentialsPayload(): Promise<Record<string, string>> {
   if (!entry) return {}
   const u = shippingUsername.value.trim(); const tp = shippingPassword.value
-  if (tp.trim()) { if (!u) throw new Error('请填写账号密码。'); executorCredentials.value = await saveExecutorCredentials(entry.id, u, tp); await refreshExecutorCredentials(); return { username: u, password: tp } }
-  const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = r.username; shippingPassword.value = r.password; return { username: r.username, password: r.password }
+  if (tp.trim()) {
+    if (!u) throw new Error('请填写账号密码。')
+    const username = normalizeInforNexusUsername(u)
+    shippingUsername.value = username
+    return { username, password: tp }
+  }
+  const resolved = await credentialProfileRef.value?.resolveCredentials()
+  if (!resolved) throw new Error(text('请先新增并保存 Infor Nexus 登录账号密码。'))
+  selectedCredentialKey.value = resolved.accountKey
+  shippingUsername.value = normalizeInforNexusUsername(resolved.username)
+  shippingPassword.value = resolved.password
+  return { username: shippingUsername.value, password: resolved.password }
 }
 
 function readErrorMessage(e: unknown, fb: string): string { return e instanceof Error && e.message ? e.message : fb }
@@ -680,34 +697,13 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
   &__ft { padding: 0 20px 16px; display: flex; flex-direction: column; gap: 8px; }
 }
 
-/* ─── Credential Notice ─── */
-.iaa-cred-note {
-  display: flex; align-items: center; gap: 7px;
-  margin: 12px 20px 0; padding: 9px 13px; border-radius: 10px;
-  background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d;
-  font-size: 12px; font-weight: 500;
-  :deep(.app-icon) { font-size: 14px; flex-shrink: 0; }
-}
-.iaa-cred-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.iaa-cred-row { display: flex; flex-wrap: wrap; gap: 7px; }
-
 /* ─── Fields ─── */
 .iaa-field { display: flex; flex-direction: column; gap: 4px;
   > span { font-size: 11px; font-weight: 600; color: var(--ink); }
 }
-.iaa-inp-wrap { position: relative; display: flex; align-items: center; }
-.iaa-inp-icon { position: absolute; left: 10px; color: var(--mu); font-size: 14px; pointer-events: none; z-index: 1; }
-.iaa-inp {
-  flex: 1; min-width: 0; height: 34px; padding: 0 12px 0 32px;
-  border: 1px solid var(--br); border-radius: 8px;
-  background: #f8fafc; color: var(--ink); font-size: 12px;
-  transition: all .2s ease;
-  &::placeholder { color: #94a3b8; }
-  &:focus { outline: none; border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,.1); background: #fff; }
-  &__btn { position: absolute; right: 8px; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: none; border-radius: 6px; background: transparent; color: var(--mu); cursor: pointer; transition: all .15s;
-    :deep(.app-icon) { font-size: 13px; }
-    &:hover { color: var(--a); background: var(--a2); }
-  }
+.iaa-field--file-head {
+  flex-direction: row; align-items: center; justify-content: space-between; gap: 10px;
+  .iaa-btn { flex-shrink: 0; }
 }
 
 /* ─── Dropzone ─── */
@@ -894,7 +890,8 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
 
 /* ═══ RESPONSIVE ═══ */
 @media (max-width: 1200px) { .iaa-body { grid-template-columns: 1fr 220px; } }
-@media (max-width: 960px) { .iaa-body { grid-template-columns: 1fr; } .iaa-dock { flex-direction: row; } .iaa-dock-card { flex: 1; &--flex { flex: 1; } } .iaa-cred-grid { grid-template-columns: 1fr; } }
+@media (max-width: 960px) { .iaa-body { grid-template-columns: 1fr; } .iaa-dock { flex-direction: row; } .iaa-dock-card { flex: 1; &--flex { flex: 1; } } }
+@media (max-width: 560px) { .iaa-field--file-head { align-items: stretch; flex-direction: column; } }
 
 /* 执行器控制双列格栅 */
 .sa-btn-grid {

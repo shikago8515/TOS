@@ -6,11 +6,14 @@ import { describe, expect, it } from 'vitest'
 const componentPath = fileURLToPath(new URL('./components/AutomationCredentialsPanel.vue', import.meta.url))
 const accountProfileManagerPath = fileURLToPath(new URL('./components/AutomationAccountProfileManager.vue', import.meta.url))
 const accountProfileManagerSource = readWorkspaceSource('./components/AutomationAccountProfileManager.vue')
+const webAutomationScenarioSource = readWorkspaceSource('./WebAutomationScenarioPage.vue')
 const packingListAutoDownloadSource = readWorkspaceSource('../packing-list-auto-download/components/PackingListAutoDownloadWorkspace.vue')
 const poAutoDownloadSource = readWorkspaceSource('../po-auto-download/components/PoAutoDownloadWorkspace.vue')
 const shippingAutomationSource = readWorkspaceSource('../shipping-automation/components/ShippingAutomationWorkspace.vue')
+const shippingAutomation2Source = readWorkspaceSource('../shipping-automation-2/components/ShippingAutomation2Workspace.vue')
 const tcInvAutomationSource = readWorkspaceSource('../tc-inv-automation/components/TcInvAutomationWorkspace.vue')
 const xinlongtaiShippingSource = readWorkspaceSource('../xinlongtai-shipping-automation/components/XinlongtaiShippingAutomationWorkspace.vue')
+const infornexusAutoAddSource = readWorkspaceSource('../infornexus-auto-add/components/InfornexusAutoAddWorkspace.vue')
 
 function readWorkspaceSource(relativePath: string): string {
   return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
@@ -29,12 +32,14 @@ describe('AutomationCredentialsPanel source integration', () => {
     expect(accountProfileManagerSource).toContain('resolveCredentials')
   })
 
-  it('uses the shared credentials panel in the adopted Jessica shipping automation page', () => {
-    expect(shippingAutomationSource).toContain('AutomationCredentialsPanel')
+  it('uses the account profile manager in generic web automation scenarios too', () => {
+    expect(webAutomationScenarioSource).toContain('AutomationAccountProfileManager')
+    expect(webAutomationScenarioSource).toContain('credentialProfileRef')
+    expect(webAutomationScenarioSource).toContain(':username-mode="credentialUsernameMode"')
   })
 
-  it('uses the shared account profile manager in Invoice, packing list, Xinlongtai, and TC INV pages', () => {
-    for (const source of [poAutoDownloadSource, packingListAutoDownloadSource, xinlongtaiShippingSource, tcInvAutomationSource]) {
+  it('uses the shared account profile manager in all direct Infor Nexus automation pages', () => {
+    for (const source of [shippingAutomationSource, shippingAutomation2Source, poAutoDownloadSource, packingListAutoDownloadSource, xinlongtaiShippingSource, tcInvAutomationSource, infornexusAutoAddSource]) {
       expect(source).toContain('AutomationAccountProfileManager')
       expect(source).toContain('credentialProfileRef')
       expect(source).toContain('handleCredentialState')
@@ -42,6 +47,8 @@ describe('AutomationCredentialsPanel source integration', () => {
       expect(source).not.toContain('deleteCredentialProfile')
       expect(source).not.toContain('pendingCredentialDeleteKey')
     }
+    expect(shippingAutomationSource).not.toContain('AutomationCredentialsPanel')
+    expect(shippingAutomation2Source).not.toContain('AutomationCredentialsPanel')
     expect(poAutoDownloadSource).not.toContain('AutomationCredentialsPanel')
   })
 
@@ -50,7 +57,8 @@ describe('AutomationCredentialsPanel source integration', () => {
     expect(accountProfileManagerSource).toContain('selectCredentialOption')
     expect(accountProfileManagerSource).toContain('credentialOptions')
     expect(accountProfileManagerSource).toContain('selectedCredentialKey')
-    expect(shippingAutomationSource).toContain('fetchExecutorCredentialOptions')
+    expect(shippingAutomationSource).toContain('resolveCredentials')
+    expect(shippingAutomation2Source).toContain('resolveCredentials')
   })
 
   it('checks PO template availability before opening the download endpoint', () => {

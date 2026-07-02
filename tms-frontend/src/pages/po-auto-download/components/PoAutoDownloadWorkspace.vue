@@ -119,7 +119,7 @@
                       <small>{{ formatSize(selectedFile.size) }}</small>
                     </div>
                     <button class="pad-drop__clear" type="button" @click.stop="clearFile">
-                      <AppIcon name="stop-circle" />
+                      <AppIcon name="x" />
                     </button>
                   </template>
                   <template v-else>
@@ -211,6 +211,12 @@
 
           <AutomationRunHistoryPanel :automation-id="entry.id" :refresh-signal="lastRawResponse" />
 
+          <button v-if="failureDetails.length" class="pad-failures-btn" type="button" @click="isFailureDrawerOpen = true">
+            <AppIcon name="alert-circle" />
+            <span>{{ text('失败明细') }}</span>
+            <b>{{ failureDetails.length }}</b>
+          </button>
+
           <section class="pad-dock-card pad-dock-card--grow">
             <div class="pad-dock-card__head">
               <AppIcon name="workflow" />
@@ -256,7 +262,7 @@
             </div>
           </div>
           <button class="sa-drawer__close-btn" @click="isHealthLogOpen = false">
-            <AppIcon name="stop-circle" />
+            <AppIcon name="x" />
           </button>
         </header>
         <div class="sa-drawer__bd">
@@ -264,6 +270,72 @@
         </div>
       </div>
     </transition>
+
+    <Teleport to="body">
+      <!-- Failure Details Drawer Overlay -->
+      <transition name="sa-drawer-fade">
+        <div v-if="isFailureDrawerOpen" class="sa-drawer-overlay" @click="isFailureDrawerOpen = false" />
+      </transition>
+
+      <!-- Failure Details Drawer (left side) -->
+      <transition name="sa-drawer-slide-left">
+        <div v-if="isFailureDrawerOpen" class="sa-drawer sa-drawer--left">
+          <header class="sa-drawer__hd">
+            <div class="sa-drawer__title">
+              <AppIcon name="alert-circle" />
+              <div>
+                <h3>{{ text('失败明细') }}</h3>
+                <p>{{ text('共') }} {{ failureDetails.length }} {{ text('项失败记录') }}</p>
+              </div>
+            </div>
+            <button class="sa-drawer__close-btn" @click="isFailureDrawerOpen = false">
+              <AppIcon name="x" />
+            </button>
+          </header>
+          <div class="sa-drawer__bd sa-drawer__bd--failures">
+            <div class="sa-drawer__btns">
+              <button
+                v-if="resultFileLinks.failedExcelUrl"
+                class="dl-btn dl-btn--failed"
+                type="button"
+                @click="downloadResultFile(resultFileLinks.failedExcelUrl, 'po-auto-download-failed-rows.xlsx')"
+              >
+                <AppIcon name="download" />
+                <div class="dl-btn__text">
+                  <strong>{{ text('下载失败 Excel') }}</strong>
+                  <small>{{ text('仅包含失败的记录') }}</small>
+                </div>
+              </button>
+              <button
+                v-if="resultFileLinks.resultExcelUrl"
+                class="dl-btn dl-btn--result"
+                type="button"
+                @click="downloadResultFile(resultFileLinks.resultExcelUrl, 'po-auto-download-result.xlsx')"
+              >
+                <AppIcon name="file-spreadsheet" />
+                <div class="dl-btn__text">
+                  <strong>{{ text('下载结果 Excel') }}</strong>
+                  <small>{{ text('包含全部处理结果') }}</small>
+                </div>
+              </button>
+            </div>
+            <div class="pad-failures__list">
+              <article v-for="item in failureDetails" :key="`${item.rowIndex}-${item.invoiceNumber}`" class="pad-failure-row">
+                <div class="pad-failure-row__top">
+                  <strong>{{ item.invoiceNumber || text('未识别 Invoice') }}</strong>
+                  <span>{{ text('第') }} {{ item.rowIndex || '?' }} {{ text('行') }}</span>
+                </div>
+                <div class="pad-failure-row__meta">
+                  <span v-if="item.status">STATUS {{ item.status }}</span>
+                  <span>{{ item.result === 'skipped' ? text('跳过') : text('失败') }}</span>
+                </div>
+                <p>{{ item.error || text('未返回错误详情') }}</p>
+              </article>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </Teleport>
   </div>
 </template>
 
@@ -295,7 +367,7 @@ import {
   recordWebAutomationEvent,
   stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
-import { appendAutomationFailureExamples, formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
+import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
 import {
   DEFAULT_INFOR_NEXUS_USERNAME,
   normalizeInforNexusUsername,
@@ -313,11 +385,26 @@ type CredentialProfileRef = {
 }
 type CredentialProfileState = { hasStoredCredentials: boolean; username: string; accountKey: string }
 type CredentialNotice = { tone: WebAutomationNoticeTone; message: string }
+type InvoiceFailureDetail = {
+  rowIndex: number
+  invoiceNumber: string
+  status: string
+  result: string
+  error: string
+  step?: string
+}
+type ResultFileLinks = {
+  resultExcelUrl?: string
+  resultJsonUrl?: string
+  failedExcelUrl?: string
+  failedJsonUrl?: string
+}
 
 const router = useRouter()
 const { isEnglish, text } = useAppLanguage()
 const entry = getWebAutomationEntry(ENTRY_ID)
 const electronSupported = hasElectronAutomationSupport()
+const DEFAULT_INVOICE_DOWNLOAD_CONCURRENCY = 6
 
 const activeApp = ref<AutomationAppInfo | null>(null)
 const executorHealth = ref<LocalExecutorHealth | null>(null)
@@ -331,6 +418,7 @@ const directorySelecting = ref(false)
 const message = ref('')
 const messageTone = ref<WebAutomationNoticeTone>('info')
 const isHealthLogOpen = ref(false)
+const isFailureDrawerOpen = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
 const isDragging = ref(false)
@@ -347,6 +435,8 @@ const statusText = ref('')
 const lastResult = ref<{ ok: boolean; message?: string } | null>(null)
 const lastRawResponse = ref('')
 const runProgress = ref<Record<string, any> | null>(null)
+const failureDetails = ref<InvoiceFailureDetail[]>([])
+const resultFileLinks = ref<ResultFileLinks>({})
 let progressTimer: number | null = null
 
 const steps = [
@@ -388,7 +478,7 @@ const statusIconName = computed(() => {
 })
 const progressPhase = computed(() => String(runProgress.value?.phase || '执行中'))
 const progressTotal = computed(() => {
-  const total = Number(runProgress.value?.activeCount || runProgress.value?.totalCount || 0)
+  const total = Number(runProgress.value?.activeInvoiceCount || runProgress.value?.totalCount || runProgress.value?.activeCount || 0)
   return Number.isFinite(total) && total > 0 ? total : 0
 })
 const progressCompleted = computed(() => {
@@ -595,7 +685,7 @@ function extractRunProgress(payload: Record<string, any> | LocalExecutorHealth |
 
 function formatRunProgress(progress: Record<string, any>): string {
   const phase = text(String(progress.phase || '执行中'))
-  const total = Number(progress.activeCount || progress.totalCount || 0)
+  const total = Number(progress.activeInvoiceCount || progress.totalCount || progress.activeCount || 0)
   const completed = Number(progress.completedCount || 0)
   const downloaded = Number(progress.downloadedCount || 0)
   const failed = Number(progress.failedCount || 0)
@@ -864,11 +954,15 @@ function setSelectedFile(file: File): void {
   lastResult.value = null
   lastRawResponse.value = ''
   runProgress.value = null
+  failureDetails.value = []
+  resultFileLinks.value = {}
 }
 
 function clearFile(): void {
   selectedFile.value = null
   if (fileInput.value) fileInput.value.value = ''
+  failureDetails.value = []
+  resultFileLinks.value = {}
 }
 
 function showRunRequirementDialog(rawMessage: string): false {
@@ -925,6 +1019,8 @@ async function runPoAutoDownload(): Promise<void> {
   statusText.value = text('正在上传 Excel 并发起 Invoice PDF 请求下载...')
   lastResult.value = null
   runProgress.value = null
+  failureDetails.value = []
+  resultFileLinks.value = {}
   startProgressPolling()
 
   const runRecord = await createBackendRunRecord(file)
@@ -939,6 +1035,7 @@ async function runPoAutoDownload(): Promise<void> {
       headless: !showBrowserView.value,
       downloadDirectory: saveDirectory.value.trim(),
       downloadMode: 'request-first',
+      downloadConcurrency: DEFAULT_INVOICE_DOWNLOAD_CONCURRENCY,
       ...credentialPayload,
     }
 
@@ -953,18 +1050,25 @@ async function runPoAutoDownload(): Promise<void> {
     const raw = await response.text()
     lastRawResponse.value = raw
     const json = safeParseJson(raw)
+    updateResultFileLinks(json)
+    failureDetails.value = extractInvoiceFailureDetails(json)
     const finalProgress = extractRunProgress(json)
     if (finalProgress) runProgress.value = finalProgress
     await finishBackendRunRecord(runRecord, response.ok && Boolean(json?.ok), json?.message || '', json)
 
     if (!response.ok) {
       const friendlyMessage = buildExecutorResponseMessage(response, raw, json)
-      if (shouldShowAutomationErrorDialog(json?.message || friendlyMessage)) showAutomationErrorDialog(friendlyMessage)
+      const summaryMessage = buildPoDownloadSummaryMessage(json, friendlyMessage)
+      const shouldShowPrimaryErrorDialog = shouldShowAutomationErrorDialog(json?.message || friendlyMessage)
+      if (shouldShowPrimaryErrorDialog) showAutomationErrorDialog(friendlyMessage)
       statusLabel.value = '未完成'
-      statusText.value = appendFailureExamples(friendlyMessage, json)
+      statusText.value = summaryMessage
       lastResult.value = { ok: false, message: statusText.value }
       messageTone.value = 'error'
       message.value = statusText.value
+      if (!shouldShowPrimaryErrorDialog) {
+        void showAppAlert(statusText.value, { tone: 'warning' })
+      }
       return
     }
 
@@ -989,10 +1093,10 @@ async function runPoAutoDownload(): Promise<void> {
     }
 
     statusLabel.value = '未完成'
-    statusText.value = appendFailureExamples(json?.message || text('已触发，结果未确认。'), json)
+    statusText.value = buildPoDownloadSummaryMessage(json, json?.message || text('已触发，结果未确认。'))
     lastResult.value = { ok: false, message: statusText.value }
     messageTone.value = 'warning'
-    message.value = text('已触发，结果未确认。')
+    message.value = statusText.value
   } catch (error) {
     const friendlyMessage = formatAutomationExecutorMessage(readErrorMessage(error, text('网络错误')), text('自动化执行异常。'))
     statusLabel.value = '异常'
@@ -1179,8 +1283,87 @@ function buildExecutorResponseMessage(
   return formatAutomationExecutorMessage(`HTTP ${response.status}`, fallback)
 }
 
-function appendFailureExamples(baseMessage: string, payload: Record<string, any> | null): string {
-  return appendAutomationFailureExamples(baseMessage, payload)
+function buildPoDownloadSummaryMessage(payload: Record<string, any> | null, fallback: string): string {
+  if (!payload || typeof payload !== 'object') return fallback
+  const downloaded = normalizeCount(payload.downloadedInvoiceCount ?? payload.downloadedPoCount)
+  const total = normalizeCount(payload.totalInvoiceCount ?? payload.totalPoCount)
+  const failed = normalizeCount(payload.failedInvoiceCount ?? payload.failedPoCount ?? failureDetails.value.length)
+  const skipped = normalizeCount(payload.skippedInvoiceCount)
+  const parts = [
+    total > 0
+      ? `Invoice PDF 下载未全部完成，已下载 ${downloaded}/${total} 个 Invoice`
+      : String(payload.message || fallback || 'Invoice PDF 下载未全部完成'),
+  ]
+  if (failed > 0) parts.push(`失败 ${failed}`)
+  if (skipped > 0) parts.push(`跳过 ${skipped}`)
+  const suffix = failed > 0
+    ? '右侧可查看失败明细，执行记录里可下载失败明细 Excel。'
+    : ''
+  return `${parts.join('，')}。${suffix}`
+}
+
+function normalizeCount(value: unknown): number {
+  const count = Number(value ?? 0)
+  return Number.isFinite(count) && count > 0 ? count : 0
+}
+
+function updateResultFileLinks(payload: Record<string, any> | null): void {
+  const urls = payload?.artifacts?.downloadUrls
+  if (!urls || typeof urls !== 'object') {
+    resultFileLinks.value = {}
+    return
+  }
+  resultFileLinks.value = {
+    resultExcelUrl: buildArtifactUrl(urls.resultExcelUrl),
+    resultJsonUrl: buildArtifactUrl(urls.resultJsonUrl),
+    failedExcelUrl: buildArtifactUrl(urls.failedPoExcelUrl || urls.failedRowsExcelUrl),
+    failedJsonUrl: buildArtifactUrl(urls.failedPoJsonUrl || urls.failedRowsJsonUrl),
+  }
+}
+
+function extractInvoiceFailureDetails(payload: Record<string, any> | null): InvoiceFailureDetail[] {
+  const direct = Array.isArray(payload?.failedInvoiceDetails) ? payload.failedInvoiceDetails : []
+  if (direct.length > 0) {
+    return direct.map(normalizeFailureDetail).filter((item): item is InvoiceFailureDetail => Boolean(item))
+  }
+  const results = Array.isArray(payload?.invoiceResults)
+    ? payload.invoiceResults
+    : Array.isArray(payload?.poResults)
+      ? payload.poResults
+      : []
+  return results
+    .filter((item) => item && typeof item === 'object' && !item.ok)
+    .map(normalizeFailureDetail)
+    .filter((item): item is InvoiceFailureDetail => Boolean(item))
+}
+
+function normalizeFailureDetail(raw: any): InvoiceFailureDetail | null {
+  if (!raw || typeof raw !== 'object') return null
+  const invoiceNumber = String(raw.invoiceNumber || raw.poNo || '').trim()
+  const rowIndex = normalizeCount(raw.rowIndex)
+  const error = formatAutomationExecutorMessage(
+    String(raw.error || raw.step || '未返回错误详情').trim(),
+    '未返回错误详情',
+  )
+  return {
+    rowIndex,
+    invoiceNumber,
+    status: String(raw.status || '').trim(),
+    result: String(raw.result || (raw.skipped ? 'skipped' : 'failed')).trim(),
+    error,
+    step: String(raw.step || '').trim(),
+  }
+}
+
+function downloadResultFile(url: string, fileName: string): void {
+  if (!url) return
+  const link = document.createElement('a')
+  link.href = url
+  link.rel = 'noopener'
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
 }
 
 function readErrorMessage(error: unknown, fallback: string): string {
@@ -1796,6 +1979,98 @@ function goBack(): void {
   }
 }
 
+.pad-failures {
+  border-color: #fecaca;
+  background: #fffafa;
+
+  .pad-dock-card__head {
+    color: #991b1b;
+
+    b {
+      margin-left: auto;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #fee2e2;
+      font-size: 11px;
+    }
+  }
+
+  &__actions {
+    display: grid;
+    gap: 7px;
+    padding: 10px 12px;
+    border-bottom: 1px solid #fee2e2;
+
+    .sa-btn {
+      justify-content: center;
+      min-height: 30px;
+    }
+  }
+
+  &__list {
+    display: grid;
+    gap: 8px;
+    max-height: 360px;
+    overflow: auto;
+    padding: 10px 12px 12px;
+  }
+}
+
+.pad-failure-row {
+  display: grid;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fff;
+  color: #7f1d1d;
+
+  &__top,
+  &__meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  &__top {
+    strong {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-size: 12px;
+    }
+
+    span {
+      flex: 0 0 auto;
+      color: #991b1b;
+      font-size: 11px;
+      font-weight: 800;
+    }
+  }
+
+  &__meta {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+
+    span {
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: #fee2e2;
+      font-size: 10px;
+      font-weight: 800;
+    }
+  }
+
+  p {
+    margin: 0;
+    color: #991b1b;
+    font-size: 11px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+}
+
 .pad-alert {
   padding: 10px 14px;
   border: 1px solid;
@@ -2277,6 +2552,173 @@ function goBack(): void {
 .sa-drawer-slide-enter-from,
 .sa-drawer-slide-leave-to {
   transform: translateX(100%);
+}
+
+/* Left-side drawer slide */
+.sa-drawer-slide-left-enter-active,
+.sa-drawer-slide-left-leave-active {
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.sa-drawer-slide-left-enter-from,
+.sa-drawer-slide-left-leave-to {
+  transform: translateX(-100%);
+}
+
+/* Left drawer — light theme */
+.sa-drawer--left {
+  left: 0;
+  right: auto;
+  width: 480px;
+  border-left: none;
+  border-right: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 10px 0 30px rgba(15, 23, 42, 0.1);
+}
+.sa-drawer--left .sa-drawer__hd {
+  border-bottom-color: var(--line);
+}
+.sa-drawer--left .sa-drawer__title h3 {
+  color: var(--ink);
+}
+.sa-drawer--left .sa-drawer__title > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.sa-drawer--left .sa-drawer__close-btn {
+  color: #94a3b8;
+}
+.sa-drawer--left .sa-drawer__close-btn:hover {
+  color: #475569;
+  background: #f1f5f9;
+}
+.sa-drawer--left .sa-drawer__title p {
+  margin: 0;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+@media (max-width: 820px) {
+  .sa-drawer--left {
+    width: 100vw;
+  }
+  .sa-drawer__btns {
+    flex-direction: column;
+  }
+}
+
+/* Failure trigger button in dock */
+.pad-failures-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 15px;
+  border: 1px solid #fecaca;
+  border-radius: 14px;
+  background: #fffafa;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: all .2s cubic-bezier(.22,1,.36,1);
+}
+.pad-failures-btn:hover {
+  background: #fef2f2;
+  border-color: #f87171;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(220, 38, 38, .08);
+}
+.pad-failures-btn b {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fee2e2;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+/* Drawer body — failure content */
+.sa-drawer__bd--failures {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 20px 20px;
+  color: #1e293b;
+  overflow: hidden;
+}
+
+/* Failure list inside drawer — fill remaining space, scroll */
+.sa-drawer__bd--failures .pad-failures__list {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  padding: 0;
+}
+
+/* Download button pair */
+.sa-drawer__btns {
+  display: flex;
+  gap: 10px;
+}
+.dl-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: all .2s cubic-bezier(.22,1,.36,1);
+}
+.dl-btn .app-icon {
+  flex-shrink: 0;
+  font-size: 20px;
+}
+.dl-btn__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.dl-btn__text strong {
+  font-size: 12px;
+  font-weight: 700;
+}
+.dl-btn__text small {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 500;
+}
+.dl-btn--failed {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+.dl-btn--failed:hover {
+  background: #fef2f2;
+  border-color: #f87171;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(220, 38, 38, .12);
+}
+.dl-btn--result {
+  border-color: #bbf7d0;
+  color: #15803d;
+}
+.dl-btn--result:hover {
+  background: #f0fdf4;
+  border-color: #4ade80;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(34, 197, 94, .12);
 }
 </style>
 

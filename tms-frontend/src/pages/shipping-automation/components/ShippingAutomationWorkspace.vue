@@ -83,27 +83,21 @@
 
             <!-- Credentials -->
             <div class="sa-card__bd">
-              <AutomationCredentialsPanel
-                :username="shippingUsername"
+              <AutomationAccountProfileManager
+                ref="credentialProfileRef"
+                v-model:selected-key="selectedCredentialKey"
+                v-model:username="shippingUsername"
                 v-model:password="shippingPassword"
-                v-model:show-password="showShippingPassword"
-                :has-stored-credentials="hasStoredCredentials"
-                :saved-username="savedCredentialUsername"
-                :saving="credentialSaving"
-                :clearing="credentialClearing"
-                :credential-options="credentialOptions"
-                :selected-credential-key="selectedCredentialKey"
-                @update:username="handleCredentialUsernameUpdate"
-                @select-credential="selectCredentialOption"
-                @save="saveCurrentCredentials"
-                @clear="clearCurrentCredentials"
-              >
-                <template #actions>
-                <button class="sa-btn" :disabled="templateLoading" @click="downloadPrimaryTemplate">
-                  <AppIcon name="download" />{{ templateButtonLabel }}
-                </button>
-                </template>
-              </AutomationCredentialsPanel>
+                :automation-id="entry.id"
+                :default-username="DEFAULT_INFOR_NEXUS_USERNAME"
+                :extra-action-label="templateButtonLabel"
+                extra-action-icon="download"
+                :extra-action-disabled="templateLoading"
+                :extra-action-loading="templateLoading"
+                @state="handleCredentialState"
+                @notice="handleCredentialNotice"
+                @extra-action="downloadPrimaryTemplate"
+              />
             </div>
 
             <!-- File Dropzone -->
@@ -255,25 +249,32 @@ import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 import { showAppAlert } from '../../../shared/ui/appAlert'
-import AutomationCredentialsPanel from '../../web-automation/components/AutomationCredentialsPanel.vue'
+import AutomationAccountProfileManager from '../../web-automation/components/AutomationAccountProfileManager.vue'
 import AutomationRunHistoryPanel from '../../web-automation/components/AutomationRunHistoryPanel.vue'
 import type { AutomationAppInfo } from '../../../types/electronApi'
-import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentialOption, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
+import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {
-  clearExecutorCredentials, createAutomationRunRecord, downloadAutomationTemplate,
-  fetchAutomationApps, fetchAutomationTemplates, fetchExecutorCredentialOptions, fetchExecutorCredentials, finishAutomationRunRecord,
+  createAutomationRunRecord, downloadAutomationTemplate,
+  fetchAutomationApps, fetchAutomationTemplates, finishAutomationRunRecord,
   findLocalExecutorActiveRun,
   getAutomationHelperUpdateMessage,
   getInforNexusDesktopBridgeWarning,
   hasElectronAutomationSupport, isLocalExecutorBusy, launchAutomationConsole, openAutomationHelperDownload,
   primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
-  recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole,
+  recordWebAutomationEvent, stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
-import { buildCredentialAccountKey, findCredentialOptionByUsername, normalizeInforNexusUsername } from '../../web-automation/webAutomationCredentials'
+import { DEFAULT_INFOR_NEXUS_USERNAME, normalizeInforNexusUsername } from '../../web-automation/webAutomationCredentials'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
 
 const SHIPPING_ENTRY_ID = 'shipping-automation'
+
+type CredentialProfileRef = {
+  refresh: (accountKey?: string) => Promise<void>
+  resolveCredentials: () => Promise<{ username: string; password: string; accountKey: string }>
+}
+type CredentialProfileState = { hasStoredCredentials: boolean; username: string; accountKey: string }
+type CredentialNotice = { tone: WebAutomationNoticeTone; message: string }
 
 const router = useRouter(); const { text } = useAppLanguage()
 const entry = getWebAutomationEntry(SHIPPING_ENTRY_ID)
@@ -281,17 +282,17 @@ const electronSupported = hasElectronAutomationSupport()
 
 const activeApp = ref<AutomationAppInfo | null>(null)
 const executorHealth = ref<LocalExecutorHealth | null>(null)
-const executorCredentials = ref<ExecutorCredentials | null>(null)
 const automationTemplates = ref<AutomationTemplate[]>([])
 const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false)
-const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false); const sending = ref(false); const restoredActiveRun = ref(false)
+const templateLoading = ref(false); const sending = ref(false); const restoredActiveRun = ref(false)
 const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info')
 const isHealthLogOpen = ref(false)
 const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
-const shippingUsername = ref(''); const shippingPassword = ref(''); const showShippingPassword = ref(true)
-const credentialOptions = ref<ExecutorCredentialOption[]>([])
+const shippingUsername = ref(DEFAULT_INFOR_NEXUS_USERNAME); const shippingPassword = ref('')
 const selectedCredentialKey = ref('default')
+const hasStoredCredentials = ref(false)
+const credentialProfileRef = ref<CredentialProfileRef | null>(null)
 const showBrowserView = ref(true)
 const statusText = ref(''); const statusLabel = ref('待命')
 const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
@@ -316,8 +317,6 @@ const canLaunchActiveApp = computed(() => Boolean(entry?.appId) && !launching.va
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
 const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
 const desktopBridgeWarning = computed(() => getInforNexusDesktopBridgeWarning(executorHealth.value))
-const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
-const savedCredentialUsername = computed(() => formatInforNexusUserIdForDisplay(executorCredentials.value?.username || ''))
 const primaryTemplate = computed(() => automationTemplates.value[0] || null)
 const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
 const shippingExecutorRunUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-shipping-file` : '' })
@@ -329,7 +328,7 @@ onBeforeUnmount(() => { stopActiveRunStatePolling() })
 
 async function initializeScenario(): Promise<void> {
   statusLabel.value = '待命'; statusText.value = '等待上传万代 Excel 并执行 Shipping。'
-  await refreshAutomationTemplates(); await refreshExecutorCredentials(); await refreshExecutorState(true)
+  await refreshAutomationTemplates(); await refreshCredentialProfile(); await refreshExecutorState(true)
   if (electronSupported && activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) await startActiveApp(true)
 }
 
@@ -339,7 +338,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
     launcherReachable.value = electronSupported ? true : await probeLocalAutomationLauncherHealth()
     if (electronSupported) { try { const apps = await fetchAutomationApps(); activeApp.value = apps.find((a) => a.id === entry?.appId) ?? fb } catch { activeApp.value = fb } } else { activeApp.value = fb }
     if (!electronSupported && !launcherReachable.value) { executorHealth.value = null; activeApp.value = fb; clearRestoredActiveRunState(); if (!silent) { messageTone.value = 'warning'; message.value = text('未检测到本机自动化助手。') }; return }
-    executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl); await refreshExecutorCredentials()
+    executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl); await refreshCredentialProfile()
     if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
     syncActiveRunViewFromHealth()
     const updateMessage = getAutomationHelperUpdateMessage(executorHealth.value, activeApp.value)
@@ -391,80 +390,25 @@ function clearRestoredActiveRunState(): void {
   statusLabel.value = '待命'
 }
 
-async function refreshCredentialOptions(): Promise<void> {
+async function refreshCredentialProfile(accountKey = selectedCredentialKey.value): Promise<void> {
   if (!entry) return
   try {
-    credentialOptions.value = await fetchExecutorCredentialOptions(entry.id)
-  } catch {
-    credentialOptions.value = []
-  }
-}
-
-async function refreshExecutorCredentials(
-  accountKey = selectedCredentialKey.value || buildCredentialAccountKey(shippingUsername.value),
-): Promise<void> {
-  if (!entry) return
-  try {
-    await refreshCredentialOptions()
-    const key = normalizeCredentialKey(accountKey)
-    const loaded = await loadCredentialByKey(key)
-    if (loaded) return
-
-    const matchedOption = findCredentialOptionByUsername(credentialOptions.value, shippingUsername.value)
-    if (matchedOption && matchedOption.accountKey !== key) {
-      await loadCredentialByKey(matchedOption.accountKey)
-    }
-  } catch {
-    executorCredentials.value = null
-  }
-}
-
-async function loadCredentialByKey(accountKey: string): Promise<boolean> {
-  if (!entry) return false
-  const key = normalizeCredentialKey(accountKey)
-  executorCredentials.value = await fetchExecutorCredentials(entry.id, key)
-  const username = formatInforNexusUserIdForDisplay(executorCredentials.value.username || '')
-  if (username) shippingUsername.value = username
-
-  if (!executorCredentials.value.hasStoredCredentials) {
-    selectedCredentialKey.value = ''
-    return false
-  }
-
-  selectedCredentialKey.value = key
-  const resolved = await resolveAutomationCredentials(entry.id, key)
-  shippingUsername.value = formatInforNexusUserIdForDisplay(resolved.username)
-  shippingPassword.value = resolved.password
-  return true
-}
-
-function normalizeCredentialKey(value: string): string {
-  return String(value || '').trim() || 'default'
-}
-
-function handleCredentialUsernameUpdate(value: string): void {
-  shippingUsername.value = formatInforNexusUserIdForDisplay(value)
-  const matchedOption = findCredentialOptionByUsername(credentialOptions.value, shippingUsername.value)
-  if (matchedOption) {
-    void selectCredentialOption(matchedOption.accountKey)
-    return
-  }
-
-  selectedCredentialKey.value = ''
-  executorCredentials.value = null
-  shippingPassword.value = ''
-}
-
-async function selectCredentialOption(accountKey: string): Promise<void> {
-  try {
-    const loaded = await loadCredentialByKey(accountKey)
-    if (!loaded) shippingPassword.value = ''
+    await credentialProfileRef.value?.refresh(accountKey)
   } catch (error) {
-    executorCredentials.value = null
-    shippingPassword.value = ''
     messageTone.value = 'error'
     message.value = readErrorMessage(error, text('读取账号密码失败。'))
   }
+}
+
+function handleCredentialState(state: CredentialProfileState): void {
+  hasStoredCredentials.value = state.hasStoredCredentials
+  selectedCredentialKey.value = state.accountKey
+  if (state.username) shippingUsername.value = formatInforNexusUserIdForDisplay(state.username)
+}
+
+function handleCredentialNotice(notice: CredentialNotice): void {
+  messageTone.value = notice.tone
+  message.value = notice.message
 }
 
 function formatInforNexusUserIdForDisplay(value: string): string {
@@ -484,25 +428,6 @@ async function downloadPrimaryTemplate(): Promise<void> {
 
 function downloadAutomationHelper(): void { void openAutomationHelperDownload() }
 function bootLocalHelper(): void { primeLocalAutomationLauncherBoot(); messageTone.value = 'info'; message.value = text('已尝试启动本机自动化助手。'); window.setTimeout(() => { void refreshExecutorState(true) }, 1200) }
-
-async function saveCurrentCredentials(): Promise<void> {
-  if (!entry || credentialSaving.value) return
-  const u = formatInforNexusUserIdForDisplay(shippingUsername.value); const p = shippingPassword.value
-  if (!u || !p) { messageTone.value = 'warning'; message.value = text('请先填写账号和密码。'); return }
-  credentialSaving.value = true
-  const accountKey = buildCredentialAccountKey(u)
-  try { executorCredentials.value = await saveExecutorCredentials(entry.id, u, p, accountKey); selectedCredentialKey.value = accountKey; shippingUsername.value = u; await refreshExecutorCredentials(accountKey); shippingPassword.value = p; messageTone.value = 'success'; message.value = text('已保存。') }
-  catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('保存失败。')) }
-  finally { credentialSaving.value = false }
-}
-
-async function clearCurrentCredentials(): Promise<void> {
-  if (!entry || credentialClearing.value) return; credentialClearing.value = true
-  const accountKey = selectedCredentialKey.value || buildCredentialAccountKey(shippingUsername.value)
-  try { executorCredentials.value = await clearExecutorCredentials(entry.id, accountKey); selectedCredentialKey.value = ''; shippingPassword.value = ''; await refreshCredentialOptions(); messageTone.value = 'info'; message.value = text('已清除。') }
-  catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('清除失败。')) }
-  finally { credentialClearing.value = false }
-}
 
 async function startActiveApp(silent: boolean): Promise<void> {
   if (!entry || launching.value) return
@@ -544,10 +469,13 @@ function formatSize(b: number): string { if (b < 1024) return `${b} B`; if (b < 
 
 async function resolveRunCredentialsPayload(): Promise<Record<string, string>> {
   if (!entry) return {}
-  const u = formatInforNexusUserIdForDisplay(shippingUsername.value); const tp = shippingPassword.value
-  const accountKey = selectedCredentialKey.value || buildCredentialAccountKey(u)
-  if (tp.trim()) { if (!u) throw new Error('请填写账号密码。'); shippingUsername.value = u; return { username: u, password: tp } }
-  const r = await resolveAutomationCredentials(entry.id, accountKey); selectedCredentialKey.value = r.accountKey; const displayUsername = formatInforNexusUserIdForDisplay(r.username); shippingUsername.value = displayUsername; shippingPassword.value = r.password; return { username: displayUsername, password: r.password }
+  const resolved = await credentialProfileRef.value?.resolveCredentials()
+  if (!resolved?.username || !resolved.password) throw new Error(text('请先新增并保存 Infor Nexus 登录账号密码。'))
+  const displayUsername = formatInforNexusUserIdForDisplay(resolved.username)
+  shippingUsername.value = displayUsername
+  shippingPassword.value = resolved.password
+  selectedCredentialKey.value = resolved.accountKey
+  return { username: displayUsername, password: resolved.password }
 }
 
 function readErrorMessage(e: unknown, fb: string): string { return e instanceof Error && e.message ? e.message : fb }

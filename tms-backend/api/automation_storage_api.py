@@ -9,6 +9,7 @@ from datetime import datetime, time, timedelta, timezone
 from typing import Any
 from urllib.parse import quote
 from uuid import uuid4
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -33,6 +34,7 @@ from utils.mysql_store import (
     create_automation_batch,
     create_automation_batch_attempt,
     create_automation_run,
+    delete_automation_batch,
     delete_automation_credentials,
     delete_automation_run,
     delete_excel_template,
@@ -61,22 +63,9 @@ router = APIRouter(prefix="/automation", tags=["Automation Storage"])
 logger = logging.getLogger(__name__)
 BEIJING_TZ = timezone(timedelta(hours=8))
 
-INFOR_NEXUS_SHARED_CREDENTIAL_IDS = (
-    "shipping-automation",
-    "shipping-automation-demo",
-    "shipping-automation-2",
-    "xinlongtai-shipping-automation",
-    "po-auto-download",
-    "packing-list-auto-download",
-    "released-bulk-automation",
-)
-
-MICROSOFT_SHARED_CREDENTIAL_IDS = (
-    "microsoft-login-n8n",
-    "ticket-owner-statistics",
-)
-
 TICKET_OWNER_AUTOMATION_ID = "ticket-owner-statistics"
+TICKET_OWNER_BUCKET_KEY = "ticket_owner_statistics"
+TICKET_OWNER_OBJECT_ROOT = "ticket-owner-statistics"
 TICKET_OWNER_COLUMNS = (
     "Case Number",
     "Task Type",
@@ -142,6 +131,36 @@ class PackingListInterruptPayload(BaseModel):
     runId: str = ""
     attemptId: str = ""
     message: str = "用户已停止本机执行器，当前批次已中断，可从断点继续。"
+
+
+class TicketOwnerAttemptPayload(BaseModel):
+    runId: str = ""
+    mode: str = "new"
+
+
+class TicketOwnerCheckpointFilePayload(BaseModel):
+    fileName: str
+    fileRole: str = "result_file"
+    contentType: str = "application/octet-stream"
+    contentBase64: str
+
+
+class TicketOwnerCheckpointPayload(BaseModel):
+    runId: str = ""
+    attemptId: str = ""
+    mode: str = "continue"
+    status: str = "running"
+    message: str = ""
+    checkpoint: dict[str, Any] = Field(default_factory=dict)
+    itemResult: dict[str, Any] | None = None
+    result: dict[str, Any] | None = None
+    files: list[TicketOwnerCheckpointFilePayload] = Field(default_factory=list)
+
+
+class TicketOwnerInterruptPayload(BaseModel):
+    runId: str = ""
+    attemptId: str = ""
+    message: str = "用户已停止本机执行器，当前 ticket 统计批次已中断，可以从断点继续。"
 
 
 class TemplateUpdatePayload(BaseModel):
@@ -651,6 +670,324 @@ def interrupt_packing_list_batch(batch_id: str, payload: PackingListInterruptPay
     }
 
 
+@router.post("/ticket-owner-statistics/batches")
+async def create_ticket_owner_batch(
+    run_id: str = Form(""),
+    batch_name: str = Form(""),
+    release_file: UploadFile | None = File(None),
+    factory_price_file: UploadFile | None = File(None),
+) -> dict[str, Any]:
+    now = datetime.utcnow()
+    batch_id = f"tos-{now.strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
+    date_folder = _packing_list_date_folder(now)
+    bucket = get_minio_bucket(TICKET_OWNER_BUCKET_KEY)
+    object_prefix = f"{TICKET_OWNER_OBJECT_ROOT}/{date_folder}/{batch_id}"
+    source_files: list[dict[str, Any]] = []
+    run_file_rows: list[dict[str, Any]] = []
+    bundle_entries: list[tuple[str, bytes]] = []
+
+    for upload, file_role, label in (
+        (release_file, "release_unrelease_excel", "Release-Unrelease"),
+        (factory_price_file, "factory_price_excel", "Factory-Price"),
+    ):
+        if upload is None or not upload.filename:
+            continue
+        source_payload, file_row, content = await _store_ticket_owner_source_upload(
+            bucket=bucket,
+            object_prefix=object_prefix,
+            upload=upload,
+            file_role=file_role,
+            label=label,
+            run_id=run_id,
+        )
+        source_payload["downloadPath"] = f"/api/automation/ticket-owner-statistics/batches/{batch_id}/source-files/{file_role}/download"
+        source_files.append(source_payload)
+        bundle_entries.append((source_payload["originalFilename"], content))
+        if file_row:
+            run_file_rows.append(file_row)
+
+    source_bundle = _store_ticket_owner_source_bundle(
+        bucket=bucket,
+        object_prefix=object_prefix,
+        batch_id=batch_id,
+        entries=bundle_entries,
+    ) if bundle_entries else None
+    source_payload = {
+        "files": source_files,
+        "bundle": source_bundle,
+        "downloadPath": f"/api/automation/ticket-owner-statistics/batches/{batch_id}/source/download" if source_bundle else "",
+    }
+    row = create_automation_batch({
+        "batch_id": batch_id,
+        "automation_id": TICKET_OWNER_AUTOMATION_ID,
+        "module_id": TICKET_OWNER_AUTOMATION_ID,
+        "run_id": run_id,
+        "batch_name": batch_name or f"Ticket ownership {date_folder}",
+        "source_file_name": source_bundle.get("originalFilename", "") if source_bundle else "",
+        "source_file_sha256": source_bundle.get("sha256", "") if source_bundle else "",
+        "source_file": source_payload,
+        "status": "pending",
+        "message": "ticket 归属统计批次已创建，等待本机执行器开始采集。",
+        "total_count": 0,
+        "completed_count": 0,
+        "failed_count": 0,
+        "pending_count": 0,
+        "checkpoint": {
+            "batchId": batch_id,
+            "automationId": TICKET_OWNER_AUTOMATION_ID,
+            "status": "pending",
+            "items": [],
+            "storedFiles": [],
+            "sourceFiles": source_files,
+            "createdAt": now.isoformat(),
+            "updatedAt": now.isoformat(),
+        },
+        "bucket": bucket,
+        "object_prefix": object_prefix,
+    })
+    return {
+        "ok": True,
+        "batch": _ticket_owner_batch_payload(row),
+        "sourceFile": source_payload,
+        "files": [_run_file_payload(file_row) for file_row in run_file_rows],
+    }
+
+
+@router.get("/ticket-owner-statistics/batches")
+def list_ticket_owner_batches(limit: int = Query(10, ge=1, le=50)) -> dict[str, Any]:
+    rows = list_automation_batches(TICKET_OWNER_AUTOMATION_ID, limit=limit)
+    return {
+        "ok": True,
+        "batches": [_ticket_owner_batch_payload(row) for row in rows],
+    }
+
+
+@router.get("/ticket-owner-statistics/batches/latest")
+def read_latest_ticket_owner_batch() -> dict[str, Any]:
+    rows = list_automation_batches(TICKET_OWNER_AUTOMATION_ID, limit=20, include_payloads=False)
+    resumable_row = next((row for row in rows if _is_resumable_ticket_owner_batch(row)), None)
+    if resumable_row:
+        resumable_row = get_automation_batch(resumable_row["batch_id"]) or resumable_row
+    return {
+        "ok": True,
+        "batch": _ticket_owner_batch_payload(resumable_row) if resumable_row else None,
+    }
+
+
+@router.get("/ticket-owner-statistics/batches/{batch_id}")
+def read_ticket_owner_batch(batch_id: str) -> dict[str, Any]:
+    row = get_automation_batch(batch_id)
+    if not row or row.get("automation_id") != TICKET_OWNER_AUTOMATION_ID:
+        raise HTTPException(status_code=404, detail="ticket 归属统计批次不存在。")
+    return {
+        "ok": True,
+        "batch": _ticket_owner_batch_payload(row),
+    }
+
+
+@router.delete("/ticket-owner-statistics/batches/{batch_id}")
+def delete_ticket_owner_batch(batch_id: str) -> dict[str, Any]:
+    row = get_automation_batch(batch_id)
+    if not row or row.get("automation_id") != TICKET_OWNER_AUTOMATION_ID:
+        raise HTTPException(status_code=404, detail="ticket owner statistics batch not found.")
+    deleted = delete_automation_batch(batch_id)
+    return {
+        "ok": True,
+        "batchId": batch_id,
+        "deleted": deleted,
+    }
+
+
+@router.get("/ticket-owner-statistics/batches/{batch_id}/source/download")
+def download_ticket_owner_batch_source(batch_id: str):
+    row = get_automation_batch(batch_id)
+    if not row or row.get("automation_id") != TICKET_OWNER_AUTOMATION_ID:
+        raise HTTPException(status_code=404, detail="ticket 归属统计批次不存在。")
+    source_file = _safe_json_loads(row.get("source_file_json")) or {}
+    bundle = source_file.get("bundle") if isinstance(source_file.get("bundle"), dict) else {}
+    bucket = bundle.get("bucket") or row.get("bucket")
+    object_key = bundle.get("objectKey") or bundle.get("object_key")
+    if not bucket or not object_key:
+        raise HTTPException(status_code=404, detail="该批次没有可下载的辅助 Excel 文件。")
+    try:
+        response = get_object_response(bucket, object_key)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="ticket 归属统计辅助 Excel 暂时无法从 MinIO 下载。") from exc
+    filename = bundle.get("originalFilename") or row.get("source_file_name") or "ticket-owner-sources.zip"
+    headers = {
+        "Content-Disposition": _attachment_content_disposition(filename),
+        "Cache-Control": "no-store",
+    }
+    return StreamingResponse(
+        response.stream(32 * 1024),
+        media_type=bundle.get("contentType") or "application/zip",
+        headers=headers,
+        background=None,
+    )
+
+
+@router.get("/ticket-owner-statistics/batches/{batch_id}/source-files/{file_role}/download")
+def download_ticket_owner_batch_source_file(batch_id: str, file_role: str):
+    row = get_automation_batch(batch_id)
+    if not row or row.get("automation_id") != TICKET_OWNER_AUTOMATION_ID:
+        raise HTTPException(status_code=404, detail="ticket 归属统计批次不存在。")
+    source_file = _safe_json_loads(row.get("source_file_json")) or {}
+    target_role = str(file_role or "").strip()
+    source_files = source_file.get("files") if isinstance(source_file.get("files"), list) else []
+    source_entry = next(
+        (item for item in source_files if isinstance(item, dict) and str(item.get("fileRole") or "") == target_role),
+        None,
+    )
+    if not source_entry:
+        raise HTTPException(status_code=404, detail="该批次没有对应的辅助 Excel 文件。")
+    bucket = source_entry.get("bucket") or row.get("bucket")
+    object_key = source_entry.get("objectKey") or source_entry.get("object_key")
+    if not bucket or not object_key:
+        raise HTTPException(status_code=404, detail="该批次辅助 Excel 存储信息不完整。")
+    try:
+        response = get_object_response(bucket, object_key)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="ticket 归属统计辅助 Excel 暂时无法从 MinIO 下载。") from exc
+    filename = source_entry.get("originalFilename") or f"{target_role}.xlsx"
+    headers = {
+        "Content-Disposition": _attachment_content_disposition(filename),
+        "Cache-Control": "no-store",
+    }
+    return StreamingResponse(
+        response.stream(32 * 1024),
+        media_type=source_entry.get("contentType") or EXCEL_CONTENT_TYPE,
+        headers=headers,
+        background=None,
+    )
+
+
+@router.post("/ticket-owner-statistics/batches/{batch_id}/attempts")
+def create_ticket_owner_batch_attempt(batch_id: str, payload: TicketOwnerAttemptPayload) -> dict[str, Any]:
+    row = get_automation_batch(batch_id)
+    if not row or row.get("automation_id") != TICKET_OWNER_AUTOMATION_ID:
+        raise HTTPException(status_code=404, detail="ticket 归属统计批次不存在。")
+    attempt_id = f"tos-attempt-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
+    attempt = create_automation_batch_attempt({
+        "attempt_id": attempt_id,
+        "batch_id": batch_id,
+        "run_id": payload.runId,
+        "mode": _normalize_ticket_owner_resume_mode(payload.mode),
+        "status": "running",
+        "message": "attempt started",
+        "started_at": datetime.utcnow(),
+    })
+    return {
+        "ok": True,
+        "attempt": _packing_list_attempt_payload(attempt),
+        "batch": _ticket_owner_batch_payload(row),
+    }
+
+
+@router.post("/ticket-owner-statistics/batches/{batch_id}/checkpoint")
+def write_ticket_owner_checkpoint(batch_id: str, payload: TicketOwnerCheckpointPayload) -> dict[str, Any]:
+    row = get_automation_batch(batch_id)
+    if not row or row.get("automation_id") != TICKET_OWNER_AUTOMATION_ID:
+        raise HTTPException(status_code=404, detail="ticket 归属统计批次不存在。")
+
+    attempt_id = payload.attemptId.strip()
+    if attempt_id and not get_automation_batch_attempt(attempt_id):
+        create_automation_batch_attempt({
+            "attempt_id": attempt_id,
+            "batch_id": batch_id,
+            "run_id": payload.runId,
+            "mode": _normalize_ticket_owner_resume_mode(payload.mode),
+            "status": "running",
+            "message": "attempt started from checkpoint write",
+            "started_at": datetime.utcnow(),
+        })
+
+    stored_files = [
+        _store_ticket_owner_checkpoint_file(row, payload, file_payload)
+        for file_payload in payload.files
+    ]
+    if payload.result:
+        stored_files.extend(_store_ticket_owner_result_artifacts(row, payload))
+    checkpoint = _merge_ticket_owner_checkpoint(
+        existing=_safe_json_loads(row.get("checkpoint_json")) or {},
+        payload=payload,
+        stored_files=stored_files,
+    )
+    counts = _ticket_owner_checkpoint_counts(checkpoint)
+    status = _normalize_ticket_owner_batch_status(payload.status, counts)
+    updated_row = update_automation_batch_checkpoint(batch_id, {
+        "run_id": payload.runId,
+        "status": status,
+        "message": payload.message or checkpoint.get("message", ""),
+        "total_count": counts["total"],
+        "completed_count": counts["completed"],
+        "failed_count": counts["failed"],
+        "pending_count": counts["pending"],
+        "checkpoint": checkpoint,
+    })
+    if attempt_id:
+        update_automation_batch_attempt(attempt_id, {
+            "status": status if status in {"success", "failed", "partial", "interrupted"} else "running",
+            "message": payload.message or checkpoint.get("message", ""),
+            "result": payload.result or {"checkpoint": checkpoint},
+            "finished_at": datetime.utcnow() if status in {"success", "failed", "partial", "interrupted"} else None,
+        })
+    return {
+        "ok": True,
+        "batch": _ticket_owner_batch_payload(updated_row or row),
+        "storedFiles": [_run_file_payload(file_row) for file_row in stored_files if file_row.get("id")],
+    }
+
+
+@router.post("/ticket-owner-statistics/batches/{batch_id}/interrupt")
+def interrupt_ticket_owner_batch(batch_id: str, payload: TicketOwnerInterruptPayload) -> dict[str, Any]:
+    row = get_automation_batch(batch_id)
+    if not row or row.get("automation_id") != TICKET_OWNER_AUTOMATION_ID:
+        raise HTTPException(status_code=404, detail="ticket 归属统计批次不存在。")
+
+    current_status = str(row.get("status") or "").lower()
+    if current_status in {"success", "failed", "partial", "interrupted"}:
+        return {
+            "ok": True,
+            "batch": _ticket_owner_batch_payload(row),
+            "changed": False,
+        }
+
+    existing_checkpoint = _safe_json_loads(row.get("checkpoint_json")) or {}
+    now = datetime.utcnow().isoformat()
+    message = payload.message or "ticket 归属统计批次已中断，可以从断点继续。"
+    checkpoint = {
+        **existing_checkpoint,
+        "status": "interrupted",
+        "message": message,
+        "interruptedAt": now,
+        "updatedAt": now,
+    }
+    counts = _ticket_owner_checkpoint_counts(checkpoint)
+    updated_row = update_automation_batch_checkpoint(batch_id, {
+        "run_id": payload.runId or row.get("run_id", ""),
+        "status": "interrupted",
+        "message": message,
+        "total_count": counts["total"] or int(row.get("total_count") or 0),
+        "completed_count": counts["completed"] or int(row.get("completed_count") or 0),
+        "failed_count": counts["failed"] or int(row.get("failed_count") or 0),
+        "pending_count": counts["pending"] or int(row.get("pending_count") or 0),
+        "checkpoint": checkpoint,
+    })
+    attempt_id = payload.attemptId.strip() or str(checkpoint.get("attemptId") or "").strip()
+    if attempt_id:
+        update_automation_batch_attempt(attempt_id, {
+            "status": "interrupted",
+            "message": message,
+            "result": {"checkpoint": checkpoint},
+            "finished_at": datetime.utcnow(),
+        })
+    return {
+        "ok": True,
+        "batch": _ticket_owner_batch_payload(updated_row or row),
+        "changed": True,
+    }
+
+
 @router.patch("/runs/{run_id}")
 async def finish_run(run_id: str, payload: RunUpdatePayload) -> dict[str, Any]:
     if not get_automation_run(run_id):
@@ -667,15 +1004,16 @@ async def finish_run(run_id: str, payload: RunUpdatePayload) -> dict[str, Any]:
     warnings: list[str] = []
     server_generated_roles: set[str] = set()
     if payload.result is not None:
-        result_file = _try_store_result_json(run_id, row["automation_id"], payload.result, warnings)
-        if result_file:
-            files.append(result_file)
+        if not _result_has_stored_file_role(payload.result, "result_json"):
+            result_file = _try_store_result_json(run_id, row["automation_id"], payload.result, warnings)
+            if result_file:
+                files.append(result_file)
         ticket_owner_file = _try_store_ticket_owner_excel(
             run_id,
             row["automation_id"],
             payload.result,
             warnings,
-        )
+        ) if not _result_has_stored_file_role(payload.result, "result_excel") else None
         if ticket_owner_file:
             files.append(ticket_owner_file)
             server_generated_roles.add("result_excel")
@@ -687,10 +1025,13 @@ async def finish_run(run_id: str, payload: RunUpdatePayload) -> dict[str, Any]:
         if result_file:
             files.append(result_file)
 
+    file_payloads = [_run_file_payload(file_row) for file_row in files]
+    file_payloads.extend(_result_stored_file_payloads(payload.result))
+    file_payloads = _dedupe_run_file_payloads(file_payloads)
     return {
         "ok": True,
         "run": _run_payload(row),
-        "files": [_run_file_payload(file_row) for file_row in files],
+        "files": file_payloads,
         "warnings": warnings,
     }
 
@@ -890,20 +1231,8 @@ def _normalize_account_key(value: Any) -> str:
 
 
 def _credential_lookup_ids(automation_id: str) -> list[str]:
-    lookup_ids = [automation_id]
-    if automation_id in INFOR_NEXUS_SHARED_CREDENTIAL_IDS:
-        lookup_ids.extend(
-            candidate_id
-            for candidate_id in INFOR_NEXUS_SHARED_CREDENTIAL_IDS
-            if candidate_id not in lookup_ids
-        )
-    if automation_id in MICROSOFT_SHARED_CREDENTIAL_IDS:
-        lookup_ids.extend(
-            candidate_id
-            for candidate_id in MICROSOFT_SHARED_CREDENTIAL_IDS
-            if candidate_id not in lookup_ids
-        )
-    return lookup_ids
+    # Account profiles are intentionally isolated per automation page.
+    return [automation_id]
 
 
 def _template_payload(row: dict[str, Any]) -> dict[str, Any]:
@@ -1018,6 +1347,76 @@ def _packing_list_attempt_payload(row: dict[str, Any] | None) -> dict[str, Any] 
     }
 
 
+def _ticket_owner_batch_payload(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    checkpoint = _safe_json_loads(row.get("checkpoint_json")) or {}
+    source_file = _safe_json_loads(row.get("source_file_json")) or {}
+    return {
+        "batchId": row["batch_id"],
+        "automationId": row.get("automation_id", TICKET_OWNER_AUTOMATION_ID),
+        "moduleId": row.get("module_id", TICKET_OWNER_AUTOMATION_ID),
+        "runId": row.get("run_id", ""),
+        "batchName": row.get("batch_name", ""),
+        "status": row.get("status", ""),
+        "message": row.get("message", ""),
+        "sourceFileName": row.get("source_file_name", ""),
+        "sourceFileSha256": row.get("source_file_sha256", ""),
+        "sourceFile": _ticket_owner_public_source_payload(source_file),
+        "totalCount": int(row.get("total_count") or 0),
+        "completedCount": int(row.get("completed_count") or 0),
+        "failedCount": int(row.get("failed_count") or 0),
+        "pendingCount": int(row.get("pending_count") or 0),
+        "checkpoint": _ticket_owner_public_checkpoint_payload(checkpoint),
+        "resumable": _is_resumable_ticket_owner_batch(row),
+        "createdAt": _format_datetime(row.get("created_at")),
+        "updatedAt": _format_datetime(row.get("updated_at")),
+    }
+
+
+def _ticket_owner_public_source_payload(source_file: dict[str, Any]) -> dict[str, Any]:
+    files = []
+    for item in source_file.get("files") or []:
+        if not isinstance(item, dict):
+            continue
+        files.append({
+            "fileRole": item.get("fileRole", ""),
+            "label": item.get("label", ""),
+            "originalFilename": item.get("originalFilename", ""),
+            "contentType": item.get("contentType", ""),
+            "fileSize": item.get("fileSize", 0),
+            "sha256": item.get("sha256", ""),
+            "downloadPath": item.get("downloadPath", ""),
+        })
+    bundle = source_file.get("bundle") if isinstance(source_file.get("bundle"), dict) else {}
+    return {
+        "files": files,
+        "bundle": {
+            "originalFilename": bundle.get("originalFilename", ""),
+            "contentType": bundle.get("contentType", ""),
+            "fileSize": bundle.get("fileSize", 0),
+            "sha256": bundle.get("sha256", ""),
+        } if bundle else None,
+        "downloadPath": source_file.get("downloadPath", ""),
+    }
+
+
+def _ticket_owner_public_checkpoint_payload(checkpoint: dict[str, Any]) -> dict[str, Any]:
+    public_checkpoint = dict(checkpoint or {})
+    public_files = []
+    for item in public_checkpoint.get("storedFiles") or []:
+        if not isinstance(item, dict):
+            continue
+        public_files.append({
+            "id": item.get("id"),
+            "fileRole": item.get("fileRole", ""),
+            "originalFilename": item.get("originalFilename", ""),
+            "downloadPath": item.get("downloadPath", ""),
+        })
+    public_checkpoint["storedFiles"] = public_files
+    return public_checkpoint
+
+
 def _is_resumable_batch(row: dict[str, Any]) -> bool:
     status = str(row.get("status") or "").lower()
     if status in {"success", "completed"}:
@@ -1025,6 +1424,17 @@ def _is_resumable_batch(row: dict[str, Any]) -> bool:
     total_count = int(row.get("total_count") or 0)
     completed_count = int(row.get("completed_count") or 0)
     return total_count == 0 or completed_count < total_count
+
+
+def _is_resumable_ticket_owner_batch(row: dict[str, Any]) -> bool:
+    status = str(row.get("status") or "").lower()
+    if status in {"success", "completed", "failed"}:
+        return False
+    total_count = int(row.get("total_count") or 0)
+    completed_count = int(row.get("completed_count") or 0)
+    pending_count = int(row.get("pending_count") or 0)
+    failed_count = int(row.get("failed_count") or 0)
+    return status in {"interrupted", "partial", "running"} or total_count == 0 or pending_count > 0 or failed_count > 0 or completed_count < total_count
 
 
 def _packing_list_date_folder(value: datetime | None = None) -> str:
@@ -1167,6 +1577,173 @@ def _packing_list_checkpoint_counts(checkpoint: dict[str, Any]) -> dict[str, int
     }
 
 
+def _normalize_ticket_owner_resume_mode(value: str) -> str:
+    mode = str(value or "").strip().lower()
+    if mode in {"continue", "retry-failed", "restart", "new"}:
+        return mode
+    return "new"
+
+
+def _normalize_ticket_owner_batch_status(status: str, counts: dict[str, int]) -> str:
+    raw = str(status or "").strip().lower()
+    if raw == "running":
+        return "running"
+    if raw in {"interrupted", "failed"}:
+        return "partial" if raw == "failed" and counts["completed"] > 0 else raw
+    if counts["total"] > 0 and counts["completed"] >= counts["total"] and counts["failed"] == 0:
+        return "success"
+    if counts["completed"] > 0 and (counts["failed"] > 0 or counts["pending"] > 0):
+        return "partial"
+    if raw in {"success", "partial"}:
+        return "partial" if counts["failed"] or counts["pending"] else "success"
+    return "running"
+
+
+def _merge_ticket_owner_checkpoint(
+    *,
+    existing: dict[str, Any],
+    payload: TicketOwnerCheckpointPayload,
+    stored_files: list[dict[str, Any]],
+) -> dict[str, Any]:
+    now = datetime.utcnow().isoformat()
+    incoming = payload.checkpoint if isinstance(payload.checkpoint, dict) else {}
+    checkpoint = {
+        **existing,
+        **incoming,
+        "updatedAt": now,
+        "attemptId": payload.attemptId or incoming.get("attemptId") or existing.get("attemptId", ""),
+        "runId": payload.runId or incoming.get("runId") or existing.get("runId", ""),
+        "mode": _normalize_ticket_owner_resume_mode(payload.mode or incoming.get("mode", "")),
+        "message": payload.message or incoming.get("message") or existing.get("message", ""),
+    }
+
+    items_by_key: dict[str, dict[str, Any]] = {}
+    for item in existing.get("items") or []:
+        if isinstance(item, dict):
+            key = _ticket_owner_item_key(item)
+            if key:
+                items_by_key[key] = dict(item)
+    for item in incoming.get("items") or []:
+        if isinstance(item, dict):
+            key = _ticket_owner_item_key(item)
+            if key:
+                items_by_key[key] = {**items_by_key.get(key, {}), **item}
+
+    item_result = payload.itemResult or None
+    if isinstance(item_result, dict):
+        key = _ticket_owner_item_key(item_result) or f"item-{len(items_by_key) + 1}"
+        item_files = [_stored_file_checkpoint_payload(row) for row in stored_files]
+        item_status = str(item_result.get("status") or item_result.get("state") or "").strip().lower()
+        if not item_status:
+            item_status = "failed" if item_result.get("ok") is False else "success"
+        merged_item = {
+            **items_by_key.get(key, {}),
+            **item_result,
+            "itemKey": key,
+            "status": item_status,
+            "updatedAt": now,
+        }
+        if item_files:
+            merged_item["storedFiles"] = item_files
+        items_by_key[key] = merged_item
+
+    result = payload.result if isinstance(payload.result, dict) else None
+    if result:
+        checkpoint["result"] = result
+        for item in result.get("ticketResults") or []:
+            if isinstance(item, dict):
+                key = _ticket_owner_item_key(item)
+                if key:
+                    items_by_key[key] = {
+                        **items_by_key.get(key, {}),
+                        **item,
+                        "itemKey": key,
+                        "status": "success" if item.get("ok") else "failed",
+                        "updatedAt": now,
+                    }
+
+    stored_file_payloads = [_stored_file_checkpoint_payload(row) for row in stored_files]
+    previous_stored_files = [
+        item for item in (existing.get("storedFiles") or incoming.get("storedFiles") or [])
+        if isinstance(item, dict)
+    ]
+    checkpoint["storedFiles"] = _dedupe_stored_file_payloads(previous_stored_files + stored_file_payloads)
+    checkpoint["items"] = list(items_by_key.values())
+    counts = _ticket_owner_checkpoint_counts(checkpoint)
+    checkpoint.update({
+        "totalCount": counts["total"],
+        "completedCount": counts["completed"],
+        "failedCount": counts["failed"],
+        "pendingCount": counts["pending"],
+        "status": _normalize_ticket_owner_batch_status(payload.status, counts),
+    })
+    return checkpoint
+
+
+def _ticket_owner_checkpoint_counts(checkpoint: dict[str, Any]) -> dict[str, int]:
+    items = [item for item in (checkpoint.get("items") or []) if isinstance(item, dict)]
+    result = checkpoint.get("result") if isinstance(checkpoint.get("result"), dict) else {}
+    rows = result.get("rows") if isinstance(result.get("rows"), list) else []
+    failed_tickets = result.get("failedTickets") if isinstance(result.get("failedTickets"), list) else []
+    total = _positive_int(
+        result.get("totalCount"),
+        result.get("plannedCount"),
+        result.get("attemptedTicketCount"),
+        checkpoint.get("totalCount"),
+        len(items),
+        len(rows) + len(failed_tickets),
+    )
+    completed = sum(1 for item in items if str(item.get("status") or "").lower() in {"success", "completed", "skipped"})
+    failed = sum(1 for item in items if str(item.get("status") or "").lower() in {"failed", "error", "interrupted"})
+    completed = completed or int(result.get("rowCount") or len(rows) or checkpoint.get("completedCount") or checkpoint.get("successCount") or 0)
+    failed = failed or int(result.get("failedTicketCount") or len(failed_tickets) or checkpoint.get("failedCount") or 0)
+    if total == 0 and (completed or failed):
+        total = completed + failed
+    explicit_pending = int(checkpoint.get("pendingCount") or 0)
+    pending = explicit_pending if total == 0 and explicit_pending > 0 else max(0, total - completed - failed)
+    return {
+        "total": total,
+        "completed": completed,
+        "failed": failed,
+        "pending": pending,
+    }
+
+
+def _ticket_owner_item_key(item: dict[str, Any]) -> str:
+    return str(
+        item.get("itemKey")
+        or item.get("taskKey")
+        or item.get("ticketId")
+        or item.get("caseNumber")
+        or item.get("pageKey")
+        or item.get("pageIndex")
+        or ""
+    ).strip()
+
+
+def _positive_int(*values: Any) -> int:
+    for value in values:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            continue
+        if parsed > 0:
+            return parsed
+    return 0
+
+
+def _dedupe_stored_file_payloads(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    output: list[dict[str, Any]] = []
+    for item in files:
+        key = str(item.get("id") or item.get("downloadPath") or item.get("objectKey") or item.get("originalFilename") or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        output.append(item)
+    return output
+
+
 def _stored_file_checkpoint_payload(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": row.get("id"),
@@ -1228,6 +1805,190 @@ def _store_packing_list_checkpoint_file(
     })
 
 
+async def _store_ticket_owner_source_upload(
+    *,
+    bucket: str,
+    object_prefix: str,
+    upload: UploadFile,
+    file_role: str,
+    label: str,
+    run_id: str,
+) -> tuple[dict[str, Any], dict[str, Any] | None, bytes]:
+    safe_filename = sanitize_object_segment(upload.filename or f"{label}.xlsx")
+    if not safe_filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail=f"{label} 辅助表只支持 Excel 文件。")
+    content = await upload.read()
+    if not content:
+        raise HTTPException(status_code=400, detail=f"{label} 辅助表为空。")
+    object_key = f"{object_prefix}/source/{sanitize_object_segment(file_role)}/{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-{safe_filename}"
+    storage_record = put_object_bytes(
+        bucket=bucket,
+        object_key=object_key,
+        content=content,
+        content_type=upload.content_type or EXCEL_CONTENT_TYPE,
+    )
+    source_payload = {
+        "fileRole": file_role,
+        "label": label,
+        "bucket": bucket,
+        "objectKey": object_key,
+        "originalFilename": safe_filename,
+        "contentType": upload.content_type or EXCEL_CONTENT_TYPE,
+        "fileSize": storage_record["file_size"],
+        "sha256": storage_record["sha256"],
+    }
+    file_row = None
+    if run_id:
+        file_row = insert_automation_run_file({
+            "run_id": run_id,
+            "file_role": file_role,
+            "bucket": bucket,
+            "object_key": object_key,
+            "original_filename": safe_filename,
+            "content_type": upload.content_type or EXCEL_CONTENT_TYPE,
+            "file_size": storage_record["file_size"],
+            "sha256": storage_record["sha256"],
+        })
+    return source_payload, file_row, content
+
+
+def _store_ticket_owner_source_bundle(
+    *,
+    bucket: str,
+    object_prefix: str,
+    batch_id: str,
+    entries: list[tuple[str, bytes]],
+) -> dict[str, Any]:
+    stream = BytesIO()
+    with ZipFile(stream, "w", ZIP_DEFLATED) as archive:
+        for filename, content in entries:
+            archive.writestr(sanitize_object_segment(filename), content)
+    content = stream.getvalue()
+    filename = f"{batch_id}-source-excels.zip"
+    object_key = f"{object_prefix}/source/{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-{filename}"
+    storage_record = put_object_bytes(
+        bucket=bucket,
+        object_key=object_key,
+        content=content,
+        content_type="application/zip",
+    )
+    return {
+        "bucket": bucket,
+        "objectKey": object_key,
+        "originalFilename": filename,
+        "contentType": "application/zip",
+        "fileSize": storage_record["file_size"],
+        "sha256": storage_record["sha256"],
+    }
+
+
+def _store_ticket_owner_checkpoint_file(
+    batch_row: dict[str, Any],
+    payload: TicketOwnerCheckpointPayload,
+    file_payload: TicketOwnerCheckpointFilePayload,
+) -> dict[str, Any]:
+    try:
+        content = base64.b64decode(file_payload.contentBase64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid base64 checkpoint file content.") from exc
+    return _store_ticket_owner_artifact_bytes(
+        batch_row=batch_row,
+        run_id=payload.runId,
+        attempt_id=payload.attemptId,
+        file_role=file_payload.fileRole or "result_file",
+        filename=file_payload.fileName or "ticket-owner-file",
+        content=content,
+        content_type=file_payload.contentType or "application/octet-stream",
+    )
+
+
+def _store_ticket_owner_result_artifacts(
+    batch_row: dict[str, Any],
+    payload: TicketOwnerCheckpointPayload,
+) -> list[dict[str, Any]]:
+    if not payload.result:
+        return []
+    rows: list[dict[str, Any]] = []
+    if isinstance(payload.result.get("rows"), list):
+        rows = payload.result["rows"]
+    content = json.dumps(payload.result, ensure_ascii=False, indent=2).encode("utf-8")
+    stored_files = [
+        _store_ticket_owner_artifact_bytes(
+            batch_row=batch_row,
+            run_id=payload.runId,
+            attempt_id=payload.attemptId,
+            file_role="result_json",
+            filename="ticket-ownership-result.json",
+            content=content,
+            content_type="application/json; charset=utf-8",
+        )
+    ]
+    if rows:
+        workbook_content = _build_ticket_owner_workbook_bytes(rows)
+        stored_files.append(
+            _store_ticket_owner_artifact_bytes(
+                batch_row=batch_row,
+                run_id=payload.runId,
+                attempt_id=payload.attemptId,
+                file_role="result_excel",
+                filename=TICKET_OWNER_EXCEL_NAME,
+                content=workbook_content,
+                content_type=EXCEL_CONTENT_TYPE,
+            )
+        )
+    return stored_files
+
+
+def _store_ticket_owner_artifact_bytes(
+    *,
+    batch_row: dict[str, Any],
+    run_id: str,
+    attempt_id: str,
+    file_role: str,
+    filename: str,
+    content: bytes,
+    content_type: str,
+) -> dict[str, Any]:
+    safe_filename = sanitize_object_segment(filename)
+    safe_role = sanitize_object_segment(file_role or "result_file").replace("-", "_")
+    bucket = batch_row.get("bucket") or get_minio_bucket(TICKET_OWNER_BUCKET_KEY)
+    object_prefix = str(batch_row.get("object_prefix") or "").strip()
+    if not object_prefix:
+        object_prefix = f"{TICKET_OWNER_OBJECT_ROOT}/{_packing_list_date_folder()}/{batch_row['batch_id']}"
+    attempt_folder = sanitize_object_segment(attempt_id or "attempt")
+    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+    object_key = f"{object_prefix}/{attempt_folder}/{timestamp}-{safe_role}-{safe_filename}"
+    storage_record = put_object_bytes(
+        bucket=bucket,
+        object_key=object_key,
+        content=content,
+        content_type=content_type or "application/octet-stream",
+    )
+    if not run_id:
+        return {
+            "id": None,
+            "run_id": "",
+            "file_role": safe_role,
+            "bucket": bucket,
+            "object_key": object_key,
+            "original_filename": safe_filename,
+            "content_type": content_type or "application/octet-stream",
+            "file_size": storage_record["file_size"],
+            "sha256": storage_record["sha256"] or sha256_bytes(content),
+            "created_at": datetime.utcnow(),
+        }
+    return insert_automation_run_file({
+        "run_id": run_id,
+        "file_role": safe_role,
+        "bucket": bucket,
+        "object_key": object_key,
+        "original_filename": safe_filename,
+        "content_type": content_type or "application/octet-stream",
+        "file_size": storage_record["file_size"],
+        "sha256": storage_record["sha256"] or sha256_bytes(content),
+    })
+
+
 async def _try_store_upload_file(
     *,
     run_id: str,
@@ -1249,6 +2010,81 @@ async def _try_store_upload_file(
         logger.exception("Failed to store automation run upload file.")
         warnings.append("File storage is unavailable; run record was kept without attached source file.")
         return None
+
+
+def _result_has_stored_file_role(result: Any, file_role: str) -> bool:
+    if not isinstance(result, dict):
+        return False
+    candidates: list[Any] = []
+    checkpoint = result.get("checkpoint")
+    if isinstance(checkpoint, dict):
+        candidates.extend(checkpoint.get("storedFiles") or [])
+    workflow_result = result.get("workflowResult")
+    if isinstance(workflow_result, dict):
+        workflow_checkpoint = workflow_result.get("checkpoint")
+        if isinstance(workflow_checkpoint, dict):
+            candidates.extend(workflow_checkpoint.get("storedFiles") or [])
+    candidates.extend(result.get("storedFiles") or [])
+    normalized_role = str(file_role or "").strip().lower()
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("fileRole") or item.get("file_role") or "").strip().lower() == normalized_role:
+            return True
+    return False
+
+
+def _result_stored_file_payloads(result: Any) -> list[dict[str, Any]]:
+    if not isinstance(result, dict):
+        return []
+    candidates: list[Any] = []
+    checkpoint = result.get("checkpoint")
+    if isinstance(checkpoint, dict):
+        candidates.extend(checkpoint.get("storedFiles") or [])
+    workflow_result = result.get("workflowResult")
+    if isinstance(workflow_result, dict):
+        workflow_checkpoint = workflow_result.get("checkpoint")
+        if isinstance(workflow_checkpoint, dict):
+            candidates.extend(workflow_checkpoint.get("storedFiles") or [])
+    candidates.extend(result.get("storedFiles") or [])
+
+    payloads: list[dict[str, Any]] = []
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        download_path = str(item.get("downloadPath") or item.get("download_path") or "").strip()
+        file_role = str(item.get("fileRole") or item.get("file_role") or "").strip()
+        if not download_path or not file_role:
+            continue
+        payloads.append({
+            "id": item.get("id"),
+            "runId": item.get("runId") or item.get("run_id") or "",
+            "fileRole": file_role,
+            "bucket": item.get("bucket", ""),
+            "objectKey": item.get("objectKey") or item.get("object_key") or "",
+            "originalFilename": item.get("originalFilename") or item.get("original_filename") or "",
+            "contentType": item.get("contentType") or item.get("content_type") or "",
+            "fileSize": item.get("fileSize") or item.get("file_size") or 0,
+            "sha256": item.get("sha256", ""),
+            "createdAt": item.get("createdAt") or item.get("created_at") or "",
+            "downloadPath": download_path,
+        })
+    return payloads
+
+
+def _dedupe_run_file_payloads(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    deduped: list[dict[str, Any]] = []
+    for file_payload in files:
+        if not isinstance(file_payload, dict):
+            continue
+        key = str(file_payload.get("id") or file_payload.get("downloadPath") or "").strip()
+        if key and key in seen:
+            continue
+        if key:
+            seen.add(key)
+        deduped.append(file_payload)
+    return deduped
 
 
 def _try_store_result_json(
@@ -1273,8 +2109,8 @@ def _try_store_ticket_owner_excel(
 ) -> dict[str, Any] | None:
     if automation_id != TICKET_OWNER_AUTOMATION_ID or not isinstance(result, dict):
         return None
-    rows = result.get("rows")
-    if not isinstance(rows, list):
+    rows = _extract_ticket_owner_rows(result)
+    if rows is None:
         return None
 
     try:
@@ -1291,6 +2127,31 @@ def _try_store_ticket_owner_excel(
         logger.exception("Failed to build server-side ticket ownership workbook.")
         warnings.append("File storage is unavailable; ticket ownership Excel was not generated on the server.")
         return None
+
+
+def _extract_ticket_owner_rows(result: dict[str, Any]) -> list[Any] | None:
+    candidate_paths = (
+        ("rows",),
+        ("workflowResult", "rows"),
+        ("ticketOwnerStatistics", "rows"),
+        ("collection", "rows"),
+        ("result", "rows"),
+    )
+    first_empty_rows: list[Any] | None = None
+    for path in candidate_paths:
+        current: Any = result
+        for key in path:
+            if not isinstance(current, dict):
+                current = None
+                break
+            current = current.get(key)
+        if not isinstance(current, list):
+            continue
+        if current:
+            return current
+        if first_empty_rows is None:
+            first_empty_rows = current
+    return first_empty_rows
 
 
 def _try_store_remote_result_file(
@@ -1370,6 +2231,10 @@ def _store_result_json(run_id: str, automation_id: str, result: Any) -> dict[str
         bucket = get_minio_bucket(PACKING_LIST_BUCKET_KEY)
         object_prefix = _packing_list_result_object_prefix(run_id, result)
         object_key = f"{object_prefix}/{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-result.json"
+    elif automation_id == TICKET_OWNER_AUTOMATION_ID:
+        bucket = get_minio_bucket(TICKET_OWNER_BUCKET_KEY)
+        object_prefix = _ticket_owner_result_object_prefix(run_id, result)
+        object_key = f"{object_prefix}/{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-result.json"
     else:
         bucket = get_minio_bucket("results")
         object_key = build_object_key("results", automation_id, run_id, "result.json")
@@ -1406,6 +2271,21 @@ def _packing_list_result_object_prefix(run_id: str, result: Any) -> str:
     return f"{PACKING_LIST_OBJECT_ROOT}/{_packing_list_date_folder()}/{sanitize_object_segment(run_id or 'run')}/final"
 
 
+def _ticket_owner_result_object_prefix(run_id: str, result: Any) -> str:
+    batch_id = ""
+    attempt_id = ""
+    if isinstance(result, dict):
+        checkpoint = result.get("checkpoint")
+        if isinstance(checkpoint, dict):
+            batch_id = str(checkpoint.get("batchId") or "").strip()
+            attempt_id = str(checkpoint.get("attemptId") or "").strip()
+        batch_id = batch_id or str(result.get("batchId") or "").strip()
+        attempt_id = attempt_id or str(result.get("attemptId") or "").strip()
+    folder_id = sanitize_object_segment(batch_id or run_id or "run")
+    attempt_folder = sanitize_object_segment(attempt_id or "final")
+    return f"{TICKET_OWNER_OBJECT_ROOT}/{_packing_list_date_folder()}/{folder_id}/{attempt_folder}"
+
+
 def _store_result_file_bytes(
     *,
     run_id: str,
@@ -1416,8 +2296,13 @@ def _store_result_file_bytes(
     content_type: str,
 ) -> dict[str, Any]:
     safe_filename = sanitize_object_segment(filename)
-    bucket = get_minio_bucket("results")
-    object_key = build_object_key("results", automation_id, run_id, file_role, safe_filename)
+    if automation_id == TICKET_OWNER_AUTOMATION_ID:
+        bucket = get_minio_bucket(TICKET_OWNER_BUCKET_KEY)
+        object_prefix = _ticket_owner_result_object_prefix(run_id, None)
+        object_key = f"{object_prefix}/{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-{sanitize_object_segment(file_role)}-{safe_filename}"
+    else:
+        bucket = get_minio_bucket("results")
+        object_key = build_object_key("results", automation_id, run_id, file_role, safe_filename)
     storage_record = put_object_bytes(
         bucket=bucket,
         object_key=object_key,
@@ -1446,8 +2331,13 @@ def _store_remote_result_file(run_id: str, automation_id: str, file_payload: Run
     content, detected_content_type = download_url_bytes(file_payload.url)
     filename = sanitize_object_segment(file_payload.fileName or file_payload.url.split("/")[-1] or "result-file")
     content_type = file_payload.contentType or detected_content_type or "application/octet-stream"
-    bucket = get_minio_bucket("results")
-    object_key = build_object_key("results", automation_id, run_id, file_payload.fileRole, filename)
+    if automation_id == TICKET_OWNER_AUTOMATION_ID:
+        bucket = get_minio_bucket(TICKET_OWNER_BUCKET_KEY)
+        object_prefix = _ticket_owner_result_object_prefix(run_id, None)
+        object_key = f"{object_prefix}/{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-{sanitize_object_segment(file_payload.fileRole)}-{filename}"
+    else:
+        bucket = get_minio_bucket("results")
+        object_key = build_object_key("results", automation_id, run_id, file_payload.fileRole, filename)
     storage_record = put_object_bytes(
         bucket=bucket,
         object_key=object_key,
@@ -1474,8 +2364,13 @@ def _store_result_file_content(run_id: str, automation_id: str, file_payload: Ru
 
     filename = sanitize_object_segment(file_payload.fileName or file_payload.url.split("/")[-1] or "result-file")
     content_type = file_payload.contentType or "application/octet-stream"
-    bucket = get_minio_bucket("results")
-    object_key = build_object_key("results", automation_id, run_id, file_payload.fileRole, filename)
+    if automation_id == TICKET_OWNER_AUTOMATION_ID:
+        bucket = get_minio_bucket(TICKET_OWNER_BUCKET_KEY)
+        object_prefix = _ticket_owner_result_object_prefix(run_id, None)
+        object_key = f"{object_prefix}/{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-{sanitize_object_segment(file_payload.fileRole)}-{filename}"
+    else:
+        bucket = get_minio_bucket("results")
+        object_key = build_object_key("results", automation_id, run_id, file_payload.fileRole, filename)
     storage_record = put_object_bytes(
         bucket=bucket,
         object_key=object_key,

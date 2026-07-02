@@ -1357,14 +1357,20 @@ const staticTextTranslations: Record<string, string> = {
   网页自动化助手: 'Web Automation Helper',
   'TOS 网页桥接小助手': 'TOS Web Bridge Helper',
   浏览器扩展: 'Browser Extension',
+  完整安装包: 'Full Installer',
   浏览器专属: 'Browser Only',
   '专为 Web 浏览器打造的轻量级桥接组件，网页端直连调度。':
     'A lightweight bridge for web browsers, enabling direct scheduling from the web app.',
+  '下载一次即可完整安装，安装阶段不再联网获取组件。':
+    'Download once for a complete install. The installer no longer fetches components during setup.',
   '极速搭建：免本地客户端安装': 'Fast setup: no local desktop client install',
+  '完整内置：包含小助手运行组件': 'Fully embedded: includes helper runtime components',
   '极速轻量：免去客户端安装': 'Lightweight: no full client install',
   '即开即用：网页与本机无缝桥接': 'Ready to use: bridges the web page and local machine',
   '安全隔离：严格鉴权防越权': 'Secure isolation: strict authorization to prevent privilege overreach',
+  '离线安装：安装过程不再依赖公网下载': 'Offline setup: installation no longer depends on public downloads',
   极速下载助手扩展: 'Download Helper Extension',
+  下载完整小助手安装包: 'Download Full Helper Installer',
   线上连接中: 'Online',
   '当前运行于 Web 服务器 / 浏览器沙盒中。当您登录桌面客户端时，本面板将自动启用增量更新检测。':
     'Running in the web server / browser sandbox. When you sign in to the desktop client, this panel automatically enables incremental update checks.',

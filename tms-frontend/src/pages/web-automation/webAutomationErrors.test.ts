@@ -125,6 +125,26 @@ describe('webAutomationErrors', () => {
     expect(shouldShowAutomationErrorDialog(rawMessage)).toBe(true)
   })
 
+  it('formats missing invoice search results as user-facing guidance', () => {
+    const rawMessage = 'Invoice 17-06-26-1548: PageResolver URL was not found in InProgressInvoices response.'
+
+    const formattedMessage = formatAutomationExecutorMessage(rawMessage)
+    expect(formattedMessage).toContain('Infor Nexus 系统没有找到这个 Invoice')
+    expect(formattedMessage).toContain('INVOICE NUMBER')
+    expect(formattedMessage).not.toContain('PageResolver')
+    expect(shouldShowAutomationErrorDialog(rawMessage)).toBe(true)
+  })
+
+  it('formats missing invoice PDF links as user-facing guidance', () => {
+    const rawMessage = 'Invoice 17-06-26-1548: PDF dyncon URL was not found in PageResolver response.'
+
+    const formattedMessage = formatAutomationExecutorMessage(rawMessage)
+    expect(formattedMessage).toContain('系统没有返回可下载的 Invoice PDF')
+    expect(formattedMessage).toContain('手工打开该发票')
+    expect(formattedMessage).not.toContain('dyncon')
+    expect(shouldShowAutomationErrorDialog(rawMessage)).toBe(true)
+  })
+
   it('does not repeat per-row examples for login-stage failures', () => {
     const baseMessage = 'Infor Nexus 登录失败：登录请求返回登录页，未建立下载会话。请检查 User ID / Password，或确认账号是否需要 Access Code。'
     const payload = {
@@ -150,6 +170,19 @@ describe('webAutomationErrors', () => {
 
     expect(appendAutomationFailureExamples('未完成', payload)).toBe(
       '未完成 失败示例：INV-1: PDF dyncon URL was not found.；INV-3: PageResolver URL was not found.',
+    )
+  })
+
+  it('shows friendly invoice download failure examples', () => {
+    const payload = {
+      invoiceResults: [
+        { ok: false, invoiceNumber: '17-06-26-1548', error: 'Invoice 17-06-26-1548: PageResolver URL was not found in InProgressInvoices response.' },
+        { ok: false, invoiceNumber: '17-06-26-1547', error: 'Invoice 17-06-26-1547: PageResolver URL was not found in InProgressInvoices response.' },
+      ],
+    }
+
+    expect(appendAutomationFailureExamples('Invoice PDF 下载未完成。', payload)).toBe(
+      'Invoice PDF 下载未完成。 失败示例：17-06-26-1548: Infor Nexus 系统没有找到这个 Invoice 的可打开结果。请确认 Excel 中的 INVOICE NUMBER 是否正确、该发票是否已在 Infor Nexus 创建，或当前账号是否有权限查看。',
     )
   })
 })

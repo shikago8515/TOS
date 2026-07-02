@@ -130,18 +130,18 @@
               <div class="sb-card__header">
                 <el-tag type="success" effect="light" round class="sb-card__badge">
                   <el-icon><Connection /></el-icon>
-                  {{ text('浏览器扩展') }}
+                  {{ text('完整安装包') }}
                 </el-tag>
                 <span class="sb-card__icon-ring sb-card__icon-ring--amber">
                   <el-icon :size="22"><Connection /></el-icon>
                 </span>
               </div>
               <h3>{{ text('TOS 网页桥接小助手') }}</h3>
-              <p>{{ text('专为 Web 浏览器打造的轻量级桥接组件，网页端直连调度。') }}</p>
+              <p>{{ text('下载一次即可完整安装，安装阶段不再联网获取组件。') }}</p>
               <ul class="sb-card__features">
-                <li><el-icon><CircleCheck /></el-icon>{{ text('极速搭建：免本地客户端安装') }}</li>
+                <li><el-icon><CircleCheck /></el-icon>{{ text('完整内置：包含小助手运行组件') }}</li>
                 <li><el-icon><CircleCheck /></el-icon>{{ text('即开即用：网页与本机无缝桥接') }}</li>
-                <li><el-icon><CircleCheck /></el-icon>{{ text('安全隔离：严格鉴权防越权') }}</li>
+                <li><el-icon><CircleCheck /></el-icon>{{ text('离线安装：安装过程不再依赖公网下载') }}</li>
               </ul>
             </div>
             <img
@@ -158,7 +158,7 @@
                 @click="handleHelperDownload"
               >
                 <el-icon><Download /></el-icon>
-                {{ helperDownloading ? text('获取中...') : text('极速下载助手扩展') }}
+                {{ helperDownloading ? text('获取中...') : text('下载完整小助手安装包') }}
               </el-button>
               <el-button @click.stop.prevent="openHelperUpdateDialog">
                 <el-icon><Monitor /></el-icon>

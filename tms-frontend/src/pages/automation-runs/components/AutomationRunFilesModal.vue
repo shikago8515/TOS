@@ -18,7 +18,7 @@
             </header>
 
             <div class="arf-toolbar">
-              <button class="arf-btn" type="button" :disabled="loading || !files.length || downloading" @click="toggleAll">
+              <button class="arf-btn" type="button" :disabled="loading || !visibleFiles.length || downloading" @click="toggleAll">
                 <AppIcon name="check-circle" />
                 {{ allSelected ? text('取消全选') : text('全选') }}
               </button>
@@ -26,7 +26,7 @@
                 <AppIcon :name="downloading ? 'loader' : 'download'" :class="{ 'arf-spin': downloading }" />
                 {{ selectedFiles.length ? `${text('下载已选')} ${selectedFiles.length}` : text('下载已选') }}
               </button>
-              <button class="arf-btn" type="button" :disabled="loading || !files.length || downloading" @click="downloadAll">
+              <button class="arf-btn" type="button" :disabled="loading || !visibleFiles.length || downloading" @click="downloadAll">
                 <AppIcon name="download" />
                 {{ text('全量下载') }}
               </button>
@@ -38,14 +38,14 @@
               <p>{{ text('请稍候，文件列表会在这里更新。') }}</p>
             </div>
 
-            <div v-else-if="!files.length" class="arf-empty">
+            <div v-else-if="!visibleFiles.length" class="arf-empty">
               <AppIcon name="info" />
               <strong>{{ text('暂无归档文件') }}</strong>
-              <p>{{ text('该执行记录还没有上传文件或结果文件。') }}</p>
+              <p>{{ text('该执行记录还没有可下载的业务文件。') }}</p>
             </div>
 
             <div v-else class="arf-list">
-              <label v-for="file in files" :key="file.id" class="arf-file">
+              <label v-for="file in visibleFiles" :key="file.id" class="arf-file">
                 <input v-model="selectedIds" type="checkbox" :value="file.id" :disabled="downloading" />
                 <span class="arf-file__icon"><AppIcon name="files" /></span>
                 <span class="arf-file__main">
@@ -87,24 +87,25 @@ const { isEnglish, text } = useAppLanguage()
 const selectedIds = ref<number[]>([])
 const downloading = ref(false)
 
-const selectedFiles = computed(() => props.files.filter((file) => selectedIds.value.includes(file.id)))
-const allSelected = computed(() => props.files.length > 0 && selectedIds.value.length === props.files.length)
+const visibleFiles = computed(() => props.files.filter(isUserDownloadableFile))
+const selectedFiles = computed(() => visibleFiles.value.filter((file) => selectedIds.value.includes(file.id)))
+const allSelected = computed(() => visibleFiles.value.length > 0 && selectedIds.value.length === visibleFiles.value.length)
 const subtitle = computed(() => {
   if (props.loading) return text('正在读取文件列表')
-  if (!props.files.length) return text('暂无可下载文件')
-  if (isEnglish.value) return `${props.files.length} archived files`
-  return `${props.files.length} ${text('个文件可下载')}`
+  if (!visibleFiles.value.length) return text('暂无可下载文件')
+  if (isEnglish.value) return `${visibleFiles.value.length} downloadable files`
+  return `${visibleFiles.value.length} ${text('个文件可下载')}`
 })
 
 watch(
   () => props.open,
   (open) => {
-    if (open) selectedIds.value = props.files.map((file) => file.id)
+    if (open) selectedIds.value = visibleFiles.value.map((file) => file.id)
   },
 )
 
 watch(
-  () => props.files,
+  () => visibleFiles.value,
   (files) => {
     if (props.open) {
       selectedIds.value = files.map((file) => file.id)
@@ -121,7 +122,7 @@ function closeModal(): void {
 
 function toggleAll(): void {
   if (props.loading) return
-  selectedIds.value = allSelected.value ? [] : props.files.map((file) => file.id)
+  selectedIds.value = allSelected.value ? [] : visibleFiles.value.map((file) => file.id)
 }
 
 async function downloadOne(file: AutomationRunFileRecord): Promise<void> {
@@ -133,8 +134,8 @@ async function downloadSelected(): Promise<void> {
 }
 
 async function downloadAll(): Promise<void> {
-  selectedIds.value = props.files.map((file) => file.id)
-  await downloadFiles(props.files)
+  selectedIds.value = visibleFiles.value.map((file) => file.id)
+  await downloadFiles(visibleFiles.value)
 }
 
 async function downloadFiles(files: AutomationRunFileRecord[]): Promise<void> {
@@ -170,6 +171,15 @@ function fileRoleLabel(role: string): string {
     log: '日志',
   }
   return map[role] ? text(map[role]) : role
+}
+
+function isUserDownloadableFile(file: AutomationRunFileRecord): boolean {
+  const role = String(file.fileRole || '').trim().toLowerCase()
+  const filename = String(file.originalFilename || '').trim().toLowerCase()
+  if (!role && !filename) return false
+  if (role.endsWith('_json') || filename.endsWith('.json')) return false
+  if (role === 'log' || role === 'screenshot') return false
+  return true
 }
 
 function formatSize(size: number): string {

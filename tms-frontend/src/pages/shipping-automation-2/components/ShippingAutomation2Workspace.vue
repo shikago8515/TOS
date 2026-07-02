@@ -148,25 +148,16 @@
               </span>
             </div>
             <div class="s2-dock__bd">
-              <div class="s2-dock__fields">
-                <div class="s2-inp-wrap">
-                  <AppIcon name="user" class="s2-inp-icon" />
-                  <input v-model.trim="shippingUsername" class="s2-inp" type="text" placeholder="User ID" autocomplete="username" />
-                </div>
-                <div class="s2-inp-wrap">
-                  <AppIcon name="shield-check" class="s2-inp-icon" />
-                  <input v-model="shippingPassword" :type="showPassword ? 'text' : 'password'" class="s2-inp" placeholder="Password" autocomplete="current-password" />
-                  <button class="s2-inp__btn" @click="showPassword = !showPassword"><AppIcon name="eye" /></button>
-                </div>
-              </div>
-              <div class="s2-dock__row">
-                <button class="s2-btn s2-btn--pri" :disabled="credentialSaving || !shippingUsername || !shippingPassword" @click="saveCurrentCredentials">
-                  <AppIcon name="shield-check" />{{ credentialSaving ? text('保存中...') : text('保存') }}
-                </button>
-                <button class="s2-btn" :disabled="credentialClearing || !hasStoredCredentials" @click="clearCurrentCredentials">
-                  {{ text('清除') }}
-                </button>
-              </div>
+              <AutomationAccountProfileManager
+                ref="credentialProfileRef"
+                v-model:selected-key="selectedCredentialKey"
+                v-model:username="shippingUsername"
+                v-model:password="shippingPassword"
+                :automation-id="entry.id"
+                :default-username="releasedBulkDefaultUsername"
+                @state="handleCredentialState"
+                @notice="handleCredentialNotice"
+              />
             </div>
           </div>
         </aside>
@@ -208,17 +199,18 @@ import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
 import { showAppAlert } from '../../../shared/ui/appAlert'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+import AutomationAccountProfileManager from '../../web-automation/components/AutomationAccountProfileManager.vue'
 import AutomationRunHistoryPanel from '../../web-automation/components/AutomationRunHistoryPanel.vue'
 import type { AutomationAppInfo } from '../../../types/electronApi'
-import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
+import type { AutomationRunFileInput, AutomationRunRecord, AutomationTemplate, LocalExecutorHealth } from '../../web-automation/webAutomationApi'
 import {
-  clearExecutorCredentials, createAutomationRunRecord, downloadAutomationTemplate,
-  fetchAutomationApps, fetchAutomationTemplates, fetchExecutorCredentials, finishAutomationRunRecord,
+  createAutomationRunRecord, downloadAutomationTemplate,
+  fetchAutomationApps, fetchAutomationTemplates, finishAutomationRunRecord,
   findLocalExecutorActiveRun,
   getAutomationHelperUpdateMessage,
   hasElectronAutomationSupport, isLocalExecutorBusy, launchAutomationConsole, openAutomationHelperDownload,
   primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
-  recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole,
+  recordWebAutomationEvent, stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
@@ -228,17 +220,26 @@ type BulkId = 'unreleased' | 'released'
 type BulkTone = 'idle' | 'info' | 'success' | 'error'
 interface BulkResult { ok: boolean; runId?: string; message?: string; finalUrl?: string; generatedAt?: string; artifacts?: { downloadUrls?: Record<string, string>; failedRowCount?: number } }
 interface BulkState { id: BulkId; label: string; file: File | null; dragging: boolean; dragDepth: number; running: boolean; tone: BulkTone; statusText: string; result: BulkResult | null }
+type CredentialProfileRef = {
+  refresh: (accountKey?: string) => Promise<void>
+  resolveCredentials: () => Promise<{ username: string; password: string; accountKey: string }>
+}
+type CredentialProfileState = { hasStoredCredentials: boolean; username: string; accountKey: string }
+type CredentialNotice = { tone: WebAutomationNoticeTone; message: string }
 
 const router = useRouter(); const { text } = useAppLanguage()
 const entry = getWebAutomationEntry(shippingAutomation2EntryId)
 const electronSupported = hasElectronAutomationSupport()
 
 const activeApp = ref<AutomationAppInfo | null>(null); const executorHealth = ref<LocalExecutorHealth | null>(null)
-const executorCredentials = ref<ExecutorCredentials | null>(null); const automationTemplates = ref<AutomationTemplate[]>([])
+const automationTemplates = ref<AutomationTemplate[]>([])
 const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false)
-const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false)
+const templateLoading = ref(false)
 const restoredActiveBulkIds = ref<BulkId[]>([])
-const shippingUsername = ref(releasedBulkDefaultUsername); const shippingPassword = ref(''); const showPassword = ref(false)
+const shippingUsername = ref(releasedBulkDefaultUsername); const shippingPassword = ref('')
+const selectedCredentialKey = ref('default')
+const hasStoredCredentials = ref(false)
+const credentialProfileRef = ref<CredentialProfileRef | null>(null)
 const showBrowserView = ref(true)
 const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info')
 const isHealthLogOpen = ref(false)
@@ -256,16 +257,13 @@ const executorStatusLabel = computed(() => {
 const canLaunchActiveApp = computed(() => Boolean(entry?.appId) && !launching.value)
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
 const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
-const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
-const savedCredentialUsername = computed(() => executorCredentials.value?.username || '')
-const credentialStatusText = computed(() => { if (hasStoredCredentials.value) { return savedCredentialUsername.value ? `已保存：${savedCredentialUsername.value}` : '已保存 Infor Nexus 登录账号密码。' }; return '未保存 Infor Nexus 登录账号密码。' })
 const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
 const bulkHistorySignal = computed(() => bulkAreas.value.map((bulk) => `${bulk.id}:${bulk.result?.runId || ''}:${bulk.result?.message || ''}`).join('|'))
 
 onMounted(() => { void initializeScenario() })
 onBeforeUnmount(() => { stopActiveRunStatePolling() })
 
-async function initializeScenario(): Promise<void> { await refreshAutomationTemplates(); await refreshExecutorCredentials(); await refreshExecutorState(true); if (electronSupported && activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) await startActiveApp(true) }
+async function initializeScenario(): Promise<void> { await refreshAutomationTemplates(); await refreshCredentialProfile(); await refreshExecutorState(true); if (electronSupported && activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) await startActiveApp(true) }
 
 async function refreshExecutorState(silent: boolean): Promise<void> {
   if (!entry || refreshing.value) return; refreshing.value = true; const fb = createFallbackAutomationApp(entry)
@@ -372,13 +370,38 @@ function clearRestoredActiveBulkState(): void {
   stopActiveRunStatePolling()
 }
 
-async function refreshExecutorCredentials(): Promise<void> { if (!entry) return; try { executorCredentials.value = await fetchExecutorCredentials(entry.id); shippingUsername.value = resolveReleasedBulkCredentialUsername(executorCredentials.value.username); if (executorCredentials.value.hasStoredCredentials) { const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = resolveReleasedBulkCredentialUsername(r.username); shippingPassword.value = r.password } } catch { executorCredentials.value = null; shippingUsername.value = resolveReleasedBulkCredentialUsername(shippingUsername.value) } }
+async function refreshCredentialProfile(accountKey = selectedCredentialKey.value): Promise<void> {
+  if (!entry) return
+  try {
+    await credentialProfileRef.value?.refresh(accountKey)
+  } catch (error) {
+    messageTone.value = 'error'
+    message.value = readErrorMessage(error, '读取账号密码失败。')
+  }
+}
+
+function handleCredentialState(state: CredentialProfileState): void {
+  hasStoredCredentials.value = state.hasStoredCredentials
+  selectedCredentialKey.value = state.accountKey
+  if (state.username) shippingUsername.value = resolveReleasedBulkCredentialUsername(state.username)
+}
+
+function handleCredentialNotice(notice: CredentialNotice): void {
+  messageTone.value = notice.tone
+  message.value = notice.message
+}
 async function refreshAutomationTemplates(): Promise<void> { if (!entry) return; templateLoading.value = true; try { automationTemplates.value = await fetchAutomationTemplates(entry.id) } catch { automationTemplates.value = [] } finally { templateLoading.value = false } }
 
-async function saveCurrentCredentials(): Promise<void> { if (!entry || credentialSaving.value) return; const u = shippingUsername.value.trim(); const p = shippingPassword.value; if (!u || !p) { messageTone.value = 'warning'; message.value = '请先填写账号和密码。'; return }; credentialSaving.value = true; try { executorCredentials.value = await saveExecutorCredentials(entry.id, u, p); await refreshExecutorCredentials(); shippingPassword.value = p; messageTone.value = 'success'; message.value = 'Infor Nexus 登录账号密码已保存。' } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, '保存失败。') } finally { credentialSaving.value = false } }
-async function clearCurrentCredentials(): Promise<void> { if (!entry || credentialClearing.value) return; credentialClearing.value = true; try { executorCredentials.value = await clearExecutorCredentials(entry.id); shippingUsername.value = releasedBulkDefaultUsername; shippingPassword.value = ''; messageTone.value = 'info'; message.value = '已清除。' } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, '清除失败。') } finally { credentialClearing.value = false } }
-
-async function resolveRunCredentialsPayload(): Promise<Record<string, string>> { if (!entry) return {}; const u = shippingUsername.value.trim(); const tp = shippingPassword.value; if (tp.trim()) { if (!u) throw new Error('请填写 Infor Nexus 登录账号密码。'); executorCredentials.value = await saveExecutorCredentials(entry.id, u, tp); await refreshExecutorCredentials(); return { username: u, password: tp } }; const r = await resolveAutomationCredentials(entry.id); shippingUsername.value = r.username; shippingPassword.value = r.password; return { username: r.username, password: r.password } }
+async function resolveRunCredentialsPayload(): Promise<Record<string, string>> {
+  if (!entry) return {}
+  const resolved = await credentialProfileRef.value?.resolveCredentials()
+  if (!resolved?.username || !resolved.password) throw new Error('请先新增并保存 Infor Nexus 登录账号密码。')
+  const username = resolveReleasedBulkCredentialUsername(resolved.username)
+  shippingUsername.value = username
+  shippingPassword.value = resolved.password
+  selectedCredentialKey.value = resolved.accountKey
+  return { username, password: resolved.password }
+}
 function bulkTemplate(id: BulkId): AutomationTemplate | null { return automationTemplates.value.find((t) => t.templateKey === id) || automationTemplates.value.find((t) => t.templateKey === 'default') || automationTemplates.value[0] || null }
 async function downloadBulkTemplate(id: BulkId): Promise<void> { try { await downloadAutomationTemplate(bulkTemplate(id)); messageTone.value = 'success'; message.value = text('模板下载已开始。') } catch (e) { const m = readErrorMessage(e, text('模板下载失败。')); messageTone.value = 'warning'; message.value = m; void showAppAlert(m, { tone: 'warning' }) } }
 function downloadAutomationHelper(): void { void openAutomationHelperDownload() }

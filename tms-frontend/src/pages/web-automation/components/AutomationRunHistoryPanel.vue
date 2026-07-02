@@ -189,7 +189,11 @@ async function loadRuns(): Promise<void> {
       page: 1,
       pageSize: props.pageSize,
     })
-    runs.value = payload.runs
+    runs.value = payload.runs.sort((a, b) => {
+      const aTime = new Date(a.finishedAt || a.startedAt || a.createdAt || 0).getTime()
+      const bTime = new Date(b.finishedAt || b.startedAt || b.createdAt || 0).getTime()
+      return bTime - aTime
+    })
   } finally {
     loading.value = false
   }

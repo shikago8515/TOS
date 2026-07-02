@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import re
 import threading
+import time
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator, TypeVar
 
 from utils.settings import get_settings
 
@@ -13,6 +14,7 @@ from utils.settings import get_settings
 _schema_lock = threading.Lock()
 _schema_ready = False
 _DEFAULT_DATABASE = object()
+_T = TypeVar("_T")
 
 
 def ensure_schema() -> None:
@@ -71,6 +73,30 @@ def get_mysql_config() -> dict[str, Any]:
         "read_timeout": int(mysql.get("read_timeout", 15)),
         "write_timeout": int(mysql.get("write_timeout", 15)),
     }
+
+
+def _is_retryable_mysql_read_error(exc: Exception) -> bool:
+    pymysql = _import_pymysql()
+    retryable_codes = {2006, 2013, 2014, 2055}
+    if isinstance(exc, pymysql.err.OperationalError):
+        code = exc.args[0] if exc.args else None
+        if code in retryable_codes:
+            return True
+    message = str(exc).lower()
+    return "lost connection" in message or "read operation timed out" in message or "server has gone away" in message
+
+
+def _run_mysql_read(operation: Callable[[], _T]) -> _T:
+    last_error: Exception | None = None
+    for attempt in range(2):
+        try:
+            return operation()
+        except Exception as exc:
+            if not _is_retryable_mysql_read_error(exc) or attempt == 1:
+                raise
+            last_error = exc
+            time.sleep(0.2)
+    raise last_error or RuntimeError("MySQL read retry failed.")
 
 
 DEFAULT_TOS_MODULES: tuple[dict[str, Any], ...] = (
@@ -697,21 +723,24 @@ def create_automation_run(run: dict[str, Any]) -> dict[str, Any]:
 
 def get_automation_run(run_id: str) -> dict[str, Any] | None:
     ensure_schema()
-    with mysql_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT activity_id AS run_id, module_id AS automation_id, module_id,
-                       activity_name AS run_name, status, message,
-                       result_json, started_at, finished_at, created_at, updated_at
-                FROM tos_activity_records
-                WHERE activity_id = %s AND activity_type = 'automation'
-                LIMIT 1
-                """,
-                (run_id,),
-            )
-            row = cursor.fetchone()
-    return row
+
+    def _read() -> dict[str, Any] | None:
+        with mysql_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT activity_id AS run_id, module_id AS automation_id, module_id,
+                           activity_name AS run_name, status, message,
+                           result_json, started_at, finished_at, created_at, updated_at
+                    FROM tos_activity_records
+                    WHERE activity_id = %s AND activity_type = 'automation'
+                    LIMIT 1
+                    """,
+                    (run_id,),
+                )
+                return cursor.fetchone()
+
+    return _run_mysql_read(_read)
 
 
 def list_automation_runs(
@@ -737,21 +766,24 @@ def list_automation_runs(
         started_to=started_to,
     )
     params.extend([safe_limit, safe_offset])
-    with mysql_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT activity_id AS run_id, module_id AS automation_id, module_id,
-                       activity_name AS run_name, status, message,
-                       started_at, finished_at, created_at, updated_at
-                FROM tos_activity_records
-                {where_clause}
-                ORDER BY created_at DESC
-                LIMIT %s OFFSET %s
-                """,
-                tuple(params),
-            )
-            rows = cursor.fetchall()
+    def _read() -> list[dict[str, Any]]:
+        with mysql_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT activity_id AS run_id, module_id AS automation_id, module_id,
+                           activity_name AS run_name, status, message,
+                           started_at, finished_at, created_at, updated_at
+                    FROM tos_activity_records
+                    {where_clause}
+                    ORDER BY created_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    tuple(params),
+                )
+                return cursor.fetchall()
+
+    rows = _run_mysql_read(_read)
     return rows or []
 
 
@@ -773,17 +805,20 @@ def count_automation_runs(
         started_from=started_from,
         started_to=started_to,
     )
-    with mysql_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT COUNT(*) AS total
-                FROM tos_activity_records
-                {where_clause}
-                """,
-                tuple(params),
-            )
-            row = cursor.fetchone() or {}
+    def _read() -> dict[str, Any]:
+        with mysql_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT COUNT(*) AS total
+                    FROM tos_activity_records
+                    {where_clause}
+                    """,
+                    tuple(params),
+                )
+                return cursor.fetchone() or {}
+
+    row = _run_mysql_read(_read)
     return int(row.get("total") or 0)
 
 
@@ -993,22 +1028,25 @@ def create_automation_batch(batch: dict[str, Any]) -> dict[str, Any]:
 
 def get_automation_batch(batch_id: str) -> dict[str, Any] | None:
     ensure_schema()
-    with mysql_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT batch_id, automation_id, module_id, run_id, batch_name,
-                       source_file_name, source_file_sha256, source_file_json,
-                       status, message, total_count, completed_count, failed_count, pending_count,
-                       checkpoint_json, bucket, object_prefix, created_at, updated_at
-                FROM tos_automation_batches
-                WHERE batch_id = %s
-                LIMIT 1
-                """,
-                (batch_id,),
-            )
-            row = cursor.fetchone()
-    return row
+
+    def _read() -> dict[str, Any] | None:
+        with mysql_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT batch_id, automation_id, module_id, run_id, batch_name,
+                           source_file_name, source_file_sha256, source_file_json,
+                           status, message, total_count, completed_count, failed_count, pending_count,
+                           checkpoint_json, bucket, object_prefix, created_at, updated_at
+                    FROM tos_automation_batches
+                    WHERE batch_id = %s
+                    LIMIT 1
+                    """,
+                    (batch_id,),
+                )
+                return cursor.fetchone()
+
+    return _run_mysql_read(_read)
 
 
 def list_automation_batches(
@@ -1027,23 +1065,49 @@ def list_automation_batches(
         params.append(status)
     params.append(safe_limit)
     payload_columns = "source_file_json, checkpoint_json," if include_payloads else ""
+    def _read() -> list[dict[str, Any]]:
+        with mysql_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT batch_id, automation_id, module_id, run_id, batch_name,
+                           source_file_name, source_file_sha256, {payload_columns}
+                           status, message, total_count, completed_count, failed_count, pending_count,
+                           bucket, object_prefix, created_at, updated_at
+                    FROM tos_automation_batches
+                    WHERE {' AND '.join(conditions)}
+                    ORDER BY updated_at DESC, created_at DESC
+                    LIMIT %s
+                    """,
+                    tuple(params),
+                )
+                return cursor.fetchall()
+
+    rows = _run_mysql_read(_read)
+    return rows or []
+
+
+def delete_automation_batch(batch_id: str) -> bool:
+    ensure_schema()
     with mysql_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
-                f"""
-                SELECT batch_id, automation_id, module_id, run_id, batch_name,
-                       source_file_name, source_file_sha256, {payload_columns}
-                       status, message, total_count, completed_count, failed_count, pending_count,
-                       bucket, object_prefix, created_at, updated_at
-                FROM tos_automation_batches
-                WHERE {' AND '.join(conditions)}
-                ORDER BY updated_at DESC, created_at DESC
-                LIMIT %s
+                """
+                DELETE FROM tos_automation_batch_attempts
+                WHERE batch_id = %s
                 """,
-                tuple(params),
+                (batch_id,),
             )
-            rows = cursor.fetchall()
-    return rows or []
+            cursor.execute(
+                """
+                DELETE FROM tos_automation_batches
+                WHERE batch_id = %s
+                """,
+                (batch_id,),
+            )
+            deleted = cursor.rowcount > 0
+        connection.commit()
+    return deleted
 
 
 def update_automation_batch_checkpoint(
@@ -1153,20 +1217,23 @@ def update_automation_batch_attempt(
 
 def get_automation_batch_attempt(attempt_id: str) -> dict[str, Any] | None:
     ensure_schema()
-    with mysql_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT attempt_id, batch_id, run_id, mode, status, message,
-                       result_json, started_at, finished_at, created_at, updated_at
-                FROM tos_automation_batch_attempts
-                WHERE attempt_id = %s
-                LIMIT 1
-                """,
-                (attempt_id,),
-            )
-            row = cursor.fetchone()
-    return row
+
+    def _read() -> dict[str, Any] | None:
+        with mysql_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT attempt_id, batch_id, run_id, mode, status, message,
+                           result_json, started_at, finished_at, created_at, updated_at
+                    FROM tos_automation_batch_attempts
+                    WHERE attempt_id = %s
+                    LIMIT 1
+                    """,
+                    (attempt_id,),
+                )
+                return cursor.fetchone()
+
+    return _run_mysql_read(_read)
 
 
 def upsert_process_history_record(record: dict[str, Any]) -> dict[str, Any]:
@@ -1497,40 +1564,47 @@ def get_process_history_result_file(file_id: int) -> dict[str, Any] | None:
 
 def list_automation_run_files(run_id: str) -> list[dict[str, Any]]:
     ensure_schema()
-    with mysql_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT file_id AS id, activity_id AS run_id, file_role,
-                       bucket, object_key, file_name AS original_filename,
-                       content_type, file_size, sha256, created_at
-                FROM tos_activity_files
-                WHERE activity_id = %s
-                ORDER BY created_at ASC, id ASC
-                """,
-                (run_id,),
-            )
-            rows = cursor.fetchall()
+
+    def _read() -> list[dict[str, Any]]:
+        with mysql_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT file_id AS id, activity_id AS run_id, file_role,
+                           bucket, object_key, file_name AS original_filename,
+                           content_type, file_size, sha256, created_at
+                    FROM tos_activity_files
+                    WHERE activity_id = %s
+                    ORDER BY created_at ASC, id ASC
+                    """,
+                    (run_id,),
+                )
+                return cursor.fetchall()
+
+    rows = _run_mysql_read(_read)
     return rows or []
 
 
 def get_automation_run_file(file_id: int) -> dict[str, Any] | None:
     ensure_schema()
-    with mysql_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT file_id AS id, activity_id AS run_id, file_role,
-                       bucket, object_key, file_name AS original_filename,
-                       content_type, file_size, sha256, created_at
-                FROM tos_activity_files
-                WHERE file_id = %s
-                LIMIT 1
-                """,
-                (file_id,),
-            )
-            row = cursor.fetchone()
-    return row
+
+    def _read() -> dict[str, Any] | None:
+        with mysql_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT file_id AS id, activity_id AS run_id, file_role,
+                           bucket, object_key, file_name AS original_filename,
+                           content_type, file_size, sha256, created_at
+                    FROM tos_activity_files
+                    WHERE file_id = %s
+                    LIMIT 1
+                    """,
+                    (file_id,),
+                )
+                return cursor.fetchone()
+
+    return _run_mysql_read(_read)
 
 
 def list_release_update_records(limit: int = 100) -> list[dict[str, Any]]:

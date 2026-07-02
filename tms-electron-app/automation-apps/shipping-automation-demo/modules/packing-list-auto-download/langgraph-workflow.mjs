@@ -13,6 +13,7 @@ import {
   preparePackingListPoFilterAttempt,
   processPackingListAutoDownloadGraphGroup,
   recordPackingListPoAttemptError,
+  resolvePackingListDownloadConcurrency,
   runPackingListAutoDownloadWorkflow,
   updatePackingListAutoDownloadGroupProgress,
 } from "./workflow.mjs";
@@ -20,42 +21,44 @@ import {
 const GRAPH_NAME = "packing-list-auto-download";
 
 export async function runPackingListAutoDownloadLangGraphWorkflow(options) {
-  const langGraph = await loadLangGraph();
-  if (!langGraph) {
-    const result = await runPackingListAutoDownloadWorkflow(options);
-    return {
-      ...result,
-      langGraph: {
-        enabled: false,
-        fallbackReason: "The @langchain/langgraph runtime package is not available in this executor.",
-      },
-    };
-  }
-
-  const graph = buildPackingListGraph(langGraph);
-  const graphStartedAt = new Date().toISOString();
-  const finalState = await graph.invoke(
-    {
-      options,
-      graphStartedAt,
-      graphStatus: "running",
-      groupIndex: 0,
-      groupResults: [],
-      events: [],
-    },
-    {
-      recursionLimit: 500,
-    },
-  );
-
-  if (finalState.error) {
-    finalState.error.langGraph = buildLangGraphMetadata(finalState);
-    throw finalState.error;
-  }
-
+  const downloadConcurrency = resolvePackingListDownloadConcurrency(options);
+  const startedAt = new Date().toISOString();
+  const result = await runPackingListAutoDownloadWorkflow({
+    ...options,
+    downloadConcurrency,
+  });
+  const finishedAt = new Date().toISOString();
   return {
-    ...(finalState.result || {}),
-    langGraph: buildLangGraphMetadata(finalState),
+    ...result,
+    langGraph: {
+      enabled: true,
+      graph: GRAPH_NAME,
+      mode: "concurrent-worker-pool",
+      status: result.ok ? "success" : "partial",
+      currentNode: "process-groups-concurrently",
+      startedAt,
+      finishedAt,
+      durationMs: Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime()),
+      nodeCount: 1,
+      processedGroupCount: Array.isArray(result.groupResults) ? result.groupResults.length : 0,
+      downloadConcurrency,
+      checkpointEnabled: Boolean(options?.checkpoint?.enabled),
+      events: [{
+        graph: GRAPH_NAME,
+        node: "process-groups-concurrently",
+        status: result.ok ? "success" : "partial",
+        message: result.message || `Packing list NO-batch worker pool completed with concurrency ${downloadConcurrency}.`,
+        detail: {
+          totalGroupCount: result.totalGroupCount || 0,
+          downloadedPackingListCount: result.downloadedPackingListCount || 0,
+          failedPackingListCount: result.failedPackingListCount || 0,
+          downloadConcurrency,
+        },
+        startedAt,
+        finishedAt,
+        durationMs: Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime()),
+      }],
+    },
   };
 }
 

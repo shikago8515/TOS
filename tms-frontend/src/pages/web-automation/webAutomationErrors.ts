@@ -20,6 +20,8 @@ interface AutomationFailurePayload {
   poResults?: unknown
 }
 
+const MAX_AUTOMATION_FAILURE_EXAMPLES = 3
+
 const automationValidationErrorRules: AutomationValidationErrorRule[] = [
   {
     pattern: /Automation app proxy failed.*(ECONNRESET|socket hang up|ECONNABORTED)|read ECONNRESET|connection reset|socket hang up/i,
@@ -64,6 +66,14 @@ const automationValidationErrorRules: AutomationValidationErrorRule[] = [
   {
     pattern: /timed out waiting for shipment rows|no shipment rows were loaded|shipment grid stayed empty|did not switch to rows for this PO/i,
     message: 'Shipment Scan 没有返回可处理的数据：可能是 PO 不在当前账号权限范围内、筛选条件不匹配，或 Infor Nexus 桌面工具未连接。请先确认页面是否有 Desktop Utility 连接提示，再核对 Excel 中 PO No / Equipment ID 是否正确。',
+  },
+  {
+    pattern: /PageResolver URL was not found in InProgressInvoices response/i,
+    message: 'Infor Nexus 系统没有找到这个 Invoice 的可打开结果。请确认 Excel 中的 INVOICE NUMBER 是否正确、该发票是否已在 Infor Nexus 创建，或当前账号是否有权限查看。',
+  },
+  {
+    pattern: /PDF dyncon URL was not found in PageResolver response/i,
+    message: '已找到 Invoice 页面，但系统没有返回可下载的 Invoice PDF。可能是该发票还没有生成 PDF、未发布，或当前账号没有 PDF 下载权限；请在 Infor Nexus 手工打开该发票确认是否能下载。',
   },
   {
     pattern: /Uploaded workbook does not contain any data rows/i,
@@ -138,9 +148,10 @@ export function appendAutomationFailureExamples(baseMessage: string, payload: Au
     : Array.isArray(payload?.poResults)
       ? payload.poResults
       : []
-  const seenErrors = new Set<string>()
-  const failures = results
+  const failureItems = results
     .filter((item): item is AutomationFailureItem => Boolean(item && typeof item === 'object' && !((item as AutomationFailureItem).ok)))
+  const seenErrors = new Set<string>()
+  const failures = failureItems
     .map((item) => {
       const rawError = String(item.error || item.step || '未返回错误详情').trim()
       const error = formatAutomationExecutorMessage(rawError, rawError || '未返回错误详情')
@@ -151,10 +162,12 @@ export function appendAutomationFailureExamples(baseMessage: string, payload: Au
       return `${invoiceNumber}: ${error}`
     })
     .filter(Boolean)
-    .slice(0, 3)
+  const examples = failures.slice(0, MAX_AUTOMATION_FAILURE_EXAMPLES)
+  const omittedCount = Math.max(0, failureItems.length - examples.length)
 
-  if (failures.length === 0) return normalizedBaseMessage
-  return `${normalizedBaseMessage} 失败示例：${failures.join('；')}`
+  if (examples.length === 0) return normalizedBaseMessage
+  const omittedMessage = omittedCount > 0 ? `；另有 ${omittedCount} 条失败，请在右侧失败明细或失败明细 Excel 中查看。` : ''
+  return `${normalizedBaseMessage} 失败示例：${examples.join('；')}${omittedMessage}`
 }
 
 export function shouldShowAutomationErrorDialog(message: string | undefined): boolean {

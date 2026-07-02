@@ -314,6 +314,7 @@ async function uploadTemplate(): Promise<void> {
     })
     resetForm()
     await loadTemplates()
+    void showAppAlert(text('模板文件已替换成功。'), { tone: 'success', compact: true, autoCloseMs: 1800 })
   } finally {
     saving.value = false
   }
@@ -346,6 +347,7 @@ async function saveTemplateMeta(): Promise<void> {
     })
     resetForm()
     await loadTemplates()
+    void showAppAlert(text('模板名称已保存。'), { tone: 'success', compact: true, autoCloseMs: 1800 })
   } finally {
     saving.value = false
   }
@@ -355,6 +357,10 @@ async function toggleTemplate(template: AutomationTemplate, isActive: boolean): 
   await updateAutomationTemplate(template.id, { isActive })
   resetForm()
   await loadTemplates()
+  void showAppAlert(
+    isActive ? text('模板已启用。') : text('模板已停用。'),
+    { tone: 'success', compact: true, autoCloseMs: 1800 },
+  )
 }
 
 async function removeTemplate(template: AutomationTemplate): Promise<void> {

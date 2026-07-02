@@ -43,6 +43,12 @@ function normalizePackingListProgress(message, details = {}) {
   const attemptedCount = toCount(details?.attemptedCount);
   const currentNo = String(details?.no || details?.currentNo || "").trim();
   const currentPo = String(details?.poNumber || details?.currentPo || "").trim();
+  const concurrencyCount = toCount(details?.concurrencyCount ?? details?.downloadConcurrency);
+  const rawActiveCount = toCount(details?.activeCount) || (currentPo ? 1 : 0);
+  const isTerminal = phase === "complete" || phase === "completed" || phase === "failed" || phase === "error";
+  const activeCount = concurrencyCount > 1 && !isTerminal
+    ? Math.max(rawActiveCount, concurrencyCount)
+    : rawActiveCount;
   const filePath = String(details?.filePath || details?.lastDownloadedFilePath || "").trim();
   const currentPoIndex = toCount(details?.currentPoIndex);
   const totalPoCount = toCount(details?.totalPoCount);
@@ -50,10 +56,13 @@ function normalizePackingListProgress(message, details = {}) {
     ? Number(details.percent)
     : estimatePackingListPercent({ phase, completedCount, totalCount });
   const meta = [];
+  if (concurrencyCount > 1) meta.push(`并发 ${concurrencyCount} 路`);
   if (currentPoIndex > 0 && totalPoCount > 0) meta.push(`PO ${currentPoIndex}/${totalPoCount}`);
   if (filePath) meta.push(`保存 ${filePath}`);
   if (Array.isArray(details?.meta)) {
-    meta.push(...details.meta.map((item) => String(item || "").trim()).filter(Boolean));
+    meta.push(...details.meta
+      .map((item) => String(item || "").trim())
+      .filter((item) => item && !/^并发\s/.test(item)));
   }
 
   return {
@@ -66,12 +75,13 @@ function normalizePackingListProgress(message, details = {}) {
     successCount,
     failedCount,
     attemptedCount,
-    activeCount: currentPo ? 1 : 0,
+    activeCount,
     currentNo,
     currentPo,
     meta,
     identityMeta: [
       totalCount > 0 ? `${completedCount}/${totalCount}` : "",
+      concurrencyCount > 1 ? `并发 ${concurrencyCount} 路` : "",
       currentNo ? `NO ${currentNo}` : "",
       currentPo ? `PO ${currentPo}` : "",
     ].filter(Boolean),

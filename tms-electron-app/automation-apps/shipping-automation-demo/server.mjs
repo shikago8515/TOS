@@ -112,17 +112,23 @@ const {
 const activeRuns = new Map();
 let lastRun = null;
 const recentRuns = [];
+const AUTO_ADD_CONTINUE_PANEL_ID = "tos-infornexus-auto-add-continue-panel";
+const AUTO_ADD_CONTINUE_BINDING = "__tosInfornexusAutoAddUpload";
+const AUTO_ADD_REMOVE_BATCH_PRINT_ITEM_SELECTOR = 'a[href*="remove.batch.print.item"]';
+const retainedAutoAddBrowserSessions = new Map();
 const autoAddManualSessionManager = createInfornexusAutoAddManualSessionManager({
   browserEngines,
   buildVisibleBrowserLaunchOptions,
   config,
   ensureLoggedIn,
   log,
+  onManualSessionReady: installInfornexusAutoAddContinuationForManualSession,
   safePageTitle,
   safePageUrl,
   showAutomationBadge,
 });
 const poAutoDownloadAutomation = createPoAutoDownloadAutomation({
+  artifactsDir,
   browserEngines,
   buildVisibleBrowserLaunchOptions,
   config,
@@ -552,6 +558,7 @@ function buildHealthPayload() {
     activeRuns: activeRunList,
     activeRunCount: activeRunList.length,
     manualSession: autoAddManualSessionManager.getSessionSummary(),
+    retainedAutoAddSessions: getRetainedAutoAddSessionSummaries(),
     lastRun,
     recentRuns,
     dataDir: runtimeDataRoot,
@@ -783,6 +790,623 @@ function recordCompletedRun(run) {
   recentRuns.splice(20);
 }
 
+async function installInfornexusAutoAddContinuationForManualSession(session) {
+  if (!session || session.page?.isClosed?.()) return null;
+  return retainAutoAddBrowserSession({
+    ...session,
+    runId: session.runId || session.manualSessionId || createRunId("infornexus-auto-add-manual"),
+    sessionSource: "manual-search",
+  });
+}
+
+async function retainAutoAddBrowserSession(session) {
+  const runId = String(session?.runId || session?.manualSessionId || createRunId("infornexus-auto-add-retained"));
+  const retainedSession = {
+    ...session,
+    runId,
+    processing: false,
+    retainedAt: new Date().toISOString(),
+    sessionSource: String(session?.sessionSource || (session?.manualSessionId ? "manual-search" : "completed-run")),
+  };
+  retainedAutoAddBrowserSessions.set(runId, retainedSession);
+
+  const markClosed = (reason) => {
+    const current = retainedAutoAddBrowserSessions.get(runId);
+    if (current !== retainedSession) return;
+    retainedAutoAddBrowserSessions.delete(runId);
+    log("Infornexus auto-add retained browser session closed.", {
+      runId,
+      reason,
+    });
+  };
+
+  retainedSession.page?.once?.("close", () => markClosed("page-closed"));
+  retainedSession.context?.once?.("close", () => markClosed("context-closed"));
+  retainedSession.browser?.once?.("disconnected", () => markClosed("browser-disconnected"));
+
+  log("Retained Infornexus auto-add browser session after completion.", {
+    runId,
+    finalUrl: retainedSession.finalUrl || "",
+    inputFileName: retainedSession.inputFileName || "",
+    manualSessionId: retainedSession.manualSessionId || "",
+    sessionSource: retainedSession.sessionSource,
+  });
+  await installInfornexusAutoAddContinuationPanel(retainedSession).catch((error) => {
+    log("Failed to install Infornexus auto-add continuation panel.", {
+      runId,
+      error: error?.message || String(error),
+    });
+  });
+  return retainedSession;
+}
+
+function getRetainedAutoAddSessionSummaries() {
+  const summaries = [];
+  for (const [runId, session] of retainedAutoAddBrowserSessions.entries()) {
+    if (session.page?.isClosed?.()) {
+      retainedAutoAddBrowserSessions.delete(runId);
+      continue;
+    }
+    session.finalUrl = safePageUrl(session.page) || session.finalUrl || "";
+    summaries.push({
+      runId,
+      manualSessionId: session.manualSessionId || "",
+      sessionSource: session.sessionSource || "",
+      retainedAt: session.retainedAt,
+      startedAt: session.startedAt,
+      inputFileName: session.inputFileName || "",
+      finalUrl: session.finalUrl,
+      processing: Boolean(session.processing),
+    });
+  }
+  return summaries;
+}
+
+async function closeRetainedAutoAddBrowserSessions(reason = "shutdown") {
+  const sessions = Array.from(retainedAutoAddBrowserSessions.values());
+  retainedAutoAddBrowserSessions.clear();
+  await Promise.all(sessions.map(async (session) => {
+    await session.context?.close?.().catch(() => {});
+    await session.browser?.close?.().catch(() => {});
+    log("Closed retained Infornexus auto-add browser session.", {
+      runId: session.runId,
+      reason,
+    });
+  }));
+}
+
+async function installInfornexusAutoAddContinuationPanel(session) {
+  const page = session?.page;
+  if (!page || page.isClosed?.()) return;
+
+  if (!session.continuationBindingInstalled) {
+    try {
+      await page.exposeBinding(AUTO_ADD_CONTINUE_BINDING, async (_source, payload) => (
+        runRetainedAutoAddContinuation(session, payload)
+      ));
+      session.continuationBindingInstalled = true;
+    } catch (error) {
+      if (!String(error?.message || error).toLowerCase().includes("has been registered")) {
+        throw error;
+      }
+      session.continuationBindingInstalled = true;
+    }
+  }
+
+  await injectInfornexusAutoAddContinuationPanel(page);
+
+  if (!session.continuationPanelEventsBound) {
+    const reinject = () => {
+      setTimeout(() => {
+        installInfornexusAutoAddContinuationPanel(session).catch((error) => {
+          log("Failed to reinject Infornexus auto-add continuation panel.", {
+            runId: session.runId,
+            error: error?.message || String(error),
+          });
+        });
+      }, 600);
+    };
+    page.on?.("domcontentloaded", reinject);
+    page.on?.("load", reinject);
+    session.continuationPanelEventsBound = true;
+  }
+}
+
+async function injectInfornexusAutoAddContinuationPanel(page) {
+  if (!page || page.isClosed?.()) return;
+  await page.evaluate(({ panelId, bindingName }) => {
+    if (document.getElementById(panelId)) return;
+
+    const root = document.createElement("div");
+    root.id = panelId;
+    root.setAttribute("data-tos-auto-add-continue-panel", "true");
+    root.style.cssText = [
+      "position:fixed",
+      "right:18px",
+      "bottom:18px",
+      "z-index:2147483647",
+      "width:310px",
+      "max-width:calc(100vw - 36px)",
+      "box-sizing:border-box",
+      "padding:12px",
+      "border:2px solid #059669",
+      "border-radius:10px",
+      "background:#f8fafc",
+      "color:#0f172a",
+      "box-shadow:0 14px 36px rgba(15,23,42,.24)",
+      "font-family:Segoe UI,Microsoft YaHei,Arial,sans-serif",
+      "font-size:13px",
+      "line-height:1.35",
+    ].join(";");
+
+    const title = document.createElement("div");
+    title.setAttribute("data-tos-auto-add-drag-handle", "true");
+    title.style.cssText = "display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;margin-bottom:6px;cursor:move;user-select:none;touch-action:none;";
+    const dot = document.createElement("span");
+    dot.setAttribute("data-tos-auto-add-dot", "true");
+    dot.style.cssText = "width:8px;height:8px;border-radius:999px;background:#10b981;box-shadow:0 0 0 5px rgba(16,185,129,.14);flex:0 0 auto;";
+    const titleText = document.createElement("span");
+    titleText.textContent = "Infornexus 继续填充";
+    title.append(dot, titleText);
+
+    const message = document.createElement("div");
+    message.setAttribute("data-tos-auto-add-message", "true");
+    message.textContent = "选择新的 Excel，复用当前登录浏览器继续搜索、勾选并添加。";
+    message.style.cssText = "font-size:12px;color:#334155;margin-bottom:8px;word-break:break-word;";
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;gap:8px;align-items:center;";
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".xlsx,.xls";
+    input.style.display = "none";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "继续上传 Excel";
+    button.style.cssText = [
+      "height:32px",
+      "padding:0 12px",
+      "border:0",
+      "border-radius:8px",
+      "background:#059669",
+      "color:white",
+      "font-size:12px",
+      "font-weight:700",
+      "cursor:pointer",
+      "box-shadow:0 4px 12px rgba(5,150,105,.22)",
+    ].join(";");
+    const hint = document.createElement("span");
+    hint.textContent = "浏览器不会关闭";
+    hint.style.cssText = "font-size:11px;color:#64748b;";
+    actions.append(button, hint, input);
+
+    const result = document.createElement("div");
+    result.setAttribute("data-tos-auto-add-result", "true");
+    result.style.cssText = "display:none;margin-top:8px;padding-top:8px;border-top:1px solid #dbeafe;font-size:11px;color:#0369a1;word-break:break-word;";
+
+    async function fileToBase64(file) {
+      const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = "";
+      const chunkSize = 0x8000;
+      for (let index = 0; index < bytes.length; index += chunkSize) {
+        const chunk = bytes.subarray(index, index + chunkSize);
+        binary += String.fromCharCode.apply(null, chunk);
+      }
+      return btoa(binary);
+    }
+
+    function setState(state, text) {
+      message.textContent = text;
+      const color = state === "error" ? "#ef4444" : state === "busy" ? "#0ea5e9" : "#10b981";
+      dot.style.background = color;
+      dot.style.boxShadow = state === "error"
+        ? "0 0 0 5px rgba(239,68,68,.14)"
+        : state === "busy"
+          ? "0 0 0 5px rgba(14,165,233,.16)"
+          : "0 0 0 5px rgba(16,185,129,.14)";
+    }
+
+    title.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      const rect = root.getBoundingClientRect();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const startLeft = rect.left;
+      const startTop = rect.top;
+      root.style.right = "auto";
+      root.style.bottom = "auto";
+      root.style.left = `${startLeft}px`;
+      root.style.top = `${startTop}px`;
+
+      const move = (moveEvent) => {
+        const maxLeft = Math.max(8, window.innerWidth - root.offsetWidth - 8);
+        const maxTop = Math.max(8, window.innerHeight - root.offsetHeight - 8);
+        const nextLeft = Math.min(Math.max(8, startLeft + moveEvent.clientX - startX), maxLeft);
+        const nextTop = Math.min(Math.max(8, startTop + moveEvent.clientY - startY), maxTop);
+        root.style.left = `${nextLeft}px`;
+        root.style.top = `${nextTop}px`;
+      };
+
+      const stop = () => {
+        document.removeEventListener("pointermove", move, true);
+        document.removeEventListener("pointerup", stop, true);
+        document.removeEventListener("pointercancel", stop, true);
+      };
+
+      document.addEventListener("pointermove", move, true);
+      document.addEventListener("pointerup", stop, true);
+      document.addEventListener("pointercancel", stop, true);
+      title.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+    });
+
+    button.addEventListener("click", () => input.click());
+    input.addEventListener("change", async () => {
+      const file = input.files && input.files[0];
+      input.value = "";
+      if (!file) return;
+      if (!/\.(xlsx|xls)$/i.test(file.name)) {
+        setState("error", "请选择 .xlsx 或 .xls 文件。");
+        return;
+      }
+      if (typeof window[bindingName] !== "function") {
+        setState("error", "本机执行器连接不可用，请重启自动化助手。");
+        return;
+      }
+      button.disabled = true;
+      button.style.opacity = ".55";
+      button.style.cursor = "not-allowed";
+      result.style.display = "block";
+      result.textContent = `正在读取 ${file.name}...`;
+      setState("busy", "正在继续填充，请不要操作当前页面。");
+      try {
+        const response = await window[bindingName]({
+          fileName: file.name,
+          fileBase64: await fileToBase64(file),
+        });
+        const completed = Number(response?.completedIdCount || 0);
+        const total = Number(response?.totalIdCount || 0);
+        const failed = Number(response?.failedIdCount || 0);
+        if (response?.ok) {
+          setState("ready", `填充完成：${completed}/${total}。你可以继续手动操作，或再次上传 Excel。`);
+        } else {
+          setState("error", response?.message || "继续填充未完成。");
+        }
+        result.textContent = failed > 0
+          ? `完成 ${completed}/${total}，失败 ${failed}。`
+          : `完成 ${completed}/${total}。`;
+      } catch (error) {
+        setState("error", error?.message || String(error || "继续填充失败。"));
+        result.textContent = "继续填充失败。";
+      } finally {
+        button.disabled = false;
+        button.style.opacity = "";
+        button.style.cursor = "pointer";
+      }
+    });
+
+    root.append(title, message, actions, result);
+    document.documentElement.appendChild(root);
+  }, {
+    panelId: AUTO_ADD_CONTINUE_PANEL_ID,
+    bindingName: AUTO_ADD_CONTINUE_BINDING,
+  });
+}
+
+async function reopenInfornexusAutoAddSearchFromHome(page, inputFileName) {
+  if (!page || page.isClosed?.()) {
+    throw new Error("当前 Infornexus 浏览器已关闭，无法重新进入 Auto Add 页面。");
+  }
+
+  await showAutomationBadge(page, {
+    title: "Infor Nexus Auto Add 继续填充",
+    message: "正在返回 Infor Nexus 首页",
+    details: {
+      phase: "return-home",
+      inputFileName,
+    },
+  });
+
+  await page.goto(config.loginUrl, {
+    waitUntil: "domcontentloaded",
+    timeout: config.navigationTimeoutMs,
+  });
+  await page.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
+  if (Number(config.postLoginWaitMs || 0) > 0) {
+    await page.waitForTimeout(Number(config.postLoginWaitMs || 0));
+  }
+
+  await showAutomationBadge(page, {
+    title: "Infor Nexus Auto Add 继续填充",
+    message: "正在重新进入 Auto Add 查询页",
+    details: {
+      phase: "open-search",
+      inputFileName,
+    },
+  });
+
+  const autoAddSearchUrl = await openInfornexusAutoAddSearchPage(page, {
+    loginUrl: config.loginUrl,
+    searchUrl: config.autoAddSearchUrl,
+    navigationTimeoutMs: config.navigationTimeoutMs,
+    postLoginWaitMs: config.postLoginWaitMs,
+  });
+  await waitForInfornexusAutoAddSearchReady(page);
+  return {
+    autoAddSearchUrl,
+    finalUrl: safePageUrl(page),
+  };
+}
+
+async function clickInfornexusAutoAddRemoveBeforeContinuation(page, inputFileName) {
+  if (!page || page.isClosed?.()) {
+    throw new Error("当前 Infornexus 浏览器已关闭，无法点击 Remove。");
+  }
+
+  await showAutomationBadge(page, {
+    title: "Infor Nexus Auto Add 继续填充",
+    message: "正在点击 Remove 清理当前页面",
+    details: {
+      phase: "remove-before-continue",
+      inputFileName,
+    },
+  });
+
+  const removeLocator = await findInfornexusAutoAddRemoveLocator(page);
+  let dialogAccepted = false;
+  const acceptDialog = async (dialog) => {
+    dialogAccepted = true;
+    await dialog.accept().catch(() => {});
+  };
+
+  page.once?.("dialog", acceptDialog);
+  try {
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: config.navigationTimeoutMs }).catch(() => null),
+      forceClickLocator(removeLocator, "Infornexus Auto Add Remove"),
+    ]);
+  } finally {
+    page.off?.("dialog", acceptDialog);
+  }
+
+  await page.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(500);
+  log("Clicked Infornexus auto-add Remove before continuing with another Excel.", {
+    inputFileName,
+    dialogAccepted,
+    finalUrl: safePageUrl(page),
+  });
+  return {
+    clicked: true,
+    dialogAccepted,
+    finalUrl: safePageUrl(page),
+  };
+}
+
+async function findInfornexusAutoAddRemoveLocator(page, timeoutMs = Math.min(config.navigationTimeoutMs, 6000)) {
+  const startedAt = Date.now();
+  let lastError = null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const targets = typeof page.frames === "function"
+      ? Array.from(new Set([page, ...page.frames()]))
+      : [page];
+
+    for (const target of targets) {
+      if (!target || typeof target.locator !== "function") {
+        continue;
+      }
+      const locator = target
+        .locator(AUTO_ADD_REMOVE_BATCH_PRINT_ITEM_SELECTOR)
+        .filter({ hasText: /^\s*Remove\s*$/ })
+        .first();
+      try {
+        await locator.waitFor({ state: "visible", timeout: 250 });
+        return locator;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    await page.waitForTimeout(150);
+  }
+
+  const message = lastError instanceof Error ? lastError.message : String(lastError || "");
+  throw new Error(
+    `继续上传 Excel 前没有找到 Infor Nexus Remove 链接，请确认当前页面存在 Remove 按钮后再追加。${message ? ` ${message}` : ""}`,
+  );
+}
+
+async function runRetainedAutoAddContinuation(session, payload = {}) {
+  const page = session?.page;
+  const inputFileName = normalizeUploadFileName(payload) || "uploaded.xlsx";
+  if (!page || page.isClosed?.()) {
+    return {
+      ok: false,
+      browserRetained: false,
+      inputFileName,
+      message: "当前 Infornexus 浏览器已关闭，请从页面重新启动自动化。",
+      generatedAt: new Date().toISOString(),
+    };
+  }
+  if (session.processing) {
+    return {
+      ok: false,
+      browserRetained: true,
+      inputFileName,
+      message: "当前浏览器正在处理另一个 Excel，请等待完成后再上传。",
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  let activeRun = null;
+  let reenteredBeforeRemove = null;
+  let removeBeforeContinue = null;
+  try {
+    const idRows = extractInfornexusAutoAddRowsFromWorkbookPayload(payload);
+    activeRun = registerActiveRun({
+      action: "run-infornexus-auto-add-file",
+      browser: config.browser,
+      headless: false,
+      inputFileName,
+      inputMode: "infornexus-auto-add",
+      parentRunId: session.runId,
+      retainedSession: true,
+      totalIdCount: idRows.length,
+    });
+
+    session.processing = true;
+    session.lastContinueFileName = inputFileName;
+    const idResults = [];
+
+    reenteredBeforeRemove = await reopenInfornexusAutoAddSearchFromHome(page, inputFileName);
+    removeBeforeContinue = await clickInfornexusAutoAddRemoveBeforeContinuation(page, inputFileName);
+
+    await showAutomationBadge(page, {
+      title: "Infor Nexus Auto Add 继续填充",
+      message: "Remove 完成，正在重新打开 Auto Add 查询页",
+      details: {
+        phase: "open-search",
+        inputFileName,
+        totalCount: idRows.length,
+      },
+    });
+    await openInfornexusAutoAddSearchPage(page, {
+      loginUrl: config.loginUrl,
+      searchUrl: config.autoAddSearchUrl,
+      navigationTimeoutMs: config.navigationTimeoutMs,
+      postLoginWaitMs: config.postLoginWaitMs,
+    });
+    await waitForInfornexusAutoAddSearchReady(page);
+
+    for (let index = 0; index < idRows.length; index += 1) {
+      const idRow = idRows[index];
+      const id = String(idRow?.id || "").trim();
+      try {
+        await showAutomationBadge(page, {
+          title: "Infor Nexus Auto Add 继续填充",
+          message: `正在处理 ID ${id}`,
+          details: {
+            phase: "process-id",
+            inputFileName,
+            currentCount: index + 1,
+            totalCount: idRows.length,
+            id,
+          },
+        });
+        const itemResult = await processInfornexusAutoAddId(page, id);
+        idResults.push({
+          ...idRow,
+          ok: true,
+          ...itemResult,
+        });
+      } catch (error) {
+        const normalizedError = normalizeRunError(
+          error,
+          page,
+          null,
+          `ID ${id}: browser page became unavailable during retained Infornexus auto add.`,
+        );
+        idResults.push({
+          ...idRow,
+          ok: false,
+          error: normalizedError.message,
+        });
+        if (page.isClosed?.() || isClosedTargetError(error)) {
+          throw normalizedError;
+        }
+      }
+    }
+
+    const failedIdCount = idResults.filter((item) => !item.ok).length;
+    const completedIdCount = idResults.filter((item) => item.ok).length;
+    const result = {
+      runId: activeRun.runId,
+      parentRunId: session.runId,
+      ok: failedIdCount === 0,
+      browserRetained: true,
+      loginSuccess: true,
+      inputMode: "infornexus-auto-add",
+      inputFileName,
+      totalIdCount: idRows.length,
+      completedIdCount,
+      failedIdCount,
+      reenteredBeforeRemove,
+      removeBeforeContinue,
+      idResults,
+      message: `Infornexus auto add continued with ${completedIdCount}/${idRows.length} IDs. Browser is retained for review.`,
+      generatedAt: new Date().toISOString(),
+      finalUrl: safePageUrl(page),
+      title: await safePageTitle(page),
+    };
+
+    await showAutomationBadge(page, {
+      title: "Infor Nexus Auto Add 继续填充",
+      message: failedIdCount === 0
+        ? "继续填充完成，浏览器已保留"
+        : `继续填充完成，失败 ${failedIdCount} 个 ID`,
+      details: {
+        phase: failedIdCount === 0 ? "complete" : "failed",
+        inputFileName,
+        completedCount: completedIdCount,
+        failedCount: failedIdCount,
+        totalCount: idRows.length,
+      },
+    });
+    await injectInfornexusAutoAddContinuationPanel(page).catch(() => {});
+    recordCompletedRun({
+      runId: activeRun.runId,
+      parentRunId: session.runId,
+      startedAt: activeRun.startedAt,
+      finishedAt: result.generatedAt,
+      ok: result.ok,
+      finalUrl: result.finalUrl,
+      inputFileName,
+      totalIdCount: result.totalIdCount,
+      completedIdCount: result.completedIdCount,
+      failedIdCount: result.failedIdCount,
+      browserRetained: true,
+    });
+    return result;
+  } catch (error) {
+    const message = error?.message || String(error || "继续填充失败。");
+    const result = {
+      runId: activeRun?.runId || "",
+      parentRunId: session?.runId || "",
+      ok: false,
+      browserRetained: Boolean(page && !page.isClosed?.()),
+      inputMode: "infornexus-auto-add",
+      inputFileName,
+      totalIdCount: 0,
+      completedIdCount: 0,
+      failedIdCount: 0,
+      reenteredBeforeRemove,
+      removeBeforeContinue,
+      idResults: [],
+      message,
+      generatedAt: new Date().toISOString(),
+      finalUrl: safePageUrl(page),
+      title: await safePageTitle(page),
+    };
+    await showAutomationBadge(page, {
+      title: "Infor Nexus Auto Add 继续填充",
+      message,
+      details: {
+        phase: "failed",
+        inputFileName,
+      },
+    }).catch(() => {});
+    return result;
+  } finally {
+    session.processing = false;
+    if (activeRun?.runId) activeRuns.delete(activeRun.runId);
+    if (page && !page.isClosed?.()) {
+      await injectInfornexusAutoAddContinuationPanel(page).catch(() => {});
+    }
+  }
+}
+
 function createRunId(action) {
   const actionSlug = sanitizeFileSegment(action || "run");
   const randomPart = Math.random().toString(36).slice(2, 10);
@@ -934,6 +1558,7 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
   let page = null;
   let lifecycle = null;
   let latestScreenshotPath = "";
+  let browserRetainedAfterCompletion = false;
   const startedAt = new Date().toISOString();
   const idRows = Array.isArray(runContext?.idRows) ? runContext.idRows : [];
   const runId = String(runContext?.runId || createRunId("infornexus-auto-add"));
@@ -1071,6 +1696,7 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
       failedIdCount,
       idResults,
       message: `Infornexus auto add processed ${completedIdCount}/${idRows.length} IDs.`,
+      browserRetained: false,
       generatedAt: new Date().toISOString(),
       finalUrl: safePageUrl(page),
       title: await safePageTitle(page),
@@ -1082,6 +1708,29 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
 
     if (config.keepBrowserOpenOnSuccessMs > 0) {
       await page.waitForTimeout(config.keepBrowserOpenOnSuccessMs).catch(() => {});
+    }
+
+    if (!resolveRunHeadless(runContext) && page && !page.isClosed?.()) {
+      await showRunBadge("Auto Add 自动化已完成，浏览器已保留", {
+        phase: "browser-retained",
+        completedCount: completedIdCount,
+        totalCount: idRows.length,
+      }).catch(() => {});
+      await retainAutoAddBrowserSession({
+        browser,
+        context,
+        finalUrl: result.finalUrl,
+        inputFileName: result.inputFileName,
+        page,
+        runId,
+        startedAt,
+        title: result.title,
+      });
+      browserRetainedAfterCompletion = true;
+      result.browserRetained = true;
+      result.message = `${result.message} Browser is retained for review.`;
+      browser = null;
+      context = null;
     }
 
     return result;
@@ -1133,10 +1782,13 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
 
     return result;
   } finally {
-    await context?.close().catch(() => {});
-    await browser?.close().catch(() => {});
+    if (!browserRetainedAfterCompletion) {
+      await context?.close().catch(() => {});
+      await browser?.close().catch(() => {});
+    }
     log("Infornexus auto-add run finished.", {
       startedAt,
+      browserRetained: browserRetainedAfterCompletion,
       screenshot: latestScreenshotPath,
     });
   }
@@ -5260,11 +5912,12 @@ async function injectAutomationBadge(target, payload) {
         "font-family:Segoe UI,Microsoft YaHei,Arial,sans-serif",
         "font-size:13px",
         "line-height:1.35",
-        "pointer-events:none",
+        "pointer-events:auto",
       ].join(";");
 
       const titleNode = document.createElement("div");
-      titleNode.style.cssText = "display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;margin-bottom:5px;";
+      titleNode.setAttribute("data-tos-badge-drag-handle", "true");
+      titleNode.style.cssText = "display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;margin-bottom:5px;cursor:move;user-select:none;";
 
       const dot = document.createElement("span");
       dot.setAttribute("data-tos-badge-dot", "true");
@@ -5285,6 +5938,45 @@ async function injectAutomationBadge(target, payload) {
 
       root.append(titleNode, messageNode, metaNode);
       document.documentElement.appendChild(root);
+    }
+
+    root.style.pointerEvents = "auto";
+    const dragHandle = root.querySelector("[data-tos-badge-drag-handle]");
+    if (dragHandle && root.getAttribute("data-tos-badge-drag-bound") !== "true") {
+      root.setAttribute("data-tos-badge-drag-bound", "true");
+      dragHandle.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        const rect = root.getBoundingClientRect();
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const startLeft = rect.left;
+        const startTop = rect.top;
+        root.style.right = "auto";
+        root.style.bottom = "auto";
+        root.style.left = `${startLeft}px`;
+        root.style.top = `${startTop}px`;
+
+        const move = (moveEvent) => {
+          const maxLeft = Math.max(8, window.innerWidth - root.offsetWidth - 8);
+          const maxTop = Math.max(8, window.innerHeight - root.offsetHeight - 8);
+          const nextLeft = Math.min(Math.max(8, startLeft + moveEvent.clientX - startX), maxLeft);
+          const nextTop = Math.min(Math.max(8, startTop + moveEvent.clientY - startY), maxTop);
+          root.style.left = `${nextLeft}px`;
+          root.style.top = `${nextTop}px`;
+        };
+
+        const stop = () => {
+          document.removeEventListener("pointermove", move, true);
+          document.removeEventListener("pointerup", stop, true);
+          document.removeEventListener("pointercancel", stop, true);
+        };
+
+        document.addEventListener("pointermove", move, true);
+        document.addEventListener("pointerup", stop, true);
+        document.addEventListener("pointercancel", stop, true);
+        dragHandle.setPointerCapture?.(event.pointerId);
+        event.preventDefault();
+      });
     }
 
     const phase = asText(details?.phase);
@@ -5532,6 +6224,7 @@ async function readJsonIfExists(filePath, fallbackValue) {
 }
 
 async function shutdown() {
+  await closeRetainedAutoAddBrowserSessions("shutdown").catch(() => {});
   await autoAddManualSessionManager.close("shutdown").catch(() => {});
   await new Promise((resolve) => server.close(resolve));
   process.exit(0);

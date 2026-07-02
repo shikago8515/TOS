@@ -20,6 +20,9 @@ from api.automation_storage_api import (
     PackingListCheckpointPayload,
     RunFilePayload,
     RunUpdatePayload,
+    TicketOwnerAttemptPayload,
+    TicketOwnerCheckpointPayload,
+    TicketOwnerInterruptPayload,
     _attachment_content_disposition,
     _credential_lookup_ids,
     _normalize_account_key,
@@ -255,22 +258,16 @@ class AutomationStorageTests(unittest.TestCase):
         self.assertEqual(context.exception.status_code, 503)
         self.assertIn("MinIO", context.exception.detail)
 
-    def test_shipping_executor_id_can_read_shared_infor_nexus_credentials(self):
+    def test_automation_credentials_are_isolated_by_page(self):
         lookup_ids = _credential_lookup_ids("shipping-automation-demo")
         released_bulk_lookup_ids = _credential_lookup_ids("shipping-automation-2")
         packing_list_lookup_ids = _credential_lookup_ids("packing-list-auto-download")
 
-        self.assertEqual(lookup_ids[0], "shipping-automation-demo")
-        self.assertIn("shipping-automation", lookup_ids)
-        self.assertIn("xinlongtai-shipping-automation", lookup_ids)
-        self.assertNotIn("infornexus-auto-add", lookup_ids)
-        self.assertEqual(released_bulk_lookup_ids[0], "shipping-automation-2")
-        self.assertIn("shipping-automation", released_bulk_lookup_ids)
-        self.assertIn("po-auto-download", released_bulk_lookup_ids)
-        self.assertEqual(packing_list_lookup_ids[0], "packing-list-auto-download")
-        self.assertIn("po-auto-download", packing_list_lookup_ids)
+        self.assertEqual(lookup_ids, ["shipping-automation-demo"])
+        self.assertEqual(released_bulk_lookup_ids, ["shipping-automation-2"])
+        self.assertEqual(packing_list_lookup_ids, ["packing-list-auto-download"])
 
-    def test_resolve_credentials_skips_bad_infor_nexus_ciphertext_candidate(self):
+    def test_resolve_credentials_does_not_fallback_to_another_page(self):
         rows = {
             "packing-list-auto-download": {
                 "account_key": "default",
@@ -283,6 +280,7 @@ class AutomationStorageTests(unittest.TestCase):
                 "password_ciphertext": "good-ciphertext",
             },
         }
+        lookup_calls: list[tuple[str, str]] = []
 
         def fake_decrypt_secret(ciphertext):
             if ciphertext == "bad-ciphertext":
@@ -290,6 +288,7 @@ class AutomationStorageTests(unittest.TestCase):
             return "plain-password"
 
         def fake_get_automation_credentials(automation_id, account_key):
+            lookup_calls.append((automation_id, account_key))
             return rows.get(automation_id)
 
         with patch.object(
@@ -298,23 +297,21 @@ class AutomationStorageTests(unittest.TestCase):
             side_effect=fake_get_automation_credentials,
         ), \
              patch.object(automation_storage_api, "decrypt_secret", side_effect=fake_decrypt_secret):
-            response = automation_storage_api.resolve_credentials(
-                "packing-list-auto-download",
-                accountKey="default",
-            )
+            with self.assertRaises(automation_storage_api.HTTPException) as context:
+                automation_storage_api.resolve_credentials(
+                    "packing-list-auto-download",
+                    accountKey="default",
+                )
 
-        self.assertTrue(response["ok"])
-        self.assertEqual(response["sourceAutomationId"], "po-auto-download")
-        self.assertEqual(response["username"], "shared-user")
-        self.assertEqual(response["password"], "plain-password")
+        self.assertEqual(context.exception.status_code, 409)
+        self.assertEqual(lookup_calls, [("packing-list-auto-download", "default")])
 
-    def test_ticket_owner_statistics_can_read_shared_microsoft_credentials(self):
+    def test_microsoft_credentials_are_isolated_by_page(self):
         lookup_ids = _credential_lookup_ids("ticket-owner-statistics")
         microsoft_lookup_ids = _credential_lookup_ids("microsoft-login-n8n")
 
-        self.assertEqual(lookup_ids[0], "ticket-owner-statistics")
-        self.assertIn("microsoft-login-n8n", lookup_ids)
-        self.assertIn("ticket-owner-statistics", microsoft_lookup_ids)
+        self.assertEqual(lookup_ids, ["ticket-owner-statistics"])
+        self.assertEqual(microsoft_lookup_ids, ["microsoft-login-n8n"])
 
     def test_credential_account_key_is_normalized_for_saved_profiles(self):
         self.assertEqual(_normalize_account_key("  Lily  "), "Lily")
@@ -652,6 +649,288 @@ class AutomationStorageTests(unittest.TestCase):
         self.assertEqual(sheet.auto_filter.ref, "A1:G2")
         workbook.close()
 
+    def test_ticket_owner_result_excel_uses_workflow_result_rows(self):
+        result = {
+            "ok": True,
+            "workflowResult": {
+                "rowCount": 1,
+                "rows": [{
+                    "Case Number": "GTS82967-1",
+                    "Task Type": "Review Sub-Ticket Resolution",
+                    "Request": "Bulk - Additional Support on WFM",
+                    "PO Number": "0901943835",
+                    "Working Number": "RC2610OM005",
+                    "Factory": "3LP001",
+                    "Merch": "Maggie",
+                }],
+            },
+        }
+
+        rows = automation_storage_api._extract_ticket_owner_rows(result)
+
+        self.assertIsNotNone(rows)
+        self.assertEqual(rows[0]["Case Number"], "GTS82967-1")
+        content = automation_storage_api._build_ticket_owner_workbook_bytes(rows)
+        workbook = load_workbook(BytesIO(content))
+        sheet = workbook["Ticket ownership"]
+        self.assertEqual(sheet["A2"].value, "GTS82967-1")
+        self.assertEqual(sheet["G2"].value, "Maggie")
+        workbook.close()
+
+    def test_ticket_owner_checkpoint_interruption_and_resume_flow(self):
+        current_row = ticket_owner_batch_row({
+            "batch_id": "tos-20260702100000-abcd1234",
+            "run_id": "run-ticket-owner",
+            "batch_name": "Ticket ownership",
+            "status": "pending",
+            "total_count": 2,
+            "completed_count": 0,
+            "failed_count": 0,
+            "pending_count": 2,
+            "checkpoint": {
+                "batchId": "tos-20260702100000-abcd1234",
+                "status": "pending",
+                "totalCount": 2,
+                "completedCount": 0,
+                "failedCount": 0,
+                "pendingCount": 2,
+                "items": [],
+            },
+            "bucket": "tos-ticket-owner-statistics",
+            "object_prefix": "ticket-owner-statistics/2026-07-02/tos-20260702100000-abcd1234",
+        })
+        attempts: dict[str, dict] = {}
+        inserted_files: list[dict] = []
+
+        def fake_get_batch(_batch_id):
+            return current_row
+
+        def fake_create_attempt(payload):
+            row = {
+                "attempt_id": payload["attempt_id"],
+                "batch_id": payload["batch_id"],
+                "run_id": payload.get("run_id", ""),
+                "mode": payload.get("mode", "new"),
+                "status": payload.get("status", "running"),
+                "message": payload.get("message", ""),
+                "started_at": payload.get("started_at") or datetime(2026, 7, 2, 10, 0, 0),
+                "finished_at": None,
+                "created_at": datetime(2026, 7, 2, 10, 0, 0),
+                "updated_at": datetime(2026, 7, 2, 10, 0, 0),
+            }
+            attempts[row["attempt_id"]] = row
+            return row
+
+        def fake_get_attempt(attempt_id):
+            return attempts.get(attempt_id)
+
+        def fake_update_attempt(attempt_id, update):
+            row = attempts.setdefault(attempt_id, {
+                "attempt_id": attempt_id,
+                "batch_id": current_row["batch_id"],
+                "run_id": "",
+                "mode": "new",
+                "status": "running",
+                "message": "",
+                "started_at": datetime(2026, 7, 2, 10, 0, 0),
+                "finished_at": None,
+                "created_at": datetime(2026, 7, 2, 10, 0, 0),
+                "updated_at": datetime(2026, 7, 2, 10, 0, 0),
+            })
+            row.update(update)
+            return row
+
+        def fake_update_batch(_batch_id, update):
+            nonlocal current_row
+            current_row = ticket_owner_batch_row({
+                **current_row,
+                "status": update["status"],
+                "message": update["message"],
+                "total_count": update["total_count"],
+                "completed_count": update["completed_count"],
+                "failed_count": update["failed_count"],
+                "pending_count": update["pending_count"],
+                "checkpoint": update["checkpoint"],
+            })
+            return current_row
+
+        def fake_insert_file(row):
+            file_id = len(inserted_files) + 81
+            inserted = {
+                "id": file_id,
+                "run_id": row.get("run_id", "run-ticket-owner"),
+                "file_role": row["file_role"],
+                "bucket": row["bucket"],
+                "object_key": row["object_key"],
+                "original_filename": row["original_filename"],
+                "content_type": row["content_type"],
+                "file_size": row.get("file_size", 1),
+                "sha256": row.get("sha256", "f" * 64),
+                "created_at": datetime(2026, 7, 2, 10, 0, 0),
+            }
+            inserted_files.append(inserted)
+            return inserted
+
+        with patch.object(automation_storage_api, "get_automation_batch", side_effect=fake_get_batch), \
+             patch.object(automation_storage_api, "get_automation_batch_attempt", side_effect=fake_get_attempt), \
+             patch.object(automation_storage_api, "create_automation_batch_attempt", side_effect=fake_create_attempt), \
+             patch.object(automation_storage_api, "update_automation_batch_checkpoint", side_effect=fake_update_batch), \
+             patch.object(automation_storage_api, "update_automation_batch_attempt", side_effect=fake_update_attempt), \
+             patch.object(automation_storage_api, "put_object_bytes", return_value={
+                 "file_size": 2048,
+                 "sha256": "f" * 64,
+             }), \
+             patch.object(automation_storage_api, "insert_automation_run_file", side_effect=fake_insert_file):
+            first_checkpoint = automation_storage_api.write_ticket_owner_checkpoint(
+                "tos-20260702100000-abcd1234",
+                TicketOwnerCheckpointPayload(
+                    runId="run-ticket-owner",
+                    attemptId="tos-attempt-1",
+                    mode="new",
+                    status="running",
+                    message="ticket 1 done",
+                    checkpoint={
+                        "status": "running",
+                        "totalCount": 2,
+                        "completedCount": 1,
+                        "failedCount": 0,
+                        "pendingCount": 1,
+                    },
+                    itemResult={
+                        "itemKey": "10682971",
+                        "caseNumber": "10682971",
+                        "taskType": "Provide Feedback",
+                        "request": "Transport Mode Change",
+                        "poNumber": "0902793368",
+                        "workingNumber": "RC2606OW001",
+                        "ok": True,
+                    },
+                ),
+            )
+
+            self.assertEqual(first_checkpoint["batch"]["status"], "running")
+            self.assertEqual(first_checkpoint["batch"]["completedCount"], 1)
+            self.assertEqual(first_checkpoint["batch"]["pendingCount"], 1)
+            self.assertEqual(attempts["tos-attempt-1"]["status"], "running")
+            self.assertIsNone(attempts["tos-attempt-1"]["finished_at"])
+
+            interrupted = automation_storage_api.interrupt_ticket_owner_batch(
+                "tos-20260702100000-abcd1234",
+                TicketOwnerInterruptPayload(
+                    runId="run-ticket-owner",
+                    attemptId="tos-attempt-1",
+                    message="browser closed",
+                ),
+            )
+
+            self.assertEqual(interrupted["batch"]["status"], "interrupted")
+            self.assertTrue(interrupted["batch"]["resumable"])
+            self.assertEqual(interrupted["batch"]["completedCount"], 1)
+            self.assertEqual(interrupted["batch"]["pendingCount"], 1)
+
+            continue_attempt = automation_storage_api.create_ticket_owner_batch_attempt(
+                "tos-20260702100000-abcd1234",
+                TicketOwnerAttemptPayload(runId="run-ticket-owner-resume", mode="continue"),
+            )
+
+            self.assertEqual(continue_attempt["batch"]["batchId"], "tos-20260702100000-abcd1234")
+            self.assertEqual(continue_attempt["attempt"]["mode"], "continue")
+            attempt2_id = continue_attempt["attempt"]["attemptId"]
+            self.assertNotEqual(attempt2_id, "tos-attempt-1")
+
+            final_checkpoint = automation_storage_api.write_ticket_owner_checkpoint(
+                "tos-20260702100000-abcd1234",
+                TicketOwnerCheckpointPayload(
+                    runId="run-ticket-owner-resume",
+                    attemptId=attempt2_id,
+                    mode="continue",
+                    status="success",
+                    message="done",
+                    checkpoint={
+                        "status": "success",
+                        "totalCount": 2,
+                        "completedCount": 2,
+                        "failedCount": 0,
+                        "pendingCount": 0,
+                        "items": [{
+                            "itemKey": "10682971",
+                            "caseNumber": "10682971",
+                            "status": "success",
+                        }, {
+                            "itemKey": "GTS82967-1",
+                            "caseNumber": "GTS82967-1",
+                            "status": "success",
+                        }],
+                    },
+                    result={
+                        "ok": True,
+                        "rowCount": 2,
+                        "failedTicketCount": 0,
+                        "attemptedTicketCount": 2,
+                        "rows": [{
+                            "Case Number": "10682971",
+                            "Task Type": "Provide Feedback",
+                            "Request": "Transport Mode Change",
+                            "PO Number": "0902793368",
+                            "Working Number": "RC2606OW001",
+                            "Factory": "3LP001",
+                            "Merch": "Rosa",
+                        }, {
+                            "Case Number": "GTS82967-1",
+                            "Task Type": "Review Sub-Ticket Resolution",
+                            "Request": "Bulk - Additional Support on WFM",
+                            "PO Number": "0901943835",
+                            "Working Number": "RC2610OM005",
+                            "Factory": "3LP001",
+                            "Merch": "Maggie",
+                        }],
+                    },
+                ),
+            )
+
+        self.assertEqual(final_checkpoint["batch"]["status"], "success")
+        self.assertFalse(final_checkpoint["batch"]["resumable"])
+        self.assertEqual(final_checkpoint["batch"]["completedCount"], 2)
+        self.assertEqual(final_checkpoint["batch"]["pendingCount"], 0)
+        file_roles = [file["fileRole"] for file in final_checkpoint["batch"]["checkpoint"]["storedFiles"]]
+        self.assertEqual(file_roles, ["result_json", "result_excel"])
+        self.assertTrue(all(file["downloadPath"].startswith("/api/automation/run-files/") for file in final_checkpoint["batch"]["checkpoint"]["storedFiles"]))
+        self.assertTrue(all(f"/{attempt2_id}/" in file["object_key"] for file in inserted_files))
+
+    def test_ticket_owner_progress_checkpoint_keeps_counts_without_items(self):
+        checkpoint = {
+            "status": "running",
+            "event": "progress",
+            "totalCount": 28,
+            "completedCount": 22,
+            "successCount": 22,
+            "failedCount": 1,
+            "pendingCount": 5,
+            "items": [],
+        }
+
+        counts = automation_storage_api._ticket_owner_checkpoint_counts(checkpoint)
+
+        self.assertEqual(counts["total"], 28)
+        self.assertEqual(counts["completed"], 22)
+        self.assertEqual(counts["failed"], 1)
+        self.assertEqual(counts["pending"], 5)
+
+    def test_delete_ticket_owner_batch_removes_batch_record(self):
+        row = ticket_owner_batch_row({
+            "batch_id": "tos-ticket-delete",
+            "automation_id": automation_storage_api.TICKET_OWNER_AUTOMATION_ID,
+        })
+
+        with patch.object(automation_storage_api, "get_automation_batch", return_value=row), \
+             patch.object(automation_storage_api, "delete_automation_batch", return_value=True) as delete_batch:
+            response = automation_storage_api.delete_ticket_owner_batch("tos-ticket-delete")
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["batchId"], "tos-ticket-delete")
+        self.assertTrue(response["deleted"])
+        delete_batch.assert_called_once_with("tos-ticket-delete")
+
     def test_template_payload_exposes_management_fields(self):
         row = {
             "id": 7,
@@ -781,6 +1060,33 @@ def packing_list_batch_row(batch):
         "checkpoint_json": json.dumps(checkpoint, ensure_ascii=False),
         "bucket": batch.get("bucket", "tos-packing-list-auto-download"),
         "object_prefix": batch.get("object_prefix", "packing-list-auto-download/2026-07-01/plad-20260701080000-abcdef12"),
+        "created_at": batch.get("created_at", now),
+        "updated_at": batch.get("updated_at", now),
+    }
+
+
+def ticket_owner_batch_row(batch):
+    now = datetime(2026, 7, 2, 10, 0, 0)
+    source_file = batch.get("source_file") or _safe_json(batch.get("source_file_json")) or {}
+    checkpoint = batch.get("checkpoint") or _safe_json(batch.get("checkpoint_json")) or {}
+    return {
+        "batch_id": batch.get("batch_id", "tos-20260702100000-abcdef12"),
+        "automation_id": batch.get("automation_id", "ticket-owner-statistics"),
+        "module_id": batch.get("module_id", "ticket-owner-statistics"),
+        "run_id": batch.get("run_id", ""),
+        "batch_name": batch.get("batch_name", ""),
+        "source_file_name": batch.get("source_file_name", ""),
+        "source_file_sha256": batch.get("source_file_sha256", ""),
+        "source_file_json": json.dumps(source_file, ensure_ascii=False),
+        "status": batch.get("status", "pending"),
+        "message": batch.get("message", ""),
+        "total_count": batch.get("total_count", 0),
+        "completed_count": batch.get("completed_count", 0),
+        "failed_count": batch.get("failed_count", 0),
+        "pending_count": batch.get("pending_count", 0),
+        "checkpoint_json": json.dumps(checkpoint, ensure_ascii=False),
+        "bucket": batch.get("bucket", "tos-ticket-owner-statistics"),
+        "object_prefix": batch.get("object_prefix", "ticket-owner-statistics/2026-07-02/tos-20260702100000-abcdef12"),
         "created_at": batch.get("created_at", now),
         "updated_at": batch.get("updated_at", now),
     }
