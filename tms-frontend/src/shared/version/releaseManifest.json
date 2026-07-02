@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "version": "1.0.0-beta.3.1",
   "tag": "v1.0.0-beta.3.1",
-  "gitSha": "7a8ad4450704ab172f82d82649bf46d7946ee5b3",
+  "gitSha": "8a5711141dbbacdff9542d48755f47bb77fe14cb",
   "releaseDate": "2026-07-02",
   "channel": "beta.3",
   "releaseNotes": {
@@ -91,6 +91,9 @@
       "add Jane BOM summary module"
     ],
     "improved": [
+      "收口自动化执行器响应类型",
+      "减少重复检查",
+      "修复 semantic-release prerelease 标识",
       "补全 semantic-release 发布历史",
       "修复 semantic-release Git 认证",
       "修复 semantic-release Gitea 认证",
@@ -106,6 +109,10 @@
       "检查更新按钮移至Hero右侧，与状态和语言切换并列"
     ],
     "fixed": [
+      "修复主线检查失败",
+      "恢复 Jane PRODUCTION 旧检查",
+      "修复 semantic-release beta.3 预发布版本格式",
+      "修复 Excel 当前结果下载路径",
       "兼容历史结果模块别名",
       "同步当前版本记录兜底",
       "返回安装包下载文件大小",
@@ -341,6 +348,9 @@
         "title": "优化",
         "icon": "activity",
         "items": [
+          "收口自动化执行器响应类型",
+          "减少重复检查",
+          "修复 semantic-release prerelease 标识",
           "补全 semantic-release 发布历史",
           "修复 semantic-release Git 认证",
           "修复 semantic-release Gitea 认证",
@@ -360,6 +370,10 @@
         "title": "修复",
         "icon": "check-circle",
         "items": [
+          "修复主线检查失败",
+          "恢复 Jane PRODUCTION 旧检查",
+          "修复 semantic-release beta.3 预发布版本格式",
+          "修复 Excel 当前结果下载路径",
           "兼容历史结果模块别名",
           "同步当前版本记录兜底",
           "返回安装包下载文件大小",
