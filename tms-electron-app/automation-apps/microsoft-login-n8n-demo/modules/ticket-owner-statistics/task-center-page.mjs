@@ -224,8 +224,9 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
       };
     }
 
-    const detailFirstCollection = options.detailFirst !== false
-      ? await collectTicketOwnerRowsFromDetailPages(page, taskCenterTasks, {
+    const directLinkTasks = taskCenterTasks.filter((task) => task.uiLink);
+    const detailFirstCollection = options.detailFirst !== false && directLinkTasks.length > 0
+      ? await collectTicketOwnerRowsFromDetailPages(page, directLinkTasks, {
         ...options,
         maxTicketCount,
         maxAttemptCount,
@@ -1591,7 +1592,7 @@ async function processTicketOwnerDetailTask(taskCenterPage, task, options = {}) 
 
 function buildDetailTaskQueue(taskCenterTasks, options = {}) {
   const candidates = (Array.isArray(taskCenterTasks) ? taskCenterTasks : [])
-    .filter((task) => isTicketOwnerCandidate(task));
+    .filter((task) => task.uiLink && isTicketOwnerCandidate(task));
   if (options.sampleAcrossBranches !== true) {
     return candidates;
   }
