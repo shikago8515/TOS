@@ -61,6 +61,23 @@ describe('AutomationCredentialsPanel source integration', () => {
     expect(shippingAutomation2Source).toContain('resolveCredentials')
   })
 
+  it('waits for local executor health after launching shipping automation apps', () => {
+    for (const source of [webAutomationScenarioSource, shippingAutomationSource, xinlongtaiShippingSource, infornexusAutoAddSource]) {
+      expect(source).toContain('async function waitForExecutorHealthReady')
+      expect(source).toContain('executor-health-wait-timeout')
+      expect(source).toContain('const executorReady = await waitForExecutorHealthReady')
+      expect(source).not.toContain('await refreshExecutorState(true)\n    if (!silent)')
+    }
+  })
+
+  it('does not block shipping runs with Desktop Utility preflight warnings', () => {
+    for (const source of [shippingAutomationSource, xinlongtaiShippingSource]) {
+      expect(source).not.toContain('v-if="showDesktopBridgeWarning"')
+      expect(source).not.toContain('desktopBridgeWarning.value')
+      expect(source).not.toContain('getInforNexusDesktopBridgeWarning')
+    }
+  })
+
   it('checks PO template availability before opening the download endpoint', () => {
     expect(poAutoDownloadSource).toContain('/api/system/config/po-auto-download/template/status')
     expect(poAutoDownloadSource).toContain('/api/system/config/po-auto-download/template/download')

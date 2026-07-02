@@ -384,6 +384,7 @@ export interface TicketOwnerBatchRecord {
   failedCount: number
   pendingCount: number
   checkpoint: TicketOwnerCheckpoint
+  storedFiles?: AutomationStoredFileDownloadRef[]
   resumable: boolean
   createdAt?: string
   updatedAt?: string

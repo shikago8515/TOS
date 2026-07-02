@@ -200,6 +200,9 @@
               <button v-if="shippingArtifactLinks.failedPoExcelUrl && shippingArtifactLinks.failedRowCount > 0" class="sa-btn" @click="downloadShippingArtifact(shippingArtifactLinks.failedPoExcelUrl, 'shipping-last-failed-po-rows.xlsx')">
                 <AppIcon name="download" />{{ text('失败明细') }}
               </button>
+              <button v-if="shippingArtifactLinks.cartonRangeCheckExcelUrl" class="sa-btn" @click="downloadShippingArtifact(shippingArtifactLinks.cartonRangeCheckExcelUrl, 'shipping-last-carton-range-check.xlsx')">
+                <AppIcon name="download" />{{ text('箱数校验') }}
+              </button>
             </div>
           </section>
 
@@ -384,7 +387,7 @@ const ticketOwnerProgressStats = ref<TicketOwnerProgressStat[]>([])
 const ticketOwnerCurrentTickets = ref<string[]>([])
 let ticketOwnerProgressTimer: number | null = null
 let activeRunStateTimer: number | null = null
-type SAL = { resultExcelUrl: string; resultJsonUrl?: string; failedPoExcelUrl?: string; failedPoJsonUrl?: string; failedRowCount: number }
+type SAL = { resultExcelUrl: string; resultJsonUrl?: string; failedPoExcelUrl?: string; failedPoJsonUrl?: string; cartonRangeCheckExcelUrl?: string; failedRowCount: number }
 type TicketOwnerResumeMode = 'new' | 'continue' | 'retry-failed' | 'restart'
 type TicketOwnerResumeRequest = { mode: Exclude<TicketOwnerResumeMode, 'new'>; batch: TicketOwnerBatchRecord }
 type TicketOwnerBatchContext = { batch: TicketOwnerBatchRecord; attempt: TicketOwnerBatchAttempt; mode: TicketOwnerResumeMode; payload: Record<string, unknown> }
@@ -532,6 +535,29 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
   } finally {
     refreshing.value = false
   }
+}
+async function waitForExecutorHealthReady(timeoutMs = 15000): Promise<boolean> {
+  if (!entry.value) return false
+  const startedAt = Date.now()
+  let lastError = ''
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      executorHealth.value = await probeLocalExecutorHealth(entry.value.executorBaseUrl)
+      if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
+      syncActiveRunViewFromHealth()
+      return true
+    } catch (error) {
+      lastError = readErrorMessage(error, 'executor health probe failed')
+      await new Promise((resolve) => window.setTimeout(resolve, 600))
+    }
+  }
+  await recordWebAutomationEvent('executor-health-wait-timeout', {
+    appId: entry.value.appId,
+    entryId: entry.value.id,
+    executorBaseUrl: entry.value.executorBaseUrl,
+    error: lastError,
+  })
+  return false
 }
 function syncActiveRunViewFromHealth(): void {
   const activeRun = findCurrentScenarioActiveRun()
@@ -690,6 +716,7 @@ function buildTicketOwnerProgressStats(progress: Record<string, any> | null): Ti
   const completed = toTicketOwnerProgressCount(progress.completedCount || progress.successCount)
   const success = toTicketOwnerProgressCount(progress.successCount || progress.completedCount)
   const attempted = toTicketOwnerProgressCount(progress.attemptedCount)
+  const resumed = toTicketOwnerProgressCount(progress.resumedCount)
   const failed = toTicketOwnerProgressCount(progress.failedCount)
   const pending = toTicketOwnerProgressCount(progress.pendingCount)
   const skipped = toTicketOwnerProgressCount(progress.skippedCount)
@@ -701,6 +728,7 @@ function buildTicketOwnerProgressStats(progress: Record<string, any> | null): Ti
   }
   if (discovered > 0 && discovered !== filteredTotal) stats.push({ key: 'discovered', label: '已识别', value: `${discovered}` })
   if (planned > 0) stats.push({ key: 'planned', label: '计划处理', value: `${planned}` })
+  if (resumed > 0) stats.push({ key: 'resumed', label: '断点恢复', value: `${resumed}` })
   if (total > 0 || completed > 0 || success > 0) stats.push({ key: 'generated', label: '已生成', value: formatTicketOwnerProgressRatio(success || completed, total || planned) })
   if (attempted > 0) stats.push({ key: 'attempted', label: '已尝试', value: `${attempted}` })
   if (active > 0) stats.push({ key: 'active', label: '进行中', value: `${active}` })
@@ -725,6 +753,7 @@ function formatTicketOwnerProgressText(progress: Record<string, any> | null): st
   const planned = Number(progress.plannedCount || 0)
   const skipped = Number(progress.skippedCount || 0)
   const concurrency = Number(progress.concurrencyCount || 0)
+  const resumed = Number(progress.resumedCount || 0)
   const currentTickets = Array.isArray(progress.currentTickets)
     ? progress.currentTickets.map((item: unknown) => String(item || '').trim()).filter(Boolean).slice(0, 3)
     : []
@@ -734,6 +763,7 @@ function formatTicketOwnerProgressText(progress: Record<string, any> | null): st
   if (discovered > 0 && discovered !== filteredTotal) parts.push(`已识别 ${discovered}`)
   if (skipped > 0) parts.push(`未进 A/B/C 队列 ${skipped}`)
   if (concurrency > 1) parts.push(`并发 ${concurrency}`)
+  if (resumed > 0) parts.push(`断点恢复 ${resumed}`)
   if (total > 0) parts.push(`已生成 ${completed}/${total}`)
   if (attempted > 0) parts.push(`已尝试 ${attempted}`)
   if (failed > 0) parts.push(`最终未获取 ${failed}`)
@@ -773,7 +803,30 @@ async function refreshAutomationTemplates(): Promise<void> { if (!entry.value) r
 async function downloadPrimaryTemplate(): Promise<void> { try { await downloadAutomationTemplate(primaryTemplate.value); messageTone.value = 'success'; message.value = text('模板下载已开始。') } catch (e) { const m = readErrorMessage(e, text('模板下载失败。')); messageTone.value = 'warning'; message.value = m; void showAppAlert(m, { tone: 'warning' }) } }
 function downloadAutomationHelper(): void { void openAutomationHelperDownload() }
 function bootLocalHelper(): void { primeLocalAutomationLauncherBoot(); messageTone.value = 'info'; message.value = text('已尝试启动本机自动化助手。'); window.setTimeout(() => { void refreshExecutorState(true) }, 1200) }
-async function startActiveApp(silent: boolean, options: { forceUpdate?: boolean } = {}): Promise<void> { if (!entry.value || launching.value) return; if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot(); launching.value = true; try { const forceUpdate = options.forceUpdate !== false; const r = await launchAutomationConsole(entry.value.appId, { forceUpdate }); if (!r.success) throw new Error(r.error || '启动失败'); await refreshExecutorState(true); if (!silent) { messageTone.value = 'success'; message.value = forceUpdate ? text('已同步最新自动化逻辑。') : r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') } } catch (e) { const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.value.appId, entryId: entry.value.id, forceUpdate: options.forceUpdate !== false, error: m }); if (!silent) { messageTone.value = 'error'; message.value = m } } finally { launching.value = false } }
+async function startActiveApp(silent: boolean, options: { forceUpdate?: boolean } = {}): Promise<void> {
+  if (!entry.value || launching.value) return
+  if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot()
+  launching.value = true
+  try {
+    const forceUpdate = options.forceUpdate !== false
+    const r = await launchAutomationConsole(entry.value.appId, { forceUpdate })
+    if (!r.success) throw new Error(r.error || '启动失败')
+    if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
+    const executorReady = await waitForExecutorHealthReady()
+    if (!executorReady) throw new Error('执行器已启动，但健康检查暂时未连上。请点刷新，或稍后重试。')
+    if (!silent || !isExecutorBusy()) await refreshCredentialProfile()
+    if (!silent) {
+      messageTone.value = 'success'
+      message.value = forceUpdate ? text('已同步最新自动化逻辑。') : r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。')
+    }
+  } catch (e) {
+    const m = readErrorMessage(e, text('启动失败'))
+    await recordWebAutomationEvent('launch-exception', { appId: entry.value.appId, entryId: entry.value.id, forceUpdate: options.forceUpdate !== false, error: m })
+    if (!silent) { messageTone.value = 'error'; message.value = m }
+  } finally {
+    launching.value = false
+  }
+}
 async function stopActiveApp(): Promise<void> { if (!entry.value) return; try { const r = await stopAutomationConsole(entry.value.appId); if (!r.success) throw new Error(r.error || '停止失败'); executorHealth.value = null; clearRestoredActiveRunState(); if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }; await refreshExecutorState(true).catch(() => {}); messageTone.value = 'info'; message.value = text('执行器已停止。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('停止失败')) } }
 function handleFileSelect(e: Event): void { const f = getExcelFile((e.target as HTMLInputElement).files); if (f) setSelectedFile(f) }
 function handleDragEnter(e: DragEvent): void { if (!hasDraggedFiles(e) || isInternalDragMove(e)) return; dragDepth.value += 1; isDragging.value = true }
@@ -824,6 +877,7 @@ async function collectResultFiles(p: Record<string, any> | null): Promise<Automa
     bfi(u.resultJsonUrl, 'result_json', resultJsonName),
     bfi(u.failedPoExcelUrl, 'failed_rows_excel', 'shipping-last-failed-po-rows.xlsx'),
     bfi(u.failedPoJsonUrl, 'failed_rows_json', 'shipping-last-failed-po-rows.json'),
+    bfi(u.cartonRangeCheckExcelUrl || u.latestCartonRangeCheckExcelUrl, 'carton_range_check_excel', 'shipping-last-carton-range-check.xlsx'),
   ].filter((x): x is AutomationRunFileInput => Boolean(x))
   return Promise.all(files.map(attachArtifactContent))
 }
@@ -1145,6 +1199,7 @@ function updateShippingArtifactLinks(p: Record<string, any> | null): void {
     resultJsonUrl: buildShippingArtifactUrl(u?.resultJsonUrl) || undefined,
     failedPoExcelUrl: buildShippingArtifactUrl(u?.failedPoExcelUrl) || undefined,
     failedPoJsonUrl: buildShippingArtifactUrl(u?.failedPoJsonUrl) || undefined,
+    cartonRangeCheckExcelUrl: buildShippingArtifactUrl(u?.cartonRangeCheckExcelUrl || u?.latestCartonRangeCheckExcelUrl) || undefined,
     failedRowCount: Number(p?.artifacts?.failedRowCount ?? p?.ticketOwnerStatistics?.failedTicketCount ?? 0),
   }
 }

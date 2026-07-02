@@ -75,7 +75,13 @@ export function createTicketOwnerCheckpointWriter(body = {}) {
         pendingCount: toNonNegativeInteger(progress.pendingCount),
         updatedAt: new Date().toISOString(),
       },
-    }).catch(() => {});
+    }).catch((error) => {
+      console.warn("[ticket-owner-statistics] progress checkpoint write failed", {
+        message: error?.message || String(error || "unknown checkpoint write failure"),
+        batchId,
+        attemptId,
+      });
+    });
   }
 
   async function writeItemResult(result = {}, progress = {}) {
@@ -222,8 +228,12 @@ export function shouldSkipTicketOwnerItem(checkpointWriter, candidate = {}) {
 export function mergeTicketOwnerCollectionWithCheckpoint(collection = {}, checkpointWriter = null) {
   const snapshot = checkpointWriter?.snapshot || {};
   const snapshotResult = snapshot.result && typeof snapshot.result === "object" ? snapshot.result : {};
-  const previousRows = Array.isArray(snapshotResult.rows) ? snapshotResult.rows : [];
   const previousItems = Array.isArray(snapshot.items) ? snapshot.items : [];
+  const previousRows = Array.isArray(snapshotResult.rows) && snapshotResult.rows.length > 0
+    ? snapshotResult.rows
+    : previousItems
+      .map((item) => buildTicketOwnerRowFromCheckpointItem(item))
+      .filter((row) => row && row["Case Number"]);
   const currentRows = Array.isArray(collection.rows) ? collection.rows : [];
   const currentTicketResults = Array.isArray(collection.ticketResults) ? collection.ticketResults : [];
   const currentFailedTickets = Array.isArray(collection.failedTickets) ? collection.failedTickets : [];
@@ -277,18 +287,75 @@ export function mergeTicketOwnerCollectionWithCheckpoint(collection = {}, checkp
   };
 }
 
+export function getTicketOwnerResumeBaseline(snapshot = {}) {
+  const items = Array.isArray(snapshot?.items) ? snapshot.items : [];
+  const result = snapshot?.result && typeof snapshot.result === "object" ? snapshot.result : {};
+  const resultRows = Array.isArray(result.rows) ? result.rows : [];
+  const rows = [];
+  const ticketResults = [];
+  const itemKeys = new Set();
+  const seen = new Set();
+
+  for (const item of items) {
+    const normalized = normalizeTicketResultItem(item);
+    if (normalized.status !== "success") {
+      continue;
+    }
+    const row = findMatchingResultRow(resultRows, normalized) || buildTicketOwnerRowFromCheckpointItem(item);
+    if (!row?.["Case Number"]) {
+      continue;
+    }
+    const normalizedWithRow = normalizeTicketResultItem({ ...item, row, ok: true });
+    const key = normalizedWithRow.itemKey || normalizedWithRow.taskKey || normalizedWithRow.caseNumber;
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    rows.push(row);
+    ticketResults.push({
+      ...normalizedWithRow,
+      ok: true,
+      row,
+      resumedFromCheckpoint: true,
+    });
+    const processedKey = buildResumeProcessedKey(normalizedWithRow);
+    if (processedKey) {
+      itemKeys.add(processedKey);
+    }
+  }
+
+  return {
+    rows,
+    ticketResults,
+    itemKeys: Array.from(itemKeys),
+    resumedRowCount: rows.length,
+  };
+}
+
+function buildResumeProcessedKey(item) {
+  if (item.caseNumber && item.taskType) {
+    return [item.caseNumber, item.taskType].filter(Boolean).join("|");
+  }
+  return firstText(item.caseNumber, item.itemKey, item.taskKey);
+}
+
 function normalizeTicketResultItem(result) {
   const row = result.row && typeof result.row === "object" ? result.row : {};
-  const caseNumber = firstText(result.caseNumber, result.ticketId, row["Case Number"]);
+  const identityText = firstText(result.caseNumber, result.ticketId, row["Case Number"], result.taskKey, result.itemKey, result.title);
+  const caseNumber = firstText(result.caseNumber, result.ticketId, row["Case Number"], extractCaseNumber(identityText));
   const taskType = firstText(result.taskType, row["Task Type"]);
   const request = firstText(result.request, row.Request);
   const poNumber = firstText(result.poNumber, row["PO Number"]);
   const workingNumber = firstText(result.workingNumber, row["Working Number"]);
+  const factory = firstText(result.factory, result.factoryCode, row.Factory, row.factory);
+  const merch = firstText(result.merch, result.merchandiser, row.Merch, row.merch);
+  const businessKey = [caseNumber, taskType, poNumber, workingNumber].filter(Boolean).join("|")
+    || [caseNumber, taskType, request].filter(Boolean).join("|");
   const itemKey = firstText(
+    businessKey,
     result.itemKey,
     result.taskKey,
-    result.ticketId,
-    [caseNumber, taskType, request, poNumber, workingNumber].filter(Boolean).join("|")
+    result.ticketId
   );
   const explicitStatus = firstText(result.status, result.state).toLowerCase();
   return {
@@ -301,6 +368,9 @@ function normalizeTicketResultItem(result) {
     request,
     poNumber,
     workingNumber,
+    factory,
+    merch,
+    row: Object.keys(row).length > 0 ? row : undefined,
     message: firstText(result.message, result.error, result.errorMessage),
     updatedAt: new Date().toISOString(),
   };
@@ -308,36 +378,75 @@ function normalizeTicketResultItem(result) {
 
 function findSnapshotItem(snapshot, candidate) {
   const normalizedCandidate = normalizeTicketResultItem(candidate);
-  const candidateKeys = new Set([
-    normalizedCandidate.itemKey,
-    normalizedCandidate.taskKey,
-    [
-      normalizedCandidate.caseNumber,
-      normalizedCandidate.taskType,
-      normalizedCandidate.request,
-      normalizedCandidate.poNumber,
-      normalizedCandidate.workingNumber,
-    ].filter(Boolean).join("|"),
-  ].map((value) => firstText(value)).filter(Boolean));
+  const candidateKeys = new Set(buildSnapshotMatchKeys(normalizedCandidate));
   const items = Array.isArray(snapshot?.items) ? snapshot.items : [];
   for (const item of items) {
     const normalizedItem = normalizeTicketResultItem(item);
-    const itemKeys = [
-      normalizedItem.itemKey,
-      normalizedItem.taskKey,
-      [
-        normalizedItem.caseNumber,
-        normalizedItem.taskType,
-        normalizedItem.request,
-        normalizedItem.poNumber,
-        normalizedItem.workingNumber,
-      ].filter(Boolean).join("|"),
-    ].map((value) => firstText(value)).filter(Boolean);
+    const itemKeys = buildSnapshotMatchKeys(normalizedItem);
     if (itemKeys.some((key) => candidateKeys.has(key))) {
+      return normalizedItem;
+    }
+    if (isSameTicketIdentity(normalizedItem, normalizedCandidate)) {
       return normalizedItem;
     }
   }
   return null;
+}
+
+function buildSnapshotMatchKeys(item) {
+  return [
+    item.itemKey,
+    item.taskKey,
+    [item.caseNumber, item.taskType].filter(Boolean).join("|"),
+    [item.caseNumber, item.taskType, item.request].filter(Boolean).join("|"),
+    [item.caseNumber, item.taskType, item.request, item.poNumber].filter(Boolean).join("|"),
+    [item.caseNumber, item.taskType, item.request, item.poNumber, item.workingNumber].filter(Boolean).join("|"),
+  ].map((value) => firstText(value)).filter(Boolean);
+}
+
+function isSameTicketIdentity(item, candidate) {
+  if (!item.caseNumber || !candidate.caseNumber) {
+    return false;
+  }
+  if (normalizeIdentity(item.caseNumber) !== normalizeIdentity(candidate.caseNumber)) {
+    return false;
+  }
+  if (item.taskType && candidate.taskType) {
+    return normalizeIdentity(item.taskType) === normalizeIdentity(candidate.taskType);
+  }
+  return true;
+}
+
+function findMatchingResultRow(rows, item) {
+  return rows.find((row) => {
+    const rowItem = normalizeTicketResultItem({ row, ok: true });
+    return isSameTicketIdentity(rowItem, item);
+  }) || null;
+}
+
+function buildTicketOwnerRowFromCheckpointItem(item) {
+  const normalized = normalizeTicketResultItem(item);
+  const row = item?.row && typeof item.row === "object" ? item.row : {};
+  const nextRow = {
+    "Case Number": firstText(row["Case Number"], normalized.caseNumber),
+    "Task Type": firstText(row["Task Type"], normalized.taskType),
+    "Request": firstText(row.Request, normalized.request),
+    "PO Number": firstText(row["PO Number"], normalized.poNumber),
+    "Working Number": firstText(row["Working Number"], normalized.workingNumber),
+    "Factory": firstText(row.Factory, normalized.factory),
+    "Merch": firstText(row.Merch, normalized.merch),
+  };
+  return Object.values(nextRow).some((value) => firstText(value)) ? nextRow : null;
+}
+
+function extractCaseNumber(value) {
+  const text = firstText(value);
+  const match = text.match(/\b(?:GTS[A-Z0-9-]*|\d{6,})\b/i);
+  return match ? match[0] : "";
+}
+
+function normalizeIdentity(value) {
+  return firstText(value).toLowerCase().replace(/\s+/g, " ");
 }
 
 function sanitizeCheckpointPayload(payload) {

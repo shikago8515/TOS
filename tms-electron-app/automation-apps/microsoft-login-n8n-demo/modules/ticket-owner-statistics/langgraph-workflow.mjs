@@ -132,6 +132,21 @@ async function prepareInputNode(state) {
   const startedAt = new Date().toISOString();
   try {
     const checkpointWriter = createTicketOwnerCheckpointWriter(state.body);
+    console.info("[ticket-owner-statistics] checkpoint writer prepared", {
+      enabled: checkpointWriter.enabled,
+      backendBaseUrl: Boolean(checkpointWriter.backendBaseUrl),
+      batchId: checkpointWriter.batchId,
+      attemptId: checkpointWriter.attemptId,
+      mode: checkpointWriter.mode,
+    });
+    if (!checkpointWriter.enabled) {
+      logCheckpointWriteFailure("prepare-input-disabled", new Error("ticket owner checkpoint writer is disabled"), {
+        backendBaseUrl: Boolean(checkpointWriter.backendBaseUrl),
+        batchId: Boolean(checkpointWriter.batchId),
+        attemptId: Boolean(checkpointWriter.attemptId),
+        mode: checkpointWriter.mode,
+      });
+    }
     const excelLookups = buildTicketOwnerExcelLookups(state.deps.xlsx, state.body);
     await checkpointWriter.write({
       status: "running",
@@ -143,7 +158,7 @@ async function prepareInputNode(state) {
         message: "正在准备 ticket 归属统计输入。",
         sourceFiles: readSourceFileSummary(state.body),
       },
-    }).catch(() => null);
+    }).catch((error) => logCheckpointWriteFailure("prepare-input", error));
     return nodeSuccess("prepare-input", startedAt, "已准备 ticket 归属统计输入。", {
       checkpointWriter,
       excelLookups,
@@ -168,7 +183,7 @@ async function loadCheckpointNode(state) {
         resumeMode: checkpointWriter.mode,
         snapshotStatus: checkpointWriter.snapshot?.status || "",
       },
-    }).catch(() => null);
+    }).catch((error) => logCheckpointWriteFailure("checkpoint-loaded", error));
     return nodeSuccess("load-checkpoint", startedAt, "已读取断点状态。");
   } catch (error) {
     return nodeFailure("load-checkpoint", startedAt, error);
@@ -228,7 +243,7 @@ async function ensureSessionNode(state) {
         event: "ensure-session",
         message: "正在准备 Microsoft / SAP BTP 会话。",
       },
-    }).catch(() => null);
+    }).catch((error) => logCheckpointWriteFailure("ensure-session", error));
     return nodeSuccess("ensure-session", startedAt, "已进入会话准备节点。");
   } catch (error) {
     return nodeFailure("ensure-session", startedAt, error);
@@ -266,6 +281,8 @@ async function processTicketPagesNode(state) {
       ...state.runOptions,
       maxTicketCount: normalizePositiveInteger(state.body?.maxTicketCount, 200),
       maxTicketAttemptCount: normalizePositiveInteger(state.body?.maxTicketAttemptCount, undefined),
+      maxTaskLookupCount: normalizePositiveInteger(state.body?.maxTaskLookupCount, undefined),
+      requestLookupConcurrency: normalizePositiveInteger(state.body?.requestLookupConcurrency, undefined),
       detailConcurrency: normalizePositiveInteger(state.body?.detailConcurrency, 3),
       detailPageTimeoutMs: normalizePositiveInteger(state.body?.detailPageTimeoutMs, 18000),
       requestFirst: state.body?.requestFirst !== false,
@@ -276,7 +293,7 @@ async function processTicketPagesNode(state) {
       diagnoseWorkflowTaskOnly: state.body?.diagnoseWorkflowTaskOnly === true,
       diagnoseUiLinkCount: normalizePositiveInteger(state.body?.diagnoseUiLinkCount, undefined),
       diagnoseUiLinkWaitMs: normalizePositiveInteger(state.body?.diagnoseUiLinkWaitMs, undefined),
-      detailFirst: state.body?.detailFirst === true,
+      detailFirst: typeof state.body?.detailFirst === "boolean" ? state.body.detailFirst : undefined,
       sampleAcrossBranches: state.body?.sampleAcrossBranches === true,
       excelLookups: state.excelLookups,
       reportProgress,
@@ -296,6 +313,7 @@ async function processTicketPagesNode(state) {
         }).catch(() => null);
         return await collectTicketOwnerStatistics(page, {
           ...options,
+          checkpointSnapshot: state.checkpointWriter.snapshot || {},
           shouldSkipTicketOwnerItem: (candidate) => state.checkpointWriter.shouldSkipItem(candidate),
           onTicketOwnerItemResult: async (itemResult, progress) => {
             const itemStartedAt = new Date().toISOString();
@@ -512,6 +530,15 @@ function createGraphEvent({ node, status, startedAt, finishedAt = new Date().toI
     finishedAt,
     durationMs: Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime()),
   };
+}
+
+function logCheckpointWriteFailure(stage, error, details = {}) {
+  const message = error?.message || String(error || "unknown checkpoint write failure");
+  console.warn("[ticket-owner-statistics] checkpoint write skipped", {
+    stage,
+    message,
+    ...details,
+  });
 }
 
 function buildTicketItemEventMessage(itemResult = {}) {

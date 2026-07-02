@@ -52,19 +52,6 @@
         </div>
       </transition>
 
-      <transition name="sa-alert-anim">
-        <div v-if="desktopBridgeWarning" class="sa-helper sa-helper--desktop">
-          <div class="sa-helper__icon"><AppIcon name="alert-circle" /></div>
-          <div class="sa-helper__body">
-            <strong>{{ text('Infor Nexus Desktop Utility 未连接') }}</strong>
-            <p>{{ text(desktopBridgeWarning) }}</p>
-          </div>
-          <div class="sa-helper__btns">
-            <button class="sa-btn" :disabled="refreshing" @click="refreshExecutorState(false)"><AppIcon name="refresh-cw" />{{ text('重新检测') }}</button>
-          </div>
-        </div>
-      </transition>
-
       <!-- ═══ BODY: LEFT + RIGHT DOCK ═══ -->
       <div class="sa-body">
         <!-- LEFT COLUMN -->
@@ -147,6 +134,9 @@
               </button>
               <button v-if="shippingArtifactLinks.failedPoExcelUrl && shippingArtifactLinks.failedRowCount > 0" class="sa-btn" @click="downloadShippingArtifact(shippingArtifactLinks.failedPoExcelUrl, 'shipping-last-failed-po-rows.xlsx')">
                 <AppIcon name="download" />{{ text('失败明细') }}
+              </button>
+              <button v-if="shippingArtifactLinks.cartonRangeCheckExcelUrl" class="sa-btn" @click="downloadShippingArtifact(shippingArtifactLinks.cartonRangeCheckExcelUrl, 'shipping-last-carton-range-check.xlsx')">
+                <AppIcon name="download" />{{ text('箱数校验') }}
               </button>
             </div>
           </section>
@@ -258,7 +248,6 @@ import {
   fetchAutomationApps, fetchAutomationTemplates, finishAutomationRunRecord,
   findLocalExecutorActiveRun,
   getAutomationHelperUpdateMessage,
-  getInforNexusDesktopBridgeWarning,
   hasElectronAutomationSupport, isLocalExecutorBusy, launchAutomationConsole, openAutomationHelperDownload,
   primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
   recordWebAutomationEvent, stopAutomationConsole,
@@ -297,7 +286,7 @@ const showBrowserView = ref(true)
 const statusText = ref(''); const statusLabel = ref('待命')
 const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
 let activeRunStateTimer: number | null = null
-type SAL = { resultExcelUrl: string; resultJsonUrl?: string; failedPoExcelUrl?: string; failedPoJsonUrl?: string; failedRowCount: number }
+type SAL = { resultExcelUrl: string; resultJsonUrl?: string; failedPoExcelUrl?: string; failedPoJsonUrl?: string; cartonRangeCheckExcelUrl?: string; failedRowCount: number }
 const shippingArtifactLinks = ref<SAL | null>(null)
 
 const steps = [
@@ -316,11 +305,10 @@ const statusIconName = computed(() => { if (sending.value) return 'loader'; if (
 const canLaunchActiveApp = computed(() => Boolean(entry?.appId) && !launching.value)
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
 const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
-const desktopBridgeWarning = computed(() => getInforNexusDesktopBridgeWarning(executorHealth.value))
 const primaryTemplate = computed(() => automationTemplates.value[0] || null)
 const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
 const shippingExecutorRunUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-shipping-file` : '' })
-const canRunShippingAutomation = computed(() => !sending.value && !desktopBridgeWarning.value)
+const canRunShippingAutomation = computed(() => !sending.value)
 const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
 
 onMounted(() => { void initializeScenario() })
@@ -348,6 +336,30 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
     executorHealth.value = null; activeApp.value = activeApp.value || fb; clearRestoredActiveRunState()
     if (!silent) { messageTone.value = 'warning'; message.value = launcherReachable.value ? text('本机自动化助手已连接，执行器尚未启动。') : text('执行器未就绪。') }
   } finally { refreshing.value = false }
+}
+
+async function waitForExecutorHealthReady(timeoutMs = 15000): Promise<boolean> {
+  if (!entry) return false
+  const startedAt = Date.now()
+  let lastError = ''
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl)
+      if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
+      syncActiveRunViewFromHealth()
+      return true
+    } catch (error) {
+      lastError = readErrorMessage(error, 'executor health probe failed')
+      await new Promise((resolve) => window.setTimeout(resolve, 600))
+    }
+  }
+  await recordWebAutomationEvent('executor-health-wait-timeout', {
+    appId: entry.appId,
+    entryId: entry.id,
+    executorBaseUrl: entry.executorBaseUrl,
+    error: lastError,
+  })
+  return false
 }
 
 function syncActiveRunViewFromHealth(): void {
@@ -435,7 +447,10 @@ async function startActiveApp(silent: boolean): Promise<void> {
   launching.value = true
   try {
     const r = await launchAutomationConsole(entry.appId); if (!r.success) throw new Error(r.error || '启动失败')
-    await refreshExecutorState(true)
+    if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
+    const executorReady = await waitForExecutorHealthReady()
+    if (!executorReady) throw new Error('执行器已启动，但健康检查暂时未连上。请点刷新，或稍后重试。')
+    await refreshCredentialProfile()
     if (!silent) { messageTone.value = 'success'; message.value = r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') }
   } catch (e) {
     const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.appId, entryId: entry.id, error: m })
@@ -483,7 +498,7 @@ async function createBackendRunRecord(f: File): Promise<AutomationRunRecord | nu
 async function finishBackendRunRecord(r: AutomationRunRecord | null, ok: boolean, msg: string, p: Record<string, any> | null): Promise<void> { if (!r?.runId) return; await finishAutomationRunRecord(r.runId, ok ? 'success' : 'failed', msg || (ok ? 'completed' : 'failed'), p, collectResultFiles(p)) }
 function collectResultFiles(p: Record<string, any> | null): AutomationRunFileInput[] {
   const u = p?.artifacts?.downloadUrls; if (!u || typeof u !== 'object') return []
-  return [bfi(u.resultExcelUrl, 'result_excel', 'shipping-last-result.xlsx'), bfi(u.resultJsonUrl, 'result_json', 'shipping-last-result.json'), bfi(u.failedPoExcelUrl, 'failed_rows_excel', 'shipping-last-failed-po-rows.xlsx'), bfi(u.failedPoJsonUrl, 'failed_rows_json', 'shipping-last-failed-po-rows.json')].filter((x): x is AutomationRunFileInput => Boolean(x))
+  return [bfi(u.resultExcelUrl, 'result_excel', 'shipping-last-result.xlsx'), bfi(u.resultJsonUrl, 'result_json', 'shipping-last-result.json'), bfi(u.failedPoExcelUrl, 'failed_rows_excel', 'shipping-last-failed-po-rows.xlsx'), bfi(u.failedPoJsonUrl, 'failed_rows_json', 'shipping-last-failed-po-rows.json'), bfi(u.cartonRangeCheckExcelUrl || u.latestCartonRangeCheckExcelUrl, 'carton_range_check_excel', 'shipping-last-carton-range-check.xlsx')].filter((x): x is AutomationRunFileInput => Boolean(x))
 }
 function bfi(rp: string, fr: string, fn: string): AutomationRunFileInput | null { const u = buildShippingArtifactUrl(rp); if (!u) return null; return { url: u, fileRole: fr, fileName: fn } }
 
@@ -505,7 +520,6 @@ function validateShippingInputs(): boolean {
   const password = shippingPassword.value.trim()
   if (password && !username) return showRunRequirementDialog('请先填写 User ID。')
   if (!password && !hasStoredCredentials.value) return showRunRequirementDialog('请先填写并保存 Infor Nexus 登录账号密码。')
-  if (desktopBridgeWarning.value) return showRunRequirementDialog(desktopBridgeWarning.value)
   return true
 }
 
@@ -538,7 +552,7 @@ function buildExecutorResponseMessage(res: Response, raw: string, payload: Recor
 function updateShippingArtifactLinks(p: Record<string, any> | null): void {
   const u = p?.artifacts?.downloadUrls; const re = buildShippingArtifactUrl(u?.resultExcelUrl)
   if (!re) { shippingArtifactLinks.value = null; return }
-  shippingArtifactLinks.value = { resultExcelUrl: re, resultJsonUrl: buildShippingArtifactUrl(u?.resultJsonUrl) || undefined, failedPoExcelUrl: buildShippingArtifactUrl(u?.failedPoExcelUrl) || undefined, failedPoJsonUrl: buildShippingArtifactUrl(u?.failedPoJsonUrl) || undefined, failedRowCount: Number(p?.artifacts?.failedRowCount ?? 0) }
+  shippingArtifactLinks.value = { resultExcelUrl: re, resultJsonUrl: buildShippingArtifactUrl(u?.resultJsonUrl) || undefined, failedPoExcelUrl: buildShippingArtifactUrl(u?.failedPoExcelUrl) || undefined, failedPoJsonUrl: buildShippingArtifactUrl(u?.failedPoJsonUrl) || undefined, cartonRangeCheckExcelUrl: buildShippingArtifactUrl(u?.cartonRangeCheckExcelUrl || u?.latestCartonRangeCheckExcelUrl) || undefined, failedRowCount: Number(p?.artifacts?.failedRowCount ?? 0) }
 }
 function buildShippingArtifactUrl(rp: string): string { const np = String(rp || '').trim(); if (!np) return ''; if (/^https?:\/\//i.test(np)) return np; const bu = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return bu ? `${bu}${np.startsWith('/') ? np : `/${np}`}` : '' }
 function downloadShippingArtifact(u: string | undefined, fn: string): void { if (!u) return; const a = document.createElement('a'); a.href = u; a.download = fn; a.rel = 'noopener'; document.body.append(a); a.click(); a.remove() }

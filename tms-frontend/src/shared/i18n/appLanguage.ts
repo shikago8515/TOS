@@ -206,6 +206,11 @@ const staticTextTranslations: Record<string, string> = {
   首页: 'Home',
   'TMS 工作站': 'TMS Workstation',
   'TOS 工作台': 'TOS Workstation',
+  原产地: 'Origin',
+  自动填写: 'Auto fill',
+  不填写: 'Off',
+  开: 'On',
+  关: 'Off',
   数据处理: 'Data Processing',
   'TOS 运营看板': 'TOS Operations Dashboard',
   '数据核对、报表制作、浏览器自动化与通用工具，一站式工作台。':

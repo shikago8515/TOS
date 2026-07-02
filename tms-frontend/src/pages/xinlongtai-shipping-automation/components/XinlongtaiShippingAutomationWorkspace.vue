@@ -52,19 +52,6 @@
         </div>
       </transition>
 
-      <transition name="sa-alert-anim">
-        <div v-if="desktopBridgeWarning" class="sa-helper sa-helper--desktop">
-          <div class="sa-helper__icon"><AppIcon name="alert-circle" /></div>
-          <div class="sa-helper__body">
-            <strong>{{ text('Infor Nexus Desktop Utility 未连接') }}</strong>
-            <p>{{ text(desktopBridgeWarning) }}</p>
-          </div>
-          <div class="sa-helper__btns">
-            <button class="sa-btn" :disabled="refreshing" @click="refreshExecutorState(false)"><AppIcon name="refresh-cw" />{{ text('重新检测') }}</button>
-          </div>
-        </div>
-      </transition>
-
       <!-- ═══ BODY: LEFT + RIGHT DOCK ═══ -->
       <div class="sa-body">
         <!-- LEFT COLUMN -->
@@ -77,8 +64,31 @@
                 <strong>{{ text('登录并打开 Shipment Scan') }}</strong>
                 <small>{{ text('上传 PO No Excel 执行批量录入') }}</small>
               </div>
-              <span v-if="executorHealth?.ok" class="sa-chip sa-chip--ok">{{ text('就绪') }}</span>
-              <span v-else class="sa-chip sa-chip--warn">{{ text('等待执行器') }}</span>
+              <div class="sa-card__hd-right">
+                <div
+                  class="sa-hd-toggle"
+                  :class="{ 'sa-hd-toggle--on': autoFillOriginDeclaration }"
+                  role="group"
+                  :aria-label="text('原产地')"
+                  @click="autoFillOriginDeclaration = !autoFillOriginDeclaration"
+                >
+                  <span class="sa-hd-toggle__copy">
+                    <strong>{{ text('原产地') }}</strong>
+                    <small>{{ autoFillOriginDeclaration ? text('自动填写') : text('不填写') }}</small>
+                  </span>
+                  <el-switch
+                    v-model="autoFillOriginDeclaration"
+                    class="sa-hd-toggle__switch"
+                    inline-prompt
+                    :active-text="text('开')"
+                    :inactive-text="text('关')"
+                    style="--el-switch-on-color: #10b981; --el-switch-off-color: #cbd5e1"
+                    @click.stop
+                  />
+                </div>
+                <span v-if="executorHealth?.ok" class="sa-chip sa-chip--ok">{{ text('就绪') }}</span>
+                <span v-else class="sa-chip sa-chip--warn">{{ text('等待执行器') }}</span>
+              </div>
             </div>
 
             <!-- Credentials -->
@@ -146,6 +156,9 @@
               </button>
               <button v-if="shippingArtifactLinks.failedPoExcelUrl && shippingArtifactLinks.failedRowCount > 0" class="sa-btn" @click="downloadShippingArtifact(shippingArtifactLinks.failedPoExcelUrl, 'shipping-last-failed-po-rows.xlsx')">
                 <AppIcon name="download" />{{ text('失败明细') }}
+              </button>
+              <button v-if="shippingArtifactLinks.cartonRangeCheckExcelUrl" class="sa-btn" @click="downloadShippingArtifact(shippingArtifactLinks.cartonRangeCheckExcelUrl, 'shipping-last-carton-range-check.xlsx')">
+                <AppIcon name="download" />{{ text('箱数校验') }}
               </button>
             </div>
           </section>
@@ -258,7 +271,6 @@ import {
   fetchAutomationApps, fetchAutomationTemplates, finishAutomationRunRecord,
   findLocalExecutorActiveRun,
   getAutomationHelperUpdateMessage,
-  getInforNexusDesktopBridgeWarning,
   hasElectronAutomationSupport, isLocalExecutorBusy, launchAutomationConsole, openAutomationHelperDownload,
   primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
   recordWebAutomationEvent, stopAutomationConsole,
@@ -293,10 +305,11 @@ const selectedCredentialKey = ref('default')
 const hasStoredCredentials = ref(false)
 const credentialProfileRef = ref<CredentialProfileRef | null>(null)
 const showBrowserView = ref(true)
+const autoFillOriginDeclaration = ref(false)
 const statusText = ref(''); const statusLabel = ref('待命')
 const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
 let activeRunStateTimer: number | null = null
-type SAL = { resultExcelUrl: string; resultJsonUrl?: string; failedPoExcelUrl?: string; failedPoJsonUrl?: string; failedRowCount: number }
+type SAL = { resultExcelUrl: string; resultJsonUrl?: string; failedPoExcelUrl?: string; failedPoJsonUrl?: string; cartonRangeCheckExcelUrl?: string; failedRowCount: number }
 const shippingArtifactLinks = ref<SAL | null>(null)
 
 const steps = [
@@ -315,12 +328,11 @@ const statusIconName = computed(() => { if (sending.value) return 'loader'; if (
 const canLaunchActiveApp = computed(() => Boolean(entry?.appId) && !launching.value)
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
 const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
-const desktopBridgeWarning = computed(() => getInforNexusDesktopBridgeWarning(executorHealth.value))
 const hasRunCredentials = computed(() => Boolean(shippingUsername.value.trim() && shippingPassword.value.trim()) || hasStoredCredentials.value)
 const primaryTemplate = computed(() => automationTemplates.value[0] || null)
 const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
 const shippingExecutorRunUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-xinlongtai-shipping-file` : '' })
-const canRunShippingAutomation = computed(() => !sending.value && hasRunCredentials.value && !desktopBridgeWarning.value)
+const canRunShippingAutomation = computed(() => !sending.value && hasRunCredentials.value)
 const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
 
 onMounted(() => { void initializeScenario() })
@@ -348,6 +360,30 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
     executorHealth.value = null; activeApp.value = activeApp.value || fb; clearRestoredActiveRunState()
     if (!silent) { messageTone.value = 'warning'; message.value = launcherReachable.value ? text('本机自动化助手已连接，执行器尚未启动。') : text('执行器未就绪。') }
   } finally { refreshing.value = false }
+}
+
+async function waitForExecutorHealthReady(timeoutMs = 15000): Promise<boolean> {
+  if (!entry) return false
+  const startedAt = Date.now()
+  let lastError = ''
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl)
+      if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
+      syncActiveRunViewFromHealth()
+      return true
+    } catch (error) {
+      lastError = readErrorMessage(error, 'executor health probe failed')
+      await new Promise((resolve) => window.setTimeout(resolve, 600))
+    }
+  }
+  await recordWebAutomationEvent('executor-health-wait-timeout', {
+    appId: entry.appId,
+    entryId: entry.id,
+    executorBaseUrl: entry.executorBaseUrl,
+    error: lastError,
+  })
+  return false
 }
 
 function syncActiveRunViewFromHealth(): void {
@@ -425,7 +461,10 @@ async function startActiveApp(silent: boolean): Promise<void> {
   launching.value = true
   try {
     const r = await launchAutomationConsole(entry.appId); if (!r.success) throw new Error(r.error || '启动失败')
-    await refreshExecutorState(true)
+    if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
+    const executorReady = await waitForExecutorHealthReady()
+    if (!executorReady) throw new Error('执行器已启动，但健康检查暂时未连上。请点刷新，或稍后重试。')
+    await refreshCredentialProfile()
     if (!silent) { messageTone.value = 'success'; message.value = r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') }
   } catch (e) {
     const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.appId, entryId: entry.id, error: m })
@@ -490,7 +529,7 @@ async function finishBackendRunRecord(r: AutomationRunRecord | null, ok: boolean
 }
 function collectResultFiles(p: Record<string, any> | null): AutomationRunFileInput[] {
   const u = p?.artifacts?.downloadUrls; if (!u || typeof u !== 'object') return []
-  return [bfi(u.resultExcelUrl, 'result_excel', 'shipping-last-result.xlsx'), bfi(u.resultJsonUrl, 'result_json', 'shipping-last-result.json'), bfi(u.failedPoExcelUrl, 'failed_rows_excel', 'shipping-last-failed-po-rows.xlsx'), bfi(u.failedPoJsonUrl, 'failed_rows_json', 'shipping-last-failed-po-rows.json')].filter((x): x is AutomationRunFileInput => Boolean(x))
+  return [bfi(u.resultExcelUrl, 'result_excel', 'shipping-last-result.xlsx'), bfi(u.resultJsonUrl, 'result_json', 'shipping-last-result.json'), bfi(u.failedPoExcelUrl, 'failed_rows_excel', 'shipping-last-failed-po-rows.xlsx'), bfi(u.failedPoJsonUrl, 'failed_rows_json', 'shipping-last-failed-po-rows.json'), bfi(u.cartonRangeCheckExcelUrl || u.latestCartonRangeCheckExcelUrl, 'carton_range_check_excel', 'shipping-last-carton-range-check.xlsx')].filter((x): x is AutomationRunFileInput => Boolean(x))
 }
 function bfi(rp: string, fr: string, fn: string): AutomationRunFileInput | null { const u = buildShippingArtifactUrl(rp); if (!u) return null; return { url: u, fileRole: fr, fileName: fn } }
 
@@ -512,7 +551,6 @@ function validateShippingInputs(): boolean {
   const password = shippingPassword.value.trim()
   if (password && !username) return showRunRequirementDialog('请先填写 User ID。')
   if (!password && !hasStoredCredentials.value) return showRunRequirementDialog('请先填写并保存 Infor Nexus 登录账号密码。')
-  if (desktopBridgeWarning.value) return showRunRequirementDialog(desktopBridgeWarning.value)
   return true
 }
 
@@ -525,7 +563,7 @@ async function runShipping(): Promise<void> {
   const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''
   try {
     const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload()
-    const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': currentEntry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: currentEntry.localExecutorToken, headless: !showBrowserView.value, ...cp, automationId: currentEntry.id, shipmentScanAction: 'remove-change-equipment-id' }) })
+    const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': currentEntry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: currentEntry.localExecutorToken, headless: !showBrowserView.value, ...cp, automationId: currentEntry.id, shipmentScanAction: 'remove-change-equipment-id', fillOriginDeclaration: autoFillOriginDeclaration.value }) })
     const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseJson(raw); updateShippingArtifactLinks(j)
     await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j)
     if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(j?.message || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }
@@ -545,7 +583,7 @@ function buildExecutorResponseMessage(res: Response, raw: string, payload: Recor
 function updateShippingArtifactLinks(p: Record<string, any> | null): void {
   const u = p?.artifacts?.downloadUrls; const re = buildShippingArtifactUrl(u?.resultExcelUrl)
   if (!re) { shippingArtifactLinks.value = null; return }
-  shippingArtifactLinks.value = { resultExcelUrl: re, resultJsonUrl: buildShippingArtifactUrl(u?.resultJsonUrl) || undefined, failedPoExcelUrl: buildShippingArtifactUrl(u?.failedPoExcelUrl) || undefined, failedPoJsonUrl: buildShippingArtifactUrl(u?.failedPoJsonUrl) || undefined, failedRowCount: Number(p?.artifacts?.failedRowCount ?? 0) }
+  shippingArtifactLinks.value = { resultExcelUrl: re, resultJsonUrl: buildShippingArtifactUrl(u?.resultJsonUrl) || undefined, failedPoExcelUrl: buildShippingArtifactUrl(u?.failedPoExcelUrl) || undefined, failedPoJsonUrl: buildShippingArtifactUrl(u?.failedPoJsonUrl) || undefined, cartonRangeCheckExcelUrl: buildShippingArtifactUrl(u?.cartonRangeCheckExcelUrl || u?.latestCartonRangeCheckExcelUrl) || undefined, failedRowCount: Number(p?.artifacts?.failedRowCount ?? 0) }
 }
 function buildShippingArtifactUrl(rp: string): string { const np = String(rp || '').trim(); if (!np) return ''; if (/^https?:\/\//i.test(np)) return np; const bu = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return bu ? `${bu}${np.startsWith('/') ? np : `/${np}`}` : '' }
 function downloadShippingArtifact(u: string | undefined, fn: string): void { if (!u) return; const a = document.createElement('a'); a.href = u; a.download = fn; a.rel = 'noopener'; document.body.append(a); a.click(); a.remove() }
@@ -683,6 +721,98 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
     display: flex; align-items: center; gap: 10px;
     padding: 16px 20px; border-bottom: 1px solid #f1f5f9;
   }
+  &__hd-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .sa-hd-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 42px;
+    padding: 7px 10px 7px 12px;
+    border: 1px solid #bae6fd;
+    border-radius: 14px;
+    background:
+      linear-gradient(135deg, rgba(240, 249, 255, .98), rgba(255, 255, 255, .96));
+    box-shadow: 0 4px 14px rgba(14, 165, 233, .08);
+    color: #0f172a;
+    cursor: pointer;
+    flex-shrink: 0;
+    user-select: none;
+    transition:
+      border-color .18s ease,
+      background .18s ease,
+      box-shadow .18s ease,
+      transform .18s ease;
+
+    &:hover {
+      border-color: #7dd3fc;
+      box-shadow: 0 7px 18px rgba(14, 165, 233, .14);
+      transform: translateY(-1px);
+    }
+
+    &--on {
+      border-color: rgba(16, 185, 129, .5);
+      background:
+        linear-gradient(135deg, rgba(236, 253, 245, .98), rgba(240, 253, 250, .96));
+      box-shadow:
+        0 8px 22px rgba(16, 185, 129, .18),
+        inset 0 0 0 1px rgba(16, 185, 129, .08);
+
+      .sa-hd-toggle__copy strong {
+        color: #047857;
+      }
+
+      .sa-hd-toggle__copy small {
+        color: #059669;
+      }
+    }
+
+    &__copy {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      min-width: 54px;
+      line-height: 1.1;
+
+      strong {
+        color: #0f172a;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      small {
+        color: #64748b;
+        font-size: 10px;
+        font-weight: 700;
+      }
+    }
+
+    &__switch {
+      flex-shrink: 0;
+
+      :deep(.el-switch__core) {
+        min-width: 46px;
+        height: 24px;
+        border-radius: 999px;
+        box-shadow: inset 0 1px 2px rgba(15, 23, 42, .18);
+      }
+
+      :deep(.el-switch__action) {
+        width: 20px;
+        height: 20px;
+        box-shadow: 0 2px 7px rgba(15, 23, 42, .22);
+      }
+
+      :deep(.el-switch__inner) {
+        font-size: 10px;
+        font-weight: 800;
+      }
+    }
+  }
   &__hd-ico {
     width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
     background: var(--a2); display: flex; align-items: center; justify-content: center;
@@ -694,12 +824,60 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
     small { font-size: 10px; color: var(--mu); }
   }
   &__bd { padding: 14px 20px; display: flex; flex-direction: column; gap: 12px; }
+  &__bd--tight { padding-top: 0; padding-bottom: 12px; }
   &__ft { padding: 0 20px 16px; display: flex; flex-direction: column; gap: 8px; }
 }
 
 /* ─── Fields ─── */
 .sa-field { display: flex; flex-direction: column; gap: 4px;
   > span { font-size: 11px; font-weight: 600; color: var(--ink); }
+}
+
+:global(html.dark) .sa-hd-toggle {
+  border-color: rgba(56, 189, 248, .28);
+  background: linear-gradient(135deg, rgba(15, 23, 42, .96), rgba(24, 24, 27, .96));
+  box-shadow: 0 5px 18px rgba(0, 0, 0, .22);
+
+  .sa-hd-toggle__copy strong {
+    color: #e5e7eb;
+  }
+
+  .sa-hd-toggle__copy small {
+    color: #94a3b8;
+  }
+
+  &.sa-hd-toggle--on {
+    border-color: rgba(16, 185, 129, .55);
+    background: linear-gradient(135deg, rgba(6, 78, 59, .64), rgba(15, 23, 42, .96));
+    box-shadow:
+      0 8px 22px rgba(16, 185, 129, .16),
+      inset 0 0 0 1px rgba(16, 185, 129, .12);
+
+    .sa-hd-toggle__copy strong,
+    .sa-hd-toggle__copy small {
+      color: #a7f3d0;
+    }
+  }
+}
+
+.sa-switch-row {
+  display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center;
+  position: relative;
+  padding: 10px 12px; border: 1px solid #dbeafe; border-radius: 12px;
+  background: #f8fbff; cursor: pointer; user-select: none;
+  input { position: absolute; opacity: 0; pointer-events: none; }
+  &__control {
+    width: 38px; height: 22px; border-radius: 999px; padding: 2px;
+    background: #cbd5e1; transition: background .18s ease;
+    span { display: block; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,.18); transition: transform .18s ease; }
+  }
+  input:checked + &__control { background: var(--em); }
+  input:checked + &__control span { transform: translateX(16px); }
+  &__text {
+    display: flex; flex-direction: column; gap: 1px; min-width: 0;
+    strong { font-size: 12px; font-weight: 700; color: #1f2937; }
+    small { font-size: 10px; color: #64748b; }
+  }
 }
 
 /* ─── Dropzone ─── */
@@ -849,7 +1027,7 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
 .sa-chip {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 3px 9px; border-radius: 99px;
-  font-size: 9px; font-weight: 700; flex-shrink: 0; margin-left: auto;
+  font-size: 9px; font-weight: 700; flex-shrink: 0;
   :deep(.app-icon) { font-size: 9px; }
   &--ok   { background: #ecfdf5; color: #059669; }
   &--warn { background: #fffbeb; color: #d97706; }

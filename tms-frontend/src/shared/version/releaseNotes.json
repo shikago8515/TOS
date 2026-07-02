@@ -4,6 +4,8 @@
   "noticeId": "2026-07-02-v1.0.0-beta.3.1",
   "showPopup": true,
   "added": [
+    "新龙泰 Shipping 新增 PO 箱数核对结果表，自动读取浏览器 Range 列并展开箱号，按 Excel cartons 判断是否缺失、超出、重复或格式异常。",
+    "新龙泰 Shipping 新增原产地声明开关，执行 Create Shipment 时可按 Excel remark 为当前 PO 填写 Statement On Origin 和 Packing List Notes。",
     "新增小助手启动后的自动化模块静默全量预更新：后台检查服务器 manifest，下载、校验并缓存新版模块包。",
     "新增自动下载箱单按 NO 批次处理和浏览器内进度浮层，支持从 Excel PO 批次中命中首个可下载箱单。",
     "新增 Koi 风格后台工作台能力：Pinia 全局状态、顶部标签页缓存、keep-alive 页面缓存、右键标签操作和路由顶部加载进度条。",
@@ -93,6 +95,8 @@
     "add Jane BOM summary module"
   ],
   "improved": [
+    "万代和新龙泰 Shipping 页面取消 Desktop Utility / 浏览器扩展健康预拦截，上传执行不再被前端误挡，实际连接问题由执行器在结果中记录。",
+    "箱数核对下载文件改为单个 Cartons核对结果 子表，集中显示 PO、Excel cartons、浏览器 Range 原文、展开箱号、缺失箱号和核对说明。",
     "网页小助手安装包改为内置完整运行组件，用户从下载中心下载一次后，安装阶段不再二次连接 MinIO 或公网接口获取 payload。",
     "自动化页面账号档案统一为共享组件实现，但账号数据按页面隔离保存，避免不同业务页面误用同一套登录账号。",
     "自动化运行前会兜底刷新模块；执行器忙碌时不打断当前任务，任务结束或业务进程停止后自动切到新版。",
@@ -126,6 +130,8 @@
     "检查更新按钮移至Hero右侧，与状态和语言切换并列"
   ],
   "fixed": [
+    "修复 Range 只看最大箱号时可能漏报中间缺号的问题，类似 1-5、8-10、11-15 会正确记录缺失 6-7。",
+    "修复 Shipping 执行结果把业务数据为空、Desktop Utility 连接异常和页面导航超时混在一起的问题，结果表会按实际原因记录。",
     "修复部分用户安装小助手时因安装阶段再次下载 payload 失败，导致安装卡住或提示下载自动化助手文件失败的问题。",
     "修复小助手安装包下载路径未加服务器前缀，导致设置页获取安装包 manifest 后下载失败的问题。",
     "修复安装包下载接口缺少 /tos/desktop-api 前缀导致 404 的问题。",
@@ -364,11 +370,18 @@
     },
     {
       "name": "Infor Nexus Shipping 自动化",
+      "added": [
+        "新龙泰 Shipping 执行时可校验 Excel cartons 与浏览器 Range 覆盖箱号是否一致，并生成单独的箱数核对结果表。",
+        "Create Shipment 页面可按开关自动填写原产地声明，声明内容使用每个 PO 对应的 Excel remark。"
+      ],
       "improved": [
+        "万代和新龙泰 Shipping 页面不再用 Desktop Utility 健康预检拦截上传执行，真实连接异常交由执行器结果记录。",
+        "箱数核对结果表收敛为单个 Cartons核对结果 子表，缺失、超出、重复和格式异常原因集中展示。",
         "Shipment Scan 等待数据期间会检测 Desktop Utility / PackByScan 连接提示，并把失败归类为 Desktop Utility Connection。",
         "新龙泰 Shipping 账号档案支持新增和编辑弹窗，页面主区域只保留账号选择、编辑和模板下载入口。"
       ],
       "fixed": [
+        "Range 中间断号会正确记录缺失箱号，不再只按最大箱号判断是否匹配。",
         "Desktop Utility 未连接时不再长时间等待 shipment grid 空结果，而是直接提示检查工具版本、Reconnect to Desktop 或重新加载 PackByScan。"
       ]
     },

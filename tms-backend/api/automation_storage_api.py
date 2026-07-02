@@ -1352,6 +1352,7 @@ def _ticket_owner_batch_payload(row: dict[str, Any] | None) -> dict[str, Any] | 
         return None
     checkpoint = _safe_json_loads(row.get("checkpoint_json")) or {}
     source_file = _safe_json_loads(row.get("source_file_json")) or {}
+    public_checkpoint = _ticket_owner_public_checkpoint_payload(checkpoint)
     return {
         "batchId": row["batch_id"],
         "automationId": row.get("automation_id", TICKET_OWNER_AUTOMATION_ID),
@@ -1367,7 +1368,8 @@ def _ticket_owner_batch_payload(row: dict[str, Any] | None) -> dict[str, Any] | 
         "completedCount": int(row.get("completed_count") or 0),
         "failedCount": int(row.get("failed_count") or 0),
         "pendingCount": int(row.get("pending_count") or 0),
-        "checkpoint": _ticket_owner_public_checkpoint_payload(checkpoint),
+        "checkpoint": public_checkpoint,
+        "storedFiles": public_checkpoint.get("storedFiles") or [],
         "resumable": _is_resumable_ticket_owner_batch(row),
         "createdAt": _format_datetime(row.get("created_at")),
         "updatedAt": _format_datetime(row.get("updated_at")),
@@ -1710,6 +1712,14 @@ def _ticket_owner_checkpoint_counts(checkpoint: dict[str, Any]) -> dict[str, int
 
 
 def _ticket_owner_item_key(item: dict[str, Any]) -> str:
+    row = item.get("row") if isinstance(item.get("row"), dict) else {}
+    case_number = str(item.get("caseNumber") or row.get("Case Number") or "").strip()
+    task_type = str(item.get("taskType") or row.get("Task Type") or "").strip()
+    po_number = str(item.get("poNumber") or row.get("PO Number") or "").strip()
+    working_number = str(item.get("workingNumber") or row.get("Working Number") or "").strip()
+    business_key = "|".join(part for part in (case_number, task_type, po_number, working_number) if part)
+    if business_key:
+        return business_key
     return str(
         item.get("itemKey")
         or item.get("taskKey")

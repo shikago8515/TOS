@@ -33,6 +33,7 @@ export async function showTicketOwnerProgress(target, message, percent = 0, deta
   if (!target || typeof target.evaluate !== "function") {
     return;
   }
+
   const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
   const targets = collectProgressTargets(target);
 
@@ -40,11 +41,7 @@ export async function showTicketOwnerProgress(target, message, percent = 0, deta
     details?.showBrowserProgressOverlay === false ||
     target.__tosTicketOwnerProgressOverlayEnabled === false
   ) {
-    await Promise.all(
-      targets.map((progressTarget) =>
-        removeTicketOwnerProgress(progressTarget)
-      )
-    );
+    await Promise.all(targets.map((progressTarget) => removeTicketOwnerProgress(progressTarget)));
     return;
   }
 
@@ -54,40 +51,41 @@ export async function showTicketOwnerProgress(target, message, percent = 0, deta
 }
 
 function collectProgressTargets(target) {
-  const targets = [target];
-  if (typeof target.frames === "function") {
-    targets.push(...target.frames());
+  const rootTarget = typeof target.page === "function"
+    ? target.page()
+    : target;
+  const targets = [rootTarget];
+  if (typeof rootTarget.frames === "function") {
+    targets.push(...rootTarget.frames());
+  } else if (target !== rootTarget) {
+    targets.push(target);
   }
   return Array.from(new Set(targets)).filter((item) => item && typeof item.evaluate === "function");
 }
 
 async function removeTicketOwnerProgress(target) {
-  await target.evaluate(() => {
-    document.querySelectorAll([
-      "#tos-ticket-owner-progress",
-      "[data-tos-ticket-owner-progress='true']",
-      "#tos-browser-automation-status-badge",
-      "[data-tos-browser-automation-badge='true']",
-    ].join(",")).forEach((element) => element.remove());
-  }).catch(() => {});
+  const selectors = getTicketOwnerProgressSelectors();
+  await target.evaluate((progressSelectors) => {
+    document.querySelectorAll(progressSelectors).forEach((element) => element.remove());
+  }, selectors).catch(() => {});
 }
 
 function progressDetailsFromState(state = {}) {
   const currentTickets = Array.from(state?.active?.values?.() || [])
     .map((item) => String(item || "").trim())
     .filter(Boolean);
+  const totalCount = toProgressCount(state.totalCount);
+  const completedCount = toProgressCount(state.completedCount);
   return {
-    totalCount: toProgressCount(state.totalCount),
-    completedCount: toProgressCount(state.completedCount),
+    totalCount,
+    completedCount,
     successCount: toProgressCount(state.successCount),
     failedCount: toProgressCount(state.failedCount),
     attemptedCount: toProgressCount(state.attemptedCount),
+    resumedCount: toProgressCount(state.resumedCount),
     diagnosticFailedCount: toProgressCount(state.diagnosticFailedCount),
     activeCount: currentTickets.length,
-    pendingCount: Math.max(
-      0,
-      toProgressCount(state.totalCount) - toProgressCount(state.completedCount)
-    ),
+    pendingCount: Math.max(0, totalCount - completedCount),
     currentTickets,
   };
 }
@@ -103,6 +101,7 @@ function normalizeTicketOwnerProgress(progress) {
     successCount: toProgressCount(input.successCount),
     failedCount: toProgressCount(input.failedCount),
     attemptedCount: toProgressCount(input.attemptedCount),
+    resumedCount: toProgressCount(input.resumedCount),
     diagnosticFailedCount: toProgressCount(input.diagnosticFailedCount),
     activeCount: toProgressCount(input.activeCount),
     pendingCount: toProgressCount(input.pendingCount),
@@ -128,12 +127,13 @@ function formatProgressMessage(message, progress = {}) {
     ...progress,
     message,
   });
-  const parts = [String(message || "正在执行")];
+  return [String(message || "正在执行"), ...buildProgressSummaryParts(details)].join(" · ");
+}
+
+function buildProgressSummaryParts(details = {}) {
+  const parts = [];
   if (details.filteredTotalCount > 0) {
     parts.push(`筛选 ${details.filteredTotalCount}${details.taskCenterTotalCount > 0 ? `/${details.taskCenterTotalCount}` : ""}`);
-  }
-  if (details.plannedCount > 0 && details.plannedCount !== details.totalCount) {
-    parts.push(`计划处理 ${details.plannedCount}`);
   }
   if (details.discoveredTaskCount > 0 && details.discoveredTaskCount !== details.filteredTotalCount) {
     parts.push(`已识别 ${details.discoveredTaskCount}`);
@@ -144,8 +144,13 @@ function formatProgressMessage(message, progress = {}) {
   if (details.concurrencyCount > 1) {
     parts.push(`并发 ${details.concurrencyCount}`);
   }
+  if (details.resumedCount > 0) {
+    parts.push(`断点恢复 ${details.resumedCount}`);
+  }
   if (details.totalCount > 0) {
     parts.push(`已生成 ${details.completedCount}/${details.totalCount}`);
+  } else if (details.plannedCount > 0) {
+    parts.push(`计划处理 ${details.plannedCount}`);
   }
   if (details.attemptedCount > 0) {
     parts.push(`已尝试 ${details.attemptedCount}`);
@@ -162,158 +167,102 @@ function formatProgressMessage(message, progress = {}) {
   if (details.pendingCount > 0) {
     parts.push(`待处理 ${details.pendingCount}`);
   }
-  return parts.join(" · ");
+  return parts;
 }
 
 async function injectTicketOwnerProgress(target, message, percent, details = {}) {
-  await target.evaluate(({ message: progressMessage, percent: progressPercent, details: progressDetails }) => {
-    const id = "tos-ticket-owner-progress";
-    document.querySelectorAll([
-      "#tos-browser-automation-status-badge",
-      "[data-tos-browser-automation-badge='true']",
-    ].join(",")).forEach((element) => element.remove());
+  const selectors = getTicketOwnerProgressSelectors();
+  const metaParts = buildProgressSummaryParts(normalizeTicketOwnerProgress(details));
+  await target.evaluate(({ message: progressMessage, percent: progressPercent, details: progressDetails, selectors: progressSelectors, metaParts: progressMetaParts }) => {
+    document.querySelectorAll(progressSelectors).forEach((element) => element.remove());
 
-    const existingRoots = Array.from(document.querySelectorAll([
-      `#${id}`,
-      "[data-tos-ticket-owner-progress='true']",
-    ].join(",")));
-    let root = existingRoots[0] || null;
-    existingRoots.slice(1).forEach((element) => element.remove());
-    if (!root) {
-      root = document.createElement("div");
-      root.id = id;
-      root.setAttribute("role", "status");
-      root.setAttribute("aria-live", "polite");
-      root.setAttribute("aria-hidden", "true");
-      root.setAttribute("data-tos-ticket-owner-progress", "true");
-      root.style.cssText = [
-        "position:fixed",
-        "left:18px",
-        "top:18px",
-        "z-index:2147483647",
-        "width:340px",
-        "max-width:calc(100vw - 36px)",
-        "box-sizing:border-box",
-        "padding:14px 16px",
-        "border:2px solid #0ea5e9",
-        "border-radius:10px",
-        "background:#eff6ff",
-        "color:#111827",
-        "box-shadow:0 18px 48px rgba(15,23,42,.28)",
-        "font-family:Segoe UI,Microsoft YaHei,Arial,sans-serif",
-        "font-size:14px",
-        "line-height:1.45",
-        "pointer-events:none",
-      ].join(";");
+    const root = document.createElement("div");
+    root.id = "tos-ticket-owner-progress";
+    root.setAttribute("role", "status");
+    root.setAttribute("aria-live", "polite");
+    root.setAttribute("aria-hidden", "true");
+    root.setAttribute("data-tos-ticket-owner-progress", "true");
+    root.style.cssText = [
+      "position:fixed",
+      "left:18px",
+      "top:18px",
+      "z-index:2147483647",
+      "width:340px",
+      "max-width:calc(100vw - 36px)",
+      "box-sizing:border-box",
+      "padding:14px 16px",
+      "border:2px solid #0ea5e9",
+      "border-radius:10px",
+      "background:#eff6ff",
+      "color:#111827",
+      "box-shadow:0 18px 48px rgba(15,23,42,.28)",
+      "font-family:Segoe UI,Microsoft YaHei,Arial,sans-serif",
+      "font-size:14px",
+      "line-height:1.45",
+      "pointer-events:none",
+    ].join(";");
 
-      const title = document.createElement("div");
-      title.style.cssText = "display:flex;align-items:center;gap:8px;font-size:15px;font-weight:800;margin-bottom:8px;";
-      const dot = document.createElement("span");
-      dot.style.cssText = "width:9px;height:9px;border-radius:999px;background:#10b981;box-shadow:0 0 0 5px rgba(16,185,129,.16);flex:0 0 auto;";
-      const titleText = document.createElement("span");
-      titleText.textContent = "TOS 正在统计工单归属";
-      title.append(dot, titleText);
+    const title = document.createElement("div");
+    title.style.cssText = "display:flex;align-items:center;gap:8px;font-size:15px;font-weight:800;margin-bottom:8px;";
 
-      const messageNode = document.createElement("div");
-      messageNode.setAttribute("data-tos-progress-message", "true");
-      messageNode.style.cssText = "font-size:13px;color:#334155;margin-bottom:10px;word-break:break-word;";
+    const dot = document.createElement("span");
+    dot.setAttribute("data-tos-progress-dot", "true");
+    dot.style.cssText = "width:9px;height:9px;border-radius:999px;background:#10b981;box-shadow:0 0 0 5px rgba(16,185,129,.16);flex:0 0 auto;";
 
-      const metaNode = document.createElement("div");
-      metaNode.setAttribute("data-tos-progress-meta", "true");
-      metaNode.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;font-size:12px;color:#075985;";
+    const titleText = document.createElement("span");
+    titleText.textContent = "TOS 正在统计工单归属";
+    title.append(dot, titleText);
 
-      const track = document.createElement("div");
-      track.style.cssText = "height:7px;border-radius:999px;background:#dbeafe;overflow:hidden;";
-      const bar = document.createElement("div");
-      bar.setAttribute("data-tos-progress-bar", "true");
-      bar.style.cssText = "height:100%;width:0%;background:#0284c7;border-radius:999px;transition:width .28s ease;";
-      track.appendChild(bar);
+    const messageNode = document.createElement("div");
+    messageNode.setAttribute("data-tos-progress-message", "true");
+    messageNode.style.cssText = "font-size:13px;color:#334155;margin-bottom:10px;word-break:break-word;";
+    messageNode.textContent = progressMessage;
 
-      root.append(title, messageNode, metaNode, track);
-      document.documentElement.appendChild(root);
-    }
-    root.querySelectorAll("[data-tos-ticket-owner-progress='true'], #tos-ticket-owner-progress").forEach((element) => {
-      if (element !== root) {
-        element.remove();
-      }
-    });
-    while (root.children.length > 4 && root.lastElementChild) {
-      root.lastElementChild.remove();
-    }
+    const metaNode = document.createElement("div");
+    metaNode.setAttribute("data-tos-progress-meta", "true");
+    metaNode.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;font-size:12px;color:#075985;";
+    metaNode.textContent = Array.isArray(progressMetaParts) ? progressMetaParts.join(" · ") : "";
+    metaNode.style.display = metaNode.textContent ? "flex" : "none";
 
-    root.style.pointerEvents = "none";
-    root.querySelectorAll("*").forEach((element) => {
-      element.style.pointerEvents = "none";
-    });
+    const track = document.createElement("div");
+    track.style.cssText = "height:7px;border-radius:999px;background:#dbeafe;overflow:hidden;";
+
+    const bar = document.createElement("div");
+    bar.setAttribute("data-tos-progress-bar", "true");
+    bar.style.cssText = "height:100%;width:0%;background:#0284c7;border-radius:999px;transition:width .28s ease;";
+    bar.style.width = `${progressPercent}%`;
+    track.appendChild(bar);
+
+    root.append(title, messageNode, metaNode, track);
+    document.documentElement.appendChild(root);
 
     const phase = String(progressDetails?.phase || "");
     const isFailed = phase === "failed" || phase === "error";
     root.style.borderColor = isFailed ? "#ef4444" : "#0ea5e9";
     root.style.background = isFailed ? "#fef2f2" : "#eff6ff";
     root.style.color = isFailed ? "#7f1d1d" : "#111827";
-    const dotNode = root.querySelector("span");
+
+    const dotNode = root.querySelector("[data-tos-progress-dot]");
     if (dotNode) {
       dotNode.style.background = isFailed ? "#ef4444" : "#10b981";
       dotNode.style.boxShadow = isFailed
         ? "0 0 0 5px rgba(239,68,68,.16)"
         : "0 0 0 5px rgba(16,185,129,.16)";
     }
-
-    const messageNode = root.querySelector("[data-tos-progress-message]");
-    const metaNode = root.querySelector("[data-tos-progress-meta]");
-    const barNode = root.querySelector("[data-tos-progress-bar]");
-    if (messageNode) {
-      messageNode.textContent = progressMessage;
-    }
-    if (metaNode) {
-      const total = Number(progressDetails?.totalCount || 0);
-      const completed = Number(progressDetails?.completedCount || 0);
-      const attempted = Number(progressDetails?.attemptedCount || 0);
-      const failed = Number(progressDetails?.failedCount || 0);
-      const active = Number(progressDetails?.activeCount || 0);
-      const filteredTotal = Number(progressDetails?.filteredTotalCount || 0);
-      const taskCenterTotal = Number(progressDetails?.taskCenterTotalCount || 0);
-      const discovered = Number(progressDetails?.discoveredTaskCount || 0);
-      const planned = Number(progressDetails?.plannedCount || 0);
-      const skipped = Number(progressDetails?.skippedCount || 0);
-      const concurrency = Number(progressDetails?.concurrencyCount || 0);
-      const parts = [];
-      if (filteredTotal > 0) {
-        parts.push(`筛选 ${filteredTotal}${taskCenterTotal > 0 ? `/${taskCenterTotal}` : ""}`);
-      }
-      if (planned > 0 && planned !== total) {
-        parts.push(`计划处理 ${planned}`);
-      }
-      if (discovered > 0 && discovered !== filteredTotal) {
-        parts.push(`已识别 ${discovered}`);
-      }
-      if (skipped > 0) {
-        parts.push(`非目标类型 ${skipped}`);
-      }
-      if (concurrency > 1) {
-        parts.push(`并发 ${concurrency}`);
-      }
-      if (total > 0) {
-        parts.push(`已生成 ${completed}/${total}`);
-      }
-      if (attempted > 0) {
-        parts.push(`已尝试 ${attempted}`);
-      }
-      if (failed > 0) {
-        parts.push(`最终未获取 ${failed}`);
-      }
-      if (active > 0) {
-        parts.push(`正在处理 ${active} 个`);
-      }
-      metaNode.textContent = parts.join(" · ");
-      metaNode.style.display = metaNode.textContent ? "flex" : "none";
-    }
-    if (barNode) {
-      barNode.style.width = `${progressPercent}%`;
-    }
   }, {
     message: String(message || ""),
     percent,
     details,
+    selectors,
+    metaParts,
   }).catch(() => {});
+}
+
+function getTicketOwnerProgressSelectors() {
+  return [
+    "#tos-ticket-owner-progress",
+    "[data-tos-ticket-owner-progress='true']",
+    "#tos-browser-automation-status-badge",
+    "[data-tos-browser-automation-badge='true']",
+  ].join(",");
 }

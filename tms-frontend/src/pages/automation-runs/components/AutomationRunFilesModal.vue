@@ -169,6 +169,7 @@ function fileRoleLabel(role: string): string {
     result_excel: '结果 Excel',
     result_json: '结果 JSON',
     failed_rows_excel: '失败明细',
+    carton_range_check_excel: '箱数校验',
     packing_list_pdf: '箱单 PDF',
     screenshot: '截图',
     log: '日志',

@@ -26,6 +26,16 @@ const moduleVersion = String(
   || rootPackage.version
   || '',
 ).trim()
+const requiredHelperVersionOverride = String(
+  options.requiredHelperVersion
+  || process.env.TOS_AUTOMATION_MODULE_REQUIRED_HELPER_VERSION
+  || '',
+).trim()
+const zipCompressionLevel = normalizeZipCompressionLevel(
+  options.compressionLevel
+  || process.env.TOS_AUTOMATION_MODULE_COMPRESSION_LEVEL
+  || '',
+)
 
 if (!Array.isArray(registry)) {
   throw new Error(`Automation registry must be an array: ${registryPath}`)
@@ -95,7 +105,7 @@ function buildAutomationModulePackage(app) {
     provider: String(app.provider || ''),
     category: String(app.category || 'Web Automation'),
     version,
-    requiredHelperVersion: String(app.requiredHelperVersion || rootPackage.version || ''),
+    requiredHelperVersion: String(requiredHelperVersionOverride || app.requiredHelperVersion || rootPackage.version || ''),
     description: String(app.description || ''),
     appDir,
     entry: String(app.entry || 'bin/start.js'),
@@ -233,9 +243,10 @@ function createZipFromDirectory(sourceDir, zipPath) {
         '-ExecutionPolicy',
         'Bypass',
         '-Command',
-        '& { param($sourceDir, $zipPath) Compress-Archive -Path (Join-Path $sourceDir "*") -DestinationPath $zipPath -Force }',
+        '& { param($sourceDir, $zipPath, $compressionLevel) $args = @{}; if ($compressionLevel) { $args.CompressionLevel = $compressionLevel }; Compress-Archive -Path (Join-Path $sourceDir "*") -DestinationPath $zipPath -Force @args }',
         sourceDir,
         zipPath,
+        zipCompressionLevel,
       ],
       { encoding: 'utf8' },
     )
@@ -271,6 +282,8 @@ function sanitizeSegment(value) {
 function parseOptions(args) {
   const selected = new Set()
   let version = ''
+  let requiredHelperVersion = ''
+  let compressionLevel = ''
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]
     if (arg === '--app' && args[index + 1]) {
@@ -289,10 +302,49 @@ function parseOptions(args) {
     }
     if (arg.startsWith('--version=')) {
       version = arg.slice('--version='.length)
+      continue
+    }
+    if (arg === '--required-helper-version' && args[index + 1]) {
+      requiredHelperVersion = args[index + 1]
+      index += 1
+      continue
+    }
+    if (arg.startsWith('--required-helper-version=')) {
+      requiredHelperVersion = arg.slice('--required-helper-version='.length)
+      continue
+    }
+    if (arg === '--compression-level' && args[index + 1]) {
+      compressionLevel = args[index + 1]
+      index += 1
+      continue
+    }
+    if (arg.startsWith('--compression-level=')) {
+      compressionLevel = arg.slice('--compression-level='.length)
     }
   }
   return {
     selectedAppIds: selected,
     version: String(version || '').trim(),
+    requiredHelperVersion: String(requiredHelperVersion || '').trim(),
+    compressionLevel: String(compressionLevel || '').trim(),
   }
+}
+
+function normalizeZipCompressionLevel(value) {
+  const normalized = String(value || '').trim()
+  if (!normalized) {
+    return ''
+  }
+  const validLevels = new Map([
+    ['optimal', 'Optimal'],
+    ['fastest', 'Fastest'],
+    ['nocompression', 'NoCompression'],
+    ['no-compression', 'NoCompression'],
+    ['none', 'NoCompression'],
+  ])
+  const resolved = validLevels.get(normalized.toLowerCase())
+  if (!resolved) {
+    throw new Error(`Unsupported automation module zip compression level: ${normalized}`)
+  }
+  return resolved
 }

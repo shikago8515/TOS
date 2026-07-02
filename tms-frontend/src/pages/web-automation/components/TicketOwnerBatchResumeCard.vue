@@ -243,7 +243,10 @@ function buildSourceBundle(batch: TicketOwnerBatchRecord): PackingListBatchRecor
 
 function buildCheckpointItems(batch: TicketOwnerBatchRecord): PackingListCheckpointItem[] {
   const sourceFiles = normalizeSourceFiles(batch.sourceFile?.files)
-  const resultFiles = normalizeStoredFiles(batch.checkpoint?.storedFiles)
+  const resultFiles = mergeStoredFiles(
+    normalizeStoredFiles(batch.checkpoint?.storedFiles),
+    normalizeStoredFiles(batch.storedFiles),
+  )
   const rawItems = Array.isArray(batch.checkpoint?.items) ? batch.checkpoint.items : []
   const items: PackingListCheckpointItem[] = rawItems.map((item, index) => ({
     no: readItemNo(item, index),
@@ -292,6 +295,20 @@ function normalizeStoredFiles(files: unknown): AutomationStoredFileDownloadRef[]
       }
     })
     .filter(Boolean) as AutomationStoredFileDownloadRef[]
+}
+
+function mergeStoredFiles(...groups: AutomationStoredFileDownloadRef[][]): AutomationStoredFileDownloadRef[] {
+  const seen = new Set<string>()
+  const merged: AutomationStoredFileDownloadRef[] = []
+  for (const group of groups) {
+    for (const file of group) {
+      const key = file.downloadPath || `${file.fileRole}:${file.originalFilename}`
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      merged.push(file)
+    }
+  }
+  return merged
 }
 
 function readItemNo(item: Record<string, unknown>, index: number): string {

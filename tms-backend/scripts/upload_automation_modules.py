@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import sys
+import argparse
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -13,7 +14,10 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app_version import APP_VERSION
-from utils.automation_module_manifest import AUTOMATION_MODULE_MANIFEST_OBJECT_KEY
+from utils.automation_module_manifest import (
+    AUTOMATION_MODULE_MANIFEST_OBJECT_KEY,
+    read_automation_module_manifest,
+)
 from utils.minio_storage import get_minio_bucket, put_object_bytes, sha256_bytes
 
 
@@ -21,7 +25,7 @@ AUTOMATION_MODULE_CONTENT_TYPE = "application/zip"
 AUTOMATION_MODULE_MANIFEST_CONTENT_TYPE = "application/json; charset=utf-8"
 
 
-def upload_automation_modules(dist_dir: Path) -> dict[str, Any]:
+def upload_automation_modules(dist_dir: Path, preserve_existing: bool = False) -> dict[str, Any]:
     manifest_path = dist_dir / "manifest.json"
     if not manifest_path.exists() or not manifest_path.is_file():
         raise FileNotFoundError(f"Automation module manifest not found: {manifest_path}")
@@ -36,13 +40,19 @@ def upload_automation_modules(dist_dir: Path) -> dict[str, Any]:
         uploaded_modules[module_id] = _upload_module(dist_dir, module_id, module)
 
     now = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
-    normalized_manifest = copy.deepcopy(manifest)
+    normalized_manifest = (
+        copy.deepcopy(read_automation_module_manifest())
+        if preserve_existing
+        else copy.deepcopy(manifest)
+    )
+    merged_modules = _normalize_modules(normalized_manifest.get("modules"))
+    merged_modules.update(uploaded_modules)
     normalized_manifest.update(
         {
             "kind": "tos-automation-module-manifest",
             "version": str(manifest.get("version") or APP_VERSION),
             "updatedAt": now,
-            "modules": uploaded_modules,
+            "modules": merged_modules,
         }
     )
 
@@ -64,8 +74,10 @@ def upload_automation_modules(dist_dir: Path) -> dict[str, Any]:
         "objectKey": AUTOMATION_MODULE_MANIFEST_OBJECT_KEY,
         "fileSize": manifest_storage["file_size"],
         "sha256": manifest_storage["sha256"],
-        "moduleCount": len(uploaded_modules),
-        "modules": uploaded_modules,
+        "moduleCount": len(merged_modules),
+        "uploadedModuleCount": len(uploaded_modules),
+        "modules": merged_modules,
+        "uploadedModules": uploaded_modules,
     }
 
 
@@ -144,9 +156,17 @@ def _normalize_modules(value: Any) -> dict[str, dict[str, Any]]:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Upload TOS automation module packages to MinIO.")
     default_dist_dir = BACKEND_ROOT.parent / "tms-electron-app" / "dist-automation-modules"
-    dist_dir = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else default_dist_dir
-    print(json.dumps(upload_automation_modules(dist_dir), ensure_ascii=False, indent=2))
+    parser.add_argument("dist_dir", nargs="?", default=str(default_dist_dir))
+    parser.add_argument(
+        "--preserve-existing",
+        action="store_true",
+        help="Merge uploaded modules into the existing server manifest instead of replacing it wholesale.",
+    )
+    args = parser.parse_args()
+    dist_dir = Path(args.dist_dir).resolve()
+    print(json.dumps(upload_automation_modules(dist_dir, preserve_existing=args.preserve_existing), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

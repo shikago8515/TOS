@@ -1,6 +1,6 @@
 ﻿import http from "node:http";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -459,6 +459,7 @@ const server = http.createServer(async (req, res) => {
         const result = await runShippingFile(credentials, poRows, inputFileName, activeRun.runId, {
           headless,
           shipmentScanAction: isXinlongtaiShippingRun ? "remove-change-equipment-id" : "assign-equipment-id",
+          fillOriginDeclaration: isXinlongtaiShippingRun && shouldFillOriginDeclaration(body),
         });
         result.artifacts = await persistRunArtifacts(result, poRows, activeRun.runId);
         recordCompletedRun({
@@ -615,14 +616,102 @@ function buildVisibleBrowserLaunchOptions(baseOptions, browserName) {
 
 function resolveInforNexusExtensionPath(configuredPath) {
   const configured = String(process.env.TMS_INFOR_NEXUS_EXTENSION_PATH || configuredPath || "").trim();
-  const candidate = configured || path.join(
-    process.env.APPDATA || "",
+  const configuredResolved = resolveExistingInforNexusExtensionPath(configured);
+  if (configuredResolved) {
+    return configuredResolved;
+  }
+
+  const appDataPath = resolveDefaultInforNexusExtensionPath();
+  const appDataResolved = resolveExistingInforNexusExtensionPath(appDataPath);
+  if (appDataResolved) {
+    return appDataResolved;
+  }
+
+  const bundledPath = resolveBundledInforNexusExtensionPath();
+  const bundledResolved = resolveExistingInforNexusExtensionPath(bundledPath);
+  if (!bundledResolved) {
+    return "";
+  }
+
+  if (appDataPath && installInforNexusExtensionFromBundle(bundledResolved, appDataPath)) {
+    return path.resolve(appDataPath);
+  }
+
+  return bundledResolved;
+}
+
+function resolveDefaultInforNexusExtensionPath() {
+  if (!process.env.APPDATA) {
+    return "";
+  }
+  return path.join(
+    process.env.APPDATA,
     "TOS-Automation-Helper",
     "infor-nexus-extension",
     INFOR_NEXUS_EXTENSION_ID,
   );
-  const resolved = path.resolve(candidate);
+}
+
+function resolveBundledInforNexusExtensionPath() {
+  return path.join(
+    appRoot,
+    "infor-nexus-extension",
+    INFOR_NEXUS_EXTENSION_ID,
+  );
+}
+
+function resolveExistingInforNexusExtensionPath(candidate) {
+  const normalized = String(candidate || "").trim();
+  if (!normalized) {
+    return "";
+  }
+  const resolved = path.resolve(normalized);
   return existsSync(path.join(resolved, "manifest.json")) ? resolved : "";
+}
+
+function installInforNexusExtensionFromBundle(sourceDir, targetDir) {
+  try {
+    copyDirectoryRecursive(sourceDir, targetDir);
+    return existsSync(path.join(targetDir, "manifest.json"));
+  } catch (error) {
+    log("Failed to install bundled Infor Nexus browser extension.", {
+      sourceDir,
+      targetDir,
+      error: error?.message || String(error),
+    });
+    return false;
+  }
+}
+
+function copyDirectoryRecursive(sourceDir, targetDir) {
+  mkdirSync(targetDir, { recursive: true });
+  for (const item of readdirSync(sourceDir, { withFileTypes: true })) {
+    const sourcePath = path.join(sourceDir, item.name);
+    const targetPath = path.join(targetDir, item.name);
+    if (item.isDirectory()) {
+      copyDirectoryRecursive(sourcePath, targetPath);
+      continue;
+    }
+    if (!item.isFile()) {
+      continue;
+    }
+    if (shouldCopyFile(sourcePath, targetPath)) {
+      copyFileSync(sourcePath, targetPath);
+    }
+  }
+}
+
+function shouldCopyFile(sourcePath, targetPath) {
+  if (!existsSync(targetPath)) {
+    return true;
+  }
+  try {
+    const sourceStat = statSync(sourcePath);
+    const targetStat = statSync(targetPath);
+    return sourceStat.size !== targetStat.size || sourceStat.mtimeMs > targetStat.mtimeMs + 1;
+  } catch {
+    return true;
+  }
 }
 
 function collectInforNexusDesktopBridgeDiagnostics() {
@@ -699,12 +788,10 @@ function isRegistryKeyPresent(key) {
 }
 
 function canUseInforNexusExtensionLaunch(browserName, launchOptions) {
-  const channel = String(launchOptions?.channel || "").toLowerCase();
   return Boolean(
     config.inforNexusExtensionPath
     && !launchOptions.headless
     && String(browserName || "").toLowerCase() === "chromium"
-    && channel === "chrome"
   );
 }
 
@@ -1154,6 +1241,61 @@ async function clickInfornexusAutoAddRemoveBeforeContinuation(page, inputFileNam
   });
 
   const removeLocator = await findInfornexusAutoAddRemoveLocator(page);
+  return clickInfornexusAutoAddRemoveLocator(page, removeLocator, inputFileName, "continue");
+}
+
+async function tryClickInfornexusAutoAddRemoveOnInitialEntry(page, inputFileName) {
+  if (!page || page.isClosed?.()) {
+    throw new Error("当前 Infornexus 浏览器已关闭，无法执行首次 Remove。");
+  }
+
+  await showAutomationBadge(page, {
+    title: "Infor Nexus Auto Add 自动化",
+    message: "首次进入查询页，正在尝试点击 Remove 清理当前页面",
+    details: {
+      phase: "initial-remove",
+      inputFileName,
+    },
+  });
+
+  let removeLocator = null;
+  try {
+    removeLocator = await tryFindInfornexusAutoAddRemoveLocator(page, Math.min(config.navigationTimeoutMs, 5000));
+  } catch (error) {
+    if (isClosedTargetError(error) || page.isClosed?.()) {
+      throw error;
+    }
+    log("Infornexus auto-add initial Remove lookup failed; continuing without blocking the first run.", {
+      inputFileName,
+      error: error?.message || String(error),
+      finalUrl: safePageUrl(page),
+    });
+  }
+
+  if (!removeLocator) {
+    log("Infornexus auto-add initial Remove was not found; continuing with Excel fill.", {
+      inputFileName,
+      finalUrl: safePageUrl(page),
+    });
+    await showAutomationBadge(page, {
+      title: "Infor Nexus Auto Add 自动化",
+      message: "首次进入未找到 Remove，继续按 Excel 填充",
+      details: {
+        phase: "initial-remove-skipped",
+        inputFileName,
+      },
+    }).catch(() => {});
+    return {
+      clicked: false,
+      reason: "not-found",
+      finalUrl: safePageUrl(page),
+    };
+  }
+
+  return clickInfornexusAutoAddRemoveLocator(page, removeLocator, inputFileName, "initial-entry");
+}
+
+async function clickInfornexusAutoAddRemoveLocator(page, removeLocator, inputFileName, source) {
   let dialogAccepted = false;
   const acceptDialog = async (dialog) => {
     dialogAccepted = true;
@@ -1172,19 +1314,21 @@ async function clickInfornexusAutoAddRemoveBeforeContinuation(page, inputFileNam
 
   await page.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
   await page.waitForTimeout(500);
-  log("Clicked Infornexus auto-add Remove before continuing with another Excel.", {
+  log("Clicked Infornexus auto-add Remove.", {
     inputFileName,
+    source,
     dialogAccepted,
     finalUrl: safePageUrl(page),
   });
   return {
     clicked: true,
+    source,
     dialogAccepted,
     finalUrl: safePageUrl(page),
   };
 }
 
-async function findInfornexusAutoAddRemoveLocator(page, timeoutMs = Math.min(config.navigationTimeoutMs, 6000)) {
+async function locateInfornexusAutoAddRemoveLocator(page, timeoutMs = Math.min(config.navigationTimeoutMs, 6000)) {
   const startedAt = Date.now();
   let lastError = null;
 
@@ -1203,7 +1347,10 @@ async function findInfornexusAutoAddRemoveLocator(page, timeoutMs = Math.min(con
         .first();
       try {
         await locator.waitFor({ state: "visible", timeout: 250 });
-        return locator;
+        return {
+          locator,
+          lastError: null,
+        };
       } catch (error) {
         lastError = error;
       }
@@ -1212,7 +1359,24 @@ async function findInfornexusAutoAddRemoveLocator(page, timeoutMs = Math.min(con
     await page.waitForTimeout(150);
   }
 
-  const message = lastError instanceof Error ? lastError.message : String(lastError || "");
+  return {
+    locator: null,
+    lastError,
+  };
+}
+
+async function tryFindInfornexusAutoAddRemoveLocator(page, timeoutMs = Math.min(config.navigationTimeoutMs, 6000)) {
+  const result = await locateInfornexusAutoAddRemoveLocator(page, timeoutMs);
+  return result.locator || null;
+}
+
+async function findInfornexusAutoAddRemoveLocator(page, timeoutMs = Math.min(config.navigationTimeoutMs, 6000)) {
+  const result = await locateInfornexusAutoAddRemoveLocator(page, timeoutMs);
+  if (result.locator) {
+    return result.locator;
+  }
+
+  const message = result.lastError instanceof Error ? result.lastError.message : String(result.lastError || "");
   throw new Error(
     `继续上传 Excel 前没有找到 Infor Nexus Remove 链接，请确认当前页面存在 Remove 按钮后再追加。${message ? ` ${message}` : ""}`,
   );
@@ -1479,6 +1643,15 @@ function isXinlongtaiShippingRequestBody(body) {
   return automationId === XINLONGTAI_SHIPPING_AUTOMATION_ID;
 }
 
+function shouldFillOriginDeclaration(body) {
+  return toBoolean(
+    body?.fillOriginDeclaration
+      ?? body?.autoFillOriginDeclaration
+      ?? body?.originDeclarationEnabled,
+    false,
+  );
+}
+
 function resolveShipmentScanAction(runContext) {
   return normalizeShipmentScanAction(runContext?.shipmentScanAction);
 }
@@ -1532,6 +1705,7 @@ async function runShippingFile(credentials, poRows, inputFileName, runId, option
     headless: options?.headless,
     targetPage: "shipment-scan",
     shipmentScanAction: options?.shipmentScanAction,
+    fillOriginDeclaration: Boolean(options?.fillOriginDeclaration),
   });
 }
 
@@ -1563,6 +1737,7 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
   const idRows = Array.isArray(runContext?.idRows) ? runContext.idRows : [];
   const runId = String(runContext?.runId || createRunId("infornexus-auto-add"));
   const idResults = [];
+  let removeOnInitialEntry = null;
   const showRunBadge = async (message, details = {}) => showAutomationBadge(page, {
     title: "Infor Nexus Auto Add 自动化",
     message,
@@ -1600,7 +1775,7 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
       phase: "open-search",
     });
     await page.waitForTimeout(config.postLoginWaitMs);
-    const autoAddSearchUrl = await openInfornexusAutoAddSearchPage(page, {
+    let autoAddSearchUrl = await openInfornexusAutoAddSearchPage(page, {
       loginUrl: config.loginUrl,
       searchUrl: config.autoAddSearchUrl,
       navigationTimeoutMs: config.navigationTimeoutMs,
@@ -1614,6 +1789,23 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
       finalUrl: safePageUrl(page),
     });
     await waitForInfornexusAutoAddSearchReady(page);
+    removeOnInitialEntry = await tryClickInfornexusAutoAddRemoveOnInitialEntry(page, runContext?.inputFileName || "");
+    if (removeOnInitialEntry?.clicked) {
+      await showRunBadge("Remove 完成，正在重新打开 Auto Add 查询页", {
+        phase: "open-search",
+      });
+      autoAddSearchUrl = await openInfornexusAutoAddSearchPage(page, {
+        loginUrl: config.loginUrl,
+        searchUrl: config.autoAddSearchUrl,
+        navigationTimeoutMs: config.navigationTimeoutMs,
+        postLoginWaitMs: config.postLoginWaitMs,
+      });
+      await waitForInfornexusAutoAddSearchReady(page);
+      log("Reopened Infornexus auto-add search page after initial Remove.", {
+        autoAddSearchUrl,
+        finalUrl: safePageUrl(page),
+      });
+    }
 
     for (let index = 0; index < idRows.length; index += 1) {
       const idRow = idRows[index];
@@ -1695,6 +1887,7 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
       completedIdCount,
       failedIdCount,
       idResults,
+      removeOnInitialEntry,
       message: `Infornexus auto add processed ${completedIdCount}/${idRows.length} IDs.`,
       browserRetained: false,
       generatedAt: new Date().toISOString(),
@@ -1766,6 +1959,7 @@ async function runInfornexusAutoAddWorkflow(credentials, runContext) {
         idResults.filter((item) => !item.ok).length,
       ),
       idResults,
+      removeOnInitialEntry,
       message: failureMessage || "Infornexus auto add failed.",
       generatedAt: new Date().toISOString(),
       finalUrl: safePageUrl(page),
@@ -1847,6 +2041,7 @@ async function runShippingWorkflow(credentials, runContext) {
   const createShipmentResults = [];
   let createShipmentBatches = [];
   let createShipmentEquipmentIds = [];
+  const fillOriginDeclaration = Boolean(runContext?.fillOriginDeclaration);
   let releasedBulkResult = null;
   let unreleasedBulkResult = null;
   const automationBadgeTitle = resolveShippingAutomationBadgeTitle({
@@ -1977,6 +2172,7 @@ async function runShippingWorkflow(credentials, runContext) {
             ...poRow,
             ok: true,
             changeEquipmentApplyStatus: String(shipmentResult?.status || "applied"),
+            cartonRangeCheck: shipmentResult?.cartonRangeCheck || buildCartonRangeCheckForFailure(poRow, ""),
           });
           await showRunBadge(`Shipment Scan PO ${String(poRow?.poNo || "").trim()} 已完成`, {
             phase: "shipment-scan-po",
@@ -2002,6 +2198,7 @@ async function runShippingWorkflow(credentials, runContext) {
             error: failureReason,
             errorCode: normalizedError.code || "",
             failedStep: classifyPoFailureStep(failureReason),
+            cartonRangeCheck: buildCartonRangeCheckForFailure(poRow, failureReason),
           });
           log("Shipment PO failed; recorded and continuing.", {
             poNo: String(poRow?.poNo || "").trim(),
@@ -2026,6 +2223,9 @@ async function runShippingWorkflow(credentials, runContext) {
       }
 
       createShipmentBatches = collectCreateShipmentBatches(poRows);
+      createShipmentBatches.forEach((batch) => {
+        batch.fillOriginDeclaration = fillOriginDeclaration;
+      });
       createShipmentEquipmentIds = createShipmentBatches.map((batch) => batch.changeEquipmentId);
       if (createShipmentBatches.length > 0) {
         log("Prepared Create Shipment batches.", {
@@ -2058,11 +2258,12 @@ async function runShippingWorkflow(credentials, runContext) {
             changeEquipmentId,
             poNos: createShipmentBatch.poNos,
           });
-          await processCreateShipmentEquipmentId(page, createShipmentBatch);
+          const createShipmentResult = await processCreateShipmentEquipmentId(page, createShipmentBatch);
           createShipmentResults.push({
             changeEquipmentId,
             poNos: createShipmentBatch.poNos,
             ok: true,
+            originDeclarationFillResult: createShipmentResult?.originDeclarationFillResult || null,
           });
           await showRunBadge(`Create Shipment 设备 ${changeEquipmentId} 已完成`, {
             phase: "create-shipment",
@@ -2141,6 +2342,7 @@ async function runShippingWorkflow(credentials, runContext) {
     const completedCreateShipmentCount = createShipmentResults.filter((item) => item.ok).length;
     const businessDataEmptyPoCount = countBusinessDataEmptyResults(poResults);
     const businessDataEmptyCreateShipmentCount = countBusinessDataEmptyResults(createShipmentResults);
+    const cartonRangeSummary = summarizeCartonRangeChecks(poResults);
     const shipping2BulkResult = shipping2BulkType === "released"
       ? releasedBulkResult
       : shipping2BulkType === "unreleased"
@@ -2167,6 +2369,11 @@ async function runShippingWorkflow(credentials, runContext) {
       completedPoCount,
       failedPoCount,
       businessDataEmptyPoCount,
+      cartonRangeCheckCount: cartonRangeSummary.checkedCount,
+      cartonRangeMatchedCount: cartonRangeSummary.matchedCount,
+      cartonRangeMismatchCount: cartonRangeSummary.mismatchCount,
+      cartonRangeSkippedCount: cartonRangeSummary.skippedCount,
+      originDeclarationFillEnabled: fillOriginDeclaration,
       poResults,
       shipping2BulkFilterApplied: Boolean(shipping2BulkResult?.filterApplied),
       shipping2BulkSaved: Boolean(shipping2BulkResult?.saved),
@@ -2225,6 +2432,7 @@ async function runShippingWorkflow(credentials, runContext) {
     const failureMessage = normalizedError.message;
     const businessDataEmptyPoCount = countBusinessDataEmptyResults(poResults);
     const businessDataEmptyCreateShipmentCount = countBusinessDataEmptyResults(createShipmentResults);
+    const cartonRangeSummary = summarizeCartonRangeChecks(poResults);
     if (page && !page.isClosed()) {
       await showRunBadge("Shipping 自动化失败，已记录错误信息", {
         phase: normalizedError.code === BUSINESS_DATA_EMPTY_CODE ? "business-empty" : "failed",
@@ -2251,6 +2459,11 @@ async function runShippingWorkflow(credentials, runContext) {
         poResults.filter((item) => !item.ok).length,
       ),
       businessDataEmptyPoCount,
+      cartonRangeCheckCount: cartonRangeSummary.checkedCount,
+      cartonRangeMatchedCount: cartonRangeSummary.matchedCount,
+      cartonRangeMismatchCount: cartonRangeSummary.mismatchCount,
+      cartonRangeSkippedCount: cartonRangeSummary.skippedCount,
+      originDeclarationFillEnabled: fillOriginDeclaration,
       poResults,
       shipping2BulkFilterApplied: Boolean(
         (shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)?.filterApplied,
@@ -2965,6 +3178,7 @@ async function processShipmentPoRow(page, poRow, shipmentScanAction) {
 
   await confirmShipmentScanFilters(page, poRow.poNo, shipmentScanAction);
   await waitForShipmentGridRows(page, poRow.poNo, shipmentScanAction);
+  const cartonRangeCheck = await collectShipmentCartonRangeCheck(page, poRow, shipmentScanAction);
   await selectShipmentGridRows(page, poRow.poNo, shipmentScanAction);
   const dialog = await openChangeEquipmentIdDialog(page, poRow.poNo, shipmentScanAction);
   await fillChangeEquipmentIdDialog(dialog, normalizedChangeEquipmentId);
@@ -2975,7 +3189,148 @@ async function processShipmentPoRow(page, poRow, shipmentScanAction) {
     changeEquipmentId: normalizedChangeEquipmentId,
     applyStatus: String(applyResult?.status || "applied"),
   });
-  return applyResult;
+  return {
+    ...applyResult,
+    cartonRangeCheck,
+  };
+}
+
+async function collectShipmentCartonRangeCheck(page, poRow, shipmentScanAction) {
+  const normalizedPoNo = String(poRow?.poNo || "").trim();
+  try {
+    const snapshot = await collectShipmentRangeSnapshot(page, normalizedPoNo, shipmentScanAction);
+    return buildCartonRangeCheck(poRow, snapshot);
+  } catch (error) {
+    return buildCartonRangeCheck(poRow, {
+      error: error instanceof Error ? error.message : String(error),
+      rangeValues: [],
+      rowCount: 0,
+      matchedPoRowCount: 0,
+      rangeColumnFound: false,
+    });
+  }
+}
+
+async function collectShipmentRangeSnapshot(page, poNo, shipmentScanAction = "Remove/Change Equipment ID") {
+  const normalizedPoNo = String(poNo || "").trim();
+  const allowPlainShipmentScanTitle = isAssignEquipmentShipmentScanAction(shipmentScanAction);
+  return page.evaluate(({ targetPo, allowPlainShipmentScanTitle: allowPlainTitle }) => {
+    const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+    const isShipmentWorkspaceHeader = (value) => {
+      const text = normalize(value);
+      return /^Undo Shipment Scan$/i.test(text)
+        || (allowPlainTitle && /^Shipment Scan$/i.test(text));
+    };
+    const isVisible = (element) => {
+      if (!element) {
+        return false;
+      }
+
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none"
+        && style.visibility !== "hidden"
+        && rect.width > 0
+        && rect.height > 0;
+    };
+    const directRowCells = (rowNode) => Array.from(rowNode.querySelectorAll("td.x-grid3-cell, td"))
+      .filter((cell) => {
+        const rowAncestor = cell.closest("div.x-grid3-row, tr.x-grid3-row");
+        return rowAncestor === rowNode || rowAncestor?.closest("div.x-grid3-row") === rowNode;
+      });
+    const cellText = (cell) => normalize(
+      cell?.querySelector(".x-grid3-cell-inner, .tgv-cell-inner")?.textContent
+        || cell?.textContent
+        || "",
+    );
+
+    const workspace = Array.from(document.querySelectorAll("div.x-panel"))
+      .find((element) => isVisible(element)
+        && Array.from(element.querySelectorAll("span.x-panel-header-text"))
+          .some((header) => isShipmentWorkspaceHeader(header.textContent)));
+    if (!workspace) {
+      return {
+        rowCount: 0,
+        matchedPoRowCount: 0,
+        rangeColumnFound: false,
+        rangeColumnIndex: -1,
+        rangeValues: [],
+        rows: [],
+        noDataVisible: false,
+      };
+    }
+
+    const grid = Array.from(workspace.querySelectorAll("div.x-grid3"))
+      .find((element) => isVisible(element));
+    if (!grid) {
+      return {
+        rowCount: 0,
+        matchedPoRowCount: 0,
+        rangeColumnFound: false,
+        rangeColumnIndex: -1,
+        rangeValues: [],
+        rows: [],
+        noDataVisible: Array.from(workspace.querySelectorAll("div, span, td"))
+          .filter((element) => isVisible(element))
+          .some((element) => /No data to display/i.test(normalize(element.textContent))),
+      };
+    }
+
+    const headerCells = Array.from(grid.querySelectorAll(".x-grid3-header td.x-grid3-hd, .x-grid3-header td"))
+      .filter((element, index, list) => isVisible(element) && list.indexOf(element) === index);
+    const headerEntries = headerCells.map((cell, index) => {
+      const headerInner = cell.querySelector("div.x-grid3-hd-inner");
+      return {
+        index,
+        text: normalize(headerInner?.textContent || cell.textContent),
+        className: `${cell.className || ""} ${headerInner?.className || ""}`,
+      };
+    });
+    const rangeHeader = headerEntries.find((item) => /^Range$/i.test(item.text))
+      || headerEntries.find((item) => /crg-startx|startx/i.test(item.className));
+    const poHeader = headerEntries.find((item) => /PO Numbers?/i.test(item.text))
+      || headerEntries.find((item) => /poNums|poNumber/i.test(item.className));
+    const rangeColumnIndex = Number(rangeHeader?.index ?? -1);
+    const poColumnIndex = Number(poHeader?.index ?? -1);
+
+    const rowNodes = Array.from(grid.querySelectorAll("div.x-grid3-row, tr.x-grid3-row"))
+      .filter((element, index, list) => isVisible(element) && list.indexOf(element) === index);
+    const rows = rowNodes.map((rowNode, index) => {
+      const rowCells = directRowCells(rowNode);
+      const rangeCell = rowNode.querySelector('td[class*="crg-startX"], td[class*="startX"], td[class*="startx"]')
+        || (rangeColumnIndex >= 0 ? rowCells[rangeColumnIndex] : null);
+      const poCell = rowNode.querySelector('td[class*="poNums"], td[class*="poNumber"], td[class*="po-number"]')
+        || (poColumnIndex >= 0 ? rowCells[poColumnIndex] : null);
+      const rowText = normalize(rowNode.innerText || rowNode.textContent);
+      const poText = cellText(poCell) || rowText;
+      const rangeText = cellText(rangeCell);
+      const matchedPo = targetPo ? (poText.includes(targetPo) || rowText.includes(targetPo)) : true;
+      return {
+        index,
+        poText,
+        rangeText,
+        matchedPo,
+        rowText: rowText.slice(0, 240),
+      };
+    });
+    const matchedRows = rows.filter((row) => row.matchedPo);
+    const noDataVisible = Array.from(workspace.querySelectorAll("div, span, td"))
+      .filter((element) => isVisible(element))
+      .some((element) => /No data to display/i.test(normalize(element.textContent)));
+
+    return {
+      rowCount: rowNodes.length,
+      matchedPoRowCount: matchedRows.length,
+      rangeColumnFound: Boolean(rangeHeader) || matchedRows.some((row) => row.rangeText),
+      rangeColumnIndex,
+      rangeValues: matchedRows.map((row) => row.rangeText).filter(Boolean),
+      rows: matchedRows,
+      noDataVisible,
+    };
+  }, {
+    targetPo: normalizedPoNo,
+    allowPlainShipmentScanTitle,
+  });
 }
 
 async function confirmShipmentScanFilters(page, poNo, shipmentScanAction) {
@@ -3591,6 +3946,7 @@ async function processCreateShipmentEquipmentId(page, createShipmentBatch) {
   await applyCreateShipmentIssueDate(page, createShipmentBatch);
   await applyCreateShipmentInvoiceNumber(page, createShipmentBatch);
   await applyCreateShipmentShipmentDate(page, createShipmentBatch);
+  const originDeclarationFillResult = await applyCreateShipmentOriginDeclaration(page, createShipmentBatch);
   await clickCreateShipmentPreviewStep(page, createShipmentBatch);
   await page.waitForTimeout(config.postLoginWaitMs).catch(() => {});
   log("Completed Create Shipment row.", {
@@ -3600,7 +3956,12 @@ async function processCreateShipmentEquipmentId(page, createShipmentBatch) {
     invoiceNumber: createShipmentBatch.invoiceNumber || "",
     selectedTargetRowCount: selectionSummary.selectedTargetRowCount,
     missingTargetPairCount: selectionSummary.missingTargetPairCount,
+    originDeclarationFilled: Boolean(originDeclarationFillResult?.filled),
+    originDeclarationPoNo: originDeclarationFillResult?.poNo || "",
   });
+  return {
+    originDeclarationFillResult,
+  };
 }
 
 async function openCreateShipmentDialog(page) {
@@ -4143,6 +4504,192 @@ async function applyCreateShipmentShipmentDate(page, createShipmentBatch) {
   });
 }
 
+async function applyCreateShipmentOriginDeclaration(page, createShipmentBatch) {
+  if (!createShipmentBatch?.fillOriginDeclaration) {
+    return {
+      enabled: false,
+      filled: false,
+      reason: "disabled",
+    };
+  }
+
+  const changeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
+  const decision = await resolveCreateShipmentOriginDeclarationDecision(page, createShipmentBatch);
+  const remark = String(decision?.remark || "").trim();
+  if (!remark) {
+    log("Skipped Create Shipment origin declaration because remark is empty.", {
+      changeEquipmentId,
+      poNo: decision?.poNo || "",
+      source: decision?.source || "",
+    });
+    return {
+      enabled: true,
+      filled: false,
+      poNo: decision?.poNo || "",
+      remark: "",
+      source: decision?.source || "",
+      reason: "remark is empty",
+    };
+  }
+
+  const declarationText = buildOriginDeclarationText(remark);
+  const statementTextarea = await resolveStatementOnOriginTextarea(page);
+  const notesTextarea = page.locator("textarea[name=\"PackingManifest_notes\"]").first();
+
+  await fillCreateShipmentTextarea(statementTextarea, declarationText, "Statement On Origin");
+  await fillCreateShipmentTextarea(notesTextarea, declarationText, "Packing List Notes");
+  await page.waitForTimeout(200).catch(() => {});
+
+  log("Applied Create Shipment origin declaration.", {
+    changeEquipmentId,
+    poNo: decision.poNo || "",
+    remark,
+    statementOnOriginFilled: true,
+    packingListNotesFilled: true,
+    source: decision.source || "",
+  });
+
+  return {
+    enabled: true,
+    filled: true,
+    poNo: decision.poNo || "",
+    remark,
+    text: declarationText,
+    source: decision.source || "",
+  };
+}
+
+async function resolveStatementOnOriginTextarea(page) {
+  const exactLocator = page.locator(
+    "#PackingManifest_reference__26_propertyValue, textarea[name=\"PackingManifest_reference__26_propertyValue\"]",
+  ).first();
+  if (await exactLocator.isVisible().catch(() => false)) {
+    return exactLocator;
+  }
+
+  const dynamicName = await page.evaluate(() => {
+    const hiddenInput = Array.from(document.querySelectorAll('input[type="hidden"]'))
+      .find((input) => String(input?.value || "").trim() === "StatementOnOrigin"
+        && /PackingManifest_reference__\d+_propertyKey/.test(String(input?.name || "")));
+    const keyName = String(hiddenInput?.name || "");
+    return keyName ? keyName.replace(/_propertyKey$/, "_propertyValue") : "";
+  }).catch(() => "");
+
+  if (dynamicName) {
+    return page.locator(`textarea[name="${escapeCssAttributeValue(dynamicName)}"]`).first();
+  }
+
+  return exactLocator;
+}
+
+function escapeCssAttributeValue(value) {
+  return String(value || "").replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+}
+
+async function fillCreateShipmentTextarea(locator, value, label) {
+  await locator.waitFor({ state: "visible", timeout: config.navigationTimeoutMs });
+  await locator.scrollIntoViewIfNeeded().catch(() => {});
+  await locator.fill(String(value || ""));
+  await locator.evaluate((node) => {
+    node.dispatchEvent(new Event("input", { bubbles: true }));
+    node.dispatchEvent(new Event("change", { bubbles: true }));
+    node.dispatchEvent(new Event("blur", { bubbles: true }));
+  }).catch(() => {});
+  log(`Filled ${label}.`);
+}
+
+async function resolveCreateShipmentOriginDeclarationDecision(page, createShipmentBatch) {
+  const targetPairs = Array.isArray(createShipmentBatch?.targetPairs)
+    ? createShipmentBatch.targetPairs
+    : [];
+  const pairsWithRemark = targetPairs
+    .map((item) => ({
+      rowIndex: Number(item?.rowIndex || 0),
+      poNo: String(item?.poNo || "").trim(),
+      remark: String(item?.originDeclarationRemark || "").trim(),
+    }))
+    .filter((item) => item.poNo);
+  const visiblePoNo = await detectCreateShipmentSummaryPoNo(page, pairsWithRemark.map((item) => item.poNo));
+
+  if (visiblePoNo) {
+    const match = pairsWithRemark.find((item) => item.poNo === visiblePoNo);
+    if (match) {
+      return {
+        poNo: match.poNo,
+        remark: match.remark,
+        source: `visible PO ${visiblePoNo}`,
+      };
+    }
+  }
+
+  const nonEmptyRemarks = Array.from(new Set(
+    pairsWithRemark.map((item) => item.remark).filter(Boolean),
+  ));
+  if (nonEmptyRemarks.length === 1) {
+    return {
+      poNo: pairsWithRemark.find((item) => item.remark === nonEmptyRemarks[0])?.poNo || "",
+      remark: nonEmptyRemarks[0],
+      source: "single remark in selected PO rows",
+    };
+  }
+
+  const firstRemarkPair = pairsWithRemark.find((item) => item.remark);
+  if (firstRemarkPair) {
+    return {
+      poNo: firstRemarkPair.poNo,
+      remark: firstRemarkPair.remark,
+      source: nonEmptyRemarks.length > 1
+        ? "first remark in selected Create Shipment batch"
+        : "first selected PO row",
+    };
+  }
+
+  return {
+    poNo: pairsWithRemark[0]?.poNo || "",
+    remark: "",
+    source: "empty remark",
+  };
+}
+
+async function detectCreateShipmentSummaryPoNo(page, candidatePoNos = []) {
+  const candidates = Array.from(new Set(
+    (Array.isArray(candidatePoNos) ? candidatePoNos : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean),
+  ));
+  if (candidates.length === 0) {
+    return "";
+  }
+
+  return page.evaluate(({ poNos }) => {
+    const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+    const bodyText = normalize(document.body?.innerText || "");
+    const quickLinksText = normalize(
+      Array.from(document.querySelectorAll(".quicklinks, #quickLinks, [class*=\"Quick\"], [class*=\"quick\"], table"))
+        .map((element) => element.textContent || "")
+        .join(" "),
+    );
+    const texts = [quickLinksText, bodyText].filter(Boolean);
+    for (const text of texts) {
+      for (const poNo of poNos) {
+        const escaped = poNo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (new RegExp(`\\bOrder\\s+${escaped}\\b`, "i").test(text)) {
+          return poNo;
+        }
+      }
+    }
+
+    const mentioned = poNos.filter((poNo) => bodyText.includes(poNo));
+    return mentioned.length === 1 ? mentioned[0] : "";
+  }, {
+    poNos: candidates,
+  }).catch(() => "");
+}
+
+function buildOriginDeclarationText(remark) {
+  return `The exporter (XO TEX INDUSTRIAL CO., LTD) (KHREXL001901907590) of the products covered by this document declares that, except where otherwise clearly indicated, these products are of Cambodia preferential origin according to rules of origin of the Generalized System of Preferences of the European Union and that the origin criterion met is(${String(remark || "").trim()})`;
+}
+
 async function clickCreateShipmentPreviewStep(page, createShipmentBatch) {
   const changeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
   const previewLink = page.locator("a[href*=\"jumpToStep('Review')\"]").first();
@@ -4366,6 +4913,219 @@ function buildShipmentBusinessDataEmptyError(poNo, state, reason) {
       state,
     },
   );
+}
+
+function buildCartonRangeCheckForFailure(poRow, failureReason) {
+  const reason = String(failureReason || "").trim();
+  return buildCartonRangeCheck(poRow, {
+    error: reason || "Shipment Scan 未完成，无法读取浏览器 Range 数据。",
+    rangeValues: [],
+    rowCount: 0,
+    matchedPoRowCount: 0,
+    rangeColumnFound: false,
+  });
+}
+
+function buildCartonRangeCheck(poRow, snapshot = {}) {
+  const expectedRaw = poRow?.cartons ?? extractCartonsValue(poRow?.originalRow);
+  const expectedCartons = normalizeExpectedCartonCount(expectedRaw);
+  const base = {
+    rowIndex: Number(poRow?.rowIndex || 0),
+    poNo: String(poRow?.poNo || "").trim(),
+    expectedCartonsRaw: String(expectedRaw ?? "").trim(),
+    expectedCartons,
+    browserRangeValues: Array.isArray(snapshot?.rangeValues)
+      ? snapshot.rangeValues.map((value) => String(value || "").trim()).filter(Boolean)
+      : [],
+    browserRangeText: "",
+    browserUniqueCartonCount: 0,
+    browserCartonNumbers: [],
+    missingCartons: [],
+    extraCartons: [],
+    duplicateCartons: [],
+    invalidRangeValues: [],
+    rangeMatched: false,
+    status: "mismatched",
+    reason: "",
+    rowCount: Number(snapshot?.rowCount || 0),
+    matchedPoRowCount: Number(snapshot?.matchedPoRowCount || 0),
+    rangeColumnFound: Boolean(snapshot?.rangeColumnFound),
+    warning: "",
+  };
+  base.browserRangeText = base.browserRangeValues.join(", ");
+
+  if (!base.expectedCartonsRaw) {
+    return {
+      ...base,
+      rangeMatched: null,
+      status: "skipped",
+      reason: "Excel cartons 为空，未执行箱数校验。",
+    };
+  }
+
+  if (!expectedCartons) {
+    return {
+      ...base,
+      reason: `Excel cartons 不是有效正整数：${base.expectedCartonsRaw}`,
+    };
+  }
+
+  const snapshotError = String(snapshot?.error || "").trim();
+  if (snapshotError) {
+    return {
+      ...base,
+      reason: isBusinessDataEmptyReason(snapshotError)
+        ? "浏览器未查询到该 PO 的 Range 数据，业务数据为空。"
+        : `浏览器 Range 读取失败：${snapshotError}`,
+    };
+  }
+
+  if (base.rowCount === 0 || base.matchedPoRowCount === 0) {
+    return {
+      ...base,
+      reason: "浏览器未查询到该 PO 的 Range 数据。",
+    };
+  }
+
+  if (!base.rangeColumnFound) {
+    return {
+      ...base,
+      reason: "浏览器结果表未找到 Range 列。",
+    };
+  }
+
+  if (base.browserRangeValues.length === 0) {
+    return {
+      ...base,
+      reason: "浏览器 Range 为空。",
+    };
+  }
+
+  const parsed = parseCartonRangeValues(base.browserRangeValues);
+  const browserNumberSet = new Set(parsed.numbers);
+  const browserCartonNumbers = Array.from(browserNumberSet).sort((left, right) => left - right);
+  const expectedNumbers = Array.from({ length: expectedCartons }, (_, index) => index + 1);
+  const missingCartons = expectedNumbers.filter((value) => !browserNumberSet.has(value));
+  const extraCartons = browserCartonNumbers.filter((value) => value < 1 || value > expectedCartons);
+  const duplicateCartons = Array.from(parsed.counts.entries())
+    .filter(([, count]) => count > 1)
+    .map(([value]) => value)
+    .sort((left, right) => left - right);
+  const matched = missingCartons.length === 0
+    && extraCartons.length === 0
+    && parsed.invalidRangeValues.length === 0;
+  const reasonParts = [];
+  if (parsed.invalidRangeValues.length > 0) {
+    reasonParts.push(`Range 格式异常：${parsed.invalidRangeValues.join(", ")}`);
+  }
+  if (missingCartons.length > 0) {
+    reasonParts.push(`缺失箱号：${formatNumberRanges(missingCartons)}`);
+  }
+  if (extraCartons.length > 0) {
+    reasonParts.push(`超出箱号：${formatNumberRanges(extraCartons)}`);
+  }
+
+  return {
+    ...base,
+    browserUniqueCartonCount: browserCartonNumbers.length,
+    browserCartonNumbers,
+    missingCartons,
+    extraCartons,
+    duplicateCartons,
+    invalidRangeValues: parsed.invalidRangeValues,
+    rangeMatched: matched,
+    status: matched ? "matched" : "mismatched",
+    reason: matched
+      ? `匹配：浏览器 Range 覆盖 1-${expectedCartons}。`
+      : reasonParts.join("；") || "浏览器 Range 与 Excel cartons 不匹配。",
+    warning: duplicateCartons.length > 0
+      ? `Range 存在重复/交叉箱号：${formatNumberRanges(duplicateCartons)}`
+      : "",
+  };
+}
+
+function parseCartonRangeValues(rangeValues) {
+  const numbers = [];
+  const counts = new Map();
+  const invalidRangeValues = [];
+  const addNumber = (value) => {
+    numbers.push(value);
+    counts.set(value, Number(counts.get(value) || 0) + 1);
+  };
+
+  for (const rawValue of Array.isArray(rangeValues) ? rangeValues : []) {
+    const text = String(rawValue || "").trim();
+    if (!text) {
+      continue;
+    }
+
+    const matches = Array.from(text.matchAll(/(\d+)\s*(?:[-~–—]\s*(\d+))?/g));
+    if (matches.length === 0) {
+      invalidRangeValues.push(text);
+      continue;
+    }
+
+    const residue = text.replace(/(\d+)\s*(?:[-~–—]\s*(\d+))?/g, "")
+      .replace(/[,\s;，；、/|]+/g, "")
+      .trim();
+    if (residue) {
+      invalidRangeValues.push(text);
+      continue;
+    }
+
+    for (const match of matches) {
+      const start = Number(match[1]);
+      const end = match[2] ? Number(match[2]) : start;
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) {
+        invalidRangeValues.push(match[0]);
+        continue;
+      }
+
+      for (let value = start; value <= end; value += 1) {
+        addNumber(value);
+      }
+    }
+  }
+
+  return {
+    numbers,
+    counts,
+    invalidRangeValues: Array.from(new Set(invalidRangeValues)),
+  };
+}
+
+function normalizeExpectedCartonCount(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return null;
+  }
+
+  const normalized = raw.replace(/,/g, "");
+  if (!/^\d+(?:\.0+)?$/.test(normalized)) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function formatNumberRanges(values) {
+  const sortedValues = Array.from(new Set(
+    (Array.isArray(values) ? values : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value)),
+  )).sort((left, right) => left - right);
+  const ranges = [];
+  for (let index = 0; index < sortedValues.length; index += 1) {
+    const start = sortedValues[index];
+    let end = start;
+    while (index + 1 < sortedValues.length && sortedValues[index + 1] === end + 1) {
+      index += 1;
+      end = sortedValues[index];
+    }
+    ranges.push(start === end ? String(start) : `${start}-${end}`);
+  }
+  return ranges.join(", ");
 }
 
 function buildCreateShipmentBusinessDataEmptyError(changeEquipmentId, state, reason) {
@@ -5024,25 +5784,30 @@ async function persistRunArtifacts(result, poRows, runId) {
   const resultExcelName = `${safeRunId}-result.xlsx`;
   const failedJsonName = `${safeRunId}-failed-po-rows.json`;
   const failedExcelName = `${safeRunId}-failed-po-rows.xlsx`;
+  const cartonRangeCheckExcelName = `${safeRunId}-carton-range-check.xlsx`;
   const runResultPath = path.join(artifactsDir, resultJsonName);
   const runResultExcelPath = path.join(artifactsDir, resultExcelName);
   const runFailedJsonPath = path.join(artifactsDir, failedJsonName);
   const runFailedExcelPath = path.join(artifactsDir, failedExcelName);
+  const runCartonRangeCheckExcelPath = path.join(artifactsDir, cartonRangeCheckExcelName);
   const latestResultPath = path.join(artifactsDir, "last-result.json");
   const latestResultExcelPath = path.join(artifactsDir, "last-result.xlsx");
   const latestFailedJsonPath = path.join(artifactsDir, "last-failed-po-rows.json");
   const latestFailedExcelPath = path.join(artifactsDir, "last-failed-po-rows.xlsx");
+  const latestCartonRangeCheckExcelPath = path.join(artifactsDir, "last-carton-range-check.xlsx");
   const failedRows = extractFailedPoRows(result, poRows);
 
   await writeFile(runResultPath, JSON.stringify(result, null, 2), "utf8");
   await writeRunResultWorkbook(runResultExcelPath, result, poRows);
   await writeFile(runFailedJsonPath, JSON.stringify(failedRows, null, 2), "utf8");
   await writeFailedPoWorkbook(runFailedExcelPath, failedRows);
+  await writeCartonRangeCheckWorkbook(runCartonRangeCheckExcelPath, result, poRows);
 
   await writeFile(latestResultPath, JSON.stringify(result, null, 2), "utf8");
   await writeRunResultWorkbook(latestResultExcelPath, result, poRows);
   await writeFile(latestFailedJsonPath, JSON.stringify(failedRows, null, 2), "utf8");
   await writeFailedPoWorkbook(latestFailedExcelPath, failedRows);
+  await writeCartonRangeCheckWorkbook(latestCartonRangeCheckExcelPath, result, poRows);
 
   return {
     runId: safeRunId,
@@ -5050,20 +5815,25 @@ async function persistRunArtifacts(result, poRows, runId) {
     resultExcelPath: runResultExcelPath,
     failedJsonPath: runFailedJsonPath,
     failedExcelPath: runFailedExcelPath,
+    cartonRangeCheckExcelPath: runCartonRangeCheckExcelPath,
     latestResultPath,
     latestResultExcelPath,
     latestFailedJsonPath,
     latestFailedExcelPath,
+    latestCartonRangeCheckExcelPath,
     failedRowCount: failedRows.length,
+    cartonRangeMismatchCount: Number(result?.cartonRangeMismatchCount || 0),
     downloadUrls: {
       resultJsonUrl: `/artifacts/${resultJsonName}`,
       resultExcelUrl: `/artifacts/${resultExcelName}`,
       failedPoJsonUrl: `/artifacts/${failedJsonName}`,
       failedPoExcelUrl: `/artifacts/${failedExcelName}`,
+      cartonRangeCheckExcelUrl: `/artifacts/${cartonRangeCheckExcelName}`,
       latestResultJsonUrl: "/artifacts/last-result.json",
       latestResultExcelUrl: "/artifacts/last-result.xlsx",
       latestFailedPoJsonUrl: "/artifacts/last-failed-po-rows.json",
       latestFailedPoExcelUrl: "/artifacts/last-failed-po-rows.xlsx",
+      latestCartonRangeCheckExcelUrl: "/artifacts/last-carton-range-check.xlsx",
     },
   };
 }
@@ -5083,6 +5853,7 @@ function extractFailedPoRows(result, poRows) {
         rowIndex: row.rowIndex,
         poNo: row.poNo,
         changeEquipmentId: row.changeEquipmentId,
+        cartons: row.cartons ?? "",
         failedStep: resultRow?.failedStep || classifyPoFailureStep(resultRow?.error || result?.message || ""),
         errorCode: resultRow?.errorCode || "",
         reason: resultRow?.error || result?.message || "Shipment PO row was not completed.",
@@ -5096,6 +5867,7 @@ async function writeFailedPoWorkbook(targetPath, failedRows) {
     rowIndex: row.rowIndex,
     poNo: row.poNo,
     changeEquipmentId: row.changeEquipmentId || "",
+    cartons: row.cartons ?? "",
     failedStep: row.failedStep || "",
     errorCode: row.errorCode || "",
     failureReason: row.reason || "",
@@ -5121,6 +5893,7 @@ async function writeRunResultWorkbook(targetPath, result, poRows) {
   const workbook = xlsx.utils.book_new();
   const poResultRows = buildPoResultWorkbookRows(result, poRows);
   const createShipmentRows = buildCreateShipmentWorkbookRows(result);
+  const cartonRangeCheckRows = buildCartonRangeCheckWorkbookRows(result, poRows);
   const summaryRows = buildRunSummaryRows(result, poResultRows, createShipmentRows);
 
   xlsx.utils.book_append_sheet(
@@ -5142,9 +5915,41 @@ async function writeRunResultWorkbook(targetPath, result, poRows) {
     xlsx.utils.json_to_sheet(createShipmentRows, {
       header: createShipmentRows.length > 0
         ? undefined
-        : ["changeEquipmentId", "poNos", "ok", "failedStep", "errorCode", "failureReason"],
+        : ["changeEquipmentId", "poNos", "ok", "originDeclarationFilled", "originDeclarationPoNo", "originDeclarationRemark", "originDeclarationSource", "originDeclarationReason", "failedStep", "errorCode", "failureReason"],
     }),
     "Create Shipment",
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet(cartonRangeCheckRows, {
+      header: cartonRangeCheckRows.length > 0
+        ? undefined
+        : getCartonRangeCheckWorkbookHeaders(),
+    }),
+    "Carton Range Check",
+  );
+
+  const buffer = xlsx.write(workbook, {
+    type: "buffer",
+    bookType: "xlsx",
+  });
+  await writeFile(targetPath, buffer);
+}
+
+async function writeCartonRangeCheckWorkbook(targetPath, result, poRows) {
+  const workbook = xlsx.utils.book_new();
+  const rows = buildCartonRangeCheckWorkbookRows(result, poRows);
+  const worksheet = xlsx.utils.json_to_sheet(rows, {
+    header: rows.length > 0 ? undefined : getCartonRangeCheckWorkbookHeaders(),
+  });
+  worksheet["!cols"] = getCartonRangeCheckWorkbookColumnWidths();
+  worksheet["!autofilter"] = {
+    ref: worksheet["!ref"] || "A1:W1",
+  };
+  xlsx.utils.book_append_sheet(
+    workbook,
+    worksheet,
+    "Cartons核对结果",
   );
 
   const buffer = xlsx.write(workbook, {
@@ -5167,8 +5972,11 @@ function buildPoResultWorkbookRows(result, poRows) {
       rowIndex: row.rowIndex,
       poNo: row.poNo,
       changeEquipmentId: row.changeEquipmentId || "",
+      excelCartons: row.cartons ?? "",
       ok: Boolean(resultRow?.ok),
       changeEquipmentApplyStatus: String(resultRow?.changeEquipmentApplyStatus || ""),
+      cartonRangeMatched: formatCartonRangeMatchedValue(resultRow?.cartonRangeCheck),
+      cartonRangeReason: String(resultRow?.cartonRangeCheck?.reason || ""),
       failedStep: resultRow?.ok ? "" : classifyPoFailureStep(failureReason),
       errorCode: resultRow?.ok ? "" : String(resultRow?.errorCode || ""),
       failureReason,
@@ -5190,12 +5998,168 @@ function buildCreateShipmentWorkbookRows(result) {
       changeEquipmentId: String(item?.changeEquipmentId || "").trim(),
       poNos: Array.isArray(item?.poNos) ? item.poNos.join(", ") : "",
       ok: Boolean(item?.ok),
+      originDeclarationFilled: Boolean(item?.originDeclarationFillResult?.filled),
+      originDeclarationPoNo: String(item?.originDeclarationFillResult?.poNo || ""),
+      originDeclarationRemark: String(item?.originDeclarationFillResult?.remark || ""),
+      originDeclarationSource: String(item?.originDeclarationFillResult?.source || ""),
+      originDeclarationReason: String(item?.originDeclarationFillResult?.reason || ""),
       failedStep: item?.ok ? "" : item?.failedStep || classifyPoFailureStep(failureReason),
       errorCode: item?.ok ? "" : String(item?.errorCode || ""),
       failureReason,
     };
   });
 }
+
+function buildCartonRangeCheckWorkbookRows(result, poRows) {
+  const resultRows = Array.isArray(result?.poResults) ? result.poResults : [];
+  const resultByRowIndex = new Map(resultRows.map((item) => [item.rowIndex, item]));
+
+  return (Array.isArray(poRows) ? poRows : []).map((row) => {
+    const resultRow = resultByRowIndex.get(row.rowIndex);
+    const check = resultRow?.cartonRangeCheck || buildCartonRangeCheckForFailure(
+      row,
+      resultRow?.error || result?.message || "",
+    );
+    const originalRow = row?.originalRow && typeof row.originalRow === "object" ? row.originalRow : {};
+    const resultLabel = formatCartonRangeResultLabel(check);
+    return {
+      "核对结果": resultLabel,
+      "PO NUMBER": row.poNo,
+      "Excel行号": row.rowIndex,
+      "change equipment ID": row.changeEquipmentId || "",
+      "Excel cartons": row.cartons ?? "",
+      "应有箱号": formatExpectedCartonNumbers(row.cartons),
+      "浏览器 Range 原文": String(check?.browserRangeText || ""),
+      "浏览器展开箱号": formatNumberRanges(check?.browserCartonNumbers || []),
+      "浏览器唯一箱数": Number(check?.browserUniqueCartonCount || 0),
+      "缺失箱号": formatNumberRanges(check?.missingCartons || []),
+      "超出箱号": formatNumberRanges(check?.extraCartons || []),
+      "重复/交叉箱号": formatNumberRanges(check?.duplicateCartons || []),
+      "Range格式异常": Array.isArray(check?.invalidRangeValues)
+        ? check.invalidRangeValues.join(", ")
+        : "",
+      "核对说明": String(check?.reason || ""),
+      "提示": String(check?.warning || ""),
+      "浏览器结果行数": Number(check?.rowCount || 0),
+      "匹配PO行数": Number(check?.matchedPoRowCount || 0),
+      "Shipment处理结果": resultRow?.ok ? "成功" : "失败",
+      "Shipment失败原因": resultRow?.ok ? "" : String(resultRow?.error || result?.message || ""),
+      "QTY": readOriginalRowValue(originalRow, ["QTY", "Qty", "qty"]),
+      "PODD DATE": readOriginalRowValue(originalRow, ["PODD DATE", "PODD Date", "PODD"]),
+      "inv number": readOriginalRowValue(originalRow, ["inv number", "Inv Number", "INV NUMBER", "Invoice Number"]),
+      "remark": readOriginalRowValue(originalRow, ["remark", "remarks", "Remark", "Remarks"]),
+    };
+  });
+}
+
+function buildCartonRangeCheckSummaryRows(result, rows) {
+  const rowList = Array.isArray(rows) ? rows : [];
+  const matchedCount = rowList.filter((item) => item.cartonRangeMatched === "是").length;
+  const mismatchCount = rowList.filter((item) => item.cartonRangeMatched === "否").length;
+  const skippedCount = rowList.filter((item) => item.cartonRangeMatched === "未校验").length;
+  return [
+    { metric: "inputFileName", value: String(result?.inputFileName || "") },
+    { metric: "totalPoCount", value: Number(result?.totalPoCount ?? rowList.length) },
+    { metric: "cartonRangeCheckCount", value: matchedCount + mismatchCount },
+    { metric: "cartonRangeMatchedCount", value: matchedCount },
+    { metric: "cartonRangeMismatchCount", value: mismatchCount },
+    { metric: "cartonRangeSkippedCount", value: skippedCount },
+    { metric: "generatedAt", value: String(result?.generatedAt || "") },
+  ];
+}
+
+function getCartonRangeCheckWorkbookHeaders() {
+  return [
+    "核对结果",
+    "PO NUMBER",
+    "Excel行号",
+    "change equipment ID",
+    "Excel cartons",
+    "应有箱号",
+    "浏览器 Range 原文",
+    "浏览器展开箱号",
+    "浏览器唯一箱数",
+    "缺失箱号",
+    "超出箱号",
+    "重复/交叉箱号",
+    "Range格式异常",
+    "核对说明",
+    "提示",
+    "浏览器结果行数",
+    "匹配PO行数",
+    "Shipment处理结果",
+    "Shipment失败原因",
+    "QTY",
+    "PODD DATE",
+    "inv number",
+    "remark",
+  ];
+}
+
+function getCartonRangeCheckWorkbookColumnWidths() {
+  return [
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 10 },
+    { wch: 20 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 34 },
+    { wch: 34 },
+    { wch: 14 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 22 },
+    { wch: 42 },
+    { wch: 28 },
+    { wch: 14 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 40 },
+    { wch: 10 },
+    { wch: 14 },
+    { wch: 18 },
+    { wch: 14 },
+  ];
+}
+
+function formatCartonRangeResultLabel(check) {
+  if (!check || check.rangeMatched === null || check.status === "skipped") {
+    return "未校验";
+  }
+  return check.rangeMatched ? "匹配" : "不匹配";
+}
+
+function formatCartonRangeMatchedValue(check) {
+  if (!check || check.rangeMatched === null || check.status === "skipped") {
+    return "未校验";
+  }
+  return check.rangeMatched ? "是" : "否";
+}
+
+function formatExpectedCartonNumbers(value) {
+  const expectedCartons = normalizeExpectedCartonCount(value);
+  return expectedCartons ? `1-${expectedCartons}` : "";
+}
+
+function readOriginalRowValue(row, keys) {
+  if (!row || typeof row !== "object") {
+    return "";
+  }
+
+  for (const key of Array.isArray(keys) ? keys : []) {
+    const value = row[key];
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+
+  const normalizedKeys = new Set((Array.isArray(keys) ? keys : []).map((key) => normalizeHeaderName(key)));
+  const matchedKey = Object.keys(row).find((key) => normalizedKeys.has(normalizeHeaderName(key)));
+  return matchedKey ? String(row[matchedKey] ?? "").trim() : "";
+}
+
 
 function buildRunSummaryRows(result, poResultRows, createShipmentRows) {
   return [
@@ -5207,12 +6171,32 @@ function buildRunSummaryRows(result, poResultRows, createShipmentRows) {
     { metric: "completedPoCount", value: Number(result?.completedPoCount ?? poResultRows.filter((item) => item.ok).length) },
     { metric: "failedPoCount", value: Number(result?.failedPoCount ?? poResultRows.filter((item) => !item.ok).length) },
     { metric: "businessDataEmptyPoCount", value: Number(result?.businessDataEmptyPoCount ?? poResultRows.filter((item) => isBusinessDataEmptyResult(item)).length) },
+    { metric: "cartonRangeCheckCount", value: Number(result?.cartonRangeCheckCount ?? 0) },
+    { metric: "cartonRangeMatchedCount", value: Number(result?.cartonRangeMatchedCount ?? 0) },
+    { metric: "cartonRangeMismatchCount", value: Number(result?.cartonRangeMismatchCount ?? 0) },
+    { metric: "cartonRangeSkippedCount", value: Number(result?.cartonRangeSkippedCount ?? 0) },
+    { metric: "originDeclarationFillEnabled", value: Boolean(result?.originDeclarationFillEnabled) ? "true" : "false" },
     { metric: "uniqueChangeEquipmentIdCount", value: Number(result?.uniqueChangeEquipmentIdCount ?? 0) },
     { metric: "completedCreateShipmentCount", value: Number(result?.completedCreateShipmentCount ?? createShipmentRows.filter((item) => item.ok).length) },
     { metric: "failedCreateShipmentCount", value: Number(result?.failedCreateShipmentCount ?? createShipmentRows.filter((item) => !item.ok).length) },
     { metric: "businessDataEmptyCreateShipmentCount", value: Number(result?.businessDataEmptyCreateShipmentCount ?? createShipmentRows.filter((item) => isBusinessDataEmptyResult(item)).length) },
     { metric: "finalUrl", value: String(result?.finalUrl || "") },
   ];
+}
+
+function summarizeCartonRangeChecks(rows) {
+  const checks = (Array.isArray(rows) ? rows : [])
+    .map((item) => item?.cartonRangeCheck)
+    .filter(Boolean);
+  const skippedCount = checks.filter((item) => item?.status === "skipped" || item?.rangeMatched === null).length;
+  const matchedCount = checks.filter((item) => item?.rangeMatched === true).length;
+  const mismatchCount = checks.filter((item) => item?.rangeMatched === false).length;
+  return {
+    checkedCount: matchedCount + mismatchCount,
+    matchedCount,
+    mismatchCount,
+    skippedCount,
+  };
 }
 
 function countBusinessDataEmptyResults(rows) {
@@ -5436,8 +6420,10 @@ function extractPoRowsFromWorkbookPayload(body, options = {}) {
       rowIndex: index + 2,
       poNo: extractPoNoValue(row, { isXinlongtaiWorkbook }),
       changeEquipmentId: extractChangeEquipmentIdValue(row),
+      cartons: extractCartonsValue(row),
       issueDate: extractIssueDateValue(row),
       invoiceNumber: extractInvoiceNumberValue(row, { isXinlongtaiWorkbook }),
+      originDeclarationRemark: extractOriginDeclarationRemarkValue(row),
       originalRow: row,
     }))
     .filter((row) => row.poNo);
@@ -5513,6 +6499,33 @@ function extractChangeEquipmentIdValue(row) {
   return equipmentKey ? String(row[equipmentKey] ?? "").trim() : "";
 }
 
+function extractCartonsValue(row) {
+  if (!row || typeof row !== "object") {
+    return "";
+  }
+
+  const preferredKeys = [
+    "cartons",
+    "Cartons",
+    "CARTONS",
+    "carton",
+    "Carton",
+    "CARTON",
+  ];
+  for (const key of preferredKeys) {
+    const value = row[key];
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+
+  const cartonsKey = Object.keys(row).find((key) => {
+    const normalizedKey = normalizeHeaderName(key);
+    return normalizedKey === "cartons" || normalizedKey === "carton";
+  });
+  return cartonsKey ? String(row[cartonsKey] ?? "").trim() : "";
+}
+
 function extractIssueDateValue(row) {
   if (!row || typeof row !== "object") {
     return "";
@@ -5573,6 +6586,34 @@ function extractInvoiceNumberValue(row, options = {}) {
   return invoiceKey ? String(row[invoiceKey] ?? "").trim() : "";
 }
 
+function extractOriginDeclarationRemarkValue(row) {
+  if (!row || typeof row !== "object") {
+    return "";
+  }
+
+  const preferredKeys = [
+    "remark",
+    "Remark",
+    "REMARK",
+    "remarks",
+    "Remarks",
+    "REMARKS",
+  ];
+  for (const key of preferredKeys) {
+    const value = row[key];
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+
+  const remarkKey = Object.keys(row).find((key) => {
+    const normalizedKey = normalizeHeaderName(key);
+    return normalizedKey === "remark"
+      || normalizedKey === "remarks";
+  });
+  return remarkKey ? String(row[remarkKey] ?? "").trim() : "";
+}
+
 function collectCreateShipmentBatches(poRows) {
   const batches = [];
   const batchByEquipmentId = new Map();
@@ -5582,6 +6623,7 @@ function collectCreateShipmentBatches(poRows) {
     const changeEquipmentId = String(row?.changeEquipmentId || "").trim();
     const issueDate = String(row?.issueDate || "").trim();
     const invoiceNumber = String(row?.invoiceNumber || "").trim();
+    const originDeclarationRemark = String(row?.originDeclarationRemark || "").trim();
     if (!poNo || !changeEquipmentId) {
       continue;
     }
@@ -5612,6 +6654,7 @@ function collectCreateShipmentBatches(poRows) {
       changeEquipmentId,
       issueDate,
       invoiceNumber,
+      originDeclarationRemark,
     });
 
     if (issueDate && !batch.issueDate) {
@@ -6165,6 +7208,16 @@ function resolveArtifactDownload(requestPath) {
       filePath: path.join(artifactsDir, "last-failed-po-rows.xlsx"),
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       downloadName: "shipping-last-failed-po-rows.xlsx",
+    },
+    "/artifacts/last-carton-range-check.xlsx": {
+      filePath: path.join(artifactsDir, "last-carton-range-check.xlsx"),
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      downloadName: "shipping-last-carton-range-check.xlsx",
+    },
+    "/api/artifacts/last-carton-range-check.xlsx": {
+      filePath: path.join(artifactsDir, "last-carton-range-check.xlsx"),
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      downloadName: "shipping-last-carton-range-check.xlsx",
     },
   };
 

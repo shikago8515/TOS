@@ -41,6 +41,9 @@ test('retained Infornexus auto-add sessions expose a bottom-right Excel continua
   assert.match(source, /继续上传 Excel/)
   assert.match(source, /async function reopenInfornexusAutoAddSearchFromHome/)
   assert.match(source, /async function clickInfornexusAutoAddRemoveBeforeContinuation/)
+  assert.match(source, /async function tryClickInfornexusAutoAddRemoveOnInitialEntry/)
+  assert.match(source, /async function clickInfornexusAutoAddRemoveLocator/)
+  assert.match(source, /async function tryFindInfornexusAutoAddRemoveLocator/)
   assert.match(source, /async function findInfornexusAutoAddRemoveLocator/)
   assert.match(source, /forceClickLocator\(removeLocator, "Infornexus Auto Add Remove"\)/)
   assert.match(source, /async function runRetainedAutoAddContinuation/)
@@ -56,6 +59,24 @@ test('retained Infornexus auto-add sessions expose a bottom-right Excel continua
   assert(searchCall > removeCall, 'continuation flow should reopen Search after Remove before filling the new Excel')
 })
 
+test('initial Infornexus auto-add run attempts Remove before filling Excel IDs', () => {
+  const source = fs.readFileSync(serverPath, 'utf8')
+  const workflowStart = source.indexOf('async function runInfornexusAutoAddWorkflow')
+  const searchReady = source.indexOf('await waitForInfornexusAutoAddSearchReady(page);', workflowStart)
+  const removeCall = source.indexOf('removeOnInitialEntry = await tryClickInfornexusAutoAddRemoveOnInitialEntry(page, runContext?.inputFileName || "")', searchReady)
+  const reopenCall = source.indexOf('autoAddSearchUrl = await openInfornexusAutoAddSearchPage(page', removeCall)
+  const loopStart = source.indexOf('for (let index = 0; index < idRows.length; index += 1)', removeCall)
+
+  assert.notEqual(workflowStart, -1, 'auto-add workflow should exist')
+  assert.notEqual(searchReady, -1, 'initial run should wait for the Auto Add page before Remove')
+  assert(removeCall > searchReady, 'initial run should try Remove after the Auto Add page is ready')
+  assert(reopenCall > removeCall, 'initial run should reopen the Auto Add page after a clicked Remove')
+  assert(loopStart > removeCall, 'initial run should attempt Remove before filling Excel IDs')
+  assert.match(source, /phase: "initial-remove"/)
+  assert.match(source, /phase: "initial-remove-skipped"/)
+  assert.match(source, /removeOnInitialEntry,/)
+})
+
 test('browser automation status badge is draggable from its title row', () => {
   const source = fs.readFileSync(serverPath, 'utf8')
 
@@ -66,4 +87,22 @@ test('browser automation status badge is draggable from its title row', () => {
   assert.match(source, /pointermove/)
   assert.match(source, /root\.style\.left = `\$\{nextLeft\}px`/)
   assert.match(source, /root\.style\.top = `\$\{nextTop\}px`/)
+})
+
+test('shipping executor ships and self-installs the Infor Nexus Print-Scan-Ship extension', () => {
+  const source = fs.readFileSync(serverPath, 'utf8')
+  const extensionRoot = path.join(
+    path.dirname(serverPath),
+    'infor-nexus-extension',
+    'fkmgjdbgapopggcnkapkodfjeblddieo',
+  )
+
+  assert.equal(fs.existsSync(path.join(extensionRoot, 'manifest.json')), true)
+  assert.equal(fs.existsSync(path.join(extensionRoot, 'background.js')), true)
+  assert.match(source, /function resolveBundledInforNexusExtensionPath/)
+  assert.match(source, /function installInforNexusExtensionFromBundle/)
+  assert.match(source, /copyDirectoryRecursive\(sourceDir, targetDir\)/)
+  assert.match(source, /return bundledResolved/)
+  assert.match(source, /function canUseInforNexusExtensionLaunch/)
+  assert.doesNotMatch(source, /channel === "chrome"/)
 })

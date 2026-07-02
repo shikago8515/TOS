@@ -27,6 +27,9 @@ import {
   showTicketOwnerProgress,
 } from "./progress-overlay.mjs";
 import {
+  getTicketOwnerResumeBaseline,
+} from "./checkpoint.mjs";
+import {
   applyTicketOwnerExcelLookups,
   enrichTicketOwnerRowsWithExcelLookups,
 } from "./excel-lookups.mjs";
@@ -70,6 +73,7 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
     Math.max(maxTicketCount * 8, 25)
   );
   const itemCheckpoint = createTicketOwnerItemCheckpoint(options);
+  const resumeBaseline = getTicketOwnerResumeBaseline(options.checkpointSnapshot || {});
   const requestFirst = options.requestFirst !== false;
   const requestRecorder = requestFirst
     ? createTaskCenterRequestRecorder(page, {
@@ -118,9 +122,12 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
     const requestCandidates = requestFirst
       ? extractTicketOwnerRowsFromRequestRecords(requestRecorder.records)
       : [];
-    const taskCenterTasks = requestFirst
+    let taskCenterTasks = requestFirst
       ? extractTaskCenterTasksFromRequestRecords(requestRecorder.records)
       : [];
+    if (taskCenterTasks.length === 0) {
+      taskCenterTasks = await collectVisibleTaskRows(page, maxAttemptCount * 2);
+    }
     const expectedTicketCount = estimateExpectedTicketCount(taskCenterTasks, maxTicketCount);
     const appSourceDiagnostics = options.diagnoseOnly && options.diagnoseAppSources
       ? await inspectBusinessAppSources(page)
@@ -133,6 +140,9 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
         filteredTotalCount: taskListCounts.filteredCount,
         taskCenterTotalCount: taskListCounts.totalCount,
         requestLookupConcurrency: options.requestLookupConcurrency,
+        resumeBaseline,
+        itemCheckpoint,
+        enrichRow: (row) => applyTicketOwnerExcelLookups(row, excelLookups),
         reportProgress: async (progress) => {
           await reportTicketOwnerProgress(page, options, progress);
         },
@@ -146,7 +156,7 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
     }
 
     if (options.diagnoseOnly) {
-      requestDiagnostics = requestRecorder.summarize();
+      requestDiagnostics = summarizeTicketOwnerRequests(requestRecorder);
       return {
         ok: true,
         diagnoseOnly: true,
@@ -167,30 +177,40 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
       };
     }
 
-    if (options.detailFirst !== true && odataLookup?.rows?.length > 0) {
+    const odataLookupTargetCount = Math.min(expectedTicketCount, maxTicketCount);
+    const odataLookupComplete = odataLookup?.rows?.length > 0 &&
+      (
+        odataLookup.rows.length >= odataLookupTargetCount ||
+        (
+          (odataLookup.unresolvedTicketCount || 0) === 0 &&
+          odataLookup.rows.length >= Math.min(odataLookup.plannedCount || odataLookupTargetCount, odataLookupTargetCount)
+        )
+      );
+
+    if (options.detailFirst !== true && odataLookupComplete) {
       await checkpointTicketOwnerCollectionItems({
         rows: enrichTicketOwnerRowsWithExcelLookups(odataLookup.rows, excelLookups),
         ticketResults: odataLookup.ticketResults,
         failedTickets: odataLookup.failedTickets,
       }, itemCheckpoint, {
-        totalCount: Math.min(expectedTicketCount, odataLookup.rows.length + odataLookup.failedTickets.length),
+        totalCount: odataLookupTargetCount,
       });
       await reportTicketOwnerProgress(page, options, {
         phase: "export",
         message: "正在生成 Excel",
         percent: 96,
-        totalCount: Math.min(expectedTicketCount, odataLookup.rows.length + odataLookup.failedTickets.length),
+        totalCount: odataLookupTargetCount,
         completedCount: odataLookup.rows.length,
         successCount: odataLookup.rows.length,
         failedCount: odataLookup.failedTickets.length,
-        attemptedCount: odataLookup.rows.length + odataLookup.failedTickets.length,
+        attemptedCount: odataLookup.attemptedTicketCount,
       });
-      requestDiagnostics = requestRecorder.summarize();
+      requestDiagnostics = summarizeTicketOwnerRequests(requestRecorder);
       return {
         ok: true,
         rowCount: odataLookup.rows.length,
         failedTicketCount: odataLookup.failedTickets.length,
-        attemptedTicketCount: odataLookup.rows.length + odataLookup.failedTickets.length,
+        attemptedTicketCount: odataLookup.attemptedTicketCount,
         selectedTaskTypes,
         rows: enrichTicketOwnerRowsWithExcelLookups(odataLookup.rows, excelLookups),
         ticketResults: odataLookup.ticketResults,
@@ -213,6 +233,8 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
         timeoutMs,
         excelLookups,
         itemCheckpoint,
+        seedRows: odataLookup?.rows || [],
+        seedTicketResults: odataLookup?.ticketResults || [],
       })
       : null;
 
@@ -225,15 +247,15 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
         completedCount: detailFirstCollection.rows.length,
         successCount: detailFirstCollection.rows.length,
         failedCount: 0,
-        attemptedCount: detailFirstCollection.attemptedTicketCount,
+        attemptedCount: (odataLookup?.attemptedTicketCount || 0) + detailFirstCollection.attemptedTicketCount,
         diagnosticFailedCount: detailFirstCollection.failedTickets.length,
       });
-      requestDiagnostics = requestRecorder.summarize();
+      requestDiagnostics = summarizeTicketOwnerRequests(requestRecorder);
       return {
         ok: true,
         rowCount: detailFirstCollection.rows.length,
         failedTicketCount: 0,
-        attemptedTicketCount: detailFirstCollection.attemptedTicketCount,
+        attemptedTicketCount: (odataLookup?.attemptedTicketCount || 0) + detailFirstCollection.attemptedTicketCount,
         selectedTaskTypes,
         rows: detailFirstCollection.rows,
         ticketResults: detailFirstCollection.ticketResults,
@@ -253,25 +275,25 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
         ticketResults: odataLookup.ticketResults,
         failedTickets: odataLookup.failedTickets,
       }, itemCheckpoint, {
-        totalCount: Math.min(maxTicketCount, odataLookup.rows.length + odataLookup.failedTickets.length),
+        totalCount: odataLookupTargetCount,
       });
       await reportTicketOwnerProgress(page, options, {
         phase: "export",
         message: "正在生成 Excel",
         percent: 96,
-        totalCount: Math.min(maxTicketCount, odataLookup.rows.length + odataLookup.failedTickets.length),
+        totalCount: odataLookupTargetCount,
         completedCount: odataLookup.rows.length,
         successCount: odataLookup.rows.length,
         failedCount: odataLookup.failedTickets.length,
-        attemptedCount: odataLookup.rows.length + odataLookup.failedTickets.length,
+        attemptedCount: odataLookup.attemptedTicketCount,
         diagnosticFailedCount: detailFirstCollection?.failedTickets?.length || 0,
       });
-      requestDiagnostics = requestRecorder.summarize();
+      requestDiagnostics = summarizeTicketOwnerRequests(requestRecorder);
       return {
         ok: true,
         rowCount: odataLookup.rows.length,
         failedTicketCount: odataLookup.failedTickets.length,
-        attemptedTicketCount: odataLookup.rows.length + odataLookup.failedTickets.length,
+        attemptedTicketCount: odataLookup.attemptedTicketCount,
         selectedTaskTypes,
         rows: enrichTicketOwnerRowsWithExcelLookups(odataLookup.rows, excelLookups),
         ticketResults: odataLookup.ticketResults,
@@ -315,7 +337,7 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
         successCount: requestRows.length,
         failedCount: 0,
       });
-      requestDiagnostics = requestRecorder.summarize();
+      requestDiagnostics = summarizeTicketOwnerRequests(requestRecorder);
       return {
         ok: true,
         rowCount: requestRows.length,
@@ -334,10 +356,11 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
 
     const taskCenterUrl = page.url();
 
-    const rows = [];
-    const ticketResults = [];
+    const rows = [...resumeBaseline.rows];
+    const ticketResults = [...resumeBaseline.ticketResults];
     const failedTickets = [];
-    const processedKeys = new Set();
+    const processedKeys = new Set(resumeBaseline.itemKeys || []);
+    let fallbackAttemptedCount = 0;
     let exhaustedVisibleRows = false;
 
     while (rows.length < maxTicketCount && processedKeys.size < maxAttemptCount) {
@@ -366,13 +389,28 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
       const taskKey = buildTaskKey(nextTask);
       processedKeys.add(taskKey);
       if (itemCheckpoint.shouldSkip({ ...nextTask, taskKey })) {
+        if (resumeBaseline.resumedRowCount > 0) {
+          await reportTicketOwnerProgress(page, options, {
+            phase: "resume-skip",
+            message: `已从断点跳过 ${resumeBaseline.resumedRowCount} 条，继续打开剩余详情页`,
+            percent: estimateTicketProgress(rows.length, maxTicketCount),
+            totalCount: maxTicketCount,
+            completedCount: rows.length,
+            successCount: rows.length,
+            failedCount: failedTickets.length,
+            attemptedCount: fallbackAttemptedCount,
+            resumedCount: resumeBaseline.resumedRowCount,
+            pendingCount: Math.max(0, maxTicketCount - rows.length - failedTickets.length),
+          });
+        }
         continue;
       }
+      fallbackAttemptedCount += 1;
 
       try {
         await showTicketOwnerProgress(
           page,
-          `正在打开第 ${processedKeys.size} 个工单`,
+          `正在打开剩余第 ${fallbackAttemptedCount} 个工单`,
           estimateTicketProgress(rows.length, maxTicketCount)
         );
         const selected = await focusTaskRow(page, nextTask);
@@ -420,12 +458,15 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
         ticketResults.push({
           ok: true,
           taskKey,
+          row: ownerRow,
           branchId: ownerRow.branchId,
           caseNumber: ownerRow["Case Number"],
           taskType: ownerRow["Task Type"],
           request: ownerRow.Request,
           poNumber: ownerRow["PO Number"],
           workingNumber: ownerRow["Working Number"],
+          factory: ownerRow.Factory,
+          merch: ownerRow.Merch,
           warnings: ownerRow.warnings,
           claim,
           openInApp: openInApp.summary,
@@ -437,7 +478,7 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
           completedCount: rows.length,
           successCount: rows.length,
           failedCount: failedTickets.length,
-          attemptedCount: processedKeys.size,
+          attemptedCount: fallbackAttemptedCount,
           pendingCount: Math.max(0, maxTicketCount - rows.length - failedTickets.length),
         });
 
@@ -458,7 +499,7 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
           completedCount: rows.length,
           successCount: rows.length,
           failedCount: failedTickets.length,
-          attemptedCount: processedKeys.size,
+          attemptedCount: fallbackAttemptedCount,
           pendingCount: Math.max(0, maxTicketCount - rows.length - failedTickets.length),
         });
         await recoverTaskCenter(page, taskCenterUrl, timeoutMs);
@@ -478,7 +519,7 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
       ok: rows.length > 0,
       rowCount: rows.length,
       failedTicketCount: failedTickets.length,
-      attemptedTicketCount: processedKeys.size,
+      attemptedTicketCount: fallbackAttemptedCount,
       selectedTaskTypes,
       rows,
       ticketResults,
@@ -509,6 +550,10 @@ function extractCompleteRowsFromRequestRecords(records, maxTicketCount) {
     .filter((candidate) => candidate.missingFields.length === 0)
     .map((candidate) => candidate.row)
     .slice(0, maxTicketCount);
+}
+
+function summarizeTicketOwnerRequests(requestRecorder) {
+  return requestRecorder?.summarize?.() || summarizeTaskCenterRequestRecords([]);
 }
 
 async function inspectTaskUiLinks(page, records, options, timeoutMs) {
@@ -852,6 +897,10 @@ async function waitForTaskCenterReady(page, timeoutMs) {
   }
 
   const debug = await collectPageDebug(page);
+  if (isTaskCenterReadyDebug(debug)) {
+    await pageWait(page, 600);
+    return;
+  }
   if (isTaskCenterShellOnly(debug)) {
     const recovered = await recoverTaskCenterReadyFromShell(page, timeoutMs);
 
@@ -909,6 +958,25 @@ async function recoverTaskCenterReadyFromShell(page, timeoutMs) {
     }
   }
   return false;
+}
+
+function isTaskCenterReadyDebug(debug) {
+  const url = String(debug?.url || "");
+  const title = normalizeComparable(debug?.title || "");
+  const bodyText = normalizeText(debug?.bodyTextSnippet || "");
+  const comparableBody = normalizeComparable(bodyText);
+  if (!url.includes("taskcenter-display") || !title.includes("task center")) {
+    return false;
+  }
+  return (
+    comparableBody.includes("task type") ||
+    comparableBody.includes("adapt filters") ||
+    comparableBody.includes("created within") ||
+    comparableBody.includes("due by") ||
+    comparableBody.includes("claim") ||
+    comparableBody.includes("release") ||
+    /\bTasks\s*\(/i.test(bodyText)
+  );
 }
 
 function isTaskCenterShellOnly(debug) {
@@ -1149,26 +1217,64 @@ async function collectTicketOwnerRowsFromDetailPages(page, taskCenterTasks, opti
     DEFAULT_DETAIL_CONCURRENCY,
     normalizePositiveInteger(options.detailConcurrency, DEFAULT_DETAIL_CONCURRENCY)
   );
-  const rows = [];
-  const ticketResults = [];
+  const resumeBaseline = getTicketOwnerResumeBaseline(options.checkpointSnapshot || {});
+  const seedRows = Array.isArray(options.seedRows) ? options.seedRows : [];
+  const seedTicketResults = Array.isArray(options.seedTicketResults) ? options.seedTicketResults : [];
+  const rows = [...resumeBaseline.rows];
+  const ticketResults = [...resumeBaseline.ticketResults];
   const failedTickets = [];
-  const processedKeys = new Set();
+  const processedKeys = new Set(resumeBaseline.itemKeys || []);
+  const seenRowKeys = new Set(rows.map((row) => buildOwnerRowKey(row)).filter(Boolean));
+  const seedIdentityKeys = new Set();
+
+  for (let index = 0; index < seedRows.length; index += 1) {
+    const row = seedRows[index];
+    const result = seedTicketResults[index] || { ok: true, row };
+    const rowKey = buildOwnerRowKey(row);
+    if (!rowKey || seenRowKeys.has(rowKey)) {
+      continue;
+    }
+    seenRowKeys.add(rowKey);
+    rows.push(row);
+    ticketResults.push({ ...result, row, ok: true });
+
+    for (const key of buildProcessedKeysFromOwnerRow(row, result)) {
+      processedKeys.add(key);
+    }
+    const identityKey = buildTaskIdentityKey({
+      caseNumber: row?.["Case Number"] || result.caseNumber,
+      taskType: row?.["Task Type"] || result.taskType,
+    });
+    if (identityKey) {
+      seedIdentityKeys.add(identityKey);
+    }
+  }
+
   const queue = buildDetailTaskQueue(taskCenterTasks, {
     sampleAcrossBranches: options.sampleAcrossBranches === true,
   }).slice(0, maxAttemptCount);
-  const plannedCount = Math.max(1, Math.min(maxTicketCount, queue.length || maxTicketCount));
+  const plannedCount = Math.max(rows.length || 1, Math.min(maxTicketCount, queue.length || maxTicketCount));
   const progressState = {
     totalCount: plannedCount,
-    completedCount: 0,
-    successCount: 0,
+    completedCount: rows.length,
+    successCount: rows.length,
     failedCount: 0,
     attemptedCount: 0,
     diagnosticFailedCount: 0,
+    resumedCount: resumeBaseline.resumedRowCount || 0,
     active: new Map(),
   };
   let nextIndex = 0;
 
-  await emitDetailProgress(page, options, progressState, "正在准备详情页队列", 18);
+  await emitDetailProgress(
+    page,
+    options,
+    progressState,
+    resumeBaseline.resumedRowCount > 0
+      ? `已从断点恢复 ${resumeBaseline.resumedRowCount} 条，正在准备剩余工单队列`
+      : "正在准备详情页队列",
+    18
+  );
 
   async function worker(workerIndex) {
     while (rows.length < maxTicketCount && processedKeys.size < maxAttemptCount) {
@@ -1179,18 +1285,30 @@ async function collectTicketOwnerRowsFromDetailPages(page, taskCenterTasks, opti
       }
 
       const taskKey = buildTaskKey(task);
-      if (processedKeys.has(taskKey)) {
+      if (processedKeys.has(taskKey) || seedIdentityKeys.has(buildTaskIdentityKey(task))) {
         continue;
       }
       processedKeys.add(taskKey);
       if (options.itemCheckpoint?.shouldSkip?.({ ...task, taskKey }) === true) {
+        progressState.completedCount = rows.length;
+        progressState.successCount = rows.length;
+        progressState.pendingCount = Math.max(0, plannedCount - rows.length - failedTickets.length);
+        if (resumeBaseline.resumedRowCount > 0) {
+          await emitDetailProgress(
+            page,
+            options,
+            progressState,
+            `已从断点跳过 ${resumeBaseline.resumedRowCount} 条，继续处理剩余工单`,
+            estimateTicketProgress(progressState.completedCount, plannedCount)
+          );
+        }
         continue;
       }
-      progressState.attemptedCount = processedKeys.size;
+      progressState.attemptedCount += 1;
 
       const displayName = task.caseNumber || task.subject || `worker-${workerIndex + 1}`;
       progressState.active.set(taskKey, displayName);
-      await emitDetailProgress(page, options, progressState, `正在打开第 ${processedKeys.size} 个工单详情`, estimateTicketProgress(progressState.completedCount, plannedCount));
+      await emitDetailProgress(page, options, progressState, `正在打开剩余第 ${progressState.attemptedCount} 个工单详情`, estimateTicketProgress(progressState.completedCount, plannedCount));
 
       const result = await processTicketOwnerDetailTask(page, task, {
         ...options,
@@ -1218,7 +1336,7 @@ async function collectTicketOwnerRowsFromDetailPages(page, taskCenterTasks, opti
         completedCount: rows.length,
         successCount: rows.length,
         failedCount: failedTickets.length,
-        attemptedCount: processedKeys.size,
+        attemptedCount: progressState.attemptedCount,
         pendingCount: Math.max(0, plannedCount - rows.length - failedTickets.length),
       });
 
@@ -1239,7 +1357,8 @@ async function collectTicketOwnerRowsFromDetailPages(page, taskCenterTasks, opti
     rows,
     ticketResults,
     failedTickets,
-    attemptedTicketCount: processedKeys.size,
+    attemptedTicketCount: progressState.attemptedCount,
+    resumedRowCount: resumeBaseline.resumedRowCount || 0,
   };
 }
 
@@ -1366,22 +1485,40 @@ async function processTicketOwnerDetailTask(taskCenterPage, task, options = {}) 
 
     taskPage = await openTaskCenterTaskLink(taskCenterPage, task.uiLink, timeoutMs);
     taskPage.__tosTicketOwnerProgressOverlayEnabled = options.showBrowserProgressOverlay !== false;
-    await showTicketOwnerProgress(
+    await emitDetailProgress(
       taskPage,
-      formatProgressMessage("正在认领并打开详情页", options.progressState),
-      estimateTicketProgress(options.progressState?.completedCount || 0, options.progressState?.totalCount || 1) + 2,
-      progressDetailsFromState(options.progressState)
+      options,
+      options.progressState || {},
+      "正在认领并打开详情页",
+      estimateTicketProgress(options.progressState?.completedCount || 0, options.progressState?.totalCount || 1) + 2
     );
-    claim = await claimTaskIfAvailable(taskPage);
-    openInApp = await openSelectedTaskInApp(taskPage, timeoutMs);
+
+    const directDetailFrame = await findTicketBusinessFrame(taskPage);
+    if (directDetailFrame) {
+      openInApp = {
+        appPage: taskPage,
+        detailFrame: directDetailFrame,
+        summary: {
+          openedIn: "task_inbox_detail",
+          finalUrl: taskPage.url(),
+          title: await safeTitle(taskPage),
+          frameUrl: typeof directDetailFrame.url === "function" ? directDetailFrame.url() : "",
+        },
+      };
+    } else {
+      claim = await claimTaskIfAvailable(taskPage);
+      openInApp = await openSelectedTaskInApp(taskPage, timeoutMs);
+    }
+
     if (openInApp?.appPage) {
       openInApp.appPage.__tosTicketOwnerProgressOverlayEnabled = options.showBrowserProgressOverlay !== false;
     }
-    await showTicketOwnerProgress(
+    await emitDetailProgress(
       openInApp.appPage,
-      formatProgressMessage("正在采集 A/B/C 字段", options.progressState),
-      estimateTicketProgress(options.progressState?.completedCount || 0, options.progressState?.totalCount || 1) + 4,
-      progressDetailsFromState(options.progressState)
+      options,
+      options.progressState || {},
+      "正在采集 A/B/C 字段",
+      estimateTicketProgress(options.progressState?.completedCount || 0, options.progressState?.totalCount || 1) + 4
     );
 
     const detail = await readTicketDetail(openInApp.appPage, task, timeoutMs, openInApp.detailFrame);
@@ -1408,12 +1545,15 @@ async function processTicketOwnerDetailTask(taskCenterPage, task, options = {}) 
         ok: true,
         detailFirst: true,
         taskKey,
+        row: ownerRow,
         branchId: ownerRow.branchId,
         caseNumber: ownerRow["Case Number"],
         taskType: ownerRow["Task Type"],
         request: ownerRow.Request,
         poNumber: ownerRow["PO Number"],
         workingNumber: ownerRow["Working Number"],
+        factory: ownerRow.Factory,
+        merch: ownerRow.Merch,
         source: resolved.lookup?.source || "ticket-detail-page",
         warnings: ownerRow.warnings || [],
         claim,
@@ -1721,13 +1861,18 @@ async function waitForOpenInAppTarget(page, beforePages, beforeUrl, timeoutMs) {
 
 async function waitForTaskInboxDetailReady(page, timeoutMs) {
   const waitMs = Math.min(Math.max(timeoutMs, 12000), 25000);
-  const ready = await waitFor(async () => await anyVisible(page, [
-    "#application-taskcenter-display-component---detail--openTaskButton",
-    "button:has-text(\"Open in App\")",
-    "[role='button']:has-text(\"Open in App\")",
-    "button:has-text(\"Claim\")",
-    "button:has-text(\"Release\")",
-  ]), waitMs, 350).then(() => true).catch(() => false);
+  const ready = await waitFor(async () => {
+    if (await findTicketBusinessFrame(page)) {
+      return true;
+    }
+    return await anyVisible(page, [
+      "#application-taskcenter-display-component---detail--openTaskButton",
+      "button:has-text(\"Open in App\")",
+      "[role='button']:has-text(\"Open in App\")",
+      "button:has-text(\"Claim\")",
+      "button:has-text(\"Release\")",
+    ]);
+  }, waitMs, 350).then(() => true).catch(() => false);
 
   if (!ready) {
     const debug = await collectPageDebug(page);
@@ -2360,13 +2505,50 @@ function rowMatchesTask(text, task) {
 }
 
 function buildTaskKey(task) {
+  const caseNumber = normalizeText(task.caseNumber);
+  const taskType = normalizeText(task.taskType || task.subject);
+  const request = normalizeText(task.request);
+  const poNumber = normalizeText(task.poNumber);
+  const uiLink = normalizeText(task.uiLink);
+  if (caseNumber && taskType) {
+    return [caseNumber, taskType, request, poNumber].filter(Boolean).join("|");
+  }
+  if (caseNumber) {
+    return [caseNumber, taskType, uiLink].filter(Boolean).join("|");
+  }
   return [
-    task.caseNumber,
-    task.taskType,
-    task.request,
-    task.poNumber,
+    uiLink,
+    taskType,
     normalizeText(task.text).slice(0, 120),
-  ].map(normalizeText).join("|");
+  ].filter(Boolean).join("|");
+}
+
+function buildOwnerRowKey(row = {}) {
+  const caseNumber = normalizeText(row?.["Case Number"]);
+  const taskType = normalizeText(row?.["Task Type"]);
+  const request = normalizeText(row?.Request);
+  const poNumber = normalizeText(row?.["PO Number"]);
+  const workingNumber = normalizeText(row?.["Working Number"]);
+  return [caseNumber, taskType, request, poNumber, workingNumber].filter(Boolean).join("|");
+}
+
+function buildProcessedKeysFromOwnerRow(row = {}, result = {}) {
+  const caseNumber = normalizeText(row?.["Case Number"] || result.caseNumber);
+  const taskType = normalizeText(row?.["Task Type"] || result.taskType);
+  const request = normalizeText(row?.Request || result.request);
+  const poNumber = normalizeText(row?.["PO Number"] || result.poNumber);
+  return [
+    normalizeText(result.taskKey),
+    [caseNumber, taskType, request, poNumber].filter(Boolean).join("|"),
+    [caseNumber, taskType, request].filter(Boolean).join("|"),
+    [caseNumber, taskType].filter(Boolean).join("|"),
+  ].filter(Boolean);
+}
+
+function buildTaskIdentityKey(task = {}) {
+  const caseNumber = normalizeText(task.caseNumber || task["Case Number"]);
+  const taskType = normalizeText(task.taskType || task["Task Type"] || task.subject);
+  return [caseNumber, taskType].filter(Boolean).join("|");
 }
 
 function isTaskCenterDetailUrl(url) {
