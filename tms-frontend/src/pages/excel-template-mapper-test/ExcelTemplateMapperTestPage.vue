@@ -149,6 +149,7 @@
               v-if="summaryItems.length > 0"
               :items="summaryItems"
               :status="success ? 'success' : 'error'"
+              :warnings="historyWarnings"
             />
           </template>
         </ExcelUploadSection>
@@ -180,7 +181,7 @@ import {
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
-import { useProcessHistoryResultDownload } from '../../shared/process/useProcessHistoryResultDownload'
+import { useProcessHistoryResultPageLink } from '../../shared/process/useProcessHistoryResultPageLink'
 import {
   buildExcelFileGroups,
   ExcelProcessPageShell,
@@ -239,22 +240,17 @@ const messageTone = ref<ExcelNoticeTone>('info')
 const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
+const historyWarnings = ref<string[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(excelTemplateMapperModuleId),
 )
 
 const {
-  latestHistoryResultRecord,
   historyResultToolbarTitle,
-  downloadLatestHistoryResult,
-} = useProcessHistoryResultDownload({
-  historyRecords,
+  openHistoryResultPage,
+} = useProcessHistoryResultPageLink({
+  moduleId: excelTemplateMapperModuleId,
   processing,
-  onError: (nextMessage) => {
-    success.value = false
-    messageTone.value = 'error'
-    message.value = nextMessage
-  },
 })
 
 const sourceFile = computed(() => sourceFiles.value[0] ?? null)
@@ -339,9 +335,9 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     id: 'download-history-result',
     label: '下载历史结果',
     icon: 'download-cloud',
-    disabled: processing.value || inspecting.value || !latestHistoryResultRecord.value,
+    disabled: processing.value || inspecting.value,
     title: historyResultToolbarTitle.value,
-    onClick: downloadLatestHistoryResult,
+    onClick: openHistoryResultPage,
   },
   {
     id: 'process',
@@ -586,12 +582,14 @@ function clearResultState(): void {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  historyWarnings.value = []
 }
 
 function showWarning(nextMessage: string): void {
   messageTone.value = 'warning'
   message.value = nextMessage
   success.value = false
+  historyWarnings.value = []
 }
 
 function sourceSampleValue(sourceColumn: number): string {
@@ -605,8 +603,10 @@ function recordHistory(
   inputFiles: string[],
   metadata: BackendProcessHistoryMetadata = {},
 ): void {
+  const historyMetadata = readProcessHistoryMetadata(metadata)
+  historyWarnings.value = historyMetadata.historyWarnings ?? []
   historyRecords.value = appendModuleHistory({
-    ...readProcessHistoryMetadata(metadata),
+    ...historyMetadata,
     moduleId: excelTemplateMapperModuleId,
     moduleName: excelTemplateMapperModuleName,
     status,

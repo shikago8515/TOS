@@ -194,8 +194,8 @@ DEFAULT_TOS_MODULES: tuple[dict[str, Any], ...] = (
         "module_id": "jane-bom-compare",
         "owner_key": "jane",
         "owner_name": "Jane",
-        "module_name": "BOM 核对",
-        "module_name_en": "BOM Compare",
+        "module_name": "PRODUCTION 核对",
+        "module_name_en": "PRODUCTION Compare",
         "module_type": "excel",
         "page_path": "/jane-bom-compare",
     },
@@ -1314,7 +1314,7 @@ def get_process_history_record(record_id: str) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT ar.id, ar.activity_id AS record_id, ar.module_id,
+                SELECT ar.id, ar.activity_id AS record_id, ar.module_id, ar.person_id,
                        ar.activity_name AS module_name, ar.status, ar.duration_ms,
                        ar.message,
                        JSON_EXTRACT(ar.metadata_json, '$.inputFiles') AS input_files_json,
@@ -1344,6 +1344,10 @@ def list_process_history_records(
     module_ids: list[str] | None = None,
     *,
     status: str | None = None,
+    person_id: str | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    downloadable_only: bool = False,
     limit: int = 80,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
@@ -1353,13 +1357,17 @@ def list_process_history_records(
     where_clause, params = _build_process_history_filters(
         module_ids=module_ids,
         status=status,
+        person_id=person_id,
+        created_from=created_from,
+        created_to=created_to,
+        downloadable_only=downloadable_only,
     )
     params.extend([safe_limit, safe_offset])
     with mysql_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
-                SELECT ar.id, ar.activity_id AS record_id, ar.module_id,
+                SELECT ar.id, ar.activity_id AS record_id, ar.module_id, ar.person_id,
                        ar.activity_name AS module_name, ar.status, ar.duration_ms,
                        ar.message,
                        JSON_EXTRACT(ar.metadata_json, '$.inputFiles') AS input_files_json,
@@ -1390,11 +1398,19 @@ def count_process_history_records(
     module_ids: list[str] | None = None,
     *,
     status: str | None = None,
+    person_id: str | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    downloadable_only: bool = False,
 ) -> int:
     ensure_schema()
     where_clause, params = _build_process_history_filters(
         module_ids=module_ids,
         status=status,
+        person_id=person_id,
+        created_from=created_from,
+        created_to=created_to,
+        downloadable_only=downloadable_only,
     )
     with mysql_connection() as connection:
         with connection.cursor() as cursor:
@@ -1414,6 +1430,10 @@ def _build_process_history_filters(
     *,
     module_ids: list[str] | None = None,
     status: str | None = None,
+    person_id: str | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    downloadable_only: bool = False,
 ) -> tuple[str, list[Any]]:
     conditions: list[str] = []
     params: list[Any] = []
@@ -1431,6 +1451,27 @@ def _build_process_history_filters(
     if status:
         conditions.append("ar.status = %s")
         params.append(status)
+    if person_id:
+        conditions.append("ar.person_id = %s")
+        params.append(person_id)
+    if created_from:
+        conditions.append("ar.created_at >= %s")
+        params.append(created_from)
+    if created_to:
+        conditions.append("ar.created_at <= %s")
+        params.append(created_to)
+    if downloadable_only:
+        conditions.append(
+            """
+            EXISTS (
+              SELECT 1
+              FROM tos_activity_files af_download
+              WHERE af_download.activity_id = ar.activity_id
+                AND af_download.file_role = 'result_file'
+                AND af_download.storage_provider = 'minio'
+            )
+            """,
+        )
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     return where_clause, params
 

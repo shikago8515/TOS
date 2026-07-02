@@ -2,7 +2,7 @@ import type { ProcessSummaryItem } from '../../shared/process/processHistory'
 import type { JaneBomCompareProcessResponse } from './janeBomCompareApi'
 
 export const janeBomCompareModuleId = 'excel-jane-bom-compare'
-export const janeBomCompareModuleName = 'Jane - BOM核对'
+export const janeBomCompareModuleName = 'Jane - PRODUCTION核对'
 
 export interface JaneBomCompareInputCounts {
   production: number
@@ -36,17 +36,26 @@ export function buildJaneBomCompareSummary(
       value: String(response.checked_row_count ?? '-'),
     },
     {
-      label: '红色单元格',
-      value: String(response.mismatch_cell_count ?? '-'),
-      note: '不含新增缺失行的整行标红',
+      label: 'C-F 不一致组',
+      value: String(response.inconsistent_group_count ?? '-'),
+      note: '按 Style ID + Production Lot ID 分组检查 C-D-E-F',
     },
     {
-      label: '新增缺失行',
+      label: '多出材料行',
+      value: String(response.extra_material_row_count ?? '-'),
+      note: 'Production 有但 BOM汇总 未使用的材料行会加删除线',
+    },
+    {
+      label: '补入材料行',
       value: String(response.missing_row_count ?? '-'),
     },
     {
-      label: '无对应 BOM 行',
-      value: String(response.no_bom_key_count ?? '-'),
+      label: '料率计算行',
+      value: String(response.rate_row_count ?? '-'),
+    },
+    {
+      label: '红色单元格',
+      value: String(response.mismatch_cell_count ?? '-'),
     },
     {
       label: '结果文件',

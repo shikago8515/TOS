@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   findHomeModuleByActivityId,
   findHomePersonByModuleId,
+  homeDashboardHistoryModules,
   homePeople,
 } from './homeModel'
 
@@ -31,5 +32,32 @@ describe('homeModel', () => {
     expect(module?.routeName).toBe('eric-infornexus')
     expect(person?.label).toBe('Eric')
     expect(legacyModule).toBeUndefined()
+  })
+
+  it('resolves process history module ids to the owning home person and catalog route', () => {
+    const cases = [
+      ['pdf-draft-packing-compare', '/draft-packing-compare', 'Jessica'],
+      ['excel-jane-bom-compare', '/jane-bom-compare', 'Jane'],
+      ['excel-sophia-tina', '/sophia-tina', 'Sophia'],
+      ['excel-tms-finance-work-sales', '/tms-finance-work-sales', 'Lucia'],
+    ] as const
+
+    for (const [historyModuleId, path, personLabel] of cases) {
+      expect(findHomeModuleByActivityId(historyModuleId)?.path).toBe(path)
+      expect(findHomePersonByModuleId(historyModuleId)?.label).toBe(personLabel)
+    }
+  })
+
+  it('uses history module ids when collecting process-history usage for the dashboard', () => {
+    const historyModuleIds = homeDashboardHistoryModules.map((module) => module.id)
+
+    expect(historyModuleIds).toContain('pdf-draft-packing-compare')
+    expect(historyModuleIds).toContain('excel-jane-bom-compare')
+    expect(historyModuleIds).toContain('excel-sophia-tina')
+    expect(historyModuleIds).toContain('excel-tms-finance-work-sales')
+    expect(historyModuleIds).not.toContain('draft-packing-compare')
+    expect(historyModuleIds).not.toContain('jane-bom-compare')
+    expect(historyModuleIds).not.toContain('sophia-tina')
+    expect(historyModuleIds).not.toContain('tms-finance-work-sales')
   })
 })

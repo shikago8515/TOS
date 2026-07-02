@@ -1,19 +1,20 @@
 # -*- coding: utf-8 -*-
 """
-Jane BOM 核对模块。
+Jane PRODUCTION 核对模块。
 
-上传 T1 PRODUCTION 和 Jane-BOM 汇总表后，按 Style ID + Recording Facility ID
-对应 BOM 汇总的 Articles + Factory，核对材料号和供应商，并在原表上用红色标出差异。
+上传 T1 PRODUCTION 和 Jane-BOM 汇总表后，按 Style ID + Production Lot ID
+分组检查生产表一致性，并用 BOM 汇总的 Articles + Factory 材料集合核对多料、缺料。
 """
 
 import copy
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import openpyxl
 from openpyxl.styles import PatternFill
+from openpyxl.utils import get_column_letter
 
 from utils.file_utils import ensure_dir
 
@@ -32,17 +33,29 @@ class BomMaterial:
     source_row: int
 
 
+@dataclass
+class ProductionGroup:
+    """生产表中同 Style ID + Production Lot ID 的行集合。"""
+
+    key: Tuple[str, str]
+    rows: List[int]
+
+
 class JaneBomCompareModule:
-    """Jane-BOM 核对业务逻辑。"""
+    """Jane PRODUCTION 核对业务逻辑。"""
 
     MAIN_COMPONENT_SECTION = "MAIN COMPONENT"
     NO_FILL = PatternFill(fill_type=None)
     RED_FILL = PatternFill("solid", fgColor="FFFFC7CE")
     REQUIRED_PRODUCTION_COLUMNS = [
         "Style ID",
+        "Production Lot ID",
+        "Production Quantity (in Units)",
+        "Units",
+        "Production Date",
         "Recording Facility ID",
         "Input Material UID/ID",
-        "Seller Facility ID",
+        "Input Lot Quantity Used (In Units)",
     ]
     REQUIRED_BOM_COLUMNS = [
         "Part Group #",
@@ -54,7 +67,6 @@ class JaneBomCompareModule:
         "Factory",
         "Articles",
         "Material Reference #",
-        "Group Code Supplier",
     ]
     DIAGNOSTIC_HEADERS = [
         ("check result", "Check Result"),
@@ -63,11 +75,21 @@ class JaneBomCompareModule:
         ("bom source file", "BOM Source File"),
         ("bom source row", "BOM Source Row"),
     ]
+    CONSISTENCY_COLUMNS = [
+        ("production quantity (in units)", "Production Quantity (in Units)"),
+        ("units", "Units"),
+        ("production date", "Production Date"),
+        ("recording facility id", "Recording Facility ID"),
+    ]
 
     @staticmethod
     def _normalize_text(value: Any) -> str:
         if value is None:
             return ""
+        if isinstance(value, datetime):
+            return value.date().isoformat()
+        if isinstance(value, date):
+            return value.isoformat()
         if isinstance(value, float) and value.is_integer():
             return str(int(value))
         text = str(value).strip()
@@ -113,6 +135,12 @@ class JaneBomCompareModule:
             return parts[1]
         return ""
 
+    def _read_optional_cell_text(self, ws, row_index: int, columns: Dict[str, int], key: str) -> str:
+        column_index = columns.get(key)
+        if not column_index:
+            return ""
+        return self._normalize_text(ws.cell(row=row_index, column=column_index).value)
+
     def _read_bom_materials(self, bom_path: str) -> List[BomMaterial]:
         wb = openpyxl.load_workbook(bom_path, data_only=False)
         ws = wb.active
@@ -142,7 +170,7 @@ class JaneBomCompareModule:
             raise ValueError(f"{os.path.basename(bom_path)} 未识别到 Article/Color 列")
 
         rows: List[BomMaterial] = []
-        seen: Set[Tuple[str, str, str, str]] = set()
+        seen: Set[Tuple[str, str, str]] = set()
         current_section = ""
         main_component_started = False
         for row_index in range(header_row + 1, ws.max_row + 1):
@@ -178,7 +206,6 @@ class JaneBomCompareModule:
                     self._normalize_key(article),
                     self._normalize_key(factory),
                     self._normalize_key(material_ref),
-                    self._normalize_key(group_code_supplier),
                 )
                 if key in seen:
                     continue
@@ -208,7 +235,7 @@ class JaneBomCompareModule:
         )
 
         rows: List[BomMaterial] = []
-        seen: Set[Tuple[str, str, str, str]] = set()
+        seen: Set[Tuple[str, str, str]] = set()
         for row_index in range(header_row + 1, ws.max_row + 1):
             article = self._normalize_text(
                 ws.cell(row=row_index, column=header_columns["articles"]).value,
@@ -219,9 +246,6 @@ class JaneBomCompareModule:
             material_ref = self._normalize_text(
                 ws.cell(row=row_index, column=header_columns["material reference #"]).value,
             )
-            group_code_supplier = self._normalize_text(
-                ws.cell(row=row_index, column=header_columns["group code supplier"]).value,
-            )
             if not article or not factory or not material_ref:
                 continue
 
@@ -229,7 +253,6 @@ class JaneBomCompareModule:
                 self._normalize_key(article),
                 self._normalize_key(factory),
                 self._normalize_key(material_ref),
-                self._normalize_key(group_code_supplier),
             )
             if key in seen:
                 continue
@@ -239,17 +262,14 @@ class JaneBomCompareModule:
                     article=article,
                     factory=factory,
                     material_ref=material_ref,
-                    group_code_supplier=group_code_supplier,
-                    working=self._normalize_text(
-                        ws.cell(row=row_index, column=header_columns.get("working #", 0)).value,
-                    )
-                    if "working #" in header_columns
-                    else "",
-                    season=self._normalize_text(
-                        ws.cell(row=row_index, column=header_columns.get("season", 0)).value,
-                    )
-                    if "season" in header_columns
-                    else "",
+                    group_code_supplier=self._read_optional_cell_text(
+                        ws,
+                        row_index,
+                        header_columns,
+                        "group code supplier",
+                    ),
+                    working=self._read_optional_cell_text(ws, row_index, header_columns, "working #"),
+                    season=self._read_optional_cell_text(ws, row_index, header_columns, "season"),
                     source_file=os.path.basename(bom_summary_path),
                     source_row=row_index,
                 ),
@@ -343,17 +363,9 @@ class JaneBomCompareModule:
             ws,
             header_row,
             columns,
-            "input material uid/id",
-            "correct material reference #",
-            "Correct Material Reference # (BOM)",
-        )
-        self._insert_column_after(
-            ws,
-            header_row,
-            columns,
-            "seller facility id",
-            "correct group code supplier",
-            "Correct Group Code Supplier (BOM)",
+            "input lot quantity used (in units)",
+            "料率",
+            "料率",
         )
         for key, header in self.DIAGNOSTIC_HEADERS:
             self._append_column(ws, header_row, columns, key, header)
@@ -397,49 +409,283 @@ class JaneBomCompareModule:
             unique_values.append(text)
         return " / ".join(unique_values)
 
-    def _append_missing_row(
+    def _set_row_strike(self, ws, row_index: int, max_column: int) -> None:
+        for column_index in range(1, max_column + 1):
+            cell = ws.cell(row=row_index, column=column_index)
+            font = copy.copy(cell.font)
+            font.strike = True
+            cell.font = font
+
+    def _build_expected_material_map(
+        self,
+        bom_paths: Sequence[str],
+        is_summary_input: bool,
+        logs: List[str],
+    ) -> Tuple[Dict[Tuple[str, str], List[BomMaterial]], int]:
+        expected_by_key: Dict[Tuple[str, str], List[BomMaterial]] = {}
+        bom_material_row_count = 0
+        for bom_path in bom_paths:
+            bom_materials = (
+                self._read_bom_summary_materials(bom_path)
+                if is_summary_input
+                else self._read_bom_materials(bom_path)
+            )
+            source_row_count = len({material.source_row for material in bom_materials})
+            bom_material_row_count += source_row_count
+            if is_summary_input:
+                logs.append(
+                    f"{os.path.basename(bom_path)} 读取 BOM汇总："
+                    f"{source_row_count} 个有效行，{len(bom_materials)} 条 Article/Factory 映射",
+                )
+            else:
+                logs.append(
+                    f"{os.path.basename(bom_path)} 读取 MAIN COMPONENT："
+                    f"{source_row_count} 个有效源行，{len(bom_materials)} 条 Article 映射",
+                )
+            for material in bom_materials:
+                key = (self._normalize_key(material.article), self._normalize_key(material.factory))
+                expected_by_key.setdefault(key, []).append(material)
+        return expected_by_key, bom_material_row_count
+
+    def _build_production_groups(
         self,
         ws,
-        material: BomMaterial,
-        template_row: Optional[int],
+        header_row: int,
+        columns: Dict[str, int],
+    ) -> Dict[Tuple[str, str], ProductionGroup]:
+        groups: Dict[Tuple[str, str], ProductionGroup] = {}
+        style_col = columns["style id"]
+        lot_col = columns["production lot id"]
+        material_col = columns["input material uid/id"]
+        factory_col = columns["recording facility id"]
+        for row_index in range(header_row + 1, ws.max_row + 1):
+            style = self._normalize_key(ws.cell(row=row_index, column=style_col).value)
+            lot = self._normalize_key(ws.cell(row=row_index, column=lot_col).value)
+            material = self._normalize_key(ws.cell(row=row_index, column=material_col).value)
+            factory = self._normalize_key(ws.cell(row=row_index, column=factory_col).value)
+            if not style and not lot and not material and not factory:
+                continue
+            key = (style, lot)
+            groups.setdefault(key, ProductionGroup(key=key, rows=[])).rows.append(row_index)
+        return groups
+
+    def _check_group_consistency(
+        self,
+        ws,
+        group: ProductionGroup,
+        columns: Dict[str, int],
+    ) -> Tuple[int, int]:
+        inconsistent_group = 0
+        red_cell_count = 0
+        group_has_inconsistency = False
+        for column_key, header in self.CONSISTENCY_COLUMNS:
+            values: Dict[str, Any] = {}
+            for row_index in group.rows:
+                cell_value = ws.cell(row=row_index, column=columns[column_key]).value
+                normalized = self._normalize_key(cell_value)
+                values.setdefault(normalized, cell_value)
+            non_empty_values = [value for value in values if value]
+            if len(set(non_empty_values)) <= 1:
+                continue
+
+            group_has_inconsistency = True
+            value_text = self._join_unique(values.values())
+            for row_index in group.rows:
+                self._mark_red(ws.cell(row=row_index, column=columns[column_key]))
+                self._set_row_diagnostic(
+                    ws,
+                    row_index,
+                    columns,
+                    "需核对",
+                    "Production同组字段不一致",
+                    f"同 Style ID + Production Lot ID 下 {header} 不一致：{value_text}",
+                )
+                red_cell_count += 1
+
+        if group_has_inconsistency:
+            inconsistent_group = 1
+        return inconsistent_group, red_cell_count
+
+    def _expected_materials_for_group(
+        self,
+        ws,
+        group: ProductionGroup,
+        columns: Dict[str, int],
+        expected_by_key: Dict[Tuple[str, str], List[BomMaterial]],
+    ) -> List[BomMaterial]:
+        style_key = self._normalize_key(ws.cell(row=group.rows[0], column=columns["style id"]).value)
+        factories: List[str] = []
+        seen_factories: Set[str] = set()
+        for row_index in group.rows:
+            factory = self._normalize_key(
+                self._parse_factory_code(
+                    ws.cell(row=row_index, column=columns["recording facility id"]).value,
+                ),
+            )
+            if not factory or factory in seen_factories:
+                continue
+            seen_factories.add(factory)
+            factories.append(factory)
+
+        materials: List[BomMaterial] = []
+        seen_materials: Set[str] = set()
+        for factory in factories:
+            for material in expected_by_key.get((style_key, factory), []):
+                material_key = self._normalize_key(material.material_ref)
+                if material_key in seen_materials:
+                    continue
+                seen_materials.add(material_key)
+                materials.append(material)
+        return materials
+
+    def _mark_no_bom_group(
+        self,
+        ws,
+        group: ProductionGroup,
+        columns: Dict[str, int],
+    ) -> int:
+        red_cell_count = 0
+        for row_index in group.rows:
+            for column_key in ["style id", "recording facility id"]:
+                self._mark_red(ws.cell(row=row_index, column=columns[column_key]))
+                red_cell_count += 1
+            self._set_row_diagnostic(
+                ws,
+                row_index,
+                columns,
+                "需核对",
+                "Production存在，BOM汇总缺失",
+                "Production 有该 Style ID/Recording Facility ID，但 BOM汇总 未找到对应 Articles/Factory。",
+            )
+        return red_cell_count
+
+    def _find_extra_and_missing_materials(
+        self,
+        ws,
+        group: ProductionGroup,
+        columns: Dict[str, int],
+        expected_materials: Sequence[BomMaterial],
+    ) -> Tuple[Dict[str, List[int]], List[BomMaterial]]:
+        expected_by_material = {
+            self._normalize_key(material.material_ref): material
+            for material in expected_materials
+            if self._normalize_key(material.material_ref)
+        }
+        production_rows_by_material: Dict[str, List[int]] = {}
+        for row_index in group.rows:
+            material_key = self._normalize_key(
+                ws.cell(row=row_index, column=columns["input material uid/id"]).value,
+            )
+            if material_key:
+                production_rows_by_material.setdefault(material_key, []).append(row_index)
+
+        extra_rows = {
+            material_key: rows
+            for material_key, rows in production_rows_by_material.items()
+            if material_key not in expected_by_material
+        }
+        missing_materials = [
+            material
+            for material_key, material in expected_by_material.items()
+            if material_key not in production_rows_by_material
+        ]
+        return extra_rows, missing_materials
+
+    def _insert_missing_material_rows(
+        self,
+        ws,
+        groups_with_missing: Sequence[Tuple[ProductionGroup, Sequence[BomMaterial]]],
         columns: Dict[str, int],
         max_column: int,
+    ) -> Set[int]:
+        inserted_rows: Set[int] = set()
+        for group, materials in sorted(
+            groups_with_missing,
+            key=lambda item: max(item[0].rows),
+            reverse=True,
+        ):
+            template_row = max(group.rows)
+            insert_at = template_row + 1
+            for material in sorted(materials, key=lambda item: self._normalize_key(item.material_ref)):
+                ws.insert_rows(insert_at)
+                self._copy_row(ws, template_row, insert_at, max_column, copy_values=False)
+
+                for column_key in [
+                    "style id",
+                    "production lot id",
+                    "production quantity (in units)",
+                    "units",
+                    "production date",
+                ]:
+                    ws.cell(
+                        row=insert_at,
+                        column=columns[column_key],
+                        value=ws.cell(row=template_row, column=columns[column_key]).value,
+                    )
+                ws.cell(row=insert_at, column=columns["recording facility id"], value=material.factory)
+                ws.cell(row=insert_at, column=columns["input material uid/id"], value=material.material_ref)
+                ws.cell(row=insert_at, column=columns["input lot quantity used (in units)"], value=None)
+                ws.cell(row=insert_at, column=columns["料率"], value=None)
+
+                for column_key in ["recording facility id", "input material uid/id"]:
+                    self._mark_red(ws.cell(row=insert_at, column=columns[column_key]))
+                self._set_row_diagnostic(
+                    ws,
+                    insert_at,
+                    columns,
+                    "需补入",
+                    "BOM汇总存在，Production缺少材料",
+                    f"Production 缺少材料：{material.material_ref}，Factory：{material.factory}",
+                    material,
+                )
+                inserted_rows.add(insert_at)
+                insert_at += 1
+        return inserted_rows
+
+    def _apply_rate_formulas(
+        self,
+        ws,
+        header_row: int,
+        columns: Dict[str, int],
+        inserted_rows: Set[int],
     ) -> int:
-        target_row = ws.max_row + 1
-        if template_row:
-            self._copy_row(ws, template_row, target_row, max_column, copy_values=False)
-
-        ws.cell(target_row, columns["style id"], material.article)
-        ws.cell(target_row, columns["recording facility id"], material.factory)
-        ws.cell(target_row, columns["input material uid/id"], material.material_ref)
-        ws.cell(target_row, columns["seller facility id"], material.group_code_supplier)
-
-        optional_values = {
-            "working": material.working,
-            "season": material.season,
-        }
-        for column_name, value in optional_values.items():
-            if column_name in columns and value:
-                ws.cell(target_row, columns[column_name], value)
-
-        for column_name in [
-            "style id",
-            "recording facility id",
-            "input material uid/id",
-            "seller facility id",
-        ]:
-            self._mark_red(ws.cell(row=target_row, column=columns[column_name]))
-        self._set_row_diagnostic(
-            ws,
-            target_row,
-            columns,
-            "需补入",
-            "BOM存在，T1 PRODUCTION缺失",
-            "BOM MAIN COMPONENT 存在该 Article/Factory/Material/Supplier，T1 PRODUCTION 缺少对应材料行。",
-            material,
-        )
-
-        return target_row
+        rate_col = columns["料率"]
+        used_col_letter = get_column_letter(columns["input lot quantity used (in units)"])
+        style_col_letter = get_column_letter(columns["style id"])
+        lot_col_letter = get_column_letter(columns["production lot id"])
+        material_col_letter = get_column_letter(columns["input material uid/id"])
+        quantity_col_letter = get_column_letter(columns["production quantity (in units)"])
+        rate_count = 0
+        for row_index in range(header_row + 1, ws.max_row + 1):
+            rate_cell = ws.cell(row=row_index, column=rate_col)
+            rate_cell.number_format = "0.0000"
+            if row_index in inserted_rows:
+                rate_cell.value = None
+                continue
+            check_result = self._normalize_text(
+                ws.cell(row=row_index, column=columns["check result"]).value,
+            )
+            if check_result == "需补入":
+                rate_cell.value = None
+                continue
+            material = self._normalize_text(
+                ws.cell(row=row_index, column=columns["input material uid/id"]).value,
+            )
+            quantity = self._normalize_text(
+                ws.cell(row=row_index, column=columns["production quantity (in units)"]).value,
+            )
+            if not material or not quantity:
+                rate_cell.value = None
+                continue
+            rate_cell.value = (
+                f'=IFERROR(SUMIFS(${used_col_letter}:${used_col_letter},'
+                f'${style_col_letter}:${style_col_letter},{style_col_letter}{row_index},'
+                f'${lot_col_letter}:${lot_col_letter},{lot_col_letter}{row_index},'
+                f'${material_col_letter}:${material_col_letter},{material_col_letter}{row_index})/'
+                f'{quantity_col_letter}{row_index},"")'
+            )
+            rate_count += 1
+        return rate_count
 
     def process_reports(
         self,
@@ -479,30 +725,11 @@ class JaneBomCompareModule:
             max_column = production_ws.max_column
             self._clear_data_fills(production_ws, header_row, max_column)
 
-            expected_by_key: Dict[Tuple[str, str], List[BomMaterial]] = {}
-            bom_material_row_count = 0
-            for bom_path in bom_paths:
-                bom_materials = (
-                    self._read_bom_summary_materials(bom_path)
-                    if is_summary_input
-                    else self._read_bom_materials(bom_path)
-                )
-                source_row_count = len({material.source_row for material in bom_materials})
-                bom_material_row_count += source_row_count
-                if is_summary_input:
-                    logs.append(
-                        f"{os.path.basename(bom_path)} 读取 BOM汇总："
-                        f"{source_row_count} 个有效行，{len(bom_materials)} 条 Article/Factory 映射",
-                    )
-                else:
-                    logs.append(
-                        f"{os.path.basename(bom_path)} 读取 MAIN COMPONENT："
-                        f"{source_row_count} 个有效源行，{len(bom_materials)} 条 Article 映射",
-                    )
-                for material in bom_materials:
-                    key = (self._normalize_key(material.article), self._normalize_key(material.factory))
-                    expected_by_key.setdefault(key, []).append(material)
-
+            expected_by_key, bom_material_row_count = self._build_expected_material_map(
+                bom_paths,
+                is_summary_input,
+                logs,
+            )
             if not expected_by_key:
                 return {
                     "success": False,
@@ -510,147 +737,85 @@ class JaneBomCompareModule:
                     "logs": logs,
                 }
 
-            production_rows_by_key: Dict[Tuple[str, str], List[int]] = {}
-            production_materials_by_key: Dict[Tuple[str, str], Set[str]] = {}
+            groups = self._build_production_groups(production_ws, header_row, columns)
             mismatch_cell_count = 0
+            inconsistent_group_count = 0
+            extra_material_row_count = 0
             no_bom_key_count = 0
+            groups_with_missing: List[Tuple[ProductionGroup, Sequence[BomMaterial]]] = []
 
-            style_col = columns["style id"]
-            recording_col = columns["recording facility id"]
-            material_col = columns["input material uid/id"]
-            seller_col = columns["seller facility id"]
-
-            for row_index in range(header_row + 1, production_ws.max_row + 1):
-                style = self._normalize_key(production_ws.cell(row=row_index, column=style_col).value)
-                recording = self._normalize_key(
-                    production_ws.cell(row=row_index, column=recording_col).value,
+            for group in groups.values():
+                group_inconsistent, red_cells = self._check_group_consistency(
+                    production_ws,
+                    group,
+                    columns,
                 )
-                material_ref = self._normalize_key(
-                    production_ws.cell(row=row_index, column=material_col).value,
+                inconsistent_group_count += group_inconsistent
+                mismatch_cell_count += red_cells
+
+                expected_materials = self._expected_materials_for_group(
+                    production_ws,
+                    group,
+                    columns,
+                    expected_by_key,
                 )
-                seller = self._normalize_key(production_ws.cell(row=row_index, column=seller_col).value)
-                if not style and not recording and not material_ref and not seller:
-                    continue
-
-                row_key = (style, recording)
-                production_rows_by_key.setdefault(row_key, []).append(row_index)
-                if material_ref:
-                    production_materials_by_key.setdefault(row_key, set()).add(material_ref)
-
-                expected_materials = expected_by_key.get(row_key)
                 if not expected_materials:
-                    self._mark_red(production_ws.cell(row=row_index, column=style_col))
-                    self._mark_red(production_ws.cell(row=row_index, column=recording_col))
-                    self._set_row_diagnostic(
-                        production_ws,
-                        row_index,
-                        columns,
-                        "需核对",
-                        "T1 PRODUCTION存在，BOM缺失",
-                        "T1 PRODUCTION 有该 Style ID/Recording Facility ID，但 BOM 未找到对应 Article/Factory。",
-                    )
-                    mismatch_cell_count += 2
+                    mismatch_cell_count += self._mark_no_bom_group(production_ws, group, columns)
                     no_bom_key_count += 1
                     continue
 
-                materials_by_ref: Dict[str, List[BomMaterial]] = {}
-                all_suppliers: Set[str] = set()
-                for expected in expected_materials:
-                    normalized_material = self._normalize_key(expected.material_ref)
-                    normalized_supplier = self._normalize_key(expected.group_code_supplier)
-                    materials_by_ref.setdefault(normalized_material, []).append(expected)
-                    all_suppliers.add(normalized_supplier)
-
-                expected_material_text = self._join_unique(
-                    [expected.material_ref for expected in expected_materials],
+                extra_rows, missing_materials = self._find_extra_and_missing_materials(
+                    production_ws,
+                    group,
+                    columns,
+                    expected_materials,
                 )
-                source_material = (materials_by_ref.get(material_ref) or expected_materials)[0]
-                if not material_ref or material_ref not in materials_by_ref:
-                    self._mark_red(production_ws.cell(row=row_index, column=material_col))
-                    production_ws.cell(
-                        row=row_index,
-                        column=columns["correct material reference #"],
-                        value=expected_material_text,
-                    )
-                    self._set_row_diagnostic(
-                        production_ws,
-                        row_index,
-                        columns,
-                        "需核对",
-                        "值不一致：以 BOM 为准",
-                        "Input Material UID/ID 不在 BOM MAIN COMPONENT Material Reference # 中。",
-                        source_material,
-                    )
-                    mismatch_cell_count += 1
+                for material_key, rows in extra_rows.items():
+                    for row_index in rows:
+                        self._set_row_diagnostic(
+                            production_ws,
+                            row_index,
+                            columns,
+                            "需删除",
+                            "Production多出材料",
+                            f"Production 多出材料：{material_key}",
+                        )
+                        self._set_row_strike(production_ws, row_index, max_column)
+                        extra_material_row_count += 1
 
-                supplier_materials = materials_by_ref.get(material_ref) or expected_materials
-                expected_suppliers = {
-                    self._normalize_key(expected.group_code_supplier)
-                    for expected in supplier_materials
-                } or all_suppliers
-                if not seller or seller not in expected_suppliers:
-                    self._mark_red(production_ws.cell(row=row_index, column=seller_col))
-                    production_ws.cell(
-                        row=row_index,
-                        column=columns["correct group code supplier"],
-                        value=self._join_unique(
-                            [expected.group_code_supplier for expected in supplier_materials],
-                        ),
-                    )
-                    self._set_row_diagnostic(
-                        production_ws,
-                        row_index,
-                        columns,
-                        "需核对",
-                        "值不一致：以 BOM 为准",
-                        "Seller Facility ID 与 BOM Group Code Supplier 不一致。",
-                        supplier_materials[0] if supplier_materials else source_material,
-                    )
-                    mismatch_cell_count += 1
+                if missing_materials:
+                    groups_with_missing.append((group, missing_materials))
 
-            missing_row_count = 0
-            for row_key, expected_materials in expected_by_key.items():
-                present_materials = production_materials_by_key.get(row_key, set())
-                template_row = (production_rows_by_key.get(row_key) or [None])[0]
-                appended_pairs: Set[Tuple[str, str]] = set()
-                for material in expected_materials:
-                    normalized_material = self._normalize_key(material.material_ref)
-                    normalized_supplier = self._normalize_key(material.group_code_supplier)
-                    if normalized_material in present_materials:
-                        continue
-                    pair = (normalized_material, normalized_supplier)
-                    if pair in appended_pairs:
-                        continue
-                    if not template_row:
-                        continue
-                    self._set_row_diagnostic(
-                        production_ws,
-                        template_row,
-                        columns,
-                        "需核对",
-                        "BOM存在，T1 PRODUCTION缺少材料",
-                        (
-                            "BOM 还有未在 T1 PRODUCTION 出现的材料："
-                            f"{material.material_ref}/{material.group_code_supplier}"
-                        ),
-                        material,
-                    )
-                    appended_pairs.add(pair)
-                    missing_row_count += 1
+            inserted_rows = self._insert_missing_material_rows(
+                production_ws,
+                groups_with_missing,
+                columns,
+                max_column,
+            )
+            missing_row_count = len(inserted_rows)
+            rate_row_count = self._apply_rate_formulas(
+                production_ws,
+                header_row,
+                columns,
+                inserted_rows,
+            )
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = os.path.join(output_dir, f"jane_bom_compare_{timestamp}.xlsx")
+            output_path = os.path.join(output_dir, f"production_compare_{timestamp}.xlsx")
             production_wb.save(output_path)
 
             return {
                 "success": True,
-                "message": f"Jane-BOM 核对完成，结果文件：{output_path}",
+                "message": f"PRODUCTION核对完成，结果文件：{output_path}",
                 "logs": logs,
                 "bom_count": len(bom_paths),
                 "bom_material_row_count": bom_material_row_count,
-                "checked_row_count": sum(len(rows) for rows in production_rows_by_key.values()),
+                "checked_row_count": sum(len(group.rows) for group in groups.values()),
                 "mismatch_cell_count": mismatch_cell_count,
+                "inconsistent_group_count": inconsistent_group_count,
+                "extra_material_row_count": extra_material_row_count,
                 "missing_row_count": missing_row_count,
+                "rate_row_count": rate_row_count,
                 "no_bom_key_count": no_bom_key_count,
                 "output_path": output_path,
             }

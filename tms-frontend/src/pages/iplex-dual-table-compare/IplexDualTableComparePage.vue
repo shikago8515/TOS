@@ -76,7 +76,11 @@
             </section>
           </template>
 
-          <ResultSummary :items="summaryItems" :status="success ? 'success' : 'error'" />
+          <ResultSummary
+            :items="summaryItems"
+            :status="success ? 'success' : 'error'"
+            :warnings="historyWarnings"
+          />
         </ExcelUploadSection>
       </div>
 
@@ -107,7 +111,7 @@ import {
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
-import { useProcessHistoryResultDownload } from '../../shared/process/useProcessHistoryResultDownload'
+import { useProcessHistoryResultPageLink } from '../../shared/process/useProcessHistoryResultPageLink'
 import {
   buildExcelFileGroups,
   ExcelProcessPageShell,
@@ -145,6 +149,7 @@ const message = ref('')
 const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
+const historyWarnings = ref<string[]>([])
 const previewRows = ref<IplexDualTableComparePreviewRow[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(iplexDualTableCompareModuleId),
@@ -152,16 +157,11 @@ const historyRecords = ref<ProcessHistoryRecord[]>(
 const { text } = useAppLanguage()
 
 const {
-  latestHistoryResultRecord,
   historyResultToolbarTitle,
-  downloadLatestHistoryResult,
-} = useProcessHistoryResultDownload({
-  historyRecords,
+  openHistoryResultPage,
+} = useProcessHistoryResultPageLink({
+  moduleId: iplexDualTableCompareModuleId,
   processing,
-  onError: (nextMessage) => {
-    success.value = false
-    message.value = nextMessage
-  },
 })
 
 const uploadFields = computed<ExcelFileField[]>(() => [
@@ -238,9 +238,9 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     id: 'download-history-result',
     label: '下载历史结果',
     icon: 'download-cloud',
-    disabled: inspecting.value || processing.value || !latestHistoryResultRecord.value,
+    disabled: inspecting.value || processing.value,
     title: historyResultToolbarTitle.value,
-    onClick: downloadLatestHistoryResult,
+    onClick: openHistoryResultPage,
   },
   {
     id: 'process',
@@ -294,6 +294,7 @@ async function startProcess(): Promise<void> {
   if (!mainFiles.value[0] || !lookupFiles.value[0]) {
     message.value = '请先上传 PO 调整表和 RC 核对表'
     success.value = false
+    historyWarnings.value = []
     return
   }
 
@@ -306,6 +307,7 @@ async function startProcess(): Promise<void> {
     success.value = false
     resultFile.value = ''
     summaryItems.value = []
+    historyWarnings.value = []
     previewRows.value = []
 
   try {
@@ -367,6 +369,7 @@ function clearResultState(): void {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  historyWarnings.value = []
   previewRows.value = []
 }
 
@@ -380,8 +383,10 @@ function recordHistory(
   inputFiles: string[],
   metadata: BackendProcessHistoryMetadata = {},
 ): void {
+  const historyMetadata = readProcessHistoryMetadata(metadata)
+  historyWarnings.value = historyMetadata.historyWarnings ?? []
   historyRecords.value = appendModuleHistory({
-    ...readProcessHistoryMetadata(metadata),
+    ...historyMetadata,
     moduleId: iplexDualTableCompareModuleId,
     moduleName: iplexDualTableCompareModuleName,
     status,

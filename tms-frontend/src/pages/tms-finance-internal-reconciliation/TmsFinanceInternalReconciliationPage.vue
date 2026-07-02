@@ -25,6 +25,7 @@
             v-if="summaryItems.length > 0"
             :items="summaryItems"
             :status="success ? 'success' : 'error'"
+            :warnings="historyWarnings"
           />
         </ExcelUploadSection>
       </div>
@@ -57,7 +58,7 @@ import {
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
-import { useProcessHistoryResultDownload } from '../../shared/process/useProcessHistoryResultDownload'
+import { useProcessHistoryResultPageLink } from '../../shared/process/useProcessHistoryResultPageLink'
 import {
   buildExcelFileGroups,
   ExcelProcessPageShell,
@@ -105,6 +106,7 @@ const message = ref('')
 const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
+const historyWarnings = ref<string[]>([])
 const messageTone = ref<ExcelNoticeTone>('info')
 const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(tmsFinanceInternalReconciliationModuleId),
@@ -112,17 +114,11 @@ const historyRecords = ref<ProcessHistoryRecord[]>(
 const { text } = useAppLanguage()
 
 const {
-  latestHistoryResultRecord,
   historyResultToolbarTitle,
-  downloadLatestHistoryResult,
-} = useProcessHistoryResultDownload({
-  historyRecords,
+  openHistoryResultPage,
+} = useProcessHistoryResultPageLink({
+  moduleId: computed(() => getTmsFinanceProcessById(activeProcessId.value).moduleId),
   processing,
-  onError: (nextMessage) => {
-    success.value = false
-    messageTone.value = 'error'
-    message.value = nextMessage
-  },
 })
 
 const activeProcess = computed<TmsFinanceProcessOption>(
@@ -200,9 +196,9 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     id: 'download-history-result',
     label: '下载历史结果',
     icon: 'download-cloud',
-    disabled: processing.value || !latestHistoryResultRecord.value,
+    disabled: processing.value,
     title: historyResultToolbarTitle.value,
-    onClick: downloadLatestHistoryResult,
+    onClick: openHistoryResultPage,
   },
   {
     id: 'process',
@@ -261,6 +257,7 @@ async function startProcess(): Promise<void> {
     messageTone.value = 'warning'
     message.value = '请先按预检查提示补齐文件。'
     success.value = false
+    historyWarnings.value = []
     return
   }
 
@@ -277,6 +274,7 @@ async function startInternalReconciliationProcess(): Promise<void> {
     messageTone.value = 'warning'
     message.value = '请先上传 Sample/Bulk 来源文件和内销对账单。'
     success.value = false
+    historyWarnings.value = []
     return
   }
 
@@ -313,6 +311,7 @@ async function startWorkSalesProcess(): Promise<void> {
     messageTone.value = 'warning'
     message.value = '请先上传 iPLEX 导出表。'
     success.value = false
+    historyWarnings.value = []
     return
   }
 
@@ -320,6 +319,7 @@ async function startWorkSalesProcess(): Promise<void> {
     messageTone.value = 'warning'
     message.value = '请先上传 Turnover Excel。'
     success.value = false
+    historyWarnings.value = []
     return
   }
 
@@ -358,6 +358,7 @@ function beginProcessing(): void {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  historyWarnings.value = []
   messageTone.value = 'info'
 }
 
@@ -404,6 +405,7 @@ function resetFeedback(): void {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  historyWarnings.value = []
   messageTone.value = 'info'
 }
 
@@ -413,8 +415,10 @@ function recordHistory(
   inputFiles: string[],
   metadata: BackendProcessHistoryMetadata = {},
 ): void {
+  const historyMetadata = readProcessHistoryMetadata(metadata)
+  historyWarnings.value = historyMetadata.historyWarnings ?? []
   historyRecords.value = appendModuleHistory({
-    ...readProcessHistoryMetadata(metadata),
+    ...historyMetadata,
     moduleId: activeProcess.value.moduleId,
     moduleName: activeProcess.value.moduleName,
     status,

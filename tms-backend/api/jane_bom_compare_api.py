@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Jane-BOM 核对 API Router
+Jane PRODUCTION 核对 API Router
 """
 
 import logging
@@ -18,7 +18,7 @@ from utils.excel_upload_backup import ExcelUploadBackupContext
 from utils.file_utils import copy_upload_to_path
 
 
-router = APIRouter(prefix="/jane-bom-compare", tags=["Jane-BOM核对"])
+router = APIRouter(prefix="/jane-bom-compare", tags=["Jane-PRODUCTION核对"])
 jane_bom_compare_module = JaneBomCompareModule()
 logger = logging.getLogger(__name__)
 PROCESSING_ERROR_MESSAGE = "处理失败，请查看诊断日志或稍后重试"
@@ -102,7 +102,7 @@ async def process_jane_bom_compare(
     bom_files: Optional[List[UploadFile]] = File(None),
     output_dir: Optional[str] = Form(None),
 ):
-    """处理 Jane-BOM 核对。"""
+    """处理 Jane PRODUCTION 核对。"""
 
     if bom_summary_file is None and not bom_files:
         raise HTTPException(status_code=400, detail="请上传 BOM汇总 文件")
@@ -183,7 +183,10 @@ async def process_jane_bom_compare(
                 "bom_material_row_count": result["bom_material_row_count"],
                 "checked_row_count": result["checked_row_count"],
                 "mismatch_cell_count": result["mismatch_cell_count"],
+                "inconsistent_group_count": result["inconsistent_group_count"],
+                "extra_material_row_count": result["extra_material_row_count"],
                 "missing_row_count": result["missing_row_count"],
+                "rate_row_count": result["rate_row_count"],
                 "no_bom_key_count": result["no_bom_key_count"],
                 "output_file": output_filename,
                 **archive_process_output_history(
@@ -202,7 +205,7 @@ async def process_jane_bom_compare(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Jane BOM compare processing failed")
+        logger.exception("Jane PRODUCTION compare processing failed")
         raise HTTPException(status_code=500, detail=PROCESSING_ERROR_MESSAGE) from exc
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
@@ -210,7 +213,7 @@ async def process_jane_bom_compare(
 
 @router.get("/download/{filename}")
 async def download_jane_bom_compare_result(filename: str):
-    """下载 Jane-BOM 核对结果。"""
+    """下载 Jane PRODUCTION 核对结果。"""
 
     file_path = _download_path(filename)
     if not os.path.exists(file_path):

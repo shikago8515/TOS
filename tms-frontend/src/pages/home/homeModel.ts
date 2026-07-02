@@ -5,6 +5,11 @@ import {
   type TosModuleDefinition,
   type TosModuleGroup,
 } from '../../domain/moduleCatalog'
+import {
+  findProcessHistoryModuleByModuleId,
+  processHistoryPeople,
+  type ProcessHistoryModuleDefinition,
+} from '../../shared/process/processHistoryPeople'
 
 export type HomePersonGroupId = Extract<
   TosModuleGroup,
@@ -46,10 +51,16 @@ export const homePeople: HomePersonGroup[] = homePersonGroupIds.map((groupId) =>
 })
 
 export const homeDashboardModules = homePeople.flatMap((person) => person.modules)
+const homePersonGroupIdSet = new Set<TosModuleGroup>(homePersonGroupIds)
+
+export const homeDashboardHistoryModules: ProcessHistoryModuleDefinition[] = processHistoryPeople
+  .flatMap((person) => person.modules)
+  .filter((module) => homePersonGroupIdSet.has(module.group))
 
 export function findHomeModuleByActivityId(activityId?: string): TosModuleDefinition | undefined {
   if (!activityId) return undefined
   return tosModules.find((module) => module.id === activityId || module.routeName === activityId)
+    || findProcessHistoryModuleByModuleId(activityId)
 }
 
 export function findHomePersonByModuleId(moduleId?: string): HomePersonGroup | undefined {

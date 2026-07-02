@@ -35,7 +35,11 @@
             </label>
           </template>
 
-          <ResultSummary :items="summaryItems" :status="success ? 'success' : 'error'" />
+          <ResultSummary
+            :items="summaryItems"
+            :status="success ? 'success' : 'error'"
+            :warnings="historyWarnings"
+          />
         </ExcelUploadSection>
       </div>
 
@@ -65,7 +69,7 @@ import {
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
-import { useProcessHistoryResultDownload } from '../../shared/process/useProcessHistoryResultDownload'
+import { useProcessHistoryResultPageLink } from '../../shared/process/useProcessHistoryResultPageLink'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import AppIcon from '../../shared/ui/AppIcon.vue'
 import {
@@ -100,20 +104,16 @@ const message = ref('')
 const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
+const historyWarnings = ref<string[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(loadModuleHistory(janeModuleId))
 const { text } = useAppLanguage()
 
 const {
-  latestHistoryResultRecord,
   historyResultToolbarTitle,
-  downloadLatestHistoryResult,
-} = useProcessHistoryResultDownload({
-  historyRecords,
+  openHistoryResultPage,
+} = useProcessHistoryResultPageLink({
+  moduleId: janeModuleId,
   processing,
-  onError: (nextMessage) => {
-    success.value = false
-    message.value = nextMessage
-  },
 })
 
 const uploadFields = computed<ExcelFileField[]>(() => [
@@ -177,9 +177,9 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     id: 'download-history-result',
     label: '下载历史结果',
     icon: 'download-cloud',
-    disabled: processing.value || !latestHistoryResultRecord.value,
+    disabled: processing.value,
     title: historyResultToolbarTitle.value,
-    onClick: downloadLatestHistoryResult,
+    onClick: openHistoryResultPage,
   },
   {
     id: 'process',
@@ -207,6 +207,7 @@ async function startProcess(): Promise<void> {
   if (!canProcess.value || !customerFiles.value[0] || !countryFiles.value[0]) {
     message.value = '请先按预检查提示补齐文件'
     success.value = false
+    historyWarnings.value = []
     return
   }
 
@@ -219,6 +220,7 @@ async function startProcess(): Promise<void> {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  historyWarnings.value = []
 
   try {
     const response = await processJaneFiles(
@@ -275,6 +277,7 @@ function resetForm(): void {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  historyWarnings.value = []
 }
 
 function recordHistory(
@@ -283,8 +286,10 @@ function recordHistory(
   inputFiles: string[],
   metadata: BackendProcessHistoryMetadata = {},
 ): void {
+  const historyMetadata = readProcessHistoryMetadata(metadata)
+  historyWarnings.value = historyMetadata.historyWarnings ?? []
   historyRecords.value = appendModuleHistory({
-    ...readProcessHistoryMetadata(metadata),
+    ...historyMetadata,
     moduleId: janeModuleId,
     moduleName: janeModuleName,
     status,

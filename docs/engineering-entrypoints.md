@@ -10,6 +10,8 @@
 | `npm run check:frontend` | 前端完整检查 | `npm run lint`、`npm run typecheck`、`npm run test`、`npm run build` |
 | `npm run check:backend` | 后端完整检查 | `python -m unittest discover tests/ -v`、`python -m compileall .` |
 | `npm run check:electron` | Electron 脚本测试 | 自动发现 `tms-electron-app/scripts/*.test.js` 并运行 `node --test` |
+| `npm run check:changed:dry-run` | 变更范围检查预览 | 基于 `gitea/main...HEAD`、staged、working tree 和 untracked 文件打印建议检查，不执行命令 |
+| `npm run check:changed` | 变更范围检查 | 执行 `check:changed:dry-run` 建议的最小检查集，高风险变更会升级到 `npm run check:quick` |
 | `npm run check` | 完整工程检查 | 工程脚本测试、前端完整检查、后端完整检查、Electron 脚本测试 |
 | `npm run ci:install` | Gitea 检查环境依赖安装 | 根目录、前端、Electron、Playwright console 的 `npm ci`，以及在 CI `.venv` 中安装后端 `requirements.txt` |
 | `npm run test:server-package` | 服务器包脚本测试 | `node --test scripts/engineering/package-server-update.test.mjs` |
@@ -26,6 +28,7 @@
 
 日常开发按风险选择最小真实检查，避免把 `npm run check:quick` 变成所有普通改动的默认成本：
 
+- 不确定该跑什么时，先运行 `npm run check:changed:dry-run`；确认建议合理后运行 `npm run check:changed`。
 - 前端 UI、文案或局部路由小改：运行 `cd tms-frontend && npm run lint`、`npm run typecheck` 和相关 `vitest`；需要确认构建产物时再运行 `npm run build`。
 - 后端单模块小改：运行对应 `python -m unittest tests.test_xxx -v`、class 或 method；涉及导入边界时再补 `python -m compileall .`。
 - 公共工具、前后端契约、版本发布、CI/CD、服务器部署、Electron 打包、合并 `main` 或推送 Gitea 主线前：运行 `npm run check:quick`。
@@ -55,6 +58,7 @@
 ## 边界
 
 - 根目录入口不运行 `npm run pack`、`npm run build:win`、`verify:renderer-package`、`verify:release-package`、`write:update-changelog` 或 `write:manual-downloads`。
+- `check:changed` 是日常开发辅助入口，不替代合并 `main`、推送 Gitea 主线、服务器部署、CI/CD、发布或 Electron 打包前的 `check:quick`。
 - 发布、打包、更新清单和安装包校验仍按 `tms-electron-app/README.md` 与 `AGENTS.md` 的发布敏感规则单独执行。
 - `server:package` 只生成服务器 Docker Compose 部署用更新包，不生成 Windows Electron 安装包。默认服务器发布由 `scripts/server/deploy-gitea-main.sh` 在服务器 `~/TOS-source` 内调用；本机生成后手动上传只作为 Gitea 或服务器拉代码不可用时的备用流程。
 - 子项目原生命令仍然可用；根目录入口只是日常开发检查的统一编排层。

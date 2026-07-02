@@ -1,7 +1,7 @@
 <template>
   <ExcelProcessPageShell
-    title="BOM核对"
-    subtitle="T1 PRODUCTION × BOM汇总 → 面料差异核对"
+    title="PRODUCTION核对"
+    subtitle="T1 PRODUCTION × BOM汇总 → PRODUCTION差异核对"
     :stats="pageStats"
     :toolbar-status="toolbarStatus"
     :actions="toolbarActions"
@@ -22,7 +22,11 @@
           badge="2 组必传"
           @update:files="updateUploadFiles"
         >
-          <ResultSummary :items="summaryItems" :status="success ? 'success' : 'error'" />
+          <ResultSummary
+            :items="summaryItems"
+            :status="success ? 'success' : 'error'"
+            :warnings="historyWarnings"
+          />
         </ExcelUploadSection>
       </div>
 
@@ -53,7 +57,7 @@ import {
   type ProcessHistoryStatus,
   type ProcessSummaryItem,
 } from '../../shared/process/processHistory'
-import { useProcessHistoryResultDownload } from '../../shared/process/useProcessHistoryResultDownload'
+import { useProcessHistoryResultPageLink } from '../../shared/process/useProcessHistoryResultPageLink'
 import {
   buildExcelFileGroups,
   ExcelProcessPageShell,
@@ -85,22 +89,18 @@ const message = ref('')
 const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
+const historyWarnings = ref<string[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(janeBomCompareModuleId),
 )
 const { text } = useAppLanguage()
 
 const {
-  latestHistoryResultRecord,
   historyResultToolbarTitle,
-  downloadLatestHistoryResult,
-} = useProcessHistoryResultDownload({
-  historyRecords,
+  openHistoryResultPage,
+} = useProcessHistoryResultPageLink({
+  moduleId: janeBomCompareModuleId,
   processing,
-  onError: (nextMessage) => {
-    success.value = false
-    message.value = nextMessage
-  },
 })
 
 const uploadFields = computed<ExcelFileField[]>(() => [
@@ -108,7 +108,7 @@ const uploadFields = computed<ExcelFileField[]>(() => [
     id: 'production',
     label: 'T1 PRODUCTION 文件',
     files: productionFiles.value,
-    hint: '输出会保留原表样式并标红差异',
+    hint: '检查 C-D-E-F、材料多缺并计算料率',
     accept: '.xlsx,.xlsm',
     acceptLabel: '支持 .xlsx / .xlsm',
     expectedCount: 1,
@@ -117,7 +117,7 @@ const uploadFields = computed<ExcelFileField[]>(() => [
     id: 'bom-summary',
     label: 'BOM汇总 文件',
     files: bomSummaryFiles.value,
-    hint: 'BOM汇总 生成的汇总文件',
+    hint: 'BOM汇总 生成的材料清单',
     accept: '.xlsx,.xlsm',
     acceptLabel: '支持 .xlsx / .xlsm',
     expectedCount: 1,
@@ -166,9 +166,9 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     id: 'download-history-result',
     label: '下载历史结果',
     icon: 'download-cloud',
-    disabled: processing.value || !latestHistoryResultRecord.value,
+    disabled: processing.value,
     title: historyResultToolbarTitle.value,
-    onClick: downloadLatestHistoryResult,
+    onClick: openHistoryResultPage,
   },
   {
     id: 'process',
@@ -196,6 +196,7 @@ async function startProcess(): Promise<void> {
   if (!canProcess.value || !productionFiles.value[0]) {
     message.value = '请先按预检查提示补齐文件'
     success.value = false
+    historyWarnings.value = []
     return
   }
 
@@ -208,6 +209,7 @@ async function startProcess(): Promise<void> {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  historyWarnings.value = []
 
   try {
     const response = await processJaneBomCompareFiles(
@@ -261,6 +263,7 @@ function resetForm(): void {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  historyWarnings.value = []
 }
 
 function recordHistory(
@@ -269,8 +272,10 @@ function recordHistory(
   inputFiles: string[],
   metadata: BackendProcessHistoryMetadata = {},
 ): void {
+  const historyMetadata = readProcessHistoryMetadata(metadata)
+  historyWarnings.value = historyMetadata.historyWarnings ?? []
   historyRecords.value = appendModuleHistory({
-    ...readProcessHistoryMetadata(metadata),
+    ...historyMetadata,
     moduleId: janeBomCompareModuleId,
     moduleName: janeBomCompareModuleName,
     status,

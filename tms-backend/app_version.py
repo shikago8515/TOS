@@ -1,3 +1,3 @@
 """TOS product version shared by backend entrypoints."""
 
-APP_VERSION = "0.9.8-beta.3.32"
+APP_VERSION = "1.0.0-beta.3.1"

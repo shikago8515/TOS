@@ -69,13 +69,16 @@ import { computed, ref, watch } from 'vue'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
 import { showAppAlert } from '../../../shared/ui/appAlert'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+import type { BackendTarget } from '../../../shared/api/backendClient'
 import { downloadAutomationRunFile, type AutomationRunFileRecord } from '../../web-automation/webAutomationApi'
 
 const props = withDefaults(defineProps<{
   open: boolean
   files: AutomationRunFileRecord[]
   loading?: boolean
+  backendTarget?: BackendTarget
 }>(), {
+  backendTarget: 'default',
   loading: false,
 })
 
@@ -144,7 +147,7 @@ async function downloadFiles(files: AutomationRunFileRecord[]): Promise<void> {
   let downloaded = 0
   try {
     for (const file of files) {
-      await downloadAutomationRunFile(file)
+      await downloadAutomationRunFile(file, props.backendTarget)
       downloaded += 1
       await new Promise((resolve) => window.setTimeout(resolve, 140))
     }

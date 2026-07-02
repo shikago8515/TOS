@@ -267,6 +267,7 @@
       :open="filesModalOpen"
       :files="selectedFiles"
       :loading="detailLoading"
+      :backend-target="automationRunsBackendTarget"
       @close="closeFilesModal"
     />
   </main>
@@ -302,6 +303,7 @@ const selectedRun = ref<AutomationRunRecord | null>(null)
 const selectedFiles = ref<AutomationRunFileRecord[]>([])
 const filesModalOpen = ref(false)
 const deletingRunId = ref('')
+const automationRunsBackendTarget = 'remote' as const
 const pagination = reactive({ page: 1, pageSize: 30, total: 0 })
 const filters = reactive({ automationId: readAutomationIdQuery(route.query.automationId), status: '', keyword: '', dateFrom: '', dateTo: '' })
 
@@ -405,6 +407,7 @@ async function loadRuns(): Promise<void> {
       dateTo: filters.dateTo || undefined,
       page: pagination.page,
       pageSize: pagination.pageSize,
+      backendTarget: automationRunsBackendTarget,
     })
     runs.value = payload.runs
     Object.assign(pagination, payload.pagination)
@@ -452,7 +455,7 @@ async function selectRun(run: AutomationRunRecord): Promise<void> {
   selectedFiles.value = []
   detailLoading.value = true
   try {
-    const detail = await fetchAutomationRunDetail(run.runId)
+    const detail = await fetchAutomationRunDetail(run.runId, { backendTarget: automationRunsBackendTarget })
     selectedRun.value = detail.run
     selectedFiles.value = detail.files
   } finally {
@@ -470,7 +473,7 @@ async function deleteRun(run: AutomationRunRecord): Promise<void> {
   if (!confirmed) return
   deletingRunId.value = run.runId
   try {
-    await deleteAutomationRunRecord(run.runId)
+    await deleteAutomationRunRecord(run.runId, { backendTarget: automationRunsBackendTarget })
     runs.value = runs.value.filter((item) => item.runId !== run.runId)
     if (selectedRun.value?.runId === run.runId) {
       selectedRun.value = null

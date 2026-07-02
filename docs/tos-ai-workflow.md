@@ -46,6 +46,7 @@ git rebase gitea/main
 
 按范围运行最接近的检查，日常开发不默认把 `npm run check:quick` 当成所有小改的起步门禁：
 
+- 不确定检查范围时，先运行 `npm run check:changed:dry-run` 查看建议；确认无误后运行 `npm run check:changed` 执行。
 - 前端 UI、文案或局部路由小改：优先运行 `cd tms-frontend && npm run lint`、`npm run typecheck` 和相关 `vitest`。
 - 后端单模块小改：优先运行对应 `python -m unittest tests.test_xxx -v`。
 - 公共工具、前后端契约、版本发布、CI/CD、部署、打包、合并 `main` 或推送 Gitea 主线前：必须运行 `npm run check:quick`。
@@ -58,6 +59,8 @@ npm run check:quick
 npm run check:frontend
 npm run check:backend
 npm run check:electron
+npm run check:changed:dry-run
+npm run check:changed
 npm run check
 ```
 

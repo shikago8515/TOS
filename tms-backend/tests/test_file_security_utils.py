@@ -480,7 +480,7 @@ class LegacyApiSecurityTests(unittest.TestCase):
         self.assertEqual(context.exception.status_code, 500)
         self.assertEqual(context.exception.detail, "处理失败，请查看诊断日志或稍后重试")
         self.assertNotIn("secret", context.exception.detail)
-        self.assertIn("Jane BOM compare processing failed", "\n".join(logs.output))
+        self.assertIn("Jane PRODUCTION compare processing failed", "\n".join(logs.output))
 
     def test_jane_outbound_compare_returns_sanitized_500_detail(self):
         original_upload_dir = jane_outbound_compare_api.UPLOAD_DIR
