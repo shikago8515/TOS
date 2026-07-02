@@ -76,7 +76,11 @@
             </section>
           </template>
 
-          <ResultSummary :items="summaryItems" :status="success ? 'success' : 'error'" />
+          <ResultSummary
+            :items="summaryItems"
+            :status="success ? 'success' : 'error'"
+            :warnings="historyWarnings"
+          />
         </ExcelUploadSection>
       </div>
 
@@ -145,6 +149,7 @@ const message = ref('')
 const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
+const historyWarnings = ref<string[]>([])
 const previewRows = ref<IplexDualTableComparePreviewRow[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(iplexDualTableCompareModuleId),
@@ -289,6 +294,7 @@ async function startProcess(): Promise<void> {
   if (!mainFiles.value[0] || !lookupFiles.value[0]) {
     message.value = '请先上传 PO 调整表和 RC 核对表'
     success.value = false
+    historyWarnings.value = []
     return
   }
 
@@ -301,6 +307,7 @@ async function startProcess(): Promise<void> {
     success.value = false
     resultFile.value = ''
     summaryItems.value = []
+    historyWarnings.value = []
     previewRows.value = []
 
   try {
@@ -362,6 +369,7 @@ function clearResultState(): void {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  historyWarnings.value = []
   previewRows.value = []
 }
 
@@ -375,8 +383,10 @@ function recordHistory(
   inputFiles: string[],
   metadata: BackendProcessHistoryMetadata = {},
 ): void {
+  const historyMetadata = readProcessHistoryMetadata(metadata)
+  historyWarnings.value = historyMetadata.historyWarnings ?? []
   historyRecords.value = appendModuleHistory({
-    ...readProcessHistoryMetadata(metadata),
+    ...historyMetadata,
     moduleId: iplexDualTableCompareModuleId,
     moduleName: iplexDualTableCompareModuleName,
     status,

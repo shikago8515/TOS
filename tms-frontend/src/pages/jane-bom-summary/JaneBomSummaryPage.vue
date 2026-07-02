@@ -21,7 +21,11 @@
           badge="2 组必传"
           @update:files="updateUploadFiles"
         >
-          <ResultSummary :items="summaryItems" :status="success ? 'success' : 'error'" />
+          <ResultSummary
+            :items="summaryItems"
+            :status="success ? 'success' : 'error'"
+            :warnings="historyWarnings"
+          />
         </ExcelUploadSection>
       </div>
 
@@ -84,6 +88,7 @@ const message = ref('')
 const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
+const historyWarnings = ref<string[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(janeBomSummaryModuleId),
 )
@@ -190,6 +195,7 @@ async function startProcess(): Promise<void> {
   if (!canProcess.value || !packFiles.value[0]) {
     message.value = '请先按预检查提示补齐文件'
     success.value = false
+    historyWarnings.value = []
     return
   }
 
@@ -202,6 +208,7 @@ async function startProcess(): Promise<void> {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  historyWarnings.value = []
 
   try {
     const response = await processJaneBomSummaryFiles(
@@ -255,6 +262,7 @@ function resetForm(): void {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  historyWarnings.value = []
 }
 
 function recordHistory(
@@ -263,8 +271,10 @@ function recordHistory(
   inputFiles: string[],
   metadata: BackendProcessHistoryMetadata = {},
 ): void {
+  const historyMetadata = readProcessHistoryMetadata(metadata)
+  historyWarnings.value = historyMetadata.historyWarnings ?? []
   historyRecords.value = appendModuleHistory({
-    ...readProcessHistoryMetadata(metadata),
+    ...historyMetadata,
     moduleId: janeBomSummaryModuleId,
     moduleName: janeBomSummaryModuleName,
     status,

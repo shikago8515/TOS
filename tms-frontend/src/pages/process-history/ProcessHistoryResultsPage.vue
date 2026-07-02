@@ -149,6 +149,7 @@ import {
 } from '../../shared/process/processHistory'
 import {
   findProcessHistoryPersonById,
+  getProcessHistoryModuleIdsForQuery,
   getProcessHistoryModulesForPerson,
 } from '../../shared/process/processHistoryPeople'
 import AppIcon from '../../shared/ui/AppIcon.vue'
@@ -177,6 +178,7 @@ const pagination = reactive({ page: 1, pageSize: 30, total: 0 })
 const personId = computed(() => readSingleRouteParam(route.params.personId))
 const person = computed(() => findProcessHistoryPersonById(personId.value))
 const modules = computed(() => getProcessHistoryModulesForPerson(personId.value))
+const selectedHistoryModuleIds = computed(() => getProcessHistoryModuleIdsForQuery(selectedModuleId.value))
 const personLabel = computed(() => {
   if (!person.value) return text('未知人员')
   return isEnglish.value ? person.value.labelEn : person.value.label
@@ -215,7 +217,7 @@ async function loadRecords(): Promise<void> {
   try {
     const payload = await fetchPersistedProcessHistoryRecordPage({
       personId: personId.value,
-      moduleIds: selectedModuleId.value ? [selectedModuleId.value] : undefined,
+      moduleIds: selectedHistoryModuleIds.value.length > 0 ? selectedHistoryModuleIds.value : undefined,
       createdFrom: range.value.createdFrom,
       createdTo: range.value.createdTo,
       downloadableOnly: true,
@@ -235,7 +237,7 @@ async function loadRecords(): Promise<void> {
       collectLocalPersonRecords(),
       {
         personId: personId.value,
-        moduleId: selectedModuleId.value || undefined,
+        moduleIds: selectedHistoryModuleIds.value.length > 0 ? selectedHistoryModuleIds.value : undefined,
         createdFrom: range.value.createdFrom,
         createdTo: range.value.createdTo,
       },
@@ -253,7 +255,15 @@ async function loadRecords(): Promise<void> {
 }
 
 function collectLocalPersonRecords(): ProcessHistoryRecord[] {
-  return modules.value.flatMap((module) => loadModuleHistory(module.id))
+  const recordsById = new Map<string, ProcessHistoryRecord>()
+  for (const module of modules.value) {
+    for (const historyModuleId of module.historyModuleIds) {
+      for (const record of loadModuleHistory(historyModuleId)) {
+        recordsById.set(record.id, record)
+      }
+    }
+  }
+  return Array.from(recordsById.values())
 }
 
 function selectModule(): void {
@@ -288,7 +298,7 @@ function moduleLabel(module: { navLabel: string; navLabelEn: string }): string {
 }
 
 function moduleName(moduleId: string): string {
-  const module = modules.value.find((item) => item.id === moduleId)
+  const module = modules.value.find((item) => item.historyModuleIds.includes(moduleId))
   return module ? moduleLabel(module) : moduleId
 }
 
@@ -339,7 +349,11 @@ function readModuleIdQuery(value: unknown): string {
 function normalizeSelectedModuleId(moduleId: string): string {
   if (!moduleId) return ''
   return modules.value.find(
-    (module) => module.id === moduleId || module.catalogId === moduleId || module.routeName === moduleId,
+    (module) =>
+      module.id === moduleId
+      || module.catalogId === moduleId
+      || module.routeName === moduleId
+      || module.historyModuleIds.includes(moduleId),
   )?.id ?? ''
 }
 </script>

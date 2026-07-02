@@ -15,6 +15,7 @@ export interface ProcessHistoryPerson {
 
 export interface ProcessHistoryModuleDefinition extends TosModuleDefinition {
   catalogId: string
+  historyModuleIds: string[]
 }
 
 const excelHistoryCategories = new Set(['excel', 'reconciliation'])
@@ -29,6 +30,10 @@ const processHistoryModuleIdByCatalogId: Partial<Record<string, string>> = {
   'sophia-tina': 'excel-sophia-tina',
   'tms-finance-internal-reconciliation': 'excel-tms-finance-internal-reconciliation',
   'tms-finance-work-sales': 'excel-tms-finance-work-sales',
+}
+
+const processHistoryModuleAliasesByCatalogId: Partial<Record<string, string[]>> = {
+  jane: ['jane'],
 }
 
 const processHistoryPersonGroups: Array<{
@@ -47,11 +52,21 @@ const groupLabels = new Map(
   tosNavGroups.map((group) => [group.id, { label: group.label, labelEn: group.labelEn }]),
 )
 
+function uniqueModuleIds(moduleIds: string[]): string[] {
+  return Array.from(new Set(moduleIds.filter(Boolean)))
+}
+
 function toProcessHistoryModule(module: TosModuleDefinition): ProcessHistoryModuleDefinition {
+  const historyModuleId = processHistoryModuleIdByCatalogId[module.id] ?? module.id
+
   return {
     ...module,
     catalogId: module.id,
-    id: processHistoryModuleIdByCatalogId[module.id] ?? module.id,
+    id: historyModuleId,
+    historyModuleIds: uniqueModuleIds([
+      historyModuleId,
+      ...(processHistoryModuleAliasesByCatalogId[module.id] ?? []),
+    ]),
   }
 }
 
@@ -89,7 +104,8 @@ function findProcessHistoryModuleMatch(moduleId?: string): {
       (candidate) =>
         candidate.id === moduleId
         || candidate.catalogId === moduleId
-        || candidate.routeName === moduleId,
+        || candidate.routeName === moduleId
+        || candidate.historyModuleIds.includes(moduleId),
     )
     if (module) return { person, module }
   }
@@ -107,6 +123,11 @@ export function findProcessHistoryModuleByModuleId(moduleId?: string): ProcessHi
 
 export function getProcessHistoryModulesForPerson(personId?: string): ProcessHistoryModuleDefinition[] {
   return findProcessHistoryPersonById(personId)?.modules ?? []
+}
+
+export function getProcessHistoryModuleIdsForQuery(moduleId?: string): string[] {
+  if (!moduleId) return []
+  return findProcessHistoryModuleByModuleId(moduleId)?.historyModuleIds ?? [moduleId]
 }
 
 export function buildProcessHistoryPersonRoute(

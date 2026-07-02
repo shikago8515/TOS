@@ -14,7 +14,8 @@ describe('ProcessHistoryResultsPage source', () => {
     expect(source).toContain("backendTarget: 'remote'")
     expect(source).toContain('filterDownloadableProcessRecords(payload.records)')
     expect(source).toContain('filterLocalDownloadableProcessRecords')
-    expect(source).toContain('loadModuleHistory(module.id)')
+    expect(source).toContain('selectedHistoryModuleIds.value.length > 0 ? selectedHistoryModuleIds.value : undefined')
+    expect(source).toContain('module.historyModuleIds')
   })
 
   it('keeps row download buttons enabled for listed downloadable records', () => {

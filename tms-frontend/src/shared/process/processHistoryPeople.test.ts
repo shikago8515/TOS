@@ -4,6 +4,7 @@ import {
   buildProcessHistoryPersonRoute,
   findProcessHistoryModuleByModuleId,
   findProcessHistoryPersonByModuleId,
+  getProcessHistoryModuleIdsForQuery,
   getProcessHistoryModulesForPerson,
 } from './processHistoryPeople'
 
@@ -40,6 +41,13 @@ describe('processHistoryPeople', () => {
       path: '/process-history/jane',
       query: { moduleId: 'excel-jane-bom-compare' },
     })
+  })
+
+  it('queries Jane result history by canonical Excel id and legacy archive id', () => {
+    expect(findProcessHistoryPersonByModuleId('jane')?.id).toBe('jane')
+    expect(findProcessHistoryModuleByModuleId('jane')?.id).toBe('excel-jane')
+    expect(getProcessHistoryModuleIdsForQuery('excel-jane')).toEqual(['excel-jane', 'jane'])
+    expect(getProcessHistoryModuleIdsForQuery('jane')).toEqual(['excel-jane', 'jane'])
   })
 
   it('resolves all Excel history ids back to their catalog route metadata', () => {

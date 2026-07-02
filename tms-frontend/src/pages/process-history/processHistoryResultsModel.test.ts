@@ -45,6 +45,24 @@ describe('processHistoryResultsModel', () => {
     expect(records.map((record) => record.id)).toEqual(['downloadable-2026-06-30T00:00:00.000Z'])
   })
 
+  it('allows local fallback filters to include selected module aliases', () => {
+    const records = filterLocalDownloadableProcessRecords(
+      [
+        buildRecord('jane', '2026-06-30T00:00:00.000Z', true),
+        buildRecord('excel-jane', '2026-06-29T00:00:00.000Z', true),
+        buildRecord('excel-jane-bom-compare', '2026-06-30T00:00:00.000Z', true),
+      ],
+      {
+        personId: 'jane',
+        moduleIds: ['excel-jane', 'jane'],
+        createdFrom: '2026-06-01T00:00:00.000Z',
+        createdTo: '2026-07-01T00:00:00.000Z',
+      },
+    )
+
+    expect(records.map((record) => record.moduleId)).toEqual(['jane', 'excel-jane'])
+  })
+
   it('formats file sizes for table rows', () => {
     expect(formatHistoryFileSize(512)).toBe('512 B')
     expect(formatHistoryFileSize(1536)).toBe('1.5 KB')

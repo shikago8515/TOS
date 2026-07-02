@@ -26,6 +26,7 @@ DEFAULT_RESULT_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spr
 RESULT_HISTORY_WARNING = "处理结果历史文件暂时无法保存，当前结果仍可下载。"
 REMOTE_ARCHIVE_URL_ENV = "TOS_PROCESS_HISTORY_ARCHIVE_URL"
 REMOTE_ARCHIVE_TOKEN_ENV = "TOS_PROCESS_HISTORY_ARCHIVE_TOKEN"
+SERVER_WRITE_TOKEN_ENV = "TOS_PROCESS_HISTORY_WRITE_TOKEN"
 REMOTE_HISTORY_BACKEND_TARGET = "remote"
 
 
@@ -123,6 +124,25 @@ def archive_excel_result_history(
     remote_url = os.environ.get(REMOTE_ARCHIVE_URL_ENV, "").strip()
     remote_token = os.environ.get(REMOTE_ARCHIVE_TOKEN_ENV, "").strip()
     if not remote_url or not remote_token:
+        if os.environ.get(SERVER_WRITE_TOKEN_ENV, "").strip():
+            try:
+                return store_excel_result_history(
+                    file_path,
+                    ExcelResultHistoryContext(
+                        module_id=module_id,
+                        request_id=request_id,
+                        original_filename=sanitize_object_segment(original_filename or Path(file_path).name),
+                        content_type=content_type,
+                    ),
+                )
+            except Exception:
+                logger.warning(
+                    "Excel result history local archive failed: module_id=%s request_id=%s filename=%s",
+                    module_id,
+                    request_id,
+                    original_filename,
+                    exc_info=True,
+                )
         return {"historyWarnings": [RESULT_HISTORY_WARNING]}
 
     try:

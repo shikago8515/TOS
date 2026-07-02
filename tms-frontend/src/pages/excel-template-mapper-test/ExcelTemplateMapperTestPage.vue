@@ -149,6 +149,7 @@
               v-if="summaryItems.length > 0"
               :items="summaryItems"
               :status="success ? 'success' : 'error'"
+              :warnings="historyWarnings"
             />
           </template>
         </ExcelUploadSection>
@@ -239,6 +240,7 @@ const messageTone = ref<ExcelNoticeTone>('info')
 const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
+const historyWarnings = ref<string[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(excelTemplateMapperModuleId),
 )
@@ -580,12 +582,14 @@ function clearResultState(): void {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  historyWarnings.value = []
 }
 
 function showWarning(nextMessage: string): void {
   messageTone.value = 'warning'
   message.value = nextMessage
   success.value = false
+  historyWarnings.value = []
 }
 
 function sourceSampleValue(sourceColumn: number): string {
@@ -599,8 +603,10 @@ function recordHistory(
   inputFiles: string[],
   metadata: BackendProcessHistoryMetadata = {},
 ): void {
+  const historyMetadata = readProcessHistoryMetadata(metadata)
+  historyWarnings.value = historyMetadata.historyWarnings ?? []
   historyRecords.value = appendModuleHistory({
-    ...readProcessHistoryMetadata(metadata),
+    ...historyMetadata,
     moduleId: excelTemplateMapperModuleId,
     moduleName: excelTemplateMapperModuleName,
     status,

@@ -13,6 +13,23 @@
       </span>
     </header>
 
+    <div
+      v-if="status === 'success' && visibleWarnings.length > 0"
+      class="result-summary__warning"
+      role="status"
+    >
+      <AppIcon name="alert-circle" />
+      <div>
+        <strong>{{ text('结果已生成，但历史结果未归档，不会出现在历史结果页') }}</strong>
+        <p
+          v-for="warning in visibleWarnings"
+          :key="warning"
+        >
+          {{ text(warning) }}
+        </p>
+      </div>
+    </div>
+
     <div class="summary-grid">
       <article
         v-for="(item, index) in items"
@@ -29,16 +46,24 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+
 import type { ProcessSummaryItem } from '../process/processHistory'
 import { useAppLanguage } from '../i18n/appLanguage'
 import AppIcon from './AppIcon.vue'
 
-defineProps<{
+const props = withDefaults(defineProps<{
   items: ProcessSummaryItem[]
   status: 'success' | 'error'
-}>()
+  warnings?: string[]
+}>(), {
+  warnings: () => [],
+})
 
 const { text } = useAppLanguage()
+const visibleWarnings = computed(() => props.warnings
+  .map((warning) => warning.trim())
+  .filter((warning) => warning.length > 0))
 </script>
 
 <style scoped>
@@ -135,6 +160,36 @@ h3 {
   color: #dc2626;
   background: linear-gradient(135deg, #fef2f2, #fee2e2);
   border: 1px solid #fecaca;
+}
+
+.result-summary__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 12px;
+}
+
+.result-summary__warning .app-icon {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  color: #d97706;
+}
+
+.result-summary__warning strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.result-summary__warning p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* --- Grid --- */

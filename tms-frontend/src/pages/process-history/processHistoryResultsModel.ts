@@ -11,6 +11,7 @@ export interface ProcessHistoryRange {
 export interface LocalProcessHistoryFilter {
   personId: string
   moduleId?: string
+  moduleIds?: string[]
   createdFrom: string
   createdTo: string
 }
@@ -37,15 +38,16 @@ export function filterLocalDownloadableProcessRecords(
   filters: LocalProcessHistoryFilter,
 ): ProcessHistoryRecord[] {
   const personModuleIds = new Set(
-    getProcessHistoryModulesForPerson(filters.personId).map((module) => module.id),
+    getProcessHistoryModulesForPerson(filters.personId).flatMap((module) => module.historyModuleIds),
   )
+  const selectedModuleIds = new Set(filters.moduleIds ?? (filters.moduleId ? [filters.moduleId] : []))
   const createdFromMs = Date.parse(filters.createdFrom)
   const createdToMs = Date.parse(filters.createdTo)
 
   return records
     .filter((record) => {
       if (!personModuleIds.has(record.moduleId)) return false
-      if (filters.moduleId && record.moduleId !== filters.moduleId) return false
+      if (selectedModuleIds.size > 0 && !selectedModuleIds.has(record.moduleId)) return false
       if (!record.resultDownloadPath) return false
       const createdAtMs = Date.parse(record.createdAt)
       if (Number.isNaN(createdAtMs)) return false

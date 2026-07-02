@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_EXCEL_EXTENSIONS = {".xlsx", ".xlsm", ".xls"}
 MODULE_ID = "jane"
+HISTORY_MODULE_ID = "excel-jane"
 PROCESSING_ERROR_MESSAGE = "处理失败，请查看诊断日志或稍后重试"
 
 # 临时目录
@@ -97,7 +98,7 @@ def _backup_context(
 def _archive_result_history(output_filename: str, request_id: str) -> dict[str, object]:
     payload = archive_excel_result_history(
         file_path=os.path.join(UPLOAD_DIR, output_filename),
-        module_id=MODULE_ID,
+        module_id=HISTORY_MODULE_ID,
         request_id=request_id,
         original_filename=output_filename,
     )

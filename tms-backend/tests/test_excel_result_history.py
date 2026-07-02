@@ -99,6 +99,35 @@ class ExcelResultHistoryTests(unittest.TestCase):
         self.assertNotIn("resultFileId", result)
         store_history.assert_not_called()
 
+    def test_archive_helper_stores_result_locally_when_server_write_token_is_configured(self) -> None:
+        history = self._load_history_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = Path(temp_dir) / "server-result.xlsx"
+            source_path.write_bytes(b"result workbook")
+            archive_payload = {
+                "resultFileId": 96,
+                "resultDownloadPath": "/api/process-history/files/96/download",
+                "historyWarnings": [],
+            }
+
+            with patch.dict(os.environ, {"TOS_PROCESS_HISTORY_WRITE_TOKEN": "server-token"}, clear=True), \
+                 patch.object(history, "store_excel_result_history", return_value=archive_payload) as store_history:
+                result = history.archive_excel_result_history(
+                    file_path=source_path,
+                    module_id="excel-jane",
+                    request_id="req-server-1",
+                    original_filename="../server-result.xlsx",
+                )
+
+        store_history.assert_called_once()
+        context = store_history.call_args.args[1]
+        self.assertEqual(context.module_id, "excel-jane")
+        self.assertEqual(context.request_id, "req-server-1")
+        self.assertEqual(context.original_filename, "server-result.xlsx")
+        self.assertEqual(result["resultFileId"], 96)
+        self.assertEqual(result["resultDownloadPath"], "/api/process-history/files/96/download")
+
     def test_archive_helper_posts_result_file_to_remote_archive_api(self) -> None:
         history = self._load_history_module()
 
@@ -164,7 +193,7 @@ class ExcelResultHistoryTests(unittest.TestCase):
                      "working_count": 1,
                      "output_path": str(output_path),
                  }), \
-                 patch.object(jane_api, "archive_excel_result_history", return_value=archive_payload):
+                 patch.object(jane_api, "archive_excel_result_history", return_value=archive_payload) as archive_history:
                 response = asyncio.run(jane_api.process_jane(
                     FakeUpload("tms.xlsx"),
                     FakeUpload("country.xlsx"),
@@ -178,6 +207,39 @@ class ExcelResultHistoryTests(unittest.TestCase):
         self.assertEqual(response["result_download_path"], "/api/process-history/files/42/download")
         self.assertEqual(response["result_download_backend_target"], "remote")
         self.assertEqual(response["history_warnings"], [])
+        self.assertEqual(archive_history.call_args.kwargs["module_id"], "excel-jane")
+
+    def test_jane_process_response_includes_archive_warning_without_remote_archive_config(self) -> None:
+        from api import jane_api
+        history = self._load_history_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "jane-result.xlsx"
+            output_path.write_bytes(b"result workbook")
+
+            with patch.dict(os.environ, {}, clear=True), \
+                 patch.object(jane_api, "copy_upload_to_path"), \
+                 patch.object(jane_api.jane_module, "process_reports", return_value={
+                     "success": True,
+                     "message": "completed",
+                     "logs": [],
+                     "working_count": 1,
+                     "output_path": str(output_path),
+                 }):
+                response = asyncio.run(jane_api.process_jane(
+                    FakeUpload("tms.xlsx"),
+                    FakeUpload("country.xlsx"),
+                    working_filters=None,
+                    output_dir=None,
+                ))
+
+        self.assertTrue(response["success"])
+        self.assertEqual(response["output_file"], "jane-result.xlsx")
+        self.assertEqual(response["history_id"], response["request_id"])
+        self.assertEqual(response["history_warnings"], [history.RESULT_HISTORY_WARNING])
+        self.assertEqual(response["result_download_path"], "")
+        self.assertEqual(response["result_download_backend_target"], "")
+        self.assertIsNone(response["result_file_id"])
 
     def _load_history_module(self):
         spec = importlib.util.find_spec("utils.excel_result_history")

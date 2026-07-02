@@ -25,6 +25,7 @@
             v-if="summaryItems.length > 0"
             :items="summaryItems"
             :status="success ? 'success' : 'error'"
+            :warnings="historyWarnings"
           />
         </ExcelUploadSection>
       </div>
@@ -105,6 +106,7 @@ const message = ref('')
 const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
+const historyWarnings = ref<string[]>([])
 const messageTone = ref<ExcelNoticeTone>('info')
 const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(tmsFinanceInternalReconciliationModuleId),
@@ -255,6 +257,7 @@ async function startProcess(): Promise<void> {
     messageTone.value = 'warning'
     message.value = '请先按预检查提示补齐文件。'
     success.value = false
+    historyWarnings.value = []
     return
   }
 
@@ -271,6 +274,7 @@ async function startInternalReconciliationProcess(): Promise<void> {
     messageTone.value = 'warning'
     message.value = '请先上传 Sample/Bulk 来源文件和内销对账单。'
     success.value = false
+    historyWarnings.value = []
     return
   }
 
@@ -307,6 +311,7 @@ async function startWorkSalesProcess(): Promise<void> {
     messageTone.value = 'warning'
     message.value = '请先上传 iPLEX 导出表。'
     success.value = false
+    historyWarnings.value = []
     return
   }
 
@@ -314,6 +319,7 @@ async function startWorkSalesProcess(): Promise<void> {
     messageTone.value = 'warning'
     message.value = '请先上传 Turnover Excel。'
     success.value = false
+    historyWarnings.value = []
     return
   }
 
@@ -352,6 +358,7 @@ function beginProcessing(): void {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  historyWarnings.value = []
   messageTone.value = 'info'
 }
 
@@ -398,6 +405,7 @@ function resetFeedback(): void {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  historyWarnings.value = []
   messageTone.value = 'info'
 }
 
@@ -407,8 +415,10 @@ function recordHistory(
   inputFiles: string[],
   metadata: BackendProcessHistoryMetadata = {},
 ): void {
+  const historyMetadata = readProcessHistoryMetadata(metadata)
+  historyWarnings.value = historyMetadata.historyWarnings ?? []
   historyRecords.value = appendModuleHistory({
-    ...readProcessHistoryMetadata(metadata),
+    ...historyMetadata,
     moduleId: activeProcess.value.moduleId,
     moduleName: activeProcess.value.moduleName,
     status,

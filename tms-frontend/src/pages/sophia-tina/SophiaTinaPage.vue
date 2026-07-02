@@ -23,6 +23,7 @@
           <ResultSummary
             :items="summaryItems"
             :status="success ? 'success' : 'error'"
+            :warnings="historyWarnings"
           />
         </ExcelUploadSection>
       </div>
@@ -86,6 +87,7 @@ const message = ref('')
 const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
+const historyWarnings = ref<string[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(loadModuleHistory(sophiaTinaModuleId))
 const messageTone = ref<ExcelNoticeTone>('info')
 const { text } = useAppLanguage()
@@ -234,6 +236,7 @@ async function startProcess(): Promise<void> {
     messageTone.value = 'warning'
     message.value = '请先补齐 TMS、TMS Price 和 Factory Price 文件，再开始合并。'
     success.value = false
+    historyWarnings.value = []
     return
   }
 
@@ -246,6 +249,7 @@ async function startProcess(): Promise<void> {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  historyWarnings.value = []
 
   try {
     const response = await processSophiaTinaFiles(
@@ -308,6 +312,7 @@ function resetForm(): void {
   success.value = false
   resultFile.value = ''
   summaryItems.value = []
+  historyWarnings.value = []
   messageTone.value = 'info'
 }
 
@@ -317,8 +322,10 @@ function recordHistory(
   inputFiles: string[],
   metadata: BackendProcessHistoryMetadata = {},
 ): void {
+  const historyMetadata = readProcessHistoryMetadata(metadata)
+  historyWarnings.value = historyMetadata.historyWarnings ?? []
   historyRecords.value = appendModuleHistory({
-    ...readProcessHistoryMetadata(metadata),
+    ...historyMetadata,
     moduleId: sophiaTinaModuleId,
     moduleName: sophiaTinaModuleName,
     status,
