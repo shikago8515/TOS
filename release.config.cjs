@@ -5,7 +5,7 @@ module.exports = {
     'stable',
     {
       name: 'main',
-      prerelease: 'beta3',
+      prerelease: 'beta.3',
       channel: 'beta.3',
     },
   ],

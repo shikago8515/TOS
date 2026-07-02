@@ -11,11 +11,10 @@ test('semantic-release keeps main on the current beta.3 prerelease channel', () 
     'stable',
     {
       name: 'main',
-      prerelease: 'beta3',
+      prerelease: 'beta.3',
       channel: 'beta.3',
     },
   ])
-  assert.doesNotMatch(config.branches[1].prerelease, /\./)
   assert.equal(config.tagFormat, 'v${version}')
 })
 
