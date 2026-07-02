@@ -60,6 +60,24 @@ describe('backendClient', () => {
     await expect(getBackendBaseUrl()).resolves.toBe('http://127.0.0.1:9000')
   })
 
+  it('normalizes the server /tos backend base to the desktop API path for API downloads', async () => {
+    vi.stubEnv('VITE_BACKEND_URL', '/tos')
+    stubWindow(undefined, '/tos/#/jane')
+
+    await expect(
+      buildBackendDownloadUrl('/api/jane/download/result.xlsx'),
+    ).resolves.toBe('/tos/desktop-api/api/jane/download/result.xlsx')
+  })
+
+  it('normalizes an absolute server /tos backend base to the desktop API path for API downloads', async () => {
+    vi.stubEnv('VITE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos')
+    stubWindow(undefined, '/tos/#/jane')
+
+    await expect(
+      buildBackendDownloadUrl('/api/process-history/files/805/download'),
+    ).resolves.toBe('https://ai.tomwell.net:56130/tos/desktop-api/api/process-history/files/805/download')
+  })
+
   it('uses the local Python backend URL in production browser mode by default', async () => {
     vi.stubEnv('DEV', false)
     stubWindow()

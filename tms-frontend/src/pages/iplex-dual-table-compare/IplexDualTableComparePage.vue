@@ -6,9 +6,9 @@
     :actions="toolbarActions"
   >
     <ExcelResultNotice
-      :visible="Boolean(message)"
+      :visible="Boolean(noticeMessage)"
       :tone="resultNoticeTone"
-      :message="message"
+      :message="noticeMessage"
     />
 
     <div class="jane-grid">
@@ -103,6 +103,7 @@ import {
 } from '../../shared/files/fileGroups'
 import {
   appendModuleHistory,
+  downloadCurrentProcessResult,
   clearModuleHistory,
   loadModuleHistory,
   readProcessHistoryMetadata,
@@ -126,7 +127,6 @@ import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
 import ProcessHistoryPanel from '../../shared/ui/ProcessHistoryPanel.vue'
 import ResultSummary from '../../shared/ui/ResultSummary.vue'
 import {
-  downloadIplexDualTableCompareResult,
   inspectIplexDualTableWorkbook,
   processIplexDualTableCompareFiles,
   type IplexDualTableInspectionResponse,
@@ -140,6 +140,8 @@ import {
   iplexDualTableCompareModuleName,
 } from './iplexDualTableCompareModel'
 
+type CurrentResultDownloadMetadata = ReturnType<typeof readProcessHistoryMetadata>
+
 const mainFiles = ref<File[]>([])
 const lookupFiles = ref<File[]>([])
 const inspecting = ref(false)
@@ -150,6 +152,8 @@ const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
 const historyWarnings = ref<string[]>([])
+const downloadError = ref('')
+const currentResultDownload = ref<CurrentResultDownloadMetadata>({})
 const previewRows = ref<IplexDualTableComparePreviewRow[]>([])
 const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(iplexDualTableCompareModuleId),
@@ -251,7 +255,11 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     onClick: startProcess,
   },
 ])
-const resultNoticeTone = computed<ExcelNoticeTone>(() => (success.value ? 'success' : 'error'))
+const noticeMessage = computed(() => downloadError.value || message.value)
+const resultNoticeTone = computed<ExcelNoticeTone>(() => {
+  if (downloadError.value) return 'error'
+  return success.value ? 'success' : 'error'
+})
 
 function updateUploadFiles(fieldId: string, files: File[]): void {
   if (fieldId === 'main') {
@@ -294,6 +302,8 @@ async function startProcess(): Promise<void> {
   if (!mainFiles.value[0] || !lookupFiles.value[0]) {
     message.value = '请先上传 PO 调整表和 RC 核对表'
     success.value = false
+    downloadError.value = ''
+    currentResultDownload.value = {}
     historyWarnings.value = []
     return
   }
@@ -350,8 +360,19 @@ async function startProcess(): Promise<void> {
 }
 
 async function downloadResult(): Promise<void> {
-  if (resultFile.value) {
-    await downloadIplexDualTableCompareResult(resultFile.value)
+  downloadError.value = ''
+
+  try {
+    await downloadCurrentProcessResult({
+      outputFile: resultFile.value,
+      resultDownloadPath: currentResultDownload.value.resultDownloadPath,
+      resultDownloadBackendTarget: currentResultDownload.value.resultDownloadBackendTarget,
+      resultFile: currentResultDownload.value.resultFile,
+      legacyDownloadPath: (filename) => `/api/iplex/dual-table-compare/download/${encodeURIComponent(filename)}`,
+      fallbackFilename: 'iplex_dual_table_compare.xlsx',
+    })
+  } catch (error) {
+    downloadError.value = readErrorMessage(error, '下载结果失败，请稍后重试')
   }
 }
 
@@ -366,8 +387,10 @@ function resetForm(): void {
 
 function clearResultState(): void {
   message.value = ''
+  downloadError.value = ''
   success.value = false
   resultFile.value = ''
+  currentResultDownload.value = {}
   summaryItems.value = []
   historyWarnings.value = []
   previewRows.value = []
@@ -384,6 +407,7 @@ function recordHistory(
   metadata: BackendProcessHistoryMetadata = {},
 ): void {
   const historyMetadata = readProcessHistoryMetadata(metadata)
+  currentResultDownload.value = historyMetadata
   historyWarnings.value = historyMetadata.historyWarnings ?? []
   historyRecords.value = appendModuleHistory({
     ...historyMetadata,

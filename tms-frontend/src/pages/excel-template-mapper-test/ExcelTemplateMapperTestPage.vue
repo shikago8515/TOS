@@ -7,9 +7,9 @@
     :actions="toolbarActions"
   >
     <ExcelResultNotice
-      :visible="Boolean(message)"
+      :visible="Boolean(noticeMessage)"
       :tone="messageTone"
-      :message="message"
+      :message="noticeMessage"
     />
 
     <div class="jane-grid">
@@ -173,6 +173,7 @@ import {
 } from '../../shared/files/fileGroups'
 import {
   appendModuleHistory,
+  downloadCurrentProcessResult,
   clearModuleHistory,
   loadModuleHistory,
   readProcessHistoryMetadata,
@@ -201,7 +202,6 @@ import {
   type AutomationTemplate,
 } from '../web-automation/webAutomationApi'
 import {
-  downloadExcelTemplateMapperResult,
   inspectExcelTemplateMapperWorkbook,
   processExcelTemplateMapperFiles,
   type ExcelTemplateMapperInspectionResponse,
@@ -216,6 +216,8 @@ import {
   type ExcelTemplateMapperFieldMapping,
   type ExcelTemplateMapperHeader,
 } from './excelTemplateMapperModel'
+
+type CurrentResultDownloadMetadata = ReturnType<typeof readProcessHistoryMetadata>
 
 const sourceFiles = ref<File[]>([])
 const templateFiles = ref<File[]>([])
@@ -241,6 +243,8 @@ const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
 const historyWarnings = ref<string[]>([])
+const downloadError = ref('')
+const currentResultDownload = ref<CurrentResultDownloadMetadata>({})
 const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(excelTemplateMapperModuleId),
 )
@@ -348,6 +352,8 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     onClick: startProcess,
   },
 ])
+
+const noticeMessage = computed(() => downloadError.value || message.value)
 
 watch([sourceHeaderRow, templateHeaderRow], () => {
   clearInspectionState()
@@ -545,8 +551,20 @@ async function startProcess(): Promise<void> {
 }
 
 async function downloadResult(): Promise<void> {
-  if (resultFile.value) {
-    await downloadExcelTemplateMapperResult(resultFile.value)
+  downloadError.value = ''
+
+  try {
+    await downloadCurrentProcessResult({
+      outputFile: resultFile.value,
+      resultDownloadPath: currentResultDownload.value.resultDownloadPath,
+      resultDownloadBackendTarget: currentResultDownload.value.resultDownloadBackendTarget,
+      resultFile: currentResultDownload.value.resultFile,
+      legacyDownloadPath: (filename) => `/api/excel-template-mapper/download/${encodeURIComponent(filename)}`,
+      fallbackFilename: 'excel_template_mapper_result.xlsx',
+    })
+  } catch (error) {
+    downloadError.value = readErrorMessage(error, '下载结果失败，请稍后重试')
+    messageTone.value = 'error'
   }
 }
 
@@ -579,8 +597,10 @@ function clearInspectionState(): void {
 function clearResultState(): void {
   progress.value = 0
   message.value = ''
+  downloadError.value = ''
   success.value = false
   resultFile.value = ''
+  currentResultDownload.value = {}
   summaryItems.value = []
   historyWarnings.value = []
 }
@@ -588,7 +608,9 @@ function clearResultState(): void {
 function showWarning(nextMessage: string): void {
   messageTone.value = 'warning'
   message.value = nextMessage
+  downloadError.value = ''
   success.value = false
+  currentResultDownload.value = {}
   historyWarnings.value = []
 }
 
@@ -604,6 +626,7 @@ function recordHistory(
   metadata: BackendProcessHistoryMetadata = {},
 ): void {
   const historyMetadata = readProcessHistoryMetadata(metadata)
+  currentResultDownload.value = historyMetadata
   historyWarnings.value = historyMetadata.historyWarnings ?? []
   historyRecords.value = appendModuleHistory({
     ...historyMetadata,

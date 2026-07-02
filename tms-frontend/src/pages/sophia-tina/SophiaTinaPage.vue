@@ -6,9 +6,9 @@
     :actions="toolbarActions"
   >
     <ExcelResultNotice
-      :visible="Boolean(message)"
+      :visible="Boolean(noticeMessage)"
       :tone="messageTone"
-      :message="message"
+      :message="noticeMessage"
     />
 
     <div class="jane-grid">
@@ -47,6 +47,7 @@ import {
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import {
   appendModuleHistory,
+  downloadCurrentProcessResult,
   clearModuleHistory,
   loadModuleHistory,
   readProcessHistoryMetadata,
@@ -69,12 +70,14 @@ import {
 import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
 import ProcessHistoryPanel from '../../shared/ui/ProcessHistoryPanel.vue'
 import ResultSummary from '../../shared/ui/ResultSummary.vue'
-import { downloadSophiaTinaResult, processSophiaTinaFiles } from './sophiaTinaApi'
+import { processSophiaTinaFiles } from './sophiaTinaApi'
 import {
   buildSophiaTinaSummary,
   sophiaTinaModuleId,
   sophiaTinaModuleName,
 } from './sophiaTinaModel'
+
+type CurrentResultDownloadMetadata = ReturnType<typeof readProcessHistoryMetadata>
 
 const tmsFiles = ref<File[]>([])
 const tmsPriceFiles = ref<File[]>([])
@@ -88,6 +91,8 @@ const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
 const historyWarnings = ref<string[]>([])
+const downloadError = ref('')
+const currentResultDownload = ref<CurrentResultDownloadMetadata>({})
 const historyRecords = ref<ProcessHistoryRecord[]>(loadModuleHistory(sophiaTinaModuleId))
 const messageTone = ref<ExcelNoticeTone>('info')
 const { text } = useAppLanguage()
@@ -205,6 +210,8 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
   },
 ])
 
+const noticeMessage = computed(() => downloadError.value || message.value)
+
 function updateUploadFiles(fieldId: string, files: File[]): void {
   if (fieldId === 'tms') {
     tmsFiles.value = files
@@ -236,6 +243,8 @@ async function startProcess(): Promise<void> {
     messageTone.value = 'warning'
     message.value = '请先补齐 TMS、TMS Price 和 Factory Price 文件，再开始合并。'
     success.value = false
+    downloadError.value = ''
+    currentResultDownload.value = {}
     historyWarnings.value = []
     return
   }
@@ -246,8 +255,10 @@ async function startProcess(): Promise<void> {
   processing.value = true
   progress.value = 0
   message.value = ''
+  downloadError.value = ''
   success.value = false
   resultFile.value = ''
+  currentResultDownload.value = {}
   summaryItems.value = []
   historyWarnings.value = []
 
@@ -295,8 +306,20 @@ async function startProcess(): Promise<void> {
 }
 
 async function downloadResult(): Promise<void> {
-  if (resultFile.value) {
-    await downloadSophiaTinaResult(resultFile.value)
+  downloadError.value = ''
+
+  try {
+    await downloadCurrentProcessResult({
+      outputFile: resultFile.value,
+      resultDownloadPath: currentResultDownload.value.resultDownloadPath,
+      resultDownloadBackendTarget: currentResultDownload.value.resultDownloadBackendTarget,
+      resultFile: currentResultDownload.value.resultFile,
+      legacyDownloadPath: (filename) => `/api/sophia-tina/download/${encodeURIComponent(filename)}`,
+      fallbackFilename: 'sophia_tina_result.xlsx',
+    })
+  } catch (error) {
+    downloadError.value = readErrorMessage(error, '下载结果失败，请稍后重试')
+    messageTone.value = 'error'
   }
 }
 
@@ -309,8 +332,10 @@ function resetForm(): void {
   processing.value = false
   progress.value = 0
   message.value = ''
+  downloadError.value = ''
   success.value = false
   resultFile.value = ''
+  currentResultDownload.value = {}
   summaryItems.value = []
   historyWarnings.value = []
   messageTone.value = 'info'
@@ -323,6 +348,7 @@ function recordHistory(
   metadata: BackendProcessHistoryMetadata = {},
 ): void {
   const historyMetadata = readProcessHistoryMetadata(metadata)
+  currentResultDownload.value = historyMetadata
   historyWarnings.value = historyMetadata.historyWarnings ?? []
   historyRecords.value = appendModuleHistory({
     ...historyMetadata,

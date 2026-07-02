@@ -72,6 +72,15 @@ export interface ProcessHistoryPageResult {
   pagination: ProcessHistoryPagination
 }
 
+export interface CurrentProcessResultDownloadOptions {
+  outputFile?: string
+  resultDownloadPath?: string
+  resultDownloadBackendTarget?: BackendTarget
+  resultFile?: ProcessHistoryResultFile
+  legacyDownloadPath: (filename: string) => string
+  fallbackFilename?: string
+}
+
 interface ProcessHistoryListResponse {
   records?: ProcessHistoryRecord[]
   pagination?: Partial<ProcessHistoryPagination>
@@ -254,6 +263,32 @@ export function findLatestDownloadableHistoryRecord(
   records: readonly ProcessHistoryRecord[],
 ): ProcessHistoryRecord | null {
   return records.find((record) => Boolean(record.resultDownloadPath)) ?? null
+}
+
+export async function downloadCurrentProcessResult(
+  options: CurrentProcessResultDownloadOptions,
+): Promise<void> {
+  const archivedDownloadPath = options.resultFile?.downloadPath || options.resultDownloadPath
+
+  if (archivedDownloadPath) {
+    const downloadUrl = await buildBackendDownloadUrl(
+      archivedDownloadPath,
+      options.resultDownloadBackendTarget || 'remote',
+    )
+    await downloadUrlAsFile(
+      downloadUrl,
+      options.resultFile?.filename || options.outputFile || options.fallbackFilename || 'process-result.xlsx',
+    )
+    return
+  }
+
+  const outputFile = String(options.outputFile || '').trim()
+  if (!outputFile) {
+    throw new Error('当前结果文件未生成，无法下载。')
+  }
+
+  const downloadUrl = await buildBackendDownloadUrl(options.legacyDownloadPath(outputFile))
+  await downloadUrlAsFile(downloadUrl, outputFile || options.fallbackFilename || 'process-result.xlsx')
 }
 
 export async function buildProcessHistoryResultDownloadUrl(
