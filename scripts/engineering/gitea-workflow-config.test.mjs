@@ -24,6 +24,8 @@ test('release workflow is owned by Gitea Actions only', () => {
   assert.match(workflow, /git config --local --unset-all "http\.\$\{repo_url\}\.extraHeader"/)
   assert.match(workflow, /GIT_TERMINAL_PROMPT=0/)
   assert.match(workflow, /git remote set-url origin "\$repo_url"/)
+  assert.match(workflow, /git rev-parse --is-shallow-repository/)
+  assert.match(workflow, /git fetch --unshallow origin main --tags --prune/)
   assert.doesNotMatch(workflow, /git push origin HEAD:stable/)
   assert.match(workflow, /git tag -l 'v\*-portable\*'/)
   assert.match(workflow, /git tag -d "\$legacy_tag"/)

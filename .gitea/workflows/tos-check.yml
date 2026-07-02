@@ -112,7 +112,11 @@ jobs:
           trap 'git config --local --unset-all "http.${repo_url}.extraHeader" >/dev/null 2>&1 || true' EXIT
           git remote set-url origin "$repo_url"
           git checkout -B main "$GITEA_SHA"
-          git fetch origin main --tags --prune
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --unshallow origin main --tags --prune
+          else
+            git fetch origin main --tags --prune
+          fi
           for legacy_tag in $(git tag -l 'v*-portable*'); do
             git tag -d "$legacy_tag"
           done
