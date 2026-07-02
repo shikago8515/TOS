@@ -5,8 +5,8 @@ import type {
 } from '../../types/electronApi'
 import {
   buildBackendDownloadUrl,
-  downloadUrlAsFile,
   getBackendBaseUrl,
+  openUrlAsBrowserDownload,
 } from '../../shared/api/backendClient'
 import { fallbackAppVersion } from '../../shared/version/appVersion'
 
@@ -147,7 +147,7 @@ export async function resolveTosDesktopDownloadUrl(): Promise<string> {
 
 export async function openTosDesktopDownload(): Promise<void> {
   const downloadUrl = await resolveTosDesktopDownloadUrl()
-  await downloadUrlAsFile(downloadUrl, 'TOS-Desktop-Setup.exe')
+  openUrlAsBrowserDownload(downloadUrl, 'TOS-Desktop-Setup.exe')
 }
 
 export function getTosDesktopFullDownloadUrl(): string {
@@ -166,7 +166,7 @@ export async function resolveTosDesktopFullDownloadUrl(): Promise<string> {
 
 export async function openTosDesktopFullDownload(): Promise<void> {
   const downloadUrl = await resolveTosDesktopFullDownloadUrl()
-  await downloadUrlAsFile(downloadUrl, 'TOS-Desktop-Full-Setup.exe')
+  openUrlAsBrowserDownload(downloadUrl, 'TOS-Desktop-Full-Setup.exe')
 }
 
 async function buildUnsupportedResult(): Promise<UpdateActionResult> {
