@@ -309,10 +309,10 @@ class ProcessHistoryApiTests(unittest.TestCase):
                  return_value=archive_payload,
              ) as store_file:
             response = process_history_api.save_process_history_result_file(
-                moduleId="jane",
+                moduleId="jessca",
                 requestId="req-remote-1",
                 originalFilename="../result.xlsx",
-                moduleName="Jane",
+                moduleName="Jessica",
                 status="success",
                 durationMs=1234,
                 message="completed",
@@ -328,10 +328,11 @@ class ProcessHistoryApiTests(unittest.TestCase):
         store_file.assert_called_once()
         context = store_file.call_args.kwargs["context"]
         history_record = store_file.call_args.kwargs["history_record"]
-        self.assertEqual(context.module_id, "jane")
+        self.assertEqual(context.module_id, "excel-jessca")
         self.assertEqual(context.request_id, "req-remote-1")
         self.assertEqual(context.original_filename, "result.xlsx")
-        self.assertEqual(history_record["module_name"], "Jane")
+        self.assertEqual(history_record["module_id"], "excel-jessca")
+        self.assertEqual(history_record["module_name"], "Jessica")
         self.assertEqual(history_record["input_files"], ["source.xlsx"])
         self.assertEqual(history_record["summary"], [{"label": "Rows", "value": "18"}])
         self.assertTrue(response["ok"])

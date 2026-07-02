@@ -57,6 +57,10 @@ export const homeDashboardHistoryModules: ProcessHistoryModuleDefinition[] = pro
   .flatMap((person) => person.modules)
   .filter((module) => homePersonGroupIdSet.has(module.group))
 
+export const homeDashboardHistoryModuleIds: string[] = uniqueModuleIds(
+  homeDashboardHistoryModules.flatMap((module) => module.historyModuleIds),
+)
+
 export function findHomeModuleByActivityId(activityId?: string): TosModuleDefinition | undefined {
   if (!activityId) return undefined
   return tosModules.find((module) => module.id === activityId || module.routeName === activityId)
@@ -75,4 +79,8 @@ export function getHomePersonLabel(person: HomePersonGroup, isEnglish: boolean):
 
 export function getHomeModuleLabel(module: TosModuleDefinition, isEnglish: boolean): string {
   return isEnglish ? module.navLabelEn : module.navLabel
+}
+
+function uniqueModuleIds(moduleIds: string[]): string[] {
+  return Array.from(new Set(moduleIds.filter(Boolean)))
 }

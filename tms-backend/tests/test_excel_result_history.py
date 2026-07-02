@@ -22,6 +22,30 @@ class FakeUpload:
 
 
 class ExcelResultHistoryTests(unittest.TestCase):
+    def test_normalizes_legacy_catalog_module_ids_to_history_module_ids(self) -> None:
+        history = self._load_history_module()
+        cases = {
+            "jessca": "excel-jessca",
+            "draft-packing-compare": "pdf-draft-packing-compare",
+            "jane": "excel-jane",
+            "jane-bom-compare": "excel-jane-bom-compare",
+            "jane-bom-summary": "excel-jane-bom-summary",
+            "jane-outbound-compare": "excel-jane-outbound-compare",
+            "sophia-tina": "excel-sophia-tina",
+            "tms-finance-internal-reconciliation": "excel-tms-finance-internal-reconciliation",
+            "tms-finance-work-sales": "excel-tms-finance-work-sales",
+            "eric": "eric",
+            "iplex-dual-table-compare": "iplex-dual-table-compare",
+            "excel-template-mapper-test": "excel-template-mapper-test",
+        }
+
+        for module_id, expected_history_id in cases.items():
+            with self.subTest(module_id=module_id):
+                self.assertEqual(
+                    history.normalize_process_history_module_id(module_id),
+                    expected_history_id,
+                )
+
     def test_result_history_service_stores_file_and_records_download_metadata(self) -> None:
         history = self._load_history_module()
 
@@ -36,7 +60,7 @@ class ExcelResultHistoryTests(unittest.TestCase):
             )
             storage_record = {
                 "bucket": "tos-results",
-                "object_key": "process-results/jessca/2026/06/30/req-1/result_file/20260630010101000000-result.xlsx",
+                "object_key": "process-results/excel-jessca/2026/06/30/req-1/result_file/20260630010101000000-result.xlsx",
                 "file_size": len(b"result workbook"),
                 "sha256": "b" * 64,
             }
@@ -62,16 +86,16 @@ class ExcelResultHistoryTests(unittest.TestCase):
         self.assertEqual(put_kwargs["bucket"], "tos-results")
         self.assertRegex(
             put_kwargs["object_key"],
-            r"^process-results/jessca/\d{4}/\d{2}/\d{2}/req-1/result_file/\d{20}-result\.xlsx$",
+            r"^process-results/excel-jessca/\d{4}/\d{2}/\d{2}/req-1/result_file/\d{20}-result\.xlsx$",
         )
         history_record = upsert_history.call_args.args[0]
         self.assertEqual(history_record["record_id"], "req-1")
-        self.assertEqual(history_record["module_id"], "jessca")
+        self.assertEqual(history_record["module_id"], "excel-jessca")
         self.assertEqual(history_record["output_file"], "result.xlsx")
         self.assertEqual(history_record["source_system"], "backend.result-history")
         metadata = insert_file.call_args.args[0]
         self.assertEqual(metadata["request_id"], "req-1")
-        self.assertEqual(metadata["module_id"], "jessca")
+        self.assertEqual(metadata["module_id"], "excel-jessca")
         self.assertEqual(metadata["file_role"], "result_file")
         self.assertEqual(metadata["original_filename"], "result.xlsx")
         self.assertEqual(metadata["bucket"], "tos-results")
@@ -115,14 +139,14 @@ class ExcelResultHistoryTests(unittest.TestCase):
                  patch.object(history, "store_excel_result_history", return_value=archive_payload) as store_history:
                 result = history.archive_excel_result_history(
                     file_path=source_path,
-                    module_id="excel-jane",
+                    module_id="jessca",
                     request_id="req-server-1",
                     original_filename="../server-result.xlsx",
                 )
 
         store_history.assert_called_once()
         context = store_history.call_args.args[1]
-        self.assertEqual(context.module_id, "excel-jane")
+        self.assertEqual(context.module_id, "excel-jessca")
         self.assertEqual(context.request_id, "req-server-1")
         self.assertEqual(context.original_filename, "server-result.xlsx")
         self.assertEqual(result["resultFileId"], 96)
@@ -153,7 +177,7 @@ class ExcelResultHistoryTests(unittest.TestCase):
             }, clear=True), patch.object(history.httpx, "post", return_value=remote_response) as post:
                 result = history.archive_excel_result_history(
                     file_path=source_path,
-                    module_id="jane",
+                    module_id="jane-bom-summary",
                     request_id="req-remote-1",
                     original_filename="../remote-result.xlsx",
                 )
@@ -162,7 +186,7 @@ class ExcelResultHistoryTests(unittest.TestCase):
         post_kwargs = post.call_args.kwargs
         self.assertEqual(post.call_args.args[0], "https://ai.tomwell.net:56130/tos/desktop-api/api/process-history/result-files")
         self.assertEqual(post_kwargs["headers"]["X-TOS-History-Write-Token"], "archive-token")
-        self.assertEqual(post_kwargs["data"]["moduleId"], "jane")
+        self.assertEqual(post_kwargs["data"]["moduleId"], "excel-jane-bom-summary")
         self.assertEqual(post_kwargs["data"]["requestId"], "req-remote-1")
         self.assertEqual(post_kwargs["data"]["originalFilename"], "remote-result.xlsx")
         self.assertEqual(result["resultFileId"], 84)
@@ -207,7 +231,7 @@ class ExcelResultHistoryTests(unittest.TestCase):
         self.assertEqual(response["result_download_path"], "/api/process-history/files/42/download")
         self.assertEqual(response["result_download_backend_target"], "remote")
         self.assertEqual(response["history_warnings"], [])
-        self.assertEqual(archive_history.call_args.kwargs["module_id"], "excel-jane")
+        self.assertEqual(archive_history.call_args.kwargs["module_id"], "jane")
 
     def test_jane_process_response_includes_archive_warning_without_remote_archive_config(self) -> None:
         from api import jane_api

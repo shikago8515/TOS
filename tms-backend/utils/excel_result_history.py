@@ -29,6 +29,18 @@ REMOTE_ARCHIVE_TOKEN_ENV = "TOS_PROCESS_HISTORY_ARCHIVE_TOKEN"
 SERVER_WRITE_TOKEN_ENV = "TOS_PROCESS_HISTORY_WRITE_TOKEN"
 REMOTE_HISTORY_BACKEND_TARGET = "remote"
 
+PROCESS_HISTORY_MODULE_ID_ALIASES = {
+    "jessca": "excel-jessca",
+    "draft-packing-compare": "pdf-draft-packing-compare",
+    "jane": "excel-jane",
+    "jane-bom-compare": "excel-jane-bom-compare",
+    "jane-bom-summary": "excel-jane-bom-summary",
+    "jane-outbound-compare": "excel-jane-outbound-compare",
+    "sophia-tina": "excel-sophia-tina",
+    "tms-finance-internal-reconciliation": "excel-tms-finance-internal-reconciliation",
+    "tms-finance-work-sales": "excel-tms-finance-work-sales",
+}
+
 
 @dataclass(frozen=True)
 class ExcelResultHistoryContext:
@@ -38,26 +50,37 @@ class ExcelResultHistoryContext:
     content_type: str = DEFAULT_RESULT_CONTENT_TYPE
 
 
+def normalize_process_history_module_id(module_id: str) -> str:
+    normalized = str(module_id or "").strip()
+    return PROCESS_HISTORY_MODULE_ID_ALIASES.get(normalized, normalized)
+
+
 def store_excel_result_history(
     file_path: str | Path,
     context: ExcelResultHistoryContext,
     history_record: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     path = Path(file_path)
-    bucket = get_minio_bucket("results")
-    object_key = build_excel_result_history_object_key(path, context)
+    safe_filename = sanitize_object_segment(context.original_filename or path.name)
     content_type = context.content_type or DEFAULT_RESULT_CONTENT_TYPE
+    clean_context = ExcelResultHistoryContext(
+        module_id=normalize_process_history_module_id(context.module_id),
+        request_id=context.request_id,
+        original_filename=safe_filename,
+        content_type=content_type,
+    )
+    bucket = get_minio_bucket("results")
+    object_key = build_excel_result_history_object_key(path, clean_context)
     storage_record = put_object_file(
         bucket=bucket,
         object_key=object_key,
         file_path=path,
         content_type=content_type,
     )
-    safe_filename = sanitize_object_segment(context.original_filename or path.name)
-    upsert_process_history_record(_build_process_history_record(context, safe_filename, history_record))
+    upsert_process_history_record(_build_process_history_record(clean_context, safe_filename, history_record))
     file_record = insert_process_result_file({
-        "request_id": context.request_id,
-        "module_id": context.module_id,
+        "request_id": clean_context.request_id,
+        "module_id": clean_context.module_id,
         "file_role": RESULT_FILE_ROLE,
         "bucket": storage_record["bucket"],
         "object_key": storage_record["object_key"],
@@ -78,7 +101,7 @@ def store_uploaded_process_result_file(
     safe_filename = sanitize_object_segment(context.original_filename or getattr(file, "filename", "") or "result.xlsx")
     content_type = context.content_type or getattr(file, "content_type", "") or DEFAULT_RESULT_CONTENT_TYPE
     clean_context = ExcelResultHistoryContext(
-        module_id=context.module_id,
+        module_id=normalize_process_history_module_id(context.module_id),
         request_id=context.request_id,
         original_filename=safe_filename,
         content_type=content_type,
@@ -121,6 +144,7 @@ def archive_excel_result_history(
     original_filename: str,
     content_type: str = DEFAULT_RESULT_CONTENT_TYPE,
 ) -> dict[str, Any]:
+    history_module_id = normalize_process_history_module_id(module_id)
     remote_url = os.environ.get(REMOTE_ARCHIVE_URL_ENV, "").strip()
     remote_token = os.environ.get(REMOTE_ARCHIVE_TOKEN_ENV, "").strip()
     if not remote_url or not remote_token:
@@ -129,7 +153,7 @@ def archive_excel_result_history(
                 return store_excel_result_history(
                     file_path,
                     ExcelResultHistoryContext(
-                        module_id=module_id,
+                        module_id=history_module_id,
                         request_id=request_id,
                         original_filename=sanitize_object_segment(original_filename or Path(file_path).name),
                         content_type=content_type,
@@ -138,7 +162,7 @@ def archive_excel_result_history(
             except Exception:
                 logger.warning(
                     "Excel result history local archive failed: module_id=%s request_id=%s filename=%s",
-                    module_id,
+                    history_module_id,
                     request_id,
                     original_filename,
                     exc_info=True,
@@ -149,7 +173,7 @@ def archive_excel_result_history(
         return archive_excel_result_history_remotely(
             file_path=file_path,
             context=ExcelResultHistoryContext(
-                module_id=module_id,
+                module_id=history_module_id,
                 request_id=request_id,
                 original_filename=sanitize_object_segment(original_filename or Path(file_path).name),
                 content_type=content_type,
@@ -160,7 +184,7 @@ def archive_excel_result_history(
     except Exception:
         logger.warning(
             "Excel result history remote archive failed: module_id=%s request_id=%s filename=%s",
-            module_id,
+            history_module_id,
             request_id,
             original_filename,
             exc_info=True,
@@ -178,13 +202,19 @@ def archive_excel_result_history_remotely(
     path = Path(file_path)
     safe_filename = sanitize_object_segment(context.original_filename or path.name)
     content_type = context.content_type or DEFAULT_RESULT_CONTENT_TYPE
+    clean_context = ExcelResultHistoryContext(
+        module_id=normalize_process_history_module_id(context.module_id),
+        request_id=context.request_id,
+        original_filename=safe_filename,
+        content_type=content_type,
+    )
     with path.open("rb") as file_obj:
         response = httpx.post(
             archive_url,
             headers={"X-TOS-History-Write-Token": archive_token},
             data={
-                "moduleId": context.module_id,
-                "requestId": context.request_id,
+                "moduleId": clean_context.module_id,
+                "requestId": clean_context.request_id,
                 "originalFilename": safe_filename,
                 "contentType": content_type,
             },
@@ -246,7 +276,7 @@ def build_excel_result_history_object_key(
     filename = sanitize_object_segment(context.original_filename or Path(file_path).name)
     parts = [
         PROCESS_RESULT_PREFIX,
-        sanitize_object_segment(context.module_id),
+        sanitize_object_segment(normalize_process_history_module_id(context.module_id)),
         now.strftime("%Y"),
         now.strftime("%m"),
         now.strftime("%d"),
@@ -298,7 +328,7 @@ def _build_process_history_record(
             if value not in (None, ""):
                 record[key] = value
     record["record_id"] = context.request_id
-    record["module_id"] = context.module_id
+    record["module_id"] = normalize_process_history_module_id(context.module_id)
     record["output_file"] = record.get("output_file") or safe_filename
     record["source_system"] = "backend.result-history"
     return record

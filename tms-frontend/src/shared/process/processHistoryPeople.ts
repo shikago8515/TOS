@@ -33,7 +33,15 @@ const processHistoryModuleIdByCatalogId: Partial<Record<string, string>> = {
 }
 
 const processHistoryModuleAliasesByCatalogId: Partial<Record<string, string[]>> = {
+  'draft-packing-compare': ['draft-packing-compare'],
+  jessca: ['jessca'],
   jane: ['jane'],
+  'jane-bom-compare': ['jane-bom-compare'],
+  'jane-bom-summary': ['jane-bom-summary'],
+  'jane-outbound-compare': ['jane-outbound-compare'],
+  'sophia-tina': ['sophia-tina'],
+  'tms-finance-internal-reconciliation': ['tms-finance-internal-reconciliation'],
+  'tms-finance-work-sales': ['tms-finance-work-sales'],
 }
 
 const processHistoryPersonGroups: Array<{

@@ -140,6 +140,14 @@ function shouldUseRemoteBackendByDefault(path: string): boolean {
     || normalizedPath === '/api/process-history/records'
     || normalizedPath.startsWith('/api/process-history/records/')
     || normalizedPath.startsWith('/api/process-history/files/')
+    || normalizedPath === '/api/system/config/installer-versions'
+    || normalizedPath === '/api/system/config/automation-helper/download'
+    || normalizedPath === '/api/system/config/automation-helper/payload'
+    || normalizedPath.startsWith('/api/system/config/automation-helper/payload/')
+    || normalizedPath === '/api/system/config/tos-desktop/download'
+    || normalizedPath === '/api/system/config/tos-desktop/payload'
+    || normalizedPath.startsWith('/api/system/config/tos-desktop/payload/')
+    || normalizedPath === '/api/system/config/tos-desktop-full/download'
 }
 
 function normalizeApiPath(path: string): string {

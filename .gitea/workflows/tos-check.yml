@@ -113,8 +113,8 @@ jobs:
           git remote set-url origin "$repo_url"
           git checkout -B main "$GITEA_SHA"
           git fetch origin main --tags --prune
-          if ! git ls-remote --exit-code --heads origin stable >/dev/null 2>&1; then
-            git push origin HEAD:stable
-          fi
+          for legacy_tag in $(git tag -l 'v*-portable*'); do
+            git tag -d "$legacy_tag"
+          done
           git fetch origin stable --prune
           npm run release -- --no-ci

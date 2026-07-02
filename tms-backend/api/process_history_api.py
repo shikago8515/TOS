@@ -16,6 +16,7 @@ from starlette.background import BackgroundTask
 from utils.excel_result_history import (
     DEFAULT_RESULT_CONTENT_TYPE,
     ExcelResultHistoryContext,
+    normalize_process_history_module_id,
     process_history_response_fields,
     store_uploaded_process_result_file,
 )
@@ -163,7 +164,7 @@ def save_process_history_result_file(
     history_write_token: str | None = Header(None, alias="X-TOS-History-Write-Token"),
 ) -> dict[str, Any]:
     _verify_history_write_token(history_write_token)
-    module_id = _required_form_value(moduleId, "moduleId")
+    module_id = normalize_process_history_module_id(_required_form_value(moduleId, "moduleId"))
     request_id = _required_form_value(requestId, "requestId")
     safe_filename = sanitize_object_segment(originalFilename or file.filename or "result.xlsx")
     normalized_status = _normalize_status(status) or "success"
