@@ -84,6 +84,7 @@
     "add Jane BOM summary module"
   ],
   "improved": [
+    "补全 semantic-release 发布历史",
     "修复 semantic-release Git 认证",
     "修复 semantic-release Gitea 认证",
     "等待自动化测试子进程退出",

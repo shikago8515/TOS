@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "version": "1.0.0-beta.3.1",
   "tag": "v1.0.0-beta.3.1",
-  "gitSha": "04cf31ab960bc15a83b91729159e2afa2379d2f7",
+  "gitSha": "7a8ad4450704ab172f82d82649bf46d7946ee5b3",
   "releaseDate": "2026-07-02",
   "channel": "beta.3",
   "releaseNotes": {
@@ -91,6 +91,7 @@
       "add Jane BOM summary module"
     ],
     "improved": [
+      "补全 semantic-release 发布历史",
       "修复 semantic-release Git 认证",
       "修复 semantic-release Gitea 认证",
       "等待自动化测试子进程退出",
@@ -340,6 +341,7 @@
         "title": "优化",
         "icon": "activity",
         "items": [
+          "补全 semantic-release 发布历史",
           "修复 semantic-release Git 认证",
           "修复 semantic-release Gitea 认证",
           "等待自动化测试子进程退出",
