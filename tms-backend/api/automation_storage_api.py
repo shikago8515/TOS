@@ -1627,13 +1627,13 @@ def _merge_ticket_owner_checkpoint(
                 items_by_key[key] = dict(item)
     for item in incoming.get("items") or []:
         if isinstance(item, dict):
-            key = _ticket_owner_item_key(item)
+            key = _ticket_owner_existing_item_key(items_by_key, item)
             if key:
                 items_by_key[key] = {**items_by_key.get(key, {}), **item}
 
     item_result = payload.itemResult or None
     if isinstance(item_result, dict):
-        key = _ticket_owner_item_key(item_result) or f"item-{len(items_by_key) + 1}"
+        key = _ticket_owner_existing_item_key(items_by_key, item_result) or f"item-{len(items_by_key) + 1}"
         item_files = [_stored_file_checkpoint_payload(row) for row in stored_files]
         item_status = str(item_result.get("status") or item_result.get("state") or "").strip().lower()
         if not item_status:
@@ -1654,7 +1654,7 @@ def _merge_ticket_owner_checkpoint(
         checkpoint["result"] = result
         for item in result.get("ticketResults") or []:
             if isinstance(item, dict):
-                key = _ticket_owner_item_key(item)
+                key = _ticket_owner_existing_item_key(items_by_key, item)
                 if key:
                     items_by_key[key] = {
                         **items_by_key.get(key, {}),
@@ -1729,6 +1729,38 @@ def _ticket_owner_item_key(item: dict[str, Any]) -> str:
         or item.get("pageIndex")
         or ""
     ).strip()
+
+
+def _ticket_owner_existing_item_key(items_by_key: dict[str, dict[str, Any]], item: dict[str, Any]) -> str:
+    key = _ticket_owner_item_key(item)
+    if key in items_by_key:
+        return key
+
+    case_number = _ticket_owner_case_number(item)
+    if not case_number:
+        return key
+
+    matching_keys = [
+        existing_key
+        for existing_key in items_by_key
+        if existing_key == case_number or existing_key.startswith(f"{case_number}|")
+    ]
+    if len(matching_keys) == 1:
+        return matching_keys[0]
+    return key
+
+
+def _ticket_owner_case_number(item: dict[str, Any]) -> str:
+    row = item.get("row") if isinstance(item.get("row"), dict) else {}
+    for value in (item.get("caseNumber"), item.get("Case Number"), row.get("Case Number")):
+        text = str(value or "").strip()
+        if text:
+            return text
+
+    item_key = str(item.get("itemKey") or "").strip()
+    if "|" in item_key:
+        return item_key.split("|", 1)[0].strip()
+    return item_key
 
 
 def _positive_int(*values: Any) -> int:

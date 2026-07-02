@@ -1,13 +1,43 @@
 [
   {
-    "recordKey": "builtin-1.0.0-beta.3.1-improved-release-history-fallback",
+    "recordKey": "builtin-1.0.0-beta.3.1-added-shipping-carton-range-check",
+    "version": "1.0.0-beta.3.1",
+    "releaseDate": "2026-07-02",
+    "category": "added",
+    "pageName": "Infor Nexus Shipping 自动化",
+    "pagePath": "/web-automation/scenarios/shipping-automation",
+    "title": "新增箱数 Range 核对结果表",
+    "description": "新龙泰 Shipping 会读取浏览器 Range 列并展开箱号，按 Excel cartons 校验缺失、超出、重复和格式异常，单独生成 Cartons核对结果 子表。"
+  },
+  {
+    "recordKey": "builtin-1.0.0-beta.3.1-added-shipping-origin-declaration",
+    "version": "1.0.0-beta.3.1",
+    "releaseDate": "2026-07-02",
+    "category": "added",
+    "pageName": "新龙泰 Shipping 自动化",
+    "pagePath": "/xinlongtai-shipping-automation",
+    "title": "新增原产地声明自动填写",
+    "description": "Create Shipment 页面新增原产地声明开关，开启后会按当前 PO 对应的 Excel remark 填写 Statement On Origin 和 Packing List Notes。"
+  },
+  {
+    "recordKey": "builtin-1.0.0-beta.3.1-improved-shipping-desktop-utility-preflight",
     "version": "1.0.0-beta.3.1",
     "releaseDate": "2026-07-02",
     "category": "improved",
-    "pageName": "版本更新",
-    "pagePath": "/release-updates",
-    "title": "同步当前版本发布记录",
-    "description": "更新内置版本记录兜底，使版本更新页面在后端不可用时也显示当前 1.0.0-beta.3.1 的发布信息。"
+    "pageName": "万代 / 新龙泰 Shipping 自动化",
+    "pagePath": "/web-automation",
+    "title": "取消 Desktop Utility 前端预拦截",
+    "description": "万代和新龙泰 Shipping 页面不再因为 Desktop Utility 或浏览器扩展健康预检提前阻止上传执行，真实连接异常由执行器在结果中记录。"
+  },
+  {
+    "recordKey": "builtin-1.0.0-beta.3.1-fixed-shipping-carton-gap-detection",
+    "version": "1.0.0-beta.3.1",
+    "releaseDate": "2026-07-02",
+    "category": "fixed",
+    "pageName": "Infor Nexus Shipping 自动化",
+    "pagePath": "/web-automation/scenarios/shipping-automation",
+    "title": "修复箱号中间断号漏报",
+    "description": "Range 中出现 1-5、8-10、11-15 这类中间断号时，会正确记录缺失 6-7，不再只按最大箱号判断是否匹配。"
   },
   {
     "recordKey": "builtin-0.9.8-beta.3.32-improved-helper-offline-installer",
@@ -1288,5 +1318,15 @@
     "pagePath": "/tms-finance-internal-reconciliation",
     "title": "新增 TMS 财务追加结果统计",
     "description": "TMS 财务追加结果统计，显示追加行、重复跳过、相似已追加、Sales/Purchase 追加数量。"
+  },
+  {
+    "recordKey": "builtin-1.0.0-beta.3.1-improved-release-history-fallback",
+    "version": "1.0.0-beta.3.1",
+    "releaseDate": "2026-07-02",
+    "category": "improved",
+    "pageName": "版本更新",
+    "pagePath": "/release-updates",
+    "title": "同步当前版本发布记录",
+    "description": "更新内置版本记录兜底，使版本更新页面在后端不可用时也显示当前 1.0.0-beta.3.1 的发布信息。"
   }
 ]
