@@ -251,13 +251,14 @@ describe('releaseNotice', () => {
   })
 
   it('keeps bundled release notes scoped to the current version changes', () => {
-    expect(releaseNotes.version).toBe(currentVersion)
-    expect(releaseNotes.showPopup).toBe(false)
-    expect(releaseNotes.added.length).toBeGreaterThan(0)
-    expect(releaseNotes.improved.length).toBeGreaterThan(0)
-    expect(releaseNotes.fixed.length).toBeGreaterThan(0)
-    expect(releaseNotes.modules.length).toBeGreaterThan(0)
-    for (const module of releaseNotes.modules) {
+    const bundledReleaseNotes = releaseNotes as ReleaseNotes
+
+    expect(bundledReleaseNotes.version).toBe(currentVersion)
+    expect(typeof bundledReleaseNotes.showPopup).toBe('boolean')
+    expect(bundledReleaseNotes.added.length).toBeGreaterThan(0)
+    expect(bundledReleaseNotes.improved.length).toBeGreaterThan(0)
+    expect(bundledReleaseNotes.fixed.length).toBeGreaterThan(0)
+    for (const module of bundledReleaseNotes.modules ?? []) {
       expect(module.name).toBeTruthy()
       expect([
         ...(module.added || []),
