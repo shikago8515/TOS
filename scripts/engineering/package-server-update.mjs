@@ -8,7 +8,7 @@ import { validateAppVersion } from './sync-version.mjs'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const defaultRepoRoot = resolve(scriptDir, '..', '..')
-const defaultBackendUrl = '/tos'
+const defaultBackendUrl = '/tos/desktop-api'
 const packageKind = 'tos-server-update'
 
 const deployablePaths = [

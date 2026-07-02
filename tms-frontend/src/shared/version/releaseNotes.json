@@ -92,7 +92,8 @@
     "analyze captured automation requests",
     "add Jane BOM and outbound compare",
     "refine Jane navigation and settings release UI",
-    "add Jane BOM summary module"
+    "add Jane BOM summary module",
+    "完善自动化存储与小助手离线安装"
   ],
   "improved": [
     "万代和新龙泰 Shipping 页面取消 Desktop Utility / 浏览器扩展健康预拦截，上传执行不再被前端误挡，实际连接问题由执行器在结果中记录。",
@@ -127,7 +128,8 @@
     "修复 Gitea checkout 认证",
     "切换到 Gitea Actions 发布",
     "执行状态合并到操作卡片内联显示，删除冗余描述",
-    "检查更新按钮移至Hero右侧，与状态和语言切换并列"
+    "检查更新按钮移至Hero右侧，与状态和语言切换并列",
+    "补全 semantic-release 发布历史"
   ],
   "fixed": [
     "修复 Range 只看最大箱号时可能漏报中间缺号的问题，类似 1-5、8-10、11-15 会正确记录缺失 6-7。",
@@ -276,7 +278,13 @@
     "complete English UI release",
     "rebuild backend runtime for TOS releases",
     "limit Eric reconciliation workbook sheets",
-    "align Eric YTIC reconciliation output"
+    "align Eric YTIC reconciliation output",
+    "兼容历史结果模块别名",
+    "同步当前版本记录兜底",
+    "返回安装包下载文件大小",
+    "使用浏览器原生下载安装包",
+    "修复历史结果和下载数据分流",
+    "修复服务器历史结果归档"
   ],
   "modules": [
     {
@@ -391,5 +399,6 @@
         "新增浏览器自动化模块拆分规范，约束新增业务流程进入 modules/<business-module>/ 目录。"
       ]
     }
-  ]
+  ],
+  "sections": []
 }

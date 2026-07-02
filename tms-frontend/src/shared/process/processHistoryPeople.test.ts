@@ -43,11 +43,30 @@ describe('processHistoryPeople', () => {
     })
   })
 
-  it('queries Jane result history by canonical Excel id and legacy archive id', () => {
-    expect(findProcessHistoryPersonByModuleId('jane')?.id).toBe('jane')
-    expect(findProcessHistoryModuleByModuleId('jane')?.id).toBe('excel-jane')
-    expect(getProcessHistoryModuleIdsForQuery('excel-jane')).toEqual(['excel-jane', 'jane'])
-    expect(getProcessHistoryModuleIdsForQuery('jane')).toEqual(['excel-jane', 'jane'])
+  it('queries mapped result history by canonical ids and legacy archive ids', () => {
+    const cases = [
+      ['excel-jessca', 'jessca'],
+      ['pdf-draft-packing-compare', 'draft-packing-compare'],
+      ['excel-jane', 'jane'],
+      ['excel-jane-bom-summary', 'jane-bom-summary'],
+      ['excel-jane-bom-compare', 'jane-bom-compare'],
+      ['excel-jane-outbound-compare', 'jane-outbound-compare'],
+      ['excel-sophia-tina', 'sophia-tina'],
+      ['excel-tms-finance-internal-reconciliation', 'tms-finance-internal-reconciliation'],
+      ['excel-tms-finance-work-sales', 'tms-finance-work-sales'],
+    ] as const
+
+    for (const [historyModuleId, legacyModuleId] of cases) {
+      expect(findProcessHistoryModuleByModuleId(legacyModuleId)?.id).toBe(historyModuleId)
+      expect(getProcessHistoryModuleIdsForQuery(historyModuleId)).toEqual([historyModuleId, legacyModuleId])
+      expect(getProcessHistoryModuleIdsForQuery(legacyModuleId)).toEqual([historyModuleId, legacyModuleId])
+    }
+  })
+
+  it('does not duplicate query ids for modules that already use their history id', () => {
+    expect(getProcessHistoryModuleIdsForQuery('eric')).toEqual(['eric'])
+    expect(getProcessHistoryModuleIdsForQuery('iplex-dual-table-compare')).toEqual(['iplex-dual-table-compare'])
+    expect(getProcessHistoryModuleIdsForQuery('excel-template-mapper-test')).toEqual(['excel-template-mapper-test'])
   })
 
   it('resolves all Excel history ids back to their catalog route metadata', () => {

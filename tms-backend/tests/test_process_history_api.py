@@ -9,7 +9,7 @@ from utils import mysql_store
 
 
 class ProcessHistoryApiTests(unittest.TestCase):
-    def test_save_process_history_record_persists_frontend_payload(self):
+    def test_save_process_history_record_persists_frontend_payload_with_canonical_module_id(self):
         row = build_history_row()
         payload = ProcessHistoryPayload(
             id="jessca-20260630010203",
@@ -33,7 +33,7 @@ class ProcessHistoryApiTests(unittest.TestCase):
 
         saved_record = upsert.call_args.args[0]
         self.assertEqual(saved_record["record_id"], "jessca-20260630010203")
-        self.assertEqual(saved_record["module_id"], "jessca")
+        self.assertEqual(saved_record["module_id"], "excel-jessca")
         self.assertEqual(saved_record["duration_ms"], 1234)
         self.assertEqual(saved_record["input_files"], ["invoice.xlsx", "packing.xlsx"])
         self.assertEqual(saved_record["summary"], [{"label": "Rows", "value": "18"}])
@@ -67,9 +67,10 @@ class ProcessHistoryApiTests(unittest.TestCase):
                 page=1,
             )
 
-        count_records.assert_called_once_with(["jessca", "jane"], status="success")
+        expected_module_ids = ["excel-jessca", "jessca", "excel-jane", "jane"]
+        count_records.assert_called_once_with(expected_module_ids, status="success")
         list_records.assert_called_once_with(
-            ["jessca", "jane"],
+            expected_module_ids,
             status="success",
             limit=80,
             offset=0,
@@ -77,6 +78,43 @@ class ProcessHistoryApiTests(unittest.TestCase):
         self.assertEqual(response["pagination"]["total"], 1)
         self.assertEqual(response["records"][0]["moduleId"], "jessca")
         self.assertEqual(response["records"][0]["resultFile"]["filename"], "result.xlsx")
+
+    def test_read_process_history_records_expands_canonical_module_ids_to_legacy_aliases(self):
+        rows = [build_history_row({"module_id": "jessca"})]
+        with patch.object(
+            process_history_api,
+            "count_process_history_records",
+            return_value=1,
+        ) as count_records, patch.object(
+            process_history_api,
+            "list_process_history_records",
+            return_value=rows,
+        ) as list_records:
+            response = process_history_api.read_process_history_records(
+                moduleIds="excel-jessca",
+                personId="jessica",
+                downloadableOnly=True,
+                limit=30,
+                page=1,
+            )
+
+        expected_module_ids = ["excel-jessca", "jessca"]
+        count_records.assert_called_once_with(
+            expected_module_ids,
+            status=None,
+            person_id="jessica",
+            downloadable_only=True,
+        )
+        list_records.assert_called_once_with(
+            expected_module_ids,
+            status=None,
+            person_id="jessica",
+            downloadable_only=True,
+            limit=30,
+            offset=0,
+        )
+        self.assertEqual(response["pagination"]["total"], 1)
+        self.assertEqual(response["records"][0]["id"], "jessca-20260630010203")
 
     def test_read_process_history_records_filters_by_person_date_and_downloadable_results(self):
         rows = [build_history_row({"person_id": "jane"})]
@@ -183,6 +221,10 @@ class ProcessHistoryApiTests(unittest.TestCase):
         self.assertIn("ar.created_at <= %s", where_clause)
         self.assertIn("af_download.file_role = 'result_file'", where_clause)
         self.assertEqual(params, ["success", "jane", created_from, created_to])
+
+    def test_process_history_owner_lookup_supports_canonical_module_aliases(self):
+        self.assertEqual(mysql_store._owner_key_for_module("excel-jessca"), "jessica")
+        self.assertEqual(mysql_store._owner_key_for_module("excel-jane"), "jane")
 
     def test_download_process_history_result_file_streams_minio_object(self):
         row = {
@@ -309,10 +351,10 @@ class ProcessHistoryApiTests(unittest.TestCase):
                  return_value=archive_payload,
              ) as store_file:
             response = process_history_api.save_process_history_result_file(
-                moduleId="jane",
+                moduleId="jessca",
                 requestId="req-remote-1",
                 originalFilename="../result.xlsx",
-                moduleName="Jane",
+                moduleName="Jessica",
                 status="success",
                 durationMs=1234,
                 message="completed",
@@ -328,10 +370,11 @@ class ProcessHistoryApiTests(unittest.TestCase):
         store_file.assert_called_once()
         context = store_file.call_args.kwargs["context"]
         history_record = store_file.call_args.kwargs["history_record"]
-        self.assertEqual(context.module_id, "jane")
+        self.assertEqual(context.module_id, "excel-jessca")
         self.assertEqual(context.request_id, "req-remote-1")
         self.assertEqual(context.original_filename, "result.xlsx")
-        self.assertEqual(history_record["module_name"], "Jane")
+        self.assertEqual(history_record["module_id"], "excel-jessca")
+        self.assertEqual(history_record["module_name"], "Jessica")
         self.assertEqual(history_record["input_files"], ["source.xlsx"])
         self.assertEqual(history_record["summary"], [{"label": "Rows", "value": "18"}])
         self.assertTrue(response["ok"])

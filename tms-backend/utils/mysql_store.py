@@ -377,21 +377,48 @@ def _seed_default_tos_modules(cursor: Any) -> None:
         )
 
 
+PROCESS_HISTORY_DEFAULT_MODULE_ID_BY_CANONICAL_ID: dict[str, str] = {
+    "excel-jessca": "jessca",
+    "pdf-draft-packing-compare": "draft-packing-compare",
+    "excel-jane": "jane",
+    "excel-jane-bom-compare": "jane-bom-compare",
+    "excel-jane-bom-summary": "jane-bom-summary",
+    "excel-jane-outbound-compare": "jane-outbound-compare",
+    "excel-sophia-tina": "sophia-tina",
+    "excel-tms-finance-internal-reconciliation": "tms-finance-internal-reconciliation",
+    "excel-tms-finance-work-sales": "tms-finance-work-sales",
+}
+
+
+def _module_lookup_ids(module_id: str) -> list[str]:
+    normalized = str(module_id or "").strip()
+    if not normalized:
+        return []
+    default_module_id = PROCESS_HISTORY_DEFAULT_MODULE_ID_BY_CANONICAL_ID.get(normalized)
+    return [normalized, default_module_id] if default_module_id and default_module_id != normalized else [normalized]
+
+
 def get_tos_module(module_id: str) -> dict[str, Any] | None:
     ensure_schema()
+    module_ids = _module_lookup_ids(module_id)
+    if not module_ids:
+        return None
     with mysql_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT module_id, person_id, module_name, module_name_en, module_type, page_path
-                FROM tos_modules
-                WHERE module_id = %s AND is_active = 1
-                LIMIT 1
-                """,
-                (module_id,),
-            )
-            row = cursor.fetchone()
-    return row
+            for lookup_id in module_ids:
+                cursor.execute(
+                    """
+                    SELECT module_id, person_id, module_name, module_name_en, module_type, page_path
+                    FROM tos_modules
+                    WHERE module_id = %s AND is_active = 1
+                    LIMIT 1
+                    """,
+                    (lookup_id,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    return row
+    return None
 
 
 def _person_sort_order(person_id: str) -> int:
@@ -408,9 +435,10 @@ def _person_sort_order(person_id: str) -> int:
 
 
 def _owner_key_for_module(module_id: str) -> str:
-    for module in DEFAULT_TOS_MODULES:
-        if module["module_id"] == module_id:
-            return str(module["owner_key"])
+    for lookup_id in _module_lookup_ids(module_id):
+        for module in DEFAULT_TOS_MODULES:
+            if module["module_id"] == lookup_id:
+                return str(module["owner_key"])
     return "general-tools"
 
 

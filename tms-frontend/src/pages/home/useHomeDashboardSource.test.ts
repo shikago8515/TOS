@@ -10,8 +10,9 @@ describe('useHomeDashboard source', () => {
   it('queries and loads process history by history module ids instead of catalog ids', () => {
     const source = readDashboardSource()
 
-    expect(source).toContain('homeDashboardHistoryModules.map((module) => module.id)')
-    expect(source).toContain('homeDashboardHistoryModules')
+    expect(source).toContain('homeDashboardHistoryModuleIds')
+    expect(source).not.toContain('homeDashboardHistoryModules.map((module) => module.id)')
+    expect(source).not.toContain('loadModuleHistory(module.id)')
     expect(source).not.toContain('homeDashboardModules.map((module) => module.id)')
     expect(source).not.toContain('return homeDashboardModules')
   })

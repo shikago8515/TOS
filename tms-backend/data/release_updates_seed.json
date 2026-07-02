@@ -1,5 +1,35 @@
 [
   {
+    "recordKey": "builtin-1.0.0-beta.3.1-improved-release-history-fallback",
+    "version": "1.0.0-beta.3.1",
+    "releaseDate": "2026-07-02",
+    "category": "improved",
+    "pageName": "版本更新",
+    "pagePath": "/release-updates",
+    "title": "同步当前版本发布记录",
+    "description": "更新内置版本记录兜底，使版本更新页面在后端不可用时也显示当前 1.0.0-beta.3.1 的发布信息。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.32-improved-helper-offline-installer",
+    "version": "0.9.8-beta.3.32",
+    "releaseDate": "2026-07-02",
+    "category": "improved",
+    "pageName": "系统设置",
+    "pagePath": "/settings",
+    "title": "小助手安装包内置完整组件",
+    "description": "网页小助手安装包改为内置完整运行组件，用户从下载中心下载一次后，安装阶段不再二次连接 MinIO 或公网接口获取 payload，减少代理和网络波动导致的安装失败。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.32-improved-automation-account-profile-isolation",
+    "version": "0.9.8-beta.3.32",
+    "releaseDate": "2026-07-02",
+    "category": "improved",
+    "pageName": "浏览器自动化",
+    "pagePath": "/web-automation",
+    "title": "统一自动化账号档案组件",
+    "description": "各自动化页面统一使用账号档案下拉框和新增 / 编辑弹窗，账号数据按自动化页面隔离保存，避免不同业务页面误用同一套登录账号。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.32-fixed-packing-list-batch-server-routing",
     "version": "0.9.8-beta.3.32",
     "releaseDate": "2026-07-01",

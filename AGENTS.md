@@ -195,22 +195,27 @@ npm run check:quick
 npm run check:frontend
 npm run check:backend
 npm run check:electron
+npm run check:changed:dry-run
+npm run check:changed
 npm run check
 npm run server:package:dry-run
 npm run server:package
 ```
 
-`npm run check:quick` 运行工程脚本测试、前端 lint/typecheck/test、后端 unittest 和 Electron script tests；`npm run check` 运行工程脚本测试、完整前端、完整后端和 Electron 脚本检查。根目录入口不运行 `npm run pack`、`npm run build:win` 或发布清单写入命令。
+`npm run check:quick` 运行工程脚本测试、前端 lint/typecheck/test、后端 unittest 和 Electron script tests；`npm run check:changed:dry-run` 基于当前分支和工作区预览最小检查集，`npm run check:changed` 执行该检查集；`npm run check` 运行工程脚本测试、完整前端、完整后端和 Electron 脚本检查。根目录入口不运行 `npm run pack`、`npm run build:win` 或发布清单写入命令。
 
 ### 日常开发验证分层
 
 日常开发验证按风险分层选择，不把 `npm run check:quick` 作为所有普通改动的默认门禁：
 
-1. 小范围前端 UI、文案或局部路由改动，优先运行 `cd tms-frontend && npm run lint`、`npm run typecheck` 和相关 `vitest`；必要时再补 `npm run build`。
-2. 小范围后端单模块改动，优先运行对应 `python -m unittest tests.test_xxx -v`、相关 class 或相关 method；涉及语法或导入边界时再补 `python -m compileall .`。
-3. 涉及公共工具、前后端契约、版本发布、CI/CD、服务器部署、Electron 打包、合并 `main` 或推送 Gitea 主线前，必须运行 `npm run check:quick`。
-4. 正式大版本、Windows 桌面打包发布、自动更新或安装器链路改动，按发布敏感规则运行 `npm run check` 或发布专项验证。
-5. 若 `npm run check:quick` 超过 12-15 分钟，应先定位慢测试和重复覆盖，不得简单删除安全、契约、发布或部署关键测试。
+1. 文档、规则、说明或低风险清理改动，先运行 `npm run check:changed:dry-run`；确认建议合理后运行 `npm run check:changed`。docs-only 改动应只规划 committed、staged 和 working tree 的 whitespace 检查。
+2. 小范围前端 UI、文案或局部路由改动，优先运行 `cd tms-frontend && npm run lint`、`npm run typecheck` 和相关 `vitest`；必要时再补 `npm run build`。
+3. 小范围后端单模块改动，优先运行对应 `python -m unittest tests.test_xxx -v`、相关 class 或相关 method；涉及语法或导入边界时再补 `python -m compileall .`。
+4. 涉及公共工具、前后端契约、依赖、版本发布、CI/CD、服务器部署、Electron 打包、认证、下载、发布/打包配置等高风险区域时，先运行 `npm run check:changed:dry-run`，按其映射出的 workflow 配置测试、发布配置测试、服务器包测试、Electron 脚本测试或其他专项检查执行；只有检查规划器无法安全缩小范围，或变更触及 CI runner、发布、部署、打包、认证、版本生成等核心边界且没有专项门禁时，才升级到 `npm run check:quick`。
+5. 合并或推送 Gitea `main` 前，先确认当前 commit 已按 `check:changed` 建议完成一次本地检查；同一 commit 合并进本地 `main` 后不重复跑相同检查。推送 `gitea/main` 后以远端完整 CI 作为最终门禁；只有远端新增提交与当前改动有交集、触及核心边界，或 `check:changed` 明确升级时，才补跑对应专项检查或 `npm run check:quick`。
+6. 主线推送被拒绝或发现远端 `main` 前进时，先 `fetch` 并检查新增提交影响面。如果远端新增提交与当前改动无文件交集，且不涉及公共 API、发布、部署、下载、版本、认证等高风险区域，只需重新合并后运行针对性检查和 `git diff --check`；如果新增提交触及高风险区域或与当前改动文件有交集，运行相关专项测试。远端频繁前进时，不应每合并一次都重复全量运行，除非新增提交改变了高风险边界。
+7. 正式大版本、Windows 桌面打包发布、自动更新或安装器链路改动，按发布敏感规则运行 `npm run check` 或发布专项验证。
+8. 若 `npm run check:quick` 超过 12-15 分钟，应先定位慢测试和重复覆盖，不得简单删除安全、契约、发布或部署关键测试。
 
 Gitea 检查环境会先在 runner 的仓库工作区创建 `.venv`，通过该虚拟环境运行 `npm run ci:install` 安装依赖，并复用同一 `.venv` 运行 `npm run check` 做远端完整检查。CI 系统包需包含 `nodejs`、`npm`、Python venv 支持，以及 Electron 自动化脚本测试使用的 `zip`、`unzip`、`lsof`。Alpine CI 只为脚本级检查跳过 `rapidocr` 和 `onnxruntime` 这组可选 OCR engine runtime，正式后端 `requirements.txt` 仍保留完整依赖。远端检查不得顺手加入 `pack`、`build:win`、发布清单写入、上传或正式发布步骤；历史旧远端工作流不作为当前发布路径。
 
@@ -269,6 +274,7 @@ node scripts/verify-release-package.js
 4. 提交信息使用 `类型: 描述`，例如 `docs: 添加 TOS AI 协作规则`。
 5. 每次提交只包含一个功能或一个明确规则改动。
 6. 未经用户明确要求，不执行 `git add`、`commit`、`pull`、`merge`、`rebase`、`reset`、`force push`、删除分支或发布操作。
+7. 推送 `main` 遇到远端更新或非 fast-forward 拒绝时，按“日常开发验证分层”的主线推送验证节流规则处理：先看新增提交影响面，再决定针对性补测、专项测试或是否需要升级到 `npm run check:quick`。
 
 ## Token 用量治理
 

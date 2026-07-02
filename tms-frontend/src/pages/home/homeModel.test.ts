@@ -4,6 +4,7 @@ import {
   findHomeModuleByActivityId,
   findHomePersonByModuleId,
   homeDashboardHistoryModules,
+  homeDashboardHistoryModuleIds,
   homePeople,
 } from './homeModel'
 
@@ -48,7 +49,7 @@ describe('homeModel', () => {
     }
   })
 
-  it('uses history module ids when collecting process-history usage for the dashboard', () => {
+  it('uses canonical history module ids when building the dashboard module list', () => {
     const historyModuleIds = homeDashboardHistoryModules.map((module) => module.id)
 
     expect(historyModuleIds).toContain('pdf-draft-packing-compare')
@@ -59,5 +60,22 @@ describe('homeModel', () => {
     expect(historyModuleIds).not.toContain('jane-bom-compare')
     expect(historyModuleIds).not.toContain('sophia-tina')
     expect(historyModuleIds).not.toContain('tms-finance-work-sales')
+  })
+
+  it('queries process-history usage with canonical ids and legacy archive ids', () => {
+    expect(homeDashboardHistoryModuleIds).toEqual(expect.arrayContaining([
+      'excel-jessca',
+      'jessca',
+      'pdf-draft-packing-compare',
+      'draft-packing-compare',
+      'excel-jane',
+      'jane',
+      'excel-jane-bom-summary',
+      'jane-bom-summary',
+      'excel-sophia-tina',
+      'sophia-tina',
+      'excel-tms-finance-work-sales',
+      'tms-finance-work-sales',
+    ]))
   })
 })

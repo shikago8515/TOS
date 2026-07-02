@@ -27,7 +27,8 @@
 cd D:\project\TOS-main
 
 git status --short --branch
-npm run check:quick
+npm run check:changed:dry-run
+npm run check:changed
 npm run server:package:dry-run
 npm run server:package
 ```
@@ -36,7 +37,7 @@ npm run server:package
 
 - 要求正式打包时工作区 clean。
 - 校验 `app-version.json` 与 `releaseNotes.json` 版本一致。
-- 以 `VITE_BACKEND_URL=/tos` 构建前端。
+- 以 `VITE_BACKEND_URL=/tos/desktop-api` 构建前端。
 - 生成 `release/server/tos-server-update-v<version>-<yyyyMMddHHmmss>-<gitShortSha>.tar.gz`。
 - 写入包内 `deploy/manifest.json` 和 `deploy/apply-server-update.sh`。
 

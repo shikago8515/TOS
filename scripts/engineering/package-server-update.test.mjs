@@ -288,7 +288,7 @@ test('creates a server update archive with manifest and only deployable paths', 
   assert.equal(manifest.version, '0.9.8-beta.3.3')
   assert.equal(manifest.gitCommit, gitInfo.commit)
   assert.equal(manifest.gitDirty, false)
-  assert.equal(manifest.backendUrl, '/tos')
+  assert.equal(manifest.backendUrl, '/tos/desktop-api')
   assert(manifest.includedPaths.includes('tms-frontend/dist'))
   assert.deepEqual(manifest.releaseUpdateRecord, {
     recordKey: `git-${gitInfo.commit}`,

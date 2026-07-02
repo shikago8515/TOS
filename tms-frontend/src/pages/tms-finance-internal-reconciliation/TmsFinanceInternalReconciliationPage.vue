@@ -6,9 +6,9 @@
     :actions="toolbarActions"
   >
     <ExcelResultNotice
-      :visible="Boolean(message)"
+      :visible="Boolean(noticeMessage)"
       :tone="messageTone"
-      :message="message"
+      :message="noticeMessage"
     />
 
     <div class="jane-grid">
@@ -50,6 +50,7 @@ import {
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import {
   appendModuleHistory,
+  downloadCurrentProcessResult,
   clearModuleHistory,
   loadModuleHistory,
   readProcessHistoryMetadata,
@@ -72,7 +73,6 @@ import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
 import ProcessHistoryPanel from '../../shared/ui/ProcessHistoryPanel.vue'
 import ResultSummary from '../../shared/ui/ResultSummary.vue'
 import {
-  downloadTmsFinanceInternalReconciliationResult,
   processTmsFinanceInternalReconciliationFiles,
 } from './tmsFinanceInternalReconciliationApi'
 import {
@@ -80,7 +80,6 @@ import {
   tmsFinanceInternalReconciliationModuleId,
 } from './tmsFinanceInternalReconciliationModel'
 import {
-  downloadTmsFinanceWorkSalesResult,
   processTmsFinanceWorkSalesFiles,
 } from './tmsFinanceWorkSalesApi'
 import { buildTmsFinanceWorkSalesSummary } from './tmsFinanceWorkSalesModel'
@@ -93,6 +92,8 @@ import {
   type TmsFinanceProcessOption,
 } from './tmsFinancePageModel'
 import { buildTmsFinanceUploadFields } from './tmsFinanceUploadFields'
+
+type CurrentResultDownloadMetadata = ReturnType<typeof readProcessHistoryMetadata>
 
 const route = useRoute()
 const activeProcessId = ref<TmsFinanceProcessId>(resolveProcessIdFromRoute(route.name))
@@ -108,6 +109,8 @@ const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
 const historyWarnings = ref<string[]>([])
 const messageTone = ref<ExcelNoticeTone>('info')
+const downloadError = ref('')
+const currentResultDownload = ref<CurrentResultDownloadMetadata>({})
 const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(tmsFinanceInternalReconciliationModuleId),
 )
@@ -212,6 +215,8 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
   },
 ])
 
+const noticeMessage = computed(() => downloadError.value || message.value)
+
 watch(activeProcessId, () => {
   resetFeedback()
   historyRecords.value = loadModuleHistory(activeProcess.value.moduleId)
@@ -257,6 +262,8 @@ async function startProcess(): Promise<void> {
     messageTone.value = 'warning'
     message.value = '请先按预检查提示补齐文件。'
     success.value = false
+    downloadError.value = ''
+    currentResultDownload.value = {}
     historyWarnings.value = []
     return
   }
@@ -274,6 +281,8 @@ async function startInternalReconciliationProcess(): Promise<void> {
     messageTone.value = 'warning'
     message.value = '请先上传 Sample/Bulk 来源文件和内销对账单。'
     success.value = false
+    downloadError.value = ''
+    currentResultDownload.value = {}
     historyWarnings.value = []
     return
   }
@@ -311,6 +320,8 @@ async function startWorkSalesProcess(): Promise<void> {
     messageTone.value = 'warning'
     message.value = '请先上传 iPLEX 导出表。'
     success.value = false
+    downloadError.value = ''
+    currentResultDownload.value = {}
     historyWarnings.value = []
     return
   }
@@ -319,6 +330,8 @@ async function startWorkSalesProcess(): Promise<void> {
     messageTone.value = 'warning'
     message.value = '请先上传 Turnover Excel。'
     success.value = false
+    downloadError.value = ''
+    currentResultDownload.value = {}
     historyWarnings.value = []
     return
   }
@@ -355,8 +368,10 @@ function beginProcessing(): void {
   processing.value = true
   progress.value = 0
   message.value = ''
+  downloadError.value = ''
   success.value = false
   resultFile.value = ''
+  currentResultDownload.value = {}
   summaryItems.value = []
   historyWarnings.value = []
   messageTone.value = 'info'
@@ -375,16 +390,26 @@ function handleProcessError(
 }
 
 async function downloadResult(): Promise<void> {
-  if (!resultFile.value) {
-    return
-  }
+  downloadError.value = ''
 
-  if (activeProcessId.value === 'work-sales') {
-    await downloadTmsFinanceWorkSalesResult(resultFile.value)
-    return
+  const isWorkSales = activeProcessId.value === 'work-sales'
+  try {
+    await downloadCurrentProcessResult({
+      outputFile: resultFile.value,
+      resultDownloadPath: currentResultDownload.value.resultDownloadPath,
+      resultDownloadBackendTarget: currentResultDownload.value.resultDownloadBackendTarget,
+      resultFile: currentResultDownload.value.resultFile,
+      legacyDownloadPath: (filename) => isWorkSales
+        ? `/api/tms-finance/work-sales/download/${encodeURIComponent(filename)}`
+        : `/api/tms-finance/internal-reconciliation/download/${encodeURIComponent(filename)}`,
+      fallbackFilename: isWorkSales
+        ? 'tms_finance_work_sales.xlsx'
+        : 'tms_finance_internal_reconciliation.xlsx',
+    })
+  } catch (error) {
+    downloadError.value = readErrorMessage(error, '下载结果失败，请稍后重试')
+    messageTone.value = 'error'
   }
-
-  await downloadTmsFinanceInternalReconciliationResult(resultFile.value)
 }
 
 function resetForm(): void {
@@ -402,8 +427,10 @@ function resetForm(): void {
 function resetFeedback(): void {
   progress.value = 0
   message.value = ''
+  downloadError.value = ''
   success.value = false
   resultFile.value = ''
+  currentResultDownload.value = {}
   summaryItems.value = []
   historyWarnings.value = []
   messageTone.value = 'info'
@@ -416,6 +443,7 @@ function recordHistory(
   metadata: BackendProcessHistoryMetadata = {},
 ): void {
   const historyMetadata = readProcessHistoryMetadata(metadata)
+  currentResultDownload.value = historyMetadata
   historyWarnings.value = historyMetadata.historyWarnings ?? []
   historyRecords.value = appendModuleHistory({
     ...historyMetadata,

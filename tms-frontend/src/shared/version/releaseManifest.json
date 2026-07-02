@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "version": "1.0.0-beta.3.1",
   "tag": "v1.0.0-beta.3.1",
-  "gitSha": "2c12fd2094b9fbd65e191f963ee58561769a72ed",
+  "gitSha": "7a8ad4450704ab172f82d82649bf46d7946ee5b3",
   "releaseDate": "2026-07-02",
   "channel": "beta.3",
   "releaseNotes": {
@@ -11,6 +11,7 @@
     "noticeId": "2026-07-02-v1.0.0-beta.3.1",
     "showPopup": true,
     "added": [
+      "完善自动化存储与小助手离线安装",
       "更新 Jane PRODUCTION 核对",
       "优化 Jane BOM 汇总排序高亮",
       "添加 Excel 个人历史结果页",
@@ -90,6 +91,7 @@
       "add Jane BOM summary module"
     ],
     "improved": [
+      "补全 semantic-release 发布历史",
       "修复 semantic-release Git 认证",
       "修复 semantic-release Gitea 认证",
       "等待自动化测试子进程退出",
@@ -104,6 +106,12 @@
       "检查更新按钮移至Hero右侧，与状态和语言切换并列"
     ],
     "fixed": [
+      "兼容历史结果模块别名",
+      "同步当前版本记录兜底",
+      "返回安装包下载文件大小",
+      "使用浏览器原生下载安装包",
+      "修复历史结果和下载数据分流",
+      "修复服务器历史结果归档",
       "修复历史结果页下载按钮",
       "修复本地自动化执行档案数据源",
       "修复首页 Excel 使用次数统计",
@@ -249,6 +257,7 @@
         "title": "新增",
         "icon": "sparkles",
         "items": [
+          "完善自动化存储与小助手离线安装",
           "更新 Jane PRODUCTION 核对",
           "优化 Jane BOM 汇总排序高亮",
           "添加 Excel 个人历史结果页",
@@ -332,6 +341,7 @@
         "title": "优化",
         "icon": "activity",
         "items": [
+          "补全 semantic-release 发布历史",
           "修复 semantic-release Git 认证",
           "修复 semantic-release Gitea 认证",
           "等待自动化测试子进程退出",
@@ -350,6 +360,12 @@
         "title": "修复",
         "icon": "check-circle",
         "items": [
+          "兼容历史结果模块别名",
+          "同步当前版本记录兜底",
+          "返回安装包下载文件大小",
+          "使用浏览器原生下载安装包",
+          "修复历史结果和下载数据分流",
+          "修复服务器历史结果归档",
           "修复历史结果页下载按钮",
           "修复本地自动化执行档案数据源",
           "修复首页 Excel 使用次数统计",

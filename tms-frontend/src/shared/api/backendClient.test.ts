@@ -60,6 +60,24 @@ describe('backendClient', () => {
     await expect(getBackendBaseUrl()).resolves.toBe('http://127.0.0.1:9000')
   })
 
+  it('normalizes the server /tos backend base to the desktop API path for API downloads', async () => {
+    vi.stubEnv('VITE_BACKEND_URL', '/tos')
+    stubWindow(undefined, '/tos/#/jane')
+
+    await expect(
+      buildBackendDownloadUrl('/api/jane/download/result.xlsx'),
+    ).resolves.toBe('/tos/desktop-api/api/jane/download/result.xlsx')
+  })
+
+  it('normalizes an absolute server /tos backend base to the desktop API path for API downloads', async () => {
+    vi.stubEnv('VITE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos')
+    stubWindow(undefined, '/tos/#/jane')
+
+    await expect(
+      buildBackendDownloadUrl('/api/process-history/files/805/download'),
+    ).resolves.toBe('https://ai.tomwell.net:56130/tos/desktop-api/api/process-history/files/805/download')
+  })
+
   it('uses the local Python backend URL in production browser mode by default', async () => {
     vi.stubEnv('DEV', false)
     stubWindow()
@@ -102,6 +120,35 @@ describe('backendClient', () => {
     await expect(
       buildBackendDownloadUrl('/api/automation/templates/1/download'),
     ).resolves.toBe('https://ai.tomwell.net:56130/tos/desktop-api/api/automation/templates/1/download')
+  })
+
+  it('routes installer metadata and installer downloads to the remote backend in hybrid browser mode', async () => {
+    vi.stubEnv('VITE_BACKEND_ROUTING_MODE', 'hybrid')
+    vi.stubEnv('VITE_REMOTE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos/desktop-api/')
+    vi.stubEnv('VITE_LOCAL_BACKEND_URL', 'http://127.0.0.1:8000/')
+    stubWindow()
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue('{"ok":true,"packages":[]}'),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await requestBackendJson({ path: '/api/system/config/installer-versions' })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/installer-versions',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    await expect(
+      buildBackendDownloadUrl('/api/system/config/automation-helper/download'),
+    ).resolves.toBe('https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/automation-helper/download')
+    await expect(
+      buildBackendDownloadUrl('/api/system/config/tos-desktop/download'),
+    ).resolves.toBe('https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/tos-desktop/download')
+    await expect(
+      buildBackendDownloadUrl('/api/system/config/tos-desktop-full/download'),
+    ).resolves.toBe('https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/tos-desktop-full/download')
   })
 
   it('keeps ordinary processing APIs on the local backend in hybrid browser mode', async () => {

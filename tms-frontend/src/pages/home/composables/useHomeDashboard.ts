@@ -23,7 +23,7 @@ import {
   findHomePersonByModuleId,
   getHomeModuleLabel,
   getHomePersonLabel,
-  homeDashboardHistoryModules,
+  homeDashboardHistoryModuleIds,
   homePeople,
   type HomePersonGroup,
 } from '../homeModel'
@@ -252,7 +252,7 @@ export function useHomeDashboard() {
       const [automationResult, processHistoryResult] = await Promise.allSettled([
         fetchAutomationRuns({ page: 1, pageSize: 80, backendTarget: 'remote' }),
         fetchPersistedProcessHistoryRecords({
-          moduleIds: homeDashboardHistoryModules.map((module) => module.id),
+          moduleIds: homeDashboardHistoryModuleIds,
           page: 1,
           pageSize: 80,
           backendTarget: 'remote',
@@ -362,8 +362,8 @@ export function useHomeDashboard() {
 
 function collectLocalProcessRecords(): ProcessHistoryRecord[] {
   try {
-    return homeDashboardHistoryModules
-      .flatMap((module) => loadModuleHistory(module.id))
+    return homeDashboardHistoryModuleIds
+      .flatMap((moduleId) => loadModuleHistory(moduleId))
       .sort((left, right) => toTimestamp(right.createdAt) - toTimestamp(left.createdAt))
       .slice(0, 80)
   } catch (_error) {

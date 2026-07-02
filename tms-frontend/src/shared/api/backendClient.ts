@@ -37,7 +37,7 @@ export async function getBackendBaseUrl(
   path = '',
 ): Promise<string> {
   if (backendTarget === 'remote') {
-    return readRemoteBrowserBackendUrl()
+    return readRemoteBrowserBackendUrl(path)
   }
 
   if (backendTarget === 'local') {
@@ -79,12 +79,12 @@ function readDefaultBrowserBackendUrl(path: string): string {
   const configuredUrl = import.meta.env.VITE_BACKEND_URL
 
   if (typeof configuredUrl === 'string' && configuredUrl.trim()) {
-    return configuredUrl.trim().replace(/\/$/, '')
+    return normalizeConfiguredBackendBaseUrl(configuredUrl, path)
   }
 
   if (isHybridBackendRoutingMode()) {
     return shouldUseRemoteBackendByDefault(path)
-      ? readRemoteBrowserBackendUrl()
+      ? readRemoteBrowserBackendUrl(path)
       : readLocalBrowserBackendUrl()
   }
 
@@ -105,17 +105,17 @@ function readLocalBrowserBackendUrl(): string {
   return localDevBackendUrl
 }
 
-function readRemoteBrowserBackendUrl(): string {
+function readRemoteBrowserBackendUrl(path = ''): string {
   const configuredRemoteUrl = import.meta.env.VITE_REMOTE_BACKEND_URL
 
   if (typeof configuredRemoteUrl === 'string' && configuredRemoteUrl.trim()) {
-    return configuredRemoteUrl.trim().replace(/\/$/, '')
+    return normalizeConfiguredBackendBaseUrl(configuredRemoteUrl, path)
   }
 
   const configuredUrl = import.meta.env.VITE_BACKEND_URL
 
   if (typeof configuredUrl === 'string' && configuredUrl.trim()) {
-    return configuredUrl.trim().replace(/\/$/, '')
+    return normalizeConfiguredBackendBaseUrl(configuredUrl, path)
   }
 
   if (window.location?.pathname?.startsWith('/tos')) {
@@ -140,11 +140,54 @@ function shouldUseRemoteBackendByDefault(path: string): boolean {
     || normalizedPath === '/api/process-history/records'
     || normalizedPath.startsWith('/api/process-history/records/')
     || normalizedPath.startsWith('/api/process-history/files/')
+    || normalizedPath === '/api/system/config/installer-versions'
+    || normalizedPath === '/api/system/config/automation-helper/download'
+    || normalizedPath === '/api/system/config/automation-helper/payload'
+    || normalizedPath.startsWith('/api/system/config/automation-helper/payload/')
+    || normalizedPath === '/api/system/config/tos-desktop/download'
+    || normalizedPath === '/api/system/config/tos-desktop/payload'
+    || normalizedPath.startsWith('/api/system/config/tos-desktop/payload/')
+    || normalizedPath === '/api/system/config/tos-desktop-full/download'
 }
 
 function normalizeApiPath(path: string): string {
   const [pathname] = String(path || '').split('?')
   return pathname.startsWith('/') ? pathname : `/${pathname}`
+}
+
+function normalizeConfiguredBackendBaseUrl(configuredUrl: string, path: string): string {
+  const trimmedUrl = configuredUrl.trim().replace(/\/$/, '')
+
+  if (!isApiRequestPath(path)) {
+    return trimmedUrl
+  }
+
+  if (trimmedUrl === '/tos') {
+    return '/tos/desktop-api'
+  }
+
+  if (!/^https?:\/\//i.test(trimmedUrl)) {
+    return trimmedUrl
+  }
+
+  try {
+    const parsedUrl = new URL(trimmedUrl)
+    if (parsedUrl.pathname.replace(/\/$/, '') === '/tos') {
+      parsedUrl.pathname = '/tos/desktop-api'
+      parsedUrl.search = ''
+      parsedUrl.hash = ''
+      return parsedUrl.toString().replace(/\/$/, '')
+    }
+  } catch {
+    return trimmedUrl
+  }
+
+  return trimmedUrl
+}
+
+function isApiRequestPath(path: string): boolean {
+  const normalizedPath = normalizeApiPath(path)
+  return normalizedPath === '/api' || normalizedPath.startsWith('/api/')
 }
 
 async function ensureBackendReady(): Promise<string | undefined> {

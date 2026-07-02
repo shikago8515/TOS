@@ -6,9 +6,9 @@
     :actions="toolbarActions"
   >
     <ExcelResultNotice
-      :visible="Boolean(message)"
+      :visible="Boolean(noticeMessage)"
       :tone="resultNoticeTone"
-      :message="message"
+      :message="noticeMessage"
     />
 
     <div class="jane-grid">
@@ -61,6 +61,7 @@ import { serializeInputFiles } from '../../shared/files/fileGroups'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import {
   appendModuleHistory,
+  downloadCurrentProcessResult,
   clearModuleHistory,
   loadModuleHistory,
   readProcessHistoryMetadata,
@@ -83,7 +84,6 @@ import {
 import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
 import ProcessHistoryPanel from '../../shared/ui/ProcessHistoryPanel.vue'
 import {
-  downloadEricResult,
   processEricFile,
   reconcileEricFiles,
 } from './ericApi'
@@ -94,6 +94,8 @@ import {
   readEricDifferenceCount,
   readEricRowCount,
 } from './ericModel'
+
+type CurrentResultDownloadMetadata = ReturnType<typeof readProcessHistoryMetadata>
 
 const packFiles = ref<File[]>([])
 const yticFiles = ref<File[]>([])
@@ -106,6 +108,8 @@ const outputFile = ref('')
 const rowCount = ref('-')
 const differenceCount = ref('-')
 const historyRecords = ref<ProcessHistoryRecord[]>(loadModuleHistory(ericModuleId))
+const downloadError = ref('')
+const currentResultDownload = ref<CurrentResultDownloadMetadata>({})
 const { text } = useAppLanguage()
 
 const {
@@ -218,7 +222,9 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
   },
 ])
 
+const noticeMessage = computed(() => downloadError.value || message.value)
 const resultNoticeTone = computed<ExcelNoticeTone>(() => {
+  if (downloadError.value) return 'error'
   if (success.value === true) return 'success'
   if (success.value === false) return 'error'
   return 'info'
@@ -259,8 +265,10 @@ function resetResultState(): void {
   progress.value = 0
   success.value = null
   message.value = ''
+  downloadError.value = ''
   logs.value = []
   outputFile.value = ''
+  currentResultDownload.value = {}
   rowCount.value = '-'
   differenceCount.value = '-'
 }
@@ -268,8 +276,10 @@ function resetResultState(): void {
 function failValidation(nextMessage: string): boolean {
   success.value = false
   message.value = nextMessage
+  downloadError.value = ''
   logs.value = [nextMessage]
   outputFile.value = ''
+  currentResultDownload.value = {}
   rowCount.value = '-'
   differenceCount.value = '-'
   return false
@@ -364,7 +374,20 @@ function resetForm(): void {
 }
 
 async function downloadResult(): Promise<void> {
-  if (outputFile.value) await downloadEricResult(outputFile.value)
+  downloadError.value = ''
+
+  try {
+    await downloadCurrentProcessResult({
+      outputFile: outputFile.value,
+      resultDownloadPath: currentResultDownload.value.resultDownloadPath,
+      resultDownloadBackendTarget: currentResultDownload.value.resultDownloadBackendTarget,
+      resultFile: currentResultDownload.value.resultFile,
+      legacyDownloadPath: (filename) => `/api/eric/download/${encodeURIComponent(filename)}`,
+      fallbackFilename: 'eric_reconciliation.xlsx',
+    })
+  } catch (error) {
+    downloadError.value = readErrorMessage(error, '下载结果失败，请稍后重试')
+  }
 }
 
 function recordHistory(
@@ -373,8 +396,10 @@ function recordHistory(
   inputFiles: string[],
   metadata: BackendProcessHistoryMetadata = {},
 ): void {
+  const historyMetadata = readProcessHistoryMetadata(metadata)
+  currentResultDownload.value = historyMetadata
   historyRecords.value = appendModuleHistory({
-    ...readProcessHistoryMetadata(metadata),
+    ...historyMetadata,
     moduleId: ericModuleId,
     moduleName: ericModuleName,
     status,

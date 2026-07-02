@@ -20,6 +20,7 @@ const rootPackage = JSON.parse(fs.readFileSync(path.join(electronRoot, 'package.
 const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'))
 const options = parseOptions(process.argv.slice(2))
 const selectedAppIds = options.selectedAppIds
+const defaultRequiredHelperVersion = '0.9.8-beta.3.32'
 const moduleVersion = String(
   options.version
   || process.env.TOS_AUTOMATION_MODULE_VERSION
@@ -105,7 +106,7 @@ function buildAutomationModulePackage(app) {
     provider: String(app.provider || ''),
     category: String(app.category || 'Web Automation'),
     version,
-    requiredHelperVersion: String(requiredHelperVersionOverride || app.requiredHelperVersion || rootPackage.version || ''),
+    requiredHelperVersion: String(requiredHelperVersionOverride || app.requiredHelperVersion || defaultRequiredHelperVersion),
     description: String(app.description || ''),
     appDir,
     entry: String(app.entry || 'bin/start.js'),

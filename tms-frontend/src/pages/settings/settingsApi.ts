@@ -12,6 +12,7 @@ import { fallbackAppVersion } from '../../shared/version/appVersion'
 
 const defaultTosDesktopDownloadPath = '/api/system/config/tos-desktop/download'
 const defaultTosDesktopFullDownloadPath = '/api/system/config/tos-desktop-full/download'
+const installerVersionsPath = '/api/system/config/installer-versions'
 
 export interface ServerInstallerPackage {
   id: string
@@ -62,8 +63,8 @@ export async function getBackendRuntimeVersion(): Promise<string> {
 
 export async function getServerInstallerVersions(): Promise<ServerInstallerVersions> {
   try {
-    const backendBaseUrl = await getVersionBackendBaseUrl()
-    const response = await fetch(`${backendBaseUrl}/api/system/config/installer-versions`)
+    const backendBaseUrl = await getVersionBackendBaseUrl(installerVersionsPath)
+    const response = await fetch(`${backendBaseUrl}${installerVersionsPath}`)
 
     if (!response.ok) {
       return buildFallbackInstallerVersions()
@@ -205,8 +206,8 @@ async function readBrowserAppVersion(): Promise<string> {
 
 async function readServerManifestVersion(): Promise<string> {
   try {
-    const backendBaseUrl = await getVersionBackendBaseUrl()
-    const response = await fetch(`${backendBaseUrl}/api/system/config/installer-versions`)
+    const backendBaseUrl = await getVersionBackendBaseUrl(installerVersionsPath)
+    const response = await fetch(`${backendBaseUrl}${installerVersionsPath}`)
 
     if (!response.ok) {
       return fallbackAppVersion
@@ -263,11 +264,11 @@ function isServerInstallerPackage(packageInfo: ServerInstallerPackage | null): p
   return packageInfo !== null
 }
 
-async function getVersionBackendBaseUrl(): Promise<string> {
+async function getVersionBackendBaseUrl(path = ''): Promise<string> {
   const configuredUrl = import.meta.env.VITE_BACKEND_URL
   if (typeof configuredUrl === 'string' && configuredUrl.trim()) {
     return configuredUrl.trim().replace(/\/$/, '')
   }
 
-  return getBackendBaseUrl()
+  return getBackendBaseUrl('default', path)
 }

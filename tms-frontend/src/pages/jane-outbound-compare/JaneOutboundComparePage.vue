@@ -7,9 +7,9 @@
     :actions="toolbarActions"
   >
     <ExcelResultNotice
-      :visible="Boolean(message)"
+      :visible="Boolean(noticeMessage)"
       :tone="resultNoticeTone"
-      :message="message"
+      :message="noticeMessage"
     />
 
     <div class="jane-grid">
@@ -49,6 +49,7 @@ import {
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 import {
   appendModuleHistory,
+  downloadCurrentProcessResult,
   clearModuleHistory,
   loadModuleHistory,
   readProcessHistoryMetadata,
@@ -72,7 +73,6 @@ import FilePrecheckPanel from '../../shared/ui/FilePrecheckPanel.vue'
 import ProcessHistoryPanel from '../../shared/ui/ProcessHistoryPanel.vue'
 import ResultSummary from '../../shared/ui/ResultSummary.vue'
 import {
-  downloadJaneOutboundCompareResult,
   processJaneOutboundCompareFiles,
 } from './janeOutboundCompareApi'
 import {
@@ -80,6 +80,8 @@ import {
   janeOutboundCompareModuleId,
   janeOutboundCompareModuleName,
 } from './janeOutboundCompareModel'
+
+type CurrentResultDownloadMetadata = ReturnType<typeof readProcessHistoryMetadata>
 
 const outboundFiles = ref<File[]>([])
 const tmsFiles = ref<File[]>([])
@@ -90,6 +92,8 @@ const success = ref(false)
 const resultFile = ref('')
 const summaryItems = ref<ProcessSummaryItem[]>([])
 const historyWarnings = ref<string[]>([])
+const downloadError = ref('')
+const currentResultDownload = ref<CurrentResultDownloadMetadata>({})
 const historyRecords = ref<ProcessHistoryRecord[]>(
   loadModuleHistory(janeOutboundCompareModuleId),
 )
@@ -179,7 +183,11 @@ const toolbarActions = computed<ExcelToolbarAction[]>(() => [
     onClick: startProcess,
   },
 ])
-const resultNoticeTone = computed<ExcelNoticeTone>(() => (success.value ? 'success' : 'error'))
+const noticeMessage = computed(() => downloadError.value || message.value)
+const resultNoticeTone = computed<ExcelNoticeTone>(() => {
+  if (downloadError.value) return 'error'
+  return success.value ? 'success' : 'error'
+})
 
 function updateUploadFiles(fieldId: string, files: File[]): void {
   if (fieldId === 'outbound') {
@@ -196,6 +204,8 @@ async function startProcess(): Promise<void> {
   if (!canProcess.value || !outboundFiles.value[0] || !tmsFiles.value[0]) {
     message.value = '请先按预检查提示补齐文件'
     success.value = false
+    downloadError.value = ''
+    currentResultDownload.value = {}
     historyWarnings.value = []
     return
   }
@@ -206,8 +216,10 @@ async function startProcess(): Promise<void> {
   processing.value = true
   progress.value = 0
   message.value = ''
+  downloadError.value = ''
   success.value = false
   resultFile.value = ''
+  currentResultDownload.value = {}
   summaryItems.value = []
   historyWarnings.value = []
 
@@ -249,8 +261,19 @@ async function startProcess(): Promise<void> {
 }
 
 async function downloadResult(): Promise<void> {
-  if (resultFile.value) {
-    await downloadJaneOutboundCompareResult(resultFile.value)
+  downloadError.value = ''
+
+  try {
+    await downloadCurrentProcessResult({
+      outputFile: resultFile.value,
+      resultDownloadPath: currentResultDownload.value.resultDownloadPath,
+      resultDownloadBackendTarget: currentResultDownload.value.resultDownloadBackendTarget,
+      resultFile: currentResultDownload.value.resultFile,
+      legacyDownloadPath: (filename) => `/api/jane-outbound-compare/download/${encodeURIComponent(filename)}`,
+      fallbackFilename: 'jane_outbound_compare.xlsx',
+    })
+  } catch (error) {
+    downloadError.value = readErrorMessage(error, '下载结果失败，请稍后重试')
   }
 }
 
@@ -260,8 +283,10 @@ function resetForm(): void {
   processing.value = false
   progress.value = 0
   message.value = ''
+  downloadError.value = ''
   success.value = false
   resultFile.value = ''
+  currentResultDownload.value = {}
   summaryItems.value = []
   historyWarnings.value = []
 }
@@ -273,6 +298,7 @@ function recordHistory(
   metadata: BackendProcessHistoryMetadata = {},
 ): void {
   const historyMetadata = readProcessHistoryMetadata(metadata)
+  currentResultDownload.value = historyMetadata
   historyWarnings.value = historyMetadata.historyWarnings ?? []
   historyRecords.value = appendModuleHistory({
     ...historyMetadata,

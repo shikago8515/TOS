@@ -15,14 +15,31 @@ const frontendQuickCommands = [
 ]
 
 const rootQuickCommand = npmCommand('root:check:quick', '.', ['run', 'check:quick'])
+const electronQuickCommand = npmCommand('root:check:electron', '.', ['run', 'check:electron'])
 const backendFullCommand = npmCommand('backend:full', '.', ['run', 'check:backend'])
-const diffCheckCommand = {
-  id: 'git:diff-check',
-  label: 'git:diff-check',
-  cwd: '.',
-  runner: 'git',
-  args: ['diff', '--check'],
-}
+const workflowConfigCommand = nodeCommand('engineering:gitea-workflow-config-test', '.', [
+  '--test',
+  'scripts/engineering/gitea-workflow-config.test.mjs',
+])
+const changedChecksCommand = nodeCommand('engineering:run-changed-checks-test', '.', [
+  '--test',
+  'scripts/engineering/run-changed-checks.test.mjs',
+])
+const semanticReleaseCommands = [
+  nodeCommand('engineering:semantic-release-config-test', '.', [
+    '--test',
+    'scripts/engineering/semantic-release-config.test.mjs',
+  ]),
+  nodeCommand('engineering:semantic-release-tos-plugin-test', '.', [
+    '--test',
+    'scripts/engineering/semantic-release-tos-plugin.test.mjs',
+  ]),
+]
+const serverPackageCommands = [
+  npmCommand('server:package-test', '.', ['run', 'test:server-package']),
+  npmCommand('server:package:dry-run', '.', ['run', 'server:package:dry-run']),
+]
+const serverPackageTestCommand = npmCommand('server:package-test', '.', ['run', 'test:server-package'])
 
 export function planChangedChecks(inputFiles, options = {}) {
   const files = normalizeFiles(inputFiles)
@@ -35,39 +52,89 @@ export function planChangedChecks(inputFiles, options = {}) {
     }
   }
 
-  if (files.every(isDocumentationFile)) {
+  const commands = []
+  const reasons = []
+
+  if (files.some(isDocumentationFile)) {
+    commands.push(...diffCheckCommands(options.base ?? defaultBase))
+    reasons.push('Documentation or rule files changed; run committed, staged, and working-tree whitespace checks.')
+  }
+
+  const specializedPlan = planSpecializedChecks(files)
+  commands.push(...specializedPlan.commands)
+  reasons.push(...specializedPlan.reasons)
+
+  const remainingFiles = files.filter((file) => !isDocumentationFile(file) && !isSpecializedRiskFile(file))
+
+  if (remainingFiles.length === 0) {
     return {
       files,
-      commands: [diffCheckCommand],
-      reasons: ['Only documentation changes were detected; whitespace checks are enough.'],
+      commands: dedupeCommands(commands),
+      reasons,
     }
   }
 
-  const highRiskFile = files.find(isHighRiskFile)
+  const highRiskFile = remainingFiles.find(isHighRiskFile)
   if (highRiskFile) {
-    return quickPlan(files, `High-risk project file changed: ${highRiskFile}.`)
+    return {
+      files,
+      commands: dedupeCommands([...commands, rootQuickCommand]),
+      reasons: [
+        ...reasons,
+        `High-risk project file changed and no narrower local gate is mapped: ${highRiskFile}.`,
+      ],
+    }
   }
 
-  const hasFrontend = files.some(isFrontendFile)
-  const hasBackend = files.some(isBackendFile)
+  const hasFrontend = remainingFiles.some(isFrontendFile)
+  const hasBackend = remainingFiles.some(isBackendFile)
 
   if (hasFrontend && hasBackend) {
-    return quickPlan(files, 'Frontend and backend changed together; treat this as a contract-sensitive change.')
+    if (hasContractSensitiveChange(remainingFiles)) {
+      return {
+        files,
+        commands: dedupeCommands([...commands, rootQuickCommand]),
+        reasons: [
+          ...reasons,
+          'Frontend and backend API contract files changed together; use the project quick gate.',
+        ],
+      }
+    }
+
+    const backendPlan = planBackendChecks(remainingFiles, options)
+    return {
+      files,
+      commands: dedupeCommands([...commands, ...frontendQuickCommands, ...backendPlan.commands]),
+      reasons: [
+        ...reasons,
+        'Frontend and backend changed together, but no shared contract boundary changed; run targeted frontend and backend checks.',
+        ...backendPlan.reasons,
+      ],
+    }
   }
 
   if (hasFrontend) {
     return {
       files,
-      commands: frontendQuickCommands,
-      reasons: ['Frontend-only changes detected; run frontend lint, typecheck, and tests.'],
+      commands: dedupeCommands([...commands, ...frontendQuickCommands]),
+      reasons: [...reasons, 'Frontend-only changes detected; run frontend lint, typecheck, and tests.'],
     }
   }
 
   if (hasBackend) {
-    return planBackendChecks(files, options)
+    const backendPlan = planBackendChecks(remainingFiles, options)
+    return {
+      files,
+      commands: dedupeCommands([...commands, ...backendPlan.commands]),
+      reasons: [...reasons, ...backendPlan.reasons],
+    }
   }
 
-  return quickPlan(files, 'Changed files do not match a low-risk bucket; use the project quick gate.')
+  return {
+    files,
+    commands: dedupeCommands([...commands, rootQuickCommand]),
+    reasons: [...reasons, 'Changed files do not match a low-risk bucket; use the project quick gate.'],
+  }
 }
 
 export function collectChangedFiles(base = defaultBase) {
@@ -154,11 +221,117 @@ function backendTestExists(root, testModule) {
   return existsSync(resolve(root, 'tms-backend', relativePath))
 }
 
-function quickPlan(files, reason) {
+function diffCheckCommands(base) {
+  return [
+    gitCommand('git:diff-check:committed', ['diff', '--check', `${base}...HEAD`]),
+    gitCommand('git:diff-check:staged', ['diff', '--cached', '--check']),
+    gitCommand('git:diff-check:working-tree', ['diff', '--check']),
+  ]
+}
+
+function planSpecializedChecks(files) {
+  const commands = []
+  const reasons = []
+
+  for (const file of files) {
+    const plan = specializedRiskPlanForFile(file)
+    if (!plan) {
+      continue
+    }
+
+    commands.push(...plan.commands)
+    reasons.push(plan.reason)
+  }
+
   return {
-    files,
-    commands: [rootQuickCommand],
-    reasons: [reason],
+    commands: dedupeCommands(commands),
+    reasons,
+  }
+}
+
+function isSpecializedRiskFile(file) {
+  return specializedRiskPlanForFile(file) !== null
+}
+
+function specializedRiskPlanForFile(file) {
+  const normalized = normalizePath(file)
+
+  if (normalized === '.gitea/workflows/tos-check.yml'
+    || normalized === 'scripts/engineering/gitea-workflow-config.test.mjs') {
+    return {
+      commands: [workflowConfigCommand],
+      reason: `Gitea workflow file changed: ${normalized}.`,
+    }
+  }
+
+  if (normalized === 'scripts/engineering/run-changed-checks.mjs'
+    || normalized === 'scripts/engineering/run-changed-checks.test.mjs') {
+    return {
+      commands: [changedChecksCommand],
+      reason: `Changed-check planner file changed: ${normalized}.`,
+    }
+  }
+
+  if (normalized === 'scripts/engineering/package-server-update.mjs'
+    || normalized.startsWith('scripts/server/')) {
+    return {
+      commands: serverPackageCommands,
+      reason: `Server package or deploy script changed: ${normalized}.`,
+    }
+  }
+
+  if (normalized === 'scripts/engineering/package-server-update.test.mjs') {
+    return {
+      commands: [serverPackageTestCommand],
+      reason: `Server package test changed: ${normalized}.`,
+    }
+  }
+
+  if (normalized === 'release.config.cjs'
+    || normalized === 'scripts/engineering/semantic-release-config.test.mjs'
+    || normalized === 'scripts/engineering/semantic-release-tos-plugin.mjs'
+    || normalized === 'scripts/engineering/semantic-release-tos-plugin.test.mjs') {
+    return {
+      commands: semanticReleaseCommands,
+      reason: `Semantic release file changed: ${normalized}.`,
+    }
+  }
+
+  if (normalized.startsWith('tms-electron-app/scripts/')) {
+    return {
+      commands: [electronQuickCommand],
+      reason: `Electron script file changed: ${normalized}.`,
+    }
+  }
+
+  const engineeringTestPlan = engineeringScriptTestPlanForFile(normalized)
+  if (engineeringTestPlan) {
+    return engineeringTestPlan
+  }
+
+  return null
+}
+
+function engineeringScriptTestPlanForFile(normalized) {
+  if (!normalized.startsWith('scripts/engineering/') || !/\.(mjs|js)$/.test(normalized)) {
+    return null
+  }
+
+  if (/\.test\.(mjs|js)$/.test(normalized)) {
+    return {
+      commands: [nodeCommand(`engineering:${basename(normalized)}`, '.', ['--test', normalized])],
+      reason: `Engineering script test changed: ${normalized}.`,
+    }
+  }
+
+  const testPath = normalized.replace(/\.(mjs|js)$/, '.test.$1')
+  if (!existsSync(resolve(repoRoot, testPath))) {
+    return null
+  }
+
+  return {
+    commands: [nodeCommand(`engineering:${basename(testPath)}`, '.', ['--test', testPath])],
+    reason: `Engineering script has a focused test: ${normalized}.`,
   }
 }
 
@@ -197,6 +370,21 @@ function isHighRiskFile(file) {
   }
 
   return false
+}
+
+function hasContractSensitiveChange(files) {
+  return files.some(isFrontendContractFile) || files.some(isBackendContractFile)
+}
+
+function isFrontendContractFile(file) {
+  const normalized = normalizePath(file)
+  return normalized.startsWith('tms-frontend/src/shared/api/')
+    || normalized.startsWith('tms-frontend/src/shared/process/')
+}
+
+function isBackendContractFile(file) {
+  const normalized = normalizePath(file)
+  return normalized.startsWith('tms-backend/api/')
 }
 
 function isFrontendFile(file) {
@@ -252,6 +440,26 @@ function pythonCommand(id, cwd, args) {
     label: id,
     cwd,
     runner: 'python',
+    args,
+  }
+}
+
+function nodeCommand(id, cwd, args) {
+  return {
+    id,
+    label: id,
+    cwd,
+    runner: 'node',
+    args,
+  }
+}
+
+function gitCommand(id, args) {
+  return {
+    id,
+    label: id,
+    cwd: '.',
+    runner: 'git',
     args,
   }
 }
@@ -361,6 +569,10 @@ function formatCommand(command) {
     return `${prefix}${process.env.PYTHON ?? 'python'} ${command.args.join(' ')}`
   }
 
+  if (command.runner === 'node') {
+    return `${prefix}node ${command.args.join(' ')}`
+  }
+
   if (command.runner === 'git') {
     return `${prefix}git ${command.args.join(' ')}`
   }
@@ -383,6 +595,14 @@ function materializeCommand(command) {
     return {
       ...command,
       executable: process.env.PYTHON ?? 'python',
+      shell: false,
+    }
+  }
+
+  if (command.runner === 'node') {
+    return {
+      ...command,
+      executable: process.execPath,
       shell: false,
     }
   }
@@ -461,7 +681,7 @@ async function main() {
   }
 
   const files = collectChangedFiles(options.base)
-  const plan = planChangedChecks(files, { repoRoot })
+  const plan = planChangedChecks(files, { repoRoot, base: options.base })
   printPlan(plan, options.base)
 
   if (options.dryRun || plan.commands.length === 0) {

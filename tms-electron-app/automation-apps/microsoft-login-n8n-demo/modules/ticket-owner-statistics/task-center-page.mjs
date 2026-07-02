@@ -1350,7 +1350,10 @@ async function collectTicketOwnerRowsFromDetailPages(page, taskCenterTasks, opti
     }
   }
 
-  const workerCount = Math.max(1, Math.min(concurrency, queue.length || 1));
+  const hasVisibleRowTasks = queue.some((task) => !task.uiLink);
+  const workerCount = hasVisibleRowTasks
+    ? 1
+    : Math.max(1, Math.min(concurrency, queue.length || 1));
   await Promise.all(Array.from({ length: workerCount }, (_, index) => worker(index)));
 
   return {
@@ -1479,11 +1482,17 @@ async function processTicketOwnerDetailTask(taskCenterPage, task, options = {}) 
   let claim = { clicked: false, reason: "Task was opened from Task Center uiLink." };
 
   try {
-    if (!task.uiLink) {
-      throw new Error(`Task Center API 没有提供可打开的详情链接：${summarizeTask(task)}`);
+    if (task.uiLink) {
+      taskPage = await openTaskCenterTaskLink(taskCenterPage, task.uiLink, timeoutMs);
+    } else {
+      taskPage = taskCenterPage;
+      claim = { clicked: false, reason: "Task was opened by selecting the visible Task Center row." };
+      const selected = await focusTaskRow(taskCenterPage, task);
+      if (!selected) {
+        throw new Error(`没有找到可点击的 Task Center 行：${summarizeTask(task)}`);
+      }
+      await pageWait(taskCenterPage, 350);
     }
-
-    taskPage = await openTaskCenterTaskLink(taskCenterPage, task.uiLink, timeoutMs);
     taskPage.__tosTicketOwnerProgressOverlayEnabled = options.showBrowserProgressOverlay !== false;
     await emitDetailProgress(
       taskPage,
@@ -1582,7 +1591,7 @@ async function processTicketOwnerDetailTask(taskCenterPage, task, options = {}) 
 
 function buildDetailTaskQueue(taskCenterTasks, options = {}) {
   const candidates = (Array.isArray(taskCenterTasks) ? taskCenterTasks : [])
-    .filter((task) => task.uiLink && isTicketOwnerCandidate(task));
+    .filter((task) => isTicketOwnerCandidate(task));
   if (options.sampleAcrossBranches !== true) {
     return candidates;
   }

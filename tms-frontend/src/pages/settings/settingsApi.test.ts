@@ -136,6 +136,28 @@ describe('settingsApi', () => {
     })
   })
 
+  it('reads installer package versions from the remote backend in hybrid browser mode', async () => {
+    vi.stubEnv('VITE_BACKEND_ROUTING_MODE', 'hybrid')
+    vi.stubEnv('VITE_REMOTE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos/desktop-api/')
+    vi.stubEnv('VITE_LOCAL_BACKEND_URL', 'http://127.0.0.1:8000/')
+    stubWindow()
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        ok: true,
+        version: '0.9.8-beta.3.32',
+        packages: [],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await getServerInstallerVersions()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/installer-versions',
+    )
+  })
+
   it('falls back to an empty installer version list when backend metadata is unavailable', async () => {
     stubWindow()
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
