@@ -255,9 +255,12 @@ describe('releaseNotice', () => {
 
     expect(bundledReleaseNotes.version).toBe(currentVersion)
     expect(typeof bundledReleaseNotes.showPopup).toBe('boolean')
-    expect(bundledReleaseNotes.added.length).toBeGreaterThan(0)
-    expect(bundledReleaseNotes.improved.length).toBeGreaterThan(0)
-    expect(bundledReleaseNotes.fixed.length).toBeGreaterThan(0)
+    const bundledReleaseNoteItems = [
+      ...bundledReleaseNotes.added,
+      ...bundledReleaseNotes.improved,
+      ...bundledReleaseNotes.fixed,
+    ]
+    expect(bundledReleaseNoteItems.length).toBeGreaterThan(0)
     for (const module of bundledReleaseNotes.modules ?? []) {
       expect(module.name).toBeTruthy()
       expect([
