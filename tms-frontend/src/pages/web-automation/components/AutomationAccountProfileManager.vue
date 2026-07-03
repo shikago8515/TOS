@@ -133,8 +133,17 @@ type ProfileCache = {
   credentialsByKey: Map<string, ExecutorCredentials>
   resolvedByKey: Map<string, ResolvedAutomationCredentials>
 }
+type LocalCredentialRecord = {
+  automationId: string
+  accountKey: string
+  username: string
+  password: string
+  updatedAt: string
+}
+type LocalCredentialStore = Record<string, Record<string, LocalCredentialRecord>>
 
 const profileCaches = new Map<string, ProfileCache>()
+const LOCAL_CREDENTIALS_STORAGE_KEY = 'tos.webAutomation.localCredentials.v1'
 
 const props = withDefaults(defineProps<{
   automationId: string
@@ -235,6 +244,14 @@ async function resolveCredentials(): Promise<ResolvedProfile> {
     return { username: formatUsername(cached.username), password: cached.password, accountKey: key }
   }
 
+  const localResolved = readLocalCredential(props.automationId, key)
+  if (localResolved?.username && localResolved.password) {
+    const resolved = buildResolvedCredential(localResolved)
+    cache.resolvedByKey.set(key, resolved)
+    applyResolvedCredential(key, resolved)
+    return { username: formatUsername(resolved.username), password: resolved.password, accountKey: key }
+  }
+
   let publicCredentials = cache.credentialsByKey.get(key)
   if (!publicCredentials) {
     publicCredentials = await fetchExecutorCredentials(props.automationId, key)
@@ -246,6 +263,7 @@ async function resolveCredentials(): Promise<ResolvedProfile> {
 
   const resolved = await resolveAutomationCredentials(props.automationId, key)
   cache.resolvedByKey.set(key, resolved)
+  saveLocalCredential(props.automationId, key, resolved.username, resolved.password)
   applyResolvedCredential(key, resolved)
   return { username: formatUsername(resolved.username), password: resolved.password, accountKey: key }
 }
@@ -318,7 +336,14 @@ async function saveEditor(): Promise<void> {
 
   saving.value = true
   try {
-    const saved = await saveExecutorCredentials(props.automationId, username, password, accountKey)
+    const localSaved = saveLocalCredential(props.automationId, accountKey, username, password)
+    let saved = localSaved
+    let savedRemote = true
+    try {
+      saved = await saveExecutorCredentials(props.automationId, username, password, accountKey)
+    } catch {
+      savedRemote = false
+    }
     const cache = getCache()
     cache.credentialsByKey.set(accountKey, saved)
     cache.resolvedByKey.set(accountKey, {
@@ -336,6 +361,13 @@ async function saveEditor(): Promise<void> {
     emit('update:password', password)
     emitState(username)
     editorOpen.value = false
+    if (!savedRemote) {
+      emit('notice', {
+        tone: 'warning',
+        message: text('Saved to this device. Backend sync is currently unavailable.'),
+      })
+      return
+    }
     emit('notice', { tone: 'success', message: text('已保存账号档案。') })
   } catch (error) {
     emit('notice', { tone: 'error', message: readErrorMessage(error, text('保存账号档案失败。')) })
@@ -365,7 +397,12 @@ async function deleteProfile(accountKey: string): Promise<void> {
   const key = normalizeCredentialKey(accountKey)
   clearing.value = true
   try {
-    await clearExecutorCredentials(props.automationId, key)
+    removeLocalCredential(props.automationId, key)
+    try {
+      await clearExecutorCredentials(props.automationId, key)
+    } catch {
+      // Keep the UI usable when the backend is offline; the local profile is already removed.
+    }
     const cache = getCache()
     cache.credentialsByKey.delete(key)
     cache.resolvedByKey.delete(key)
@@ -392,6 +429,14 @@ async function applyCredentialKey(accountKey: string, allowFallback: boolean): P
   const cachedResolved = cache.resolvedByKey.get(key)
   if (cachedResolved) {
     applyResolvedCredential(key, cachedResolved)
+    return
+  }
+
+  const localResolved = readLocalCredential(props.automationId, key)
+  if (localResolved?.username && localResolved.password) {
+    const resolved = buildResolvedCredential(localResolved)
+    cache.resolvedByKey.set(key, resolved)
+    applyResolvedCredential(key, resolved)
     return
   }
 
@@ -445,6 +490,7 @@ async function applyCredentialKey(accountKey: string, allowFallback: boolean): P
 function applyResolvedCredential(accountKey: string, resolved: ResolvedAutomationCredentials): void {
   const username = formatUsername(resolved.username)
   selectedCredentialKey.value = normalizeCredentialKey(accountKey)
+  saveLocalCredential(props.automationId, selectedCredentialKey.value, username, resolved.password)
   currentCredentials.value = {
     ok: true,
     hasStoredCredentials: true,
@@ -458,18 +504,125 @@ function applyResolvedCredential(accountKey: string, resolved: ResolvedAutomatio
   emitState(username)
 }
 
+function mergeLocalCredentialOptions(remoteOptions: ExecutorCredentialOption[]): ExecutorCredentialOption[] {
+  const byKey = new Map<string, ExecutorCredentialOption>()
+  for (const option of remoteOptions) {
+    const key = normalizeCredentialKey(option.accountKey)
+    byKey.set(key, { ...option, accountKey: key })
+  }
+  for (const local of listLocalCredentials(props.automationId)) {
+    const key = normalizeCredentialKey(local.accountKey)
+    const existing = byKey.get(key)
+    byKey.set(key, {
+      ...existing,
+      automationId: existing?.automationId || props.automationId,
+      accountKey: key,
+      hasStoredCredentials: true,
+      username: local.username || existing?.username || '',
+      createdAt: existing?.createdAt,
+      updatedAt: local.updatedAt || existing?.updatedAt,
+    })
+  }
+  return Array.from(byKey.values())
+}
+
 async function refreshCredentialOptions(force = false): Promise<void> {
   const cache = getCache()
   if (!force && cache.options) {
-    credentialOptions.value = cache.options
+    credentialOptions.value = mergeLocalCredentialOptions(cache.options)
     return
   }
 
   try {
-    credentialOptions.value = await fetchExecutorCredentialOptions(props.automationId)
+    credentialOptions.value = mergeLocalCredentialOptions(await fetchExecutorCredentialOptions(props.automationId))
     cache.options = credentialOptions.value
   } catch {
-    credentialOptions.value = cache.options || []
+    credentialOptions.value = mergeLocalCredentialOptions(cache.options || [])
+    cache.options = credentialOptions.value
+  }
+}
+
+function saveLocalCredential(
+  automationId: string,
+  accountKey: string,
+  username: string,
+  password: string,
+): ExecutorCredentials {
+  const normalizedAutomationId = String(automationId || 'default').trim() || 'default'
+  const key = normalizeCredentialKey(accountKey)
+  const record: LocalCredentialRecord = {
+    automationId: normalizedAutomationId,
+    accountKey: key,
+    username: formatUsername(username),
+    password,
+    updatedAt: new Date().toISOString(),
+  }
+  const store = readLocalCredentialStore()
+  store[normalizedAutomationId] = {
+    ...(store[normalizedAutomationId] || {}),
+    [key]: record,
+  }
+  writeLocalCredentialStore(store)
+  return {
+    ok: true,
+    hasStoredCredentials: true,
+    username: record.username,
+    automationId: normalizedAutomationId,
+    accountKey: key,
+    updatedAt: record.updatedAt,
+  }
+}
+
+function removeLocalCredential(automationId: string, accountKey: string): void {
+  const normalizedAutomationId = String(automationId || 'default').trim() || 'default'
+  const key = normalizeCredentialKey(accountKey)
+  const store = readLocalCredentialStore()
+  if (!store[normalizedAutomationId]?.[key]) return
+  delete store[normalizedAutomationId][key]
+  if (Object.keys(store[normalizedAutomationId]).length === 0) {
+    delete store[normalizedAutomationId]
+  }
+  writeLocalCredentialStore(store)
+}
+
+function readLocalCredential(automationId: string, accountKey: string): LocalCredentialRecord | null {
+  const normalizedAutomationId = String(automationId || 'default').trim() || 'default'
+  const key = normalizeCredentialKey(accountKey)
+  const record = readLocalCredentialStore()[normalizedAutomationId]?.[key]
+  return record?.username && record.password ? record : null
+}
+
+function listLocalCredentials(automationId: string): LocalCredentialRecord[] {
+  const normalizedAutomationId = String(automationId || 'default').trim() || 'default'
+  return Object.values(readLocalCredentialStore()[normalizedAutomationId] || {})
+    .filter((record) => Boolean(record?.username && record.password))
+}
+
+function buildResolvedCredential(record: LocalCredentialRecord): ResolvedAutomationCredentials {
+  return {
+    ok: true,
+    automationId: record.automationId,
+    accountKey: normalizeCredentialKey(record.accountKey),
+    username: record.username,
+    password: record.password,
+  }
+}
+
+function readLocalCredentialStore(): LocalCredentialStore {
+  try {
+    const raw = window.localStorage.getItem(LOCAL_CREDENTIALS_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    return parsed && typeof parsed === 'object' ? parsed as LocalCredentialStore : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeLocalCredentialStore(store: LocalCredentialStore): void {
+  try {
+    window.localStorage.setItem(LOCAL_CREDENTIALS_STORAGE_KEY, JSON.stringify(store))
+  } catch {
+    // localStorage may be unavailable in restricted browser shells.
   }
 }
 
