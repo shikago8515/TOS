@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "release-v1.0.0-beta.3.7",
+    "version": "1.0.0-beta.3.7",
+    "releaseDate": "2026-07-03",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.7",
+    "description": "Release v1.0.0-beta.3.7. Channel: beta.3. Commit: e3e9a3ea9ce7d8ef9cfa6169366ddd33f2f8b4ae. Release notes: 修复Sophia国家分析汇总表."
+  },
+  {
     "recordKey": "release-v1.0.0-beta.3.6",
     "version": "1.0.0-beta.3.6",
     "releaseDate": "2026-07-03",

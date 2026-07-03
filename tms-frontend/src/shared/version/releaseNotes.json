@@ -1,13 +1,14 @@
 {
-  "version": "1.0.0-beta.3.6",
+  "version": "1.0.0-beta.3.7",
   "date": "2026-07-03",
-  "noticeId": "2026-07-03-v1.0.0-beta.3.6",
+  "noticeId": "2026-07-03-v1.0.0-beta.3.7",
   "showPopup": false,
   "added": [],
   "improved": [],
   "fixed": [
     "修复 TC INV 自动化进入 Preview 新页面后未点击 Validate 就结束批次的问题，热更新模块会在 Preview 页面自动执行 Validate。",
-    "优化服务器部署构建流程"
+    "优化服务器部署构建流程",
+    "修复 Sophia 国家分析汇总表"
   ],
   "modules": [],
   "sections": []

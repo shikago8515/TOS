@@ -1,25 +1,25 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.6",
-  "tag": "v1.0.0-beta.3.6",
-  "gitSha": "41d400d845a69ad43c03f834bc1c3b490522b64f",
+  "version": "1.0.0-beta.3.7",
+  "tag": "v1.0.0-beta.3.7",
+  "gitSha": "e3e9a3ea9ce7d8ef9cfa6169366ddd33f2f8b4ae",
   "releaseDate": "2026-07-03",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.6",
+    "version": "1.0.0-beta.3.7",
     "date": "2026-07-03",
-    "noticeId": "2026-07-03-v1.0.0-beta.3.6",
+    "noticeId": "2026-07-03-v1.0.0-beta.3.7",
     "showPopup": false,
     "added": [],
     "improved": [],
     "fixed": [
-      "优化服务器部署构建流程"
+      "修复Sophia国家分析汇总表"
     ],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.6",
-    "version": "1.0.0-beta.3.6",
+    "noticeId": "v1.0.0-beta.3.7",
+    "version": "1.0.0-beta.3.7",
     "releaseDate": "2026-07-03",
     "showPopup": false,
     "level": "maintenance",
@@ -29,7 +29,7 @@
         "title": "修复",
         "icon": "check-circle",
         "items": [
-          "优化服务器部署构建流程"
+          "修复Sophia国家分析汇总表"
         ]
       }
     ]

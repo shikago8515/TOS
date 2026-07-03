@@ -115,6 +115,10 @@ def _zip_entry_text(path: str, entry: str) -> str:
         return archive.read(entry).decode("utf-8")
 
 
+def _sheet_cell_text(path: str, entry: str) -> str:
+    return _zip_entry_text(path, entry)
+
+
 def _pivot_data_field_names(path: str, entry: str) -> list[str | None]:
     namespace = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     with zipfile.ZipFile(path) as archive:
@@ -160,6 +164,188 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
         path = directory / name
         pd.DataFrame(rows).to_excel(path, index=False)
         return str(path)
+
+    def test_country_analysis_summary_blocks_are_rebuilt_from_result_data(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            work_dir = Path(temp_dir)
+            tms_rows = [
+                {
+                    "Factory": "FACTORY-A",
+                    "PO Number": "PO-CN",
+                    "Working Number": "WN-CN",
+                    "Article Number": "ART-CN",
+                    "Article Description": "China row",
+                    "Customer Request Date (CRD)": "2026-01-01",
+                    "PODD": "2026-02-01",
+                    "Shipment Method": "Ocean",
+                    "Gps Customer Number": "GPS-CN",
+                    "Country/Region": "CHINA",
+                    "Ordered Quantity": 10,
+                },
+                {
+                    "Factory": "FACTORY-A",
+                    "PO Number": "PO-US",
+                    "Working Number": "WN-US",
+                    "Article Number": "ART-US",
+                    "Article Description": "US row",
+                    "Customer Request Date (CRD)": "2026-01-02",
+                    "PODD": "2026-02-02",
+                    "Shipment Method": "Air",
+                    "Gps Customer Number": "GPS-US",
+                    "Country/Region": "UNITED STATES",
+                    "Ordered Quantity": 30,
+                },
+                {
+                    "Factory": "FACTORY-A",
+                    "PO Number": "PO-OTHER",
+                    "Working Number": "WN-OTHER",
+                    "Article Number": "ART-OTHER",
+                    "Article Description": "Other row",
+                    "Customer Request Date (CRD)": "2026-01-03",
+                    "PODD": "2026-02-03",
+                    "Shipment Method": "Rail",
+                    "Gps Customer Number": "GPS-OTHER",
+                    "Country/Region": "BRAZIL",
+                    "Ordered Quantity": 60,
+                },
+                {
+                    "Factory": "FACTORY-B",
+                    "PO Number": "PO-B-CN",
+                    "Working Number": "WN-B-CN",
+                    "Article Number": "ART-B-CN",
+                    "Article Description": "Factory B China row",
+                    "Customer Request Date (CRD)": "2026-03-01",
+                    "PODD": "2026-04-01",
+                    "Shipment Method": "Ocean",
+                    "Gps Customer Number": "GPS-B-CN",
+                    "Country/Region": "CHINA",
+                    "Ordered Quantity": 5,
+                },
+                {
+                    "Factory": "FACTORY-B",
+                    "PO Number": "PO-B-OTHER",
+                    "Working Number": "WN-B-OTHER",
+                    "Article Number": "ART-B-OTHER",
+                    "Article Description": "Factory B other row",
+                    "Customer Request Date (CRD)": "2026-03-02",
+                    "PODD": "2026-04-02",
+                    "Shipment Method": "Ocean",
+                    "Gps Customer Number": "GPS-B-OTHER",
+                    "Country/Region": "MEXICO",
+                    "Ordered Quantity": 15,
+                },
+            ]
+            tms_price_rows = [
+                {
+                    "Working Number (M)": "WN-CN",
+                    "Article Number (A)": "ART-CN",
+                    "Season (M)": "SS26",
+                    "Marketing Forecast (M)": 100,
+                    "Milestone (C)": "Final",
+                    "Intl. FOB (C)": 20.0,
+                    "Factory Group Code (MF)": "FACTORY-A",
+                },
+                {
+                    "Working Number (M)": "WN-US",
+                    "Article Number (A)": "ART-US",
+                    "Season (M)": "SS26",
+                    "Marketing Forecast (M)": 100,
+                    "Milestone (C)": "Final",
+                    "Intl. FOB (C)": 10.0,
+                    "Factory Group Code (MF)": "FACTORY-A",
+                },
+                {
+                    "Working Number (M)": "WN-OTHER",
+                    "Article Number (A)": "ART-OTHER",
+                    "Season (M)": "SS26",
+                    "Marketing Forecast (M)": 100,
+                    "Milestone (C)": "Final",
+                    "Intl. FOB (C)": 5.0,
+                    "Factory Group Code (MF)": "FACTORY-A",
+                },
+                {
+                    "Working Number (M)": "WN-B-CN",
+                    "Article Number (A)": "ART-B-CN",
+                    "Season (M)": "SS26",
+                    "Marketing Forecast (M)": 100,
+                    "Milestone (C)": "Final",
+                    "Intl. FOB (C)": 8.0,
+                    "Factory Group Code (MF)": "FACTORY-B",
+                },
+                {
+                    "Working Number (M)": "WN-B-OTHER",
+                    "Article Number (A)": "ART-B-OTHER",
+                    "Season (M)": "SS26",
+                    "Marketing Forecast (M)": 100,
+                    "Milestone (C)": "Final",
+                    "Intl. FOB (C)": 4.0,
+                    "Factory Group Code (MF)": "FACTORY-B",
+                },
+            ]
+            price_rows = [
+                {
+                    "Pack": "PACK-SS26",
+                    "Season": "SS26",
+                    "Working Number": row["Working Number"],
+                    "Article Number": row["Article Number"],
+                    "Factory": row["Factory"],
+                    "Factory Price": 1.0,
+                    "TMS Price": 1.0,
+                }
+                for row in tms_rows
+            ]
+
+            tms_path = self._write_excel(work_dir, "tms.xlsx", tms_rows)
+            tms_price_path = self._write_excel(work_dir, "tms-price.xlsx", tms_price_rows)
+            price_path = self._write_excel(work_dir, "price.xlsx", price_rows)
+
+            result = self.module.process_reports(
+                [tms_path],
+                [tms_price_path],
+                [price_path],
+                output_dir=str(work_dir),
+            )
+
+            self.assertTrue(result["success"], result["message"])
+            wb = load_workbook(result["output_path"], data_only=False, read_only=True)
+            try:
+                expected_rows = [
+                    ["Season SS26", "Factory", "China Order", "USA Order", "Other Order", "Total Order"],
+                    ["Qty(pcs)", "FACTORY-A", 10, 30, 60, 100],
+                    ["Qty percentage", "FACTORY-A", 0.1, 0.3, 0.6, None],
+                    ["Value(usd)", "FACTORY-A", 200, 300, 300, 800],
+                    ["Value percentage", "FACTORY-A", 0.25, 0.375, 0.375, None],
+                    ["Qty(pcs)", "FACTORY-B", 5, 0, 15, 20],
+                    ["Qty percentage", "FACTORY-B", 0.25, 0, 0.75, None],
+                    ["Value(usd)", "FACTORY-B", 40, 0, 60, 100],
+                    ["Value percentage", "FACTORY-B", 0.4, 0, 0.6, None],
+                ]
+                for sheet_name, start_row, first_header in (
+                    ("Country Analysis (S)", 19, "Season SS26"),
+                    ("Country Analysis (Y)", 16, "Year 2026"),
+                ):
+                    ws = wb[sheet_name]
+                    sheet_expected_rows = [list(row) for row in expected_rows]
+                    sheet_expected_rows[0][0] = first_header
+                    for offset, expected_row in enumerate(sheet_expected_rows):
+                        actual = [
+                            ws.cell(row=start_row + offset, column=column).value
+                            for column in range(1, 7)
+                        ]
+                        self.assertEqual(actual, expected_row)
+
+                    self.assertEqual(ws.cell(row=start_row + 2, column=6).value, None)
+                    self.assertEqual(ws.cell(row=start_row + 4, column=6).value, None)
+            finally:
+                wb.close()
+
+            self.assertNotIn("653448", _sheet_cell_text(result["output_path"], "xl/worksheets/sheet3.xml"))
+            self.assertNotIn("3067514", _sheet_cell_text(result["output_path"], "xl/worksheets/sheet4.xml"))
+            self.assertEqual(
+                {source for _, sheet_name, source in _pivot_cache_sources(result["output_path"]) if sheet_name == "Result"},
+                {"A1:Q6"},
+            )
+            self.assertEqual(set(_pivot_cache_refresh_values(result["output_path"])), {"1"})
 
     def test_tms_price_uses_milestone_priority_order_instead_of_source_row_order(self):
         with tempfile.TemporaryDirectory() as temp_dir:
