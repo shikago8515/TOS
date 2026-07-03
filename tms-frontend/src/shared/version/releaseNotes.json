@@ -1,12 +1,12 @@
 {
-  "version": "1.0.0-beta.3.6",
+  "version": "1.0.0-beta.3.7",
   "date": "2026-07-03",
-  "noticeId": "2026-07-03-v1.0.0-beta.3.6",
+  "noticeId": "2026-07-03-v1.0.0-beta.3.7",
   "showPopup": false,
   "added": [],
   "improved": [],
   "fixed": [
-    "优化服务器部署构建流程"
+    "修复Sophia国家分析汇总表"
   ],
   "modules": [],
   "sections": []

@@ -1,3 +1,9 @@
+## [1.0.0-beta.3.7](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.6...v1.0.0-beta.3.7) (2026-07-03)
+
+### Bug Fixes
+
+* 修复Sophia国家分析汇总表 ([e3e9a3e](http://172.16.48.208:3001/luenthai-ai/TOS/commit/e3e9a3ea9ce7d8ef9cfa6169366ddd33f2f8b4ae))
+
 ## [1.0.0-beta.3.6](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.5...v1.0.0-beta.3.6) (2026-07-03)
 
 ### Bug Fixes
