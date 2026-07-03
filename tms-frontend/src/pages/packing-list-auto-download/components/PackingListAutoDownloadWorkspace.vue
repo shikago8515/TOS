@@ -63,6 +63,18 @@
         </section>
       </transition>
 
+      <AutomationStartupProgress
+        v-if="showStartupProgress"
+        :title="startupProgressTitle"
+        :detail="startupProgressDetail"
+        :percent="startupProgressPercent"
+        :elapsed-seconds="startupElapsedSeconds"
+        :current-step-label="startupCurrentStepLabel"
+        :active-step-key="startupActiveStepKey"
+        :completed-step-keys="startupCompletedStepKeys"
+        :steps="startupProgressSteps"
+      />
+
       <div class="pad-body">
         <main class="pad-main">
           <section class="pad-card pad-card--main">
@@ -312,6 +324,7 @@ import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
 import { showAppAlert } from '../../../shared/ui/appAlert'
+import AutomationStartupProgress from '../../web-automation/components/AutomationStartupProgress.vue'
 import AutomationAccountProfileManager from '../../web-automation/components/AutomationAccountProfileManager.vue'
 import AutomationRunHistoryPanel from '../../web-automation/components/AutomationRunHistoryPanel.vue'
 import PackingListBatchResumeCard from './PackingListBatchResumeCard.vue'
@@ -344,6 +357,7 @@ import {
   recordWebAutomationEvent,
   stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
+import { useAutomationStartupProgress } from '../../web-automation/composables/useAutomationStartupProgress'
 import { appendAutomationFailureExamples, formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
 import {
   DEFAULT_INFOR_NEXUS_USERNAME,
@@ -481,6 +495,23 @@ const messageIconName = computed(() => {
   if (messageTone.value === 'error') return 'alert-circle'
   if (messageTone.value === 'warning') return 'info'
   return 'activity'
+})
+const startupActiveRun = computed(() => findPackingListAutoDownloadActiveRun(executorHealth.value))
+const {
+  showStartupProgress,
+  startupProgressTitle,
+  startupProgressDetail,
+  startupProgressPercent,
+  startupElapsedSeconds,
+  startupCurrentStepLabel,
+  startupActiveStepKey,
+  startupCompletedStepKeys,
+  startupProgressSteps,
+} = useAutomationStartupProgress({
+  launching,
+  running: sending,
+  statusText,
+  activeRun: startupActiveRun,
 })
 
 onMounted(() => {

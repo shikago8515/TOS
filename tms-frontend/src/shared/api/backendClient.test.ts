@@ -47,6 +47,19 @@ describe('backendClient', () => {
     ).resolves.toBe('http://127.0.0.1:8000/api/jane/download/result.xlsx')
   })
 
+  it('routes installer downloads to the remote backend without waiting for the local backend', async () => {
+    const startBackendServer = vi.fn().mockResolvedValue({
+      success: true,
+      url: 'http://127.0.0.1:8123/',
+    })
+    stubWindow({ startBackendServer })
+
+    await expect(
+      buildBackendDownloadUrl('/api/system/config/tos-desktop-full/download'),
+    ).resolves.toBe('https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/tos-desktop-full/download')
+    expect(startBackendServer).not.toHaveBeenCalled()
+  })
+
   it('uses the local backend URL in dev browser mode by default', async () => {
     stubWindow()
 

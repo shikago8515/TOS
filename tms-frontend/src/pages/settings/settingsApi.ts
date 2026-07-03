@@ -142,7 +142,7 @@ export function getTosDesktopDownloadUrl(): string {
 export async function resolveTosDesktopDownloadUrl(): Promise<string> {
   const configuredUrl = getTosDesktopDownloadUrl()
   return configuredUrl.startsWith('/api/')
-    ? buildBackendDownloadUrl(configuredUrl)
+    ? buildBackendDownloadUrl(configuredUrl, 'remote')
     : configuredUrl
 }
 
@@ -161,7 +161,7 @@ export function getTosDesktopFullDownloadUrl(): string {
 export async function resolveTosDesktopFullDownloadUrl(): Promise<string> {
   const configuredUrl = getTosDesktopFullDownloadUrl()
   return configuredUrl.startsWith('/api/')
-    ? buildBackendDownloadUrl(configuredUrl)
+    ? buildBackendDownloadUrl(configuredUrl, 'remote')
     : configuredUrl
 }
 

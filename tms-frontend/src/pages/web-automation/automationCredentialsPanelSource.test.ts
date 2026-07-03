@@ -32,10 +32,10 @@ describe('AutomationCredentialsPanel source integration', () => {
     expect(accountProfileManagerSource).toContain('resolveCredentials')
   })
 
-  it('uses the account profile manager in generic web automation scenarios too', () => {
-    expect(webAutomationScenarioSource).toContain('AutomationAccountProfileManager')
-    expect(webAutomationScenarioSource).toContain('credentialProfileRef')
-    expect(webAutomationScenarioSource).toContain(':username-mode="credentialUsernameMode"')
+  it('uses the shared startup progress in generic web automation scenarios too', () => {
+    expect(webAutomationScenarioSource).toContain('AutomationStartupProgress')
+    expect(webAutomationScenarioSource).toContain('useAutomationStartupProgress')
+    expect(webAutomationScenarioSource).toContain('startupActiveRun')
   })
 
   it('uses the shared account profile manager in all direct Infor Nexus automation pages', () => {

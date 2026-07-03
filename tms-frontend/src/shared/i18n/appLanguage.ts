@@ -379,6 +379,9 @@ const staticTextTranslations: Record<string, string> = {
   '暂无模板记录': 'No template records',
   '请先勾选模板，或点击新增模板': 'Select a template first, or click New Template',
   '请先选择 Excel 文件': 'Choose an Excel file first',
+  '正在等待本机执行器健康检查...': 'Waiting for the local executor health check...',
+  '文件已添加，无需重复上传。': 'File already added. No need to upload it again.',
+  '已跳过非 Excel 文件。': 'Skipped non-Excel files.',
   '上传新的模板文件': 'Upload a new template file',
   '替换当前选中模板的文件': 'Replace the selected template file',
   'Excel 模板': 'Excel Template',
@@ -1021,6 +1024,10 @@ const staticTextTranslations: Record<string, string> = {
     'Adjust the search terms, or contact an administrator to add a new automation scenario.',
   没有匹配的入口: 'No matching entries',
   请调整搜索条件: 'Adjust the search terms',
+  Infornexus自动化: 'Infornexus Automation',
+  'Packing list 自动下载': 'Packing List Auto Download',
+  其他自动化: 'Other Automation',
+  个入口: 'entries',
   shipping自动化: 'Shipping Automation',
   '万代shipping 自动化': 'Wandai Shipping Automation',
   万代: 'Wandai',
@@ -1038,11 +1045,16 @@ const staticTextTranslations: Record<string, string> = {
   '上传 Excel 后由 n8n webhook 回调本机执行器，启动 Playwright 可见浏览器完成 Microsoft Login 与 SAP BTP 操作。':
     'After Excel upload, the n8n webhook calls the local executor and starts a visible Playwright browser for Microsoft Login and SAP BTP.',
   'Infor Nexus 运输业务自动化': 'Infor Nexus shipping automation',
+  'Infor Nexus 自动化': 'Infor Nexus Automation',
   'Infor Nexus 万代运输业务自动化': 'Infor Nexus Wandai shipping automation',
   '进入 https://network.infornexus.com，后续承接本地直连浏览器自动化链路。':
     'Open https://network.infornexus.com, then continue through the local direct browser automation flow.',
   '进入 https://network.infornexus.com，后续承接万代本地直连浏览器自动化链路。':
     'Open https://network.infornexus.com, then continue through the Wandai local direct browser automation flow.',
+  '进入 https://network.infornexus.com，后续承接 VENT 本地直连浏览器自动化链路。':
+    'Open https://network.infornexus.com, then continue through the VENT local direct browser automation flow.',
+  '进入 https://network.infornexus.com，后续承接 YUEN TAI+XO 本地直连浏览器自动化链路。':
+    'Open https://network.infornexus.com, then continue through the YUEN TAI+XO local direct browser automation flow.',
   'Infor Nexus 登录与页面预备流程': 'Infor Nexus login and page preparation flow',
   'Infor Nexus released Bulk 自动化流程': 'Infor Nexus released Bulk automation flow',
   '先登录 Infor Nexus 并进入站点，后续页面操作会继续在这个独立场景里扩展。':
@@ -1054,14 +1066,19 @@ const staticTextTranslations: Record<string, string> = {
     'Upload Excel, launch a visible browser, read 10-digit IDs from the second column, then search, select, and add them in Infor Nexus.',
   'PO 自动下载': 'PO Auto Download',
   'Invoice 自动下载': 'Invoice Auto Download',
+  'Invoice 下载': 'Invoice Download',
   'Excel Invoice 批量下载': 'Batch Invoice download from Excel',
   '上传 Excel 后按 Invoice Number 发起请求下载，并保存到指定本机目录。':
     'Upload Excel, request downloads by Invoice Number, and save files to the selected local folder.',
   'TC INV 自动化': 'TC INV Automation',
   'TC INV 出货明细与费用录入自动化': 'TC INV shipping details and charge entry automation',
+  'Trade Card INV amount 自动化': 'Trade Card INV amount Automation',
+  'Trade Card INV amount 出货明细与费用录入自动化。':
+    'Trade Card INV amount shipping details and charge entry automation.',
   'SLT、VENT、XO 工厂支持自动上传出货明细表，系统自动上传运费表，并同步录入货物交期、各项费用等信息。':
     'SLT, VENT, and XO factories support automatic shipping detail upload, freight table upload, and synchronized entry of delivery dates and charges.',
   自动下载箱单: 'Packing List Auto Download',
+  'Packing List 下载': 'Packing List Download',
   'Excel 箱单批量下载': 'Batch packing list download from Excel',
   '上传 Excel 后按 PO 号查询箱单并发起下载，保存到指定本机目录。':
     'Upload Excel, search packing lists by PO number, start the download, and save files to the selected local folder.',

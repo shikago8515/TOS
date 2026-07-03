@@ -5,8 +5,8 @@ import type {
 } from '../../types/electronApi'
 import {
   buildBackendDownloadUrl,
-  downloadUrlAsFile,
   getBackendBaseUrl,
+  openUrlAsBrowserDownload,
   postFormData,
   readResponseMessage,
   requestBackendJson,
@@ -376,13 +376,13 @@ export function getAutomationHelperDownloadUrl(): string {
 export async function resolveAutomationHelperDownloadUrl(): Promise<string> {
   const configuredUrl = getAutomationHelperDownloadUrl()
   return configuredUrl.startsWith('/api/')
-    ? buildBackendDownloadUrl(configuredUrl)
+    ? buildBackendDownloadUrl(configuredUrl, 'remote')
     : configuredUrl
 }
 
 export async function openAutomationHelperDownload(): Promise<void> {
   const downloadUrl = await resolveAutomationHelperDownloadUrl()
-  await downloadUrlAsFile(downloadUrl, 'TOS-Automation-Helper-Setup.exe')
+  openUrlAsBrowserDownload(downloadUrl, 'TOS-Automation-Helper-Setup.exe')
 }
 
 export async function openAutomationHelperPanel(): Promise<AutomationHelperPanelOpenResult> {

@@ -6,12 +6,14 @@ import { toggleDarkModeWithTransition } from '../app/theme'
 import {
   getLocalizedModuleTitle,
   getModulesByGroup,
+  getNavParentsByGroup,
   tosNavGroups,
   tosModuleCategoryLabels,
   type TosModuleCategory,
   type TosModuleDefinition,
   type TosModuleGroup,
   type TosNavGroupDefinition,
+  type TosNavParentDefinition,
 } from '../domain/moduleCatalog'
 import { i18n, setI18nLanguage } from '../languages'
 import { getDocumentTitle as getLocalizedDocumentTitle } from '../languages/menuLanguage'
@@ -34,6 +36,13 @@ interface SidebarCategory {
   id: string
   cat: TosModuleCategory
   modules: TosModuleDefinition[]
+  parents: SidebarNavParent[]
+}
+
+interface SidebarNavParent {
+  id: string
+  parent: TosNavParentDefinition
+  modules: TosModuleDefinition[]
 }
 
 interface SidebarGroup extends TosNavGroupDefinition {
@@ -52,6 +61,9 @@ export function useAppShellModel() {
   const isMobile = ref(false)
   const expandedNavGroups = ref<Set<TosModuleGroup>>(new Set(['jessica', 'sophia', 'jane', 'eric', 'jason', 'finance-excel']))
   const expandedCategories = ref<Set<string>>(new Set())
+  const expandedNavParents = ref<Set<string>>(
+    new Set(tosNavGroups.flatMap((group) => getNavParentsByGroup(group.id).map((parent) => parent.id))),
+  )
   const { isEnglish, setAppLanguage, t, text } = useAppLanguage()
   const profileMenuRef = ref<HTMLElement | null>(null)
   const profileMenuOpen = ref(false)
@@ -141,14 +153,56 @@ export function useAppShellModel() {
     tosNavGroups
       .map((group) => {
         const modules = getModulesByGroup(group.id).filter(shouldShowInSidebar)
-        const catMap = new Map<TosModuleCategory, TosModuleDefinition[]>()
+        const navParents = getNavParentsByGroup(group.id)
+        const navParentMap = new Map(navParents.map((parent) => [parent.id, parent]))
+        const catMap = new Map<
+          TosModuleCategory,
+          { directModules: TosModuleDefinition[]; parentModules: Map<string, TosModuleDefinition[]> }
+        >()
         for (const mod of modules) {
-          const list = catMap.get(mod.category)
-          if (list) { list.push(mod) } else { catMap.set(mod.category, [mod]) }
+          let bucket = catMap.get(mod.category)
+          if (!bucket) {
+            bucket = { directModules: [], parentModules: new Map() }
+            catMap.set(mod.category, bucket)
+          }
+
+          const parent = mod.navParentId ? navParentMap.get(mod.navParentId) : undefined
+          const isParentInCategory = parent && (!parent.category || parent.category === mod.category)
+          if (!isParentInCategory || !mod.navParentId) {
+            bucket.directModules.push(mod)
+            continue
+          }
+
+          const parentList = bucket.parentModules.get(mod.navParentId)
+          if (parentList) {
+            parentList.push(mod)
+          } else {
+            bucket.parentModules.set(mod.navParentId, [mod])
+          }
         }
         const categories: SidebarCategory[] = []
-        for (const [cat, catModules] of catMap) {
-          categories.push({ id: `${group.id}:${cat}`, cat, modules: catModules })
+        for (const [cat, catBucket] of catMap) {
+          const parents = [...catBucket.parentModules.entries()]
+            .map(([parentId, parentModules]) => {
+              const parent = navParentMap.get(parentId)
+              if (!parent) {
+                return null
+              }
+              return {
+                id: `${group.id}:${cat}:${parentId}`,
+                parent,
+                modules: [...parentModules].sort((left, right) => left.order - right.order),
+              }
+            })
+            .filter((parent): parent is SidebarNavParent => Boolean(parent))
+            .sort((left, right) => left.parent.order - right.parent.order)
+
+          categories.push({
+            id: `${group.id}:${cat}`,
+            cat,
+            modules: [...catBucket.directModules].sort((left, right) => left.order - right.order),
+            parents,
+          })
         }
   
         return {
@@ -282,6 +336,20 @@ export function useAppShellModel() {
     const next = new Set(expandedCategories.value)
     if (next.has(catId)) { next.delete(catId) } else { next.add(catId) }
     expandedCategories.value = next
+  }
+
+  function isNavParentExpanded(parentId: string): boolean {
+    return expandedNavParents.value.has(parentId)
+  }
+
+  function toggleNavParent(parentId: string): void {
+    const next = new Set(expandedNavParents.value)
+    if (next.has(parentId)) {
+      next.delete(parentId)
+    } else {
+      next.add(parentId)
+    }
+    expandedNavParents.value = next
   }
   
   function getCategoryLabel(cat: TosModuleCategory): string {
@@ -446,6 +514,10 @@ export function useAppShellModel() {
   function getModuleNavLabel(module: TosModuleDefinition): string {
     return isEnglish.value ? module.navLabelEn : module.navLabel
   }
+
+  function getNavParentLabel(parent: TosNavParentDefinition): string {
+    return isEnglish.value ? parent.labelEn : parent.label
+  }
   
   function getGroupIcon(groupId: TosModuleGroup): string {
     const map: Record<TosModuleGroup, string> = {
@@ -550,6 +622,11 @@ export function useAppShellModel() {
         .filter((mod) => mod.category)
         .map((mod) => `${mod.group}:${mod.category}`)
       expandedCategories.value = new Set([...expandedCategories.value, ...activeCatIds])
+
+      const activeParentIds = activeModules
+        .map((mod) => mod.navParentId)
+        .filter((parentId): parentId is string => Boolean(parentId))
+      expandedNavParents.value = new Set([...expandedNavParents.value, ...activeParentIds])
   
       if (isMobile.value) {
         isSidebarHidden.value = true
@@ -572,6 +649,7 @@ export function useAppShellModel() {
     getCategoryLabel,
     getModuleIcon,
     getModuleNavLabel,
+    getNavParentLabel,
     hasInstallerUpdate,
     hasUnseenReleaseNotes,
     installerUpdate,
@@ -581,6 +659,7 @@ export function useAppShellModel() {
     isMobile,
     isModuleActive,
     isNavGroupExpanded,
+    isNavParentExpanded,
     isSidebarHidden,
     languageOptions,
     languageTooltip,
@@ -605,6 +684,7 @@ export function useAppShellModel() {
     toggleCategory,
     toggleDarkMode,
     toggleNavGroup,
+    toggleNavParent,
     toggleSidebar,
     toggleProfileMenu,
     profileMenuOpen,

@@ -51,6 +51,39 @@
 
                   <!-- Category items: shown directly if single-category, else under category toggle -->
                   <template v-if="group.hasSingleCategory || expandedCategories.has(cat.id)">
+                    <div
+                      v-for="parent in cat.parents"
+                      :key="parent.id"
+                      class="menu-nav-parent"
+                    >
+                      <button
+                        class="menu-parent-title"
+                        type="button"
+                        :aria-expanded="isNavParentExpanded(parent.parent.id)"
+                        @click="toggleNavParent(parent.parent.id)"
+                      >
+                        <AppIcon
+                          :name="isNavParentExpanded(parent.parent.id) ? 'chevron-down' : 'chevron-right'"
+                          class="menu-parent-arrow"
+                        />
+                        <span class="menu-label">{{ getNavParentLabel(parent.parent) }}</span>
+                      </button>
+                      <template v-if="isNavParentExpanded(parent.parent.id)">
+                        <RouterLink
+                          v-for="mod in parent.modules"
+                          :key="mod.id"
+                          class="menu-item parent-child-item"
+                          :class="[
+                            !group.hasSingleCategory ? 'child-item' : '',
+                            isModuleActive(mod) ? 'is-active' : ''
+                          ]"
+                          :to="mod.path"
+                        >
+                          <AppIcon :name="getModuleIcon(mod)" class="menu-icon" />
+                          <span class="menu-label">{{ getModuleNavLabel(mod) }}</span>
+                        </RouterLink>
+                      </template>
+                    </div>
                     <RouterLink
                       v-for="mod in cat.modules"
                       :key="mod.id"
@@ -366,6 +399,7 @@ const {
   getCategoryLabel,
   getModuleIcon,
   getModuleNavLabel,
+  getNavParentLabel,
   hasInstallerUpdate,
   hasUnseenReleaseNotes,
   installerUpdate,
@@ -375,6 +409,7 @@ const {
   isMobile,
   isModuleActive,
   isNavGroupExpanded,
+  isNavParentExpanded,
   isSidebarHidden,
   languageOptions,
   languageTooltip,
@@ -397,6 +432,7 @@ const {
   toggleCategory,
   toggleDarkMode,
   toggleNavGroup,
+  toggleNavParent,
   toggleSidebar,
   toggleProfileMenu,
   profileMenuOpen,
@@ -654,6 +690,43 @@ const {
 .menu-category-title:hover {
   background: var(--soft-bg, #f0f4f8);
   color: var(--soft-text-secondary, #606266);
+}
+
+.menu-nav-parent {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.menu-parent-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 30px;
+  margin: 2px 0;
+  padding: 0 14px 0 28px;
+  border: 0;
+  background: transparent;
+  color: var(--soft-text-secondary, #606266);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.menu-parent-title:hover {
+  background: var(--soft-bg, #f0f4f8);
+  color: var(--soft-text, #303133);
+}
+
+.menu-parent-arrow {
+  width: 13px;
+  height: 13px;
+  color: var(--soft-text-muted, #909399);
+  flex-shrink: 0;
 }
 
 .child-item {
@@ -1652,6 +1725,35 @@ const {
   background: var(--color-surface-muted);
   color: var(--color-primary);
   box-shadow: none;
+}
+
+.menu-nav-parent {
+  margin: 2px 0 4px;
+}
+
+.menu-parent-title {
+  min-height: 30px;
+  margin: 2px 6px;
+  padding: 0 12px 0 18px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.menu-parent-title:hover {
+  background: var(--color-surface-muted);
+  color: var(--color-primary);
+}
+
+.menu-parent-arrow {
+  color: currentColor;
+}
+
+.parent-child-item.child-item {
+  margin-left: 28px;
 }
 
 .menu-item.is-active {

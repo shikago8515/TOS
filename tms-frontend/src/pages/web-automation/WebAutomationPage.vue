@@ -43,73 +43,88 @@
       </div>
     </div>
 
-    <!-- Entry Card Grid -->
-    <div v-if="filteredEntries.length" class="wa-grid">
-      <article
-        v-for="(entry, i) in filteredEntries"
-        :key="entry.id"
-        class="wa-card"
-        :class="{ 'wa-card--soon': entry.status === 'soon', 'wa-card--offline': entry.status === 'offline' }"
-        :style="{ animationDelay: `${i * 50}ms` }"
+    <!-- Entry Sections -->
+    <div v-if="filteredEntries.length" class="wa-sections">
+      <section
+        v-for="section in entrySections"
+        :key="section.id"
+        class="wa-section"
       >
-        <div class="wa-card__head">
-          <div class="wa-card__icon">
-            <AppIcon :name="entry.status === 'online' ? 'window' : entry.status === 'soon' ? 'clock' : 'package'" />
+        <header class="wa-section__head">
+          <div>
+            <h3>{{ text(section.title) }}</h3>
+            <p>{{ section.entries.length }} {{ text('个入口') }}</p>
           </div>
-          <div class="wa-card__info">
-            <strong>{{ text(entry.title) }}</strong>
-            <span>{{ text(entry.subtitle) }}</span>
-          </div>
-          <span class="wa-card__status" :class="`wa-tag--${getEntryStatusTone(entry.status)}`">
-            {{ text(getEntryStatusLabel(entry.status)) }}
-          </span>
-        </div>
+        </header>
 
-        <p class="wa-card__desc">{{ text(entry.description) }}</p>
+        <div class="wa-grid">
+          <article
+            v-for="(entry, i) in section.entries"
+            :key="entry.id"
+            class="wa-card"
+            :class="{ 'wa-card--soon': entry.status === 'soon', 'wa-card--offline': entry.status === 'offline' }"
+            :style="{ animationDelay: `${i * 50}ms` }"
+          >
+            <div class="wa-card__head">
+              <div class="wa-card__icon">
+                <AppIcon :name="entry.status === 'online' ? 'window' : entry.status === 'soon' ? 'clock' : 'package'" />
+              </div>
+              <div class="wa-card__info">
+                <strong>{{ text(entry.title) }}</strong>
+                <span>{{ text(entry.subtitle) }}</span>
+              </div>
+              <span class="wa-card__status" :class="`wa-tag--${getEntryStatusTone(entry.status)}`">
+                {{ text(getEntryStatusLabel(entry.status)) }}
+              </span>
+            </div>
 
-        <div class="wa-card__tags">
-          <span v-for="tag in entry.tags" :key="tag" class="wa-chip">{{ text(tag) }}</span>
-        </div>
+            <p class="wa-card__desc">{{ text(entry.description) }}</p>
 
-        <div class="wa-card__actions">
-          <button
-            v-if="entry.status === 'online'"
-            class="wa-btn wa-btn--primary"
-            type="button"
-            @click="openEntry(entry.routePath)"
-          >
-            <AppIcon name="play-circle" />
-            {{ text('进入场景') }}
-          </button>
-          <button
-            v-else-if="entry.status === 'soon'"
-            class="wa-btn"
-            type="button"
-            disabled
-          >
-            <AppIcon name="clock" />
-            {{ text('即将上线') }}
-          </button>
-          <button
-            v-else
-            class="wa-btn"
-            type="button"
-            disabled
-          >
-            <AppIcon name="package" />
-            {{ text('暂不可用') }}
-          </button>
-          <button
-            v-if="entry.status === 'online'"
-            class="wa-btn"
-            type="button"
-            @click="openEntry(entry.routePath)"
-          >
-            <AppIcon name="arrow-right" />
-            {{ text('详情') }}
-          </button>
+            <div class="wa-card__tags">
+              <span v-for="tag in entry.tags" :key="tag" class="wa-chip">{{ text(tag) }}</span>
+            </div>
+
+            <div class="wa-card__actions">
+              <button
+                v-if="entry.status === 'online'"
+                class="wa-btn wa-btn--primary"
+                type="button"
+                @click="openEntry(entry.routePath)"
+              >
+                <AppIcon name="play-circle" />
+                {{ text('进入场景') }}
+              </button>
+              <button
+                v-else-if="entry.status === 'soon'"
+                class="wa-btn"
+                type="button"
+                disabled
+              >
+                <AppIcon name="clock" />
+                {{ text('即将上线') }}
+              </button>
+              <button
+                v-else
+                class="wa-btn"
+                type="button"
+                disabled
+              >
+                <AppIcon name="package" />
+                {{ text('暂不可用') }}
+              </button>
+              <button
+                v-if="entry.status === 'online'"
+                class="wa-btn"
+                type="button"
+                @click="openEntry(entry.routePath)"
+              >
+                <AppIcon name="arrow-right" />
+                {{ text('详情') }}
+              </button>
+            </div>
+          </article>
         </div>
-      </article>
+      </section>
     </div>
 
     <!-- Empty -->
@@ -132,6 +147,7 @@ import {
   webAutomationEntries,
   getEntryStatusLabel,
   getEntryStatusTone,
+  type WebAutomationEntry,
 } from './webAutomationModel'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 
@@ -140,6 +156,21 @@ const { text } = useAppLanguage()
 
 const entries = webAutomationEntries
 const searchQuery = ref('')
+const sectionDefinitions = [
+  {
+    id: 'infornexus-automation',
+    title: 'Infornexus自动化',
+    entryIds: ['shipping-automation', 'xinlongtai-shipping-automation', 'tc-inv-automation'],
+  },
+  {
+    id: 'packing-list-auto-download',
+    title: 'Packing list 自动下载',
+    entryIds: ['packing-list-auto-download', 'po-auto-download'],
+  },
+] as const
+const sectionedEntryIds: ReadonlySet<string> = new Set(
+  sectionDefinitions.flatMap((section) => [...section.entryIds]),
+)
 
 const filteredEntries = computed(() => {
   const kw = searchQuery.value.toLowerCase().trim()
@@ -151,6 +182,30 @@ const filteredEntries = computed(() => {
       e.description.toLowerCase().includes(kw) ||
       e.tags.some((t) => t.toLowerCase().includes(kw)),
   )
+})
+
+const entrySections = computed(() => {
+  const entryById = new Map(filteredEntries.value.map((entry) => [entry.id, entry]))
+  const sections: { id: string; title: string; entries: WebAutomationEntry[] }[] = sectionDefinitions
+    .map((section) => ({
+      id: section.id,
+      title: section.title,
+      entries: section.entryIds
+        .map((entryId) => entryById.get(entryId))
+        .filter((entry): entry is WebAutomationEntry => Boolean(entry)),
+    }))
+    .filter((section) => section.entries.length > 0)
+
+  const otherEntries = filteredEntries.value.filter((entry) => !sectionedEntryIds.has(entry.id))
+  if (otherEntries.length > 0) {
+    sections.push({
+      id: 'other',
+      title: '其他自动化',
+      entries: otherEntries,
+    })
+  }
+
+  return sections
 })
 
 const onlineCount = computed(() => entries.filter((e) => e.status === 'online').length)
@@ -318,6 +373,42 @@ function openEntry(path: string): void {
   strong {
     font-size: 15px;
     color: #0f172a;
+    font-weight: 700;
+  }
+}
+
+/* ===== Sections ===== */
+.wa-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.wa-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: wa-slideUp 0.4s ease-out 0.1s both;
+}
+
+.wa-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 2px 0;
+
+  h3 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 16px;
+    font-weight: 800;
+  }
+
+  p {
+    margin: 2px 0 0;
+    color: #94a3b8;
+    font-size: 12px;
     font-weight: 700;
   }
 }

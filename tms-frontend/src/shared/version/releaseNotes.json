@@ -134,6 +134,7 @@
     "补全 semantic-release 发布历史"
   ],
   "fixed": [
+    "修复 TC INV 自动化进入 Preview 新页面后未点击 Validate 就结束批次的问题，热更新模块会在 Preview 页面自动执行 Validate。",
     "调整 Jane PRODUCTION 核对输出",
     "修复部分用户安装最新版小助手后仍提示执行器未就绪的问题：启动器健康代理不再把执行器冷启动阶段返回为 502，前端会等待真实健康状态。",
     "修复 Infor Nexus Native Host 未注册时只提示用户自行安装 Desktop Utility 的问题，改为小助手自动写入当前用户注册表并在健康检查中返回修复结果。",

@@ -17,6 +17,7 @@ import {
 vi.mock('../../shared/api/backendClient', () => ({
   buildBackendDownloadUrl: vi.fn(),
   downloadUrlAsFile: vi.fn(),
+  openUrlAsBrowserDownload: vi.fn(),
   postFormData: vi.fn(),
   readResponseMessage: vi.fn(),
   requestBackendJson: vi.fn(),

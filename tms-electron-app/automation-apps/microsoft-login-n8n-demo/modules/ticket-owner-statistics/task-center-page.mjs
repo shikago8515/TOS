@@ -23,6 +23,7 @@ import {
 import {
   emitDetailProgress,
   estimateTicketProgress,
+  progressDetailsFromState,
   reportTicketOwnerProgress,
   showTicketOwnerProgress,
 } from "./progress-overlay.mjs";
@@ -57,7 +58,7 @@ const TASK_ROW_SELECTOR = [
   ".sapMListTblRow",
 ].join(", ");
 
-const DEFAULT_DETAIL_CONCURRENCY = 3;
+const DEFAULT_DETAIL_CONCURRENCY = 6;
 const DEFAULT_DETAIL_PAGE_TIMEOUT_MS = 18000;
 
 export async function collectTicketOwnerStatistics(page, options = {}) {
@@ -204,6 +205,9 @@ export async function collectTicketOwnerStatistics(page, options = {}) {
         sampleAcrossBranches: options.sampleAcrossBranches === true,
         timeoutMs,
         excelLookups,
+        filteredTotalCount: taskListCounts.filteredCount,
+        taskCenterTotalCount: taskListCounts.totalCount,
+        discoveredTaskCount: taskCenterTasks.length,
       })
       : null;
 
@@ -1113,13 +1117,20 @@ async function collectTicketOwnerRowsFromDetailPages(page, taskCenterTasks, opti
     sampleAcrossBranches: options.sampleAcrossBranches === true,
   }).slice(0, maxAttemptCount);
   const plannedCount = Math.max(1, Math.min(maxTicketCount, queue.length || maxTicketCount));
+  const skippedCount = Math.max(0, (Array.isArray(taskCenterTasks) ? taskCenterTasks.length : 0) - queue.length);
   const progressState = {
     totalCount: plannedCount,
+    plannedCount,
     completedCount: 0,
     successCount: 0,
     failedCount: 0,
     attemptedCount: 0,
     diagnosticFailedCount: 0,
+    filteredTotalCount: normalizePositiveInteger(options.filteredTotalCount, 0),
+    taskCenterTotalCount: normalizePositiveInteger(options.taskCenterTotalCount, 0),
+    discoveredTaskCount: normalizePositiveInteger(options.discoveredTaskCount, Array.isArray(taskCenterTasks) ? taskCenterTasks.length : 0),
+    skippedCount,
+    concurrencyCount: concurrency,
     active: new Map(),
   };
   let nextIndex = 0;

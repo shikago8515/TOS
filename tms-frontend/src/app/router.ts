@@ -152,7 +152,7 @@ const scenarioRoutes: RouteRecordRaw[] = [
     name: 'web-automation-scenario-shipping-automation',
     component: ShippingAutomationPage,
     meta: {
-      title: '万代shipping 自动化',
+      title: 'VENT',
     },
   },
   {
@@ -160,7 +160,7 @@ const scenarioRoutes: RouteRecordRaw[] = [
     name: 'web-automation-scenario-xinlongtai-shipping-automation',
     component: XinlongtaiShippingAutomationPage,
     meta: {
-      title: '新龙泰-shipping 自动化',
+      title: 'YUEN TAI+XO',
     },
   },
   {
@@ -168,7 +168,7 @@ const scenarioRoutes: RouteRecordRaw[] = [
     name: 'web-automation-scenario-tc-inv-automation',
     component: TcInvAutomationPage,
     meta: {
-      title: 'TC INV 自动化',
+      title: 'Trade Card INV amount',
     },
   },
   {
@@ -192,7 +192,7 @@ const scenarioRoutes: RouteRecordRaw[] = [
     name: 'web-automation-scenario-po-auto-download',
     component: PoAutoDownloadPage,
     meta: {
-      title: 'Invoice 自动下载',
+      title: 'Invoice 下载',
     },
   },
   {
@@ -200,7 +200,7 @@ const scenarioRoutes: RouteRecordRaw[] = [
     name: 'web-automation-scenario-packing-list-auto-download',
     component: PackingListAutoDownloadPage,
     meta: {
-      title: '自动下载箱单',
+      title: 'Packing List 下载',
     },
   },
   {

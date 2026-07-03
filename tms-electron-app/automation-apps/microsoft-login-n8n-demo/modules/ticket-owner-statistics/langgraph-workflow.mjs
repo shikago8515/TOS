@@ -283,7 +283,7 @@ async function processTicketPagesNode(state) {
       maxTicketAttemptCount: normalizePositiveInteger(state.body?.maxTicketAttemptCount, undefined),
       maxTaskLookupCount: normalizePositiveInteger(state.body?.maxTaskLookupCount, undefined),
       requestLookupConcurrency: normalizePositiveInteger(state.body?.requestLookupConcurrency, undefined),
-      detailConcurrency: normalizePositiveInteger(state.body?.detailConcurrency, 3),
+      detailConcurrency: normalizePositiveInteger(state.body?.detailConcurrency, 6),
       detailPageTimeoutMs: normalizePositiveInteger(state.body?.detailPageTimeoutMs, 18000),
       requestFirst: state.body?.requestFirst !== false,
       diagnoseOnly: state.body?.diagnoseOnly === true,
@@ -723,9 +723,13 @@ function defaultSimulatedRows() {
 }
 
 function readSourceFileSummary(body) {
+  const releaseLookupFiles = Array.isArray(body.releaseLookupFiles) ? body.releaseLookupFiles : [];
+  const factoryPriceFiles = Array.isArray(body.factoryPriceFiles) ? body.factoryPriceFiles : [];
   return {
-    releaseLookupFileName: body.releaseLookupFileName || "",
-    factoryPriceFileName: body.factoryPriceFileName || "",
+    releaseLookupFileName: body.releaseLookupFileName || releaseLookupFiles.map((file) => file?.fileName || file?.name || "").filter(Boolean).join(", "),
+    releaseLookupFileCount: releaseLookupFiles.length || (body.releaseLookupFileName ? 1 : 0),
+    factoryPriceFileName: body.factoryPriceFileName || factoryPriceFiles.map((file) => file?.fileName || file?.name || "").filter(Boolean).join(", "),
+    factoryPriceFileCount: factoryPriceFiles.length || (body.factoryPriceFileName ? 1 : 0),
   };
 }
 

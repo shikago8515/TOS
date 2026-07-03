@@ -44,6 +44,10 @@ export async function getBackendBaseUrl(
     return getLocalBackendBaseUrl()
   }
 
+  if (shouldPreferRemoteDownloadBeforeLocalBackend(path)) {
+    return readRemoteBrowserBackendUrl(path)
+  }
+
   const startedBackendUrl = await ensureBackendReady()
 
   if (startedBackendUrl) {
@@ -144,6 +148,20 @@ function shouldUseRemoteBackendByDefault(path: string): boolean {
     || normalizedPath === '/api/system/config/automation-helper/download'
     || normalizedPath === '/api/system/config/automation-helper/payload'
     || normalizedPath.startsWith('/api/system/config/automation-helper/payload/')
+    || normalizedPath === '/api/system/config/tos-desktop/download'
+    || normalizedPath === '/api/system/config/tos-desktop/payload'
+    || normalizedPath.startsWith('/api/system/config/tos-desktop/payload/')
+    || normalizedPath === '/api/system/config/tos-desktop-full/download'
+}
+
+function shouldPreferRemoteDownloadBeforeLocalBackend(path: string): boolean {
+  const normalizedPath = normalizeApiPath(path)
+  return normalizedPath.startsWith('/api/process-history/files/')
+    || normalizedPath.startsWith('/api/automation/templates/')
+    || normalizedPath === '/api/system/config/automation-helper/download'
+    || normalizedPath === '/api/system/config/automation-helper/payload'
+    || normalizedPath.startsWith('/api/system/config/automation-helper/payload/')
+    || normalizedPath.startsWith('/api/system/config/automation-modules/')
     || normalizedPath === '/api/system/config/tos-desktop/download'
     || normalizedPath === '/api/system/config/tos-desktop/payload'
     || normalizedPath.startsWith('/api/system/config/tos-desktop/payload/')

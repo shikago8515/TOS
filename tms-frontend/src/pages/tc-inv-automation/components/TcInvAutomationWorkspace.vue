@@ -53,6 +53,18 @@
       </transition>
 
       <!-- ═══ BODY: LEFT + RIGHT DOCK ═══ -->
+      <AutomationStartupProgress
+        v-if="showStartupProgress"
+        :title="startupProgressTitle"
+        :detail="startupProgressDetail"
+        :percent="startupProgressPercent"
+        :elapsed-seconds="startupElapsedSeconds"
+        :current-step-label="startupCurrentStepLabel"
+        :active-step-key="startupActiveStepKey"
+        :completed-step-keys="startupCompletedStepKeys"
+        :steps="startupProgressSteps"
+      />
+
       <div class="sa-body">
         <!-- LEFT COLUMN -->
         <div class="sa-left">
@@ -236,6 +248,7 @@ import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
 import { showAppAlert } from '../../../shared/ui/appAlert'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+import AutomationStartupProgress from '../../web-automation/components/AutomationStartupProgress.vue'
 import AutomationAccountProfileManager from '../../web-automation/components/AutomationAccountProfileManager.vue'
 import AutomationRunHistoryPanel from '../../web-automation/components/AutomationRunHistoryPanel.vue'
 import type { AutomationAppInfo } from '../../../types/electronApi'
@@ -257,6 +270,7 @@ import {
   type LocalExecutorRun,
 } from '../../web-automation/automationExecutorResponse'
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
+import { useAutomationStartupProgress } from '../../web-automation/composables/useAutomationStartupProgress'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
 
 const TC_INV_ENTRY_ID = 'tc-inv-automation'
@@ -313,6 +327,23 @@ const templateButtonLabel = computed(() => { if (templateLoading.value) return t
 const shippingExecutorRunUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-tc-inv-file` : '' })
 const canRunTcInvAutomation = computed(() => !sending.value && hasStoredCredentials.value)
 const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
+const startupActiveRun = computed(() => findTcInvActiveRun(executorHealth.value))
+const {
+  showStartupProgress,
+  startupProgressTitle,
+  startupProgressDetail,
+  startupProgressPercent,
+  startupElapsedSeconds,
+  startupCurrentStepLabel,
+  startupActiveStepKey,
+  startupCompletedStepKeys,
+  startupProgressSteps,
+} = useAutomationStartupProgress({
+  launching,
+  running: sending,
+  statusText,
+  activeRun: startupActiveRun,
+})
 
 onMounted(() => { void initializeScenario() })
 onBeforeUnmount(() => { stopActiveRunStatePolling() })

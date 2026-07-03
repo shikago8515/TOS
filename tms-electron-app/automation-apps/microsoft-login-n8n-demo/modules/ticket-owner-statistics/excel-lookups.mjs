@@ -7,9 +7,21 @@ const RELEASE_PAYLOAD_KEYS = [
   ["unreleaseFileName", "unreleaseFileBase64"],
 ];
 
+const RELEASE_PAYLOAD_LIST_KEYS = [
+  "releaseLookupFiles",
+  "releaseUnreleaseFiles",
+  "releaseFiles",
+  "unreleaseFiles",
+];
+
 const FACTORY_PRICE_PAYLOAD_KEYS = [
   ["factoryPriceFileName", "factoryPriceFileBase64"],
   ["factoryLookupFileName", "factoryLookupFileBase64"],
+];
+
+const FACTORY_PRICE_PAYLOAD_LIST_KEYS = [
+  "factoryPriceFiles",
+  "factoryLookupFiles",
 ];
 
 const HEADER_ALIASES = {
@@ -58,24 +70,26 @@ const HEADER_ALIASES = {
 };
 
 export function buildTicketOwnerExcelLookups(xlsx, body = {}) {
-  const releasePayload = findWorkbookPayload(body, RELEASE_PAYLOAD_KEYS);
-  const factoryPricePayload = findWorkbookPayload(body, FACTORY_PRICE_PAYLOAD_KEYS);
-  const releaseLookup = releasePayload
-    ? parseReleaseLookupWorkbook(xlsx, releasePayload)
+  const releasePayloads = findWorkbookPayloads(body, RELEASE_PAYLOAD_KEYS, RELEASE_PAYLOAD_LIST_KEYS);
+  const factoryPricePayloads = findWorkbookPayloads(body, FACTORY_PRICE_PAYLOAD_KEYS, FACTORY_PRICE_PAYLOAD_LIST_KEYS);
+  const releaseLookup = releasePayloads.length
+    ? parseReleaseLookupWorkbooks(xlsx, releasePayloads)
     : createEmptyLookup("release-unrelease");
-  const factoryPriceLookup = factoryPricePayload
-    ? parseFactoryPriceWorkbook(xlsx, factoryPricePayload)
+  const factoryPriceLookup = factoryPricePayloads.length
+    ? parseFactoryPriceWorkbooks(xlsx, factoryPricePayloads)
     : createEmptyLookup("factory-price");
 
   return {
     releaseLookup,
     factoryPriceLookup,
-    hasReleaseLookup: Boolean(releasePayload),
-    hasFactoryPriceLookup: Boolean(factoryPricePayload),
+    hasReleaseLookup: releasePayloads.length > 0,
+    hasFactoryPriceLookup: factoryPricePayloads.length > 0,
     summary: {
-      releaseLookupFileName: releasePayload?.fileName || "",
+      releaseLookupFileName: releasePayloads.map((payload) => payload.fileName).join(", "),
+      releaseLookupFileCount: releasePayloads.length,
       releaseLookupRowCount: releaseLookup.rowCount,
-      factoryPriceFileName: factoryPricePayload?.fileName || "",
+      factoryPriceFileName: factoryPricePayloads.map((payload) => payload.fileName).join(", "),
+      factoryPriceFileCount: factoryPricePayloads.length,
       factoryPriceRowCount: factoryPriceLookup.rowCount,
       warnings: [
         ...releaseLookup.warnings,
@@ -189,55 +203,65 @@ export function enrichTicketOwnerRowWithExcelLookups(row, lookups) {
   return next;
 }
 
-function parseReleaseLookupWorkbook(xlsx, payload) {
+function parseReleaseLookupWorkbooks(xlsx, payloads) {
   const lookup = createEmptyLookup("release-unrelease");
-  for (const sheet of readWorkbookSheets(xlsx, payload)) {
-    const table = findHeaderTable(sheet.rows, ["poNumber", "factory"], 2);
-    if (!table) {
-      lookup.warnings.push(`${payload.fileName || "Release/Unrelease"}:${sheet.name} missing PO/Factory headers`);
-      continue;
-    }
-    for (let index = table.headerRowIndex + 1; index < sheet.rows.length; index += 1) {
-      const record = readRecordFromRow(sheet.rows[index], table.columns);
-      const poNumber = normalizePoNumber(record.poNumber);
-      const factory = normalizeText(record.factory);
-      if (!poNumber || !factory) {
+  for (const payload of payloads) {
+    for (const sheet of readWorkbookSheets(xlsx, payload)) {
+      const table = findHeaderTable(sheet.rows, ["poNumber", "factory"], 2);
+      if (!table) {
+        lookup.warnings.push(`${payload.fileName || "Release/Unrelease"}:${sheet.name} missing PO/Factory headers`);
         continue;
       }
-      const poKey = normalizePoKey(poNumber);
-      if (!lookup.byPo.has(poKey)) {
-        lookup.byPo.set(poKey, {
-          poNumber,
-          factory,
-          sheetName: sheet.name,
-          rowNumber: index + 1,
-        });
-        lookup.rowCount += 1;
+      for (let index = table.headerRowIndex + 1; index < sheet.rows.length; index += 1) {
+        const record = readRecordFromRow(sheet.rows[index], table.columns);
+        const poNumber = normalizePoNumber(record.poNumber);
+        const factory = normalizeText(record.factory);
+        if (!poNumber || !factory) {
+          continue;
+        }
+        const poKey = normalizePoKey(poNumber);
+        if (!lookup.byPo.has(poKey)) {
+          lookup.byPo.set(poKey, {
+            poNumber,
+            factory,
+            fileName: payload.fileName,
+            sheetName: sheet.name,
+            rowNumber: index + 1,
+          });
+          lookup.rowCount += 1;
+        }
       }
     }
   }
   return lookup;
 }
 
-function parseFactoryPriceWorkbook(xlsx, payload) {
+function parseFactoryPriceWorkbooks(xlsx, payloads) {
   const lookup = createEmptyLookup("factory-price");
   lookup.byPo = new Map();
   lookup.byFactory = new Map();
   lookup.byWorking = new Map();
   lookup.byFactoryWorking = new Map();
 
-  for (const sheet of readWorkbookSheets(xlsx, payload)) {
-    const table = findHeaderTable(sheet.rows, ["factory", "workingNumber", "merch"], 2);
-    if (!table) {
-      lookup.warnings.push(`${payload.fileName || "Factory Price"}:${sheet.name} missing Factory/Working/Merch headers`);
-      continue;
-    }
-    for (let index = table.headerRowIndex + 1; index < sheet.rows.length; index += 1) {
-      const record = normalizeFactoryPriceRecord(readRecordFromRow(sheet.rows[index], table.columns), sheet.name, index + 1);
-      if (!record.factory && !record.workingNumber) {
+  for (const payload of payloads) {
+    for (const sheet of readWorkbookSheets(xlsx, payload)) {
+      const table = findHeaderTable(sheet.rows, ["factory", "workingNumber", "merch"], 2);
+      if (!table) {
+        lookup.warnings.push(`${payload.fileName || "Factory Price"}:${sheet.name} missing Factory/Working/Merch headers`);
         continue;
       }
-      addFactoryPriceRecord(lookup, record);
+      for (let index = table.headerRowIndex + 1; index < sheet.rows.length; index += 1) {
+        const record = normalizeFactoryPriceRecord(
+          readRecordFromRow(sheet.rows[index], table.columns),
+          sheet.name,
+          index + 1,
+          payload.fileName,
+        );
+        if (!record.factory && !record.workingNumber) {
+          continue;
+        }
+        addFactoryPriceRecord(lookup, record);
+      }
     }
   }
 
@@ -300,29 +324,66 @@ function findFactoryPriceMatch(lookup, { poNumber, factory, workingNumber }) {
   return null;
 }
 
-function normalizeFactoryPriceRecord(record, sheetName, rowNumber) {
+function normalizeFactoryPriceRecord(record, sheetName, rowNumber, fileName = "") {
   return {
     poNumber: normalizePoNumber(record.poNumber),
     factory: normalizeText(record.factory),
     workingNumber: normalizeWorkingNumber(record.workingNumber),
     merch: normalizeText(record.merch),
+    fileName,
     sheetName,
     rowNumber,
   };
 }
 
-function findWorkbookPayload(body, keys) {
-  for (const [fileNameKey, fileBase64Key] of keys) {
-    const fileBase64 = normalizeText(body?.[fileBase64Key]);
-    if (!fileBase64) {
+function findWorkbookPayloads(body, keys, listKeys = []) {
+  const payloads = [];
+  for (const listKey of listKeys) {
+    const value = body?.[listKey];
+    if (!Array.isArray(value)) {
       continue;
     }
-    return {
-      fileName: normalizeText(body?.[fileNameKey]) || "lookup.xlsx",
-      fileBase64,
-    };
+    for (const item of value) {
+      const payload = normalizeWorkbookPayload(item);
+      if (payload) {
+        payloads.push(payload);
+      }
+    }
   }
-  return null;
+
+  for (const [fileNameKey, fileBase64Key] of keys) {
+    const payload = normalizeWorkbookPayload({
+      fileName: body?.[fileNameKey],
+      fileBase64: body?.[fileBase64Key],
+    });
+    if (payload) {
+      payloads.push(payload);
+    }
+  }
+
+  const seen = new Set();
+  return payloads.filter((payload) => {
+    const key = `${payload.fileName}::${payload.fileBase64.slice(0, 64)}::${payload.fileBase64.length}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function normalizeWorkbookPayload(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const fileBase64 = normalizeText(value.fileBase64 || value.base64 || value.contentBase64);
+  if (!fileBase64) {
+    return null;
+  }
+  return {
+    fileName: normalizeText(value.fileName || value.name || value.originalFilename) || "lookup.xlsx",
+    fileBase64,
+  };
 }
 
 function readWorkbookSheets(xlsx, payload) {

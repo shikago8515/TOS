@@ -15,6 +15,7 @@ const ADJUSTMENT_APPLY_AS_CHARGE_VALUE = "Fee";
 const ZADD_ADJUSTMENT_ROW_INDEX = 2;
 const ZDOC_ADJUSTMENT_ROW_INDEX = 3;
 const PREVIEW_STEP_LINK_SELECTOR = 'a[href*="jumpToStep"][href*="Review"]';
+const PREVIEW_VALIDATE_BUTTON_SELECTOR = 'input[type="button"][value="Validate"], input.styledActionButton[value="Validate"], input[onclick*="submitUserAction"][onclick*="validate"]';
 const INVOICE_RESULT_WAIT_MS = 7000;
 const PAGE_NETWORK_IDLE_WAIT_MS = 2500;
 const PAGE_SETTLE_EXTRA_WAIT_MS = 250;
@@ -158,6 +159,16 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
           previewResult = await buildAlreadyOpenPreviewResult(page, currentInvoiceNumber);
           cargoHandoverDateResult = createSkippedCargoHandoverDateResult(currentPoddDate, "already-on-preview");
           buildAdjustmentResult = createSkippedBuildAdjustmentResult("already-on-preview", currentInvoiceAdjustments);
+
+          stage = `点击 Validate (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
+          await showTcInvBadge(`正在点击 Invoice ${currentInvoiceNumber} Validate`, {
+            phase: "invoice-validate",
+            currentCount: invoiceOrdinal,
+            invoiceNumber: currentInvoiceNumber,
+          });
+          previewResult.validateResult = await clickPreviewValidateButton(page, config, log, activeRun.runId, currentInvoiceNumber);
+          latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, `validated-preview-${invoiceOrdinal}`);
+
           processedInvoiceResults.push({
             ok: true,
             invoiceIndex,
@@ -207,6 +218,15 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
         });
         previewResult = await openPreviewStep(page, config, log, activeRun.runId, currentInvoiceNumber);
         latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, `preview-${invoiceOrdinal}`);
+
+        stage = `点击 Validate (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
+        await showTcInvBadge(`正在点击 Invoice ${currentInvoiceNumber} Validate`, {
+          phase: "invoice-validate",
+          currentCount: invoiceOrdinal,
+          invoiceNumber: currentInvoiceNumber,
+        });
+        previewResult.validateResult = await clickPreviewValidateButton(page, config, log, activeRun.runId, currentInvoiceNumber);
+        latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, `validated-${invoiceOrdinal}`);
 
         processedInvoiceResults.push({
           ok: true,
@@ -996,6 +1016,42 @@ async function openPreviewStep(page, config, log, runId, invoiceNumber) {
     ...result,
   });
   return result;
+}
+
+async function clickPreviewValidateButton(page, config, log, runId, invoiceNumber) {
+  const validateButton = await resolvePreviewValidateButton(page, config);
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: Math.min(config.navigationTimeoutMs, 8000) }).catch(() => null),
+    validateButton.click({ timeout: Math.min(config.navigationTimeoutMs, 8000) }),
+  ]);
+  await waitForPageSettled(page, config);
+
+  const result = {
+    clicked: true,
+    invoiceNumber,
+    title: await page.title().catch(() => ""),
+    url: page.url(),
+  };
+  log("TC INV Preview Validate clicked.", {
+    runId,
+    ...result,
+  });
+  return result;
+}
+
+async function resolvePreviewValidateButton(page, config) {
+  const candidates = [
+    page.locator(PREVIEW_VALIDATE_BUTTON_SELECTOR).first(),
+    page.getByRole("button", { name: /^Validate$/i }).first(),
+  ];
+
+  for (const candidate of candidates) {
+    if (await isLocatorVisible(candidate, Math.min(config.navigationTimeoutMs, 5000))) {
+      return candidate;
+    }
+  }
+
+  throw new Error("Validate button was not found on the Preview page.");
 }
 
 async function resolvePreviewStepLocator(page, config) {

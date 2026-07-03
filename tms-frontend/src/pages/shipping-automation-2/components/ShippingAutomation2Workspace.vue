@@ -54,6 +54,18 @@
       </transition>
 
       <!-- ═══ BODY ROW: Left Content + Right Dock ═══ -->
+      <AutomationStartupProgress
+        v-if="showStartupProgress"
+        :title="startupProgressTitle"
+        :detail="startupProgressDetail"
+        :percent="startupProgressPercent"
+        :elapsed-seconds="startupElapsedSeconds"
+        :current-step-label="startupCurrentStepLabel"
+        :active-step-key="startupActiveStepKey"
+        :completed-step-keys="startupCompletedStepKeys"
+        :steps="startupProgressSteps"
+      />
+
       <div class="s2-body">
         <!-- Left Column: Bulk Stage + Health Log -->
         <div class="s2-left">
@@ -199,6 +211,7 @@ import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
 import { showAppAlert } from '../../../shared/ui/appAlert'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+import AutomationStartupProgress from '../../web-automation/components/AutomationStartupProgress.vue'
 import AutomationAccountProfileManager from '../../web-automation/components/AutomationAccountProfileManager.vue'
 import AutomationRunHistoryPanel from '../../web-automation/components/AutomationRunHistoryPanel.vue'
 import type { AutomationAppInfo } from '../../../types/electronApi'
@@ -219,6 +232,7 @@ import {
   type ExecutorResponsePayload,
   type LocalExecutorRun,
 } from '../../web-automation/automationExecutorResponse'
+import { useAutomationStartupProgress } from '../../web-automation/composables/useAutomationStartupProgress'
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
 import { releasedBulkDefaultUsername, resolveReleasedBulkCredentialUsername, shippingAutomation2EntryId } from '../shippingAutomation2Model'
@@ -266,6 +280,25 @@ const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || exec
 const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
 const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
 const bulkHistorySignal = computed(() => bulkAreas.value.map((bulk) => `${bulk.id}:${bulk.result?.runId || ''}:${bulk.result?.message || ''}`).join('|'))
+const startupRunning = computed(() => bulkAreas.value.some((bulk) => bulk.running))
+const startupStatusText = computed(() => bulkAreas.value.find((bulk) => bulk.running)?.statusText || '')
+const startupActiveRun = computed(() => findShipping2BulkActiveRun('unreleased') || findShipping2BulkActiveRun('released'))
+const {
+  showStartupProgress,
+  startupProgressTitle,
+  startupProgressDetail,
+  startupProgressPercent,
+  startupElapsedSeconds,
+  startupCurrentStepLabel,
+  startupActiveStepKey,
+  startupCompletedStepKeys,
+  startupProgressSteps,
+} = useAutomationStartupProgress({
+  launching,
+  running: startupRunning,
+  statusText: startupStatusText,
+  activeRun: startupActiveRun,
+})
 
 onMounted(() => { void initializeScenario() })
 onBeforeUnmount(() => { stopActiveRunStatePolling() })

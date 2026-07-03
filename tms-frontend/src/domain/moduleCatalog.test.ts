@@ -4,6 +4,7 @@ import {
   getLocalizedModuleTitle,
   getModuleById,
   getModulesByGroup,
+  getNavParentsByGroup,
   tosModuleCategoryLabels,
   tosModules,
   tosNavGroups,
@@ -38,54 +39,76 @@ describe('moduleCatalog', () => {
     })
   })
 
-  it('exposes Jessica browser automation entries directly in the sidebar', () => {
+  it('groups Jessica browser automation entries by business menu parent', () => {
     const shippingModule = getModuleById('shipping-automation')
     const xinlongtaiModule = getModuleById('xinlongtai-shipping-automation')
     const tcInvModule = getModuleById('tc-inv-automation')
     const poAutoDownloadModule = getModuleById('po-auto-download')
     const packingListAutoDownloadModule = getModuleById('packing-list-auto-download')
+    const jessicaNavParents = getNavParentsByGroup('jessica')
     const jessicaModules = getModulesByGroup('jessica')
     const jasonModules = getModulesByGroup('jason')
     const jessicaModuleIds = jessicaModules.map((module) => module.id)
     const jasonModuleIds = jasonModules.map((module) => module.id)
 
+    expect(jessicaNavParents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'jessica-infornexus-automation',
+          label: 'Infornexus自动化',
+          category: 'browser-automation',
+        }),
+        expect.objectContaining({
+          id: 'jessica-packing-list-auto-download',
+          label: 'Packing list 自动下载',
+          category: 'browser-automation',
+        }),
+      ]),
+    )
     expect(shippingModule).toMatchObject({
       group: 'jessica',
       path: '/web-automation/scenarios/shipping-automation',
       routeName: 'web-automation-scenario-shipping-automation',
-      navLabel: '万代shipping 自动化',
+      title: 'Jessica / VENT',
+      navLabel: 'VENT',
       category: 'browser-automation',
+      navParentId: 'jessica-infornexus-automation',
     })
     expect(xinlongtaiModule).toMatchObject({
       group: 'jessica',
       path: '/web-automation/scenarios/xinlongtai-shipping-automation',
       routeName: 'web-automation-scenario-xinlongtai-shipping-automation',
-      navLabel: '新龙泰-shipping 自动化',
+      title: 'Jessica / YUEN TAI+XO',
+      navLabel: 'YUEN TAI+XO',
       category: 'browser-automation',
+      navParentId: 'jessica-infornexus-automation',
     })
     expect(poAutoDownloadModule).toMatchObject({
       group: 'jessica',
       path: '/web-automation/scenarios/po-auto-download',
       routeName: 'web-automation-scenario-po-auto-download',
-      title: 'Jessica / Invoice 自动下载',
-      navLabel: 'Invoice 自动下载',
+      title: 'Jessica / Invoice 下载',
+      navLabel: 'Invoice 下载',
       category: 'browser-automation',
+      navParentId: 'jessica-packing-list-auto-download',
     })
     expect(tcInvModule).toMatchObject({
       group: 'jessica',
       path: '/web-automation/scenarios/tc-inv-automation',
       routeName: 'web-automation-scenario-tc-inv-automation',
-      title: 'Jessica / TC INV 自动化',
-      navLabel: 'TC INV 自动化',
+      title: 'Jessica / Trade Card INV amount',
+      navLabel: 'Trade Card INV amount',
       category: 'browser-automation',
+      navParentId: 'jessica-infornexus-automation',
     })
     expect(packingListAutoDownloadModule).toMatchObject({
       group: 'jessica',
       path: '/web-automation/scenarios/packing-list-auto-download',
       routeName: 'web-automation-scenario-packing-list-auto-download',
-      title: 'Jessica / 自动下载箱单',
-      navLabel: '自动下载箱单',
+      title: 'Jessica / Packing List 下载',
+      navLabel: 'Packing List 下载',
       category: 'browser-automation',
+      navParentId: 'jessica-packing-list-auto-download',
     })
     expect(jessicaModuleIds).toEqual(
       expect.arrayContaining([

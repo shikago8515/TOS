@@ -9,14 +9,12 @@ import type {
 import { fallbackAppVersion } from '../../shared/version/appVersion'
 import {
   checkForUpdates,
-  downloadUpdate,
   getBackendRuntimeVersion,
   getAppVersionInfo,
   getServerInstallerVersions,
   getUpdateStatusSnapshot,
   hasUpdateBridge,
   installUpdate,
-  openManualDownload,
   openTosDesktopDownload,
   openTosDesktopFullDownload,
   subscribeUpdateStatus,
@@ -454,7 +452,23 @@ export function useSettingsPageModel() {
   }
   
   async function handleDownload(): Promise<void> {
-    await runUpdateAction('download', downloadUpdate)
+    if (activeAction.value) {
+      return
+    }
+
+    activeAction.value = 'download'
+    message.value = ''
+
+    try {
+      await openTosDesktopFullDownload()
+      messageTone.value = 'info'
+      message.value = '已交给浏览器下载完整安装包，右上角下载管理器会显示进度。'
+    } catch (error) {
+      messageTone.value = 'error'
+      await showInstallerDownloadError(error, 'TOS 完整安装包下载失败')
+    } finally {
+      activeAction.value = ''
+    }
   }
   
   async function handleInstall(): Promise<void> {
@@ -462,7 +476,23 @@ export function useSettingsPageModel() {
   }
   
   async function handleManualDownload(): Promise<void> {
-    await runUpdateAction('manual', openManualDownload)
+    if (activeAction.value) {
+      return
+    }
+
+    activeAction.value = 'manual'
+    message.value = ''
+
+    try {
+      await openTosDesktopDownload()
+      messageTone.value = 'info'
+      message.value = '已交给浏览器下载轻量安装包，右上角下载管理器会显示进度。'
+    } catch (error) {
+      messageTone.value = 'error'
+      await showInstallerDownloadError(error, 'TOS 应用安装包下载失败')
+    } finally {
+      activeAction.value = ''
+    }
   }
 
   async function handleDesktopInstallerDownload(): Promise<void> {
@@ -472,7 +502,7 @@ export function useSettingsPageModel() {
     try {
       await openTosDesktopDownload()
       messageTone.value = 'info'
-      message.value = '已打开 TOS 应用安装包下载。'
+      message.value = '已交给浏览器下载 TOS 应用安装包，右上角下载管理器会显示进度。'
     } catch (error) {
       messageTone.value = 'error'
       await showInstallerDownloadError(error, 'TOS 应用安装包下载失败')
@@ -488,7 +518,7 @@ export function useSettingsPageModel() {
     try {
       await openTosDesktopFullDownload()
       messageTone.value = 'info'
-      message.value = '已打开 TOS 完整安装包下载。'
+      message.value = '已交给浏览器下载 TOS 完整安装包，右上角下载管理器会显示进度。'
     } catch (error) {
       messageTone.value = 'error'
       await showInstallerDownloadError(error, 'TOS 完整安装包下载失败')
@@ -504,7 +534,7 @@ export function useSettingsPageModel() {
     try {
       await openAutomationHelperDownload()
       messageTone.value = 'info'
-      message.value = '已打开自动化助手安装包下载。'
+      message.value = '已交给浏览器下载自动化助手安装包，右上角下载管理器会显示进度。'
     } catch (error) {
       messageTone.value = 'error'
       await showInstallerDownloadError(error, '自动化助手安装包下载失败')

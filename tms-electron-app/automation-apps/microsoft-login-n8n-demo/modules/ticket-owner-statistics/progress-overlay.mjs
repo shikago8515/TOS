@@ -51,11 +51,9 @@ export async function showTicketOwnerProgress(target, message, percent = 0, deta
     return;
   }
 
-  await Promise.all(
-    targets.map((progressTarget) =>
-      injectTicketOwnerProgress(progressTarget, message, safePercent, details)
-    )
-  );
+  const frameTargets = targets.slice(1);
+  await Promise.all(frameTargets.map((progressTarget) => removeTicketOwnerProgress(progressTarget)));
+  await injectTicketOwnerProgress(target, message, safePercent, details);
 }
 
 async function removeTicketOwnerProgress(target) {
@@ -63,11 +61,12 @@ async function removeTicketOwnerProgress(target) {
     document.querySelectorAll([
       "#tos-ticket-owner-progress",
       "[data-tos-ticket-owner-progress='true']",
+      "[data-tos-ticket-owner-orphan='true']",
     ].join(",")).forEach((element) => element.remove());
   }).catch(() => {});
 }
 
-function progressDetailsFromState(state = {}) {
+export function progressDetailsFromState(state = {}) {
   const currentTickets = Array.from(state?.active?.values?.() || [])
     .map((item) => String(item || "").trim())
     .filter(Boolean);
@@ -78,6 +77,12 @@ function progressDetailsFromState(state = {}) {
     failedCount: toProgressCount(state.failedCount),
     attemptedCount: toProgressCount(state.attemptedCount),
     diagnosticFailedCount: toProgressCount(state.diagnosticFailedCount),
+    filteredTotalCount: toProgressCount(state.filteredTotalCount),
+    taskCenterTotalCount: toProgressCount(state.taskCenterTotalCount),
+    discoveredTaskCount: toProgressCount(state.discoveredTaskCount),
+    plannedCount: toProgressCount(state.plannedCount),
+    skippedCount: toProgressCount(state.skippedCount),
+    concurrencyCount: toProgressCount(state.concurrencyCount),
     activeCount: currentTickets.length,
     pendingCount: Math.max(
       0,
@@ -163,15 +168,27 @@ function formatProgressMessage(message, progress = {}) {
 async function injectTicketOwnerProgress(target, message, percent, details = {}) {
   await target.evaluate(({ message: progressMessage, percent: progressPercent, details: progressDetails }) => {
     const id = "tos-ticket-owner-progress";
+    const progressRootSelector = [
+      `#${id}`,
+      "[data-tos-ticket-owner-progress='true']",
+    ].join(",");
+    let isChildFrame = false;
+    try {
+      isChildFrame = window.self !== window.top;
+    } catch (_error) {
+      isChildFrame = true;
+    }
+    if (isChildFrame) {
+      document.querySelectorAll(progressRootSelector).forEach((element) => element.remove());
+      return;
+    }
+
     document.querySelectorAll([
       "#tos-browser-automation-status-badge",
       "[data-tos-browser-automation-badge='true']",
     ].join(",")).forEach((element) => element.remove());
 
-    const existingRoots = Array.from(document.querySelectorAll([
-      `#${id}`,
-      "[data-tos-ticket-owner-progress='true']",
-    ].join(",")));
+    const existingRoots = Array.from(document.querySelectorAll(progressRootSelector));
     let root = existingRoots[0] || null;
     existingRoots.slice(1).forEach((element) => element.remove());
     if (!root) {
