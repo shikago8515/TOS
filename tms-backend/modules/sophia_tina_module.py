@@ -1701,7 +1701,26 @@ class SophiaTinaModule:
                     f"{{{self.OOXML_X14_NS}}}pivotTable",
                     {"tabId": "8", "name": name},
                 )
-        return self._serialize_spreadsheet_xml(root)
+        xml = self._serialize_spreadsheet_xml(root)
+        return self._ensure_xmlns_prefix(xml, "x", self.OOXML_MAIN_NS)
+
+    @staticmethod
+    def _ensure_xmlns_prefix(xml_bytes: bytes, prefix: str, namespace: str) -> bytes:
+        declaration = f'xmlns:{prefix}="{namespace}"'
+        xml = xml_bytes.decode("utf-8")
+        if declaration in xml:
+            return xml_bytes
+
+        first_tag_start = xml.find("<", xml.find("?>") + 2 if "?>" in xml[:80] else 0)
+        if first_tag_start < 0:
+            return xml_bytes
+        first_tag_end = xml.find(">", first_tag_start)
+        if first_tag_end < 0:
+            return xml_bytes
+        tag_close_offset = -1 if xml[first_tag_end - 1] == "/" else 0
+        insert_at = first_tag_end + tag_close_offset
+        xml = f"{xml[:insert_at]} {declaration}{xml[insert_at:]}"
+        return xml.encode("utf-8")
 
     def _updated_workbook_xml(self, xml_bytes: bytes) -> bytes:
         root = ElementTree.fromstring(xml_bytes)

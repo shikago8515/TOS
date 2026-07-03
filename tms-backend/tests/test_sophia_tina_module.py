@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -146,6 +147,20 @@ def _slicer_pivot_table_names(path: str, entry: str) -> list[str | None]:
         pivot_table.attrib.get("name")
         for pivot_table in root.findall(".//x14:pivotTable", namespace)
     ]
+
+
+def _xml_entries_missing_ignorable_declarations(path: str) -> list[tuple[str, str, str]]:
+    missing: list[tuple[str, str, str]] = []
+    with zipfile.ZipFile(path) as archive:
+        for entry in archive.namelist():
+            if not entry.endswith(".xml"):
+                continue
+            text = archive.read(entry).decode("utf-8", errors="replace")
+            for ignorable in re.findall(r'mc:Ignorable="([^"]+)"', text):
+                for prefix in ignorable.split():
+                    if f"xmlns:{prefix}=" not in text:
+                        missing.append((entry, prefix, ignorable))
+    return missing
 
 
 def _worksheet_relationship_types(path: str, entry: str) -> list[str]:
@@ -1574,6 +1589,13 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
                 set(_slicer_pivot_table_names(result["output_path"], "xl/slicerCaches/slicerCache1.xml")),
                 {"PivotTable15", "PivotTable16"},
             )
+            slicer_cache_xml = _zip_entry_text(result["output_path"], "xl/slicerCaches/slicerCache1.xml")
+            self.assertIn('mc:Ignorable="x"', slicer_cache_xml)
+            self.assertIn(
+                'xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"',
+                slicer_cache_xml,
+            )
+            self.assertEqual(_xml_entries_missing_ignorable_declarations(result["output_path"]), [])
 
 
 if __name__ == "__main__":
