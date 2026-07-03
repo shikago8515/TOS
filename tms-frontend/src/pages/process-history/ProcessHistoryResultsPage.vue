@@ -3,7 +3,7 @@
     <header class="history-head">
       <div class="history-head__title">
         <p>{{ text('Process History') }}</p>
-        <h1>{{ personLabel }}{{ text(' 历史结果') }}</h1>
+        <h1>{{ historyPageTitle }}</h1>
         <span>{{ rangeLabel }}</span>
       </div>
       <el-button class="history-btn history-btn--primary" :disabled="loading" :loading="loading" @click="reloadFirstPage">
@@ -183,6 +183,11 @@ const personLabel = computed(() => {
   if (!person.value) return text('未知人员')
   return isEnglish.value ? person.value.labelEn : person.value.label
 })
+const historyPageTitle = computed(() =>
+  isEnglish.value
+    ? `${personLabel.value} History Results`
+    : `${personLabel.value} ${text('历史结果')}`,
+)
 const rangeLabel = computed(() =>
   `${formatDateOnly(range.value.createdFrom)} - ${formatDateOnly(range.value.createdTo)}`,
 )

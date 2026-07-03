@@ -1,6 +1,56 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { describe, expect, it } from 'vitest'
 
 import { translateStaticText, translateText } from './appLanguage'
+
+const sourceRoot = fileURLToPath(new URL('../../', import.meta.url))
+
+function collectSourceFiles(directory: string): string[] {
+  return readdirSync(directory).flatMap((name) => {
+    const path = join(directory, name)
+    const stats = statSync(path)
+
+    if (stats.isDirectory()) {
+      if (['node_modules', 'dist', 'build', 'out'].includes(name)) return []
+      return collectSourceFiles(path)
+    }
+
+    if (/\.(vue|ts)$/u.test(name) && !/\.test\.ts$/u.test(name)) {
+      return [path]
+    }
+
+    return []
+  })
+}
+
+function collectStaticTextCallsWithChinese(): Array<{ file: string; phrase: string }> {
+  const patterns = [
+    /\btext\(\s*'([^']*[\u4e00-\u9fff][^']*)'\s*\)/gu,
+    /\btext\(\s*"([^"]*[\u4e00-\u9fff][^"]*)"\s*\)/gu,
+  ]
+  const seen = new Set<string>()
+  const phrases: Array<{ file: string; phrase: string }> = []
+
+  for (const file of collectSourceFiles(sourceRoot)) {
+    const source = readFileSync(file, 'utf8')
+
+    for (const pattern of patterns) {
+      let match: RegExpExecArray | null
+      while ((match = pattern.exec(source))) {
+        const phrase = match[1]
+        const key = `${file}\u0000${phrase}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        phrases.push({ file, phrase })
+      }
+    }
+  }
+
+  return phrases
+}
 
 describe('appLanguage', () => {
   it('uses Invoice compare labels for the Jessca home overview text', () => {
@@ -71,6 +121,57 @@ describe('appLanguage', () => {
     for (const phrase of phrases) {
       expect(translateStaticText(phrase, 'en-US')).not.toBe(phrase)
     }
+  })
+
+  it('translates Jessca and process history visible text in English mode', () => {
+    const expectedTranslations = new Map([
+      ['下载历史结果', 'Download History Results'],
+      ['查看近30天已归档的历史结果', 'View archived results from the last 30 days'],
+      ['当前模块未配置历史结果页', 'No history results page is configured for this module'],
+      ['历史结果', 'History Results'],
+      ['可下载结果', 'Downloadable Results'],
+      ['当前页', 'Current Page'],
+      ['全部模块', 'All Modules'],
+      ['远端读取失败，当前显示本机缓存', 'Remote loading failed. Showing local cache.'],
+      ['正在读取历史结果', 'Loading history results'],
+      ['近30天暂无已归档结果', 'No archived results in the last 30 days'],
+      ['处理时间', 'Processed At'],
+      ['摘要', 'Summary'],
+      ['输入文件', 'Input Files'],
+      ['大小', 'Size'],
+      ['操作', 'Actions'],
+      ['未知人员', 'Unknown Person'],
+      ['未知人员历史页', 'Unknown person history page'],
+      ['历史结果读取失败', 'Failed to load history results'],
+      ['历史结果文件下载失败', 'Failed to download history result file'],
+      ['支持 .pdf', 'Supports .pdf'],
+      ['核对中...', 'Reconciling...'],
+      ['请先补齐必传文件，再开始核对。', 'Upload all required files before reconciling.'],
+      ['下载结果失败，请稍后重试', 'Failed to download the result. Please try again later.'],
+      ['匹配数量', 'Matched Count'],
+      ['异常诊断', 'Exception Diagnostics'],
+      ['TC核对记录', 'TC Compare Records'],
+      ['TC异常', 'TC Exceptions'],
+    ])
+
+    for (const [phrase, expected] of expectedTranslations) {
+      const translated = translateStaticText(phrase, 'en-US')
+
+      expect(translated).toBe(expected)
+      expect(translated).not.toMatch(/[\u4e00-\u9fff]/)
+    }
+  })
+
+  it('translates every static Chinese text() call in English mode', () => {
+    const untranslated = collectStaticTextCallsWithChinese()
+      .map(({ file, phrase }) => ({
+        file,
+        phrase,
+        translated: translateStaticText(phrase, 'en-US'),
+      }))
+      .filter(({ phrase, translated }) => translated === phrase || /[\u4e00-\u9fff]/u.test(translated))
+
+    expect(untranslated).toEqual([])
   })
 
   it('translates second-batch business page text in English mode', () => {

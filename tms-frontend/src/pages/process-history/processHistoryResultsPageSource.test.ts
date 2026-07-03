@@ -30,4 +30,14 @@ describe('ProcessHistoryResultsPage source', () => {
 
     expect(source).toContain('!records.length && (!errorMessage || usingLocalFallback)')
   })
+
+  it('builds the history page title by language instead of spacing-sensitive concatenation', () => {
+    const source = readPageSource()
+
+    expect(source).toContain('{{ historyPageTitle }}')
+    expect(source).toContain('const historyPageTitle = computed')
+    expect(source).toContain('`${personLabel.value} History Results`')
+    expect(source).toContain('`${personLabel.value} ${text(\'历史结果\')}`')
+    expect(source).not.toContain("{{ personLabel }}{{ text(' 历史结果') }}")
+  })
 })
