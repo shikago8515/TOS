@@ -268,14 +268,16 @@ bash scripts/server/deploy-gitea-main.sh
 
 - 确认 `~/TOS-source` 是 clean checkout，并通过 `git pull --ff-only origin main` 对齐 Gitea `main`；如存在未提交改动或无法 fast-forward，直接失败并要求人工处理。
 - 拒绝把 `~/TOS` 当成 Git 仓库更新，避免覆盖服务器专用的 `docker-compose.tos.yml`、`authelia/`、Dockerfile 和备份目录。
-- 运行服务器部署专用检查：`npm run test:server-package`、前端 `typecheck/test`、后端 `unittest`、`npm run server:package:dry-run` 和 `npm run server:package`。该流程不运行本地开发专用的 `dev:backend:restart` 相关测试。
+- 运行服务器部署专用包检查：`npm run test:server-package`、`npm run server:package:dry-run` 和 `npm run server:package`。默认不重复运行前端 `typecheck/test` 和后端 `unittest`；需要服务器现场复核完整测试时，显式设置 `TOS_RUN_DEPLOY_TESTS=1`。
 - 把生成的 `release/server/tos-server-update-*.tar.gz` 复制到 `~/TOS/.deploy_uploads/`。
-- 解压更新包并调用包内 `deploy/apply-server-update.sh`，完成备份、复制、Docker 重建、启动和本地验证。
+- 解压更新包并调用包内 `deploy/apply-server-update.sh`，完成备份、复制、Docker 重建、启动和本地验证。Docker 构建默认复用 layer cache；需要强制干净重建时，显式设置 `TOS_DOCKER_NO_CACHE=1`。
 
 常用环境变量：
 
 ```bash
 TOS_SKIP_INSTALL=1 bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
+TOS_RUN_DEPLOY_TESTS=1 bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
+TOS_DOCKER_NO_CACHE=1 bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
 TOS_GITEA_REMOTE_URL=ssh://git@gitea-tos/luenthai-ai/TOS.git bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
 TOS_SOURCE_DIR=/home/obito_li/TOS-source TOS_DEPLOY_ROOT=/home/obito_li/TOS bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
 ```

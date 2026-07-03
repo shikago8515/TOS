@@ -72,6 +72,19 @@ test('server apply script replaces backend data files from the package', async (
   assert.match(deployScript, /cp -a "\$SRC\/tms-backend\/data" tms-backend\//)
 })
 
+test('server apply script uses Docker cache by default with an opt-in no-cache rebuild', async () => {
+  const deployScript = await readFile(new URL('../server/apply-server-update.sh', import.meta.url), 'utf8')
+
+  assert.match(deployScript, /BUILD_ARGS=\(\)/)
+  assert.match(deployScript, /if \[ "\$\{TOS_DOCKER_NO_CACHE:-0\}" = "1" \]; then/)
+  assert.match(deployScript, /BUILD_ARGS\+=\(--no-cache\)/)
+  assert.match(
+    deployScript,
+    /sudo docker compose -f docker-compose\.tos\.yml build "\$\{BUILD_ARGS\[@\]\}" tos-backend tos-frontend/,
+  )
+  assert.doesNotMatch(deployScript, /build --no-cache tos-backend tos-frontend/)
+})
+
 test('Gitea main deployment script keeps source and deployment directories separate', async () => {
   const deployScript = await readFile(new URL('../server/deploy-gitea-main.sh', import.meta.url), 'utf8')
 
@@ -91,6 +104,9 @@ test('Gitea main deployment script packages and applies the standard server upda
   assert.match(deployScript, /npm run ci:install/)
   assert.doesNotMatch(deployScript, /npm run check:quick/)
   assert.match(deployScript, /npm run test:server-package/)
+  assert.match(deployScript, /if \[ "\$\{TOS_RUN_DEPLOY_TESTS:-0\}" = "1" \]; then/)
+  assert.match(deployScript, /Running extended deploy tests because TOS_RUN_DEPLOY_TESTS=1/)
+  assert.match(deployScript, /Skipping extended deploy tests because TOS_RUN_DEPLOY_TESTS!=1/)
   assert.match(deployScript, /npm --prefix tms-frontend run typecheck/)
   assert.match(deployScript, /npm --prefix tms-frontend run test/)
   assert.match(deployScript, /\$\{PYTHON:-python3\} -m unittest discover tests\/ -v/)

@@ -65,7 +65,15 @@ cp -a "$SRC/tms-frontend/tsconfig.node.json" tms-frontend/
 cp -a "$SRC/tms-frontend/vite.config.ts" tms-frontend/
 cp -a "$SRC/app-version.json" ./
 
-sudo docker compose -f docker-compose.tos.yml build --no-cache tos-backend tos-frontend
+BUILD_ARGS=()
+if [ "${TOS_DOCKER_NO_CACHE:-0}" = "1" ]; then
+  echo "Building Docker images without cache because TOS_DOCKER_NO_CACHE=1"
+  BUILD_ARGS+=(--no-cache)
+else
+  echo "Building Docker images with Docker layer cache"
+fi
+
+sudo docker compose -f docker-compose.tos.yml build "${BUILD_ARGS[@]}" tos-backend tos-frontend
 sudo docker compose -f docker-compose.tos.yml up -d tos-backend tos-frontend
 sudo docker compose -f docker-compose.tos.yml ps
 

@@ -227,7 +227,7 @@ authelia
 deploy-tos
 ```
 
-`deploy-tos` 指向 `/home/obito_li/server-scripts/deploy-tos.sh`，通过 `TOS_GITEA_REMOTE_URL=ssh://git@gitea-tos/luenthai-ai/TOS.git` 使用只读 deploy key 免密拉取 Gitea `main`，再调用 `scripts/server/deploy-gitea-main.sh`。脚本会在服务器本地运行部署检查、生成 `tos-server-update-*.tar.gz`，复制到 `~/TOS/.deploy_uploads/`，再部署到 `~/TOS` 并重建重启 `tos-backend`、`tos-frontend`。
+`deploy-tos` 指向 `/home/obito_li/server-scripts/deploy-tos.sh`，通过 `TOS_GITEA_REMOTE_URL=ssh://git@gitea-tos/luenthai-ai/TOS.git` 使用只读 deploy key 免密拉取 Gitea `main`，再调用 `scripts/server/deploy-gitea-main.sh`。脚本会在服务器本地运行部署包检查、生成 `tos-server-update-*.tar.gz`，复制到 `~/TOS/.deploy_uploads/`，再部署到 `~/TOS` 并重建重启 `tos-backend`、`tos-frontend`。默认不重复运行前端/后端全量测试，必要时用 `TOS_RUN_DEPLOY_TESTS=1 deploy-tos` 显式开启；Docker 构建默认复用缓存，必要时用 `TOS_DOCKER_NO_CACHE=1 deploy-tos` 强制无缓存重建。
 
 手动排障时可展开执行：
 
