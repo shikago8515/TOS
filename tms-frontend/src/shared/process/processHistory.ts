@@ -82,12 +82,12 @@ export interface CurrentProcessResultDownloadOptions {
 }
 
 interface ProcessHistoryListResponse {
-  records?: ProcessHistoryRecord[]
+  records?: unknown[]
   pagination?: Partial<ProcessHistoryPagination>
 }
 
 interface ProcessHistorySaveResponse {
-  record?: ProcessHistoryRecord
+  record?: unknown
 }
 
 export function readProcessHistoryMetadata(
@@ -157,6 +157,153 @@ function readOptionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' ? value : undefined
 }
 
+function readString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function readOptionalNonEmptyString(value: unknown): string | undefined {
+  const text = readString(value)
+  return text || undefined
+}
+
+function readNonNegativeNumber(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 0
+  }
+  return Math.max(0, value)
+}
+
+function readStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value
+    .map((item) => readString(item))
+    .filter(Boolean)
+}
+
+function readStatus(value: unknown): ProcessHistoryStatus {
+  return value === 'error' ? 'error' : 'success'
+}
+
+function readOutputFile(value: unknown): string | undefined {
+  const directOutputFile = readOptionalNonEmptyString(value)
+  if (directOutputFile) {
+    return directOutputFile
+  }
+  if (!isObjectRecord(value)) {
+    return undefined
+  }
+  return readOptionalNonEmptyString(value.filename)
+}
+
+function readSummaryItems(value: unknown): ProcessSummaryItem[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value.flatMap((item): ProcessSummaryItem[] => {
+    if (!isObjectRecord(item)) {
+      return []
+    }
+    const label = readString(item.label)
+    const summaryValue = readString(item.value)
+    if (!label || !summaryValue) {
+      return []
+    }
+    const note = readOptionalNonEmptyString(item.note)
+    return [{
+      label,
+      value: summaryValue,
+      ...(note ? { note } : {}),
+    }]
+  })
+}
+
+function readResultFile(
+  value: unknown,
+  fallbackDownloadPath = '',
+): ProcessHistoryResultFile | undefined {
+  if (!isObjectRecord(value)) {
+    return undefined
+  }
+
+  const fileId = readNonNegativeNumber(value.id)
+  const filename = readString(value.filename)
+  const downloadPath = readString(value.downloadPath) || fallbackDownloadPath
+  if (fileId <= 0 || !filename || !downloadPath) {
+    return undefined
+  }
+
+  const resultFile: ProcessHistoryResultFile = {
+    id: fileId,
+    filename,
+    downloadPath,
+  }
+  const contentType = readOptionalNonEmptyString(value.contentType)
+  const fileSize = readOptionalNumber(value.fileSize)
+  const sha256 = readOptionalNonEmptyString(value.sha256)
+  if (contentType) {
+    resultFile.contentType = contentType
+  }
+  if (typeof fileSize === 'number' && Number.isFinite(fileSize) && fileSize >= 0) {
+    resultFile.fileSize = fileSize
+  }
+  if (sha256) {
+    resultFile.sha256 = sha256
+  }
+  return resultFile
+}
+
+function normalizeProcessHistoryRecord(value: unknown): ProcessHistoryRecord | null {
+  if (!isObjectRecord(value)) {
+    return null
+  }
+
+  const id = readString(value.id)
+  const moduleId = readString(value.moduleId)
+  if (!id || !moduleId) {
+    return null
+  }
+
+  const resultDownloadPath = readString(value.resultDownloadPath)
+  const resultFile = readResultFile(value.resultFile, resultDownloadPath)
+  const resultDownloadBackendTarget = readBackendTarget(value.resultDownloadBackendTarget)
+  const personId = readOptionalNonEmptyString(value.personId)
+  const outputFile = readOutputFile(value.outputFile)
+  const historyWarnings = readStringList(value.historyWarnings)
+  const normalizedRecord: ProcessHistoryRecord = {
+    id,
+    ...(personId ? { personId } : {}),
+    moduleId,
+    moduleName: readString(value.moduleName) || moduleId,
+    status: readStatus(value.status),
+    durationMs: readNonNegativeNumber(value.durationMs),
+    message: readString(value.message),
+    inputFiles: readStringList(value.inputFiles),
+    ...(outputFile ? { outputFile } : {}),
+    ...(resultFile ? { resultFile } : {}),
+    ...(resultDownloadPath || resultFile?.downloadPath
+      ? { resultDownloadPath: resultDownloadPath || resultFile?.downloadPath }
+      : {}),
+    ...(resultDownloadBackendTarget ? { resultDownloadBackendTarget } : {}),
+    ...(historyWarnings.length > 0 ? { historyWarnings } : {}),
+    summary: readSummaryItems(value.summary),
+    createdAt: readString(value.createdAt),
+  }
+
+  return normalizedRecord
+}
+
+function normalizeProcessHistoryRecords(value: unknown): ProcessHistoryRecord[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value
+    .map((item) => normalizeProcessHistoryRecord(item))
+    .filter((item): item is ProcessHistoryRecord => Boolean(item))
+}
+
 export function loadModuleHistory(moduleId: string): ProcessHistoryRecord[] {
   const raw = window.localStorage.getItem(storagePrefix + moduleId)
 
@@ -166,7 +313,7 @@ export function loadModuleHistory(moduleId: string): ProcessHistoryRecord[] {
 
   try {
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
+    return normalizeProcessHistoryRecords(parsed)
   } catch {
     return []
   }
@@ -180,9 +327,15 @@ export function appendModuleHistory(
     id: record.id || `${record.moduleId}-${Date.now()}`,
     createdAt: new Date().toISOString(),
   }
-  const records = [nextRecord, ...loadModuleHistory(record.moduleId)].slice(0, 20)
-  window.localStorage.setItem(storagePrefix + record.moduleId, JSON.stringify(records))
-  void persistProcessHistoryRecord(nextRecord).catch(() => {
+  const normalizedRecord = normalizeProcessHistoryRecord(nextRecord)
+
+  if (!normalizedRecord) {
+    return loadModuleHistory(record.moduleId)
+  }
+
+  const records = [normalizedRecord, ...loadModuleHistory(normalizedRecord.moduleId)].slice(0, 20)
+  window.localStorage.setItem(storagePrefix + normalizedRecord.moduleId, JSON.stringify(records))
+  void persistProcessHistoryRecord(normalizedRecord).catch(() => {
     // Local history is still useful when the backend or remote MySQL is temporarily unavailable.
   })
 
@@ -234,7 +387,7 @@ export async function fetchPersistedProcessHistoryRecordPage(
     path: `${processHistoryPath}?${query.toString()}`,
     backendTarget: params.backendTarget,
   })
-  const records = Array.isArray(payload.records) ? payload.records : []
+  const records = normalizeProcessHistoryRecords(payload.records)
   const pagination = payload.pagination || {}
   return {
     records,
@@ -256,7 +409,7 @@ export async function persistProcessHistoryRecord(
     timeoutMs: 8000,
     backendTarget: 'remote',
   })
-  return payload.record || null
+  return normalizeProcessHistoryRecord(payload.record)
 }
 
 export function findLatestDownloadableHistoryRecord(
