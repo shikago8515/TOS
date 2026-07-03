@@ -139,6 +139,44 @@ def _slicer_pivot_table_names(path: str, entry: str) -> list[str | None]:
     ]
 
 
+def _worksheet_relationship_types(path: str, entry: str) -> list[str]:
+    namespace = {"rel": "http://schemas.openxmlformats.org/package/2006/relationships"}
+    with zipfile.ZipFile(path) as archive:
+        root = ElementTree.fromstring(archive.read(entry))
+    return [
+        relationship.attrib.get("Type", "")
+        for relationship in root.findall("rel:Relationship", namespace)
+    ]
+
+
+def _drawing_anchor_markers(path: str, entry: str) -> dict[str, dict[str, tuple[int, int]]]:
+    namespace = {"xdr": "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"}
+    with zipfile.ZipFile(path) as archive:
+        root = ElementTree.fromstring(archive.read(entry))
+
+    anchors: dict[str, dict[str, tuple[int, int]]] = {}
+    for anchor in root:
+        name_node = anchor.find(".//xdr:cNvPr", namespace)
+        from_node = anchor.find("xdr:from", namespace)
+        to_node = anchor.find("xdr:to", namespace)
+        if name_node is None or from_node is None or to_node is None:
+            continue
+
+        def marker(node: ElementTree.Element) -> tuple[int, int]:
+            col_node = node.find("xdr:col", namespace)
+            row_node = node.find("xdr:row", namespace)
+            return (
+                int(col_node.text or "0") if col_node is not None else 0,
+                int(row_node.text or "0") if row_node is not None else 0,
+            )
+
+        anchors[name_node.attrib.get("name", "")] = {
+            "from": marker(from_node),
+            "to": marker(to_node),
+        }
+    return anchors
+
+
 class SophiaTinaTemplatePathTests(unittest.TestCase):
     def test_pivot_template_path_can_be_overridden_for_runtime_packaging(self):
         original_override = os.environ.get("TOS_SOPHIA_TINA_TEMPLATE_PATH")
@@ -165,7 +203,7 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
         pd.DataFrame(rows).to_excel(path, index=False)
         return str(path)
 
-    def test_country_analysis_summary_blocks_are_rebuilt_from_result_data(self):
+    def test_country_analysis_summary_blocks_are_formula_driven_plain_tables(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             work_dir = Path(temp_dir)
             tms_rows = [
@@ -320,32 +358,247 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
                     ["Value(usd)", "FACTORY-B", 40, 0, 60, 100],
                     ["Value percentage", "FACTORY-B", 0.4, 0, 0.6, None],
                 ]
-                for sheet_name, start_row, first_header in (
-                    ("Country Analysis (S)", 19, "Season SS26"),
-                    ("Country Analysis (Y)", 16, "Year 2026"),
+                for sheet_name, first_header in (
+                    ("Country Analysis (S)", "Season SS26"),
+                    ("Country Analysis (Y)", "Year 2026"),
                 ):
                     ws = wb[sheet_name]
                     sheet_expected_rows = [list(row) for row in expected_rows]
                     sheet_expected_rows[0][0] = first_header
                     for offset, expected_row in enumerate(sheet_expected_rows):
+                        excel_row = 1 + offset
                         actual = [
-                            ws.cell(row=start_row + offset, column=column).value
+                            ws.cell(row=excel_row, column=column).value
                             for column in range(1, 7)
                         ]
-                        self.assertEqual(actual, expected_row)
+                        if expected_row[0] in {"Qty(pcs)", "Value(usd)"}:
+                            self.assertEqual(actual[:2], expected_row[:2])
+                            self.assertTrue(str(actual[2]).startswith("=SUMIFS(Result!$"))
+                            self.assertEqual(actual[5], f"=SUM(C{excel_row}:E{excel_row})")
+                        elif expected_row[0] in {"Qty percentage", "Value percentage"}:
+                            source_row = excel_row - 1
+                            self.assertEqual(actual[:2], expected_row[:2])
+                            self.assertEqual(actual[2], f"=IF($F{source_row}=0,0,C{source_row}/$F{source_row})")
+                            self.assertEqual(actual[5], None)
+                        else:
+                            self.assertEqual(actual, expected_row)
 
-                    self.assertEqual(ws.cell(row=start_row + 2, column=6).value, None)
-                    self.assertEqual(ws.cell(row=start_row + 4, column=6).value, None)
+                    self.assertEqual(ws.max_column, 6)
+                    self.assertEqual(ws.max_row, len(sheet_expected_rows))
+
+                self.assertIn(
+                    'Result!$B:$B,"SS26"',
+                    wb["Country Analysis (S)"].cell(row=2, column=3).value,
+                )
+                self.assertIn(
+                    'Result!$H:$H,">="&DATE(2026,1,1)',
+                    wb["Country Analysis (Y)"].cell(row=2, column=3).value,
+                )
             finally:
                 wb.close()
 
             self.assertNotIn("653448", _sheet_cell_text(result["output_path"], "xl/worksheets/sheet3.xml"))
             self.assertNotIn("3067514", _sheet_cell_text(result["output_path"], "xl/worksheets/sheet4.xml"))
+            self.assertNotIn(
+                "pivotTable",
+                "\n".join(_worksheet_relationship_types(result["output_path"], "xl/worksheets/_rels/sheet3.xml.rels")),
+            )
+            self.assertNotIn(
+                "pivotTable",
+                "\n".join(_worksheet_relationship_types(result["output_path"], "xl/worksheets/_rels/sheet4.xml.rels")),
+            )
             self.assertEqual(
                 {source for _, sheet_name, source in _pivot_cache_sources(result["output_path"]) if sheet_name == "Result"},
                 {"A1:Q6"},
             )
             self.assertEqual(set(_pivot_cache_refresh_values(result["output_path"])), {"1"})
+
+    def test_country_analysis_blank_season_formula_matches_result_blank_cells(self):
+        summary_rows = self.module._country_summary_block_rows(
+            [
+                {
+                    "Season": "",
+                    "Factory": "FACTORY-A",
+                    "Country/Region": "CHINA",
+                    "Quantity": 10,
+                    "TMS Amount(USD)": 200,
+                }
+            ],
+            "Season",
+            1,
+        )
+
+        self.assertEqual(summary_rows[0][1][0], "Season (blank)")
+        self.assertIn('Result!$B:$B,""', summary_rows[1][2][2])
+        self.assertIn('Result!$B:$B,""', summary_rows[3][2][2])
+        self.assertNotIn("(blank)", summary_rows[1][2][2])
+
+    def test_factory_price_falls_back_to_working_and_factory_when_result_season_is_blank(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            work_dir = Path(temp_dir)
+            tms_path = self._write_excel(
+                work_dir,
+                "tms.xlsx",
+                [
+                    {
+                        "Factory": "FACTORY-A",
+                        "PO Number": "PO-FALLBACK",
+                        "Working Number": "WN-FALLBACK",
+                        "Article Number": "ART-MISSING",
+                        "Article Description": "Fallback price row",
+                        "Customer Request Date (CRD)": "2026-01-01",
+                        "PODD": "2026-02-01",
+                        "Shipment Method": "Ocean",
+                        "Gps Customer Number": "GPS-1",
+                        "Country/Region": "CHINA",
+                        "Ordered Quantity": 10,
+                    },
+                    {
+                        "Factory": "FACTORY-B",
+                        "PO Number": "PO-CONFLICT",
+                        "Working Number": "WN-CONFLICT",
+                        "Article Number": "ART-CONFLICT",
+                        "Article Description": "Fallback conflict row",
+                        "Customer Request Date (CRD)": "2026-01-02",
+                        "PODD": "2026-02-02",
+                        "Shipment Method": "Air",
+                        "Gps Customer Number": "GPS-2",
+                        "Country/Region": "UNITED STATES",
+                        "Ordered Quantity": 5,
+                    },
+                    {
+                        "Factory": "FACTORY-C",
+                        "PO Number": "PO-NO-PACK",
+                        "Working Number": "WN-NO-PACK",
+                        "Article Number": "ART-NO-PACK",
+                        "Article Description": "No pack source row",
+                        "Customer Request Date (CRD)": "2026-01-03",
+                        "PODD": "2026-02-03",
+                        "Shipment Method": "Rail",
+                        "Gps Customer Number": "GPS-3",
+                        "Country/Region": "BRAZIL",
+                        "Ordered Quantity": 8,
+                    },
+                ],
+            )
+            tms_price_path = self._write_excel(
+                work_dir,
+                "tms-price.xlsx",
+                [
+                    {
+                        "Working Number (M)": "WN-UNRELATED",
+                        "Article Number (A)": "ART-UNRELATED",
+                        "Season (M)": "SS26",
+                        "Marketing Forecast (M)": 100,
+                        "Milestone (C)": "Final",
+                        "Intl. FOB (C)": 20.0,
+                        "Factory Group Code (MF)": "FACTORY-Z",
+                    },
+                ],
+            )
+            price_path = self._write_excel(
+                work_dir,
+                "price.xlsx",
+                [
+                    {
+                        "Pack": "PACK-FALLBACK",
+                        "Season": "SS26",
+                        "Working Number": "WN-FALLBACK",
+                        "Article Number": "ART-PRICE-A",
+                        "Factory": "FACTORY-A",
+                        "Factory Price": 9.0,
+                        "TMS Price": 19.0,
+                    },
+                    {
+                        "Pack": "PACK-CONFLICT-A",
+                        "Season": "SS26",
+                        "Working Number": "WN-CONFLICT",
+                        "Article Number": "ART-PRICE-B1",
+                        "Factory": "FACTORY-B",
+                        "Factory Price": 5.0,
+                        "TMS Price": 15.0,
+                    },
+                    {
+                        "Pack": "PACK-CONFLICT-B",
+                        "Season": "FW26",
+                        "Working Number": "WN-CONFLICT",
+                        "Article Number": "ART-PRICE-B2",
+                        "Factory": "FACTORY-B",
+                        "Factory Price": 7.0,
+                        "TMS Price": 17.0,
+                    },
+                ],
+            )
+
+            result = self.module.process_reports(
+                [tms_path],
+                [tms_price_path],
+                [price_path],
+                output_dir=str(work_dir),
+            )
+
+            self.assertTrue(result["success"], result["message"])
+            wb = load_workbook(result["output_path"], data_only=False, read_only=True)
+            try:
+                result_ws = wb["Result"]
+                headers = [cell.value for cell in result_ws[1]]
+                column_by_name = {name: index + 1 for index, name in enumerate(headers)}
+                rows_by_working = {
+                    result_ws.cell(row=row_index, column=column_by_name["Working Number"]).value: row_index
+                    for row_index in range(2, result_ws.max_row + 1)
+                }
+
+                fallback_row = rows_by_working["WN-FALLBACK"]
+                self.assertEqual(
+                    result_ws.cell(fallback_row, column=column_by_name["Season"]).value,
+                    None,
+                )
+                self.assertEqual(
+                    result_ws.cell(fallback_row, column=column_by_name["Pack"]).value,
+                    "PACK-FALLBACK",
+                )
+                self.assertEqual(
+                    result_ws.cell(fallback_row, column=column_by_name["Factory Price(USD)"]).value,
+                    9.0,
+                )
+                self.assertEqual(
+                    result_ws.cell(fallback_row, column=column_by_name["TMS Price(USD)"]).value,
+                    19.0,
+                )
+
+                conflict_row = rows_by_working["WN-CONFLICT"]
+                self.assertEqual(
+                    result_ws.cell(conflict_row, column=column_by_name["Factory Price(USD)"]).value,
+                    5.0,
+                )
+                self.assertEqual(
+                    result_ws.cell(conflict_row, column=column_by_name["Pack"]).value,
+                    "PACK-CONFLICT-A",
+                )
+                self.assertEqual(
+                    result_ws.cell(conflict_row, column=column_by_name["Factory Price(USD)"]).fill.fgColor.rgb,
+                    "FFFFF2CC",
+                )
+
+                no_pack_row = rows_by_working["WN-NO-PACK"]
+                self.assertEqual(
+                    result_ws.cell(no_pack_row, column=column_by_name["Pack"]).value,
+                    None,
+                )
+                self.assertEqual(
+                    result_ws.cell(no_pack_row, column=column_by_name["Factory Price(USD)"]).value,
+                    None,
+                )
+
+                diagnostics = wb["Diagnostics"]
+                diagnostics_text = "\n".join(
+                    str(diagnostics.cell(row=row, column=2).value)
+                    for row in range(2, diagnostics.max_row + 1)
+                )
+                self.assertIn("FACTORY_PRICE_CONFLICT", diagnostics_text)
+                self.assertIn("PACK_MISSING", diagnostics_text)
+            finally:
+                wb.close()
 
     def test_tms_price_uses_milestone_priority_order_instead_of_source_row_order(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -828,6 +1081,9 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
             self.assertFalse(_workbook_zip_entries(result["output_path"], "xl/calcChain.xml"))
             self.assertEqual(_workbook_calc_pr(result["output_path"]).get("fullCalcOnLoad"), "1")
             self.assertEqual(_workbook_calc_pr(result["output_path"]).get("forceFullCalc"), "1")
+            y2y_drawing_anchors = _drawing_anchor_markers(result["output_path"], "xl/drawings/drawing1.xml")
+            self.assertEqual(y2y_drawing_anchors["Factory"], {"from": (6, 1), "to": (8, 7)})
+            self.assertEqual(y2y_drawing_anchors["Chart 1"], {"from": (9, 1), "to": (17, 16)})
 
             content_types_xml = _zip_entry_text(result["output_path"], "[Content_Types].xml")
             self.assertIn(
