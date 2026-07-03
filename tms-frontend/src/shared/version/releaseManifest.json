@@ -1,25 +1,25 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.4",
-  "tag": "v1.0.0-beta.3.4",
-  "gitSha": "6a242f9dfbc60ab3dddd893fe1c56ac321cf2465",
+  "version": "1.0.0-beta.3.6",
+  "tag": "v1.0.0-beta.3.6",
+  "gitSha": "41d400d845a69ad43c03f834bc1c3b490522b64f",
   "releaseDate": "2026-07-03",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.4",
+    "version": "1.0.0-beta.3.6",
     "date": "2026-07-03",
-    "noticeId": "2026-07-03-v1.0.0-beta.3.4",
+    "noticeId": "2026-07-03-v1.0.0-beta.3.6",
     "showPopup": false,
     "added": [],
     "improved": [],
     "fixed": [
-      "调整 Jane PRODUCTION 核对输出"
+      "优化服务器部署构建流程"
     ],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.4",
-    "version": "1.0.0-beta.3.4",
+    "noticeId": "v1.0.0-beta.3.6",
+    "version": "1.0.0-beta.3.6",
     "releaseDate": "2026-07-03",
     "showPopup": false,
     "level": "maintenance",
@@ -29,7 +29,7 @@
         "title": "修复",
         "icon": "check-circle",
         "items": [
-          "调整 Jane PRODUCTION 核对输出"
+          "优化服务器部署构建流程"
         ]
       }
     ]

@@ -408,10 +408,29 @@ def _person_sort_order(person_id: str) -> int:
 
 
 def _owner_key_for_module(module_id: str) -> str:
+    normalized_module_id = _canonical_process_history_module_id(module_id)
     for module in DEFAULT_TOS_MODULES:
-        if module["module_id"] == module_id:
+        if module["module_id"] == normalized_module_id:
             return str(module["owner_key"])
     return "general-tools"
+
+
+PROCESS_HISTORY_MODULE_ID_ALIASES = {
+    "excel-jessca": "jessca",
+    "pdf-draft-packing-compare": "draft-packing-compare",
+    "excel-jane": "jane",
+    "excel-jane-bom-compare": "jane-bom-compare",
+    "excel-jane-bom-summary": "jane-bom-summary",
+    "excel-jane-outbound-compare": "jane-outbound-compare",
+    "excel-sophia-tina": "sophia-tina",
+    "excel-tms-finance-internal-reconciliation": "tms-finance-internal-reconciliation",
+    "excel-tms-finance-work-sales": "tms-finance-work-sales",
+}
+
+
+def _canonical_process_history_module_id(module_id: str) -> str:
+    normalized_module_id = str(module_id or "").strip()
+    return PROCESS_HISTORY_MODULE_ID_ALIASES.get(normalized_module_id, normalized_module_id)
 
 
 def _activity_status_label(status: str) -> str:
@@ -1049,6 +1068,23 @@ def get_automation_batch(batch_id: str) -> dict[str, Any] | None:
     return _run_mysql_read(_read)
 
 
+def delete_automation_batch(batch_id: str) -> bool:
+    ensure_schema()
+    with mysql_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM tos_automation_batch_attempts WHERE batch_id = %s",
+                (batch_id,),
+            )
+            cursor.execute(
+                "DELETE FROM tos_automation_batches WHERE batch_id = %s",
+                (batch_id,),
+            )
+            deleted = cursor.rowcount > 0
+        connection.commit()
+    return deleted
+
+
 def list_automation_batches(
     automation_id: str,
     *,
@@ -1321,6 +1357,10 @@ def list_process_history_records(
     module_ids: list[str] | None = None,
     *,
     status: str | None = None,
+    person_id: str | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    downloadable_only: bool = False,
     limit: int = 80,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
@@ -1330,6 +1370,10 @@ def list_process_history_records(
     where_clause, params = _build_process_history_filters(
         module_ids=module_ids,
         status=status,
+        person_id=person_id,
+        created_from=created_from,
+        created_to=created_to,
+        downloadable_only=downloadable_only,
     )
     params.extend([safe_limit, safe_offset])
     with mysql_connection() as connection:
@@ -1342,17 +1386,17 @@ def list_process_history_records(
                        JSON_EXTRACT(ar.metadata_json, '$.inputFiles') AS input_files_json,
                        JSON_UNQUOTE(JSON_EXTRACT(ar.metadata_json, '$.outputFile')) AS output_file,
                        JSON_EXTRACT(ar.metadata_json, '$.summary') AS summary_json,
-                       af.file_id AS result_file_id,
-                       af.file_name AS result_file_name,
-                       af.content_type AS result_file_content_type,
-                       af.file_size AS result_file_size,
-                       af.sha256 AS result_file_sha256,
+                       af_download.file_id AS result_file_id,
+                       af_download.file_name AS result_file_name,
+                       af_download.content_type AS result_file_content_type,
+                       af_download.file_size AS result_file_size,
+                       af_download.sha256 AS result_file_sha256,
                        ar.created_at, ar.updated_at
                 FROM tos_activity_records ar
-                LEFT JOIN tos_activity_files af
-                  ON af.activity_id = ar.activity_id
-                 AND af.file_role = 'result_file'
-                 AND af.storage_provider = 'minio'
+                LEFT JOIN tos_activity_files af_download
+                  ON af_download.activity_id = ar.activity_id
+                 AND af_download.file_role = 'result_file'
+                 AND af_download.storage_provider = 'minio'
                 {where_clause}
                 ORDER BY ar.created_at DESC, ar.id DESC
                 LIMIT %s OFFSET %s
@@ -1367,18 +1411,30 @@ def count_process_history_records(
     module_ids: list[str] | None = None,
     *,
     status: str | None = None,
+    person_id: str | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    downloadable_only: bool = False,
 ) -> int:
     ensure_schema()
     where_clause, params = _build_process_history_filters(
         module_ids=module_ids,
         status=status,
+        person_id=person_id,
+        created_from=created_from,
+        created_to=created_to,
+        downloadable_only=downloadable_only,
     )
     with mysql_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
-                SELECT COUNT(*) AS total
+                SELECT COUNT(DISTINCT ar.activity_id) AS total
                 FROM tos_activity_records ar
+                LEFT JOIN tos_activity_files af_download
+                  ON af_download.activity_id = ar.activity_id
+                 AND af_download.file_role = 'result_file'
+                 AND af_download.storage_provider = 'minio'
                 {where_clause}
                 """,
                 tuple(params),
@@ -1391,6 +1447,10 @@ def _build_process_history_filters(
     *,
     module_ids: list[str] | None = None,
     status: str | None = None,
+    person_id: str | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    downloadable_only: bool = False,
 ) -> tuple[str, list[Any]]:
     conditions: list[str] = []
     params: list[Any] = []
@@ -1408,6 +1468,18 @@ def _build_process_history_filters(
     if status:
         conditions.append("ar.status = %s")
         params.append(status)
+    if person_id:
+        conditions.append("ar.person_id = %s")
+        params.append(person_id)
+    if created_from:
+        conditions.append("ar.created_at >= %s")
+        params.append(created_from)
+    if created_to:
+        conditions.append("ar.created_at <= %s")
+        params.append(created_to)
+    if downloadable_only:
+        conditions.append("af_download.file_role = 'result_file'")
+        conditions.append("af_download.storage_provider = 'minio'")
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     return where_clause, params
 

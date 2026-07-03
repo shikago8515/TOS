@@ -33,6 +33,7 @@ from utils.mysql_store import (
     create_automation_batch,
     create_automation_batch_attempt,
     create_automation_run,
+    delete_automation_batch,
     delete_automation_credentials,
     delete_automation_run,
     delete_excel_template,
@@ -144,6 +145,28 @@ class PackingListInterruptPayload(BaseModel):
     runId: str = ""
     attemptId: str = ""
     message: str = "用户已停止本机执行器，当前批次已中断，可从断点继续。"
+
+
+class TicketOwnerAttemptPayload(BaseModel):
+    runId: str = ""
+    mode: str = "new"
+
+
+class TicketOwnerCheckpointPayload(BaseModel):
+    runId: str = ""
+    attemptId: str = ""
+    mode: str = "continue"
+    status: str = "running"
+    message: str = ""
+    checkpoint: dict[str, Any] = Field(default_factory=dict)
+    itemResult: dict[str, Any] | None = None
+    result: dict[str, Any] | None = None
+
+
+class TicketOwnerInterruptPayload(BaseModel):
+    runId: str = ""
+    attemptId: str = ""
+    message: str = "用户已停止本机执行器，当前 Ticket ownership 批次已中断，可从断点继续。"
 
 
 class TemplateUpdatePayload(BaseModel):
@@ -653,6 +676,150 @@ def interrupt_packing_list_batch(batch_id: str, payload: PackingListInterruptPay
     }
 
 
+@router.post("/ticket-owner-statistics/batches/{batch_id}/attempts")
+def create_ticket_owner_batch_attempt(batch_id: str, payload: TicketOwnerAttemptPayload) -> dict[str, Any]:
+    row = get_automation_batch(batch_id)
+    if not row or row.get("automation_id") != TICKET_OWNER_AUTOMATION_ID:
+        raise HTTPException(status_code=404, detail="Ticket ownership 批次不存在。")
+    attempt_id = f"tos-attempt-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
+    attempt = create_automation_batch_attempt({
+        "attempt_id": attempt_id,
+        "batch_id": batch_id,
+        "run_id": payload.runId,
+        "mode": _normalize_packing_list_resume_mode(payload.mode),
+        "status": "running",
+        "message": "attempt started",
+        "started_at": datetime.utcnow(),
+    })
+    return {
+        "ok": True,
+        "attempt": _packing_list_attempt_payload(attempt),
+        "batch": _packing_list_batch_payload(row),
+    }
+
+
+@router.post("/ticket-owner-statistics/batches/{batch_id}/checkpoint")
+def write_ticket_owner_checkpoint(batch_id: str, payload: TicketOwnerCheckpointPayload) -> dict[str, Any]:
+    row = get_automation_batch(batch_id)
+    if not row or row.get("automation_id") != TICKET_OWNER_AUTOMATION_ID:
+        raise HTTPException(status_code=404, detail="Ticket ownership 批次不存在。")
+
+    attempt_id = payload.attemptId.strip()
+    if attempt_id and not get_automation_batch_attempt(attempt_id):
+        create_automation_batch_attempt({
+            "attempt_id": attempt_id,
+            "batch_id": batch_id,
+            "run_id": payload.runId,
+            "mode": _normalize_packing_list_resume_mode(payload.mode),
+            "status": "running",
+            "message": "attempt started from checkpoint write",
+            "started_at": datetime.utcnow(),
+        })
+
+    checkpoint = _merge_ticket_owner_checkpoint(
+        batch_id=batch_id,
+        existing=_safe_json_loads(row.get("checkpoint_json")) or {},
+        payload=payload,
+        stored_files=[],
+    )
+    stored_files = _store_ticket_owner_checkpoint_result_files(payload.runId, checkpoint, payload.result)
+    if stored_files:
+        checkpoint = _merge_ticket_owner_checkpoint(
+            batch_id=batch_id,
+            existing=checkpoint,
+            payload=payload,
+            stored_files=stored_files,
+        )
+    counts = _ticket_owner_checkpoint_counts(checkpoint)
+    status = _normalize_ticket_owner_batch_status(payload.status, counts)
+    checkpoint["status"] = status
+    updated_row = update_automation_batch_checkpoint(batch_id, {
+        "run_id": payload.runId,
+        "status": status,
+        "message": payload.message or checkpoint.get("message", ""),
+        "total_count": counts["total"],
+        "completed_count": counts["completed"],
+        "failed_count": counts["failed"],
+        "pending_count": counts["pending"],
+        "checkpoint": checkpoint,
+    })
+    if attempt_id:
+        update_automation_batch_attempt(attempt_id, {
+            "status": status if status in {"success", "failed", "partial", "interrupted"} else "running",
+            "message": payload.message or checkpoint.get("message", ""),
+            "result": payload.result or {"checkpoint": checkpoint},
+            "finished_at": datetime.utcnow() if status in {"success", "failed", "partial", "interrupted"} else None,
+        })
+    return {
+        "ok": True,
+        "batch": _packing_list_batch_payload(updated_row or row),
+        "storedFiles": [_run_file_payload(file_row) for file_row in stored_files],
+    }
+
+
+@router.post("/ticket-owner-statistics/batches/{batch_id}/interrupt")
+def interrupt_ticket_owner_batch(batch_id: str, payload: TicketOwnerInterruptPayload) -> dict[str, Any]:
+    row = get_automation_batch(batch_id)
+    if not row or row.get("automation_id") != TICKET_OWNER_AUTOMATION_ID:
+        raise HTTPException(status_code=404, detail="Ticket ownership 批次不存在。")
+
+    current_status = str(row.get("status") or "").lower()
+    if current_status in {"success", "failed", "partial", "interrupted"}:
+        return {
+            "ok": True,
+            "batch": _packing_list_batch_payload(row),
+            "changed": False,
+        }
+
+    existing_checkpoint = _safe_json_loads(row.get("checkpoint_json")) or {}
+    now = datetime.utcnow().isoformat()
+    message = payload.message or "用户已停止本机执行器，当前 Ticket ownership 批次已中断，可从断点继续。"
+    checkpoint = {
+        **existing_checkpoint,
+        "status": "interrupted",
+        "message": message,
+        "interruptedAt": now,
+        "updatedAt": now,
+    }
+    counts = _ticket_owner_checkpoint_counts(checkpoint)
+    updated_row = update_automation_batch_checkpoint(batch_id, {
+        "run_id": payload.runId or row.get("run_id", ""),
+        "status": "interrupted",
+        "message": message,
+        "total_count": counts["total"] or int(row.get("total_count") or 0),
+        "completed_count": counts["completed"] or int(row.get("completed_count") or 0),
+        "failed_count": counts["failed"] or int(row.get("failed_count") or 0),
+        "pending_count": counts["pending"] or int(row.get("pending_count") or 0),
+        "checkpoint": checkpoint,
+    })
+    attempt_id = payload.attemptId.strip() or str(checkpoint.get("attemptId") or "").strip()
+    if attempt_id:
+        update_automation_batch_attempt(attempt_id, {
+            "status": "interrupted",
+            "message": message,
+            "result": {"checkpoint": checkpoint},
+            "finished_at": datetime.utcnow(),
+        })
+    return {
+        "ok": True,
+        "batch": _packing_list_batch_payload(updated_row or row),
+        "changed": True,
+    }
+
+
+@router.delete("/ticket-owner-statistics/batches/{batch_id}")
+def delete_ticket_owner_batch(batch_id: str) -> dict[str, Any]:
+    row = get_automation_batch(batch_id)
+    if not row or row.get("automation_id") != TICKET_OWNER_AUTOMATION_ID:
+        raise HTTPException(status_code=404, detail="Ticket ownership 批次不存在。")
+    deleted = delete_automation_batch(batch_id)
+    return {
+        "ok": True,
+        "batchId": batch_id,
+        "deleted": deleted,
+    }
+
+
 @router.patch("/runs/{run_id}")
 async def finish_run(run_id: str, payload: RunUpdatePayload) -> dict[str, Any]:
     if not get_automation_run(run_id):
@@ -892,20 +1059,7 @@ def _normalize_account_key(value: Any) -> str:
 
 
 def _credential_lookup_ids(automation_id: str) -> list[str]:
-    lookup_ids = [automation_id]
-    if automation_id in INFOR_NEXUS_SHARED_CREDENTIAL_IDS:
-        lookup_ids.extend(
-            candidate_id
-            for candidate_id in INFOR_NEXUS_SHARED_CREDENTIAL_IDS
-            if candidate_id not in lookup_ids
-        )
-    if automation_id in MICROSOFT_SHARED_CREDENTIAL_IDS:
-        lookup_ids.extend(
-            candidate_id
-            for candidate_id in MICROSOFT_SHARED_CREDENTIAL_IDS
-            if candidate_id not in lookup_ids
-        )
-    return lookup_ids
+    return [automation_id]
 
 
 def _template_payload(row: dict[str, Any]) -> dict[str, Any]:
@@ -1150,6 +1304,80 @@ def _merge_packing_list_checkpoint(
     return checkpoint
 
 
+def _merge_ticket_owner_checkpoint(
+    *,
+    batch_id: str,
+    existing: dict[str, Any],
+    payload: TicketOwnerCheckpointPayload,
+    stored_files: list[dict[str, Any]],
+) -> dict[str, Any]:
+    now = datetime.utcnow().isoformat()
+    incoming = payload.checkpoint if isinstance(payload.checkpoint, dict) else {}
+    checkpoint = {
+        **existing,
+        **incoming,
+        "batchId": batch_id,
+        "attemptId": payload.attemptId or incoming.get("attemptId") or existing.get("attemptId", ""),
+        "runId": payload.runId or incoming.get("runId") or existing.get("runId", ""),
+        "mode": _normalize_packing_list_resume_mode(payload.mode or incoming.get("mode", "")),
+        "message": payload.message or incoming.get("message") or existing.get("message", ""),
+        "updatedAt": now,
+    }
+
+    items_by_key: dict[str, dict[str, Any]] = {}
+    for item in existing.get("items") or []:
+        if isinstance(item, dict):
+            key = _ticket_owner_item_key(item)
+            if key:
+                items_by_key[key] = dict(item)
+    for item in incoming.get("items") or []:
+        if isinstance(item, dict):
+            key = _ticket_owner_item_key(item)
+            if key:
+                items_by_key[key] = {**items_by_key.get(key, {}), **item}
+
+    if isinstance(payload.itemResult, dict):
+        key = _ticket_owner_item_key(payload.itemResult)
+        if key:
+            item_status = str(payload.itemResult.get("status") or "").strip().lower()
+            if not item_status:
+                item_status = "success" if payload.itemResult.get("ok") is not False else "failed"
+            items_by_key[key] = {
+                **items_by_key.get(key, {}),
+                **payload.itemResult,
+                "itemKey": key,
+                "status": item_status,
+                "updatedAt": now,
+            }
+
+    if isinstance(payload.result, dict):
+        checkpoint["result"] = payload.result
+
+    if stored_files:
+        checkpoint["storedFiles"] = [_stored_file_checkpoint_payload(row) for row in stored_files]
+
+    checkpoint["items"] = list(items_by_key.values())
+    counts = _ticket_owner_checkpoint_counts(checkpoint)
+    checkpoint.update({
+        "totalCount": counts["total"],
+        "completedCount": counts["completed"],
+        "failedCount": counts["failed"],
+        "pendingCount": counts["pending"],
+        "status": _normalize_ticket_owner_batch_status(payload.status, counts),
+    })
+    return checkpoint
+
+
+def _ticket_owner_item_key(item: dict[str, Any]) -> str:
+    return str(
+        item.get("itemKey")
+        or item.get("caseNumber")
+        or item.get("Case Number")
+        or item.get("case_number")
+        or "",
+    ).strip()
+
+
 def _packing_list_checkpoint_counts(checkpoint: dict[str, Any]) -> dict[str, int]:
     items = [item for item in (checkpoint.get("items") or []) if isinstance(item, dict)]
     result = checkpoint.get("result") if isinstance(checkpoint.get("result"), dict) else {}
@@ -1167,6 +1395,61 @@ def _packing_list_checkpoint_counts(checkpoint: dict[str, Any]) -> dict[str, int
         "failed": failed,
         "pending": pending,
     }
+
+
+def _ticket_owner_checkpoint_counts(checkpoint: dict[str, Any]) -> dict[str, int]:
+    items = [item for item in (checkpoint.get("items") or []) if isinstance(item, dict)]
+    result = checkpoint.get("result") if isinstance(checkpoint.get("result"), dict) else {}
+    total = int(
+        checkpoint.get("totalCount")
+        or result.get("totalTicketCount")
+        or result.get("attemptedTicketCount")
+        or result.get("rowCount")
+        or len(items)
+        or 0,
+    )
+    if items:
+        completed = sum(1 for item in items if _ticket_owner_item_status(item) == "success")
+        failed = sum(1 for item in items if _ticket_owner_item_status(item) in {"failed", "error"})
+    else:
+        completed = int(
+            checkpoint.get("completedCount")
+            or checkpoint.get("successCount")
+            or result.get("successTicketCount")
+            or 0,
+        )
+        failed = int(
+            checkpoint.get("failedCount")
+            or result.get("failedTicketCount")
+            or 0,
+        )
+    pending = int(checkpoint.get("pendingCount") or max(0, total - completed - failed))
+    return {
+        "total": total,
+        "completed": completed,
+        "failed": failed,
+        "pending": pending,
+    }
+
+
+def _ticket_owner_item_status(item: dict[str, Any]) -> str:
+    status = str(item.get("status") or "").strip().lower()
+    if status:
+        return status
+    return "success" if item.get("ok") is not False else "failed"
+
+
+def _normalize_ticket_owner_batch_status(status: str, counts: dict[str, int]) -> str:
+    raw = str(status or "").strip().lower()
+    if raw in {"interrupted", "failed"}:
+        return raw
+    if counts["total"] > 0 and counts["completed"] >= counts["total"]:
+        return "success"
+    if raw in {"success", "partial"}:
+        return "partial" if counts["failed"] or counts["pending"] else "success"
+    if counts["failed"] and counts["pending"] == 0:
+        return "partial"
+    return "running"
 
 
 def _stored_file_checkpoint_payload(row: dict[str, Any]) -> dict[str, Any]:
@@ -1275,8 +1558,8 @@ def _try_store_ticket_owner_excel(
 ) -> dict[str, Any] | None:
     if automation_id != TICKET_OWNER_AUTOMATION_ID or not isinstance(result, dict):
         return None
-    rows = result.get("rows")
-    if not isinstance(rows, list):
+    rows = _extract_ticket_owner_rows(result)
+    if rows is None:
         return None
 
     try:
@@ -1288,11 +1571,44 @@ def _try_store_ticket_owner_excel(
             filename=TICKET_OWNER_EXCEL_NAME,
             content=content,
             content_type=EXCEL_CONTENT_TYPE,
+            result=result,
         )
     except Exception:
         logger.exception("Failed to build server-side ticket ownership workbook.")
         warnings.append("File storage is unavailable; ticket ownership Excel was not generated on the server.")
         return None
+
+
+def _store_ticket_owner_checkpoint_result_files(
+    run_id: str,
+    checkpoint: dict[str, Any],
+    result: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if not run_id or not isinstance(result, dict):
+        return []
+
+    storage_result = {
+        **result,
+        "batchId": checkpoint.get("batchId", ""),
+        "attemptId": checkpoint.get("attemptId", ""),
+        "checkpoint": {
+            "batchId": checkpoint.get("batchId", ""),
+            "attemptId": checkpoint.get("attemptId", ""),
+        },
+    }
+    stored_files: list[dict[str, Any]] = []
+    result_json = _store_result_json(run_id, TICKET_OWNER_AUTOMATION_ID, storage_result)
+    if result_json:
+        stored_files.append(result_json)
+    ticket_owner_excel = _try_store_ticket_owner_excel(
+        run_id,
+        TICKET_OWNER_AUTOMATION_ID,
+        storage_result,
+        [],
+    )
+    if ticket_owner_excel:
+        stored_files.append(ticket_owner_excel)
+    return stored_files
 
 
 def _try_store_remote_result_file(
@@ -1435,11 +1751,12 @@ def _store_result_file_bytes(
     filename: str,
     content: bytes,
     content_type: str,
+    result: Any | None = None,
 ) -> dict[str, Any]:
     safe_filename = sanitize_object_segment(filename)
     if automation_id == TICKET_OWNER_AUTOMATION_ID:
         bucket = get_minio_bucket(TICKET_OWNER_BUCKET_KEY)
-        object_prefix = _ticket_owner_result_object_prefix(run_id, None)
+        object_prefix = _ticket_owner_result_object_prefix(run_id, result)
         object_key = f"{object_prefix}/{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-{sanitize_object_segment(file_role)}-{safe_filename}"
     else:
         bucket = get_minio_bucket("results")
@@ -1583,6 +1900,18 @@ def _build_ticket_owner_workbook_bytes(rows: list[Any]) -> bytes:
     workbook.save(stream)
     workbook.close()
     return stream.getvalue()
+
+
+def _extract_ticket_owner_rows(result: Any) -> list[Any] | None:
+    if not isinstance(result, dict):
+        return None
+    direct_rows = result.get("rows")
+    if isinstance(direct_rows, list):
+        return direct_rows
+    workflow_result = result.get("workflowResult")
+    if isinstance(workflow_result, dict) and isinstance(workflow_result.get("rows"), list):
+        return workflow_result["rows"]
+    return None
 
 
 def _normalize_ticket_owner_row(row: Any) -> dict[str, str]:

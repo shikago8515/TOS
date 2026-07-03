@@ -162,6 +162,28 @@ test('prepare syncs TOS version files and current release notes', async () => {
     desktopFullInstaller: null,
     automationHelper: null,
   })
+
+  const releaseHistory = JSON.parse(
+    await readFile(join(root, 'tms-frontend', 'src', 'shared', 'version', 'releaseHistory.json'), 'utf8'),
+  )
+  const backendSeed = JSON.parse(
+    await readFile(join(root, 'tms-backend', 'data', 'release_updates_seed.json'), 'utf8'),
+  )
+  assert.deepEqual(releaseHistory, backendSeed)
+  assert.deepEqual(releaseHistory.map((record) => record.recordKey), [
+    'release-v0.9.8-beta.3.29',
+    'builtin-0.9.8-beta.3.28-fixed-existing',
+  ])
+  assert.deepEqual(releaseHistory[0], {
+    recordKey: 'release-v0.9.8-beta.3.29',
+    version: nextRelease.version,
+    releaseDate: '2026-06-22',
+    category: 'improved',
+    pageName: 'Version Release',
+    pagePath: '/release-updates',
+    title: 'Release v0.9.8-beta.3.29',
+    description: 'Release v0.9.8-beta.3.29. Channel: beta.3. Commit: abc123semanticrelease. Release notes: 添加自动发布链路；优化发布包生成；修复版本记录读取.',
+  })
 })
 
 test('builds Gitea release request without leaking token into the body', () => {
@@ -209,6 +231,7 @@ async function createFixture() {
   const root = await mkdtempPath()
 
   await mkdir(join(root, 'tms-backend'), { recursive: true })
+  await mkdir(join(root, 'tms-backend', 'data'), { recursive: true })
   await mkdir(join(root, 'tms-frontend', 'src', 'shared', 'version'), { recursive: true })
   await mkdir(join(root, 'tms-electron-app', 'automation-apps', 'shipping-automation-demo'), { recursive: true })
 
@@ -227,6 +250,26 @@ async function createFixture() {
       improved: ['old improved'],
       fixed: ['old fixed'],
     }, null, 2)}\n`,
+  )
+  const existingReleaseHistory = [
+    {
+      recordKey: 'builtin-0.9.8-beta.3.28-fixed-existing',
+      version: '0.9.8-beta.3.28',
+      releaseDate: '2026-06-21',
+      category: 'fixed',
+      pageName: 'Existing Page',
+      pagePath: '/existing',
+      title: 'Existing fallback release',
+      description: 'Existing fallback release record',
+    },
+  ]
+  await writeFile(
+    join(root, 'tms-frontend', 'src', 'shared', 'version', 'releaseHistory.json'),
+    `${JSON.stringify(existingReleaseHistory, null, 2)}\n`,
+  )
+  await writeFile(
+    join(root, 'tms-backend', 'data', 'release_updates_seed.json'),
+    `${JSON.stringify(existingReleaseHistory, null, 2)}\n`,
   )
   await writeFile(
     join(root, 'tms-electron-app', 'package.json'),

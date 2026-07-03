@@ -8,6 +8,7 @@ import {
   createPackingListAutoDownloadBatch,
   deleteAutomationRunRecord,
   downloadAutomationRunFile,
+  fetchExecutorCredentials,
   fetchLatestPackingListAutoDownloadBatch,
   fetchAutomationRunDetail,
   fetchAutomationRunFiles,
@@ -21,6 +22,8 @@ import {
   openInfornexusAutoAddSearchPage,
   probeLocalAutomationLauncherHealthPayload,
   probeLocalExecutorHealth,
+  resolveAutomationCredentials,
+  saveExecutorCredentials,
   syncLocalAutomationModules,
 } from './webAutomationApi'
 
@@ -241,6 +244,71 @@ describe('webAutomationApi', () => {
     expect(isLocalExecutorBusy({ ok: true, activeRunCount: 1 })).toBe(true)
     expect(isLocalExecutorBusy({ ok: true, busy: true })).toBe(true)
     expect(isLocalExecutorBusy({ ok: true, activeRuns: [{}] })).toBe(true)
+  })
+
+  it('uses the automation credential endpoints with encoded account keys', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const originalFetch = globalThis.fetch
+    const requests: Array<{
+      body: Record<string, unknown> | null
+      method: string
+      url: string
+    }> = []
+    vi.stubEnv('VITE_LOCAL_BACKEND_URL', 'http://127.0.0.1:8000/')
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location: { pathname: '/' },
+      },
+    })
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        body: init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : null,
+        method: String(init?.method || 'GET'),
+        url: String(input),
+      })
+      return new Response(JSON.stringify({
+        accountKey: 'nightly/account?',
+        hasPassword: true,
+        password: 'secret',
+        username: 'automation@example.com',
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      })
+    }) as typeof fetch
+
+    try {
+      await fetchExecutorCredentials('shipping automation', 'nightly/account?')
+      await saveExecutorCredentials('shipping automation', 'automation@example.com', 'secret', 'nightly/account?')
+      await resolveAutomationCredentials('shipping automation', 'nightly/account?')
+
+      expect(requests).toEqual([{
+        body: null,
+        method: 'GET',
+        url: 'http://127.0.0.1:8000/api/automation/credentials/shipping%20automation?accountKey=nightly%2Faccount%3F',
+      }, {
+        body: {
+          accountKey: 'nightly/account?',
+          password: 'secret',
+          username: 'automation@example.com',
+        },
+        method: 'PUT',
+        url: 'http://127.0.0.1:8000/api/automation/credentials/shipping%20automation',
+      }, {
+        body: null,
+        method: 'POST',
+        url: 'http://127.0.0.1:8000/api/automation/credentials/shipping%20automation/resolve?accountKey=nightly%2Faccount%3F',
+      }])
+    } finally {
+      globalThis.fetch = originalFetch
+      vi.unstubAllEnvs()
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
   })
 
   it('allows slow local executor health probes before marking it disconnected', async () => {

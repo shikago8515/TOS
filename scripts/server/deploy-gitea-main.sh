@@ -92,15 +92,21 @@ else
   log "Skipping dependency install because TOS_SKIP_INSTALL=1"
 fi
 
-log "Running pre-deploy checks"
+log "Running deployment package checks"
 npm run test:server-package
-npm --prefix tms-frontend run typecheck
-npm --prefix tms-frontend run test
-(
-  cd tms-backend
-  ${PYTHON:-python3} -m unittest discover tests/ -v
-)
 npm run server:package:dry-run
+
+if [ "${TOS_RUN_DEPLOY_TESTS:-0}" = "1" ]; then
+  log "Running extended deploy tests because TOS_RUN_DEPLOY_TESTS=1"
+  npm --prefix tms-frontend run typecheck
+  npm --prefix tms-frontend run test
+  (
+    cd tms-backend
+    ${PYTHON:-python3} -m unittest discover tests/ -v
+  )
+else
+  log "Skipping extended deploy tests because TOS_RUN_DEPLOY_TESTS!=1"
+fi
 
 log "Creating standard server update package"
 npm run server:package

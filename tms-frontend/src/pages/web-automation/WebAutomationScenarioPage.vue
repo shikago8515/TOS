@@ -413,6 +413,7 @@ import { buildAutomationRunFileDownloadUrl, clearExecutorCredentials, createAuto
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from './webAutomationErrors'
 import { useAutomationStartupProgress } from './composables/useAutomationStartupProgress'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from './webAutomationModel'
+import { canSyncActiveAppRuntime, planExecutorReadinessActions } from './webAutomationScenarioRuntime'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 
 const route = useRoute(); const router = useRouter(); const { text } = useAppLanguage()
@@ -1110,16 +1111,27 @@ function isExecutorBusy(): boolean {
   return Boolean(executorHealth.value?.busy || executorHealth.value?.activeRun || (Array.isArray(executorHealth.value?.activeRuns) && executorHealth.value.activeRuns.length > 0) || Number(executorHealth.value?.activeRunCount || 0) > 0)
 }
 function shouldSyncActiveAppRuntime(): boolean {
-  return Boolean(entry.value && activeApp.value?.available && !isExecutorBusy())
+  return canSyncActiveAppRuntime({
+    hasEntry: Boolean(entry.value),
+    activeAppAvailable: Boolean(activeApp.value?.available),
+    executorBusy: isExecutorBusy(),
+  })
 }
 async function ensureReady(): Promise<boolean> {
-  if (shouldSyncActiveAppRuntime()) {
-    statusText.value = '正在检查并同步最新自动化逻辑...'
-    await startActiveApp(true, { forceUpdate: true })
-  } else if (!executorHealth.value?.ok) {
-    await startActiveApp(true)
+  const readinessActions = planExecutorReadinessActions({
+    canSyncRuntime: shouldSyncActiveAppRuntime(),
+    executorOk: Boolean(executorHealth.value?.ok),
+  })
+  for (const action of readinessActions) {
+    if (action === 'sync-active-app-runtime') {
+      statusText.value = '正在检查并同步最新自动化逻辑...'
+      await startActiveApp(true, { forceUpdate: true })
+    } else if (action === 'start-active-app') {
+      await startActiveApp(true)
+    } else {
+      await refreshExecutorState(true).catch(() => {})
+    }
   }
-  await refreshExecutorState(true).catch(() => {})
   return Boolean(executorHealth.value?.ok)
 }
 async function postExecutorWithModuleRetry(url: string, requestBody: Record<string, unknown>): Promise<{ res: Response; raw: string; j: Record<string, any> | null }> {

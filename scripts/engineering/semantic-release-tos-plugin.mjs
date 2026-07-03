@@ -8,6 +8,8 @@ const scriptDir = dirname(fileURLToPath(import.meta.url))
 const defaultRepoRoot = resolve(scriptDir, '..', '..')
 const defaultGiteaApiBaseUrl = 'http://172.16.48.208:3001/api/v1'
 const defaultRepository = 'luenthai-ai/TOS'
+const frontendReleaseHistoryPath = 'tms-frontend/src/shared/version/releaseHistory.json'
+const backendReleaseUpdatesSeedPath = 'tms-backend/data/release_updates_seed.json'
 
 const releaseTypeMap = {
   feat: 'added',
@@ -44,8 +46,7 @@ export async function prepare(pluginConfig = {}, context = {}) {
     releaseDate,
     releaseNotes,
   })
-  await writeReleaseNotes(repoRoot, releaseNotes)
-  await writeReleaseManifest(repoRoot, buildTosReleaseManifest({
+  const releaseManifest = buildTosReleaseManifest({
     version,
     tag: context.nextRelease?.gitTag || `v${version}`,
     gitSha: context.nextRelease?.gitHead || process.env.GITEA_SHA || process.env.GITHUB_SHA || '',
@@ -53,6 +54,13 @@ export async function prepare(pluginConfig = {}, context = {}) {
     channel: pluginConfig.channel || context.branch?.channel || context.branch?.prerelease || '',
     releaseNotes,
     announcement: releaseAnnouncement,
+  })
+  await writeReleaseNotes(repoRoot, releaseNotes)
+  await writeReleaseManifest(repoRoot, releaseManifest)
+  await writeReleaseUpdateFallbackRecords(repoRoot, buildReleaseUpdateRecord({
+    version,
+    releaseNotes,
+    releaseManifest,
   }))
   context.logger?.log?.(`Synced TOS version and release notes for ${version}.`)
 }
@@ -347,6 +355,148 @@ async function writeReleaseManifest(repoRoot, releaseManifest) {
     'releaseManifest.json',
   )
   await writeFile(releaseManifestPath, `${JSON.stringify(releaseManifest, null, 2)}\n`)
+}
+
+function buildReleaseUpdateRecord({ version, releaseNotes, releaseManifest }) {
+  const tag = String(releaseManifest?.tag || `v${version}`).trim()
+  const gitSha = String(releaseManifest?.gitSha || '').trim()
+  const channel = String(releaseManifest?.channel || '').trim()
+  const releaseDate = String(releaseManifest?.releaseDate || releaseNotes?.date || currentShanghaiDate()).trim()
+  const noteSummary = summarizeReleaseNotes(releaseNotes || {})
+  const detailParts = [
+    `Release ${tag}`,
+    channel ? `Channel: ${channel}` : '',
+    gitSha ? `Commit: ${gitSha}` : '',
+    noteSummary ? `Release notes: ${noteSummary}` : `Version: ${version}`,
+  ].filter(Boolean)
+
+  return {
+    recordKey: `release-${tag || version}`,
+    version,
+    releaseDate,
+    category: 'improved',
+    pageName: 'Version Release',
+    pagePath: '/release-updates',
+    title: `Release ${tag || version}`.slice(0, 255),
+    description: `${detailParts.join('. ')}.`,
+  }
+}
+
+async function writeReleaseUpdateFallbackRecords(repoRoot, releaseRecord) {
+  const releaseHistoryPath = resolve(repoRoot, frontendReleaseHistoryPath)
+  const backendSeedPath = resolve(repoRoot, backendReleaseUpdatesSeedPath)
+  const releaseHistory = await readReleaseUpdateRecords(releaseHistoryPath)
+  const mergedRecords = mergeReleaseUpdateRecords([releaseRecord, ...releaseHistory])
+
+  await writeFile(releaseHistoryPath, `${JSON.stringify(mergedRecords, null, 2)}\n`)
+  await writeFile(backendSeedPath, `${JSON.stringify(mergedRecords, null, 2)}\n`)
+}
+
+async function readReleaseUpdateRecords(filePath) {
+  const payload = JSON.parse(await readFile(filePath, 'utf8'))
+  if (!Array.isArray(payload)) {
+    throw new Error(`${filePath} must contain a JSON array.`)
+  }
+  return payload
+}
+
+function mergeReleaseUpdateRecords(records) {
+  const seenKeys = new Set()
+  const merged = []
+
+  records.forEach((rawRecord, order) => {
+    const record = normalizeReleaseUpdateRecord(rawRecord)
+    if (!record.recordKey || seenKeys.has(record.recordKey)) {
+      return
+    }
+    seenKeys.add(record.recordKey)
+    merged.push({ record, order })
+  })
+
+  merged.sort(compareReleaseUpdateRecords)
+  return merged.map(({ record }) => record)
+}
+
+function normalizeReleaseUpdateRecord(rawRecord) {
+  return {
+    recordKey: String(rawRecord?.recordKey || rawRecord?.record_key || '').trim(),
+    version: String(rawRecord?.version || '').trim(),
+    releaseDate: String(rawRecord?.releaseDate || rawRecord?.release_date || '').trim(),
+    category: String(rawRecord?.category || 'improved').trim() || 'improved',
+    pageName: String(rawRecord?.pageName || rawRecord?.page_name || 'Version Release').trim(),
+    pagePath: String(rawRecord?.pagePath || rawRecord?.page_path || '').trim(),
+    title: String(rawRecord?.title || '').trim(),
+    description: String(rawRecord?.description || '').trim(),
+  }
+}
+
+function compareReleaseUpdateRecords(left, right) {
+  return (
+    compareVersionSortKey(versionSortKey(right.record.version), versionSortKey(left.record.version))
+    || right.record.releaseDate.localeCompare(left.record.releaseDate)
+    || left.order - right.order
+  )
+}
+
+function versionSortKey(version) {
+  return [...String(version || '').toLowerCase().replace(/^v/, '').matchAll(/\d+/g)]
+    .map((match) => Number.parseInt(match[0], 10))
+}
+
+function compareVersionSortKey(left, right) {
+  const length = Math.min(left.length, right.length)
+  for (let index = 0; index < length; index += 1) {
+    if (left[index] !== right[index]) {
+      return left[index] - right[index]
+    }
+  }
+  return left.length - right.length
+}
+
+function summarizeReleaseNotes(releaseNotes) {
+  const moduleNotes = Array.isArray(releaseNotes.modules)
+    ? releaseNotes.modules
+      .flatMap((moduleRecord) => summarizeReleaseNoteModule(moduleRecord))
+      .filter(Boolean)
+    : []
+
+  if (moduleNotes.length > 0) {
+    return moduleNotes.slice(0, 3).join('；')
+  }
+
+  return ['added', 'improved', 'fixed']
+    .flatMap((key) => {
+      const items = releaseNotes[key]
+      return Array.isArray(items) ? items : []
+    })
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .join('；')
+}
+
+function summarizeReleaseNoteModule(moduleRecord) {
+  const name = String(moduleRecord?.name || '').trim()
+  if (!name) {
+    return []
+  }
+
+  return [
+    ...summarizeReleaseNoteItems(moduleRecord.added, name, '新增'),
+    ...summarizeReleaseNoteItems(moduleRecord.improved, name, '优化'),
+    ...summarizeReleaseNoteItems(moduleRecord.fixed, name, '修复'),
+  ]
+}
+
+function summarizeReleaseNoteItems(items, moduleName, category) {
+  if (!Array.isArray(items)) {
+    return []
+  }
+
+  return items
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .map((item) => `${moduleName} ${category}: ${item}`)
 }
 
 function currentShanghaiDate() {

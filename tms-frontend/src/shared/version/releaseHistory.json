@@ -1,13 +1,33 @@
 [
   {
-    "recordKey": "builtin-1.0.0-beta.3.4-fixed-tc-inv-preview-validate",
-    "version": "1.0.0-beta.3.4",
+    "recordKey": "release-v1.0.0-beta.3.6",
+    "version": "1.0.0-beta.3.6",
+    "releaseDate": "2026-07-03",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.6",
+    "description": "Release v1.0.0-beta.3.6. Channel: beta.3. Commit: 41d400d845a69ad43c03f834bc1c3b490522b64f. Release notes: 优化服务器部署构建流程."
+  },
+  {
+    "recordKey": "builtin-1.0.0-beta.3.6-fixed-tc-inv-preview-validate",
+    "version": "1.0.0-beta.3.6",
     "releaseDate": "2026-07-03",
     "category": "fixed",
     "pageName": "TC INV 自动化",
     "pagePath": "/web-automation/scenarios/tc-inv-automation",
     "title": "补齐 Preview 后的 Validate",
     "description": "TC INV 执行到 Preview 新页面后会继续点击 Validate，确保发票完成校验后才结束当前批次，并通过自动化模块热更新下发给用户。"
+  },
+  {
+    "recordKey": "release-v1.0.0-beta.3.5",
+    "version": "1.0.0-beta.3.5",
+    "releaseDate": "2026-07-03",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.5",
+    "description": "Release v1.0.0-beta.3.5. Channel: beta.3. Commit: 768da4b8a71880e5c7bbd36001ceb90e9e4c2bba. Release notes: 完善自动化模块页面体验；修复后端历史与自动化存储检查；原子同步 semantic-release 版本历史."
   },
   {
     "recordKey": "builtin-1.0.0-beta.3.4-improved-infornexus-native-host-bundled",
@@ -90,6 +110,16 @@
     "description": "Range 中出现 1-5、8-10、11-15 这类中间断号时，会正确记录缺失 6-7，不再只按最大箱号判断是否匹配。"
   },
   {
+    "recordKey": "builtin-1.0.0-beta.3.1-improved-release-history-fallback",
+    "version": "1.0.0-beta.3.1",
+    "releaseDate": "2026-07-02",
+    "category": "improved",
+    "pageName": "版本更新",
+    "pagePath": "/release-updates",
+    "title": "同步当前版本发布记录",
+    "description": "更新内置版本记录兜底，使版本更新页面在后端不可用时也显示当前 1.0.0-beta.3.1 的发布信息。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.32-improved-helper-offline-installer",
     "version": "0.9.8-beta.3.32",
     "releaseDate": "2026-07-02",
@@ -110,16 +140,6 @@
     "description": "各自动化页面统一使用账号档案下拉框和新增 / 编辑弹窗，账号数据按自动化页面隔离保存，避免不同业务页面误用同一套登录账号。"
   },
   {
-    "recordKey": "builtin-1.0.0-beta.3.1-improved-release-history-fallback",
-    "version": "1.0.0-beta.3.1",
-    "releaseDate": "2026-07-02",
-    "category": "improved",
-    "pageName": "版本更新",
-    "pagePath": "/release-updates",
-    "title": "同步当前版本发布记录",
-    "description": "更新内置版本记录兜底，使版本更新页面在后端不可用时也显示当前 1.0.0-beta.3.1 的发布信息。"
-  },
-  {
     "recordKey": "builtin-0.9.8-beta.3.32-fixed-packing-list-batch-server-routing",
     "version": "0.9.8-beta.3.32",
     "releaseDate": "2026-07-01",
@@ -132,12 +152,12 @@
   {
     "recordKey": "builtin-0.9.8-beta.3.32-improved-automation-module-silent-preupdate",
     "version": "0.9.8-beta.3.32",
-    "category": "improved",
-    "title": "小助手自动化模块静默预更新",
-    "description": "小助手启动后会后台全量检查 automation-modules manifest，自动下载并校验新版模块；运行前会兜底刷新，执行器忙碌时等待任务结束或进程停止后再切换。",
     "releaseDate": "2026-06-30",
+    "category": "improved",
     "pageName": "自动化助手 / 模块热更新",
-    "pagePath": "/settings"
+    "pagePath": "/settings",
+    "title": "小助手自动化模块静默预更新",
+    "description": "小助手启动后会后台全量检查 automation-modules manifest，自动下载并校验新版模块；运行前会兜底刷新，执行器忙碌时等待任务结束或进程停止后再切换。"
   },
   {
     "recordKey": "builtin-0.9.8-beta.3.30-fixed-installer-manifest-download-url",
@@ -480,46 +500,6 @@
     "description": "万代 Shipping 固定选择 Assign Equipment ID，新龙泰 Shipping 固定选择 Remove/Change Equipment ID；账号和密码中的 @@ 原样保存、回显和提交，不再被自动替换；Infor Nexus 登录失败和 Access Code 页面会给出中文弹窗提示。"
   },
   {
-    "recordKey": "builtin-0.9.8-beta.3.26-fix-desktop-embedded-automation-process-map",
-    "version": "0.9.8-beta.3.26",
-    "releaseDate": "2026-06-18",
-    "category": "fixed",
-    "pageName": "桌面安装包 / Shipping 自动化",
-    "pagePath": "/web-automation",
-    "title": "修复桌面内置自动化执行器进程表缺失",
-    "description": "桌面端内置自动化启动器补齐进程管理表，修复启动 Shipping 执行器时报 ReferenceError: automationAppProcesses is not defined 的问题。"
-  },
-  {
-    "recordKey": "builtin-0.9.8-beta.3.25-remote-credentials-and-desktop-embedded-automation",
-    "version": "0.9.8-beta.3.25",
-    "releaseDate": "2026-06-18",
-    "category": "fixed",
-    "pageName": "网页自动化 / 桌面安装包",
-    "pagePath": "/web-automation",
-    "title": "修复远程账号回显与桌面内置执行器启动",
-    "description": "服务器端 Infor Nexus 账号支持 Shipping 执行器 id 与各业务场景 id 共用远程数据库凭据；桌面端启动自动化时直接读取安装包内置 automation-apps，不再被本机旧小助手占用 3210 端口影响。"
-  },
-  {
-    "recordKey": "builtin-0.9.8-beta.3.24-remote-db-and-desktop-automation-package",
-    "version": "0.9.8-beta.3.24",
-    "releaseDate": "2026-06-18",
-    "category": "fixed",
-    "pageName": "桌面安装包 / 网页自动化",
-    "pagePath": "/web-automation",
-    "title": "修复桌面安装包远程数据库与 Shipping 执行器识别",
-    "description": "桌面完整安装包默认使用远程服务器数据库读取账号、模板和运行记录；浏览器默认连接远程公开 API；Infor Nexus Shipping 相关场景兼容执行器 id 与业务场景 id 的账号读取，避免安装包中缺少账号或提示 Unknown automation app。"
-  },
-  {
-    "recordKey": "builtin-0.9.8-beta.3.23-fixed-helper-panel-and-shipping-launcher-message",
-    "version": "0.9.8-beta.3.23",
-    "releaseDate": "2026-06-18",
-    "category": "fixed",
-    "pageName": "自动化助手 / Shipping 自动化",
-    "pagePath": "/settings",
-    "title": "修复小助手面板与 Shipping 执行器提示",
-    "description": "设置页版本读取改为使用公开安装包清单接口；打开小助手面板前会先检测本机小助手版本，旧版或未启动时给出中文提示；Shipping 执行器缺失时提示用户安装最新版完整包或小助手。"
-  },
-  {
     "recordKey": "builtin-0.9.8-beta.3.27-added-jessica-packing-list-pdf",
     "version": "0.9.8-beta.3.27",
     "releaseDate": "2026-06-18",
@@ -528,6 +508,16 @@
     "pagePath": "/jessca",
     "title": "新增 Packing List PDF 核对",
     "description": "Jessica 对账核对支持在原发票文件和参考表文件之外可选上传 Packing List PDF，并在同一个结果 Excel 中新增 Packing List核对 sheet。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.26-fix-desktop-embedded-automation-process-map",
+    "version": "0.9.8-beta.3.26",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "桌面安装包 / Shipping 自动化",
+    "pagePath": "/web-automation",
+    "title": "修复桌面内置自动化执行器进程表缺失",
+    "description": "桌面端内置自动化启动器补齐进程管理表，修复启动 Shipping 执行器时报 ReferenceError: automationAppProcesses is not defined 的问题。"
   },
   {
     "recordKey": "builtin-0.9.8-beta.3.26-improved-draft-packing-carton-words",
@@ -540,6 +530,16 @@
     "description": "Draft & Packing List 核对结果 Excel 在 Cartons 后新增 Cartons In Words 列，Draft 行显示 PDF 原文中的大写英文箱数，Packing List 行保持空白。"
   },
   {
+    "recordKey": "builtin-0.9.8-beta.3.25-remote-credentials-and-desktop-embedded-automation",
+    "version": "0.9.8-beta.3.25",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "网页自动化 / 桌面安装包",
+    "pagePath": "/web-automation",
+    "title": "修复远程账号回显与桌面内置执行器启动",
+    "description": "服务器端 Infor Nexus 账号支持 Shipping 执行器 id 与各业务场景 id 共用远程数据库凭据；桌面端启动自动化时直接读取安装包内置 automation-apps，不再被本机旧小助手占用 3210 端口影响。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.25-improved-iplex-auto-columns-release-notice-batch",
     "version": "0.9.8-beta.3.25",
     "releaseDate": "2026-06-18",
@@ -550,6 +550,16 @@
     "description": "iPlex 双表核对删除可见列配置区，生成时自动识别固定业务列并在原位置显示核对异常表；版本更新弹窗改为按发布批次触发，可按模块集中展示更新内容，小修改默认不主动弹窗。"
   },
   {
+    "recordKey": "builtin-0.9.8-beta.3.24-remote-db-and-desktop-automation-package",
+    "version": "0.9.8-beta.3.24",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "桌面安装包 / 网页自动化",
+    "pagePath": "/web-automation",
+    "title": "修复桌面安装包远程数据库与 Shipping 执行器识别",
+    "description": "桌面完整安装包默认使用远程服务器数据库读取账号、模板和运行记录；浏览器默认连接远程公开 API；Infor Nexus Shipping 相关场景兼容执行器 id 与业务场景 id 的账号读取，避免安装包中缺少账号或提示 Unknown automation app。"
+  },
+  {
     "recordKey": "builtin-0.9.8-beta.3.24-fixed-iplex-skip-total-rows",
     "version": "0.9.8-beta.3.24",
     "releaseDate": "2026-06-18",
@@ -558,6 +568,16 @@
     "pagePath": "/iplex/dual-table-compare",
     "title": "跳过 RC 总计行核对",
     "description": "修复 iPlex 双表核对将 RC 表空 Key 总计行当作未匹配行处理的问题，总计行不再写入差值公式、不再标红，也不计入异常列表。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.23-fixed-helper-panel-and-shipping-launcher-message",
+    "version": "0.9.8-beta.3.23",
+    "releaseDate": "2026-06-18",
+    "category": "fixed",
+    "pageName": "自动化助手 / Shipping 自动化",
+    "pagePath": "/settings",
+    "title": "修复小助手面板与 Shipping 执行器提示",
+    "description": "设置页版本读取改为使用公开安装包清单接口；打开小助手面板前会先检测本机小助手版本，旧版或未启动时给出中文提示；Shipping 执行器缺失时提示用户安装最新版完整包或小助手。"
   },
   {
     "recordKey": "builtin-0.9.8-beta.3.23-improved-iplex-preview-and-red-row-marking",
