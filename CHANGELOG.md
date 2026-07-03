@@ -1,3 +1,20 @@
+## [1.0.0-beta.3.5](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.4...v1.0.0-beta.3.5) (2026-07-03)
+
+### Features
+
+* 完善自动化模块页面体验 ([9f9197d](http://172.16.48.208:3001/luenthai-ai/TOS/commit/9f9197d9dc33413469ede5d025e735c81d9359cb))
+
+### Bug Fixes
+
+* 修复后端历史与自动化存储检查 ([768da4b](http://172.16.48.208:3001/luenthai-ai/TOS/commit/768da4b8a71880e5c7bbd36001ceb90e9e4c2bba))
+* 修复自动化账号档案初始化报错 ([c0742ab](http://172.16.48.208:3001/luenthai-ai/TOS/commit/c0742ab91128af2ccb3e7857296a8adb8b5e4a54))
+* 原子同步 semantic-release 版本历史 ([2703e9d](http://172.16.48.208:3001/luenthai-ai/TOS/commit/2703e9d7551da007487277828a11ebaa61c72c3d))
+* 同步版本更新后端默认记录 ([f729a28](http://172.16.48.208:3001/luenthai-ai/TOS/commit/f729a28ff25602c150a5aa9c873ac9a813396a83))
+* 完善小助手启动与 Infor Nexus 桥接 ([025a538](http://172.16.48.208:3001/luenthai-ai/TOS/commit/025a538d70900d2af487cde3cd711cf31515729c))
+* 完善英文界面文案 ([37fa852](http://172.16.48.208:3001/luenthai-ai/TOS/commit/37fa85278e0c522469b2e5582a257524d1beaa1c))
+* 放宽本机执行器启动等待时间 ([9ed1d51](http://172.16.48.208:3001/luenthai-ai/TOS/commit/9ed1d512b0b8ba6b2aaa89764b87e7745f7cfcc8))
+* 调整 PRODUCTION 补入行显示 ([ffd6576](http://172.16.48.208:3001/luenthai-ai/TOS/commit/ffd65762b8a38e554b90ba57cc57b1f26c4cd042))
+
 ## [1.0.0-beta.3.4](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.3...v1.0.0-beta.3.4) (2026-07-03)
 
 ### Bug Fixes
