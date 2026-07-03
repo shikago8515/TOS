@@ -1,3 +1,14 @@
+## [1.0.0-beta.3.2](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.1...v1.0.0-beta.3.2) (2026-07-03)
+
+### Bug Fixes
+
+* 修复 Excel 当前结果下载路径 ([8fe7203](http://172.16.48.208:3001/luenthai-ai/TOS/commit/8fe72036c6d89e07bc264a92361f3a5e10f35744))
+* 修复 semantic-release beta.3 预发布版本格式 ([86665e9](http://172.16.48.208:3001/luenthai-ai/TOS/commit/86665e975c6f6ed661b6c7741ff3c3e3a24e205b))
+* 修复主线检查失败 ([8a57111](http://172.16.48.208:3001/luenthai-ai/TOS/commit/8a5711141dbbacdff9542d48755f47bb77fe14cb))
+* 兼容历史结果模块别名 ([04cf31a](http://172.16.48.208:3001/luenthai-ai/TOS/commit/04cf31ab960bc15a83b91729159e2afa2379d2f7))
+* 同步当前版本记录兜底 ([135f6e5](http://172.16.48.208:3001/luenthai-ai/TOS/commit/135f6e59b08b72375465cf22bad3668730202edf))
+* 恢复 Jane PRODUCTION 旧检查 ([3312a5f](http://172.16.48.208:3001/luenthai-ai/TOS/commit/3312a5f338e304e326e08177252e54b8ba203d51))
+
 ## 1.0.0-beta.3.1 (2026-07-02)
 
 ### Features
