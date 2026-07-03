@@ -110,6 +110,15 @@ class SophiaTinaModule:
     COUNTRY_SOURCE_SHEET = "Country Analysis Source"
     SHIP_METHOD_SOURCE_SHEET = "Ship Method Source"
     S2S_SOURCE_SHEET = "S2S Development Source"
+    COUNTRY_SUMMARY_BUCKETS = [
+        ("CHINA", "China Order"),
+        ("UNITED STATES", "USA Order"),
+        ("OTHER COUNTRIES", "Other Order"),
+    ]
+    COUNTRY_SUMMARY_HEADER_STYLE = 25
+    COUNTRY_SUMMARY_TEXT_STYLE = 9
+    COUNTRY_SUMMARY_PERCENT_STYLE = 10
+    COUNTRY_SUMMARY_CURRENCY_STYLE = 11
     HELPER_WORKSHEETS = [
         ("xl/worksheets/sheet13.xml", COUNTRY_SOURCE_SHEET, "rId22", "18"),
         ("xl/worksheets/sheet14.xml", SHIP_METHOD_SOURCE_SHEET, "rId23", "19"),
@@ -310,6 +319,18 @@ class SophiaTinaModule:
 
             replacements: Dict[str, bytes] = {
                 "xl/styles.xml": styles_xml,
+                "xl/worksheets/sheet3.xml": self._updated_country_summary_sheet_xml(
+                    archive.read("xl/worksheets/sheet3.xml"),
+                    results,
+                    19,
+                    "Season",
+                ),
+                "xl/worksheets/sheet4.xml": self._updated_country_summary_sheet_xml(
+                    archive.read("xl/worksheets/sheet4.xml"),
+                    results,
+                    16,
+                    "Year",
+                ),
                 "xl/worksheets/sheet8.xml": self._development_style_qty_sheet_xml(),
                 "xl/worksheets/sheet10.xml": self._result_sheet_xml(results, table_ref, style_ids),
                 "xl/worksheets/sheet11.xml": self._rules_sheet_xml(),
@@ -793,6 +814,194 @@ class SophiaTinaModule:
                 quantities[(season, factory)],
             ])
         return rows
+
+    def _updated_country_summary_sheet_xml(
+        self,
+        xml_bytes: bytes,
+        results: List[Dict[str, Any]],
+        start_row: int,
+        period_kind: str,
+    ) -> bytes:
+        root = ElementTree.fromstring(xml_bytes)
+        sheet_data = root.find(f"{{{self.OOXML_MAIN_NS}}}sheetData")
+        if sheet_data is None:
+            return xml_bytes
+
+        for row in list(sheet_data):
+            row_number = self._worksheet_row_number(row)
+            if row_number is not None and row_number >= start_row:
+                sheet_data.remove(row)
+
+        summary_rows = self._country_summary_block_rows(results, period_kind)
+        for offset, (row_kind, values) in enumerate(summary_rows):
+            row_index = start_row + offset
+            style_ids = self._country_summary_style_ids(row_kind)
+            cells = [
+                self._cell_xml(row_index, column_index, value, style_ids[column_index - 1])
+                for column_index, value in enumerate(values, 1)
+            ]
+            sheet_data.append(self._row_element(self._row_xml(row_index, cells)))
+
+        dimension = root.find(f"{{{self.OOXML_MAIN_NS}}}dimension")
+        if dimension is not None:
+            end_column = self._dimension_end_column(dimension.attrib.get("ref", "A1:F1"))
+            max_row = max(
+                [
+                    self._worksheet_row_number(row) or 0
+                    for row in sheet_data.findall(f"{{{self.OOXML_MAIN_NS}}}row")
+                ]
+                or [start_row + len(summary_rows) - 1]
+            )
+            dimension.set("ref", f"A1:{end_column}{max_row}")
+
+        return self._serialize_spreadsheet_xml(root)
+
+    def _country_summary_block_rows(
+        self,
+        results: List[Dict[str, Any]],
+        period_kind: str,
+    ) -> List[Tuple[str, List[Any]]]:
+        grouped_metrics: Dict[Tuple[Any, str], Dict[str, Dict[str, float]]] = defaultdict(
+            lambda: defaultdict(self._empty_metrics)
+        )
+        period_labels: Dict[Any, str] = {}
+
+        for row in results:
+            period_key, period_label = self._country_summary_period(row, period_kind)
+            if period_key is None:
+                continue
+            factory = self._clean_text(row.get("Factory")) or "(blank)"
+            bucket = self._country_bucket(row.get("Country/Region"))
+            metrics = grouped_metrics[(period_key, factory)][bucket]
+            metrics["quantity"] += self._optional_float(row.get("Quantity")) or 0.0
+            metrics["tms_amount"] += self._country_summary_tms_amount(row)
+            period_labels[period_key] = period_label
+
+        if not grouped_metrics:
+            header_label = "Year" if period_kind == "Year" else "Season"
+            return [("header", [header_label, "Factory", *[label for _, label in self.COUNTRY_SUMMARY_BUCKETS], "Total Order"])]
+
+        summary_rows: List[Tuple[str, List[Any]]] = []
+        previous_period_key: Any = None
+        for period_key, factory in sorted(
+            grouped_metrics,
+            key=lambda key: self._country_summary_sort_key(key, period_kind),
+        ):
+            if period_key != previous_period_key:
+                summary_rows.append((
+                    "header",
+                    [
+                        period_labels[period_key],
+                        "Factory",
+                        *[label for _, label in self.COUNTRY_SUMMARY_BUCKETS],
+                        "Total Order",
+                    ],
+                ))
+                previous_period_key = period_key
+
+            bucket_metrics = grouped_metrics[(period_key, factory)]
+            quantities = [bucket_metrics[bucket]["quantity"] for bucket, _ in self.COUNTRY_SUMMARY_BUCKETS]
+            values = [bucket_metrics[bucket]["tms_amount"] for bucket, _ in self.COUNTRY_SUMMARY_BUCKETS]
+            total_quantity = sum(quantities)
+            total_value = sum(values)
+            quantity_percentages = [
+                quantity / total_quantity if total_quantity else 0
+                for quantity in quantities
+            ]
+            value_percentages = [
+                value / total_value if total_value else 0
+                for value in values
+            ]
+            summary_rows.extend([
+                ("qty", ["Qty(pcs)", factory, *quantities, total_quantity]),
+                ("qty_pct", ["Qty percentage", factory, *quantity_percentages, None]),
+                ("value", ["Value(usd)", factory, *values, total_value]),
+                ("value_pct", ["Value percentage", factory, *value_percentages, None]),
+            ])
+
+        return summary_rows
+
+    def _country_summary_period(
+        self,
+        row: Dict[str, Any],
+        period_kind: str,
+    ) -> Tuple[Optional[Any], str]:
+        if period_kind == "Year":
+            podd = self._to_datetime(row.get("PODD"))
+            if podd is None:
+                return None, ""
+            return podd.year, f"Year {podd.year}"
+
+        season = self._clean_text(row.get("Season"))
+        season_key = season or "(blank)"
+        return season_key, f"Season {season_key}"
+
+    @staticmethod
+    def _country_summary_sort_key(key: Tuple[Any, str], period_kind: str) -> Tuple[Any, str]:
+        period_key, factory = key
+        if period_kind == "Year" and isinstance(period_key, int):
+            return (-period_key, factory)
+        return (str(period_key), factory)
+
+    def _country_summary_tms_amount(self, row: Dict[str, Any]) -> float:
+        tms_amount = self._optional_float(row.get("_tms_amount_value"))
+        if tms_amount is None:
+            tms_amount = self._optional_float(row.get("TMS Amount(USD)"))
+        return tms_amount or 0.0
+
+    def _country_summary_style_ids(self, row_kind: str) -> List[int]:
+        if row_kind == "header":
+            return [self.COUNTRY_SUMMARY_HEADER_STYLE] * 6
+        if row_kind == "qty_pct":
+            return [
+                self.COUNTRY_SUMMARY_TEXT_STYLE,
+                self.COUNTRY_SUMMARY_TEXT_STYLE,
+                self.COUNTRY_SUMMARY_PERCENT_STYLE,
+                self.COUNTRY_SUMMARY_PERCENT_STYLE,
+                self.COUNTRY_SUMMARY_PERCENT_STYLE,
+                self.COUNTRY_SUMMARY_PERCENT_STYLE,
+            ]
+        if row_kind == "value":
+            return [
+                self.COUNTRY_SUMMARY_TEXT_STYLE,
+                self.COUNTRY_SUMMARY_TEXT_STYLE,
+                self.COUNTRY_SUMMARY_CURRENCY_STYLE,
+                self.COUNTRY_SUMMARY_CURRENCY_STYLE,
+                self.COUNTRY_SUMMARY_CURRENCY_STYLE,
+                self.COUNTRY_SUMMARY_CURRENCY_STYLE,
+            ]
+        if row_kind == "value_pct":
+            return [
+                self.COUNTRY_SUMMARY_TEXT_STYLE,
+                self.COUNTRY_SUMMARY_TEXT_STYLE,
+                self.COUNTRY_SUMMARY_PERCENT_STYLE,
+                self.COUNTRY_SUMMARY_PERCENT_STYLE,
+                self.COUNTRY_SUMMARY_PERCENT_STYLE,
+                self.COUNTRY_SUMMARY_TEXT_STYLE,
+            ]
+        return [self.COUNTRY_SUMMARY_TEXT_STYLE] * 6
+
+    def _row_element(self, row_xml: str) -> ElementTree.Element:
+        wrapper = ElementTree.fromstring(
+            f'<root xmlns="{self.OOXML_MAIN_NS}" xmlns:x14ac="{self.OOXML_X14AC_NS}">{row_xml}</root>'
+        )
+        return list(wrapper)[0]
+
+    @staticmethod
+    def _worksheet_row_number(row: ElementTree.Element) -> Optional[int]:
+        value = row.attrib.get("r")
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _dimension_end_column(dimension_ref: str) -> str:
+        end_ref = dimension_ref.split(":")[-1]
+        end_column = "".join(char for char in end_ref if char.isalpha())
+        return end_column or "F"
 
     def _worksheet_xml(
         self,
