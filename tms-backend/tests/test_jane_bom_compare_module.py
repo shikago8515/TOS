@@ -333,9 +333,9 @@ class JaneBomCompareModuleTests(unittest.TestCase):
 
             self.assertEqual(correct_material_col, material_col + 1)
             self.assertEqual(seller_col, input_units_col + 1)
-            self.assertEqual(rate_col, seller_col + 1)
+            self.assertEqual(correct_supplier_col, seller_col + 1)
+            self.assertEqual(rate_col, correct_supplier_col + 1)
             self.assertEqual(color_col, rate_col + 1)
-            self.assertEqual(correct_supplier_col, color_col + 1)
             self.assertEqual(ws.cell(row=2, column=rate_col).value, '=IFERROR(SUMIFS($L:$L,$A:$A,A2,$B:$B,B2,$G:$G,G2)/C2,"")')
             self.assertEqual(ws.cell(row=2, column=rate_col).number_format, "0.0000")
             self.assertEqual(ws.cell(row=2, column=color_col).value, "117A NIGHT INDIGO")
@@ -352,7 +352,8 @@ class JaneBomCompareModuleTests(unittest.TestCase):
             self.assertEqual(ws.cell(row=4, column=6).value, "3LP001")
             self.assertEqual(ws.cell(row=4, column=7).value, "62712089")
             self.assertEqual(ws.cell(row=4, column=seller_col).value, "299002")
-            self.assertEqual(self._fill_rgb(ws.cell(row=4, column=seller_col)), "FFFFC7CE")
+            for column in range(1, ws.max_column + 1):
+                self.assertEqual(self._fill_rgb(ws.cell(row=4, column=column)), "FFFFF2CC")
             self.assertIsNone(ws.cell(row=4, column=used_units_col).value)
             self.assertIsNone(ws.cell(row=4, column=rate_col).value)
             self.assertEqual(ws.cell(row=4, column=color_col).value, "117B NIGHT INDIGO LINING")
