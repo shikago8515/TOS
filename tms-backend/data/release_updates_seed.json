@@ -1,5 +1,35 @@
 [
   {
+    "recordKey": "builtin-1.0.0-beta.3.4-improved-infornexus-native-host-bundled",
+    "version": "1.0.0-beta.3.4",
+    "releaseDate": "2026-07-03",
+    "category": "improved",
+    "pageName": "TOS 自动化助手",
+    "pagePath": "/settings",
+    "title": "内置 Infor Nexus 桥接本体",
+    "description": "小助手安装包内置 Infor Nexus Desktop Utility 桥接程序，启动执行器时会自动生成 Native Host manifest 并注册到当前用户 Edge / Chrome，用户安装小助手后无需手动配置浏览器扩展。"
+  },
+  {
+    "recordKey": "builtin-1.0.0-beta.3.4-improved-shipping-startup-progress",
+    "version": "1.0.0-beta.3.4",
+    "releaseDate": "2026-07-03",
+    "category": "improved",
+    "pageName": "万代 / 新龙泰 Shipping 自动化",
+    "pagePath": "/web-automation",
+    "title": "新增执行器首次启动进度",
+    "description": "万代和新龙泰 Shipping 页面在首次启动本机执行器时显示真实阶段进度，覆盖连接小助手、启动执行器、等待健康检查、打开 Infor Nexus 和处理 Excel。"
+  },
+  {
+    "recordKey": "builtin-1.0.0-beta.3.4-fixed-helper-cold-start-health",
+    "version": "1.0.0-beta.3.4",
+    "releaseDate": "2026-07-03",
+    "category": "fixed",
+    "pageName": "浏览器自动化",
+    "pagePath": "/web-automation",
+    "title": "修复执行器冷启动误判未就绪",
+    "description": "启动器健康代理在执行器冷启动期间返回可识别的等待状态，不再暴露 502；前端会等待执行器真实健康结果，减少用户刚安装小助手后误判未连接的问题。"
+  },
+  {
     "recordKey": "builtin-1.0.0-beta.3.2-improved-release-history-fallback",
     "version": "1.0.0-beta.3.2",
     "releaseDate": "2026-07-03",
@@ -68,6 +98,16 @@
     "pagePath": "/web-automation",
     "title": "统一自动化账号档案组件",
     "description": "各自动化页面统一使用账号档案下拉框和新增 / 编辑弹窗，账号数据按自动化页面隔离保存，避免不同业务页面误用同一套登录账号。"
+  },
+  {
+    "recordKey": "builtin-1.0.0-beta.3.1-improved-release-history-fallback",
+    "version": "1.0.0-beta.3.1",
+    "releaseDate": "2026-07-02",
+    "category": "improved",
+    "pageName": "版本更新",
+    "pagePath": "/release-updates",
+    "title": "同步当前版本发布记录",
+    "description": "更新内置版本记录兜底，使版本更新页面在后端不可用时也显示当前 1.0.0-beta.3.1 的发布信息。"
   },
   {
     "recordKey": "builtin-0.9.8-beta.3.32-fixed-packing-list-batch-server-routing",
@@ -540,16 +580,6 @@
     "description": "版本同步脚本会同时更新自动化 app registry 和 shipping executor 版本，确保小助手安装后健康检查、更新面板和服务器安装包版本保持一致。"
   },
   {
-    "recordKey": "builtin-0.9.8-beta.3.21-added-iplex-dual-table-compare",
-    "version": "0.9.8-beta.3.21",
-    "releaseDate": "2026-06-17",
-    "category": "added",
-    "pageName": "iPlex 双表核对",
-    "pagePath": "/iplex/dual-table-compare",
-    "title": "新增 iPlex 双表核对工具",
-    "description": "新增 iPlex 双表核对工具，支持两张 Excel 按指定关键列匹配并导出带筛选的差值核对结果。"
-  },
-  {
     "recordKey": "builtin-0.9.8-beta.3.21-improved-helper-and-installer-update-panels",
     "version": "0.9.8-beta.3.21",
     "releaseDate": "2026-06-18",
@@ -558,6 +588,16 @@
     "pagePath": "/settings",
     "title": "新增小助手和桌面端更新入口",
     "description": "小助手启动后可在本机面板检查服务器最新版、下载并打开最新版安装包；桌面端右上角会在服务器完整安装包版本高于本机版本时提示下载更新。"
+  },
+  {
+    "recordKey": "builtin-0.9.8-beta.3.21-added-iplex-dual-table-compare",
+    "version": "0.9.8-beta.3.21",
+    "releaseDate": "2026-06-17",
+    "category": "added",
+    "pageName": "iPlex 双表核对",
+    "pagePath": "/iplex/dual-table-compare",
+    "title": "新增 iPlex 双表核对工具",
+    "description": "新增 iPlex 双表核对工具，支持两张 Excel 按指定关键列匹配并导出带筛选的差值核对结果。"
   },
   {
     "recordKey": "builtin-0.9.8-beta.3.20-fixed-adidas-materials-helper-entry",
@@ -1328,15 +1368,5 @@
     "pagePath": "/tms-finance-internal-reconciliation",
     "title": "新增 TMS 财务追加结果统计",
     "description": "TMS 财务追加结果统计，显示追加行、重复跳过、相似已追加、Sales/Purchase 追加数量。"
-  },
-  {
-    "recordKey": "builtin-1.0.0-beta.3.1-improved-release-history-fallback",
-    "version": "1.0.0-beta.3.1",
-    "releaseDate": "2026-07-02",
-    "category": "improved",
-    "pageName": "版本更新",
-    "pagePath": "/release-updates",
-    "title": "同步当前版本发布记录",
-    "description": "更新内置版本记录兜底，使版本更新页面在后端不可用时也显示当前 1.0.0-beta.3.1 的发布信息。"
   }
 ]
