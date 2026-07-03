@@ -26,6 +26,8 @@ const launcherProtocolUrl = 'tos://automation/launcher/start'
 const defaultAutomationHelperDownloadPath = '/api/system/config/automation-helper/download'
 const localHealthProbeTimeoutMs = 2500
 const localLauncherProbeTimeoutMs = 1200
+const localLauncherRequestTimeoutMs = 15000
+const localLauncherStartTimeoutMs = 90000
 const automationTemplateBackendTarget = 'remote'
 export const minimumAutomationHelperVersion = '1.0.0-beta.3.4'
 
@@ -501,6 +503,7 @@ export async function launchAutomationConsole(
       'POST',
       `/api/apps/${encodeURIComponent(appId)}/start`,
       { forceUpdate },
+      localLauncherStartTimeoutMs,
     )
   }
 
@@ -1485,13 +1488,14 @@ async function requestLauncherJson<T = Record<string, unknown>>(
   method: string,
   pathname: string,
   body?: Record<string, unknown>,
+  timeoutMs = localLauncherRequestTimeoutMs,
 ): Promise<T> {
   const requestBody = body === undefined ? undefined : JSON.stringify(body)
   const response = await fetchWithTimeout(`${launcherBaseUrl}${pathname}`, {
     method,
     headers: requestBody ? { 'Content-Type': 'application/json' } : undefined,
     body: requestBody,
-  }, 15000)
+  }, timeoutMs)
 
   const rawText = await response.text()
   const payload = safeParseExecutorJson(rawText)
