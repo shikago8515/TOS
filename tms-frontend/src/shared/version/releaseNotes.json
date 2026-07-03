@@ -1,23 +1,13 @@
 {
-  "version": "1.0.0-beta.3.2",
+  "version": "1.0.0-beta.3.3",
   "date": "2026-07-03",
-  "noticeId": "2026-07-03-v1.0.0-beta.3.2",
+  "noticeId": "2026-07-03-v1.0.0-beta.3.3",
   "showPopup": false,
   "added": [],
-  "improved": [
-    "修复 semantic-release beta.3 递增",
-    "收口自动化执行器响应类型",
-    "减少重复检查",
-    "修复 semantic-release prerelease 标识",
-    "补全 semantic-release 发布历史"
-  ],
+  "improved": [],
   "fixed": [
-    "修复主线检查失败",
-    "恢复 Jane PRODUCTION 旧检查",
-    "修复 semantic-release beta.3 预发布版本格式",
-    "修复 Excel 当前结果下载路径",
-    "兼容历史结果模块别名",
-    "同步当前版本记录兜底"
+    "同步当前版本发布历史",
+    "修复首页历史记录脏数据崩溃"
   ],
   "modules": [],
   "sections": []

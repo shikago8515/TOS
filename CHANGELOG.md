@@ -1,3 +1,10 @@
+## [1.0.0-beta.3.3](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.2...v1.0.0-beta.3.3) (2026-07-03)
+
+### Bug Fixes
+
+* 修复首页历史记录脏数据崩溃 ([1513884](http://172.16.48.208:3001/luenthai-ai/TOS/commit/151388443582c2cd4dfcb6cc3a43c6dac4b9b4ae))
+* 同步当前版本发布历史 ([ca3e5a4](http://172.16.48.208:3001/luenthai-ai/TOS/commit/ca3e5a46594151ef001405b85c23334c5cfdba03))
+
 ## [1.0.0-beta.3.2](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.1...v1.0.0-beta.3.2) (2026-07-03)
 
 ### Bug Fixes
