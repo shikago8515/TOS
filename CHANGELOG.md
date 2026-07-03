@@ -1,3 +1,9 @@
+## [1.0.0-beta.3.4](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.3...v1.0.0-beta.3.4) (2026-07-03)
+
+### Bug Fixes
+
+* 调整 Jane PRODUCTION 核对输出 ([6a242f9](http://172.16.48.208:3001/luenthai-ai/TOS/commit/6a242f9dfbc60ab3dddd893fe1c56ac321cf2465))
+
 ## [1.0.0-beta.3.3](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.2...v1.0.0-beta.3.3) (2026-07-03)
 
 ### Bug Fixes

@@ -1,26 +1,25 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.3",
-  "tag": "v1.0.0-beta.3.3",
-  "gitSha": "fdc0cfe5b9f78d777f8f7d17a2f59658c54e811e",
+  "version": "1.0.0-beta.3.4",
+  "tag": "v1.0.0-beta.3.4",
+  "gitSha": "6a242f9dfbc60ab3dddd893fe1c56ac321cf2465",
   "releaseDate": "2026-07-03",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.3",
+    "version": "1.0.0-beta.3.4",
     "date": "2026-07-03",
-    "noticeId": "2026-07-03-v1.0.0-beta.3.3",
+    "noticeId": "2026-07-03-v1.0.0-beta.3.4",
     "showPopup": false,
     "added": [],
     "improved": [],
     "fixed": [
-      "同步当前版本发布历史",
-      "修复首页历史记录脏数据崩溃"
+      "调整 Jane PRODUCTION 核对输出"
     ],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.3",
-    "version": "1.0.0-beta.3.3",
+    "noticeId": "v1.0.0-beta.3.4",
+    "version": "1.0.0-beta.3.4",
     "releaseDate": "2026-07-03",
     "showPopup": false,
     "level": "maintenance",
@@ -30,8 +29,7 @@
         "title": "修复",
         "icon": "check-circle",
         "items": [
-          "同步当前版本发布历史",
-          "修复首页历史记录脏数据崩溃"
+          "调整 Jane PRODUCTION 核对输出"
         ]
       }
     ]

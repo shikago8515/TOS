@@ -1,13 +1,12 @@
 {
-  "version": "1.0.0-beta.3.3",
+  "version": "1.0.0-beta.3.4",
   "date": "2026-07-03",
-  "noticeId": "2026-07-03-v1.0.0-beta.3.3",
+  "noticeId": "2026-07-03-v1.0.0-beta.3.4",
   "showPopup": false,
   "added": [],
   "improved": [],
   "fixed": [
-    "同步当前版本发布历史",
-    "修复首页历史记录脏数据崩溃"
+    "调整 Jane PRODUCTION 核对输出"
   ],
   "modules": [],
   "sections": []
