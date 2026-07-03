@@ -48,6 +48,7 @@ class JaneBomCompareModule:
     MAIN_COMPONENT_SECTION = "MAIN COMPONENT"
     NO_FILL = PatternFill(fill_type=None)
     RED_FILL = PatternFill("solid", fgColor="FFFFC7CE")
+    MISSING_ROW_FILL = PatternFill("solid", fgColor="FFFFF2CC")
     RED_FONT_COLOR = "FFFF0000"
     REQUIRED_PRODUCTION_COLUMNS = [
         "Style ID",
@@ -383,24 +384,24 @@ class JaneBomCompareModule:
             header_row,
             columns,
             "seller facility id",
-            "料率",
-            "料率",
-        )
-        self._insert_column_after(
-            ws,
-            header_row,
-            columns,
-            "料率",
-            "颜色",
-            "颜色",
-        )
-        self._insert_column_after(
-            ws,
-            header_row,
-            columns,
-            "颜色",
             "correct group code supplier",
             "Correct Group Code Supplier (BOM)",
+        )
+        self._insert_column_after(
+            ws,
+            header_row,
+            columns,
+            "correct group code supplier",
+            "料率",
+            "料率",
+        )
+        self._insert_column_after(
+            ws,
+            header_row,
+            columns,
+            "料率",
+            "颜色",
+            "颜色",
         )
         for key, header in self.DIAGNOSTIC_HEADERS:
             self._append_column(ws, header_row, columns, key, header)
@@ -451,6 +452,10 @@ class JaneBomCompareModule:
             font.strike = True
             font.color = self.RED_FONT_COLOR
             cell.font = font
+
+    def _set_row_fill(self, ws, row_index: int, max_column: int, fill: PatternFill) -> None:
+        for column_index in range(1, max_column + 1):
+            ws.cell(row=row_index, column=column_index).fill = copy.copy(fill)
 
     def _build_expected_material_map(
         self,
@@ -754,8 +759,6 @@ class JaneBomCompareModule:
                 ws.cell(row=insert_at, column=columns["颜色"], value=material.color or None)
                 ws.cell(row=insert_at, column=columns["seller facility id"], value=material.group_code_supplier)
 
-                for column_key in ["recording facility id", "input material uid/id", "seller facility id"]:
-                    self._mark_red(ws.cell(row=insert_at, column=columns[column_key]))
                 self._set_row_diagnostic(
                     ws,
                     insert_at,
@@ -765,6 +768,7 @@ class JaneBomCompareModule:
                     f"Production 缺少材料：{material.material_ref}，Factory：{material.factory}",
                     material,
                 )
+                self._set_row_fill(ws, insert_at, max_column, self.MISSING_ROW_FILL)
                 inserted_rows.add(insert_at)
                 insert_at += 1
         return inserted_rows
