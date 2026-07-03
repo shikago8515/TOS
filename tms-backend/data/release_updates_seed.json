@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "release-v1.0.0-beta.3.6",
+    "version": "1.0.0-beta.3.6",
+    "releaseDate": "2026-07-03",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.6",
+    "description": "Release v1.0.0-beta.3.6. Channel: beta.3. Commit: 41d400d845a69ad43c03f834bc1c3b490522b64f. Release notes: 优化服务器部署构建流程."
+  },
+  {
     "recordKey": "release-v1.0.0-beta.3.5",
     "version": "1.0.0-beta.3.5",
     "releaseDate": "2026-07-03",

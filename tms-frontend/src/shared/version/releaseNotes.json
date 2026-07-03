@@ -1,21 +1,12 @@
 {
-  "version": "1.0.0-beta.3.5",
+  "version": "1.0.0-beta.3.6",
   "date": "2026-07-03",
-  "noticeId": "2026-07-03-v1.0.0-beta.3.5",
-  "showPopup": true,
-  "added": [
-    "完善自动化模块页面体验"
-  ],
+  "noticeId": "2026-07-03-v1.0.0-beta.3.6",
+  "showPopup": false,
+  "added": [],
   "improved": [],
   "fixed": [
-    "修复后端历史与自动化存储检查",
-    "原子同步 semantic-release 版本历史",
-    "同步版本更新后端默认记录",
-    "放宽本机执行器启动等待时间",
-    "完善英文界面文案",
-    "修复自动化账号档案初始化报错",
-    "调整 PRODUCTION 补入行显示",
-    "完善小助手启动与 Infor Nexus 桥接"
+    "优化服务器部署构建流程"
   ],
   "modules": [],
   "sections": []

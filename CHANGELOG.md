@@ -1,3 +1,9 @@
+## [1.0.0-beta.3.6](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.5...v1.0.0-beta.3.6) (2026-07-03)
+
+### Bug Fixes
+
+* 优化服务器部署构建流程 ([41d400d](http://172.16.48.208:3001/luenthai-ai/TOS/commit/41d400d845a69ad43c03f834bc1c3b490522b64f))
+
 ## [1.0.0-beta.3.5](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.4...v1.0.0-beta.3.5) (2026-07-03)
 
 ### Features

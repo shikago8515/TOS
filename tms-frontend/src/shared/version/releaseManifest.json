@@ -1,58 +1,35 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.5",
-  "tag": "v1.0.0-beta.3.5",
-  "gitSha": "768da4b8a71880e5c7bbd36001ceb90e9e4c2bba",
+  "version": "1.0.0-beta.3.6",
+  "tag": "v1.0.0-beta.3.6",
+  "gitSha": "41d400d845a69ad43c03f834bc1c3b490522b64f",
   "releaseDate": "2026-07-03",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.5",
+    "version": "1.0.0-beta.3.6",
     "date": "2026-07-03",
-    "noticeId": "2026-07-03-v1.0.0-beta.3.5",
-    "showPopup": true,
-    "added": [
-      "完善自动化模块页面体验"
-    ],
+    "noticeId": "2026-07-03-v1.0.0-beta.3.6",
+    "showPopup": false,
+    "added": [],
     "improved": [],
     "fixed": [
-      "修复后端历史与自动化存储检查",
-      "原子同步 semantic-release 版本历史",
-      "同步版本更新后端默认记录",
-      "放宽本机执行器启动等待时间",
-      "完善英文界面文案",
-      "修复自动化账号档案初始化报错",
-      "调整 PRODUCTION 补入行显示",
-      "完善小助手启动与 Infor Nexus 桥接"
+      "优化服务器部署构建流程"
     ],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.5",
-    "version": "1.0.0-beta.3.5",
+    "noticeId": "v1.0.0-beta.3.6",
+    "version": "1.0.0-beta.3.6",
     "releaseDate": "2026-07-03",
-    "showPopup": true,
-    "level": "feature",
+    "showPopup": false,
+    "level": "maintenance",
     "title": "本次更新内容",
     "groups": [
-      {
-        "title": "新增",
-        "icon": "sparkles",
-        "items": [
-          "完善自动化模块页面体验"
-        ]
-      },
       {
         "title": "修复",
         "icon": "check-circle",
         "items": [
-          "修复后端历史与自动化存储检查",
-          "原子同步 semantic-release 版本历史",
-          "同步版本更新后端默认记录",
-          "放宽本机执行器启动等待时间",
-          "完善英文界面文案",
-          "修复自动化账号档案初始化报错",
-          "调整 PRODUCTION 补入行显示",
-          "完善小助手启动与 Infor Nexus 桥接"
+          "优化服务器部署构建流程"
         ]
       }
     ]
