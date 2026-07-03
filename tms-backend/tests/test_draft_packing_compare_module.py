@@ -254,6 +254,71 @@ FAX:0411-82643422 TEL:0411-82532807
 """
 
 
+INDONESIA_FORM_E_TEXT = """
+ASEAN-CHINA FREE TRADE AREA
+PREFERENTIAL TARIFF CERTIFICATE OF ORIGIN
+FORM E
+5.Item 6. Marks and 7.Number and type of packages, description of products 8.Origin criteria 9.Gross weight or net 10.Number,
+number numbers on (including quantity where appropriate and HS number in (see Overleaf weight or other quantity, date of
+packages six digit code) Notes) and value (FOB) only Invoices
+1 CART NO. THIRTEEN (13) CARTONS OFWOMEN'S KNITTED JACKET, PSR 124 PIECES 6541181456
+CUST O/N MAIN MATERIAL: Outer: 100% POLYURETHANE,Inner:100% JUL.03,2026
+PO NO POLYESTER RECYCLED,LINING:100% POLYESTER RECYCLED
+ART NO PO# 0902774332
+SIZE ARTICLE NO. ARTICLE NO.: LH1945
+QTY STYLE NO. STYLE NO.: RC2616OW007
+MADE IN CHINA HS Code:611300
+SAY TOTAL THIRTEEN (13) CARTONS ONLY
+"""
+
+
+INDONESIA_PACKING_PAGE = PackingExtractedPage(
+    text="""
+TMS FASHION (H.K.) LIMITED Invoice Number
+UNIT 1001-1002, 10 FLOOR 10-06-26-0755
+PO No PO Line Working No Article No Article Description Model No Model Name Market PO Category Brand QTY Ctn Count Net Net Net Gross Vol Vol Wt
+Aggregator Number
+0902774332 1 RC2616OW007 LH1945 PLEATHER JACKET LA277 PLEATHER 0307405246 ORIGINALS ADIDAS 124 13 133.220 135.700 150.650 0.728 0.000
+BLACK JACKET
+Goods Description
+WOMEN'S KNITTED JACKET,MAIN MATERIAL: Outer: 100% POLYURETHANE,Inner:100% POLYESTER RECYCLED,LINING:100% POLYESTER RECYCLED
+Total Quantity 124
+""",
+    tables=[
+        [
+            [
+                "PO No",
+                "PO Line",
+                "Working No",
+                "Article No",
+                "Article Description",
+                "Model No",
+                "Model Name",
+                "Market PO Number",
+                "Category",
+                "Brand",
+                "QTY",
+                "C t n Count",
+            ],
+            [
+                "0902774332",
+                "1",
+                "RC2616OW007",
+                "LH1945",
+                "PLEATHER JACKET",
+                "LA277",
+                "PLEATHER BLACK JACKET",
+                "0307405246",
+                "ORIGINALS",
+                "ADIDAS",
+                "124",
+                "13",
+            ],
+        ],
+    ],
+)
+
+
 CAMBODIA_FORM_D_TEXT = """
 KHTH2605006456
 XO TEX INDUSTRIAL CO., LTD.
@@ -671,6 +736,30 @@ class DraftPackingCompareModuleTests(unittest.TestCase):
                 for row in packing_rows
             )
         )
+
+    def test_process_indonesia_form_e_matches_packing_by_style_and_article(self):
+        ocr = FailingOriginCertificateOcr()
+        module = DraftPackingCompareModule(origin_certificate_ocr=ocr)
+        module._extract_pdf_text = lambda _pdf_path: INDONESIA_FORM_E_TEXT
+
+        draft_records = module.parse_origin_certificate_pdf("text-readable-indonesia-form-e.pdf")
+        packing_records = module.parse_packing_pages([INDONESIA_PACKING_PAGE])
+        comparison = module.build_comparison_result(draft_records, packing_records)
+
+        self.assertFalse(ocr.called)
+        self.assertEqual(len(draft_records), 1)
+        self.assertEqual(draft_records[0].po_number, "0902774332")
+        self.assertEqual(draft_records[0].working_number, "RC2616OW007")
+        self.assertEqual(draft_records[0].article_number, "LH1945")
+        self.assertEqual(draft_records[0].customer_number, "")
+        self.assertEqual(draft_records[0].quantity, 124)
+        self.assertEqual(draft_records[0].cartons, 13)
+        self.assertEqual(len(packing_records), 1)
+        self.assertEqual(comparison.group_count, 1)
+        self.assertIsNotNone(comparison.groups[0].draft)
+        self.assertIsNotNone(comparison.groups[0].packing)
+        self.assertEqual(comparison.groups[0].key, ("0902774332", "RC2616OW007", "LH1945"))
+        self.assertFalse(any(issue.field_name == "Record" for issue in comparison.issues))
 
     def test_parse_packing_pages_uses_tables_and_reports_missing_hts(self):
         records = self.module.parse_packing_pages([PACKING_PAGE])
