@@ -482,7 +482,7 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
   } finally { refreshing.value = false }
 }
 
-async function waitForExecutorHealthReady(timeoutMs = 60000): Promise<boolean> {
+async function waitForExecutorHealthReady(timeoutMs = 90000): Promise<boolean> {
   if (!entry) return false
   const startedAt = Date.now()
   let lastError = ''
@@ -602,7 +602,7 @@ async function startActiveApp(silent: boolean): Promise<void> {
     setStartupStage('launch')
     const r = await launchAutomationConsole(entry.appId); if (!r.success) throw new Error(r.error || '启动失败')
     if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
-    const executorReady = await waitForExecutorHealthReady(60000)
+    const executorReady = await waitForExecutorHealthReady(90000)
     if (!executorReady) throw new Error('执行器已启动，但健康检查暂时未连上。请点刷新，或稍后重试。')
     await refreshCredentialProfile()
     if (!sending.value) finishStartupProgress()
