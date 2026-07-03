@@ -19,18 +19,27 @@ TOS 是一个 Windows x64 桌面工具，当前源码工作区由三部分组成
 
 ## 文档地图
 
-- `AGENTS.md`：项目级 AI 协作规则、工程边界和验证要求。
-- `tms-frontend/README.md`：前端源码工作区、命令、源码约定和页面清单。
-- `docs/frontend-engineering-standards.md`：前端重建工程规范和变更接收检查项。
-- `docs/engineering-entrypoints.md`：根目录工程入口、检查矩阵和命令边界。
+- `AGENTS.md`：AI 代码助手必须遵守的项目级执行规则、工程边界、安全要求和验证分层。
+- `tms-frontend/README.md`：前端源码工作区、命令、源码约定、页面清单和本地开发入口。
+- `docs/frontend-engineering-standards.md`：前端重建的 Vue/TypeScript 可执行规范、共享组件复用、API 边界和变更接收检查项。
+- `docs/engineering-entrypoints.md`：根目录工程入口、检查矩阵、验证分层和命令边界。
 - `docs/engineering-closure-roadmap.md`：未完全工程化部分的优先级、边界和验收标准。
 - `docs/tos-ai-workflow.md`：TOS-AI 从 Gitea 同步、分支开发、版本、CI 到服务器发布的完整工作流。
 - `docs/server-deployment-runbook.md`：服务器 `~/TOS` 目录式 Docker Compose 更新、备份、验证和回滚流程。
 - `docs/server-deployment-runbook.md` 同时记录桌面安装包在服务器 MinIO Docker volume 中的物理位置、对象 key、旧安装包删除规则和公开下载代理地址。
 - `docs/excel-result-history.md`：Excel 处理结果历史归档、服务器下载、环境变量和验证说明。
 - `docs/frontend-tms-finance-parity.md`：TMS 财务页 parity 与复用边界说明。
-- `tms-backend/README.md`：后端运行、模块和测试说明。
-- `tms-electron-app/README.md`：Electron 运行、打包和发布说明。
+- `tms-backend/README.md`：后端运行、模块、API 兼容、代码规范和测试说明。
+- `tms-electron-app/README.md`：Electron 运行、打包、独立运行边界和发布敏感配置说明。
+
+## 如何选择文档
+
+- 做 AI 协作、改规则、处理 Git/验证/安全/发布边界：先看 `AGENTS.md`。
+- 做前端页面、路由、状态、样式、请求封装或 Excel 处理页复用：看 `docs/frontend-engineering-standards.md` 和 `tms-frontend/README.md`。
+- 做后端 API、Excel/PDF 处理、上传下载、错误脱敏或模块测试：看 `tms-backend/README.md`。
+- 做 Electron 主进程、preload、自动化 helper、安装包、更新清单或发布产物：看 `tms-electron-app/README.md`。
+- 不确定该运行哪个命令：看 `docs/engineering-entrypoints.md`，先用 `npm run check:changed:dry-run` 预览最小检查集。
+- 做从需求到 Gitea `main`、自动版本、服务器部署和回滚的完整流程：看 `docs/tos-ai-workflow.md`。
 
 ## 常用验证命令
 
