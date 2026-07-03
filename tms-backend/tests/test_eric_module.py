@@ -381,6 +381,9 @@ class EricModuleYticSourceTests(unittest.TestCase):
         }
         size_check_rows = [
             ["0902792931", "LI2854", "XS", 32, 32, 0, "OK"],
+            ["0902810812", "KY5192", "A/XS", None, 224, None, "YTIC_ONLY"],
+            ["0902830623", "KY5193", "A/2XS", 57, None, None, "FINAL_ONLY"],
+            ["0902791698", "KY5192", "A/XS", 238, 224, 14, "QTY_DIFF"],
         ]
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -401,11 +404,12 @@ class EricModuleYticSourceTests(unittest.TestCase):
                     [
                         "Size_Check",
                         "Final_Data",
-                        "Destination1Extract",
+                        "Destination_Extract",
                         "SP_Extract",
                         "PO_Text_Compare",
                     ],
                 )
+                self.assertNotIn("Destination1Extract", wb.sheetnames)
                 size_rows = list(wb["Size_Check"].iter_rows(values_only=True))
                 self.assertEqual(
                     size_rows,
@@ -417,16 +421,44 @@ class EricModuleYticSourceTests(unittest.TestCase):
                             "PO Quantity",
                             "Final Quantity",
                             "margin",
+                            "Remarks",
                         ),
-                        ("0902792931", "LI2854", "XS", 32, 32, "=E2-D2"),
+                        ("0902792931", "LI2854", "XS", 32, 32, "=E2-D2", None),
+                        (
+                            "0902810812",
+                            "KY5192",
+                            "A/XS",
+                            224,
+                            None,
+                            "=E3-D3",
+                            "Final_Data 未匹配到对应 PO/Article/Size",
+                        ),
+                        (
+                            "0902830623",
+                            "KY5193",
+                            "A/2XS",
+                            None,
+                            57,
+                            "=E4-D4",
+                            "YTIC Size 未匹配到对应 PO/Article/Size",
+                        ),
+                        (
+                            "0902791698",
+                            "KY5192",
+                            "A/XS",
+                            224,
+                            238,
+                            "=E5-D5",
+                            "数量不一致",
+                        ),
                     ],
                 )
                 self.assertNotEqual(wb["Size_Check"]["F1"].fill.fgColor.rgb, "FFFFFF00")
                 self.assertNotEqual(wb["Size_Check"]["F2"].fill.fgColor.rgb, "FFFFFF00")
-                self.assertEqual(wb["Destination1Extract"]["I2"].value, "=H2-G2")
-                self.assertEqual(wb["Destination1Extract"]["I3"].value, "=H3-G3")
-                self.assertIs(wb["Destination1Extract"]["O2"].value, True)
-                self.assertIs(wb["Destination1Extract"]["O3"].value, False)
+                self.assertEqual(wb["Destination_Extract"]["I2"].value, "=H2-G2")
+                self.assertEqual(wb["Destination_Extract"]["I3"].value, "=H3-G3")
+                self.assertIs(wb["Destination_Extract"]["O2"].value, True)
+                self.assertIs(wb["Destination_Extract"]["O3"].value, False)
                 self.assertEqual(wb["SP_Extract"]["J3"].value, "=I3-I4")
                 self.assertIsNone(wb["SP_Extract"]["J4"].value)
                 sp_sheet = wb["SP_Extract"]
@@ -436,7 +468,7 @@ class EricModuleYticSourceTests(unittest.TestCase):
                 for cell_address in ("A4", "L4", "O4"):
                     self.assertNotEqual(sp_sheet[cell_address].fill.fgColor.rgb, highlighted_fill)
                 self.assertNotEqual(
-                    wb["Destination1Extract"]["A2"].fill.fgColor.rgb,
+                    wb["Destination_Extract"]["A2"].fill.fgColor.rgb,
                     highlighted_fill,
                 )
                 rows = list(wb["PO_Text_Compare"].iter_rows(values_only=True))
