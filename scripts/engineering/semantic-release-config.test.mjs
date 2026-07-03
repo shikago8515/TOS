@@ -4,19 +4,20 @@ import { test } from 'node:test'
 
 const require = createRequire(import.meta.url)
 const config = require('../../release.config.cjs')
+const semver = require('semver')
 
-test('semantic-release keeps main on the current beta.3 prerelease channel', () => {
+test('semantic-release recognizes beta.3 tags while publishing the beta.3 channel', () => {
   assert.equal(config.repositoryUrl, 'http://172.16.48.208:3001/luenthai-ai/TOS.git')
   assert.deepEqual(config.branches, [
     'stable',
     {
       name: 'main',
-      prerelease: 'beta3',
+      prerelease: 'beta',
       channel: 'beta.3',
     },
   ])
-  assert.doesNotMatch(config.branches[1].prerelease, /\./)
   assert.equal(config.tagFormat, 'v${version}')
+  assert.equal(semver.inc('1.0.0-beta.3.1', 'prerelease', config.branches[1].prerelease), '1.0.0-beta.3.2')
 })
 
 test('semantic-release updates TOS version files before committing release assets', () => {

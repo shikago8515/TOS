@@ -81,7 +81,10 @@ export function readHistoryMessage(record: ProcessHistoryRecord): string {
   return record.message || '-'
 }
 
-function readFileName(path: string): string {
+function readFileName(path: unknown): string {
+  if (typeof path !== 'string') {
+    return ''
+  }
   const normalized = path.replace(/\\/g, '/')
   return normalized.split('/').filter(Boolean).pop() || ''
 }

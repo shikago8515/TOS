@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   appendModuleHistory,
   buildProcessHistoryResultDownloadUrl,
+  fetchPersistedProcessHistoryRecordPage,
   fetchPersistedProcessHistoryRecords,
   findLatestDownloadableHistoryRecord,
+  loadModuleHistory,
   readProcessHistoryMetadata,
 } from './processHistory'
 
@@ -104,6 +106,87 @@ describe('processHistory', () => {
     }
   })
 
+  it('normalizes dirty localStorage process history records before returning them', () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const storage = new Map<string, string>()
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location: { pathname: '/' },
+        localStorage: {
+          getItem: (key: string) => storage.get(key) ?? null,
+          setItem: (key: string, value: string) => storage.set(key, value),
+          removeItem: (key: string) => storage.delete(key),
+        },
+      },
+    })
+    storage.set('tos.process-history.jane', JSON.stringify([
+      {
+        id: 'dirty-local-1',
+        moduleId: 'jane',
+        moduleName: 'Jane',
+        status: 'success',
+        durationMs: 1200,
+        message: 'completed',
+        inputFiles: ['source.xlsx', { filename: 'bad-object.xlsx' }, 123],
+        outputFile: {
+          filename: 'object-result.xlsx',
+          downloadPath: '/api/process-history/files/51/download',
+        },
+        summary: [
+          { label: 'Rows', value: '10', note: 'ok' },
+          { label: 'Dropped', value: 0 },
+          'bad-summary',
+        ],
+        resultFile: {
+          id: 51,
+          filename: 'archived-result.xlsx',
+          fileSize: 2048,
+          downloadPath: '/api/process-history/files/51/download',
+        },
+        createdAt: '2026-07-03T08:00:00.000Z',
+      },
+      {
+        id: 'dirty-local-2',
+        moduleId: 'jane',
+        moduleName: 'Jane',
+        status: 'success',
+        durationMs: 800,
+        message: 'completed',
+        inputFiles: null,
+        outputFile: ['array-result.xlsx'],
+        summary: null,
+        resultFile: ['not-a-result-file'],
+        createdAt: '2026-07-03T08:01:00.000Z',
+      },
+    ]))
+
+    try {
+      const records = loadModuleHistory('jane')
+
+      expect(records).toHaveLength(2)
+      expect(records[0].outputFile).toBe('object-result.xlsx')
+      expect(records[0].inputFiles).toEqual(['source.xlsx'])
+      expect(records[0].summary).toEqual([{ label: 'Rows', value: '10', note: 'ok' }])
+      expect(records[0].resultFile).toEqual({
+        id: 51,
+        filename: 'archived-result.xlsx',
+        fileSize: 2048,
+        downloadPath: '/api/process-history/files/51/download',
+      })
+      expect(records[1].outputFile ?? '').toBe('')
+      expect(records[1].inputFiles).toEqual([])
+      expect(records[1].summary).toEqual([])
+      expect(records[1].resultFile).toBeUndefined()
+    } finally {
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
+  })
+
   it('can read persisted process history from the remote backend when requested', async () => {
     const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
     const originalFetch = globalThis.fetch
@@ -154,6 +237,96 @@ describe('processHistory', () => {
         method: 'GET',
         url: 'https://ai.tomwell.net:56130/tos/desktop-api/api/process-history/records?moduleIds=jane&page=1&limit=1',
       })
+    } finally {
+      globalThis.fetch = originalFetch
+      vi.unstubAllEnvs()
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'window')
+      }
+    }
+  })
+
+  it('normalizes dirty persisted process history records from the backend', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const originalFetch = globalThis.fetch
+    vi.stubEnv('VITE_BACKEND_ROUTING_MODE', 'hybrid')
+    vi.stubEnv('VITE_REMOTE_BACKEND_URL', 'https://ai.tomwell.net:56130/tos/desktop-api/')
+    vi.stubEnv('VITE_LOCAL_BACKEND_URL', 'http://127.0.0.1:8000/')
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location: { pathname: '/' },
+      },
+    })
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      records: [
+        {
+          id: 'dirty-remote-1',
+          moduleId: 'jane',
+          moduleName: 'Jane',
+          status: 'success',
+          durationMs: 1200,
+          message: 'completed',
+          inputFiles: ['remote-source.xlsx', { filename: 'bad-object.xlsx' }],
+          outputFile: {
+            filename: 'remote-object-result.xlsx',
+            downloadPath: '/api/process-history/files/61/download',
+          },
+          summary: [
+            { label: 'Rows', value: '20' },
+            { label: 'Invalid', value: 1 },
+          ],
+          resultFile: {
+            id: 61,
+            filename: 'remote-archive.xlsx',
+            downloadPath: '/api/process-history/files/61/download',
+          },
+          createdAt: '2026-07-03T08:02:00.000Z',
+        },
+        {
+          id: 'dirty-remote-2',
+          moduleId: 'jane',
+          moduleName: 'Jane',
+          status: 'success',
+          durationMs: 600,
+          message: 'completed',
+          inputFiles: undefined,
+          outputFile: ['array-result.xlsx'],
+          summary: undefined,
+          resultFile: { filename: 'missing-id.xlsx' },
+          createdAt: '2026-07-03T08:03:00.000Z',
+        },
+      ],
+      pagination: {
+        page: 1,
+        pageSize: 2,
+        total: 2,
+      },
+    }), {
+      headers: { 'Content-Type': 'application/json' },
+      status: 200,
+    })) as typeof fetch
+
+    try {
+      const result = await fetchPersistedProcessHistoryRecordPage({
+        moduleIds: ['jane'],
+        page: 1,
+        pageSize: 2,
+        backendTarget: 'remote',
+      })
+
+      expect(result.records).toHaveLength(2)
+      expect(result.records[0].outputFile).toBe('remote-object-result.xlsx')
+      expect(result.records[0].inputFiles).toEqual(['remote-source.xlsx'])
+      expect(result.records[0].summary).toEqual([{ label: 'Rows', value: '20' }])
+      expect(result.records[0].resultFile?.filename).toBe('remote-archive.xlsx')
+      expect(result.records[1].outputFile ?? '').toBe('')
+      expect(result.records[1].inputFiles).toEqual([])
+      expect(result.records[1].summary).toEqual([])
+      expect(result.records[1].resultFile).toBeUndefined()
+      expect(result.pagination.total).toBe(2)
     } finally {
       globalThis.fetch = originalFetch
       vi.unstubAllEnvs()

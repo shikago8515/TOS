@@ -24,6 +24,12 @@ class JaneBomCompareModuleTests(unittest.TestCase):
             return (color.rgb or "").upper()
         return ""
 
+    def _font_rgb(self, cell):
+        color = cell.font.color
+        if color and color.type == "rgb":
+            return (color.rgb or "").upper()
+        return ""
+
     def _column_by_header(self, ws, header):
         for cell in ws[1]:
             if cell.value == header:
@@ -219,7 +225,13 @@ class JaneBomCompareModuleTests(unittest.TestCase):
             "Material Description",
             "Color",
         ])
+        colors_by_article = {
+            "LD1803": ("117A NIGHT INDIGO", "117B NIGHT INDIGO LINING"),
+            "LD1804": ("48F0 MAROON", "48F1 MAROON LINING"),
+            "LD1807": ("095A BLACK", "095B BLACK LINING"),
+        }
         for article in ["LD1803", "LD1804", "LD1807"]:
+            shell_color, lining_color = colors_by_article[article]
             ws.append([
                 "SS26 ASOS Pack",
                 "RC2610OW005H2H",
@@ -232,7 +244,7 @@ class JaneBomCompareModuleTests(unittest.TestCase):
                 "1SB001",
                 "TMS (CHN)",
                 "97%POLYESTER",
-                "117A NIGHT INDIGO",
+                shell_color,
             ])
             ws.append([
                 "SS26 ASOS Pack",
@@ -246,7 +258,7 @@ class JaneBomCompareModuleTests(unittest.TestCase):
                 "299002",
                 "HUAFENG (CHINA)",
                 "100%POLYESTER",
-                "117A NIGHT INDIGO",
+                lining_color,
             ])
         wb.save(path)
         return path
@@ -298,6 +310,7 @@ class JaneBomCompareModuleTests(unittest.TestCase):
             self.assertEqual(result["bom_count"], 1)
             self.assertEqual(result["bom_material_row_count"], 6)
             self.assertEqual(result["checked_row_count"], 7)
+            self.assertEqual(result["mismatch_cell_count"], 10)
             self.assertEqual(result["inconsistent_group_count"], 1)
             self.assertEqual(result["extra_material_row_count"], 1)
             self.assertEqual(result["missing_row_count"], 1)
@@ -307,16 +320,29 @@ class JaneBomCompareModuleTests(unittest.TestCase):
             output_wb = openpyxl.load_workbook(result["output_path"], data_only=False)
             ws = output_wb["PRODUCTION"]
 
+            material_col = self._column_by_header(ws, "Input Material UID/ID")
+            correct_material_col = self._column_by_header(ws, "Correct Material Reference # (BOM)")
             rate_col = self._column_by_header(ws, "料率")
+            color_col = self._column_by_header(ws, "颜色")
             used_units_col = self._column_by_header(ws, "Input Lot Quantity Used (In Units)")
             input_units_col = self._column_by_header(ws, "Input Units")
+            seller_col = self._column_by_header(ws, "Seller Facility ID")
+            correct_supplier_col = self._column_by_header(ws, "Correct Group Code Supplier (BOM)")
             detail_col = self._column_by_header(ws, "Check Detail")
             result_col = self._column_by_header(ws, "Check Result")
 
-            self.assertEqual(rate_col, used_units_col + 1)
-            self.assertEqual(input_units_col, rate_col + 1)
-            self.assertEqual(ws.cell(row=2, column=rate_col).value, '=IFERROR(SUMIFS($K:$K,$A:$A,A2,$B:$B,B2,$G:$G,G2)/C2,"")')
+            self.assertEqual(correct_material_col, material_col + 1)
+            self.assertEqual(seller_col, input_units_col + 1)
+            self.assertEqual(rate_col, seller_col + 1)
+            self.assertEqual(color_col, rate_col + 1)
+            self.assertEqual(correct_supplier_col, color_col + 1)
+            self.assertEqual(ws.cell(row=2, column=rate_col).value, '=IFERROR(SUMIFS($L:$L,$A:$A,A2,$B:$B,B2,$G:$G,G2)/C2,"")')
             self.assertEqual(ws.cell(row=2, column=rate_col).number_format, "0.0000")
+            self.assertEqual(ws.cell(row=2, column=color_col).value, "117A NIGHT INDIGO")
+            self.assertIsNone(ws.cell(row=2, column=correct_material_col).value)
+            self.assertEqual(self._fill_rgb(ws.cell(row=2, column=seller_col)), "FFFFC7CE")
+            self.assertEqual(ws.cell(row=2, column=correct_supplier_col).value, "1SB001")
+            self.assertIn("Seller Facility ID", ws.cell(row=2, column=detail_col).value)
 
             self.assertEqual(ws.cell(row=4, column=1).value, "LD1803")
             self.assertEqual(ws.cell(row=4, column=2).value, "OHO055-M-LD1803")
@@ -325,8 +351,11 @@ class JaneBomCompareModuleTests(unittest.TestCase):
             self.assertEqual(ws.cell(row=4, column=5).value, "2026-02-01")
             self.assertEqual(ws.cell(row=4, column=6).value, "3LP001")
             self.assertEqual(ws.cell(row=4, column=7).value, "62712089")
+            self.assertEqual(ws.cell(row=4, column=seller_col).value, "299002")
+            self.assertEqual(self._fill_rgb(ws.cell(row=4, column=seller_col)), "FFFFC7CE")
             self.assertIsNone(ws.cell(row=4, column=used_units_col).value)
             self.assertIsNone(ws.cell(row=4, column=rate_col).value)
+            self.assertEqual(ws.cell(row=4, column=color_col).value, "117B NIGHT INDIGO LINING")
             self.assertEqual(ws.cell(row=4, column=result_col).value, "需补入")
             self.assertIn("Production 缺少材料", ws.cell(row=4, column=detail_col).value)
             self.assertIn("62712089", ws.cell(row=4, column=detail_col).value)
@@ -336,12 +365,20 @@ class JaneBomCompareModuleTests(unittest.TestCase):
                 self.assertIn("Production Date", ws.cell(row=row_index, column=detail_col).value)
 
             extra_row = self._rows_by_value(ws, 7, "70020122")[0]
+            matched_ld1807_row = self._rows_by_value(ws, 7, "70020171")[-1]
+            self.assertEqual(ws.cell(row=matched_ld1807_row, column=color_col).value, "095A BLACK")
             self.assertEqual(ws.cell(row=extra_row, column=result_col).value, "需删除")
             self.assertIn("Production 多出材料", ws.cell(row=extra_row, column=detail_col).value)
+            self.assertIn("Input Material UID/ID", ws.cell(row=extra_row, column=detail_col).value)
+            self.assertEqual(self._fill_rgb(ws.cell(row=extra_row, column=material_col)), "FFFFC7CE")
+            self.assertEqual(ws.cell(row=extra_row, column=correct_material_col).value, "70020171 / 62712089")
+            self.assertEqual(self._fill_rgb(ws.cell(row=extra_row, column=seller_col)), "FFFFC7CE")
+            self.assertEqual(ws.cell(row=extra_row, column=correct_supplier_col).value, "1SB001 / 299002")
             for column in range(1, ws.max_column + 1):
                 self.assertTrue(ws.cell(row=extra_row, column=column).font.strike)
+                self.assertEqual(self._font_rgb(ws.cell(row=extra_row, column=column)), "FFFF0000")
 
-    def test_raw_bom_input_keeps_route_contract_without_supplier_compare(self):
+    def test_raw_bom_input_restores_material_and_supplier_compare(self):
         with tempfile.TemporaryDirectory() as folder:
             production_path = self._save_production_workbook(folder)
             bom_path = self._save_raw_bom_workbook(folder)
@@ -352,12 +389,18 @@ class JaneBomCompareModuleTests(unittest.TestCase):
             output_wb = openpyxl.load_workbook(result["output_path"], data_only=False)
             ws = output_wb["PRODUCTION"]
 
+            correct_material_col = self._column_by_header(ws, "Correct Material Reference # (BOM)")
             self._column_by_header(ws, "料率")
-            with self.assertRaises(AssertionError):
-                self._column_by_header(ws, "Correct Group Code Supplier (BOM)")
+            color_col = self._column_by_header(ws, "颜色")
+            correct_supplier_col = self._column_by_header(ws, "Correct Group Code Supplier (BOM)")
 
             seller_col = self._column_by_header(ws, "Seller Facility ID")
-            self.assertNotEqual(self._fill_rgb(ws.cell(row=2, column=seller_col)), "FFFFC7CE")
+            detail_col = self._column_by_header(ws, "Check Detail")
+            self.assertIsNone(ws.cell(row=2, column=correct_material_col).value)
+            self.assertEqual(ws.cell(row=2, column=color_col).value, "117A NIGHT INDIGO")
+            self.assertEqual(self._fill_rgb(ws.cell(row=2, column=seller_col)), "FFFFC7CE")
+            self.assertEqual(ws.cell(row=2, column=correct_supplier_col).value, "1SB001")
+            self.assertIn("Seller Facility ID", ws.cell(row=2, column=detail_col).value)
 
 
 if __name__ == "__main__":

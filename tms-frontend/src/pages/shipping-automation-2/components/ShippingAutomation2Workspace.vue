@@ -212,13 +212,20 @@ import {
   primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealth, probeLocalExecutorHealth,
   recordWebAutomationEvent, stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
+import {
+  readExecutorResponseText,
+  safeParseExecutorJson,
+  type ExecutorArtifacts,
+  type ExecutorResponsePayload,
+  type LocalExecutorRun,
+} from '../../web-automation/automationExecutorResponse'
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
 import { releasedBulkDefaultUsername, resolveReleasedBulkCredentialUsername, shippingAutomation2EntryId } from '../shippingAutomation2Model'
 
 type BulkId = 'unreleased' | 'released'
 type BulkTone = 'idle' | 'info' | 'success' | 'error'
-interface BulkResult { ok: boolean; runId?: string; message?: string; finalUrl?: string; generatedAt?: string; artifacts?: { downloadUrls?: Record<string, string>; failedRowCount?: number } }
+interface BulkResult extends ExecutorResponsePayload { ok: boolean; runId?: string; message?: string; finalUrl?: string; generatedAt?: string; artifacts?: ExecutorArtifacts }
 interface BulkState { id: BulkId; label: string; file: File | null; dragging: boolean; dragDepth: number; running: boolean; tone: BulkTone; statusText: string; result: BulkResult | null }
 type CredentialProfileRef = {
   refresh: (accountKey?: string) => Promise<void>
@@ -337,7 +344,7 @@ function syncActiveRunViewFromHealth(): void {
   else stopActiveRunStatePolling()
 }
 
-function findShipping2BulkActiveRun(id: BulkId): Record<string, any> | null {
+function findShipping2BulkActiveRun(id: BulkId): LocalExecutorRun | null {
   return findLocalExecutorActiveRun(executorHealth.value, (run) => {
     const action = String(run.action || '').trim()
     const inputMode = String(run.inputMode || '').trim()
@@ -440,11 +447,11 @@ function collectBulkResultFiles(p: BulkResult | null, id: BulkId): AutomationRun
     bulkRunFileInput(u.failedPoJsonUrl || u.failedRowsJsonUrl, 'failed_rows_json', `${prefix}-last-failed-rows.json`),
   ].filter((item): item is AutomationRunFileInput => Boolean(item))
 }
-function bulkRunFileInput(rawPath: string | undefined, fileRole: string, fileName: string): AutomationRunFileInput | null {
+function bulkRunFileInput(rawPath: unknown, fileRole: string, fileName: string): AutomationRunFileInput | null {
   const url = buildBulkArtifactUrl(rawPath)
   return url ? { url, fileRole, fileName } : null
 }
-function buildBulkArtifactUrl(rawPath: string | undefined): string {
+function buildBulkArtifactUrl(rawPath: unknown): string {
   const normalizedPath = String(rawPath || '').trim()
   if (!normalizedPath) return ''
   if (/^https?:\/\//i.test(normalizedPath)) return normalizedPath
@@ -482,16 +489,17 @@ async function startBulkAutomation(id: BulkId): Promise<void> {
       }),
     })
     const raw = await res.text()
-    const j = safeParseJson<BulkResult>(raw)
-    await finishBulkRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j, id)
+    const j = parseBulkResult(raw)
+    const executorMessage = readExecutorResponseText(j)
+    await finishBulkRunRecord(rr, res.ok && Boolean(j?.ok), executorMessage, j, id)
     if (!res.ok || !j?.ok) {
       const friendlyMessage = buildExecutorResponseMessage(res, raw, j)
-      if (shouldShowAutomationErrorDialog(j?.message || friendlyMessage)) showAutomationErrorDialog(friendlyMessage)
+      if (shouldShowAutomationErrorDialog(executorMessage || friendlyMessage)) showAutomationErrorDialog(friendlyMessage)
       throw new Error(friendlyMessage)
     }
     b.result = j
     b.tone = 'success'
-    b.statusText = j.message || `${b.label} 已启动。`
+    b.statusText = executorMessage || `${b.label} 已启动。`
     messageTone.value = 'success'
     message.value = b.statusText
   } catch (e) {
@@ -510,8 +518,8 @@ async function fileToBase64(f: File): Promise<string> { const bytes = new Uint8A
 function bulkStatusIcon(b: BulkState): string { if (b.running) return 'loader'; if (b.tone === 'success') return 'check-circle'; if (b.tone === 'error') return 'alert-circle'; return 'activity' }
 function formatSize(b: number): string { if (b < 1024) return `${b} B`; if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`; return `${(b / (1024 * 1024)).toFixed(1)} MB` }
 function createFallbackAutomationApp(t: WebAutomationEntry): AutomationAppInfo { return { id: t.appId, name: t.title, description: t.description, provider: 'Playwright', category: 'Web Automation', version: 'local', available: true, running: false, url: t.executorBaseUrl } }
-function safeParseJson<T>(raw: string): T | null { try { return raw ? JSON.parse(raw) as T : null } catch { return null } }
-function buildExecutorResponseMessage(res: Response, raw: string, payload: { message?: unknown } | null, fallback = '自动化执行失败。'): string { const rawMessage = typeof payload?.message === 'string' ? payload.message : ''; if (res.status === 404 && /not\s*found/i.test(rawMessage || raw || '')) return '本机执行器缺少当前自动化接口，系统已同步最新自动化逻辑但接口仍不可用。请确认服务器 automation-modules 模块包已发布，或重启本机自动化执行器后再试。'; if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback); if (!payload) return formatAutomationExecutorMessage('JSON.parse: unexpected character at line 1 column 1 of the JSON data', fallback); return formatAutomationExecutorMessage(`HTTP ${res.status}`, fallback) }
+function parseBulkResult(raw: string): BulkResult | null { return safeParseExecutorJson(raw) as BulkResult | null }
+function buildExecutorResponseMessage(res: Response, raw: string, payload: ExecutorResponsePayload | null, fallback = '自动化执行失败。'): string { const rawMessage = readExecutorResponseText(payload); if (res.status === 404 && /not\s*found/i.test(rawMessage || raw || '')) return '本机执行器缺少当前自动化接口，系统已同步最新自动化逻辑但接口仍不可用。请确认服务器 automation-modules 模块包已发布，或重启本机自动化执行器后再试。'; if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback); if (!payload) return formatAutomationExecutorMessage('JSON.parse: unexpected character at line 1 column 1 of the JSON data', fallback); return formatAutomationExecutorMessage(`HTTP ${res.status}`, fallback) }
 function readErrorMessage(e: unknown, fb: string): string { return e instanceof Error && e.message ? e.message : fb }
 function goBack(): void { void router.push('/jane-infornexus') }
 

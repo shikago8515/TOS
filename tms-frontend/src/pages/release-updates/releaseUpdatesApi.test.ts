@@ -131,6 +131,65 @@ describe('releaseUpdatesApi', () => {
     )
   })
 
+  it('prepends the current release notes when bundled history lags behind the app version', async () => {
+    vi.resetModules()
+    vi.doMock('../../shared/version/appVersion', () => ({
+      fallbackAppVersion: '9.9.9-beta.1',
+    }))
+    vi.doMock('../../shared/version/releaseNotes.json', () => ({
+      default: {
+        version: '9.9.9-beta.1',
+        date: '2026-07-03',
+        added: [],
+        improved: ['Current fallback release'],
+        fixed: [],
+      },
+    }))
+    vi.doMock('../../shared/version/releaseHistory.json', () => ({
+      default: [
+        {
+          recordKey: 'builtin-9.9.9-beta.0-fixed-old',
+          version: '9.9.9-beta.0',
+          releaseDate: '2026-07-02',
+          category: 'fixed',
+          pageName: 'Old history',
+          pagePath: '/old-history',
+          title: 'Old fallback release',
+          description: 'Old fallback release record',
+        },
+      ],
+    }))
+
+    try {
+      const backendClient = await import('../../shared/api/backendClient')
+      vi.mocked(backendClient.requestBackendJson).mockRejectedValue(new Error('Failed to fetch'))
+      const api = await import('./releaseUpdatesApi')
+
+      const payload = await api.fetchReleaseUpdates(2)
+
+      expect(payload).toMatchObject({
+        source: 'bundled',
+        version: '9.9.9-beta.1',
+        total: 2,
+      })
+      expect(payload.records[0]).toMatchObject({
+        version: '9.9.9-beta.1',
+        category: 'improved',
+        pagePath: '/release-updates',
+        title: 'Current fallback release',
+      })
+      expect(payload.records[1]).toMatchObject({
+        version: '9.9.9-beta.0',
+        title: 'Old fallback release',
+      })
+    } finally {
+      vi.doUnmock('../../shared/version/appVersion')
+      vi.doUnmock('../../shared/version/releaseNotes.json')
+      vi.doUnmock('../../shared/version/releaseHistory.json')
+      vi.resetModules()
+    }
+  })
+
   it('does not fall back to bundled release notes when the backend version is stale', async () => {
     vi.mocked(requestBackendJson).mockRejectedValue(
       new Error(`当前后端版本未更新：后端为 0.9.8-beta.3.17，前端为 ${fallbackAppVersion}，请重启本地后端。`),

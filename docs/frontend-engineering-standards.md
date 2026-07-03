@@ -2,6 +2,8 @@
 
 These rules apply to the TOS frontend rebuild. The goal is to keep the current
 product UI while replacing recovered bundled assets with maintainable source.
+`AGENTS.md` defines the mandatory AI execution rules; this document explains
+the frontend-specific implementation standard.
 
 ## Source Ownership
 
@@ -35,12 +37,17 @@ product UI while replacing recovered bundled assets with maintainable source.
 
 - Props must be typed with `defineProps<T>()`.
 - Optional props must use explicit defaults with `withDefaults`.
+- Emits must be typed with `defineEmits<T>()` when payloads are involved.
+- Avoid untyped `ref({})`, `reactive({})`, and broad `Record<string, any>`;
+  model page state with named interfaces or narrow union types.
 - Components should not fetch data unless data ownership is local to that
   component.
 - Keep form state local to pages or feature composables.
 - Use a store only for cross-route state, cached registries, or app-wide session
   state.
 - Do not add global mutable singletons for page-specific state.
+- UI state must cover loading, empty, error, disabled, and success/result states
+  when those states are reachable from the workflow.
 
 ## API Access
 
@@ -49,6 +56,25 @@ product UI while replacing recovered bundled assets with maintainable source.
 - Electron bridge calls go through a typed wrapper over `window.electronAPI`.
 - Request and response shapes must be typed.
 - File upload APIs must expose progress handling consistently.
+- Direct local executor calls are allowed only for explicitly whitelisted
+  automation executor/launcher boundaries, and the whitelist must be locked by
+  `scripts/engineering/frontend-direct-fetch-boundary.test.mjs`.
+- API modules should normalize backend errors into user-facing messages without
+  leaking internal paths, stack traces, tokens, or server-only URLs.
+
+## Component Boundaries
+
+- Pages own business fields, button text, request parameter mapping, result
+  summary conversion, and process-history module ids.
+- Shared upload, precheck, result, diagnostics, process history, and file-list
+  behavior belongs in `src/shared/ui` or `src/shared/process`.
+- Do not create a page-local duplicate of an existing shared component unless
+  the business behavior is materially different and the reason is documented in
+  the change summary.
+- When sidebar navigation and route names already express a subprocess, do not
+  add a large in-content process switcher.
+- Keep feature-specific helpers near the feature; promote to `shared` only when
+  at least two real consumers need the same behavior.
 
 ## Automation Helper Versioning
 
@@ -87,8 +113,11 @@ Before accepting generated code:
 - Check that pages do not add large in-content process switchers when sidebar
   navigation and route names already express the subprocess.
 - Check that no new raw API call bypasses the shared API layer.
-- Run the available typecheck, test, build, and route parity checks before
-  merge.
+- Check that reachable loading, empty, error, disabled, and success/result
+  states render without overflowing or hiding controls.
+- Run the closest real checks for the scope: usually `npm run lint`,
+  `npm run typecheck`, relevant `vitest`, and `npm run build` only when the
+  change needs build-output confidence.
 
 ## Merge Gate
 
@@ -96,6 +125,6 @@ A frontend PR must include:
 
 - Scope statement: route or feature changed.
 - Parity note: what recovered UI behavior was matched.
-- Build result.
-- Typecheck result.
-- Manual smoke result against Electron when applicable.
+- Validation result from the closest real command.
+- Typecheck result when TypeScript code changed.
+- Manual browser or Electron smoke result when the change is user-facing.

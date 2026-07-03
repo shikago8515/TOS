@@ -27,6 +27,7 @@ class BomMaterial:
     factory: str
     material_ref: str
     group_code_supplier: str
+    color: str
     working: str
     season: str
     source_file: str
@@ -47,6 +48,7 @@ class JaneBomCompareModule:
     MAIN_COMPONENT_SECTION = "MAIN COMPONENT"
     NO_FILL = PatternFill(fill_type=None)
     RED_FILL = PatternFill("solid", fgColor="FFFFC7CE")
+    RED_FONT_COLOR = "FFFF0000"
     REQUIRED_PRODUCTION_COLUMNS = [
         "Style ID",
         "Production Lot ID",
@@ -56,6 +58,7 @@ class JaneBomCompareModule:
         "Recording Facility ID",
         "Input Material UID/ID",
         "Input Lot Quantity Used (In Units)",
+        "Seller Facility ID",
     ]
     REQUIRED_BOM_COLUMNS = [
         "Part Group #",
@@ -67,6 +70,8 @@ class JaneBomCompareModule:
         "Factory",
         "Articles",
         "Material Reference #",
+        "Group Code Supplier",
+        "Color",
     ]
     DIAGNOSTIC_HEADERS = [
         ("check result", "Check Result"),
@@ -199,7 +204,8 @@ class JaneBomCompareModule:
                 ws.cell(row=row_index, column=header_columns["group code supplier"]).value,
             )
             for color_column, article in article_columns:
-                if not self._normalize_text(ws.cell(row=row_index, column=color_column).value):
+                color = self._normalize_text(ws.cell(row=row_index, column=color_column).value)
+                if not color:
                     continue
 
                 key = (
@@ -216,6 +222,7 @@ class JaneBomCompareModule:
                         factory=factory,
                         material_ref=material_ref,
                         group_code_supplier=group_code_supplier,
+                        color=color,
                         working=working,
                         season=season,
                         source_file=os.path.basename(bom_path),
@@ -246,6 +253,9 @@ class JaneBomCompareModule:
             material_ref = self._normalize_text(
                 ws.cell(row=row_index, column=header_columns["material reference #"]).value,
             )
+            color = self._normalize_text(
+                ws.cell(row=row_index, column=header_columns["color"]).value,
+            )
             if not article or not factory or not material_ref:
                 continue
 
@@ -268,6 +278,7 @@ class JaneBomCompareModule:
                         header_columns,
                         "group code supplier",
                     ),
+                    color=color,
                     working=self._read_optional_cell_text(ws, row_index, header_columns, "working #"),
                     season=self._read_optional_cell_text(ws, row_index, header_columns, "season"),
                     source_file=os.path.basename(bom_summary_path),
@@ -363,9 +374,33 @@ class JaneBomCompareModule:
             ws,
             header_row,
             columns,
-            "input lot quantity used (in units)",
+            "input material uid/id",
+            "correct material reference #",
+            "Correct Material Reference # (BOM)",
+        )
+        self._insert_column_after(
+            ws,
+            header_row,
+            columns,
+            "seller facility id",
             "料率",
             "料率",
+        )
+        self._insert_column_after(
+            ws,
+            header_row,
+            columns,
+            "料率",
+            "颜色",
+            "颜色",
+        )
+        self._insert_column_after(
+            ws,
+            header_row,
+            columns,
+            "颜色",
+            "correct group code supplier",
+            "Correct Group Code Supplier (BOM)",
         )
         for key, header in self.DIAGNOSTIC_HEADERS:
             self._append_column(ws, header_row, columns, key, header)
@@ -414,6 +449,7 @@ class JaneBomCompareModule:
             cell = ws.cell(row=row_index, column=column_index)
             font = copy.copy(cell.font)
             font.strike = True
+            font.color = self.RED_FONT_COLOR
             cell.font = font
 
     def _build_expected_material_map(
@@ -421,8 +457,9 @@ class JaneBomCompareModule:
         bom_paths: Sequence[str],
         is_summary_input: bool,
         logs: List[str],
-    ) -> Tuple[Dict[Tuple[str, str], List[BomMaterial]], int]:
+    ) -> Tuple[Dict[Tuple[str, str], List[BomMaterial]], Dict[Tuple[str, str], str], int]:
         expected_by_key: Dict[Tuple[str, str], List[BomMaterial]] = {}
+        color_by_style_material: Dict[Tuple[str, str], str] = {}
         bom_material_row_count = 0
         for bom_path in bom_paths:
             bom_materials = (
@@ -445,7 +482,13 @@ class JaneBomCompareModule:
             for material in bom_materials:
                 key = (self._normalize_key(material.article), self._normalize_key(material.factory))
                 expected_by_key.setdefault(key, []).append(material)
-        return expected_by_key, bom_material_row_count
+                color_key = (
+                    self._normalize_key(material.article),
+                    self._normalize_key(material.material_ref),
+                )
+                if material.color and color_key not in color_by_style_material:
+                    color_by_style_material[color_key] = material.color
+        return expected_by_key, color_by_style_material, bom_material_row_count
 
     def _build_production_groups(
         self,
@@ -591,6 +634,88 @@ class JaneBomCompareModule:
         ]
         return extra_rows, missing_materials
 
+    def _group_materials_by_ref(
+        self,
+        expected_materials: Sequence[BomMaterial],
+    ) -> Dict[str, List[BomMaterial]]:
+        materials_by_ref: Dict[str, List[BomMaterial]] = {}
+        for material in expected_materials:
+            material_key = self._normalize_key(material.material_ref)
+            if material_key:
+                materials_by_ref.setdefault(material_key, []).append(material)
+        return materials_by_ref
+
+    def _check_group_material_and_supplier_values(
+        self,
+        ws,
+        group: ProductionGroup,
+        columns: Dict[str, int],
+        expected_materials: Sequence[BomMaterial],
+    ) -> int:
+        materials_by_ref = self._group_materials_by_ref(expected_materials)
+        expected_material_text = self._join_unique(
+            [material.material_ref for material in expected_materials],
+        )
+        mismatch_cell_count = 0
+
+        for row_index in group.rows:
+            material_key = self._normalize_key(
+                ws.cell(row=row_index, column=columns["input material uid/id"]).value,
+            )
+            seller_key = self._normalize_key(
+                ws.cell(row=row_index, column=columns["seller facility id"]).value,
+            )
+
+            supplier_materials = materials_by_ref.get(material_key, [])
+            if not supplier_materials:
+                supplier_materials = list(expected_materials)
+                self._mark_red(ws.cell(row=row_index, column=columns["input material uid/id"]))
+                ws.cell(
+                    row=row_index,
+                    column=columns["correct material reference #"],
+                    value=expected_material_text,
+                )
+                self._set_row_diagnostic(
+                    ws,
+                    row_index,
+                    columns,
+                    "需核对",
+                    "值不一致：以 BOM 为准",
+                    "Input Material UID/ID 不在 BOM MAIN COMPONENT Material Reference # 中。",
+                    supplier_materials[0] if supplier_materials else None,
+                )
+                mismatch_cell_count += 1
+
+            expected_supplier_keys = {
+                self._normalize_key(material.group_code_supplier)
+                for material in supplier_materials
+                if self._normalize_key(material.group_code_supplier)
+            }
+            if not expected_supplier_keys:
+                continue
+
+            if not seller_key or seller_key not in expected_supplier_keys:
+                self._mark_red(ws.cell(row=row_index, column=columns["seller facility id"]))
+                ws.cell(
+                    row=row_index,
+                    column=columns["correct group code supplier"],
+                    value=self._join_unique(
+                        [material.group_code_supplier for material in supplier_materials],
+                    ),
+                )
+                self._set_row_diagnostic(
+                    ws,
+                    row_index,
+                    columns,
+                    "需核对",
+                    "值不一致：以 BOM 为准",
+                    "Seller Facility ID 与 BOM Group Code Supplier 不一致。",
+                    supplier_materials[0],
+                )
+                mismatch_cell_count += 1
+
+        return mismatch_cell_count
+
     def _insert_missing_material_rows(
         self,
         ws,
@@ -626,8 +751,10 @@ class JaneBomCompareModule:
                 ws.cell(row=insert_at, column=columns["input material uid/id"], value=material.material_ref)
                 ws.cell(row=insert_at, column=columns["input lot quantity used (in units)"], value=None)
                 ws.cell(row=insert_at, column=columns["料率"], value=None)
+                ws.cell(row=insert_at, column=columns["颜色"], value=material.color or None)
+                ws.cell(row=insert_at, column=columns["seller facility id"], value=material.group_code_supplier)
 
-                for column_key in ["recording facility id", "input material uid/id"]:
+                for column_key in ["recording facility id", "input material uid/id", "seller facility id"]:
                     self._mark_red(ws.cell(row=insert_at, column=columns[column_key]))
                 self._set_row_diagnostic(
                     ws,
@@ -641,6 +768,24 @@ class JaneBomCompareModule:
                 inserted_rows.add(insert_at)
                 insert_at += 1
         return inserted_rows
+
+    def _apply_color_values(
+        self,
+        ws,
+        header_row: int,
+        columns: Dict[str, int],
+        color_by_style_material: Dict[Tuple[str, str], str],
+    ) -> None:
+        color_col = columns["颜色"]
+        for row_index in range(header_row + 1, ws.max_row + 1):
+            style_key = self._normalize_key(
+                ws.cell(row=row_index, column=columns["style id"]).value,
+            )
+            material_key = self._normalize_key(
+                ws.cell(row=row_index, column=columns["input material uid/id"]).value,
+            )
+            color = color_by_style_material.get((style_key, material_key))
+            ws.cell(row=row_index, column=color_col, value=color or None)
 
     def _apply_rate_formulas(
         self,
@@ -725,7 +870,7 @@ class JaneBomCompareModule:
             max_column = production_ws.max_column
             self._clear_data_fills(production_ws, header_row, max_column)
 
-            expected_by_key, bom_material_row_count = self._build_expected_material_map(
+            expected_by_key, color_by_style_material, bom_material_row_count = self._build_expected_material_map(
                 bom_paths,
                 is_summary_input,
                 logs,
@@ -783,6 +928,13 @@ class JaneBomCompareModule:
                         self._set_row_strike(production_ws, row_index, max_column)
                         extra_material_row_count += 1
 
+                mismatch_cell_count += self._check_group_material_and_supplier_values(
+                    production_ws,
+                    group,
+                    columns,
+                    expected_materials,
+                )
+
                 if missing_materials:
                     groups_with_missing.append((group, missing_materials))
 
@@ -793,6 +945,12 @@ class JaneBomCompareModule:
                 max_column,
             )
             missing_row_count = len(inserted_rows)
+            self._apply_color_values(
+                production_ws,
+                header_row,
+                columns,
+                color_by_style_material,
+            )
             rate_row_count = self._apply_rate_formulas(
                 production_ws,
                 header_row,

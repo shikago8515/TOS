@@ -43,7 +43,7 @@ export function buildJaneBomCompareSummary(
     {
       label: '多出材料行',
       value: String(response.extra_material_row_count ?? '-'),
-      note: 'Production 有但 BOM汇总 未使用的材料行会加删除线',
+      note: 'Production 有但 BOM汇总 未使用的材料行会加删除线并标红',
     },
     {
       label: '补入材料行',
@@ -52,10 +52,12 @@ export function buildJaneBomCompareSummary(
     {
       label: '料率计算行',
       value: String(response.rate_row_count ?? '-'),
+      note: '料率列后会按 Style ID + Material 填入颜色',
     },
     {
       label: '红色单元格',
       value: String(response.mismatch_cell_count ?? '-'),
+      note: '包含 C-D-E-F、Material Reference、Factory 和 Supplier 差异',
     },
     {
       label: '结果文件',

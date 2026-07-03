@@ -61,3 +61,13 @@ npm run check:backend
 - Jason 模块已先行补充 Pydantic response models；其他高频模块按工程化路线图逐步 schema 化。
 - 文件上传和下载路径必须继续使用现有 basename、扩展名和目录边界校验工具，避免路径遍历。
 - CORS 默认只允许本地前端来源 `http://127.0.0.1:5174` 和 `http://localhost:5174`；服务器或特殊部署通过 `TMS_CORS_ALLOW_ORIGINS` 显式配置允许来源。不要恢复 `allow_origins=["*"]` + `allow_credentials=True`。
+
+## Code Standards
+
+- 新增 Python 函数必须写参数和返回值类型提示；复杂返回结构优先使用已有 Pydantic schema、dataclass 或明确的 typed dict 形状，不用裸 `dict` 掩盖契约。
+- API 层负责上传、下载、参数校验和响应封装；Excel/PDF 业务处理逻辑放在 `modules/`，公共存储、配置和历史结果能力放在 `utils/`。
+- 不新增 `HTTPException(status_code=500, detail=str(e))` 这类内部异常直出。用户可见错误使用脱敏文案，内部细节写入项目已有日志、诊断字段或受控调试输出。
+- 上传文件名、下载文件名、模板对象 key、临时路径和输出路径必须做 basename、扩展名和目录边界校验；不得信任前端传入的路径片段。
+- 资源管理优先使用 `with`、临时目录上下文、显式关闭或项目已有 helper；处理 workbook、PDF、网络连接和临时文件时不得遗留句柄。
+- 新增或修改 schema 时保持旧字段兼容，除非任务明确要求 breaking change；兼容字段删除前必须确认历史 Electron 包、前端页面和服务器部署无调用。
+- 模块测试优先选择对应 `tests.test_xxx`、class 或 method；涉及导入边界、动态加载或跨模块工具时再补 `python -m compileall .`。

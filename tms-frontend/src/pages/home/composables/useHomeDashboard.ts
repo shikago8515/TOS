@@ -193,7 +193,7 @@ export function useHomeDashboard() {
 
   const recentArtifacts = computed<RecentArtifact[]>(() =>
     localProcessRecords.value
-      .filter((record) => Boolean(record.outputFile))
+      .filter((record) => typeof record.outputFile === 'string' && record.outputFile.trim().length > 0)
       .sort((left, right) => toTimestamp(right.createdAt) - toTimestamp(left.createdAt))
       .slice(0, 5)
       .map((record) => {
@@ -201,7 +201,7 @@ export function useHomeDashboard() {
 
         return {
           id: record.id,
-          fileName: readFileName(record.outputFile || ''),
+          fileName: readFileName(record.outputFile),
           moduleLabel: module ? getHomeModuleLabel(module, isEnglish.value) : record.moduleName,
           path: module?.path || '/',
           createdAt: record.createdAt,
@@ -323,7 +323,7 @@ export function useHomeDashboard() {
       path: module?.path || '/',
       status,
       statusLabel: activityStatusLabel(status),
-      message: record.message || record.outputFile || '',
+      message: record.message || readFileName(record.outputFile) || '',
       createdAt: record.createdAt,
     }
   }
@@ -447,7 +447,10 @@ function toTimestamp(value?: string): number {
   return parseDate(value)?.getTime() || 0
 }
 
-function readFileName(path: string): string {
+function readFileName(path: unknown): string {
+  if (typeof path !== 'string') {
+    return ''
+  }
   const normalized = path.replace(/\\/g, '/')
   return normalized.split('/').filter(Boolean).pop() || path
 }

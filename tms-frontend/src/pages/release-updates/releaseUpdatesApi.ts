@@ -1,6 +1,7 @@
 import { requestBackendJson } from '../../shared/api/backendClient'
 import { fallbackAppVersion } from '../../shared/version/appVersion'
 import bundledReleaseHistory from '../../shared/version/releaseHistory.json'
+import bundledReleaseNotes from '../../shared/version/releaseNotes.json'
 
 export type ReleaseUpdateCategory = 'added' | 'improved' | 'fixed' | string
 export type ReleaseUpdatesSource = 'backend' | 'cache' | 'bundled'
@@ -40,6 +41,14 @@ interface BundledReleaseHistoryRecord {
   pagePath: string
   title: string
   description: string
+}
+
+interface BundledReleaseNotes {
+  version?: string
+  date?: string
+  added?: string[]
+  improved?: string[]
+  fixed?: string[]
 }
 
 export async function fetchReleaseUpdates(limit = 120): Promise<ReleaseUpdatesResponse> {
@@ -94,7 +103,7 @@ function normalizeReleaseUpdatesPayload(
 }
 
 function buildBundledReleaseUpdates(limit: number): ReleaseUpdatesResponse {
-  const records = (bundledReleaseHistory as BundledReleaseHistoryRecord[])
+  const records = buildBundledReleaseHistoryRecords()
     .slice(0, limit)
     .map((record) => buildBundledRecord(record))
 
@@ -105,6 +114,62 @@ function buildBundledReleaseUpdates(limit: number): ReleaseUpdatesResponse {
     records,
     total: records.length,
   }
+}
+
+function buildBundledReleaseHistoryRecords(): BundledReleaseHistoryRecord[] {
+  const history = bundledReleaseHistory as BundledReleaseHistoryRecord[]
+  const currentRecord = buildCurrentReleaseHistoryRecord(bundledReleaseNotes as BundledReleaseNotes)
+  if (!currentRecord) {
+    return history
+  }
+
+  const currentVersion = normalizeVersion(currentRecord.version)
+  const hasCurrentVersion = history.some((record) => normalizeVersion(record.version) === currentVersion)
+  if (hasCurrentVersion) {
+    return history
+  }
+
+  return [currentRecord, ...history]
+}
+
+function buildCurrentReleaseHistoryRecord(
+  releaseNotes: BundledReleaseNotes,
+): BundledReleaseHistoryRecord | undefined {
+  const version = String(releaseNotes.version || fallbackAppVersion).trim()
+  const releaseNoteItem = selectReleaseNoteItem(releaseNotes)
+  if (!version || !releaseNoteItem) {
+    return undefined
+  }
+
+  return {
+    recordKey: `builtin-${version}-${releaseNoteItem.category}-current-release-notes`,
+    version,
+    releaseDate: String(releaseNotes.date || '').trim(),
+    category: releaseNoteItem.category,
+    pageName: '版本更新',
+    pagePath: '/release-updates',
+    title: releaseNoteItem.title,
+    description: `当前版本更新：${releaseNoteItem.title}`,
+  }
+}
+
+function selectReleaseNoteItem(
+  releaseNotes: BundledReleaseNotes,
+): { category: ReleaseUpdateCategory, title: string } | undefined {
+  const categoryEntries: Array<[ReleaseUpdateCategory, string[] | undefined]> = [
+    ['added', releaseNotes.added],
+    ['improved', releaseNotes.improved],
+    ['fixed', releaseNotes.fixed],
+  ]
+
+  for (const [category, items] of categoryEntries) {
+    const title = items?.map((item) => item.trim()).find(Boolean)
+    if (title) {
+      return { category, title }
+    }
+  }
+
+  return undefined
 }
 
 function buildBundledRecord(record: BundledReleaseHistoryRecord): ReleaseUpdateRecord {
@@ -122,6 +187,10 @@ function buildBundledRecord(record: BundledReleaseHistoryRecord): ReleaseUpdateR
     createdAt: '',
     updatedAt: '',
   }
+}
+
+function normalizeVersion(version: string | undefined): string {
+  return (version ?? '').trim().replace(/^v/i, '')
 }
 
 function readReleaseUpdatesCache(): ReleaseUpdatesResponse | undefined {

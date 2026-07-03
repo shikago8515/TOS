@@ -1,8 +1,8 @@
 {
-  "version": "1.0.0-beta.3.2",
+  "version": "1.0.0-beta.3.4",
   "date": "2026-07-03",
-  "noticeId": "2026-07-03-v1.0.0-beta.3.2",
-  "showPopup": true,
+  "noticeId": "2026-07-03-v1.0.0-beta.3.4",
+  "showPopup": false,
   "added": [
     "新龙泰 Shipping 新增 PO 箱数核对结果表，自动读取浏览器 Range 列并展开箱号，按 Excel cartons 判断是否缺失、超出、重复或格式异常。",
     "新龙泰 Shipping 新增原产地声明开关，执行 Create Shipment 时可按 Excel remark 为当前 PO 填写 Statement On Origin 和 Packing List Notes。",
@@ -134,6 +134,7 @@
     "补全 semantic-release 发布历史"
   ],
   "fixed": [
+    "调整 Jane PRODUCTION 核对输出",
     "修复部分用户安装最新版小助手后仍提示执行器未就绪的问题：启动器健康代理不再把执行器冷启动阶段返回为 502，前端会等待真实健康状态。",
     "修复 Infor Nexus Native Host 未注册时只提示用户自行安装 Desktop Utility 的问题，改为小助手自动写入当前用户注册表并在健康检查中返回修复结果。",
     "修复 Range 只看最大箱号时可能漏报中间缺号的问题，类似 1-5、8-10、11-15 会正确记录缺失 6-7。",
