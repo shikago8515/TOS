@@ -313,9 +313,11 @@ class SophiaTinaModule:
             country_rows = self._country_analysis_source_rows(results)
             ship_method_rows = self._ship_method_source_rows(results)
             s2s_rows = self._s2s_development_source_rows(results, development_style_rows)
+            s2s_display_rows = self._s2s_development_analysis_display_rows(s2s_rows)
             country_ref = f"A1:J{max(len(country_rows) + 1, 1)}"
             ship_method_ref = f"A1:H{max(len(ship_method_rows) + 1, 1)}"
             s2s_ref = f"A1:E{max(len(s2s_rows) + 1, 1)}"
+            s2s_pivot_ref = f"A1:E{max(len(s2s_display_rows) + 1, 1)}"
 
             replacements: Dict[str, bytes] = {
                 "xl/styles.xml": styles_xml,
@@ -331,13 +333,18 @@ class SophiaTinaModule:
                     1,
                     "Year",
                 ),
+                "xl/worksheets/sheet7.xml": self._ship_method_analysis_sheet_xml(results),
                 "xl/worksheets/_rels/sheet3.xml.rels": self._without_pivot_table_relationship(
                     archive.read("xl/worksheets/_rels/sheet3.xml.rels")
                 ),
                 "xl/worksheets/_rels/sheet4.xml.rels": self._without_pivot_table_relationship(
                     archive.read("xl/worksheets/_rels/sheet4.xml.rels")
                 ),
+                "xl/worksheets/_rels/sheet7.xml.rels": self._without_pivot_table_relationship(
+                    archive.read("xl/worksheets/_rels/sheet7.xml.rels")
+                ),
                 "xl/worksheets/sheet8.xml": self._development_style_qty_sheet_xml(),
+                "xl/worksheets/sheet9.xml": self._s2s_development_analysis_sheet_xml(s2s_rows),
                 "xl/worksheets/sheet10.xml": self._result_sheet_xml(results, table_ref, style_ids),
                 "xl/worksheets/sheet11.xml": self._rules_sheet_xml(),
                 "xl/worksheets/sheet12.xml": self._diagnostics_sheet_xml(diagnostics),
@@ -492,6 +499,7 @@ class SophiaTinaModule:
                     ("Bulk Qty (pcs)", 4, None, "3"),
                 ],
                 5,
+                location_ref=s2s_pivot_ref,
             )
             replacements["xl/slicerCaches/slicerCache1.xml"] = self._updated_y2y_slicer_cache_xml(
                 archive.read("xl/slicerCaches/slicerCache1.xml")
@@ -791,6 +799,213 @@ class SophiaTinaModule:
             ])
         return rows
 
+    def _ship_method_analysis_sheet_xml(self, results: List[Dict[str, Any]]) -> bytes:
+        headers = [
+            "Factory",
+            "Years",
+            "PODD",
+            "Shipment Method",
+            "Quantity (Y)",
+            "Quantity (%)",
+            "TMS Amount (USD)",
+            "TMS Amount (%)",
+        ]
+        summary_rows = self._ship_method_analysis_rows(results)
+        sheet_rows = [
+            self._row_xml(
+                1,
+                [self._cell_xml(1, col_idx, header, 4) for col_idx, header in enumerate(headers, 1)],
+            )
+        ]
+        for row_idx, row in enumerate(summary_rows, 2):
+            values = row["values"]
+            formulas = row["formulas"]
+            style_ids = row["style_ids"]
+            cells = [
+                self._cell_xml(
+                    row_idx,
+                    col_idx,
+                    value,
+                    style_ids[col_idx - 1],
+                    formula=formulas[col_idx - 1],
+                )
+                for col_idx, value in enumerate(values, 1)
+            ]
+            sheet_rows.append(self._row_xml(row_idx, cells))
+
+        end_row = max(len(summary_rows) + 1, 1)
+        dimension = f"A1:H{end_row}"
+        return self._worksheet_xml(
+            dimension,
+            "".join(sheet_rows),
+            '<cols><col min="1" max="1" width="18" customWidth="1"/>'
+            '<col min="2" max="2" width="12" customWidth="1"/>'
+            '<col min="3" max="4" width="18" customWidth="1"/>'
+            '<col min="5" max="8" width="18" customWidth="1"/></cols>',
+            freeze_panes=True,
+            auto_filter_ref=dimension,
+        )
+
+    def _ship_method_analysis_rows(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        detail_metrics: Dict[Tuple[str, int, int, str], Dict[str, float]] = defaultdict(self._empty_metrics)
+        monthly_totals: Dict[Tuple[str, int, int], Dict[str, float]] = defaultdict(self._empty_metrics)
+        yearly_totals: Dict[Tuple[str, int], Dict[str, float]] = defaultdict(self._empty_metrics)
+
+        for row in results:
+            podd = self._to_datetime(row.get("PODD"))
+            if podd is None:
+                continue
+            factory = self._clean_text(row.get("Factory"))
+            shipment_method = self._clean_text(row.get("Shipment Method"))
+            detail_key = (factory, podd.year, podd.month, shipment_method)
+            month_key = (factory, podd.year, podd.month)
+            year_key = (factory, podd.year)
+            self._add_metrics(detail_metrics[detail_key], row)
+            self._add_metrics(monthly_totals[month_key], row)
+            self._add_metrics(yearly_totals[year_key], row)
+
+        rows: List[Dict[str, Any]] = []
+        previous_month_key: Optional[Tuple[str, int, int]] = None
+        for factory, year, month, shipment_method in sorted(detail_metrics):
+            month_key = (factory, year, month)
+            if previous_month_key is not None and previous_month_key != month_key:
+                rows.append(self._ship_method_total_row(previous_month_key, monthly_totals, yearly_totals, len(rows) + 2))
+            detail_row_index = len(rows) + 2
+            metrics = detail_metrics[(factory, year, month, shipment_method)]
+            month_total = monthly_totals[month_key]
+            rows.append(self._ship_method_detail_row(
+                factory,
+                year,
+                month,
+                shipment_method,
+                metrics,
+                month_total,
+                detail_row_index,
+            ))
+            previous_month_key = month_key
+
+        if previous_month_key is not None:
+            rows.append(self._ship_method_total_row(previous_month_key, monthly_totals, yearly_totals, len(rows) + 2))
+        return rows
+
+    def _ship_method_detail_row(
+        self,
+        factory: str,
+        year: int,
+        month: int,
+        shipment_method: str,
+        metrics: Dict[str, float],
+        month_total: Dict[str, float],
+        row_index: int,
+    ) -> Dict[str, Any]:
+        quantity = metrics["quantity"]
+        tms_amount = metrics["tms_amount"]
+        return {
+            "values": [
+                factory,
+                year,
+                datetime(2000, month, 1).strftime("%b"),
+                shipment_method,
+                quantity,
+                quantity / month_total["quantity"] if month_total["quantity"] else 0,
+                tms_amount,
+                tms_amount / month_total["tms_amount"] if month_total["tms_amount"] else 0,
+            ],
+            "formulas": [
+                None,
+                None,
+                None,
+                None,
+                self._ship_method_month_sumifs_formula("M", row_index, include_method=True),
+                self._ship_method_month_percentage_formula("M", "E", row_index),
+                self._ship_method_month_sumifs_formula("Q", row_index, include_method=True),
+                self._ship_method_month_percentage_formula("Q", "G", row_index),
+            ],
+            "style_ids": self._ship_method_style_ids(),
+        }
+
+    def _ship_method_total_row(
+        self,
+        month_key: Tuple[str, int, int],
+        monthly_totals: Dict[Tuple[str, int, int], Dict[str, float]],
+        yearly_totals: Dict[Tuple[str, int], Dict[str, float]],
+        row_index: int,
+    ) -> Dict[str, Any]:
+        factory, year, month = month_key
+        month_total = monthly_totals[month_key]
+        year_total = yearly_totals[(factory, year)]
+        quantity = month_total["quantity"]
+        tms_amount = month_total["tms_amount"]
+        return {
+            "values": [
+                factory,
+                year,
+                f"{datetime(2000, month, 1).strftime('%b')} Total",
+                None,
+                quantity,
+                quantity / year_total["quantity"] if year_total["quantity"] else 0,
+                tms_amount,
+                tms_amount / year_total["tms_amount"] if year_total["tms_amount"] else 0,
+            ],
+            "formulas": [
+                None,
+                None,
+                None,
+                None,
+                self._ship_method_month_sumifs_formula("M", row_index, include_method=False),
+                self._ship_method_year_percentage_formula("M", "E", row_index),
+                self._ship_method_month_sumifs_formula("Q", row_index, include_method=False),
+                self._ship_method_year_percentage_formula("Q", "G", row_index),
+            ],
+            "style_ids": self._ship_method_style_ids(),
+        }
+
+    def _ship_method_style_ids(self) -> List[int]:
+        return [
+            self.COUNTRY_SUMMARY_TEXT_STYLE,
+            self.COUNTRY_SUMMARY_TEXT_STYLE,
+            self.COUNTRY_SUMMARY_TEXT_STYLE,
+            self.COUNTRY_SUMMARY_TEXT_STYLE,
+            self.COUNTRY_SUMMARY_TEXT_STYLE,
+            self.COUNTRY_SUMMARY_PERCENT_STYLE,
+            self.COUNTRY_SUMMARY_CURRENCY_STYLE,
+            self.COUNTRY_SUMMARY_PERCENT_STYLE,
+        ]
+
+    @staticmethod
+    def _ship_method_month_start_formula(row_index: int) -> str:
+        return (
+            f'DATE($B{row_index},'
+            f'MATCH(LEFT($C{row_index},3),{{"Jan","Feb","Mar","Apr","May","Jun",'
+            f'"Jul","Aug","Sep","Oct","Nov","Dec"}},0),1)'
+        )
+
+    def _ship_method_month_sumifs_formula(self, metric_column: str, row_index: int, include_method: bool) -> str:
+        month_start = self._ship_method_month_start_formula(row_index)
+        criteria = [
+            f"Result!$C:$C,$A{row_index}",
+            f'Result!$H:$H,">="&{month_start}',
+            f'Result!$H:$H,"<"&EDATE({month_start},1)',
+        ]
+        if include_method:
+            criteria.append(f"Result!$K:$K,$D{row_index}")
+        return f"SUMIFS(Result!${metric_column}:${metric_column},{','.join(criteria)})"
+
+    def _ship_method_year_sumifs_formula(self, metric_column: str, row_index: int) -> str:
+        return (
+            f'SUMIFS(Result!${metric_column}:${metric_column},Result!$C:$C,$A{row_index},'
+            f'Result!$H:$H,">="&DATE($B{row_index},1,1),'
+            f'Result!$H:$H,"<"&DATE($B{row_index}+1,1,1))'
+        )
+
+    def _ship_method_month_percentage_formula(self, metric_column: str, value_column: str, row_index: int) -> str:
+        denominator = self._ship_method_month_sumifs_formula(metric_column, row_index, include_method=False)
+        return f"IFERROR({value_column}{row_index}/{denominator},0)"
+
+    def _ship_method_year_percentage_formula(self, metric_column: str, value_column: str, row_index: int) -> str:
+        denominator = self._ship_method_year_sumifs_formula(metric_column, row_index)
+        return f"IFERROR({value_column}{row_index}/{denominator},0)"
+
     def _s2s_development_source_rows(
         self,
         results: List[Dict[str, Any]],
@@ -820,6 +1035,69 @@ class SophiaTinaModule:
                 quantities[(season, factory)],
             ])
         return rows
+
+    def _s2s_development_analysis_sheet_xml(self, source_rows: List[List[Any]]) -> bytes:
+        return self._simple_sheet_xml(
+            ["Season", "Factory", "Development Style Count", "Bulk Style Count", "Bulk Qty (pcs)"],
+            self._s2s_development_analysis_display_rows(source_rows),
+            '<cols><col min="1" max="2" width="18" customWidth="1"/>'
+            '<col min="3" max="5" width="24" customWidth="1"/></cols>',
+        )
+
+    def _s2s_development_analysis_display_rows(self, source_rows: List[List[Any]]) -> List[List[Any]]:
+        grouped: Dict[str, List[List[Any]]] = defaultdict(list)
+        for row in source_rows:
+            if len(row) < 5:
+                continue
+            grouped[self._clean_text(row[0])].append(row)
+
+        display_rows: List[List[Any]] = []
+        grand_development_count = 0
+        grand_bulk_count = 0
+        grand_bulk_quantity = 0.0
+        for season in sorted(grouped, key=lambda value: (value == "", value)):
+            season_label = season or "(blank)"
+            season_development_count = 0
+            season_bulk_count = 0
+            season_bulk_quantity = 0.0
+            first_factory_for_season = True
+            for row in sorted(grouped[season], key=lambda item: self._clean_text(item[1])):
+                factory = self._clean_text(row[1])
+                development_count = int(self._optional_float(row[2]) or 0)
+                bulk_count = int(self._optional_float(row[3]) or 0)
+                bulk_quantity = self._optional_float(row[4]) or 0.0
+                display_rows.append([
+                    season_label if first_factory_for_season else "",
+                    factory,
+                    development_count,
+                    bulk_count,
+                    bulk_quantity,
+                ])
+                first_factory_for_season = False
+                season_development_count += development_count
+                season_bulk_count += bulk_count
+                season_bulk_quantity += bulk_quantity
+
+            display_rows.append([
+                f"{season_label} Total",
+                "",
+                season_development_count,
+                season_bulk_count,
+                season_bulk_quantity,
+            ])
+            grand_development_count += season_development_count
+            grand_bulk_count += season_bulk_count
+            grand_bulk_quantity += season_bulk_quantity
+
+        if display_rows:
+            display_rows.append([
+                "Grand Total",
+                "",
+                grand_development_count,
+                grand_bulk_count,
+                grand_bulk_quantity,
+            ])
+        return display_rows
 
     def _updated_country_summary_sheet_xml(
         self,
@@ -1099,6 +1377,7 @@ class SophiaTinaModule:
         columns_xml: str,
         freeze_panes: bool = False,
         table_rel_id: Optional[str] = None,
+        auto_filter_ref: Optional[str] = None,
     ) -> bytes:
         if freeze_panes:
             sheet_views = (
@@ -1114,6 +1393,7 @@ class SophiaTinaModule:
             if table_rel_id
             else ""
         )
+        auto_filter = f'<autoFilter ref="{auto_filter_ref}"/>' if auto_filter_ref else ""
         xml = (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
             f'<worksheet xmlns="{self.OOXML_MAIN_NS}" xmlns:r="{self.OOXML_REL_NS}" '
@@ -1124,6 +1404,7 @@ class SophiaTinaModule:
             '<sheetFormatPr defaultRowHeight="15" x14ac:dyDescent="0.25"/>'
             f'{columns_xml}'
             f'<sheetData>{sheet_data}</sheetData>'
+            f'{auto_filter}'
             '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>'
             f'{table_parts}'
             '</worksheet>'
@@ -1333,9 +1614,14 @@ class SophiaTinaModule:
         column_fields: List[int],
         data_fields: List[Tuple[str, int, Optional[str], str]],
         field_count: int,
+        location_ref: Optional[str] = None,
     ) -> bytes:
         root = ElementTree.fromstring(xml_bytes)
         root.set("cacheId", cache_id)
+        if location_ref:
+            location = root.find(f"{{{self.OOXML_MAIN_NS}}}location")
+            if location is not None:
+                location.set("ref", location_ref)
         self._replace_pivot_child(root, "pivotFields", self._pivot_fields_element(
             field_count,
             row_fields,
@@ -2100,11 +2386,7 @@ class SophiaTinaModule:
         thin_border: Border,
     ) -> None:
         ws = wb.create_sheet("Development Style Qty")
-        rows = [
-            [row["Season"], row["Factory"], row["Development Style Count"]]
-            for row in development_style_rows
-        ]
-        self._append_summary_table(ws, ["Season", "Factory", "Development Style Count"], rows, thin_border)
+        self._append_summary_table(ws, ["Season", "Factory", "Development Style Count"], [], thin_border)
 
     def _write_s2s_development_analysis(
         self,

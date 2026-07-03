@@ -7,7 +7,8 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 import pandas as pd
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Border
 
 
 BACKEND_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -129,6 +130,14 @@ def _pivot_data_field_names(path: str, entry: str) -> list[str | None]:
     ]
 
 
+def _pivot_location_ref(path: str, entry: str) -> str | None:
+    namespace = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    with zipfile.ZipFile(path) as archive:
+        root = ElementTree.fromstring(archive.read(entry))
+    location = root.find("main:location", namespace)
+    return location.attrib.get("ref") if location is not None else None
+
+
 def _slicer_pivot_table_names(path: str, entry: str) -> list[str | None]:
     namespace = {"x14": "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"}
     with zipfile.ZipFile(path) as archive:
@@ -202,6 +211,25 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
         path = directory / name
         pd.DataFrame(rows).to_excel(path, index=False)
         return str(path)
+
+    def test_development_style_qty_fallback_is_header_only(self):
+        wb = Workbook()
+
+        self.module._write_development_style_qty(
+            wb,
+            [
+                {"Season": "FW26", "Factory": "1L8006", "Development Style Count": 50},
+                {"Season": "FW26", "Factory": "1L8012", "Development Style Count": 30},
+            ],
+            Border(),
+        )
+
+        ws = wb["Development Style Qty"]
+        self.assertEqual(ws.max_row, 1)
+        self.assertEqual(
+            [ws.cell(1, column).value for column in range(1, 4)],
+            ["Season", "Factory", "Development Style Count"],
+        )
 
     def test_country_analysis_summary_blocks_are_formula_driven_plain_tables(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -857,6 +885,179 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
             finally:
                 wb.close()
 
+    def test_ship_method_analysis_percentages_are_formula_driven_and_filter_stable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            work_dir = Path(temp_dir)
+            tms_path = self._write_excel(
+                work_dir,
+                "tms.xlsx",
+                [
+                    {
+                        "Factory": "FACTORY-A",
+                        "PO Number": "PO-AIR",
+                        "Working Number": "WN-AIR",
+                        "Article Number": "ART-AIR",
+                        "Article Description": "Air article",
+                        "Customer Request Date (CRD)": "2026-01-01",
+                        "PODD": "2026-03-05",
+                        "Shipment Method": "Air",
+                        "Gps Customer Number": "GPS-AIR",
+                        "Country/Region": "CHINA",
+                        "Ordered Quantity": 10,
+                    },
+                    {
+                        "Factory": "FACTORY-A",
+                        "PO Number": "PO-OCEAN-MAR",
+                        "Working Number": "WN-OCEAN-MAR",
+                        "Article Number": "ART-OCEAN-MAR",
+                        "Article Description": "Ocean March article",
+                        "Customer Request Date (CRD)": "2026-01-02",
+                        "PODD": "2026-03-10",
+                        "Shipment Method": "Ocean",
+                        "Gps Customer Number": "GPS-OCEAN-MAR",
+                        "Country/Region": "UNITED STATES",
+                        "Ordered Quantity": 30,
+                    },
+                    {
+                        "Factory": "FACTORY-A",
+                        "PO Number": "PO-OCEAN-APR",
+                        "Working Number": "WN-OCEAN-APR",
+                        "Article Number": "ART-OCEAN-APR",
+                        "Article Description": "Ocean April article",
+                        "Customer Request Date (CRD)": "2026-01-03",
+                        "PODD": "2026-04-01",
+                        "Shipment Method": "Ocean",
+                        "Gps Customer Number": "GPS-OCEAN-APR",
+                        "Country/Region": "BRAZIL",
+                        "Ordered Quantity": 60,
+                    },
+                ],
+            )
+            tms_price_path = self._write_excel(
+                work_dir,
+                "tms-price.xlsx",
+                [
+                    {
+                        "Working Number (M)": "WN-AIR",
+                        "Article Number (A)": "ART-AIR",
+                        "Season (M)": "SS26",
+                        "Marketing Forecast (M)": 100,
+                        "Milestone (C)": "Final",
+                        "Intl. FOB (C)": 4.0,
+                        "Factory Group Code (MF)": "FACTORY-A",
+                    },
+                    {
+                        "Working Number (M)": "WN-OCEAN-MAR",
+                        "Article Number (A)": "ART-OCEAN-MAR",
+                        "Season (M)": "SS26",
+                        "Marketing Forecast (M)": 200,
+                        "Milestone (C)": "Final",
+                        "Intl. FOB (C)": 2.0,
+                        "Factory Group Code (MF)": "FACTORY-A",
+                    },
+                    {
+                        "Working Number (M)": "WN-OCEAN-APR",
+                        "Article Number (A)": "ART-OCEAN-APR",
+                        "Season (M)": "SS26",
+                        "Marketing Forecast (M)": 300,
+                        "Milestone (C)": "Final",
+                        "Intl. FOB (C)": 1.0,
+                        "Factory Group Code (MF)": "FACTORY-A",
+                    },
+                ],
+            )
+            price_path = self._write_excel(
+                work_dir,
+                "price.xlsx",
+                [
+                    {
+                        "Pack": "PACK-SS26",
+                        "Season": "SS26",
+                        "Working Number": "WN-AIR",
+                        "Article Number": "ART-AIR",
+                        "Factory": "FACTORY-A",
+                        "Factory Price": 4.0,
+                        "TMS Price": 4.0,
+                    },
+                    {
+                        "Pack": "PACK-SS26",
+                        "Season": "SS26",
+                        "Working Number": "WN-OCEAN-MAR",
+                        "Article Number": "ART-OCEAN-MAR",
+                        "Factory": "FACTORY-A",
+                        "Factory Price": 2.0,
+                        "TMS Price": 2.0,
+                    },
+                    {
+                        "Pack": "PACK-SS26",
+                        "Season": "SS26",
+                        "Working Number": "WN-OCEAN-APR",
+                        "Article Number": "ART-OCEAN-APR",
+                        "Factory": "FACTORY-A",
+                        "Factory Price": 1.0,
+                        "TMS Price": 1.0,
+                    },
+                ],
+            )
+
+            result = self.module.process_reports(
+                [tms_path],
+                [tms_price_path],
+                [price_path],
+                output_dir=str(work_dir),
+            )
+
+            self.assertTrue(result["success"], result["message"])
+            wb = load_workbook(result["output_path"], data_only=False, read_only=True)
+            cached_wb = load_workbook(result["output_path"], data_only=True, read_only=True)
+            try:
+                ws = wb["Ship Method Analysis"]
+                cached_ws = cached_wb["Ship Method Analysis"]
+                headers = [ws.cell(1, column).value for column in range(1, 9)]
+                self.assertEqual(
+                    headers,
+                    [
+                        "Factory",
+                        "Years",
+                        "PODD",
+                        "Shipment Method",
+                        "Quantity (Y)",
+                        "Quantity (%)",
+                        "TMS Amount (USD)",
+                        "TMS Amount (%)",
+                    ],
+                )
+
+                self.assertEqual(
+                    [ws.cell(2, column).value for column in range(1, 5)],
+                    ["FACTORY-A", 2026, "Mar", "Air"],
+                )
+                self.assertEqual(
+                    [ws.cell(4, column).value for column in range(1, 5)],
+                    ["FACTORY-A", 2026, "Mar Total", None],
+                )
+                self.assertAlmostEqual(cached_ws["F2"].value, 10 / 40)
+                self.assertAlmostEqual(cached_ws["H2"].value, 40 / 100)
+                self.assertAlmostEqual(cached_ws["F4"].value, 40 / 100)
+                self.assertAlmostEqual(cached_ws["H4"].value, 100 / 160)
+                self.assertIn("SUMIFS(Result!$M:$M", ws["F2"].value)
+                self.assertIn("SUMIFS(Result!$M:$M", ws["F4"].value)
+                self.assertIn("SUMIFS(Result!$Q:$Q", ws["H2"].value)
+                self.assertIn("SUMIFS(Result!$Q:$Q", ws["H4"].value)
+                self.assertNotIn("SUBTOTAL", ws["F2"].value + ws["F4"].value + ws["H2"].value + ws["H4"].value)
+            finally:
+                wb.close()
+                cached_wb.close()
+
+            self.assertNotIn(
+                "pivotTable",
+                "\n".join(_worksheet_relationship_types(result["output_path"], "xl/worksheets/_rels/sheet7.xml.rels")),
+            )
+            self.assertNotIn(
+                "<pivotTableDefinition",
+                _sheet_cell_text(result["output_path"], "xl/worksheets/sheet7.xml"),
+            )
+
     def test_optional_allocation_and_shipment_files_update_result_and_summaries(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             work_dir = Path(temp_dir)
@@ -1328,9 +1529,23 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
                 self.assertEqual(s2s_row["Development Style Count"], 4)
                 self.assertEqual(s2s_row["Bulk Style Count"], 3)
                 self.assertEqual(s2s_row["Bulk Qty (pcs)"], 30)
+
+                s2s_visible_ws = wb["S2S Development Analysis"]
+                self.assertEqual(
+                    [s2s_visible_ws.cell(1, column).value for column in range(1, 6)],
+                    ["Season", "Factory", "Development Style Count", "Bulk Style Count", "Bulk Qty (pcs)"],
+                )
+                self.assertEqual(
+                    [s2s_visible_ws.cell(2, column).value for column in range(1, 6)],
+                    ["SS26", "FACTORY-A", 4, 3, 30],
+                )
             finally:
                 wb.close()
 
+            self.assertNotIn(
+                "Bulk Quantity (Pcs)",
+                _zip_entry_text(result["output_path"], "xl/worksheets/sheet9.xml"),
+            )
             self.assertNotIn(
                 "TMS Amount USD)",
                 _zip_entry_text(result["output_path"], "xl/pivotTables/pivotTable8.xml"),
@@ -1350,6 +1565,10 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
             self.assertEqual(
                 _pivot_data_field_names(result["output_path"], "xl/pivotTables/pivotTable9.xml")[:2],
                 ["Development Style Count", "Bulk Style Count"],
+            )
+            self.assertEqual(
+                _pivot_location_ref(result["output_path"], "xl/pivotTables/pivotTable9.xml"),
+                "A1:E4",
             )
             self.assertEqual(
                 set(_slicer_pivot_table_names(result["output_path"], "xl/slicerCaches/slicerCache1.xml")),
