@@ -52,6 +52,18 @@
         </div>
       </transition>
 
+      <AutomationStartupProgress
+        v-if="showStartupProgress"
+        :title="startupProgressTitle"
+        :detail="startupProgressDetail"
+        :percent="startupProgressPercent"
+        :elapsed-seconds="startupElapsedSeconds"
+        :current-step-label="startupCurrentStepLabel"
+        :active-step-key="startupActiveStepKey"
+        :completed-step-keys="startupCompletedStepKeys"
+        :steps="startupProgressSteps"
+      />
+
       <!-- ═══ BODY: LEFT + RIGHT DOCK ═══ -->
       <div class="sa-body">
         <!-- LEFT COLUMN -->
@@ -262,6 +274,7 @@ import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
 import { showAppAlert } from '../../../shared/ui/appAlert'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
+import AutomationStartupProgress from '../../web-automation/components/AutomationStartupProgress.vue'
 import AutomationAccountProfileManager from '../../web-automation/components/AutomationAccountProfileManager.vue'
 import AutomationRunHistoryPanel from '../../web-automation/components/AutomationRunHistoryPanel.vue'
 import type { AutomationAppInfo } from '../../../types/electronApi'
@@ -286,6 +299,8 @@ type CredentialProfileRef = {
 }
 type CredentialProfileState = { hasStoredCredentials: boolean; username: string; accountKey: string }
 type CredentialNotice = { tone: WebAutomationNoticeTone; message: string }
+type StartupStage = 'idle' | 'launcher' | 'launch' | 'health' | 'business' | 'run' | 'done'
+type AutomationStartupProgressStep = { key: string; label: string }
 
 const router = useRouter(); const { text } = useAppLanguage()
 const entry = getWebAutomationEntry(XINLONGTAI_SHIPPING_ENTRY_ID)
@@ -309,8 +324,20 @@ const autoFillOriginDeclaration = ref(false)
 const statusText = ref(''); const statusLabel = ref('待命')
 const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
 let activeRunStateTimer: number | null = null
+let startupProgressTimer: number | null = null
 type SAL = { resultExcelUrl: string; resultJsonUrl?: string; failedPoExcelUrl?: string; failedPoJsonUrl?: string; cartonRangeCheckExcelUrl?: string; failedRowCount: number }
 const shippingArtifactLinks = ref<SAL | null>(null)
+const startupStage = ref<StartupStage>('idle')
+const startupStartedAt = ref(0)
+const startupElapsedSeconds = ref(0)
+
+const startupProgressSteps: AutomationStartupProgressStep[] = [
+  { key: 'launcher', label: '连接本机小助手' },
+  { key: 'launch', label: '启动本机执行器' },
+  { key: 'health', label: '等待执行器就绪' },
+  { key: 'business', label: '打开 Infor Nexus' },
+  { key: 'run', label: '处理 Excel 任务' },
+]
 
 const steps = [
   { title: '输入账号密码', desc: '使用 Infor Nexus 登录账号密码。' },
@@ -334,9 +361,119 @@ const templateButtonLabel = computed(() => { if (templateLoading.value) return t
 const shippingExecutorRunUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-xinlongtai-shipping-file` : '' })
 const canRunShippingAutomation = computed(() => !sending.value && hasRunCredentials.value)
 const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
+const activeShippingRun = computed(() => findXinlongtaiShippingActiveRun(executorHealth.value))
+const activeRunProgress = computed(() => normalizeActiveRunProgress(activeShippingRun.value))
+const showStartupProgress = computed(() => startupStage.value !== 'idle' || launching.value || sending.value || Boolean(activeRunProgress.value))
+const startupProgressPercent = computed(() => {
+  const progressPercent = Number(activeRunProgress.value?.percentage || 0)
+  if (progressPercent > 0) return progressPercent
+  return startupStagePercent(startupStage.value)
+})
+const startupActiveStepKey = computed(() => resolveStartupActiveStepKey(activeRunProgress.value?.phase || activeShippingRun.value?.phase || startupStage.value))
+const startupCompletedStepKeys = computed(() => resolveStartupCompletedStepKeys(startupActiveStepKey.value, startupProgressPercent.value, startupStage.value))
+const startupCurrentStepLabel = computed(() => {
+  const active = startupProgressSteps.find((step) => step.key === startupActiveStepKey.value)
+  return active?.label || '启动完成'
+})
+const startupProgressTitle = computed(() => {
+  if (activeRunProgress.value) return '自动化正在执行'
+  if (startupStage.value === 'done') return '执行器已就绪'
+  return '首次启动耗时较长'
+})
+const startupProgressDetail = computed(() => {
+  const progressMessage = String(activeRunProgress.value?.message || activeShippingRun.value?.statusMessage || '').trim()
+  if (progressMessage) return progressMessage
+  const details: Record<StartupStage, string> = {
+    idle: '等待启动本机自动化执行器。',
+    launcher: '正在连接本机自动化助手。',
+    launch: '正在启动 Node / Playwright 执行器，首次启动可能会受到系统安全扫描影响。',
+    health: '执行器进程已启动，正在等待健康检查返回。',
+    business: '执行器已就绪，正在打开 Infor Nexus 业务页面。',
+    run: '执行器正在处理 Excel 任务。',
+    done: '启动完成，可以继续执行。',
+  }
+  return details[startupStage.value]
+})
 
 onMounted(() => { void initializeScenario() })
-onBeforeUnmount(() => { stopActiveRunStatePolling() })
+onBeforeUnmount(() => { stopActiveRunStatePolling(); stopStartupProgressTimer() })
+
+function normalizeActiveRunProgress(activeRun: Record<string, any> | null): Record<string, any> | null {
+  const progress = activeRun?.progress
+  if (!progress || typeof progress !== 'object') return null
+  return progress as Record<string, any>
+}
+
+function startupStagePercent(stage: StartupStage): number {
+  const values: Record<StartupStage, number> = {
+    idle: 0,
+    launcher: 10,
+    launch: 28,
+    health: 45,
+    business: 58,
+    run: 68,
+    done: 100,
+  }
+  return values[stage]
+}
+
+function resolveStartupActiveStepKey(rawPhase: unknown): string {
+  const phase = String(rawPhase || '').trim()
+  if (phase === 'done' || phase === 'complete' || phase.endsWith('-complete')) return ''
+  if (phase === 'launcher') return 'launcher'
+  if (phase === 'launch') return 'launch'
+  if (phase === 'health') return 'health'
+  if (/open-login|login|logged-in|open-shipment-scan|shipment-scan-ready|open-event-management|event-management-ready|open-shipping2/i.test(phase)) return 'business'
+  if (/shipment-scan-po|create-shipment|shipping2|run|business-empty|failed|error/i.test(phase)) return 'run'
+  if (startupStage.value === 'idle') return ''
+  return startupStage.value === 'done' ? '' : startupStage.value
+}
+
+function resolveStartupCompletedStepKeys(activeKey: string, percent: number, stage: StartupStage): string[] {
+  if (stage === 'done' || percent >= 100) return startupProgressSteps.map((step) => step.key)
+  const activeIndex = startupProgressSteps.findIndex((step) => step.key === activeKey)
+  if (activeIndex <= 0) return []
+  return startupProgressSteps.slice(0, activeIndex).map((step) => step.key)
+}
+
+function beginStartupProgress(stage: StartupStage): void {
+  if (!startupStartedAt.value) startupStartedAt.value = Date.now()
+  setStartupStage(stage)
+  updateStartupElapsed()
+  if (startupProgressTimer !== null) return
+  startupProgressTimer = window.setInterval(updateStartupElapsed, 1000)
+}
+
+function setStartupStage(stage: StartupStage): void {
+  startupStage.value = stage
+  updateStartupElapsed()
+}
+
+function finishStartupProgress(): void {
+  setStartupStage('done')
+  window.setTimeout(() => {
+    if (!launching.value && !sending.value && startupStage.value === 'done') resetStartupProgress()
+  }, 1200)
+}
+
+function resetStartupProgress(): void {
+  startupStage.value = 'idle'
+  startupStartedAt.value = 0
+  startupElapsedSeconds.value = 0
+  stopStartupProgressTimer()
+}
+
+function updateStartupElapsed(): void {
+  startupElapsedSeconds.value = startupStartedAt.value
+    ? Math.max(0, Math.floor((Date.now() - startupStartedAt.value) / 1000))
+    : 0
+}
+
+function stopStartupProgressTimer(): void {
+  if (startupProgressTimer === null) return
+  window.clearInterval(startupProgressTimer)
+  startupProgressTimer = null
+}
 
 async function initializeScenario(): Promise<void> {
   statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行 Shipping。'
@@ -362,15 +499,20 @@ async function refreshExecutorState(silent: boolean): Promise<void> {
   } finally { refreshing.value = false }
 }
 
-async function waitForExecutorHealthReady(timeoutMs = 15000): Promise<boolean> {
+async function waitForExecutorHealthReady(timeoutMs = 60000): Promise<boolean> {
   if (!entry) return false
   const startedAt = Date.now()
   let lastError = ''
+  setStartupStage('health')
   while (Date.now() - startedAt < timeoutMs) {
     try {
       executorHealth.value = await probeLocalExecutorHealth(entry.executorBaseUrl)
       if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
       syncActiveRunViewFromHealth()
+      if (!executorHealth.value?.ok) {
+        await new Promise((resolve) => window.setTimeout(resolve, 600))
+        continue
+      }
       return true
     } catch (error) {
       lastError = readErrorMessage(error, 'executor health probe failed')
@@ -389,6 +531,7 @@ async function waitForExecutorHealthReady(timeoutMs = 15000): Promise<boolean> {
 function syncActiveRunViewFromHealth(): void {
   const activeRun = findXinlongtaiShippingActiveRun(executorHealth.value)
   if (activeRun) {
+    beginStartupProgress('run')
     restoredActiveRun.value = true
     sending.value = true
     lastResult.value = null
@@ -400,6 +543,7 @@ function syncActiveRunViewFromHealth(): void {
   }
   if (!restoredActiveRun.value) return
   clearRestoredActiveRunState()
+  finishStartupProgress()
   statusText.value = text('后台执行器任务已结束，请查看执行记录或重新开始。')
 }
 
@@ -424,6 +568,7 @@ function clearRestoredActiveRunState(): void {
   sending.value = false
   stopActiveRunStatePolling()
   statusLabel.value = '待命'
+  if (!launching.value) finishStartupProgress()
 }
 
 async function refreshCredentialProfile(): Promise<void> {
@@ -459,12 +604,15 @@ async function startActiveApp(silent: boolean): Promise<void> {
   if (!entry || launching.value) return
   if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot()
   launching.value = true
+  beginStartupProgress('launcher')
   try {
+    setStartupStage('launch')
     const r = await launchAutomationConsole(entry.appId); if (!r.success) throw new Error(r.error || '启动失败')
     if (activeApp.value) activeApp.value = { ...activeApp.value, running: true }
-    const executorReady = await waitForExecutorHealthReady()
+    const executorReady = await waitForExecutorHealthReady(60000)
     if (!executorReady) throw new Error('执行器已启动，但健康检查暂时未连上。请点刷新，或稍后重试。')
     await refreshCredentialProfile()
+    if (!sending.value) finishStartupProgress()
     if (!silent) { messageTone.value = 'success'; message.value = r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') }
   } catch (e) {
     const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.appId, entryId: entry.id, error: m })
@@ -560,7 +708,7 @@ async function runShipping(): Promise<void> {
   if (!(await ensureReady())) { setNotReady(); void showAppAlert(statusText.value, { tone: 'warning' }); return }
   const currentEntry = entry
   if (!currentEntry) { showRunRequirementDialog('当前入口不存在，请返回 Eric - Infornexus 页面重新进入。'); return }
-  const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''
+  const file = selectedFile.value as File; sending.value = true; beginStartupProgress('business'); startActiveRunStatePolling(); statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''
   try {
     const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload()
     const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': currentEntry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: currentEntry.localExecutorToken, headless: !showBrowserView.value, ...cp, automationId: currentEntry.id, shipmentScanAction: 'remove-change-equipment-id', fillOriginDeclaration: autoFillOriginDeclaration.value }) })

@@ -1,6 +1,6 @@
 ﻿import http from "node:http";
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -45,6 +45,7 @@ const XINLONGTAI_SHIPPING_AUTOMATION_ID = "xinlongtai-shipping-automation";
 const DESKTOP_UTILITY_CONNECTION_PATTERN = /taking longer than normal for the desktop to connect|Desktop Utility process is running|version\s+2\.0\.1\.29|re-loading the PackByScan application|Awaiting desktop|PackByScan/i;
 const INFOR_NEXUS_EXTENSION_ID = "fkmgjdbgapopggcnkapkodfjeblddieo";
 const INFOR_NEXUS_NATIVE_HOST = "com.gtnexus.packbyscan.chrome_native_bridge";
+const INFOR_NEXUS_NATIVE_HOST_MANIFEST = `${INFOR_NEXUS_NATIVE_HOST}.json`;
 const BUSINESS_DATA_EMPTY_CODE = "INFORNEXUS_BUSINESS_DATA_EMPTY";
 
 const sharedExecutorRoot = resolveSharedExecutorRoot();
@@ -53,6 +54,7 @@ const requireShared = createRequire(sharedPackageJson);
 const { chromium, firefox, webkit } = requireShared("playwright");
 const xlsx = requireShared("xlsx");
 const executorVersion = await resolveExecutorVersion();
+let inforNexusNativeHostRegistrationState = null;
 
 const browserEngines = { chromium, firefox, webkit };
 const VISIBLE_CHROMIUM_WINDOW_ARGS = ["--start-maximized", "--window-position=0,0"];
@@ -82,6 +84,7 @@ function resolveSharedExecutorRoot() {
 
 await ensureRuntimeFiles();
 const config = await loadConfig();
+ensureInforNexusDesktopBridgeRegistration();
 const {
   extractShipping2ReleasedBulkRowsFromWorkbookPayload,
   processShipping2ReleasedBulkWorksheet,
@@ -715,6 +718,7 @@ function shouldCopyFile(sourcePath, targetPath) {
 }
 
 function collectInforNexusDesktopBridgeDiagnostics() {
+  const repair = ensureInforNexusDesktopBridgeRegistration();
   const nativeHosts = collectInforNexusNativeHostRegistrations();
   const activeBrowser = resolveInforNexusNativeHostBrowser(config.launchOptions?.channel);
   const activeNativeHosts = activeBrowser
@@ -726,11 +730,130 @@ function collectInforNexusDesktopBridgeDiagnostics() {
     extensionInstalledForAutomation: Boolean(config.inforNexusExtensionPath),
     nativeHostName: INFOR_NEXUS_NATIVE_HOST,
     nativeHostRegistered: activeNativeHosts.some((item) => item.registered),
+    nativeHostRepair: repair,
+    bundledBridgeAvailable: Boolean(repair.bridgePath),
+    bundledManifestPath: repair.manifestPath || "",
     nativeHosts,
     activeBrowser,
     browser: config.browser,
     channel: String(config.launchOptions?.channel || ""),
   };
+}
+
+function ensureInforNexusDesktopBridgeRegistration() {
+  if (process.platform !== "win32") {
+    return {
+      ok: false,
+      attempted: false,
+      reason: "unsupported-platform",
+      bridgePath: "",
+      manifestPath: "",
+      registeredBrowsers: [],
+    };
+  }
+
+  if (inforNexusNativeHostRegistrationState) {
+    return inforNexusNativeHostRegistrationState;
+  }
+
+  const existing = collectInforNexusNativeHostRegistrations();
+  const existingRegistered = existing.filter((item) => item.registered).map((item) => item.browser);
+  if (existingRegistered.length > 0) {
+    inforNexusNativeHostRegistrationState = {
+      ok: true,
+      attempted: false,
+      reason: "already-registered",
+      bridgePath: "",
+      manifestPath: "",
+      registeredBrowsers: [...new Set(existingRegistered)],
+    };
+    return inforNexusNativeHostRegistrationState;
+  }
+
+  const bridgePath = resolveInforNexusNativeHostBridgePath();
+  if (!bridgePath) {
+    inforNexusNativeHostRegistrationState = {
+      ok: false,
+      attempted: true,
+      reason: "bridge-files-missing",
+      bridgePath: "",
+      manifestPath: "",
+      registeredBrowsers: [],
+    };
+    return inforNexusNativeHostRegistrationState;
+  }
+
+  try {
+    const manifestPath = writeInforNexusNativeHostManifest(bridgePath);
+    for (const key of getInforNexusCurrentUserNativeHostKeys()) {
+      execFileSync("reg.exe", ["add", key, "/ve", "/t", "REG_SZ", "/d", manifestPath, "/f"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 2500,
+        windowsHide: true,
+      });
+    }
+
+    const repaired = collectInforNexusNativeHostRegistrations();
+    const registeredBrowsers = repaired.filter((item) => item.registered).map((item) => item.browser);
+    inforNexusNativeHostRegistrationState = {
+      ok: registeredBrowsers.length > 0,
+      attempted: true,
+      reason: registeredBrowsers.length > 0 ? "registered-current-user" : "registry-write-not-visible",
+      bridgePath,
+      manifestPath,
+      registeredBrowsers: [...new Set(registeredBrowsers)],
+    };
+    return inforNexusNativeHostRegistrationState;
+  } catch (error) {
+    inforNexusNativeHostRegistrationState = {
+      ok: false,
+      attempted: true,
+      reason: "registry-write-failed",
+      error: error?.message || String(error),
+      bridgePath,
+      manifestPath: "",
+      registeredBrowsers: [],
+    };
+    log("Failed to register Infor Nexus Desktop Utility native host.", inforNexusNativeHostRegistrationState);
+    return inforNexusNativeHostRegistrationState;
+  }
+}
+
+function resolveInforNexusNativeHostBridgePath() {
+  const candidates = [
+    path.join(appRoot, "native-hosts", "infornexus", "FactoryBridge.exe"),
+    path.join(process.env.USERPROFILE || "", ".tradecard", "bridge", "FactoryBridge.exe"),
+  ];
+  for (const candidate of candidates) {
+    const normalized = String(candidate || "").trim();
+    if (normalized && existsSync(normalized)) {
+      return path.resolve(normalized);
+    }
+  }
+  return "";
+}
+
+function writeInforNexusNativeHostManifest(bridgePath) {
+  const manifestDir = path.join(runtimeDataRoot, "native-hosts", "infornexus");
+  mkdirSync(manifestDir, { recursive: true });
+  const manifestPath = path.join(manifestDir, INFOR_NEXUS_NATIVE_HOST_MANIFEST);
+  const payload = {
+    name: INFOR_NEXUS_NATIVE_HOST,
+    description: "Bridge between Print-Scan-Ship app and GT Nexus Desktop Utility",
+    path: bridgePath,
+    type: "stdio",
+    allowed_origins: [`chrome-extension://${INFOR_NEXUS_EXTENSION_ID}/`],
+  };
+  writeFileSync(manifestPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  return manifestPath;
+}
+
+function getInforNexusCurrentUserNativeHostKeys() {
+  return [
+    `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${INFOR_NEXUS_NATIVE_HOST}`,
+    `HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\${INFOR_NEXUS_NATIVE_HOST}`,
+  ];
 }
 
 function resolveInforNexusNativeHostBrowser(channel) {
@@ -764,26 +887,65 @@ function collectInforNexusNativeHostRegistrations() {
     },
   ];
 
-  return registryKeys.map((entry) => ({
-    ...entry,
-    registered: isRegistryKeyPresent(entry.key),
-  }));
+  return registryKeys.map((entry) => {
+    const manifestPath = queryRegistryDefaultValue(entry.key);
+    const manifest = inspectInforNexusNativeHostManifest(manifestPath);
+    return {
+      ...entry,
+      manifestPath,
+      hostPath: manifest.hostPath,
+      manifestExists: manifest.manifestExists,
+      hostExists: manifest.hostExists,
+      registered: Boolean(manifestPath && manifest.manifestExists && manifest.hostExists),
+    };
+  });
 }
 
-function isRegistryKeyPresent(key) {
+function queryRegistryDefaultValue(key) {
   if (process.platform !== "win32") {
-    return false;
+    return "";
   }
   try {
-    execFileSync("reg.exe", ["query", key, "/ve"], {
+    const output = execFileSync("reg.exe", ["query", key, "/ve"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 1500,
       windowsHide: true,
     });
-    return true;
+    for (const line of String(output || "").split(/\r?\n/)) {
+      const match = line.match(/\s+REG_SZ\s+(.+?)\s*$/);
+      if (match?.[1]) {
+        return match[1].trim();
+      }
+    }
+    return "";
   } catch {
-    return false;
+    return "";
+  }
+}
+
+function inspectInforNexusNativeHostManifest(manifestPath) {
+  if (!manifestPath || !existsSync(manifestPath)) {
+    return {
+      hostPath: "",
+      manifestExists: false,
+      hostExists: false,
+    };
+  }
+  try {
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    const hostPath = String(manifest?.path || "").trim();
+    return {
+      hostPath,
+      manifestExists: true,
+      hostExists: Boolean(hostPath && existsSync(hostPath)),
+    };
+  } catch {
+    return {
+      hostPath: "",
+      manifestExists: true,
+      hostExists: false,
+    };
   }
 }
 
@@ -868,6 +1030,21 @@ function registerActiveRun(run) {
     ...run,
   };
   activeRuns.set(runId, activeRun);
+  return activeRun;
+}
+
+function updateActiveRun(runId, patch = {}) {
+  const normalizedRunId = String(runId || "").trim();
+  if (!normalizedRunId || !activeRuns.has(normalizedRunId)) {
+    return null;
+  }
+
+  const activeRun = {
+    ...activeRuns.get(normalizedRunId),
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+  activeRuns.set(normalizedRunId, activeRun);
   return activeRun;
 }
 
@@ -2050,17 +2227,33 @@ async function runShippingWorkflow(credentials, runContext) {
     shipping2BulkType,
     shouldFillPoNumbers,
   });
-  const showRunBadge = async (message, details = {}) => showAutomationBadge(page, {
-    title: automationBadgeTitle,
-    message,
-    details: {
+  const showRunBadge = async (message, details = {}) => {
+    const badgeDetails = {
       phase: "shipping",
       inputFileName: runContext?.inputFileName || "",
       totalCount: poRows.length || shipping2BulkRows.length,
       selectedAction: isShipping2BulkRun ? shipping2BulkLabel : shouldFillPoNumbers ? shipmentScanAction : "",
       ...details,
-    },
-  });
+    };
+    const progress = buildAutomationProgress(message, badgeDetails);
+    updateActiveRun(runId, {
+      phase: badgeDetails.phase,
+      statusMessage: String(message || ""),
+      currentCount: Number(badgeDetails.currentCount || 0),
+      completedCount: Number(badgeDetails.completedCount || 0),
+      failedCount: Number(badgeDetails.failedCount || 0),
+      totalCount: Number(badgeDetails.totalCount || 0),
+      poNo: String(badgeDetails.poNo || ""),
+      changeEquipmentId: String(badgeDetails.changeEquipmentId || ""),
+      progress,
+    });
+    return showAutomationBadge(page, {
+      title: automationBadgeTitle,
+      message,
+      details: badgeDetails,
+      progress,
+    });
+  };
 
   try {
     if (shouldOpenShipmentScan && canUseInforNexusExtensionLaunch(config.browser, browserLaunchOptions)) {
@@ -2396,7 +2589,16 @@ async function runShippingWorkflow(credentials, runContext) {
       createShipmentResults,
       selectedAction: isShipping2BulkRun ? shipping2BulkLabel : shouldFillPoNumbers ? shipmentScanAction : "",
       message: shouldFillPoNumbers
-        ? `Shipment Scan processed ${completedPoCount}/${poRows.length} PO rows and Create Shipment processed ${completedCreateShipmentCount}/${createShipmentEquipmentIds.length} unique equipment IDs.`
+        ? formatShippingAutomationResultMessage({
+          totalPoCount: poRows.length,
+          completedPoCount,
+          failedPoCount,
+          poResults,
+          totalCreateShipmentCount: createShipmentEquipmentIds.length,
+          completedCreateShipmentCount,
+          failedCreateShipmentCount,
+          createShipmentResults,
+        })
         : isShipping2BulkRun
           ? shipping2BulkResult
             ? `${shipping2BulkLabel} 已筛选 ${shipping2BulkRows.length} 个 PO，并更新 ${completedShipping2BulkRowCount}/${shipping2BulkRows.length} 行。${shipping2BulkSaveMessage}`
@@ -2441,6 +2643,17 @@ async function runShippingWorkflow(credentials, runContext) {
       await page.screenshot({ path: latestScreenshotPath, fullPage: true }).catch(() => {});
     }
 
+    const completedPoCount = poResults.filter((item) => item.ok).length;
+    const failedPoCount = Math.max(
+      poRows.length - completedPoCount,
+      poResults.filter((item) => !item.ok).length,
+    );
+    const completedCreateShipmentCount = createShipmentResults.filter((item) => item.ok).length;
+    const failedCreateShipmentCount = Math.max(
+      createShipmentEquipmentIds.length - completedCreateShipmentCount,
+      createShipmentResults.filter((item) => !item.ok).length,
+    );
+
     const result = {
       runId,
       ok: false,
@@ -2453,11 +2666,8 @@ async function runShippingWorkflow(credentials, runContext) {
       inputMode: isShipping2BulkRun ? "shipping2-bulk" : shouldFillPoNumbers ? "local-file" : shouldOpenShipmentScan ? "open-only" : "login-only",
       inputFileName: runContext?.inputFileName || "",
       totalPoCount: poRows.length,
-      completedPoCount: poResults.filter((item) => item.ok).length,
-      failedPoCount: Math.max(
-        poRows.length - poResults.filter((item) => item.ok).length,
-        poResults.filter((item) => !item.ok).length,
-      ),
+      completedPoCount,
+      failedPoCount,
       businessDataEmptyPoCount,
       cartonRangeCheckCount: cartonRangeSummary.checkedCount,
       cartonRangeMatchedCount: cartonRangeSummary.matchedCount,
@@ -2500,16 +2710,28 @@ async function runShippingWorkflow(credentials, runContext) {
           : 0,
       releasedBulkUpdateResults: (shipping2BulkType === "released" ? releasedBulkResult : unreleasedBulkResult)?.rowResults || [],
       uniqueChangeEquipmentIdCount: createShipmentEquipmentIds.length,
-      completedCreateShipmentCount: createShipmentResults.filter((item) => item.ok).length,
-      failedCreateShipmentCount: createShipmentResults.filter((item) => !item.ok).length,
+      completedCreateShipmentCount,
+      failedCreateShipmentCount,
       businessDataEmptyCreateShipmentCount,
       createShipmentResults,
       selectedAction: isShipping2BulkRun ? shipping2BulkLabel : shouldFillPoNumbers ? shipmentScanAction : "",
-      message: failureMessage || (isShipping2BulkRun
-        ? `${shipping2BulkLabel} 自动化执行失败。`
-        : shouldOpenShipmentScan
-          ? "Shipment Scan automation failed."
-          : "Infor Nexus login automation failed."),
+      message: shouldFillPoNumbers
+        ? formatShippingAutomationResultMessage({
+          totalPoCount: poRows.length,
+          completedPoCount,
+          failedPoCount,
+          poResults,
+          totalCreateShipmentCount: createShipmentEquipmentIds.length,
+          completedCreateShipmentCount,
+          failedCreateShipmentCount,
+          createShipmentResults,
+          fallbackFailureMessage: failureMessage,
+        })
+        : failureMessage || (isShipping2BulkRun
+          ? `${shipping2BulkLabel} 自动化执行失败。`
+          : shouldOpenShipmentScan
+            ? "Shipment Scan automation failed."
+            : "Infor Nexus login automation failed."),
       generatedAt: new Date().toISOString(),
       finalUrl: safePageUrl(page),
       title: await safePageTitle(page),
@@ -6160,6 +6382,174 @@ function readOriginalRowValue(row, keys) {
   return matchedKey ? String(row[matchedKey] ?? "").trim() : "";
 }
 
+function formatShippingAutomationResultMessage(options = {}) {
+  const totalPoCount = Number(options?.totalPoCount || 0);
+  const completedPoCount = Number(options?.completedPoCount || 0);
+  const failedPoCount = Number(options?.failedPoCount || 0);
+  const totalCreateShipmentCount = Number(options?.totalCreateShipmentCount || 0);
+  const completedCreateShipmentCount = Number(options?.completedCreateShipmentCount || 0);
+  const failedCreateShipmentCount = Number(options?.failedCreateShipmentCount || 0);
+  const hasFailure = failedPoCount > 0 || failedCreateShipmentCount > 0;
+  const summaryParts = [
+    formatShippingStageSummary("Shipment Scan", completedPoCount, totalPoCount, failedPoCount, "PO"),
+  ];
+
+  if (totalCreateShipmentCount > 0 || completedCreateShipmentCount > 0 || failedCreateShipmentCount > 0) {
+    summaryParts.push(formatShippingStageSummary(
+      "Create Shipment",
+      completedCreateShipmentCount,
+      totalCreateShipmentCount,
+      failedCreateShipmentCount,
+      "设备",
+    ));
+  } else {
+    summaryParts.push("Create Shipment：没有需要处理的设备");
+  }
+
+  if (!hasFailure) {
+    return `Shipping 自动化已完成。${summaryParts.join("；")}。`;
+  }
+
+  const failureLimit = 4;
+  const failureDetails = collectShippingFailureDetails(
+    options?.poResults,
+    options?.createShipmentResults,
+    options?.fallbackFailureMessage,
+    failureLimit,
+  );
+  const resultFailureCount = countShippingFailureResultItems(
+    options?.poResults,
+    options?.createShipmentResults,
+  );
+  const remainingFailureCount = Math.max(0, resultFailureCount - failureDetails.length);
+
+  if (failureDetails.length === 0) {
+    return `Shipping 自动化未全部完成。${summaryParts.join("；")}。失败原因：未返回具体原因，请查看运行截图或下载失败 PO Excel。`;
+  }
+
+  const tail = remainingFailureCount > 0
+    ? `；还有 ${remainingFailureCount} 条失败，请下载失败 PO Excel 查看。`
+    : "。请下载失败 PO Excel 查看完整明细。";
+  return `Shipping 自动化未全部完成。${summaryParts.join("；")}。失败原因：${failureDetails.join("；")}${tail}`;
+}
+
+function formatShippingStageSummary(label, completedCount, totalCount, failedCount, unitLabel) {
+  const safeCompleted = Number(completedCount || 0);
+  const safeFailed = Number(failedCount || 0);
+  const safeTotal = Math.max(Number(totalCount || 0), safeCompleted + safeFailed);
+  const failedText = safeFailed > 0 ? `，失败 ${safeFailed} 个` : "";
+  return `${label}：成功 ${safeCompleted}/${safeTotal} 个${unitLabel}${failedText}`;
+}
+
+function collectShippingFailureDetails(poResults, createShipmentResults, fallbackFailureMessage, limit = 4) {
+  const details = [];
+  for (const item of Array.isArray(poResults) ? poResults : []) {
+    if (item?.ok || details.length >= limit) {
+      continue;
+    }
+    details.push(formatShippingFailureDetail("po", item));
+  }
+
+  for (const item of Array.isArray(createShipmentResults) ? createShipmentResults : []) {
+    if (item?.ok || details.length >= limit) {
+      continue;
+    }
+    details.push(formatShippingFailureDetail("create-shipment", item));
+  }
+
+  const fallbackReason = formatReadableShippingFailureReason(fallbackFailureMessage);
+  if (details.length === 0 && fallbackReason) {
+    details.push(`整体执行：${fallbackReason}`);
+  }
+
+  return details.filter(Boolean).slice(0, limit);
+}
+
+function countShippingFailureResultItems(poResults, createShipmentResults) {
+  const failedPoCount = (Array.isArray(poResults) ? poResults : [])
+    .filter((item) => item && !item.ok).length;
+  const failedCreateShipmentCount = (Array.isArray(createShipmentResults) ? createShipmentResults : [])
+    .filter((item) => item && !item.ok).length;
+  return failedPoCount + failedCreateShipmentCount;
+}
+
+function formatShippingFailureDetail(type, item) {
+  const rawReason = item?.error || item?.failureReason || "";
+  const reason = formatReadableShippingFailureReason(rawReason) || "未返回具体错误。";
+  const step = formatShippingFailureStepLabel(item?.failedStep || classifyPoFailureStep(rawReason || reason));
+  const detailText = step && !reason.includes(step)
+    ? `${step} - ${reason}`
+    : reason;
+
+  if (type === "create-shipment") {
+    const equipmentId = String(item?.changeEquipmentId || "").trim() || "未知设备";
+    const poNos = Array.isArray(item?.poNos)
+      ? item.poNos.map((value) => String(value || "").trim()).filter(Boolean)
+      : [];
+    const poText = poNos.length > 0 ? `（PO ${poNos.join(", ")}）` : "";
+    return `设备 ${equipmentId}${poText}：${detailText}`;
+  }
+
+  const poNo = String(item?.poNo || "").trim() || "未知 PO";
+  const equipmentId = String(item?.changeEquipmentId || "").trim();
+  const equipmentText = equipmentId ? ` / 设备 ${equipmentId}` : "";
+  return `PO ${poNo}${equipmentText}：${detailText}`;
+}
+
+function formatShippingFailureStepLabel(step) {
+  const normalizedStep = String(step || "").trim();
+  const labels = {
+    "Workbook Validation": "Excel 校验",
+    "Desktop Utility Connection": "PackByScan 桌面工具连接",
+    "Shipment Scan Confirm": "Shipment Scan 确认",
+    "Shipment Scan Result Wait": "Shipment Scan 查询结果",
+    "Shipment Scan Result Load": "Shipment Scan 查询结果",
+    "Change Equipment ID Selection": "选择包裹/设备行",
+    "Change Equipment ID Conflict": "设备号冲突",
+    "Change Equipment ID Apply": "应用设备号",
+    "Change Equipment ID Dialog": "修改设备号窗口",
+    "Create Shipment": "Create Shipment",
+    "Shipping Automation": "",
+    "业务数据为空": "业务数据为空",
+  };
+  return labels[normalizedStep] ?? normalizedStep;
+}
+
+function formatReadableShippingFailureReason(reason) {
+  let text = String(reason || "").trim();
+  if (!text) {
+    return "";
+  }
+
+  text = text
+    .replace(/^Error:\s*/i, "")
+    .replace(/\s*State:\s*\{[\s\S]*$/i, "")
+    .replace(/\s*Call log:\s*[\s\S]*$/i, "")
+    .replace(/\s*={3,}[\s\S]*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const normalizedText = text.toLowerCase();
+  if (normalizedText.includes("read econnreset")
+    || normalizedText.includes("socket hang up")
+    || normalizedText.includes("automation app proxy failed")
+    || normalizedText.includes("browser page became unavailable")
+    || normalizedText.includes("browser session became unavailable")
+    || normalizedText.includes("target page, context or browser has been closed")
+    || normalizedText.includes("target closed")
+    || normalizedText.includes("page has been closed")
+    || normalizedText.includes("browser has been closed")) {
+    return "本地自动化执行器连接中断，可能是点击了停止、可视浏览器被关闭或执行器正在重启；请等待右侧状态刷新，未完成时用断点续跑继续。";
+  }
+
+  return text
+    .replace(/^PO No\s+[^:：]+[:：]\s*/i, "")
+    .replace(/^Change Equipment ID\s+[^:：]+[:：]\s*/i, "")
+    .replace(/^Create Shipment\s+[^:：]+[:：]\s*/i, "")
+    .replace(/target PO rows are empty\./i, "没有找到可用于 Create Shipment 的目标 PO 行。")
+    .replace(/Shipment Scan filters failed\./i, "Shipment Scan 筛选失败。")
+    .trim();
+}
 
 function buildRunSummaryRows(result, poResultRows, createShipmentRows) {
   return [
@@ -6878,6 +7268,64 @@ function resolveShippingAutomationBadgeTitle(options = {}) {
   return "Infor Nexus Shipment Scan 自动化";
 }
 
+function buildAutomationProgress(message, details = {}) {
+  const phase = String(details?.phase || "").trim();
+  const current = Number(details?.currentCount || 0);
+  const completed = Number(details?.completedCount || 0);
+  const failed = Number(details?.failedCount || 0);
+  const total = Number(details?.totalCount || 0);
+  const countValue = current > 0 ? current : completed;
+  const countRatio = total > 0 ? Math.min(Math.max(countValue / total, 0), 1) : 0;
+  let percentage = resolveAutomationPhaseProgress(phase);
+
+  if (phase === "shipment-scan-po" && total > 0) {
+    percentage = Math.round(55 + countRatio * 28);
+  } else if (phase === "create-shipment" && total > 0) {
+    percentage = Math.round(84 + countRatio * 12);
+  } else if (/shipping2/i.test(phase) && total > 0) {
+    percentage = Math.round(45 + countRatio * 45);
+  } else if ((phase === "complete" || phase.endsWith("-complete")) && percentage < 100) {
+    percentage = 100;
+  }
+
+  if (phase === "failed" || phase === "business-empty" || phase === "error") {
+    percentage = Math.max(percentage, total > 0 ? Math.round(55 + countRatio * 35) : 100);
+  }
+
+  return {
+    phase,
+    message: String(message || ""),
+    percentage: Math.min(Math.max(percentage, 0), 100),
+    currentCount: current,
+    completedCount: completed,
+    failedCount: failed,
+    totalCount: total,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function resolveAutomationPhaseProgress(phase) {
+  const progressByPhase = {
+    "open-login": 8,
+    login: 18,
+    "logged-in": 28,
+    "open-shipment-scan": 42,
+    "shipment-scan-ready": 55,
+    "open-event-management": 42,
+    "event-management-ready": 55,
+    "open-shipping2-worksheet": 62,
+    "shipping2-worksheet-ready": 68,
+    shipping: 50,
+    "shipment-scan-po": 58,
+    "create-shipment": 86,
+    complete: 100,
+    failed: 100,
+    error: 100,
+    "business-empty": 100,
+  };
+  return progressByPhase[phase] ?? 35;
+}
+
 async function showAutomationBadge(target, options = {}) {
   if (!target || typeof target.evaluate !== "function") {
     return;
@@ -6896,9 +7344,22 @@ async function showAutomationBadge(target, options = {}) {
     title: String(options?.title || "TOS 浏览器自动化"),
     message: String(options?.message || "自动化正在执行"),
     details: normalizeAutomationBadgeDetails(options?.details),
+    progress: normalizeAutomationBadgeProgress(options?.progress || options?.details),
   };
 
   await Promise.allSettled(uniqueTargets.map((item) => injectAutomationBadge(item, payload)));
+}
+
+function normalizeAutomationBadgeProgress(progress = {}) {
+  return {
+    phase: String(progress?.phase || ""),
+    message: String(progress?.message || ""),
+    percentage: Math.min(Math.max(Number(progress?.percentage || 0), 0), 100),
+    currentCount: Number(progress?.currentCount || 0),
+    completedCount: Number(progress?.completedCount || 0),
+    failedCount: Number(progress?.failedCount || 0),
+    totalCount: Number(progress?.totalCount || 0),
+  };
 }
 
 function normalizeAutomationBadgeDetails(details = {}) {
@@ -6929,7 +7390,7 @@ function normalizeAutomationBadgeDetails(details = {}) {
 }
 
 async function injectAutomationBadge(target, payload) {
-  await target.evaluate(({ id, title, message, details }) => {
+  await target.evaluate(({ id, title, message, details, progress }) => {
     const asText = (value) => String(value || "").trim();
     let root = document.getElementById(id);
     if (!root) {
@@ -6975,11 +7436,33 @@ async function injectAutomationBadge(target, payload) {
       messageNode.setAttribute("data-tos-badge-message", "true");
       messageNode.style.cssText = "font-size:12px;color:#334155;word-break:break-word;";
 
+      const progressNode = document.createElement("div");
+      progressNode.setAttribute("data-tos-badge-progress", "true");
+      progressNode.style.cssText = [
+        "height:6px",
+        "margin-top:8px",
+        "border-radius:999px",
+        "overflow:hidden",
+        "background:rgba(14,165,233,.14)",
+      ].join(";");
+
+      const progressFill = document.createElement("span");
+      progressFill.setAttribute("data-tos-badge-progress-fill", "true");
+      progressFill.style.cssText = [
+        "display:block",
+        "width:0%",
+        "height:100%",
+        "border-radius:inherit",
+        "background:linear-gradient(90deg,#0ea5e9,#14b8a6)",
+        "transition:width .35s ease",
+      ].join(";");
+      progressNode.appendChild(progressFill);
+
       const metaNode = document.createElement("div");
       metaNode.setAttribute("data-tos-badge-meta", "true");
       metaNode.style.cssText = "margin-top:5px;font-size:11px;color:#0369a1;word-break:break-word;";
 
-      root.append(titleNode, messageNode, metaNode);
+      root.append(titleNode, messageNode, progressNode, metaNode);
       document.documentElement.appendChild(root);
     }
 
@@ -7052,9 +7535,31 @@ async function injectAutomationBadge(target, payload) {
       messageNode.textContent = asText(message) || "自动化正在执行";
     }
 
+    let progressNode = root.querySelector("[data-tos-badge-progress]");
+    if (!progressNode) {
+      progressNode = document.createElement("div");
+      progressNode.setAttribute("data-tos-badge-progress", "true");
+      progressNode.style.cssText = "height:6px;margin-top:8px;border-radius:999px;overflow:hidden;background:rgba(14,165,233,.14);";
+      const progressFill = document.createElement("span");
+      progressFill.setAttribute("data-tos-badge-progress-fill", "true");
+      progressFill.style.cssText = "display:block;width:0%;height:100%;border-radius:inherit;background:linear-gradient(90deg,#0ea5e9,#14b8a6);transition:width .35s ease;";
+      progressNode.appendChild(progressFill);
+      const metaNode = root.querySelector("[data-tos-badge-meta]");
+      root.insertBefore(progressNode, metaNode || null);
+    }
+
+    const progressFill = root.querySelector("[data-tos-badge-progress-fill]");
+    if (progressNode && progressFill) {
+      const percentage = Math.max(0, Math.min(100, Number(progress?.percentage || 0)));
+      progressNode.style.display = percentage > 0 ? "block" : "none";
+      progressFill.style.width = `${percentage}%`;
+      progressFill.setAttribute("aria-valuenow", String(percentage));
+    }
+
     const metaNode = root.querySelector("[data-tos-badge-meta]");
     if (metaNode) {
       const parts = [];
+      const percentage = Math.max(0, Math.min(100, Number(progress?.percentage || 0)));
       const current = Number(details?.currentCount || 0);
       const completed = Number(details?.completedCount || 0);
       const total = Number(details?.totalCount || 0);
@@ -7070,6 +7575,7 @@ async function injectAutomationBadge(target, payload) {
       if (current > 0 && total > 0) parts.push(`${current}/${total}`);
       else if (completed > 0 && total > 0) parts.push(`完成 ${completed}/${total}`);
       else if (total > 0) parts.push(`共 ${total}`);
+      if (percentage > 0) parts.push(`${percentage}%`);
       if (failedCount > 0) parts.push(`失败 ${failedCount}`);
       if (poNo) parts.push(`PO ${poNo}`);
       if (changeEquipmentId) parts.push(`设备 ${changeEquipmentId}`);

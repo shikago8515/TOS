@@ -208,7 +208,7 @@ async function getAutomationApps(options) {
   }))
 }
 
-async function waitForAutomationApp(automationApp, timeoutMs = 15000) {
+async function waitForAutomationApp(automationApp, timeoutMs = 60000) {
   const startedAt = Date.now()
   while (Date.now() - startedAt < timeoutMs) {
     if (await requestAutomationAppHealth(automationApp, 1000)) {

@@ -544,6 +544,27 @@ async function proxyAutomationAppRequest(appId, proxyPath, clientReq, clientRes)
     return
   }
 
+  if (isHealthProxyPath(proxyPath)) {
+    const health = await requestAutomationAppHealthPayload(automationApp, 700)
+    if (health) {
+      sendJson(clientRes, 200, health)
+      return
+    }
+
+    const tracked = processMap.get(appId)
+    const starting = Boolean(tracked && tracked.child && !tracked.child.killed)
+    sendJson(clientRes, 200, {
+      ok: false,
+      appId,
+      url: automationApp.url,
+      starting,
+      message: starting
+        ? '执行器正在启动，首次启动可能需要 20-60 秒，请稍等。'
+        : '执行器尚未启动。',
+    })
+    return
+  }
+
   if (!isHealthProxyPath(proxyPath)) {
     const launchResult = await launchAutomationApp(appId, { ...sharedOptions, forceUpdate: false })
     if (!launchResult.success) {

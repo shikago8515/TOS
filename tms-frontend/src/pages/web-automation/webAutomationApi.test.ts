@@ -24,7 +24,7 @@ import {
   syncLocalAutomationModules,
 } from './webAutomationApi'
 
-const compatibleHelperVersion = '0.9.8-beta.3.32'
+const compatibleHelperVersion = '1.0.0-beta.3.2'
 
 describe('webAutomationApi', () => {
   it('opens the Infornexus auto-add search page through the local executor', async () => {
@@ -174,11 +174,11 @@ describe('webAutomationApi', () => {
       ok: true,
       helperVersion: compatibleHelperVersion,
     }, createAutomationApp({
-      requiredHelperVersion: '0.9.8-beta.3.33',
+      requiredHelperVersion: '1.0.0-beta.3.3',
     }))
 
     expect(message).toContain(compatibleHelperVersion)
-    expect(message).toContain('0.9.8-beta.3.33')
+    expect(message).toContain('1.0.0-beta.3.3')
   })
 
   it('passes forceUpdate to the desktop automation launcher', async () => {

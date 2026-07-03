@@ -1,7 +1,8 @@
 param(
   [string]$NodeExe = (Get-Command node.exe).Source,
   [string]$CodeSigningCertificateThumbprint = $env:TOS_CODESIGN_THUMBPRINT,
-  [string]$TimestampServer = $env:TOS_CODESIGN_TIMESTAMP
+  [string]$TimestampServer = $env:TOS_CODESIGN_TIMESTAMP,
+  [string]$InforNexusBridgeSource = (Join-Path $env:USERPROFILE ".tradecard\bridge")
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,6 +51,8 @@ Require-Path (Join-Path $ElectronDir "adidas-materials-main.js") "adidas Materia
 Require-Path (Join-Path $ElectronDir "adidas-materials-preload.js") "adidas Materials preload entry"
 Require-Path (Join-Path $ElectronDir "node_modules") "Electron Node dependencies"
 Require-Path (Join-Path $PSScriptRoot "copy-automation-helper-dependencies.js") "automation helper dependency copier"
+Require-Path (Join-Path $InforNexusBridgeSource "FactoryBridge.exe") "Infor Nexus Desktop Utility bridge executable"
+Require-Path (Join-Path $InforNexusBridgeSource "Newtonsoft.Json.dll") "Infor Nexus Desktop Utility bridge dependency"
 
 if (Test-Path -LiteralPath $OutputRoot) {
   Assert-Under $OutputRoot $ElectronDir
@@ -64,6 +67,10 @@ Copy-Item -LiteralPath (Join-Path $ElectronDir "automation-launcher") -Destinati
 Copy-Item -LiteralPath (Join-Path $ElectronDir "automation-apps") -Destination (Join-Path $PayloadRoot "automation-apps") -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $ElectronDir "adidas-materials-main.js") -Destination (Join-Path $PayloadRoot "adidas-materials-main.js") -Force
 Copy-Item -LiteralPath (Join-Path $ElectronDir "adidas-materials-preload.js") -Destination (Join-Path $PayloadRoot "adidas-materials-preload.js") -Force
+$InforNexusBridgeTarget = Join-Path $PayloadRoot "automation-apps\shipping-automation-demo\native-hosts\infornexus"
+New-Item -ItemType Directory -Path $InforNexusBridgeTarget -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $InforNexusBridgeSource "FactoryBridge.exe") -Destination (Join-Path $InforNexusBridgeTarget "FactoryBridge.exe") -Force
+Copy-Item -LiteralPath (Join-Path $InforNexusBridgeSource "Newtonsoft.Json.dll") -Destination (Join-Path $InforNexusBridgeTarget "Newtonsoft.Json.dll") -Force
 & $NodeExe (Join-Path $PSScriptRoot "copy-automation-helper-dependencies.js") (Join-Path $ElectronDir "node_modules") (Join-Path $PayloadRoot "node_modules") ws exceljs
 if ($LASTEXITCODE -ne 0) {
   throw "Automation helper dependency copy failed with exit code $LASTEXITCODE"

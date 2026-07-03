@@ -1,5 +1,35 @@
 [
   {
+    "recordKey": "builtin-1.0.0-beta.3.2-improved-infornexus-native-host-bundled",
+    "version": "1.0.0-beta.3.2",
+    "releaseDate": "2026-07-03",
+    "category": "improved",
+    "pageName": "TOS 自动化助手",
+    "pagePath": "/settings",
+    "title": "内置 Infor Nexus 桥接本体",
+    "description": "小助手安装包内置 Infor Nexus Desktop Utility 桥接程序，启动执行器时会自动生成 Native Host manifest 并注册到当前用户 Edge / Chrome，用户安装小助手后无需手动配置浏览器扩展。"
+  },
+  {
+    "recordKey": "builtin-1.0.0-beta.3.2-improved-shipping-startup-progress",
+    "version": "1.0.0-beta.3.2",
+    "releaseDate": "2026-07-03",
+    "category": "improved",
+    "pageName": "万代 / 新龙泰 Shipping 自动化",
+    "pagePath": "/web-automation",
+    "title": "新增执行器首次启动进度",
+    "description": "万代和新龙泰 Shipping 页面在首次启动本机执行器时显示真实阶段进度，覆盖连接小助手、启动执行器、等待健康检查、打开 Infor Nexus 和处理 Excel。"
+  },
+  {
+    "recordKey": "builtin-1.0.0-beta.3.2-fixed-helper-cold-start-health",
+    "version": "1.0.0-beta.3.2",
+    "releaseDate": "2026-07-03",
+    "category": "fixed",
+    "pageName": "浏览器自动化",
+    "pagePath": "/web-automation",
+    "title": "修复执行器冷启动误判未就绪",
+    "description": "启动器健康代理在执行器冷启动期间返回可识别的等待状态，不再暴露 502；前端会等待执行器真实健康结果，减少用户刚安装小助手后误判未连接的问题。"
+  },
+  {
     "recordKey": "builtin-1.0.0-beta.3.1-added-shipping-carton-range-check",
     "version": "1.0.0-beta.3.1",
     "releaseDate": "2026-07-02",

@@ -21,7 +21,7 @@ const defaultAutomationHelperDownloadPath = '/api/system/config/automation-helpe
 const localHealthProbeTimeoutMs = 2500
 const localLauncherProbeTimeoutMs = 1200
 const automationTemplateBackendTarget = 'remote'
-export const minimumAutomationHelperVersion = '0.9.8-beta.3.32'
+export const minimumAutomationHelperVersion = '1.0.0-beta.3.2'
 
 export interface InfornexusAutoAddManualSessionSummary {
   manualSessionId: string
@@ -44,6 +44,17 @@ export interface InforNexusDesktopBridgeHealth {
   extensionInstalledForAutomation?: boolean
   nativeHostName?: string
   nativeHostRegistered?: boolean
+  nativeHostRepair?: {
+    ok?: boolean
+    attempted?: boolean
+    reason?: string
+    error?: string
+    bridgePath?: string
+    manifestPath?: string
+    registeredBrowsers?: string[]
+  }
+  bundledBridgeAvailable?: boolean
+  bundledManifestPath?: string
   nativeHosts?: InforNexusDesktopBridgeHostRegistration[]
   browser?: string
   channel?: string
@@ -87,7 +98,10 @@ export function getInforNexusDesktopBridgeWarning(health: LocalExecutorHealth | 
   }
 
   if (bridge.nativeHostRegistered === false) {
-    return 'Infor Nexus Desktop Utility 未安装或未注册。请登录 Infor Nexus，在 Home > Resources 下载并安装 Desktop Utility，启动后重启 TOS 自动化助手，或在 Print-Scan-Ship 左下角点击 Reconnect to Desktop。'
+    if (bridge.bundledBridgeAvailable === false || bridge.nativeHostRepair?.reason === 'bridge-files-missing') {
+      return 'Infor Nexus Desktop Utility 桥接组件缺失。请安装最新版 TOS 自动化助手完整包，安装后会自动准备浏览器扩展和 Native Host。'
+    }
+    return 'Infor Nexus Desktop Utility Native Host 尚未注册。最新版 TOS 自动化助手会自动修复注册，请关闭业务浏览器后重启小助手并重新检测。'
   }
 
   return ''
@@ -599,6 +613,12 @@ async function fetchExecutorHealthCandidate(url: string): Promise<LocalExecutorH
   }
 
   const payload = await response.json().catch(() => ({}))
+  if (payload && typeof payload === 'object' && (payload as Record<string, unknown>).ok === false) {
+    const message = typeof (payload as Record<string, unknown>).message === 'string'
+      ? String((payload as Record<string, unknown>).message)
+      : 'Executor is not ready.'
+    throw new Error(message)
+  }
   return {
     ok: true,
     ...(payload && typeof payload === 'object'
