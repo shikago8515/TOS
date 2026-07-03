@@ -7,18 +7,11 @@ import {
   buildBackendDownloadUrl,
   downloadUrlAsFile,
   getBackendBaseUrl,
-  openUrlAsBrowserDownload,
   postFormData,
   readResponseMessage,
   requestBackendJson,
   type BackendTarget,
 } from '../../shared/api/backendClient'
-import {
-  collectExecutorActiveRuns,
-  safeParseExecutorJson,
-  type JsonRecord,
-  type LocalExecutorRun,
-} from './automationExecutorResponse'
 
 const moduleName = 'web-automation'
 const launcherBaseUrl = 'http://127.0.0.1:3210'
@@ -52,17 +45,6 @@ export interface InforNexusDesktopBridgeHealth {
   extensionInstalledForAutomation?: boolean
   nativeHostName?: string
   nativeHostRegistered?: boolean
-  nativeHostRepair?: {
-    ok?: boolean
-    attempted?: boolean
-    reason?: string
-    error?: string
-    bridgePath?: string
-    manifestPath?: string
-    registeredBrowsers?: string[]
-  }
-  bundledBridgeAvailable?: boolean
-  bundledManifestPath?: string
   nativeHosts?: InforNexusDesktopBridgeHostRegistration[]
   browser?: string
   channel?: string
@@ -83,8 +65,8 @@ export interface LocalExecutorHealth {
   runtimeConfigPath?: string
   runtimeSecretPath?: string
   desktopBridge?: InforNexusDesktopBridgeHealth
-  capabilities?: JsonRecord
-  config?: JsonRecord
+  capabilities?: Record<string, unknown>
+  config?: Record<string, unknown>
 }
 
 export function isLocalExecutorBusy(health: LocalExecutorHealth | null | undefined): boolean {
@@ -106,24 +88,34 @@ export function getInforNexusDesktopBridgeWarning(health: LocalExecutorHealth | 
   }
 
   if (bridge.nativeHostRegistered === false) {
-    if (bridge.bundledBridgeAvailable === false || bridge.nativeHostRepair?.reason === 'bridge-files-missing') {
-      return 'Infor Nexus Desktop Utility 桥接组件缺失。请安装最新版 TOS 自动化助手完整包，安装后会自动准备浏览器扩展和 Native Host。'
-    }
-    return 'Infor Nexus Desktop Utility Native Host 尚未注册。最新版 TOS 自动化助手会自动修复注册，请关闭业务浏览器后重启小助手并重新检测。'
+    return 'Infor Nexus Desktop Utility 未安装或未注册。请登录 Infor Nexus，在 Home > Resources 下载并安装 Desktop Utility，启动后重启 TOS 自动化助手，或在 Print-Scan-Ship 左下角点击 Reconnect to Desktop。'
   }
 
   return ''
 }
 
-export function collectLocalExecutorActiveRuns(health: LocalExecutorHealth | null | undefined): LocalExecutorRun[] {
-  return collectExecutorActiveRuns(health)
+export function collectLocalExecutorActiveRuns(health: LocalExecutorHealth | null | undefined): Record<string, any>[] {
+  const runs: Record<string, any>[] = []
+  const activeRun = toActiveRunRecord(health?.activeRun)
+  if (activeRun) runs.push(activeRun)
+  if (Array.isArray(health?.activeRuns)) {
+    for (const item of health.activeRuns) {
+      const run = toActiveRunRecord(item)
+      if (run) runs.push(run)
+    }
+  }
+  return runs
 }
 
 export function findLocalExecutorActiveRun(
   health: LocalExecutorHealth | null | undefined,
-  matcher: (run: LocalExecutorRun) => boolean,
-): LocalExecutorRun | null {
+  matcher: (run: Record<string, any>) => boolean,
+): Record<string, any> | null {
   return collectLocalExecutorActiveRuns(health).find(matcher) || null
+}
+
+function toActiveRunRecord(value: unknown): Record<string, any> | null {
+  return value && typeof value === 'object' ? value as Record<string, any> : null
 }
 
 export interface LocalAutomationLauncherHealth {
@@ -263,10 +255,6 @@ export interface AutomationRunFileInput {
   contentBase64?: string
 }
 
-interface AutomationRunBackendTargetOptions {
-  backendTarget?: BackendTarget
-}
-
 export interface PackingListCheckpointItem {
   no: string
   status: string
@@ -299,8 +287,8 @@ export interface PackingListCheckpoint {
   failedCount?: number
   pendingCount?: number
   items?: PackingListCheckpointItem[]
-  groupResults?: JsonRecord[]
-  result?: JsonRecord | null
+  groupResults?: Array<Record<string, any>>
+  result?: Record<string, any> | null
 }
 
 export interface PackingListBatchRecord {
@@ -342,64 +330,6 @@ export interface PackingListBatchAttempt {
   startedAt?: string
   finishedAt?: string
 }
-
-export interface TicketOwnerSourceFileRef {
-  fileRole: string
-  label?: string
-  originalFilename?: string
-  contentType?: string
-  fileSize?: number
-  sha256?: string
-  downloadPath?: string
-}
-
-export interface TicketOwnerCheckpoint {
-  status?: string
-  message?: string
-  runId?: string
-  attemptId?: string
-  mode?: string
-  totalCount?: number
-  completedCount?: number
-  failedCount?: number
-  pendingCount?: number
-  items?: JsonRecord[]
-  storedFiles?: AutomationStoredFileDownloadRef[]
-  result?: JsonRecord | null
-}
-
-export interface TicketOwnerBatchRecord {
-  batchId: string
-  automationId: string
-  moduleId: string
-  runId: string
-  batchName: string
-  status: string
-  message: string
-  sourceFileName: string
-  sourceFileSha256: string
-  sourceFile?: {
-    files?: TicketOwnerSourceFileRef[]
-    bundle?: {
-      originalFilename?: string
-      contentType?: string
-      fileSize?: number
-      sha256?: string
-    } | null
-    downloadPath?: string
-  }
-  totalCount: number
-  completedCount: number
-  failedCount: number
-  pendingCount: number
-  checkpoint: TicketOwnerCheckpoint
-  storedFiles?: AutomationStoredFileDownloadRef[]
-  resumable: boolean
-  createdAt?: string
-  updatedAt?: string
-}
-
-export type TicketOwnerBatchAttempt = PackingListBatchAttempt
 
 export type AutomationHelperPanelOpenResult =
   | { status: 'opened'; message: string }
@@ -452,7 +382,7 @@ export async function resolveAutomationHelperDownloadUrl(): Promise<string> {
 
 export async function openAutomationHelperDownload(): Promise<void> {
   const downloadUrl = await resolveAutomationHelperDownloadUrl()
-  openUrlAsBrowserDownload(downloadUrl, 'TOS-Automation-Helper-Setup.exe')
+  await downloadUrlAsFile(downloadUrl, 'TOS-Automation-Helper-Setup.exe')
 }
 
 export async function openAutomationHelperPanel(): Promise<AutomationHelperPanelOpenResult> {
@@ -609,12 +539,6 @@ async function fetchExecutorHealthCandidate(url: string): Promise<LocalExecutorH
   }
 
   const payload = await response.json().catch(() => ({}))
-  if (payload && typeof payload === 'object' && (payload as Record<string, unknown>).ok === false) {
-    const message = typeof (payload as Record<string, unknown>).message === 'string'
-      ? String((payload as Record<string, unknown>).message)
-      : 'Executor is not ready.'
-    throw new Error(message)
-  }
   return {
     ok: true,
     ...(payload && typeof payload === 'object'
@@ -889,74 +813,6 @@ export async function createPackingListAutoDownloadAttempt(
   return payload.attempt
 }
 
-export async function createTicketOwnerStatisticsBatch(input: {
-  runId?: string
-  batchName?: string
-  releaseFile?: File | null
-  factoryPriceFile?: File | null
-}): Promise<TicketOwnerBatchRecord> {
-  const formData = new FormData()
-  formData.append('run_id', input.runId || '')
-  formData.append('batch_name', input.batchName || 'Ticket ownership')
-  if (input.releaseFile) formData.append('release_file', input.releaseFile)
-  if (input.factoryPriceFile) formData.append('factory_price_file', input.factoryPriceFile)
-
-  const payload = await postFormData<{ batch?: TicketOwnerBatchRecord }>({
-    path: '/api/automation/ticket-owner-statistics/batches',
-    formData,
-  })
-  if (!payload.batch) {
-    throw new Error('ticket 归属统计批次已创建，但后端未返回批次记录。')
-  }
-  return payload.batch
-}
-
-export async function fetchLatestTicketOwnerStatisticsBatch(): Promise<TicketOwnerBatchRecord | null> {
-  const payload = await requestBackendJson<{ batch?: TicketOwnerBatchRecord | null }>({
-    path: '/api/automation/ticket-owner-statistics/batches/latest',
-  })
-  return payload.batch || null
-}
-
-export async function fetchTicketOwnerStatisticsBatches(limit = 20): Promise<TicketOwnerBatchRecord[]> {
-  const payload = await requestBackendJson<{ batches?: TicketOwnerBatchRecord[] }>({
-    path: `/api/automation/ticket-owner-statistics/batches?limit=${encodeURIComponent(String(limit))}`,
-  })
-  return Array.isArray(payload.batches) ? payload.batches : []
-}
-
-export async function fetchTicketOwnerStatisticsBatch(batchId: string): Promise<TicketOwnerBatchRecord | null> {
-  const payload = await requestBackendJson<{ batch?: TicketOwnerBatchRecord | null }>({
-    path: `/api/automation/ticket-owner-statistics/batches/${encodeURIComponent(batchId)}`,
-  })
-  return payload.batch || null
-}
-
-export async function deleteTicketOwnerStatisticsBatch(batchId: string): Promise<void> {
-  await requestBackendJson<{ ok?: boolean }>({
-    method: 'DELETE',
-    path: `/api/automation/ticket-owner-statistics/batches/${encodeURIComponent(batchId)}`,
-  })
-}
-
-export async function createTicketOwnerStatisticsAttempt(
-  batchId: string,
-  input: { runId?: string; mode?: string },
-): Promise<TicketOwnerBatchAttempt> {
-  const payload = await requestBackendJson<{ attempt?: TicketOwnerBatchAttempt }>({
-    method: 'POST',
-    path: `/api/automation/ticket-owner-statistics/batches/${encodeURIComponent(batchId)}/attempts`,
-    body: {
-      runId: input.runId || '',
-      mode: input.mode || 'continue',
-    },
-  })
-  if (!payload.attempt) {
-    throw new Error('ticket 归属统计续跑 attempt 创建失败。')
-  }
-  return payload.attempt
-}
-
 export async function interruptPackingListAutoDownloadBatch(
   batchId: string,
   input: { runId?: string; attemptId?: string; message?: string } = {},
@@ -990,27 +846,6 @@ export async function downloadPackingListBatchSourceAsBase64(batch: PackingListB
   const fileBase64 = await blobToBase64(blob)
   return {
     fileName: batch.sourceFile?.originalFilename || batch.sourceFileName || 'packing-list.xlsx',
-    fileBase64,
-  }
-}
-
-export async function downloadTicketOwnerSourceFileAsBase64(file: TicketOwnerSourceFileRef): Promise<{
-  fileName: string
-  fileBase64: string
-}> {
-  const downloadPath = file.downloadPath
-  if (!downloadPath) {
-    throw new Error('该 ticket 归属批次的辅助 Excel 文件没有下载地址，无法续跑。')
-  }
-  const url = await buildBackendDownloadUrl(downloadPath, 'local')
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`ticket 归属辅助 Excel 下载失败：HTTP ${response.status}`)
-  }
-  const blob = await response.blob()
-  const fileBase64 = await blobToBase64(blob)
-  return {
-    fileName: file.originalFilename || `${file.fileRole || 'ticket-owner-source'}.xlsx`,
     fileBase64,
   }
 }
@@ -1097,10 +932,7 @@ export async function fetchAutomationRuns(params: {
   }
 }
 
-export async function fetchAutomationRunDetail(
-  runId: string,
-  options: AutomationRunBackendTargetOptions = {},
-): Promise<{
+export async function fetchAutomationRunDetail(runId: string, options: { backendTarget?: BackendTarget } = {}): Promise<{
   run: AutomationRunRecord
   files: AutomationRunFileRecord[]
 }> {
@@ -1120,10 +952,7 @@ export async function fetchAutomationRunDetail(
   }
 }
 
-export async function fetchAutomationRunFiles(
-  runId: string,
-  options: AutomationRunBackendTargetOptions = {},
-): Promise<AutomationRunFileRecord[]> {
+export async function fetchAutomationRunFiles(runId: string, options: { backendTarget?: BackendTarget } = {}): Promise<AutomationRunFileRecord[]> {
   const payload = await requestBackendJson<{ files?: AutomationRunFileRecord[] }>({
     path: `/api/automation/runs/${encodeURIComponent(runId)}/files`,
     backendTarget: options.backendTarget,
@@ -1131,10 +960,7 @@ export async function fetchAutomationRunFiles(
   return Array.isArray(payload.files) ? payload.files : []
 }
 
-export async function deleteAutomationRunRecord(
-  runId: string,
-  options: AutomationRunBackendTargetOptions = {},
-): Promise<void> {
+export async function deleteAutomationRunRecord(runId: string, options: { backendTarget?: BackendTarget } = {}): Promise<void> {
   await requestBackendJson<{ ok?: boolean }>({
     method: 'DELETE',
     path: `/api/automation/runs/${encodeURIComponent(runId)}`,
@@ -1142,17 +968,11 @@ export async function deleteAutomationRunRecord(
   })
 }
 
-export function buildAutomationRunFileDownloadUrl(
-  file: AutomationRunFileRecord,
-  backendTarget: BackendTarget = 'default',
-): Promise<string> {
+export function buildAutomationRunFileDownloadUrl(file: AutomationRunFileRecord, backendTarget?: BackendTarget): Promise<string> {
   return buildBackendDownloadUrl(file.downloadPath, backendTarget)
 }
 
-export async function downloadAutomationRunFile(
-  file: AutomationRunFileRecord,
-  backendTarget: BackendTarget = 'default',
-): Promise<void> {
+export async function downloadAutomationRunFile(file: AutomationRunFileRecord, backendTarget?: BackendTarget): Promise<void> {
   const url = await buildAutomationRunFileDownloadUrl(file, backendTarget)
   let response: Response
   try {
@@ -1498,7 +1318,7 @@ async function requestLauncherJson<T = Record<string, unknown>>(
   }, timeoutMs)
 
   const rawText = await response.text()
-  const payload = safeParseExecutorJson(rawText)
+  const payload = safeParseJson(rawText)
 
   if (!response.ok) {
     const message = payload && typeof payload.message === 'string'
@@ -1538,7 +1358,7 @@ async function requestExecutorJson<T = Record<string, unknown>>(
     body: requestBody,
   }, timeoutMs)
   const rawText = await response.text()
-  const payload = safeParseExecutorJson(rawText)
+  const payload = safeParseJson(rawText)
 
   if (!response.ok) {
     const message = payload && typeof payload.message === 'string'
@@ -1548,6 +1368,14 @@ async function requestExecutorJson<T = Record<string, unknown>>(
   }
 
   return (payload || {}) as T
+}
+
+function safeParseJson(rawText: string): Record<string, unknown> | null {
+  try {
+    return rawText ? JSON.parse(rawText) : {}
+  } catch {
+    return null
+  }
 }
 
 async function fetchWithTimeout(

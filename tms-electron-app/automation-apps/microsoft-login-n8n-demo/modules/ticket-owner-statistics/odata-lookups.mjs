@@ -31,18 +31,10 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
     normalizePositiveInteger(options.requestLookupConcurrency || options.lookupConcurrency, DEFAULT_REQUEST_LOOKUP_CONCURRENCY)
   );
   const lookupCache = new Map();
-  const resumeBaseline = options.resumeBaseline && typeof options.resumeBaseline === "object"
-    ? options.resumeBaseline
-    : {};
-  const rows = Array.isArray(resumeBaseline.rows) ? [...resumeBaseline.rows] : [];
-  const ticketResults = Array.isArray(resumeBaseline.ticketResults) ? [...resumeBaseline.ticketResults] : [];
+  const rows = [];
+  const ticketResults = [];
   const failedTickets = [];
-  const unresolvedTickets = [];
   const lookupDiagnostics = [];
-  const enrichRow = typeof options.enrichRow === "function" ? options.enrichRow : (row) => row;
-  const itemCheckpoint = options.itemCheckpoint && typeof options.itemCheckpoint === "object"
-    ? options.itemCheckpoint
-    : null;
   const expectedTicketCount = normalizePositiveInteger(options.expectedTicketCount, maxTicketCount);
   const filteredTotalCount = normalizePositiveInteger(options.filteredTotalCount, 0);
   const sourceTasks = Array.isArray(tasks) ? tasks : [];
@@ -53,7 +45,6 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
   const notQueuedCount = Math.max(0, (filteredTotalCount || sourceTasks.length) - supportedTasks.length);
   const activeTasks = new Map();
   const workerCount = Math.max(1, Math.min(requestLookupConcurrency, supportedTasks.length || 1));
-  const resumedCount = rows.length;
   let attemptedCount = 0;
   let nextIndex = 0;
   let stopRequested = false;
@@ -73,19 +64,9 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
         return;
       }
 
-      const base = taskToBaseFields(task);
-      if (itemCheckpoint?.shouldSkip?.(base) === true) {
-        await reportLookupState(
-          resumedCount > 0
-            ? `已从断点跳过 ${resumedCount} 条，继续请求剩余工单`
-            : "已跳过断点中完成的工单",
-          estimateLookupProgress(rows.length, plannedCount)
-        );
-        continue;
-      }
-
       attemptedCount += 1;
       const sequence = attemptedCount;
+      const base = taskToBaseFields(task);
       const activeKey = `${workerIndex}-${sequence}`;
       activeTasks.set(activeKey, base.caseNumber || base.subject || `worker-${workerIndex + 1}`);
       await reportLookupState(`正在请求第 ${sequence} 个工单数据`, estimateLookupProgress(rows.length, plannedCount));
@@ -105,22 +86,20 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
           attempts: lookup.attempts,
         });
 
-        const row = enrichRow(resolveTicketOwnerRow({
+        const row = resolveTicketOwnerRow({
           caseNumber: base.caseNumber,
           taskType: base.taskType,
           request: base.request,
           poNumber: lookup.poNumber || base.poNumber,
           workingNumber: lookup.workingNumber || base.workingNumber,
           factoryCode: lookup.factoryCode || base.factoryCode,
-        }));
+        });
         const missingFields = collectMissingRequiredFields(row);
 
         if (missingFields.length > 0) {
-          unresolvedTickets.push({
+          failedTickets.push({
             ok: false,
             requestFirst: true,
-            retryable: true,
-            diagnosticOnly: true,
             caseNumber: base.caseNumber,
             taskType: base.taskType,
             request: base.request,
@@ -133,32 +112,25 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
 
         if (rows.length < maxTicketCount) {
           rows.push(row);
-          const ticketResult = {
+          ticketResults.push({
             ok: true,
             requestFirst: true,
             odataLookup: true,
             taskKey: `${base.caseNumber}|${base.taskType}|${lookup.poNumber || base.poNumber}`,
-            row,
             branchId: row.branchId,
             caseNumber: row["Case Number"],
             taskType: row["Task Type"],
             request: row.Request,
             poNumber: row["PO Number"],
             workingNumber: row["Working Number"],
-            factory: row.Factory,
-            merch: row.Merch,
             source: lookup.source,
             warnings: [],
-          };
-          ticketResults.push(ticketResult);
-          await writeODataItemCheckpoint(ticketResult);
+          });
         }
       } catch (error) {
-        unresolvedTickets.push({
+        failedTickets.push({
           ok: false,
           requestFirst: true,
-          retryable: true,
-          diagnosticOnly: true,
           caseNumber: base.caseNumber,
           taskType: base.taskType,
           request: base.request,
@@ -179,7 +151,6 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
     rows,
     ticketResults,
     failedTickets,
-    unresolvedTickets,
     lookupDiagnostics,
     filteredTotalCount,
     taskCenterTotalCount: normalizePositiveInteger(options.taskCenterTotalCount, 0),
@@ -188,25 +159,8 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
     skippedCount: notQueuedCount,
     concurrencyCount: workerCount,
     attemptedTicketCount: attemptedCount,
-    resumedRowCount: resumedCount,
     failedTicketCount: failedTickets.length,
-    unresolvedTicketCount: unresolvedTickets.length,
   };
-
-  async function writeODataItemCheckpoint(result) {
-    if (!itemCheckpoint?.write) {
-      return;
-    }
-    await itemCheckpoint.write(result, {
-      totalCount: plannedCount,
-      completedCount: rows.length,
-      successCount: rows.length,
-      failedCount: failedTickets.length,
-      attemptedCount,
-      pendingCount: Math.max(0, plannedCount - rows.length),
-      resumedCount,
-    });
-  }
 
   async function reportLookupState(message, percent) {
     await reportLookupProgress(options, {
@@ -222,10 +176,9 @@ export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, optio
       successCount: rows.length,
       failedCount: failedTickets.length,
       attemptedCount,
-      resumedCount,
       activeCount: activeTasks.size,
       concurrencyCount: workerCount,
-      pendingCount: Math.max(0, plannedCount - rows.length),
+      pendingCount: Math.max(0, plannedCount - attemptedCount),
       currentTickets: Array.from(activeTasks.values()).filter(Boolean),
     });
   }

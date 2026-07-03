@@ -194,8 +194,8 @@ DEFAULT_TOS_MODULES: tuple[dict[str, Any], ...] = (
         "module_id": "jane-bom-compare",
         "owner_key": "jane",
         "owner_name": "Jane",
-        "module_name": "PRODUCTION 核对",
-        "module_name_en": "PRODUCTION Compare",
+        "module_name": "BOM 核对",
+        "module_name_en": "BOM Compare",
         "module_type": "excel",
         "page_path": "/jane-bom-compare",
     },
@@ -377,48 +377,21 @@ def _seed_default_tos_modules(cursor: Any) -> None:
         )
 
 
-PROCESS_HISTORY_DEFAULT_MODULE_ID_BY_CANONICAL_ID: dict[str, str] = {
-    "excel-jessca": "jessca",
-    "pdf-draft-packing-compare": "draft-packing-compare",
-    "excel-jane": "jane",
-    "excel-jane-bom-compare": "jane-bom-compare",
-    "excel-jane-bom-summary": "jane-bom-summary",
-    "excel-jane-outbound-compare": "jane-outbound-compare",
-    "excel-sophia-tina": "sophia-tina",
-    "excel-tms-finance-internal-reconciliation": "tms-finance-internal-reconciliation",
-    "excel-tms-finance-work-sales": "tms-finance-work-sales",
-}
-
-
-def _module_lookup_ids(module_id: str) -> list[str]:
-    normalized = str(module_id or "").strip()
-    if not normalized:
-        return []
-    default_module_id = PROCESS_HISTORY_DEFAULT_MODULE_ID_BY_CANONICAL_ID.get(normalized)
-    return [normalized, default_module_id] if default_module_id and default_module_id != normalized else [normalized]
-
-
 def get_tos_module(module_id: str) -> dict[str, Any] | None:
     ensure_schema()
-    module_ids = _module_lookup_ids(module_id)
-    if not module_ids:
-        return None
     with mysql_connection() as connection:
         with connection.cursor() as cursor:
-            for lookup_id in module_ids:
-                cursor.execute(
-                    """
-                    SELECT module_id, person_id, module_name, module_name_en, module_type, page_path
-                    FROM tos_modules
-                    WHERE module_id = %s AND is_active = 1
-                    LIMIT 1
-                    """,
-                    (lookup_id,),
-                )
-                row = cursor.fetchone()
-                if row:
-                    return row
-    return None
+            cursor.execute(
+                """
+                SELECT module_id, person_id, module_name, module_name_en, module_type, page_path
+                FROM tos_modules
+                WHERE module_id = %s AND is_active = 1
+                LIMIT 1
+                """,
+                (module_id,),
+            )
+            row = cursor.fetchone()
+    return row
 
 
 def _person_sort_order(person_id: str) -> int:
@@ -435,10 +408,9 @@ def _person_sort_order(person_id: str) -> int:
 
 
 def _owner_key_for_module(module_id: str) -> str:
-    for lookup_id in _module_lookup_ids(module_id):
-        for module in DEFAULT_TOS_MODULES:
-            if module["module_id"] == lookup_id:
-                return str(module["owner_key"])
+    for module in DEFAULT_TOS_MODULES:
+        if module["module_id"] == module_id:
+            return str(module["owner_key"])
     return "general-tools"
 
 
@@ -1115,29 +1087,6 @@ def list_automation_batches(
     return rows or []
 
 
-def delete_automation_batch(batch_id: str) -> bool:
-    ensure_schema()
-    with mysql_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                DELETE FROM tos_automation_batch_attempts
-                WHERE batch_id = %s
-                """,
-                (batch_id,),
-            )
-            cursor.execute(
-                """
-                DELETE FROM tos_automation_batches
-                WHERE batch_id = %s
-                """,
-                (batch_id,),
-            )
-            deleted = cursor.rowcount > 0
-        connection.commit()
-    return deleted
-
-
 def update_automation_batch_checkpoint(
     batch_id: str,
     updates: dict[str, Any],
@@ -1342,7 +1291,7 @@ def get_process_history_record(record_id: str) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT ar.id, ar.activity_id AS record_id, ar.module_id, ar.person_id,
+                SELECT ar.id, ar.activity_id AS record_id, ar.module_id,
                        ar.activity_name AS module_name, ar.status, ar.duration_ms,
                        ar.message,
                        JSON_EXTRACT(ar.metadata_json, '$.inputFiles') AS input_files_json,
@@ -1372,10 +1321,6 @@ def list_process_history_records(
     module_ids: list[str] | None = None,
     *,
     status: str | None = None,
-    person_id: str | None = None,
-    created_from: datetime | None = None,
-    created_to: datetime | None = None,
-    downloadable_only: bool = False,
     limit: int = 80,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
@@ -1385,17 +1330,13 @@ def list_process_history_records(
     where_clause, params = _build_process_history_filters(
         module_ids=module_ids,
         status=status,
-        person_id=person_id,
-        created_from=created_from,
-        created_to=created_to,
-        downloadable_only=downloadable_only,
     )
     params.extend([safe_limit, safe_offset])
     with mysql_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
-                SELECT ar.id, ar.activity_id AS record_id, ar.module_id, ar.person_id,
+                SELECT ar.id, ar.activity_id AS record_id, ar.module_id,
                        ar.activity_name AS module_name, ar.status, ar.duration_ms,
                        ar.message,
                        JSON_EXTRACT(ar.metadata_json, '$.inputFiles') AS input_files_json,
@@ -1426,19 +1367,11 @@ def count_process_history_records(
     module_ids: list[str] | None = None,
     *,
     status: str | None = None,
-    person_id: str | None = None,
-    created_from: datetime | None = None,
-    created_to: datetime | None = None,
-    downloadable_only: bool = False,
 ) -> int:
     ensure_schema()
     where_clause, params = _build_process_history_filters(
         module_ids=module_ids,
         status=status,
-        person_id=person_id,
-        created_from=created_from,
-        created_to=created_to,
-        downloadable_only=downloadable_only,
     )
     with mysql_connection() as connection:
         with connection.cursor() as cursor:
@@ -1458,10 +1391,6 @@ def _build_process_history_filters(
     *,
     module_ids: list[str] | None = None,
     status: str | None = None,
-    person_id: str | None = None,
-    created_from: datetime | None = None,
-    created_to: datetime | None = None,
-    downloadable_only: bool = False,
 ) -> tuple[str, list[Any]]:
     conditions: list[str] = []
     params: list[Any] = []
@@ -1479,27 +1408,6 @@ def _build_process_history_filters(
     if status:
         conditions.append("ar.status = %s")
         params.append(status)
-    if person_id:
-        conditions.append("ar.person_id = %s")
-        params.append(person_id)
-    if created_from:
-        conditions.append("ar.created_at >= %s")
-        params.append(created_from)
-    if created_to:
-        conditions.append("ar.created_at <= %s")
-        params.append(created_to)
-    if downloadable_only:
-        conditions.append(
-            """
-            EXISTS (
-              SELECT 1
-              FROM tos_activity_files af_download
-              WHERE af_download.activity_id = ar.activity_id
-                AND af_download.file_role = 'result_file'
-                AND af_download.storage_provider = 'minio'
-            )
-            """,
-        )
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     return where_clause, params
 
