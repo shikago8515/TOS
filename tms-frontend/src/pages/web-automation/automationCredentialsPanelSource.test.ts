@@ -32,10 +32,11 @@ describe('AutomationCredentialsPanel source integration', () => {
     expect(accountProfileManagerSource).toContain('resolveCredentials')
   })
 
-  it('uses the account profile manager in generic web automation scenarios too', () => {
-    expect(webAutomationScenarioSource).toContain('AutomationAccountProfileManager')
-    expect(webAutomationScenarioSource).toContain('credentialProfileRef')
-    expect(webAutomationScenarioSource).toContain(':username-mode="credentialUsernameMode"')
+  it('uses the executor credential APIs in generic web automation scenarios too', () => {
+    expect(webAutomationScenarioSource).toContain('fetchExecutorCredentials')
+    expect(webAutomationScenarioSource).toContain('saveExecutorCredentials')
+    expect(webAutomationScenarioSource).toContain('resolveAutomationCredentials')
+    expect(webAutomationScenarioSource).toContain('executorCredentials')
   })
 
   it('uses the shared account profile manager in all direct Infor Nexus automation pages', () => {
@@ -62,12 +63,15 @@ describe('AutomationCredentialsPanel source integration', () => {
   })
 
   it('waits for local executor health after launching shipping automation apps', () => {
-    for (const source of [webAutomationScenarioSource, shippingAutomationSource, xinlongtaiShippingSource, infornexusAutoAddSource]) {
+    for (const source of [shippingAutomationSource, xinlongtaiShippingSource, infornexusAutoAddSource]) {
       expect(source).toContain('async function waitForExecutorHealthReady')
       expect(source).toContain('executor-health-wait-timeout')
       expect(source).toContain('const executorReady = await waitForExecutorHealthReady')
       expect(source).not.toContain('await refreshExecutorState(true)\n    if (!silent)')
     }
+    expect(webAutomationScenarioSource).toContain('await startActiveApp(true')
+    expect(webAutomationScenarioSource).toContain('await refreshExecutorState(true).catch')
+    expect(webAutomationScenarioSource).toContain('return Boolean(executorHealth.value?.ok)')
   })
 
   it('does not block shipping runs with Desktop Utility preflight warnings', () => {
