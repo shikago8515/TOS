@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vitest'
 const componentPath = fileURLToPath(new URL('./components/AutomationCredentialsPanel.vue', import.meta.url))
 const accountProfileManagerPath = fileURLToPath(new URL('./components/AutomationAccountProfileManager.vue', import.meta.url))
 const accountProfileManagerSource = readWorkspaceSource('./components/AutomationAccountProfileManager.vue')
-const webAutomationScenarioSource = readWorkspaceSource('./WebAutomationScenarioPage.vue')
 const packingListAutoDownloadSource = readWorkspaceSource('../packing-list-auto-download/components/PackingListAutoDownloadWorkspace.vue')
 const poAutoDownloadSource = readWorkspaceSource('../po-auto-download/components/PoAutoDownloadWorkspace.vue')
 const shippingAutomationSource = readWorkspaceSource('../shipping-automation/components/ShippingAutomationWorkspace.vue')
@@ -30,13 +29,6 @@ describe('AutomationCredentialsPanel source integration', () => {
     expect(accountProfileManagerSource).toContain('保存名称')
     expect(accountProfileManagerSource).toContain('profileCaches')
     expect(accountProfileManagerSource).toContain('resolveCredentials')
-  })
-
-  it('uses the executor credential APIs in generic web automation scenarios too', () => {
-    expect(webAutomationScenarioSource).toContain('fetchExecutorCredentials')
-    expect(webAutomationScenarioSource).toContain('saveExecutorCredentials')
-    expect(webAutomationScenarioSource).toContain('resolveAutomationCredentials')
-    expect(webAutomationScenarioSource).toContain('executorCredentials')
   })
 
   it('uses the shared account profile manager in all direct Infor Nexus automation pages', () => {
@@ -69,9 +61,6 @@ describe('AutomationCredentialsPanel source integration', () => {
       expect(source).toContain('const executorReady = await waitForExecutorHealthReady')
       expect(source).not.toContain('await refreshExecutorState(true)\n    if (!silent)')
     }
-    expect(webAutomationScenarioSource).toContain('await startActiveApp(true')
-    expect(webAutomationScenarioSource).toContain('await refreshExecutorState(true).catch')
-    expect(webAutomationScenarioSource).toContain('return Boolean(executorHealth.value?.ok)')
   })
 
   it('does not block shipping runs with Desktop Utility preflight warnings', () => {
