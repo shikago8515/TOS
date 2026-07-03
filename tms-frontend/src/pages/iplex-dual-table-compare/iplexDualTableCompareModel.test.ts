@@ -25,8 +25,8 @@ describe('iplexDualTableCompareModel', () => {
 
     expect(iplexDualTableCompareModuleId).toBe('iplex-dual-table-compare')
     expect(summary).toEqual([
-      { label: 'RC输出行数', value: '10' },
-      { label: 'PO查找行数', value: '2' },
+      { label: '目标表输出行数', value: '10' },
+      { label: '汇总表查找行数', value: '2' },
       { label: '匹配行数', value: '7' },
       { label: '未匹配行数', value: '3' },
       { label: '4位小数差异', value: '1' },
@@ -176,7 +176,7 @@ describe('iplexDualTableCompareModel', () => {
           ],
         },
       },
-    })).toThrow('RC 表 Key 列：未找到 C / BUYER ORDER NO.')
+    })).toThrow('目标表 Key 列：未找到 C / BUYER ORDER NO.')
   })
 
   it('returns only backend-provided mismatch preview rows', () => {

@@ -45,14 +45,14 @@
                 <table class="iplex-preview__table">
                   <thead>
                     <tr>
-                      <th>{{ text('RC 行号') }}</th>
+                      <th>{{ text('目标表行号') }}</th>
                       <th>BUYER ORDER NO.</th>
                       <th>{{ text('状态') }}</th>
-                      <th>{{ text('RC 单价') }}</th>
-                      <th>{{ text('PO 单价') }}</th>
+                      <th>{{ text('目标表单价') }}</th>
+                      <th>{{ text('汇总表单价') }}</th>
                       <th>{{ text('单价差值') }}</th>
-                      <th>{{ text('RC 金额') }}</th>
-                      <th>{{ text('PO 金额') }}</th>
+                      <th>{{ text('目标表金额') }}</th>
+                      <th>{{ text('汇总表金额') }}</th>
                       <th>{{ text('金额差值') }}</th>
                     </tr>
                   </thead>
@@ -179,7 +179,7 @@ const uploadFields = computed<ExcelFileField[]>(() => [
   },
   {
     id: 'lookup',
-    label: 'Total Adjustment & Shas Vas Price',
+    label: '目标表',
     files: lookupFiles.value,
     accept: '.xls,.xlsx,.xlsm',
     acceptLabel: '支持 .xls / .xlsx / .xlsm',
@@ -300,7 +300,7 @@ async function inspectUploadedWorkbooks(): Promise<{
 
 async function startProcess(): Promise<void> {
   if (!mainFiles.value[0] || !lookupFiles.value[0]) {
-    message.value = '请先上传 PO 调整表和 RC 核对表'
+    message.value = '请先上传汇总表和目标表'
     success.value = false
     downloadError.value = ''
     currentResultDownload.value = {}
@@ -349,7 +349,7 @@ async function startProcess(): Promise<void> {
       {
         label: '处理状态',
         value: '失败',
-        note: '请检查 PO #、BUYER ORDER NO.、Adjustment_per_unit、SHAS PRICE PER UNIT、Total Adjustment Amount 和 TOTAL ADJUSTMENT',
+        note: '请检查汇总表的 PO #、Adjustment_per_unit、Total Adjustment Amount，以及目标表的 BUYER ORDER NO.、SHAS PRICE PER UNIT、TOTAL ADJUSTMENT',
       },
     ]
     previewRows.value = []
