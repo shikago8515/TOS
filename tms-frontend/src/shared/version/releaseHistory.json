@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "release-v1.0.0-beta.3.10",
+    "version": "1.0.0-beta.3.10",
+    "releaseDate": "2026-07-04",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.10",
+    "description": "Release v1.0.0-beta.3.10. Channel: beta.3. Commit: 09aab49fb32dd32adfac52766f3a69ec28470761. Release notes: 添加 Jason Result Set Excel 模块；完善自动化模块与PDF重排流程；补充自动化页面英文翻译."
+  },
+  {
     "recordKey": "release-v1.0.0-beta.3.9",
     "version": "1.0.0-beta.3.9",
     "releaseDate": "2026-07-04",
