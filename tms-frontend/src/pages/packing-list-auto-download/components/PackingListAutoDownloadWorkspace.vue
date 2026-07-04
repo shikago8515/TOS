@@ -358,6 +358,17 @@ import {
   stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
 import { useAutomationStartupProgress } from '../../web-automation/composables/useAutomationStartupProgress'
+import {
+  extractExecutorRunProgress,
+  getExecutorArtifactDownloadUrls,
+  isJsonRecord,
+  readExecutorResponseText,
+  safeParseExecutorJson,
+  toLocalExecutorRun,
+  type ExecutorProgress,
+  type ExecutorResponsePayload,
+  type LocalExecutorRun,
+} from '../../web-automation/automationExecutorResponse'
 import { appendAutomationFailureExamples, formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from '../../web-automation/webAutomationErrors'
 import {
   DEFAULT_INFOR_NEXUS_USERNAME,
@@ -376,6 +387,8 @@ type CredentialProfileRef = {
 type CredentialProfileState = { hasStoredCredentials: boolean; username: string; accountKey: string }
 type CredentialNotice = { tone: WebAutomationNoticeTone; message: string }
 type FailedPackingListBatch = { no: string; poNumbers: string[]; error: string }
+type PackingListExecutorPayload = ExecutorResponsePayload
+type PackingListProgress = ExecutorProgress
 
 const router = useRouter()
 const { isEnglish, text } = useAppLanguage()
@@ -407,9 +420,9 @@ const showBrowserView = ref(true)
 const saveDirectory = ref('')
 const statusLabel = ref('待命')
 const statusText = ref('')
-const lastResult = ref<Record<string, any> | null>(null)
+const lastResult = ref<PackingListExecutorPayload | null>(null)
 const lastRawResponse = ref('')
-const runProgress = ref<Record<string, any> | null>(null)
+const runProgress = ref<PackingListProgress | null>(null)
 const historyRefreshSignal = ref(0)
 const latestBatch = ref<PackingListBatchRecord | null>(null)
 const batchHistory = ref<PackingListBatchRecord[]>([])
@@ -483,7 +496,7 @@ const downloadedPdfPaths = computed(() => {
   const paths = [
     ...extractDownloadedPdfPaths(lastResult.value),
     ...extractDownloadedPdfPaths(runProgress.value),
-    ...(sending.value ? [] : extractDownloadedPdfPaths((executorHealth.value as any)?.lastRun)),
+    ...(sending.value ? [] : extractDownloadedPdfPaths(toLocalExecutorRun(executorHealth.value?.lastRun))),
   ]
   return Array.from(new Set(paths))
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
@@ -723,7 +736,7 @@ function clearRestoredActiveRunState(): void {
   statusLabel.value = '待命'
 }
 
-function findPackingListAutoDownloadActiveRun(health: LocalExecutorHealth | null | undefined): Record<string, any> | null {
+function findPackingListAutoDownloadActiveRun(health: LocalExecutorHealth | null | undefined): LocalExecutorRun | null {
   return findLocalExecutorActiveRun(health, (run) => {
     const action = String(run.action || '').trim()
     const inputMode = String(run.inputMode || '').trim()
@@ -770,19 +783,32 @@ async function pollRunProgress(): Promise<void> {
   }
 }
 
-function extractRunProgress(payload: Record<string, any> | LocalExecutorHealth | null | undefined): Record<string, any> | null {
-  const activeRun = payload?.activeRun as Record<string, any> | null | undefined
-  if (activeRun?.progress && typeof activeRun.progress === 'object') return attachProgressOwner(activeRun.progress, activeRun)
-  const activeRuns = Array.isArray(payload?.activeRuns) ? payload.activeRuns as Record<string, any>[] : []
-  const firstRunWithProgress = activeRuns.find((item) => item?.progress && typeof item.progress === 'object')
-  if (firstRunWithProgress?.progress) return attachProgressOwner(firstRunWithProgress.progress, firstRunWithProgress)
-  const directProgress = (payload as Record<string, any> | null | undefined)?.progress
-  return directProgress && typeof directProgress === 'object'
-    ? attachProgressOwner(directProgress, payload as Record<string, any>)
-    : null
+function extractRunProgress(
+  payload: LocalExecutorRun | LocalExecutorHealth | PackingListExecutorPayload | null | undefined,
+): PackingListProgress | null {
+  const owner = findProgressOwner(payload)
+  const progress = owner ? extractExecutorRunProgress(owner) : extractExecutorRunProgress(payload)
+  return progress ? attachProgressOwner(progress, owner ?? toLocalExecutorRun(payload)) : null
 }
 
-function attachProgressOwner(progress: Record<string, any>, owner: Record<string, any> | null | undefined): Record<string, any> {
+function findProgressOwner(
+  payload: LocalExecutorRun | LocalExecutorHealth | PackingListExecutorPayload | null | undefined,
+): LocalExecutorRun | null {
+  const directRun = toLocalExecutorRun(payload)
+  if (directRun?.progress) return directRun
+  const health = payload as LocalExecutorHealth | null | undefined
+  const activeRun = toLocalExecutorRun(health?.activeRun)
+  if (activeRun?.progress) return activeRun
+  if (Array.isArray(health?.activeRuns)) {
+    for (const item of health.activeRuns) {
+      const run = toLocalExecutorRun(item)
+      if (run?.progress) return run
+    }
+  }
+  return null
+}
+
+function attachProgressOwner(progress: PackingListProgress, owner: LocalExecutorRun | null | undefined): PackingListProgress {
   return {
     ...progress,
     runId: progress.runId ?? owner?.runId ?? owner?.backendRunId,
@@ -792,19 +818,19 @@ function attachProgressOwner(progress: Record<string, any>, owner: Record<string
   }
 }
 
-function applyRunProgress(progress: Record<string, any>): void {
+function applyRunProgress(progress: PackingListProgress): void {
   const normalized = mergeRunProgressSnapshot(runProgress.value, progress)
   runProgress.value = normalized
   statusText.value = formatRunProgress(normalized)
 }
 
 function mergeRunProgressSnapshot(
-  previous: Record<string, any> | null | undefined,
-  next: Record<string, any>,
-): Record<string, any> {
+  previous: PackingListProgress | null | undefined,
+  next: PackingListProgress,
+): PackingListProgress {
   if (!previous || previous === next) return { ...next }
   if (!isSameRunProgress(previous, next)) return { ...next }
-  const merged: Record<string, any> = { ...previous, ...next }
+  const merged: PackingListProgress = { ...previous, ...next }
   const total = Math.max(readProgressTotalCount(previous), readProgressTotalCount(next))
   const completed = Math.max(readProgressCompletedCount(previous), readProgressCompletedCount(next))
   const downloaded = Math.max(readProgressDownloadedCount(previous), readProgressDownloadedCount(next))
@@ -830,14 +856,14 @@ function mergeRunProgressSnapshot(
   return merged
 }
 
-function isSameRunProgress(previous: Record<string, any>, next: Record<string, any>): boolean {
+function isSameRunProgress(previous: PackingListProgress, next: PackingListProgress): boolean {
   const previousIdentity = readRunProgressIdentity(previous)
   const nextIdentity = readRunProgressIdentity(next)
   if (previousIdentity || nextIdentity) return previousIdentity === nextIdentity
   return true
 }
 
-function readRunProgressIdentity(progress: Record<string, any> | null | undefined): string {
+function readRunProgressIdentity(progress: PackingListProgress | null | undefined): string {
   const runId = String(progress?.runId || '').trim()
   const batchId = String(progress?.batchId || '').trim()
   const attemptId = String(progress?.attemptId || '').trim()
@@ -846,7 +872,7 @@ function readRunProgressIdentity(progress: Record<string, any> | null | undefine
   return ''
 }
 
-function formatRunProgress(progress: Record<string, any>): string {
+function formatRunProgress(progress: PackingListProgress): string {
   const phase = text(String(progress.phase || '执行中'))
   const total = readProgressTotalCount(progress)
   const completed = clampProgressCount(readProgressCompletedCount(progress), total)
@@ -867,7 +893,7 @@ function formatRunProgress(progress: Record<string, any>): string {
   return isEnglish.value ? `${phase} · ${countText}, current ${current}` : `${phase} · ${countText}，当前 ${current}`
 }
 
-function readProgressTotalCount(progress: Record<string, any> | null | undefined): number {
+function readProgressTotalCount(progress: PackingListProgress | null | undefined): number {
   return toProgressCount(
     progress?.totalGroupCount
       ?? progress?.totalPackingListCount
@@ -879,7 +905,7 @@ function readProgressTotalCount(progress: Record<string, any> | null | undefined
   )
 }
 
-function readProgressCompletedCount(progress: Record<string, any> | null | undefined): number {
+function readProgressCompletedCount(progress: PackingListProgress | null | undefined): number {
   const total = readProgressTotalCount(progress)
   const completed = toProgressCount(
     progress?.completedCount
@@ -891,7 +917,7 @@ function readProgressCompletedCount(progress: Record<string, any> | null | undef
   return clampProgressCount(processed, total)
 }
 
-function readProgressDownloadedCount(progress: Record<string, any> | null | undefined): number {
+function readProgressDownloadedCount(progress: PackingListProgress | null | undefined): number {
   const count = toProgressCount(
     progress?.downloadedCount
       ?? progress?.successCount
@@ -903,12 +929,12 @@ function readProgressDownloadedCount(progress: Record<string, any> | null | unde
   )
   if (count > 0) return count
   if (Array.isArray(progress?.groupResults)) {
-    return progress.groupResults.filter((item: any) => Boolean(item?.ok)).length
+    return progress.groupResults.filter((item) => Boolean(item.ok)).length
   }
   return extractDownloadedPdfPaths(progress).length
 }
 
-function readProgressFailedCount(progress: Record<string, any> | null | undefined): number {
+function readProgressFailedCount(progress: PackingListProgress | null | undefined): number {
   const count = toProgressCount(
     progress?.failedCount
       ?? progress?.failedPackingListCount
@@ -918,7 +944,7 @@ function readProgressFailedCount(progress: Record<string, any> | null | undefine
   )
   if (count > 0) return count
   if (Array.isArray(progress?.groupResults)) {
-    return progress.groupResults.filter((item: any) => item && item.ok === false).length
+    return progress.groupResults.filter((item) => item.ok === false).length
   }
   return 0
 }
@@ -1070,7 +1096,7 @@ async function selectSaveDirectory(): Promise<void> {
       }),
     })
     const raw = await response.text()
-    const result = safeParseJson(raw)
+    const result = safeParseExecutorJson(raw)
     if (response.status === 404) {
       messageTone.value = 'warning'
       message.value = text('本机自动化助手版本落后，请下载并安装最新版后重试。')
@@ -1083,7 +1109,7 @@ async function selectSaveDirectory(): Promise<void> {
     }
     if (!response.ok || !result?.ok || !result.path) {
       messageTone.value = 'error'
-      message.value = result?.message || text('选择目录失败。')
+      message.value = readExecutorResponseText(result) || text('选择目录失败。')
       return
     }
     saveDirectory.value = String(result.path)
@@ -1282,10 +1308,10 @@ async function runPackingListAutoDownload(
     })
     const raw = await response.text()
     lastRawResponse.value = raw
-    const json = safeParseJson(raw)
+    const json = safeParseExecutorJson(raw)
     const finalProgress = extractRunProgress(json)
     if (finalProgress) applyRunProgress(finalProgress)
-    await finishBackendRunRecord(runRecord, response.ok && Boolean(json?.ok), json?.message || '', json).catch(async (error) => {
+    await finishBackendRunRecord(runRecord, response.ok && Boolean(json?.ok), readExecutorResponseText(json), json).catch(async (error) => {
       await recordWebAutomationEvent('packing-list-auto-download-run-record-finish-failure', {
         error: readErrorMessage(error, 'finish run failed'),
       })
@@ -1293,7 +1319,7 @@ async function runPackingListAutoDownload(
 
     if (!response.ok) {
       const friendlyMessage = buildExecutorResponseMessage(response, raw, json)
-      if (shouldShowAutomationErrorDialog(json?.message || friendlyMessage)) showAutomationErrorDialog(friendlyMessage)
+      if (shouldShowAutomationErrorDialog(readExecutorResponseText(json) || friendlyMessage)) showAutomationErrorDialog(friendlyMessage)
       statusLabel.value = '未完成'
       statusText.value = appendFailureExamples(friendlyMessage, json)
       lastResult.value = { ...(json || {}), ok: false, message: statusText.value }
@@ -1326,7 +1352,7 @@ async function runPackingListAutoDownload(
     }
 
     statusLabel.value = '未完成'
-    statusText.value = appendFailureExamples(json?.message || text('已触发，结果未确认。'), json)
+    statusText.value = appendFailureExamples(readExecutorResponseText(json) || text('已触发，结果未确认。'), json)
     lastResult.value = { ...(json || {}), ok: false, message: statusText.value }
     messageTone.value = 'warning'
     message.value = text('已触发，结果未确认。')
@@ -1483,7 +1509,7 @@ async function finishBackendRunRecord(
   record: AutomationRunRecord | null,
   ok: boolean,
   messageText: string,
-  payload: Record<string, any> | null,
+  payload: PackingListExecutorPayload | null,
 ): Promise<void> {
   if (!record?.runId) return
   const finalStatus = resolvePackingListRunStatus(ok, payload)
@@ -1498,7 +1524,7 @@ async function finishBackendRunRecord(
   bumpRunHistoryRefresh()
 }
 
-function resolvePackingListRunStatus(ok: boolean, payload: Record<string, any> | null): 'success' | 'partial' | 'failed' {
+function resolvePackingListRunStatus(ok: boolean, payload: PackingListExecutorPayload | null): 'success' | 'partial' | 'failed' {
   const completed = readPackingListCompletedCount(payload)
   const total = readPackingListTotalCount(payload)
   const failed = readPackingListFailedCount(payload)
@@ -1514,7 +1540,7 @@ function defaultPackingListRunMessage(status: 'success' | 'partial' | 'failed'):
   return text('箱单 PDF 下载失败。')
 }
 
-function readPackingListCompletedCount(payload: Record<string, any> | null): number {
+function readPackingListCompletedCount(payload: PackingListExecutorPayload | null): number {
   return Number(
     payload?.downloadedPackingListCount
       ?? payload?.completedPackingListCount
@@ -1526,7 +1552,7 @@ function readPackingListCompletedCount(payload: Record<string, any> | null): num
   )
 }
 
-function readPackingListTotalCount(payload: Record<string, any> | null): number {
+function readPackingListTotalCount(payload: PackingListExecutorPayload | null): number {
   return Number(
     payload?.totalGroupCount
       ?? payload?.totalPackingListCount
@@ -1537,7 +1563,7 @@ function readPackingListTotalCount(payload: Record<string, any> | null): number 
   )
 }
 
-function readPackingListFailedCount(payload: Record<string, any> | null): number {
+function readPackingListFailedCount(payload: PackingListExecutorPayload | null): number {
   return Number(
     payload?.failedPackingListCount
       ?? payload?.failedInvoiceCount
@@ -1618,7 +1644,7 @@ async function reconcilePendingRunRecordFromHealth(health: LocalExecutorHealth |
   }
 }
 
-async function finishRunRecordFromExecutor(runId: string, executorRun: Record<string, any>): Promise<void> {
+async function finishRunRecordFromExecutor(runId: string, executorRun: LocalExecutorRun): Promise<void> {
   const ok = Boolean(executorRun.ok)
   const messageText = String(executorRun.message || (ok ? 'completed' : 'failed'))
   await finishAutomationRunRecord(
@@ -1632,9 +1658,9 @@ async function finishRunRecordFromExecutor(runId: string, executorRun: Record<st
   bumpRunHistoryRefresh()
 }
 
-function collectResultFiles(payload: Record<string, any> | null): AutomationRunFileInput[] {
-  const urls = payload?.artifacts?.downloadUrls
-  if (!urls || typeof urls !== 'object') return []
+function collectResultFiles(payload: PackingListExecutorPayload | LocalExecutorRun | null): AutomationRunFileInput[] {
+  const urls = getExecutorArtifactDownloadUrls(payload)
+  if (!urls) return []
   return [
     buildRunFileInput(urls.resultExcelUrl, 'result_excel', 'packing-list-auto-download-result.xlsx'),
     buildRunFileInput(urls.resultJsonUrl, 'result_json', 'packing-list-auto-download-result.json'),
@@ -1664,23 +1690,25 @@ function buildArtifactUrl(rawPath: unknown): string {
   return baseUrl ? `${baseUrl}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}` : ''
 }
 
-function getPackingListCompletedRunFromHealth(health: LocalExecutorHealth | null | undefined): Record<string, any> | null {
-  const candidates: Record<string, any>[] = []
-  if (health?.lastRun && typeof health.lastRun === 'object') candidates.push(health.lastRun as Record<string, any>)
+function getPackingListCompletedRunFromHealth(health: LocalExecutorHealth | null | undefined): LocalExecutorRun | null {
+  const candidates: LocalExecutorRun[] = []
+  const lastRun = toLocalExecutorRun(health?.lastRun)
+  if (lastRun) candidates.push(lastRun)
   if (Array.isArray(health?.recentRuns)) {
     for (const item of health.recentRuns) {
-      if (item && typeof item === 'object') candidates.push(item as Record<string, any>)
+      const run = toLocalExecutorRun(item)
+      if (run) candidates.push(run)
     }
   }
   return candidates.find(isCompletedPackingListExecutorRun) || null
 }
 
-function isCompletedPackingListExecutorRun(run: Record<string, any>): boolean {
+function isCompletedPackingListExecutorRun(run: LocalExecutorRun): boolean {
   if (!isPackingListExecutorRun(run)) return false
   return Boolean(run.finishedAt || run.generatedAt || typeof run.ok === 'boolean')
 }
 
-function isPackingListExecutorRun(run: Record<string, any>): boolean {
+function isPackingListExecutorRun(run: LocalExecutorRun): boolean {
   const action = String(run.action || '').trim()
   const inputMode = String(run.inputMode || '').trim()
   const automationId = String(run.automationId || '').trim()
@@ -1694,7 +1722,7 @@ function isDanglingRunRecord(run: AutomationRunRecord): boolean {
   return ['running', 'started', 'pending', 'processing', ''].includes(status)
 }
 
-function completedRunIsAfterRecord(executorRun: Record<string, any>, record: AutomationRunRecord): boolean {
+function completedRunIsAfterRecord(executorRun: LocalExecutorRun, record: AutomationRunRecord): boolean {
   const completedAt = Date.parse(String(executorRun.finishedAt || executorRun.generatedAt || executorRun.startedAt || ''))
   const recordStartedAt = Date.parse(String(record.startedAt || record.createdAt || ''))
   if (!Number.isFinite(completedAt) || !Number.isFinite(recordStartedAt)) return true
@@ -1717,15 +1745,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return window.btoa(binary)
 }
 
-function safeParseJson(raw: string): Record<string, any> | null {
-  try {
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
-
-function extractDownloadedPdfPaths(payload: Record<string, any> | null | undefined): string[] {
+function extractDownloadedPdfPaths(payload: PackingListExecutorPayload | PackingListProgress | LocalExecutorRun | null | undefined): string[] {
   if (!payload || typeof payload !== 'object') return []
   const values: string[] = []
   const add = (value: unknown): void => {
@@ -1739,39 +1759,43 @@ function extractDownloadedPdfPaths(payload: Record<string, any> | null | undefin
   add(payload.firstDownloadedFilePath)
   add(payload.lastDownloadedFilePath)
   add(payload.filePath)
-  addArray(payload.progress?.downloadedFilePaths)
-  add(payload.progress?.lastDownloadedFilePath)
+  const nestedProgress = extractExecutorRunProgress(payload)
+  addArray(nestedProgress?.downloadedFilePaths)
+  add(nestedProgress?.lastDownloadedFilePath)
   if (Array.isArray(payload.groupResults)) {
     for (const group of payload.groupResults) {
       add(group?.filePath)
-      if (Array.isArray(group?.attempts)) {
-        for (const attempt of group.attempts) add(attempt?.filePath)
+      if (Array.isArray(group.attempts)) {
+        for (const attempt of group.attempts) {
+          if (isJsonRecord(attempt)) add(attempt.filePath)
+        }
       }
     }
   }
   return Array.from(new Set(values))
 }
 
-function extractFailedPackingListBatches(payload: Record<string, any> | null | undefined): FailedPackingListBatch[] {
+function extractFailedPackingListBatches(payload: PackingListExecutorPayload | null | undefined): FailedPackingListBatch[] {
   if (!payload || typeof payload !== 'object') return []
   const source = Array.isArray(payload.failedPackingLists)
     ? payload.failedPackingLists
-    : Array.isArray(payload.failedNoBatches)
-      ? payload.failedNoBatches
-      : []
+      : Array.isArray(payload.failedNoBatches)
+        ? payload.failedNoBatches
+        : []
 
-  return source.map((item: any) => {
-    const poNumbers = Array.isArray(item?.poNumbers)
-      ? item.poNumbers
-      : Array.isArray(item?.failedPoNumbers)
-        ? item.failedPoNumbers
-        : Array.isArray(item?.attemptedPoNumbers)
-          ? item.attemptedPoNumbers
+  return source.map((item: unknown) => {
+    const itemRecord = isJsonRecord(item) ? item : null
+    const poNumbers = Array.isArray(itemRecord?.poNumbers)
+      ? itemRecord.poNumbers
+      : Array.isArray(itemRecord?.failedPoNumbers)
+        ? itemRecord.failedPoNumbers
+        : Array.isArray(itemRecord?.attemptedPoNumbers)
+          ? itemRecord.attemptedPoNumbers
           : []
     return {
-      no: String(item?.no || '').trim(),
+      no: String(itemRecord?.no || '').trim(),
       poNumbers: poNumbers.map((value: unknown) => String(value || '').trim()).filter(Boolean),
-      error: String(item?.error || '').trim(),
+      error: String(itemRecord?.error || '').trim(),
     }
   }).filter((item) => item.no || item.poNumbers.length > 0 || item.error)
 }
@@ -1793,8 +1817,11 @@ function buildExecutorResponseMessage(
   return formatAutomationExecutorMessage(`HTTP ${response.status}`, fallback)
 }
 
-function appendFailureExamples(baseMessage: string, payload: Record<string, any> | null): string {
-  return appendAutomationFailureExamples(baseMessage, payload)
+function appendFailureExamples(baseMessage: string, payload: PackingListExecutorPayload | null): string {
+  return appendAutomationFailureExamples(
+    baseMessage,
+    payload as Parameters<typeof appendAutomationFailureExamples>[1],
+  )
 }
 
 function readErrorMessage(error: unknown, fallback: string): string {

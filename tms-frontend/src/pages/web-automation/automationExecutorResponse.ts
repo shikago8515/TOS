@@ -7,27 +7,52 @@ export interface ExecutorArtifactDownloadUrls extends JsonRecord {
   failedPoJsonUrl?: unknown
   failedRowsExcelUrl?: unknown
   failedRowsJsonUrl?: unknown
+  failedPackingListExcelUrl?: unknown
+  failedPackingListJsonUrl?: unknown
+  cartonRangeCheckExcelUrl?: unknown
+  latestCartonRangeCheckExcelUrl?: unknown
 }
 
 export interface ExecutorArtifacts extends JsonRecord {
   downloadUrls?: ExecutorArtifactDownloadUrls
   failedRowCount?: unknown
   resultExcelPath?: unknown
+  resultJsonPath?: unknown
   runId?: unknown
 }
 
 export interface ExecutorProgress extends JsonRecord {
+  runId?: unknown
+  backendRunId?: unknown
+  batchId?: unknown
+  attemptId?: unknown
+  automationId?: unknown
+  inputFileName?: unknown
+  status?: unknown
   phase?: unknown
   message?: unknown
   percent?: unknown
+  percentage?: unknown
   activeInvoiceCount?: unknown
   activeCount?: unknown
   totalCount?: unknown
+  totalGroupCount?: unknown
+  totalPackingListCount?: unknown
+  totalInvoiceCount?: unknown
+  totalPoCount?: unknown
   plannedCount?: unknown
   completedCount?: unknown
+  completedPackingListCount?: unknown
+  processedCount?: unknown
   successCount?: unknown
   downloadedCount?: unknown
+  downloadedPackingListCount?: unknown
+  downloadedInvoiceCount?: unknown
+  downloadedPoCount?: unknown
   failedCount?: unknown
+  failedPackingListCount?: unknown
+  failedInvoiceCount?: unknown
+  failedPoCount?: unknown
   attemptedCount?: unknown
   pendingCount?: unknown
   skippedCount?: unknown
@@ -36,13 +61,29 @@ export interface ExecutorProgress extends JsonRecord {
   discoveredTaskCount?: unknown
   concurrencyCount?: unknown
   currentInvoiceNumbers?: unknown
+  currentPackingListNumbers?: unknown
   currentTickets?: unknown
+  downloadedFilePaths?: unknown
+  firstDownloadedFilePath?: unknown
+  lastDownloadedFilePath?: unknown
+  filePath?: unknown
+  groupResults?: JsonRecord[]
+  checkpoint?: JsonRecord
 }
 
 export interface LocalExecutorRun extends JsonRecord {
   action?: unknown
   inputMode?: unknown
+  automationId?: unknown
   moduleId?: unknown
+  runId?: unknown
+  backendRunId?: unknown
+  batchId?: unknown
+  attemptId?: unknown
+  ok?: unknown
+  status?: unknown
+  statusMessage?: unknown
+  message?: unknown
   inputFileName?: unknown
   startedAt?: unknown
   finishedAt?: unknown
@@ -50,7 +91,7 @@ export interface LocalExecutorRun extends JsonRecord {
   generatedRowCount?: unknown
   failedTicketCount?: unknown
   resultExcelPath?: unknown
-  progress?: unknown
+  progress?: ExecutorProgress | JsonRecord | unknown
   artifacts?: ExecutorArtifacts
   ticketOwnerStatistics?: JsonRecord
 }
@@ -62,14 +103,34 @@ export interface ExecutorResponsePayload extends LocalExecutorRun {
   error?: unknown
   downloadedInvoiceCount?: unknown
   downloadedPoCount?: unknown
+  completedPoCount?: unknown
+  totalIdCount?: unknown
+  completedIdCount?: unknown
+  uploadedRowCount?: unknown
+  loginSuccess?: unknown
+  shipmentScanOpened?: unknown
   totalInvoiceCount?: unknown
   totalPoCount?: unknown
   failedInvoiceCount?: unknown
   failedPoCount?: unknown
   skippedInvoiceCount?: unknown
+  totalGroupCount?: unknown
+  totalPackingListCount?: unknown
+  downloadedPackingListCount?: unknown
+  completedPackingListCount?: unknown
+  failedPackingListCount?: unknown
+  downloadedFilePaths?: unknown
+  firstDownloadedFilePath?: unknown
+  lastDownloadedFilePath?: unknown
+  filePath?: unknown
+  groupResults?: JsonRecord[]
+  failedPackingLists?: unknown
+  failedNoBatches?: unknown
   failedInvoiceDetails?: unknown
   invoiceResults?: unknown
   poResults?: unknown
+  checkpoint?: JsonRecord
+  result?: JsonRecord | null
   ticketOwnerStatistics?: JsonRecord
 }
 
