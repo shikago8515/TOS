@@ -289,9 +289,11 @@ import {
   recordWebAutomationEvent, stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
 import {
+  extractExecutorRunProgress,
   getExecutorArtifactDownloadUrls,
   readExecutorResponseText,
   safeParseExecutorJson,
+  type ExecutorProgress,
   type ExecutorResponsePayload,
   type LocalExecutorRun,
 } from '../../web-automation/automationExecutorResponse'
@@ -405,10 +407,8 @@ const startupProgressDetail = computed(() => {
 onMounted(() => { void initializeScenario() })
 onBeforeUnmount(() => { stopActiveRunStatePolling(); stopStartupProgressTimer() })
 
-function normalizeActiveRunProgress(activeRun: Record<string, any> | null): Record<string, any> | null {
-  const progress = activeRun?.progress
-  if (!progress || typeof progress !== 'object') return null
-  return progress as Record<string, any>
+function normalizeActiveRunProgress(activeRun: LocalExecutorRun | null): ExecutorProgress | null {
+  return extractExecutorRunProgress(activeRun)
 }
 
 function startupStagePercent(stage: StartupStage): number {

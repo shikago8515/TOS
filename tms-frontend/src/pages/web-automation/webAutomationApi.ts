@@ -12,6 +12,12 @@ import {
   requestBackendJson,
   type BackendTarget,
 } from '../../shared/api/backendClient'
+import {
+  collectExecutorActiveRuns,
+  safeParseExecutorJson,
+  type JsonRecord,
+  type LocalExecutorRun,
+} from './automationExecutorResponse'
 
 const moduleName = 'web-automation'
 const launcherBaseUrl = 'http://127.0.0.1:3210'
@@ -55,11 +61,11 @@ export interface LocalExecutorHealth {
   version?: string
   helperVersion?: string
   busy?: boolean
-  activeRun?: unknown
-  activeRuns?: unknown[]
+  activeRun?: LocalExecutorRun | unknown
+  activeRuns?: Array<LocalExecutorRun | unknown>
   activeRunCount?: number
-  lastRun?: unknown
-  recentRuns?: unknown[]
+  lastRun?: LocalExecutorRun | unknown
+  recentRuns?: Array<LocalExecutorRun | unknown>
   manualSession?: InfornexusAutoAddManualSessionSummary | null
   dataDir?: string
   runtimeConfigPath?: string
@@ -94,28 +100,15 @@ export function getInforNexusDesktopBridgeWarning(health: LocalExecutorHealth | 
   return ''
 }
 
-export function collectLocalExecutorActiveRuns(health: LocalExecutorHealth | null | undefined): Record<string, any>[] {
-  const runs: Record<string, any>[] = []
-  const activeRun = toActiveRunRecord(health?.activeRun)
-  if (activeRun) runs.push(activeRun)
-  if (Array.isArray(health?.activeRuns)) {
-    for (const item of health.activeRuns) {
-      const run = toActiveRunRecord(item)
-      if (run) runs.push(run)
-    }
-  }
-  return runs
+export function collectLocalExecutorActiveRuns(health: LocalExecutorHealth | null | undefined): LocalExecutorRun[] {
+  return collectExecutorActiveRuns(health)
 }
 
 export function findLocalExecutorActiveRun(
   health: LocalExecutorHealth | null | undefined,
-  matcher: (run: Record<string, any>) => boolean,
-): Record<string, any> | null {
+  matcher: (run: LocalExecutorRun) => boolean,
+): LocalExecutorRun | null {
   return collectLocalExecutorActiveRuns(health).find(matcher) || null
-}
-
-function toActiveRunRecord(value: unknown): Record<string, any> | null {
-  return value && typeof value === 'object' ? value as Record<string, any> : null
 }
 
 export interface LocalAutomationLauncherHealth {
@@ -287,8 +280,8 @@ export interface PackingListCheckpoint {
   failedCount?: number
   pendingCount?: number
   items?: PackingListCheckpointItem[]
-  groupResults?: Array<Record<string, any>>
-  result?: Record<string, any> | null
+  groupResults?: JsonRecord[]
+  result?: JsonRecord | null
 }
 
 export interface PackingListBatchRecord {
@@ -1318,7 +1311,7 @@ async function requestLauncherJson<T = Record<string, unknown>>(
   }, timeoutMs)
 
   const rawText = await response.text()
-  const payload = safeParseJson(rawText)
+  const payload = safeParseExecutorJson(rawText)
 
   if (!response.ok) {
     const message = payload && typeof payload.message === 'string'
@@ -1358,7 +1351,7 @@ async function requestExecutorJson<T = Record<string, unknown>>(
     body: requestBody,
   }, timeoutMs)
   const rawText = await response.text()
-  const payload = safeParseJson(rawText)
+  const payload = safeParseExecutorJson(rawText)
 
   if (!response.ok) {
     const message = payload && typeof payload.message === 'string'
@@ -1368,14 +1361,6 @@ async function requestExecutorJson<T = Record<string, unknown>>(
   }
 
   return (payload || {}) as T
-}
-
-function safeParseJson(rawText: string): Record<string, unknown> | null {
-  try {
-    return rawText ? JSON.parse(rawText) : {}
-  } catch {
-    return null
-  }
 }
 
 async function fetchWithTimeout(

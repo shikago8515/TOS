@@ -1,4 +1,9 @@
 import { computed, onBeforeUnmount, ref, watch, type ComputedRef, type Ref } from 'vue'
+import {
+  extractExecutorRunProgress,
+  type ExecutorProgress,
+  type LocalExecutorRun,
+} from '../automationExecutorResponse'
 
 export type AutomationStartupProgressStep = {
   key: string
@@ -6,7 +11,7 @@ export type AutomationStartupProgressStep = {
 }
 
 type MaybeReadonlyRef<T> = Ref<T> | ComputedRef<T>
-type ActiveRunRef = MaybeReadonlyRef<Record<string, any> | null>
+type ActiveRunRef = MaybeReadonlyRef<LocalExecutorRun | null>
 
 type UseAutomationStartupProgressOptions = {
   launching: MaybeReadonlyRef<boolean>
@@ -156,9 +161,8 @@ export function useAutomationStartupProgress(options: UseAutomationStartupProgre
   }
 }
 
-function readProgress(activeRun: Record<string, any> | null): Record<string, any> | null {
-  const progress = activeRun?.progress
-  return progress && typeof progress === 'object' ? progress as Record<string, any> : null
+function readProgress(activeRun: LocalExecutorRun | null): ExecutorProgress | null {
+  return extractExecutorRunProgress(activeRun)
 }
 
 function mapPhaseToStepKey(phase: string): string {
