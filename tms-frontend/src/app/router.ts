@@ -13,6 +13,7 @@ import HomePage from '../pages/home/HomePage.vue'
 import IplexDualTableComparePage from '../pages/iplex-dual-table-compare/IplexDualTableComparePage.vue'
 import InfornexusAutoAddPage from '../pages/infornexus-auto-add/InfornexusAutoAddPage.vue'
 import JasonPdfReorderPage from '../pages/jason-pdf-reorder/JasonPdfReorderPage.vue'
+import JasonResultSetExcelPage from '../pages/jason-result-set-excel/JasonResultSetExcelPage.vue'
 import JaneBomComparePage from '../pages/jane-bom-compare/JaneBomComparePage.vue'
 import JaneBomSummaryPage from '../pages/jane-bom-summary/JaneBomSummaryPage.vue'
 import JaneInfornexusPage from '../pages/jane-infornexus/JaneInfornexusPage.vue'
@@ -83,6 +84,10 @@ const routeComponents: Partial<Record<string, Component>> = {
   ),
   'eric-infornexus': bindRouteComponentName('eric-infornexus', InfornexusAutoAddPage),
   'jason-pdf-reorder': bindRouteComponentName('jason-pdf-reorder', JasonPdfReorderPage),
+  'jason-result-set-excel': bindRouteComponentName(
+    'jason-result-set-excel',
+    JasonResultSetExcelPage,
+  ),
   'web-automation-scenario-shipping-automation': bindRouteComponentName(
     'web-automation-scenario-shipping-automation',
     ShippingAutomationPage,
