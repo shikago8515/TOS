@@ -1,3 +1,19 @@
+## [1.0.0-beta.3.8](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.7...v1.0.0-beta.3.8) (2026-07-04)
+
+### Features
+
+* 完善自动化多模块执行体验 ([4cbaefa](http://172.16.48.208:3001/luenthai-ai/TOS/commit/4cbaefae733466418bd640da2c6a14bbbc410af8))
+
+### Bug Fixes
+
+* 修复 Sophia Tina Excel 修复提示 ([938ba3e](http://172.16.48.208:3001/luenthai-ai/TOS/commit/938ba3efd92e2331ef822e3584c00855264ca101))
+* 修复印尼Form E产地证字段抓取 ([c4ea2a5](http://172.16.48.208:3001/luenthai-ai/TOS/commit/c4ea2a57fa7e491b6c0f8a2d0cb8a47feea2cc5a))
+* 修正 Sophia Tina 报表生成逻辑 ([94c8556](http://172.16.48.208:3001/luenthai-ai/TOS/commit/94c85564698bc6ec672220e2765a62333aa9e3c6))
+* 根治版本更新缓存不同步 ([baee935](http://172.16.48.208:3001/luenthai-ai/TOS/commit/baee9352f715a21704dbbd2b6907abd16fc8dd74))
+* 调整 Eric 核对结果表输出 ([38b9fbe](http://172.16.48.208:3001/luenthai-ai/TOS/commit/38b9fbeefce1819952e37eda79a8b04fc2844691))
+* 调整 iPlex 数据核对表文案 ([4737c64](http://172.16.48.208:3001/luenthai-ai/TOS/commit/4737c6406918e94497d6e33e0252c03990b44c5d))
+* 调整 Sophia Tina 后续分析表 ([20c4e5b](http://172.16.48.208:3001/luenthai-ai/TOS/commit/20c4e5b59ce6fa308a66185ffd65ce058e1d6434))
+
 ## [1.0.0-beta.3.7](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.6...v1.0.0-beta.3.7) (2026-07-03)
 
 ### Bug Fixes

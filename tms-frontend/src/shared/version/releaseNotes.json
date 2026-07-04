@@ -1,14 +1,20 @@
 {
-  "version": "1.0.0-beta.3.7",
-  "date": "2026-07-03",
-  "noticeId": "2026-07-03-v1.0.0-beta.3.7",
-  "showPopup": false,
-  "added": [],
+  "version": "1.0.0-beta.3.8",
+  "date": "2026-07-04",
+  "noticeId": "2026-07-04-v1.0.0-beta.3.8",
+  "showPopup": true,
+  "added": [
+    "完善自动化多模块执行体验"
+  ],
   "improved": [],
   "fixed": [
-    "修复 TC INV 自动化进入 Preview 新页面后未点击 Validate 就结束批次的问题，热更新模块会在 Preview 页面自动执行 Validate。",
-    "优化服务器部署构建流程",
-    "修复 Sophia 国家分析汇总表"
+    "根治版本更新缓存不同步",
+    "调整 iPlex 数据核对表文案",
+    "调整 Eric 核对结果表输出",
+    "修复 Sophia Tina Excel 修复提示",
+    "修复印尼Form E产地证字段抓取",
+    "调整 Sophia Tina 后续分析表",
+    "修正 Sophia Tina 报表生成逻辑"
   ],
   "modules": [],
   "sections": []
