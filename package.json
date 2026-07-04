@@ -16,6 +16,8 @@
     "release:updates:push": "python scripts/release_update_sync.py",
     "release:updates:push:dry-run": "python scripts/release_update_sync.py --dry-run",
     "release:updates:dry-run": "python scripts/release_update_sync.py --pull --limit 300 --dry-run",
+    "release:updates:sync-local": "python scripts/release_update_sync.py --sync-local",
+    "release:updates:check-local": "python scripts/release_update_sync.py --check-local",
     "release:dry-run": "semantic-release --dry-run",
     "release": "semantic-release",
     "version:set": "node scripts/engineering/sync-version.mjs --set",

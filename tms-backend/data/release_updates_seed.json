@@ -20,6 +20,16 @@
     "description": "Release v1.0.0-beta.3.6. Channel: beta.3. Commit: 41d400d845a69ad43c03f834bc1c3b490522b64f. Release notes: 优化服务器部署构建流程."
   },
   {
+    "recordKey": "builtin-1.0.0-beta.3.6-fixed-tc-inv-preview-validate",
+    "version": "1.0.0-beta.3.6",
+    "releaseDate": "2026-07-03",
+    "category": "fixed",
+    "pageName": "TC INV 自动化",
+    "pagePath": "/web-automation/scenarios/tc-inv-automation",
+    "title": "补齐 Preview 后的 Validate",
+    "description": "TC INV 执行到 Preview 新页面后会继续点击 Validate，确保发票完成校验后才结束当前批次，并通过自动化模块热更新下发给用户。"
+  },
+  {
     "recordKey": "release-v1.0.0-beta.3.5",
     "version": "1.0.0-beta.3.5",
     "releaseDate": "2026-07-03",

@@ -30,6 +30,8 @@ def main() -> int:
     target.add_argument("--commit", help="Single commit SHA to record.")
     target.add_argument("--range", dest="commit_range", help="Git revision range, for example ORIG_HEAD..HEAD.")
     target.add_argument("--pull", action="store_true", help="Pull records from the server into local fallback caches.")
+    target.add_argument("--sync-local", action="store_true", help="Rewrite local release update cache files from the frontend fallback.")
+    target.add_argument("--check-local", action="store_true", help="Check frontend fallback and backend seed cache consistency.")
     parser.add_argument("--limit", type=int, default=None, help="Maximum commits or server records to read.")
     parser.add_argument("--event", default="manual", help="Source event, for example commit, merge, deploy.")
     parser.add_argument("--backend-url", default="", help="Release updates API URL or backend base URL.")
@@ -40,6 +42,20 @@ def main() -> int:
 
     try:
         backend_url = resolve_release_updates_api_url(args.backend_url)
+        if args.sync_local:
+            result = sync_local_release_update_cache(dry_run=args.dry_run)
+            if args.dry_run:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            elif not args.quiet:
+                print(f"Synced {result['recordCount']} local release update cache record(s).")
+            return 0
+
+        if args.check_local:
+            status = check_local_release_update_cache()
+            if args.dry_run or not args.quiet or not status["ok"]:
+                print(json.dumps(status, ensure_ascii=False, indent=2))
+            return 0 if status["ok"] else 1
+
         if args.pull:
             if not backend_url:
                 raise RuntimeError("Missing release updates backend URL; set TOS_RELEASE_UPDATES_API_URL or tms-frontend/.env.server.")
@@ -153,12 +169,68 @@ def sync_release_update_cache(
     }
 
 
+def sync_local_release_update_cache(
+    *,
+    workspace_root: Path = WORKSPACE_ROOT,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    return sync_release_update_cache(
+        workspace_root=workspace_root,
+        server_records=[],
+        dry_run=dry_run,
+    )
+
+
+def check_local_release_update_cache(
+    *,
+    workspace_root: Path = WORKSPACE_ROOT,
+) -> dict[str, Any]:
+    frontend_records = normalize_release_update_records(read_local_release_history(workspace_root))
+    backend_records = normalize_release_update_records(read_backend_default_records(workspace_root))
+    frontend_keys = {record["recordKey"] for record in frontend_records}
+    backend_keys = {record["recordKey"] for record in backend_records}
+
+    first_mismatch_index: int | None = None
+    for index, (frontend_record, backend_record) in enumerate(zip(frontend_records, backend_records)):
+        if frontend_record != backend_record:
+            first_mismatch_index = index
+            break
+
+    if first_mismatch_index is None and len(frontend_records) != len(backend_records):
+        first_mismatch_index = min(len(frontend_records), len(backend_records))
+
+    return {
+        "ok": frontend_records == backend_records,
+        "frontendCount": len(frontend_records),
+        "backendCount": len(backend_records),
+        "frontendOnly": sorted(frontend_keys - backend_keys),
+        "backendOnly": sorted(backend_keys - frontend_keys),
+        "firstMismatchIndex": first_mismatch_index,
+    }
+
+
 def read_local_release_history(workspace_root: Path = WORKSPACE_ROOT) -> list[dict[str, Any]]:
     history_path = workspace_root / FRONTEND_RELEASE_HISTORY_PATH
     if not history_path.exists():
         return []
     payload = json.loads(history_path.read_text(encoding="utf-8"))
     return payload if isinstance(payload, list) else []
+
+
+def read_backend_default_records(workspace_root: Path = WORKSPACE_ROOT) -> list[dict[str, Any]]:
+    seed_path = workspace_root / BACKEND_RELEASE_UPDATES_SEED_PATH
+    if not seed_path.exists():
+        return []
+    payload = json.loads(seed_path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, list) else []
+
+
+def normalize_release_update_records(raw_records: list[dict[str, Any]]) -> list[dict[str, str]]:
+    return [
+        normalize_release_update_record(raw_record)
+        for raw_record in raw_records
+        if isinstance(raw_record, dict)
+    ]
 
 
 def merge_release_update_records(
