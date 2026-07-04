@@ -1,56 +1,35 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.8",
-  "tag": "v1.0.0-beta.3.8",
-  "gitSha": "baee9352f715a21704dbbd2b6907abd16fc8dd74",
+  "version": "1.0.0-beta.3.9",
+  "tag": "v1.0.0-beta.3.9",
+  "gitSha": "8c274101dea2ec2c8ad2e4276a753186e469df68",
   "releaseDate": "2026-07-04",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.8",
+    "version": "1.0.0-beta.3.9",
     "date": "2026-07-04",
-    "noticeId": "2026-07-04-v1.0.0-beta.3.8",
-    "showPopup": true,
-    "added": [
-      "完善自动化多模块执行体验"
+    "noticeId": "2026-07-04-v1.0.0-beta.3.9",
+    "showPopup": false,
+    "added": [],
+    "improved": [
+      "收口自动化执行器契约类型回流"
     ],
-    "improved": [],
-    "fixed": [
-      "根治版本更新缓存不同步",
-      "调整 iPlex 数据核对表文案",
-      "调整 Eric 核对结果表输出",
-      "修复 Sophia Tina Excel 修复提示",
-      "修复印尼Form E产地证字段抓取",
-      "调整 Sophia Tina 后续分析表",
-      "修正 Sophia Tina 报表生成逻辑"
-    ],
+    "fixed": [],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.8",
-    "version": "1.0.0-beta.3.8",
+    "noticeId": "v1.0.0-beta.3.9",
+    "version": "1.0.0-beta.3.9",
     "releaseDate": "2026-07-04",
-    "showPopup": true,
-    "level": "feature",
+    "showPopup": false,
+    "level": "maintenance",
     "title": "本次更新内容",
     "groups": [
       {
-        "title": "新增",
-        "icon": "sparkles",
+        "title": "优化",
+        "icon": "activity",
         "items": [
-          "完善自动化多模块执行体验"
-        ]
-      },
-      {
-        "title": "修复",
-        "icon": "check-circle",
-        "items": [
-          "根治版本更新缓存不同步",
-          "调整 iPlex 数据核对表文案",
-          "调整 Eric 核对结果表输出",
-          "修复 Sophia Tina Excel 修复提示",
-          "修复印尼Form E产地证字段抓取",
-          "调整 Sophia Tina 后续分析表",
-          "修正 Sophia Tina 报表生成逻辑"
+          "收口自动化执行器契约类型回流"
         ]
       }
     ]
