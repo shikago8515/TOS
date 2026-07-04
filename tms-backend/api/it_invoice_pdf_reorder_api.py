@@ -254,8 +254,8 @@ def download_result(job_id: str) -> FileResponse:
     if not job_id or not all(ch in "0123456789abcdef" for ch in job_id.lower()):
         raise HTTPException(status_code=404, detail="结果不存在")
 
-    output_path = JOBS_DIR / job_id / "PO按发票顺序重排_含汇总页.pdf"
-    if not output_path.exists():
+    output_path = resolve_job_result_path(JOBS_DIR / job_id)
+    if output_path is None:
         raise HTTPException(status_code=404, detail="结果不存在")
 
     return FileResponse(
@@ -263,6 +263,25 @@ def download_result(job_id: str) -> FileResponse:
         media_type="application/pdf",
         filename=output_path.name,
     )
+
+
+def resolve_job_result_path(job_dir: Path) -> Path | None:
+    if not job_dir.is_dir():
+        return None
+
+    known_names = [
+        "PO按发票顺序重排_含汇总页.pdf",
+        "PO按手动顺序重排_含汇总页.pdf",
+    ]
+    for name in known_names:
+        path = job_dir / name
+        if path.is_file():
+            return path
+
+    pdfs = [path for path in job_dir.glob("*.pdf") if path.is_file()]
+    if not pdfs:
+        return None
+    return max(pdfs, key=lambda path: path.stat().st_mtime)
 
 
 def download_prefix_for_request(request: Request) -> str:

@@ -149,6 +149,11 @@ class JasonPdfReorderApiContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(self.build_calls[-1]["invoice_path"])
         self.assertEqual(self.build_calls[-1]["po_order"], ["4501749160", "4501749225"])
+        self.assertEqual(response.json()["fileName"], "PO按手动顺序重排_含汇总页.pdf")
+
+        download = self.client.get(response.json()["downloadUrl"])
+        self.assertEqual(download.status_code, 200)
+        self.assertTrue(download.content.startswith(b"%PDF"))
 
     def test_process_requires_manual_po_order_when_invoice_pdf_is_missing(self) -> None:
         response = self.client.post(
