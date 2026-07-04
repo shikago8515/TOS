@@ -1051,7 +1051,36 @@ const staticTextTranslations: Record<string, string> = {
   'SAP BTP Ticket 归属统计': 'SAP BTP Ticket Ownership Statistics',
   '登录 SAP BTP 后从 Task Center 采集 ticket 信息，并生成 Ticket ownership Excel。':
     'Log in to SAP BTP, collect ticket information from Task Center, and generate the Ticket ownership Excel.',
+  'Ticket ownership 操作模式': 'Ticket ownership mode',
+  采集生成: 'Collect and generate',
+  补全结果表: 'Complete result workbook',
+  已生成结果表: 'Generated result workbook',
+  '拖入或选择第一次生成的 Ticket ownership 表':
+    'Drop or choose the first generated Ticket ownership workbook',
+  '支持 .xlsx / .xls / .json；再配合下方辅助表补全 Factory / Merch':
+    'Supports .xlsx / .xls / .json; then use the helper tables below to complete Factory / Merch.',
+  释放以上传结果表: 'Release to upload the result workbook',
+  '适合先不上传辅助表完成浏览器采集，再查看结果并上传辅助表进行二次补全。':
+    'Use this to run browser collection without helper tables first, then review the result and upload helper tables for a second completion pass.',
+  '补全中...': 'Completing...',
+  '生成补全后的 Excel': 'Generate Completed Excel',
+  '请上传 .xlsx / .xls / .json 结果表。': 'Upload an .xlsx / .xls / .json result workbook.',
+  '补全 Excel 已生成。': 'Completed Excel has been generated.',
   '新龙泰-shipping 自动化': 'Xinlongtai Shipping Automation',
+  'Preview PDF 保存目录': 'Preview PDF Save Folder',
+  'Preview PDF 下载结果': 'Preview PDF Download Result',
+  未执行: 'Not run',
+  'PDF 下载状态': 'PDF Download Status',
+  '选择新龙泰 Preview PDF 保存目录': 'Choose Xinlongtai Preview PDF Save Folder',
+  '已选择 Preview PDF 保存目录。': 'Preview PDF save folder selected.',
+  '本机自动化助手版本落后，请安装最新模块后重试，或手动填写完整本机路径。':
+    'The local automation helper is out of date. Install the latest module and try again, or enter the full local path manually.',
+  '正在打开新龙泰 Preview PDF 保存目录选择器，请留意系统弹窗。':
+    'Opening the Xinlongtai Preview PDF folder picker. Watch for the system dialog.',
+  '本机自动化助手缺少新龙泰目录选择接口，请同步最新自动化模块后重试，或手动填写完整本机路径。':
+    'The local automation helper is missing the Xinlongtai folder picker API. Sync the latest automation module and try again, or enter the full local path manually.',
+  'Shipping 已完成，但 Preview PDF 下载有失败。':
+    'Shipping completed, but some Preview PDF downloads failed.',
   'shipping 2 自动化': 'Shipping 2 Automation',
   'released Bulk 自动化': 'Released Bulk Automation',
   'n8n + Excel 驱动可见浏览器': 'n8n + Excel drives a visible browser',
