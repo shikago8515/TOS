@@ -90,4 +90,31 @@ describe('jasonPdfReorderApi', () => {
     expect(request?.formData.get('include_not_found')).toBe('true')
     expect(downloadUrl).toBe('http://127.0.0.1:8000/api/jason/pdf-reorder/download/abc')
   })
+
+  it('allows manual PO order processing without invoice PDF', async () => {
+    vi.mocked(postFormData).mockResolvedValue({
+      jobId: 'manual',
+      fileName: 'result.pdf',
+      downloadUrl: '/api/jason/pdf-reorder/download/manual',
+      summary: {},
+      entries: [],
+      logs: [],
+    })
+    const poFile = new File(['po'], 'po.pdf', { type: 'application/pdf' })
+
+    await processJasonPdfReorder({
+      invoiceFile: null,
+      poFile,
+      poOrderText: '4501749160\n4501749225',
+      printCurrentOnly: true,
+      printNextPage: true,
+      includeNotFound: false,
+    })
+
+    const request = vi.mocked(postFormData).mock.calls[0]?.[0]
+    expect(request?.path).toBe('/api/jason/pdf-reorder/process')
+    expect(request?.formData.has('invoice_pdf')).toBe(false)
+    expect(request?.formData.get('po_pdf')).toBe(poFile)
+    expect(request?.formData.get('po_order_text')).toBe('4501749160\n4501749225')
+  })
 })

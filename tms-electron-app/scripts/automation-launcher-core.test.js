@@ -172,7 +172,65 @@ test('automation launcher injects helper version when starting an app', async ()
   }
 })
 
-test('automation launcher installs a remote module when same version has a different package sha', async () => {
+test('automation launcher skips remote manifest checks during normal fast start', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tos-launcher-fast-start-'))
+  const automationAppRoot = path.join(root, 'automation-apps')
+  const userDataDir = path.join(root, 'user-data')
+  const appDir = path.join(automationAppRoot, 'demo-app')
+  const port = await getFreePort()
+  const processMap = new Map()
+
+  fs.mkdirSync(path.join(appDir, 'bin'), { recursive: true })
+  fs.writeFileSync(
+    path.join(appDir, 'bin', 'start.js'),
+    [
+      "const http = require('http')",
+      "const server = http.createServer((req, res) => {",
+      "  if (req.url === '/api/health') {",
+      "    res.writeHead(200, { 'Content-Type': 'application/json' })",
+      "    res.end(JSON.stringify({ ok: true }))",
+      "    return",
+      "  }",
+      "  res.writeHead(404)",
+      "  res.end()",
+      "})",
+      "server.listen(Number(process.env.TMS_PLAYWRIGHT_PORT), '127.0.0.1')",
+      "process.on('SIGTERM', () => server.close(() => process.exit(0)))",
+      "process.on('SIGINT', () => server.close(() => process.exit(0)))",
+    ].join('\n'),
+  )
+  fs.writeFileSync(
+    path.join(automationAppRoot, 'registry.json'),
+    JSON.stringify([
+      {
+        id: 'demo-app',
+        name: 'Demo App',
+        version: '1.0.0',
+        appDir: 'demo-app',
+        entry: 'bin/start.js',
+        defaultPort: port,
+      },
+    ], null, 2),
+  )
+
+  try {
+    const result = await launchAutomationApp('demo-app', {
+      automationAppRoot,
+      userDataDir,
+      processMap,
+      processExecPath: process.execPath,
+      automationModuleManifestUrl: 'http://127.0.0.1:9/manifest',
+      moduleManifestTimeoutMs: 2000,
+    })
+
+    assert.equal(result.success, true)
+    assert.equal(result.source, 'bundled')
+  } finally {
+    await stopTestAutomationProcesses(processMap)
+  }
+})
+
+test('automation launcher installs a remote module on explicit force update when same version has a different package sha', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tos-launcher-same-version-sha-'))
   const automationAppRoot = path.join(root, 'automation-apps')
   const userDataDir = path.join(root, 'user-data')
@@ -252,6 +310,7 @@ test('automation launcher installs a remote module when same version has a diffe
       processExecPath: process.execPath,
       automationModuleManifestUrl: `${server.url}/manifest`,
       helperVersion: '9.9.9',
+      forceUpdate: true,
     })
 
     assert.equal(result.success, true)

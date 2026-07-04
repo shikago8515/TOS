@@ -21,7 +21,7 @@ test('Infornexus auto-add keeps the visible browser open after a completed run',
   assert.match(finallySource, /await browser\?\.close\(\)\.catch/)
 })
 
-test('retained Infornexus auto-add sessions expose a bottom-right Excel continuation panel', () => {
+test('retained Infornexus auto-add sessions expose a top-right Excel continuation panel', () => {
   const source = fs.readFileSync(serverPath, 'utf8')
 
   assert.match(source, /AUTO_ADD_CONTINUE_PANEL_ID = "tos-infornexus-auto-add-continue-panel"/)
@@ -35,7 +35,8 @@ test('retained Infornexus auto-add sessions expose a bottom-right Excel continua
   assert.match(source, /await page\.exposeBinding\(AUTO_ADD_CONTINUE_BINDING/)
   assert.match(source, /async function injectInfornexusAutoAddContinuationPanel/)
   assert.match(source, /right:18px/)
-  assert.match(source, /bottom:18px/)
+  assert.match(source, /top:18px/)
+  assert.doesNotMatch(source, /bottom:18px/)
   assert.match(source, /data-tos-auto-add-drag-handle/)
   assert.match(source, /title\.addEventListener\("pointerdown"/)
   assert.match(source, /继续上传 Excel/)

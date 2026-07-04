@@ -213,7 +213,7 @@ describe('webAutomationApi', () => {
     }
   })
 
-  it('defaults automation launcher starts to force module update', async () => {
+  it('defaults automation launcher starts to fast local reuse without force module update', async () => {
     const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')
     const launchAutomationApp = vi.fn().mockResolvedValue({ success: true, url: 'http://127.0.0.1:3002' })
     Object.defineProperty(globalThis, 'window', {
@@ -229,7 +229,7 @@ describe('webAutomationApi', () => {
     try {
       await launchAutomationConsole('shipping-automation-demo')
 
-      expect(launchAutomationApp).toHaveBeenCalledWith('shipping-automation-demo', { forceUpdate: true })
+      expect(launchAutomationApp).toHaveBeenCalledWith('shipping-automation-demo', { forceUpdate: false })
     } finally {
       if (originalWindowDescriptor) {
         Object.defineProperty(globalThis, 'window', originalWindowDescriptor)

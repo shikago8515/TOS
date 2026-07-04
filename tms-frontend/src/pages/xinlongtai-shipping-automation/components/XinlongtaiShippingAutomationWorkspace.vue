@@ -121,6 +121,29 @@
               />
             </div>
 
+            <!-- Preview PDF save directory -->
+            <div class="sa-card__bd">
+              <label class="sa-field">
+                <span>{{ text('Preview PDF 保存目录') }}</span>
+                <div class="sa-path">
+                  <div class="sa-input-wrap sa-input-wrap--path">
+                    <AppIcon name="folder" />
+                    <input
+                      v-model.trim="previewPdfSaveDirectory"
+                      class="sa-input"
+                      type="text"
+                      :placeholder="text('例如：D:\\Downloads\\InforNexus\\Xinlongtai')"
+                      @change="persistPreviewPdfDirectory"
+                    />
+                  </div>
+                  <button class="sa-btn" type="button" :disabled="directorySelecting" @click="selectPreviewPdfDirectory">
+                    <AppIcon :name="directorySelecting ? 'loader' : 'folder'" :class="{ 'sa-spin': directorySelecting }" />
+                    {{ directorySelecting ? text('打开中...') : canSelectPreviewPdfDirectory ? text('选择目录') : text('手动填写') }}
+                  </button>
+                </div>
+              </label>
+            </div>
+
             <!-- File Dropzone -->
             <div class="sa-card__bd">
               <label class="sa-field"><span>{{ text('Excel 文件') }}</span></label>
@@ -172,6 +195,38 @@
               <button v-if="shippingArtifactLinks.cartonRangeCheckExcelUrl" class="sa-btn" @click="downloadShippingArtifact(shippingArtifactLinks.cartonRangeCheckExcelUrl, 'shipping-last-carton-range-check.xlsx')">
                 <AppIcon name="download" />{{ text('箱数校验') }}
               </button>
+            </div>
+            <div v-if="previewPdfResults.length || previewPdfResultMessage" class="sa-card__ft sa-pdf-results">
+              <div class="sa-pdf-results__head" :class="{ 'sa-pdf-results__head--warn': previewPdfResultSummary.failed > 0 }">
+                <AppIcon :name="previewPdfResultSummary.failed > 0 ? 'alert-circle' : 'check-circle'" />
+                <span>
+                  {{ text('Preview PDF 下载结果') }}
+                  · {{ text('成功') }} {{ previewPdfResultSummary.success }}
+                  / {{ text('失败') }} {{ previewPdfResultSummary.failed }}
+                  / {{ text('未执行') }} {{ previewPdfResultSummary.skipped }}
+                </span>
+              </div>
+              <div v-if="previewPdfResultMessage" class="sa-pdf-result sa-pdf-result--skipped">
+                <AppIcon name="info" />
+                <div class="sa-pdf-result__body">
+                  <strong>{{ text('PDF 下载状态') }}</strong>
+                  <span>{{ text(previewPdfResultMessage) }}</span>
+                </div>
+              </div>
+              <div
+                v-for="item in previewPdfResults"
+                :key="item.key"
+                class="sa-pdf-result"
+                :class="`sa-pdf-result--${item.status}`"
+              >
+                <AppIcon :name="previewPdfResultIconName(item.status)" />
+                <div class="sa-pdf-result__body">
+                  <strong>{{ item.label }}</strong>
+                  <span>{{ item.statusText }}<template v-if="item.fileName"> · {{ item.fileName }}</template></span>
+                  <small v-if="item.filePath">{{ item.filePath }}</small>
+                  <small v-else-if="item.message">{{ item.message }}</small>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -299,6 +354,7 @@ import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showA
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
 
 const XINLONGTAI_SHIPPING_ENTRY_ID = 'xinlongtai-shipping-automation'
+const PREVIEW_PDF_DIR_STORAGE_KEY = 'tos-xinlongtai-shipping-preview-pdf-directory'
 
 type CredentialProfileRef = {
   refresh: (accountKey?: string) => Promise<void>
@@ -308,6 +364,19 @@ type CredentialProfileState = { hasStoredCredentials: boolean; username: string;
 type CredentialNotice = { tone: WebAutomationNoticeTone; message: string }
 type StartupStage = 'idle' | 'launcher' | 'launch' | 'health' | 'business' | 'run' | 'done'
 type AutomationStartupProgressStep = { key: string; label: string }
+type PreviewPdfResultStatus = 'success' | 'failed' | 'skipped'
+type PreviewPdfResultItem = {
+  key: string
+  status: PreviewPdfResultStatus
+  label: string
+  statusText: string
+  message: string
+  fileName: string
+  filePath: string
+  pdfUrl: string
+  size: number
+}
+type PreviewPdfResultSummary = { total: number; success: number; failed: number; skipped: number }
 
 const router = useRouter(); const { text } = useAppLanguage()
 const entry = getWebAutomationEntry(XINLONGTAI_SHIPPING_ENTRY_ID)
@@ -318,6 +387,7 @@ const executorHealth = ref<LocalExecutorHealth | null>(null)
 const automationTemplates = ref<AutomationTemplate[]>([])
 const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false)
 const templateLoading = ref(false); const sending = ref(false); const restoredActiveRun = ref(false)
+const directorySelecting = ref(false)
 const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info')
 const isHealthLogOpen = ref(false)
 const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
@@ -328,8 +398,12 @@ const hasStoredCredentials = ref(false)
 const credentialProfileRef = ref<CredentialProfileRef | null>(null)
 const showBrowserView = ref(true)
 const autoFillOriginDeclaration = ref(false)
+const previewPdfSaveDirectory = ref('')
 const statusText = ref(''); const statusLabel = ref('待命')
 const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
+const previewPdfSavedPaths = ref<string[]>([])
+const previewPdfResults = ref<PreviewPdfResultItem[]>([])
+const previewPdfResultMessage = ref('')
 let activeRunStateTimer: number | null = null
 let startupProgressTimer: number | null = null
 type SAL = { resultExcelUrl: string; resultJsonUrl?: string; failedPoExcelUrl?: string; failedPoJsonUrl?: string; cartonRangeCheckExcelUrl?: string; failedRowCount: number }
@@ -366,9 +440,13 @@ const hasRunCredentials = computed(() => Boolean(shippingUsername.value.trim() &
 const primaryTemplate = computed(() => automationTemplates.value[0] || null)
 const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
 const shippingExecutorRunUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-xinlongtai-shipping-file` : '' })
+const previewPdfDirectorySelectUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/select-xinlongtai-shipping-pdf-directory` : '' })
+const canSelectPreviewPdfDirectory = computed(() => Boolean(window.electronAPI?.selectDirectory || previewPdfDirectorySelectUrl.value))
+const executorSupportsPreviewPdfDirectoryPicker = computed(() => Boolean(window.electronAPI?.selectDirectory || executorHealth.value?.capabilities?.xinlongtaiShippingPreviewPdfDirectoryPicker))
 const canRunShippingAutomation = computed(() => !sending.value && hasRunCredentials.value)
 const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
 const activeShippingRun = computed(() => findXinlongtaiShippingActiveRun(executorHealth.value))
+const previewPdfResultSummary = computed(() => summarizePreviewPdfResults(previewPdfResults.value))
 const activeRunProgress = computed(() => normalizeActiveRunProgress(activeShippingRun.value))
 const showStartupProgress = computed(() => startupStage.value !== 'idle' || launching.value || sending.value || Boolean(activeRunProgress.value))
 const startupProgressPercent = computed(() => {
@@ -483,6 +561,7 @@ function stopStartupProgressTimer(): void {
 }
 
 async function initializeScenario(): Promise<void> {
+  restorePreviewPdfDirectory()
   statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行 Shipping。'
   await refreshAutomationTemplates(); await refreshCredentialProfile(); await refreshExecutorState(true)
   if (electronSupported && activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) await startActiveApp(true)
@@ -607,6 +686,103 @@ async function downloadPrimaryTemplate(): Promise<void> {
 function downloadAutomationHelper(): void { void openAutomationHelperDownload() }
 function bootLocalHelper(): void { primeLocalAutomationLauncherBoot(); messageTone.value = 'info'; message.value = text('已尝试启动本机自动化助手。'); window.setTimeout(() => { void refreshExecutorState(true) }, 1200) }
 
+function restorePreviewPdfDirectory(): void {
+  previewPdfSaveDirectory.value = window.localStorage.getItem(PREVIEW_PDF_DIR_STORAGE_KEY) || ''
+}
+
+function persistPreviewPdfDirectory(): void {
+  window.localStorage.setItem(PREVIEW_PDF_DIR_STORAGE_KEY, previewPdfSaveDirectory.value.trim())
+}
+
+async function selectPreviewPdfDirectory(): Promise<void> {
+  if (directorySelecting.value) return
+  directorySelecting.value = true
+  if (window.electronAPI?.selectDirectory) {
+    try {
+      const result = await window.electronAPI.selectDirectory({
+        title: text('选择新龙泰 Preview PDF 保存目录'),
+        defaultPath: previewPdfSaveDirectory.value.trim() || undefined,
+      })
+      if (!result.success) {
+        messageTone.value = 'error'
+        message.value = result.error || text('选择目录失败。')
+        return
+      }
+      if (!result.canceled && result.path) {
+        previewPdfSaveDirectory.value = result.path
+        persistPreviewPdfDirectory()
+        messageTone.value = 'success'
+        message.value = text('已选择 Preview PDF 保存目录。')
+      }
+    } finally {
+      directorySelecting.value = false
+    }
+    return
+  }
+
+  if (!previewPdfDirectorySelectUrl.value) {
+    messageTone.value = 'warning'
+    message.value = text('当前浏览器环境无法打开系统目录选择器，请手动填写完整本机路径。')
+    directorySelecting.value = false
+    return
+  }
+
+  if (!await ensureReady()) {
+    setNotReady()
+    directorySelecting.value = false
+    return
+  }
+
+  if (!executorSupportsPreviewPdfDirectoryPicker.value) {
+    messageTone.value = 'warning'
+    message.value = text('本机自动化助手版本落后，请安装最新模块后重试，或手动填写完整本机路径。')
+    directorySelecting.value = false
+    return
+  }
+
+  try {
+    messageTone.value = 'info'
+    message.value = text('正在打开新龙泰 Preview PDF 保存目录选择器，请留意系统弹窗。')
+    const response = await fetch(previewPdfDirectorySelectUrl.value, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Executor-Token': entry?.localExecutorToken || '',
+      },
+      body: JSON.stringify({
+        token: entry?.localExecutorToken,
+        initialDirectory: previewPdfSaveDirectory.value.trim(),
+      }),
+    })
+    const raw = await response.text()
+    const result = safeParseExecutorJson(raw) as Record<string, any> | null
+    if (response.status === 404) {
+      messageTone.value = 'warning'
+      message.value = text('本机自动化助手缺少新龙泰目录选择接口，请同步最新自动化模块后重试，或手动填写完整本机路径。')
+      return
+    }
+    if (result?.canceled) {
+      messageTone.value = 'info'
+      message.value = text('已取消选择目录。')
+      return
+    }
+    if (!response.ok || !result?.ok || !result.path) {
+      messageTone.value = 'error'
+      message.value = String(result?.message || text('选择目录失败。'))
+      return
+    }
+    previewPdfSaveDirectory.value = String(result.path)
+    persistPreviewPdfDirectory()
+    messageTone.value = 'success'
+    message.value = text('已选择 Preview PDF 保存目录。')
+  } catch (error) {
+    messageTone.value = 'error'
+    message.value = readErrorMessage(error, text('选择目录失败。'))
+  } finally {
+    directorySelecting.value = false
+  }
+}
+
 async function startActiveApp(silent: boolean): Promise<void> {
   if (!entry || launching.value) return
   if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot()
@@ -688,6 +864,165 @@ function collectResultFiles(p: ExecutorResponsePayload | null): AutomationRunFil
 }
 function bfi(rp: unknown, fr: string, fn: string): AutomationRunFileInput | null { const u = buildShippingArtifactUrl(rp); if (!u) return null; return { url: u, fileRole: fr, fileName: fn } }
 
+function collectPreviewPdfSavedPaths(p: ExecutorResponsePayload | null): string[] {
+  const payload = p as Record<string, any> | null
+  const values: string[] = []
+  const direct = Array.isArray(payload?.previewPdfSavedPaths) ? payload?.previewPdfSavedPaths : []
+  for (const item of direct) {
+    const value = String(item || '').trim()
+    if (value) values.push(value)
+  }
+  const createShipmentResults = Array.isArray(payload?.createShipmentResults) ? payload?.createShipmentResults : []
+  for (const item of createShipmentResults) {
+    const value = String(item?.previewPdfDownloadResult?.filePath || item?.previewPdfFilePath || '').trim()
+    if (value) values.push(value)
+  }
+  return Array.from(new Set(values))
+}
+
+function collectPreviewPdfResults(p: ExecutorResponsePayload | null): PreviewPdfResultItem[] {
+  const payload = p as Record<string, any> | null
+  const createShipmentResults = Array.isArray(payload?.createShipmentResults) ? payload.createShipmentResults : []
+  const rows: PreviewPdfResultItem[] = []
+  createShipmentResults.forEach((item: Record<string, any>, index: number) => {
+    const result = item?.previewPdfDownloadResult && typeof item.previewPdfDownloadResult === 'object'
+      ? item.previewPdfDownloadResult as Record<string, any>
+      : null
+    const changeEquipmentId = String(item?.changeEquipmentId || '').trim()
+    const poNos = Array.isArray(item?.poNos)
+      ? item.poNos.map((value: unknown) => String(value || '').trim()).filter(Boolean)
+      : []
+    const labelParts = [
+      changeEquipmentId ? `设备 ${changeEquipmentId}` : '',
+      poNos.length ? `PO ${poNos.join(', ')}` : '',
+    ].filter(Boolean)
+    const label = labelParts.join(' / ') || `Create Shipment ${index + 1}`
+    const key = `${changeEquipmentId || 'equipment'}-${poNos.join('-') || index}`
+
+    if (result?.ok) {
+      rows.push({
+        key,
+        status: 'success',
+        label,
+        statusText: '下载成功',
+        message: '',
+        fileName: String(result.fileName || ''),
+        filePath: String(result.filePath || ''),
+        pdfUrl: String(result.pdfUrl || ''),
+        size: Number(result.size || 0),
+      })
+      return
+    }
+
+    if (result && (result.enabled === false || result.reason === 'disabled')) {
+      rows.push({
+        key,
+        status: 'skipped',
+        label,
+        statusText: '未执行',
+        message: 'Preview PDF 下载未启用。',
+        fileName: '',
+        filePath: '',
+        pdfUrl: '',
+        size: 0,
+      })
+      return
+    }
+
+    if (result) {
+      const reason = String(result.error || result.message || result.reason || 'Preview PDF 下载失败，未返回具体原因。')
+      rows.push({
+        key,
+        status: 'failed',
+        label,
+        statusText: '下载失败',
+        message: reason,
+        fileName: String(result.fileName || ''),
+        filePath: String(result.filePath || ''),
+        pdfUrl: String(result.pdfUrl || ''),
+        size: Number(result.size || 0),
+      })
+      return
+    }
+
+    if (item?.ok === false) {
+      rows.push({
+        key,
+        status: 'skipped',
+        label,
+        statusText: '未执行',
+        message: String(item.error || item.failureReason || 'Create Shipment 未完成，所以没有执行 Preview PDF 下载。'),
+        fileName: '',
+        filePath: '',
+        pdfUrl: '',
+        size: 0,
+      })
+      return
+    }
+
+    rows.push({
+      key,
+      status: 'failed',
+      label,
+      statusText: '下载失败',
+      message: '执行器未返回 Preview PDF 下载结果。',
+      fileName: '',
+      filePath: '',
+      pdfUrl: '',
+      size: 0,
+    })
+  })
+
+  if (rows.length === 0) {
+    const directPaths = Array.isArray(payload?.previewPdfSavedPaths) ? payload.previewPdfSavedPaths : []
+    directPaths.forEach((filePath: unknown, index: number) => {
+      const value = String(filePath || '').trim()
+      if (!value) return
+      rows.push({
+        key: `direct-${index}-${value}`,
+        status: 'success',
+        label: `Preview PDF ${index + 1}`,
+        statusText: '下载成功',
+        message: '',
+        fileName: value.split(/[\\/]/).pop() || '',
+        filePath: value,
+        pdfUrl: '',
+        size: 0,
+      })
+    })
+  }
+
+  return rows
+}
+
+function summarizePreviewPdfResults(items: PreviewPdfResultItem[]): PreviewPdfResultSummary {
+  return {
+    total: items.length,
+    success: items.filter((item) => item.status === 'success').length,
+    failed: items.filter((item) => item.status === 'failed').length,
+    skipped: items.filter((item) => item.status === 'skipped').length,
+  }
+}
+
+function buildPreviewPdfResultMessage(payload: ExecutorResponsePayload | null, items: PreviewPdfResultItem[]): string {
+  const raw = payload as Record<string, any> | null
+  if (items.length > 0) return ''
+  if (raw?.previewPdfDownloadEnabled === false) return '本次未启用 Preview PDF 下载。'
+  if (raw?.previewPdfDownloadEnabled === true) return '本次没有返回 Preview PDF 下载结果，可能未进入 Preview 页面或执行器版本未同步。'
+  return ''
+}
+
+function formatPreviewPdfRunStatus(summary: PreviewPdfResultSummary): string {
+  if (summary.total <= 0) return ''
+  return `；Preview PDF 成功 ${summary.success} 个，失败 ${summary.failed} 个，未执行 ${summary.skipped} 个。`
+}
+
+function previewPdfResultIconName(status: PreviewPdfResultStatus): string {
+  if (status === 'success') return 'check-circle'
+  if (status === 'failed') return 'alert-circle'
+  return 'info'
+}
+
 function showRunRequirementDialog(rawMessage: string): false {
   const localized = text(rawMessage)
   messageTone.value = 'warning'
@@ -702,6 +1037,7 @@ function showRunRequirementDialog(rawMessage: string): false {
 function validateShippingInputs(): boolean {
   if (!entry) return showRunRequirementDialog('当前入口不存在，请返回 Eric - Infornexus 页面重新进入。')
   if (!selectedFile.value) return showRunRequirementDialog('请先上传 Excel 文件，文件需包含 PO No 列。')
+  if (!previewPdfSaveDirectory.value.trim()) return showRunRequirementDialog('请先选择或填写 Preview PDF 保存目录。')
   const username = shippingUsername.value.trim()
   const password = shippingPassword.value.trim()
   if (password && !username) return showRunRequirementDialog('请先填写 User ID。')
@@ -715,22 +1051,47 @@ async function runShipping(): Promise<void> {
   if (!(await ensureReady())) { setNotReady(); void showAppAlert(statusText.value, { tone: 'warning' }); return }
   const currentEntry = entry
   if (!currentEntry) { showRunRequirementDialog('当前入口不存在，请返回 Eric - Infornexus 页面重新进入。'); return }
-  const file = selectedFile.value as File; sending.value = true; beginStartupProgress('business'); startActiveRunStatePolling(); statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''
+  persistPreviewPdfDirectory()
+  const file = selectedFile.value as File; sending.value = true; beginStartupProgress('business'); startActiveRunStatePolling(); statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; previewPdfSavedPaths.value = []; previewPdfResults.value = []; previewPdfResultMessage.value = ''; lastRawResponse.value = ''; message.value = ''
   try {
     const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload()
-    const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': currentEntry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: currentEntry.localExecutorToken, headless: !showBrowserView.value, ...cp, automationId: currentEntry.id, shipmentScanAction: 'remove-change-equipment-id', fillOriginDeclaration: autoFillOriginDeclaration.value }) })
-    const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseExecutorJson(raw); const executorMessage = readExecutorResponseText(j); updateShippingArtifactLinks(j)
+    const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': currentEntry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: currentEntry.localExecutorToken, headless: !showBrowserView.value, ...cp, automationId: currentEntry.id, shipmentScanAction: 'remove-change-equipment-id', fillOriginDeclaration: autoFillOriginDeclaration.value, downloadPreviewPdf: true, previewPdfDownloadDirectory: previewPdfSaveDirectory.value.trim() }) })
+    const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseExecutorJson(raw); const executorMessage = readExecutorResponseText(j); updateShippingArtifactLinks(j); previewPdfSavedPaths.value = collectPreviewPdfSavedPaths(j); previewPdfResults.value = collectPreviewPdfResults(j); previewPdfResultMessage.value = buildPreviewPdfResultMessage(j, previewPdfResults.value)
     await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), executorMessage, j)
     if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(executorMessage || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }
     if (!j) throw new Error('无法解析响应。')
-    if (j?.ok && j?.shipmentScanOpened) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedPoCount ?? 0}/${j.totalPoCount ?? '?'} 个 PO。`; lastResult.value = { ok: true, message: executorMessage || undefined }; messageTone.value = 'success'; message.value = text('执行完成。'); return }
+    if (j?.ok && j?.shipmentScanOpened) {
+      const pdfSummary = previewPdfResultSummary.value
+      const pdfText = formatPreviewPdfRunStatus(pdfSummary)
+      statusText.value = `已完成 ${j.completedPoCount ?? 0}/${j.totalPoCount ?? '?'} 个 PO。${pdfText}`
+      if (pdfSummary.failed > 0) {
+        statusLabel.value = '未完成'
+        lastResult.value = { ok: false, message: statusText.value }
+        messageTone.value = 'warning'
+        message.value = text('Shipping 已完成，但 Preview PDF 下载有失败。')
+        return
+      }
+      statusLabel.value = '成功'; lastResult.value = { ok: true, message: executorMessage || undefined }; messageTone.value = 'success'; message.value = text('执行完成。'); return
+    }
     statusLabel.value = '未完成'; statusText.value = executorMessage || '未确认完成。'; lastResult.value = { ok: false, message: executorMessage || undefined }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。')
   } catch (e) { const m = formatAutomationExecutorMessage(readErrorMessage(e, '网络错误'), '自动化执行异常。'); statusLabel.value = '异常'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m }
   finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) }
 }
 
 function setNotReady(): void { statusLabel.value = '未就绪'; statusText.value = '本机执行器尚未就绪。'; lastResult.value = { ok: false, message: 'Executor is not ready.' }; messageTone.value = 'warning'; message.value = text('本机执行器未就绪。') }
-async function ensureReady(): Promise<boolean> { if (entry && activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) await startActiveApp(true); else if (!executorHealth.value?.ok) await startActiveApp(true); await refreshExecutorState(true).catch(() => {}); return Boolean(executorHealth.value?.ok) }
+function isExecutorStarting(health: LocalExecutorHealth | null | undefined): boolean { return Boolean(health?.starting) }
+async function ensureReady(): Promise<boolean> {
+  if (!entry) return false
+  if (executorHealth.value?.ok) return true
+  if (activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) await startActiveApp(true)
+  else if (!executorHealth.value?.ok) await startActiveApp(true)
+  if (executorHealth.value?.ok) return true
+  if (isExecutorStarting(executorHealth.value) && await waitForExecutorHealthReady(90000)) return true
+  await refreshExecutorState(true).catch(() => {})
+  if (executorHealth.value?.ok) return true
+  if (isExecutorStarting(executorHealth.value) && await waitForExecutorHealthReady(90000)) return true
+  return Boolean(executorHealth.value?.ok)
+}
 async function fileToBase64(f: File): Promise<string> { const b = await f.arrayBuffer(); return arrayBufferToBase64(b) }
 function arrayBufferToBase64(b: ArrayBuffer): string { const bytes = new Uint8Array(b); const cs = 0x8000; let bin = ''; for (let i = 0; i < bytes.length; i += cs) { const chunk = bytes.subarray(i, i + cs); bin += String.fromCharCode(...chunk) }; return window.btoa(bin) }
 function buildExecutorResponseMessage(res: Response, raw: string, payload: ExecutorResponsePayload | null, fallback = '自动化执行失败。'): string { const rawMessage = readExecutorResponseText(payload); if (res.status === 404 && /not\s*found/i.test(rawMessage || raw || '')) return '本机执行器缺少当前自动化接口，系统已同步最新自动化逻辑但接口仍不可用。请确认服务器 automation-modules 模块包已发布，或重启本机自动化执行器后再试。'; if (rawMessage) return formatAutomationExecutorMessage(rawMessage, fallback); if (!payload) return formatAutomationExecutorMessage('JSON.parse: unexpected character at line 1 column 1 of the JSON data', fallback); return formatAutomationExecutorMessage(`HTTP ${res.status}`, fallback) }
@@ -985,6 +1346,48 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
 /* ─── Fields ─── */
 .sa-field { display: flex; flex-direction: column; gap: 4px;
   > span { font-size: 11px; font-weight: 600; color: var(--ink); }
+  &__hint { font-size: 10px; line-height: 1.45; color: var(--mu); }
+}
+
+.sa-path {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.sa-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 11px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #f8fbff;
+
+  :deep(.app-icon) {
+    flex-shrink: 0;
+    font-size: 14px;
+    color: var(--a);
+  }
+}
+
+.sa-input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+
+  &::placeholder {
+    color: #94a3b8;
+    font-weight: 500;
+  }
 }
 
 :global(html.dark) .sa-hd-toggle {
@@ -1075,6 +1478,110 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
 }
 
 /* ─── Artifacts Row ─── */
+.sa-pdf-results { gap: 7px; }
+
+.sa-pdf-results__head,
+.sa-pdf-result {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #f8fbff;
+  color: #1e293b;
+  font-size: 11px;
+  font-weight: 700;
+
+  :deep(.app-icon) {
+    flex-shrink: 0;
+    font-size: 13px;
+    color: var(--a);
+  }
+}
+
+.sa-pdf-results__head {
+  justify-content: space-between;
+
+  &--warn {
+    border-color: #fecaca;
+    background: #fef2f2;
+    color: #b91c1c;
+
+    :deep(.app-icon) {
+      color: #dc2626;
+    }
+  }
+}
+
+.sa-pdf-result {
+  background: #fff;
+  color: #475569;
+  font-weight: 600;
+
+  &--success {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+
+    :deep(.app-icon) {
+      color: #16a34a;
+    }
+  }
+
+  &--failed {
+    border-color: #fecaca;
+    background: #fff7f7;
+
+    :deep(.app-icon) {
+      color: #dc2626;
+    }
+  }
+
+  &--skipped {
+    border-color: #fed7aa;
+    background: #fff7ed;
+
+    :deep(.app-icon) {
+      color: #ea580c;
+    }
+  }
+}
+
+.sa-pdf-result__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+
+  strong,
+  span,
+  small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: #1e293b;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  span {
+    color: #334155;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  small {
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 600;
+  }
+}
+
 .sa-artifacts { display: flex; flex-wrap: wrap; gap: 7px; padding-top: 0; }
 
 /* ═══ HEALTH LOG ═══ */

@@ -69,6 +69,26 @@
       <div class="s2-body">
         <!-- Left Column: Bulk Stage + Health Log -->
         <div class="s2-left">
+          <section class="s2-account-card">
+            <div class="s2-account-card__hd">
+              <AppIcon name="shield-check" />
+              <span>{{ text('账号档案') }}</span>
+              <span v-if="hasStoredCredentials" class="s2-chip s2-chip--ok">
+                <AppIcon name="check-circle" />{{ text('已保存') }}
+              </span>
+            </div>
+            <AutomationAccountProfileManager
+              ref="credentialProfileRef"
+              v-model:selected-key="selectedCredentialKey"
+              v-model:username="shippingUsername"
+              v-model:password="shippingPassword"
+              :automation-id="entry.id"
+              :default-username="releasedBulkDefaultUsername"
+              @state="handleCredentialState"
+              @notice="handleCredentialNotice"
+            />
+          </section>
+
           <!-- Bulk Cards -->
           <div class="s2-stage">
             <article v-for="(bulk, idx) in bulkAreas" :key="bulk.id" class="s2-bulk" :class="`s2-bulk--${bulk.id}`" :style="{ animationDelay: `${80 + idx * 80}ms` }">
@@ -150,28 +170,6 @@
 
           <AutomationRunHistoryPanel :automation-id="entry.id" :refresh-signal="bulkHistorySignal" />
 
-          <!-- Credentials -->
-          <div class="s2-dock-card s2-dock-card--flex">
-            <div class="s2-dock__hd">
-              <AppIcon name="shield-check" class="s2-dock__hd-icon" />
-              <span>{{ text('登录凭据') }}</span>
-              <span v-if="hasStoredCredentials" class="s2-chip s2-chip--ok">
-                <AppIcon name="check-circle" />{{ text('已保存') }}
-              </span>
-            </div>
-            <div class="s2-dock__bd">
-              <AutomationAccountProfileManager
-                ref="credentialProfileRef"
-                v-model:selected-key="selectedCredentialKey"
-                v-model:username="shippingUsername"
-                v-model:password="shippingPassword"
-                :automation-id="entry.id"
-                :default-username="releasedBulkDefaultUsername"
-                @state="handleCredentialState"
-                @notice="handleCredentialNotice"
-              />
-            </div>
-          </div>
         </aside>
       </div>
     </template>
@@ -689,6 +687,29 @@ function validateBulkInputs(bulk: BulkState): boolean {
   flex: 1; min-height: 0;
 }
 .s2-left { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
+.s2-account-card {
+  background: #fff;
+  border: 1px solid var(--br);
+  border-radius: var(--r);
+  box-shadow: var(--sh);
+  padding: 14px 18px;
+  overflow: visible;
+  animation: s2-rise .45s cubic-bezier(.22,1,.36,1) .04s both;
+}
+.s2-account-card__hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.s2-account-card__hd > .app-icon {
+  color: var(--a);
+  font-size: 14px;
+  flex-shrink: 0;
+}
 
 /* ═══ BULK STAGE ═══ */
 .s2-stage {

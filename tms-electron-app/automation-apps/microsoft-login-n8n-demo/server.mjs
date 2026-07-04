@@ -3185,6 +3185,8 @@ function buildHealthPayload() {
         "/api/run-login-file",
         "/run-ticket-owner-statistics",
         "/api/run-ticket-owner-statistics",
+        "/run-ticket-owner-statistics-lookup",
+        "/api/run-ticket-owner-statistics-lookup",
       ],
       modules: ["sap-btp-login", "ticket-owner-statistics"],
     },

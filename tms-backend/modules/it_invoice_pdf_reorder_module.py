@@ -301,7 +301,7 @@ def find_order_number(page_text: str) -> str | None:
 
 def create_summary_pdf(
     result: ParseResult,
-    invoice_pdf: Path,
+    invoice_pdf: Path | None,
     po_pdf: Path,
     output_pdf: Path,
 ) -> bytes:
@@ -346,11 +346,14 @@ def create_summary_pdf(
         leading=9.5,
     )
 
+    source_label = invoice_pdf.name if invoice_pdf else "手动输入 PO 顺序"
+    summary_title = "PO 按发票顺序重排汇总页" if invoice_pdf else "PO 按手动顺序重排汇总页"
+
     story: list = []
-    story.append(Paragraph("PO 按发票顺序重排汇总页", title_style))
+    story.append(Paragraph(summary_title, title_style))
     story.append(
         Paragraph(
-            f"发票文件：{invoice_pdf.name}<br/>PO文件：{po_pdf.name}<br/>"
+            f"发票文件：{source_label}<br/>PO文件：{po_pdf.name}<br/>"
             f"输出文件：{output_pdf.name}<br/>生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             normal_style,
         )
@@ -529,18 +532,25 @@ def sum_optional(values: Iterable[Decimal | None]) -> Decimal | None:
 
 
 def build_reordered_pdf(
-    invoice_pdf: Path,
+    invoice_pdf: Path | None,
     po_pdf: Path,
     output_pdf: Path,
     po_order: Iterable[str] | None = None,
     print_current_only: bool = True,
     print_next_page: bool = True,
 ) -> ParseResult:
-    entries, invoice_totals = parse_invoice_pdf(invoice_pdf)
-    if not entries:
-        raise RuntimeError(f"没有从发票中识别到PO行：{invoice_pdf}")
-
     normalized_po_order = normalize_po_order(po_order)
+
+    if invoice_pdf is not None:
+        entries, invoice_totals = parse_invoice_pdf(invoice_pdf)
+        if not entries and not normalized_po_order:
+            raise RuntimeError(f"没有从发票中识别到PO行：{invoice_pdf}")
+    else:
+        entries = []
+        invoice_totals = {}
+        if not normalized_po_order:
+            raise RuntimeError("请先输入PO顺序，或上传发票PDF自动提取PO顺序")
+
     if normalized_po_order:
         entries = apply_po_order(entries, normalized_po_order)
 

@@ -89,7 +89,7 @@ export interface JasonPdfReorderExtractRequest {
 }
 
 export interface JasonPdfReorderProcessRequest {
-  invoiceFile: File
+  invoiceFile?: File | null
   poFile: File
   poOrderText?: string
   printCurrentOnly: boolean
@@ -150,7 +150,9 @@ export function processJasonPdfReorder(
 ): Promise<JasonPdfReorderProcessResponse> {
   const formData = new FormData()
 
-  formData.append('invoice_pdf', request.invoiceFile)
+  if (request.invoiceFile) {
+    formData.append('invoice_pdf', request.invoiceFile)
+  }
   formData.append('po_pdf', request.poFile)
   formData.append('po_order_text', request.poOrderText?.trim() ?? '')
   formData.append('print_current_only', String(request.printCurrentOnly))

@@ -626,6 +626,9 @@ function formatFileSize(size: number): string {
 }
 
 .btn-success:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--green), var(--green-dark));
+  border-color: transparent;
+  color: var(--white);
   filter: brightness(1.04);
   box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3);
 }
@@ -638,6 +641,9 @@ function formatFileSize(size: number): string {
 }
 
 .btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--blue), var(--blue-dark));
+  border-color: transparent;
+  color: var(--white);
   filter: brightness(1.04);
   box-shadow: 0 6px 16px rgba(14, 165, 233, 0.3);
 }

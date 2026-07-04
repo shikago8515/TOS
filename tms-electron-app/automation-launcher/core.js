@@ -223,7 +223,7 @@ async function launchAutomationApp(appId, options) {
   const processMap = options.processMap || new Map()
   const userDataDir = resolveUserDataDir(options)
   const forceUpdate = Boolean(options.forceUpdate)
-  const automationApp = await resolveAutomationAppRuntime(appId, options, { checkRemote: true, forceUpdate })
+  const automationApp = await resolveAutomationAppRuntime(appId, options, { checkRemote: forceUpdate, forceUpdate })
 
   if (!automationApp) {
     return { success: false, error: `Unknown automation app: ${appId}` }

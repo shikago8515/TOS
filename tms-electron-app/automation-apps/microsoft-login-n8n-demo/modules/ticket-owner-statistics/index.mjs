@@ -1,4 +1,5 @@
 import { createDirectRouteHandler } from "../../shared/direct-runner.mjs";
+import { createTicketOwnerLookupPostProcessHandler } from "./post-process.mjs";
 import { runTicketOwnerStatisticsWorkflow } from "./workflow.mjs";
 
 export const moduleDefinition = {
@@ -8,6 +9,8 @@ export const moduleDefinition = {
   routePaths: [
     "/run-ticket-owner-statistics",
     "/api/run-ticket-owner-statistics",
+    "/run-ticket-owner-statistics-lookup",
+    "/api/run-ticket-owner-statistics-lookup",
   ],
 };
 
@@ -16,7 +19,7 @@ export function createTicketOwnerStatisticsHandler(deps) {
     throw new Error("ticket-owner-statistics module dependency is missing: runLogin");
   }
 
-  return createDirectRouteHandler(deps, {
+  const runHandler = createDirectRouteHandler(deps, {
     moduleDefinition,
     runWorkflow: (context) => runTicketOwnerStatisticsWorkflow(deps, {
       ...context,
@@ -33,4 +36,16 @@ export function createTicketOwnerStatisticsHandler(deps) {
       resultExcelPath: result.artifacts?.resultExcelPath || "",
     }),
   });
+  const lookupHandler = createTicketOwnerLookupPostProcessHandler(deps, moduleDefinition);
+
+  return async function handleTicketOwnerStatisticsRoute(req, res) {
+    const requestPath = String(req.url || "/").split("?")[0];
+    if (requestPath.endsWith("/run-ticket-owner-statistics-lookup")
+      || requestPath.endsWith("/api/run-ticket-owner-statistics-lookup")) {
+      await lookupHandler(req, res);
+      return;
+    }
+
+    await runHandler(req, res);
+  };
 }

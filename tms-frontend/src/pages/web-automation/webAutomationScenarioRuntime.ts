@@ -19,10 +19,6 @@ export function canSyncActiveAppRuntime(state: ActiveAppRuntimeSyncState): boole
 }
 
 export function planExecutorReadinessActions(state: ExecutorReadinessState): ExecutorReadinessAction[] {
-  if (state.canSyncRuntime) {
-    return ['sync-active-app-runtime', 'refresh-executor-state']
-  }
-
   if (!state.executorOk) {
     return ['start-active-app', 'refresh-executor-state']
   }

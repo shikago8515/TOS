@@ -19,6 +19,7 @@ class JasonPdfReorderApiContractTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.runtime_dir = Path(self.temp_dir.name)
         self._restore_callbacks: list[Callable[[], None]] = []
+        self.build_calls: list[dict[str, object]] = []
 
         self._patch("JOBS_DIR", self.runtime_dir / "jobs")
         self._patch("PREVIEWS_DIR", self.runtime_dir / "previews")
@@ -60,11 +61,12 @@ class JasonPdfReorderApiContractTests(unittest.TestCase):
 
     def _fake_build_reordered_pdf(
         self,
-        _invoice_path: Path,
+        _invoice_path: Path | None,
         _po_path: Path,
         output_path: Path,
         **_kwargs: object,
     ) -> ParseResult:
+        self.build_calls.append({"invoice_path": _invoice_path, "po_path": _po_path, **_kwargs})
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(b"%PDF-1.4\n")
         entries, totals = self._fake_parse_invoice_pdf(output_path)
@@ -131,6 +133,37 @@ class JasonPdfReorderApiContractTests(unittest.TestCase):
             legacy.json()["downloadUrl"],
             r"^/api/it-invoice-pdf-reorder/download/[0-9a-f]+$",
         )
+
+    def test_process_accepts_manual_po_order_without_invoice_pdf(self) -> None:
+        response = self.client.post(
+            "/api/jason/pdf-reorder/process",
+            files={"po_pdf": ("po.pdf", b"fake", "application/pdf")},
+            data={
+                "po_order_text": "4501749160\n4501749225",
+                "print_current_only": "true",
+                "print_next_page": "false",
+                "include_not_found": "true",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(self.build_calls[-1]["invoice_path"])
+        self.assertEqual(self.build_calls[-1]["po_order"], ["4501749160", "4501749225"])
+
+    def test_process_requires_manual_po_order_when_invoice_pdf_is_missing(self) -> None:
+        response = self.client.post(
+            "/api/jason/pdf-reorder/process",
+            files={"po_pdf": ("po.pdf", b"fake", "application/pdf")},
+            data={
+                "po_order_text": "",
+                "print_current_only": "true",
+                "print_next_page": "false",
+                "include_not_found": "true",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("PO", response.text)
 
     def test_openapi_exposes_canonical_and_compat_response_schemas(self) -> None:
         paths = main.app.openapi()["paths"]

@@ -6,12 +6,12 @@ import {
 } from './webAutomationScenarioRuntime'
 
 describe('webAutomationScenarioRuntime', () => {
-  it('plans a forced app runtime sync before checking executor health when the app is available and idle', () => {
+  it('starts the active app without forced runtime sync before checking executor health', () => {
     expect(planExecutorReadinessActions({
       canSyncRuntime: true,
       executorOk: false,
     })).toEqual([
-      'sync-active-app-runtime',
+      'start-active-app',
       'refresh-executor-state',
     ])
   })

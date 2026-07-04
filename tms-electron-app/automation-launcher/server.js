@@ -31,6 +31,7 @@ const automationModuleManifestUrl = process.env.TOS_AUTOMATION_MODULE_MANIFEST_U
   || process.env.TMS_AUTOMATION_MODULE_MANIFEST_URL
   || 'https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/automation-modules'
 const enableModuleUpdates = process.env.TOS_AUTOMATION_MODULE_UPDATES !== '0'
+const enableStartupModuleSync = process.env.TOS_AUTOMATION_MODULE_STARTUP_SYNC === '1'
 const moduleSyncIntervalMs = Math.max(
   Number(process.env.TOS_AUTOMATION_MODULE_SYNC_INTERVAL_MS || 15 * 60 * 1000),
   60 * 1000,
@@ -100,6 +101,7 @@ const server = http.createServer(async (req, res) => {
         userDataDir,
         automationModuleManifestUrl,
         enableModuleUpdates,
+        enableStartupModuleSync,
         trackedAppCount: processMap.size,
         moduleSync: toPublicModuleSyncState(),
       })
@@ -207,12 +209,14 @@ function startAutomationModuleBackgroundSync() {
     return
   }
 
-  const startupTimer = setTimeout(() => {
-    runAutomationModuleSync({ reason: 'startup' }).catch((error) => {
-      console.error(`Automation module startup sync failed: ${error.message}`)
-    })
-  }, 1500)
-  startupTimer.unref?.()
+  if (enableStartupModuleSync) {
+    const startupTimer = setTimeout(() => {
+      runAutomationModuleSync({ reason: 'startup' }).catch((error) => {
+        console.error(`Automation module startup sync failed: ${error.message}`)
+      })
+    }, 1500)
+    startupTimer.unref?.()
+  }
 
   const syncTimer = setInterval(() => {
     runAutomationModuleSync({ reason: 'background' }).catch((error) => {

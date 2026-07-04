@@ -183,17 +183,23 @@ async def extract_numbers(
 @legacy_router.post("/process", response_model=JasonPdfReorderProcessResponse)
 async def process_pdfs(
     request: Request,
-    invoice_pdf: UploadFile = File(...),
+    invoice_pdf: UploadFile | None = File(None),
     po_pdf: UploadFile = File(...),
     po_order_text: str | None = Form(None),
     print_current_only: str = Form("true"),
     print_next_page: str = Form("true"),
     include_not_found: str = Form("false"),
 ) -> dict[str, Any]:
-    ensure_pdf(invoice_pdf, "发票PDF")
     ensure_pdf(po_pdf, "PO PDF")
+    if invoice_pdf is not None:
+        ensure_pdf(invoice_pdf, "发票PDF")
+
+    po_order = normalize_po_order([po_order_text]) if po_order_text else None
+    if invoice_pdf is None and not po_order:
+        raise HTTPException(status_code=400, detail="请先在排序与核对中心输入 PO 顺序，或上传发票 PDF 自动提取")
+
     logs = [
-        f"开始生成重排PDF：发票={invoice_pdf.filename or 'invoice.pdf'}，PO={po_pdf.filename or 'po.pdf'}",
+        f"开始生成重排PDF：发票={(invoice_pdf.filename or 'invoice.pdf') if invoice_pdf else '手动PO顺序'}，PO={po_pdf.filename or 'po.pdf'}",
         f"选项：当前页={parse_bool(print_current_only, True)}，下一页={parse_bool(print_next_page, True)}",
     ]
 
@@ -202,15 +208,16 @@ async def process_pdfs(
     upload_dir = job_dir / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    invoice_path = upload_dir / safe_filename(invoice_pdf.filename or "invoice.pdf")
+    invoice_path = upload_dir / safe_filename(invoice_pdf.filename or "invoice.pdf") if invoice_pdf else None
     po_path = upload_dir / safe_filename(po_pdf.filename or "po.pdf")
-    output_path = job_dir / "PO按发票顺序重排_含汇总页.pdf"
+    output_filename = "PO按发票顺序重排_含汇总页.pdf" if invoice_pdf else "PO按手动顺序重排_含汇总页.pdf"
+    output_path = job_dir / output_filename
 
     try:
-        await save_upload(invoice_pdf, invoice_path)
+        if invoice_pdf and invoice_path:
+            await save_upload(invoice_pdf, invoice_path)
         await save_upload(po_pdf, po_path)
         logs.append("上传文件已写入任务目录")
-        po_order = normalize_po_order([po_order_text]) if po_order_text else None
         logs.append(f"前端PO顺序数量：{len(po_order) if po_order else '未指定，使用发票顺序'}")
         result = build_reordered_pdf(
             invoice_path,

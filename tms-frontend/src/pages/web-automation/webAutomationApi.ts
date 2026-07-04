@@ -52,6 +52,10 @@ export interface InforNexusDesktopBridgeHealth {
 
 export interface LocalExecutorHealth {
   ok: boolean
+  starting?: boolean
+  message?: string
+  appId?: string
+  url?: string
   version?: string
   helperVersion?: string
   busy?: boolean
@@ -421,7 +425,7 @@ export async function launchAutomationConsole(
   appId: string,
   options: LaunchAutomationConsoleOptions = {},
 ): Promise<ElectronActionResult> {
-  const forceUpdate = options.forceUpdate !== false
+  const forceUpdate = options.forceUpdate === true
   await recordWebAutomationEvent('launch-start', { appId, forceUpdate })
 
   let result: ElectronActionResult

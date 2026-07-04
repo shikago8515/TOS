@@ -1,10 +1,11 @@
 ﻿import http from "node:http";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import {
   createPoAutoDownloadAutomation,
   isPoAutoDownloadDirectoryRoute,
@@ -47,6 +48,8 @@ const INFOR_NEXUS_EXTENSION_ID = "fkmgjdbgapopggcnkapkodfjeblddieo";
 const INFOR_NEXUS_NATIVE_HOST = "com.gtnexus.packbyscan.chrome_native_bridge";
 const INFOR_NEXUS_NATIVE_HOST_MANIFEST = `${INFOR_NEXUS_NATIVE_HOST}.json`;
 const BUSINESS_DATA_EMPTY_CODE = "INFORNEXUS_BUSINESS_DATA_EMPTY";
+const XINLONGTAI_PREVIEW_PDF_WAIT_MS = 20000;
+const execFileAsync = promisify(execFile);
 
 const sharedExecutorRoot = resolveSharedExecutorRoot();
 const sharedPackageJson = path.join(sharedExecutorRoot, "package.json");
@@ -213,6 +216,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && await trySendArtifactDownload(requestPath, res)) {
+      return;
+    }
+
+    if (req.method === "POST" && isXinlongtaiShippingPreviewPdfDirectoryRoute(requestPath)) {
+      const body = await readJsonBody(req);
+      authorize(req, body);
+      const result = await selectXinlongtaiShippingPreviewPdfDirectory(body);
+      sendJson(res, result.statusCode, result.body);
       return;
     }
 
@@ -445,9 +456,15 @@ const server = http.createServer(async (req, res) => {
       const credentials = resolveCredentials(body);
       const headless = resolveRunHeadless(body);
       const isXinlongtaiShippingRun = isXinlongtaiShippingFileRequest || isXinlongtaiShippingRequestBody(body);
+      const previewPdfDownloadRootDirectory = isXinlongtaiShippingRun
+        ? resolveXinlongtaiShippingPreviewPdfDownloadDirectory(body)
+        : "";
       const poRows = extractPoRowsFromWorkbookPayload(body, {
         isXinlongtaiWorkbook: isXinlongtaiShippingRun,
       });
+      const previewPdfDownloadDirectory = previewPdfDownloadRootDirectory
+        ? createXinlongtaiPreviewPdfRunDirectory(previewPdfDownloadRootDirectory)
+        : "";
       const inputFileName = normalizeUploadFileName(body);
       const activeRun = registerActiveRun({
         action: isXinlongtaiShippingRun ? "run-xinlongtai-shipping-file" : "run-shipping-file",
@@ -455,6 +472,8 @@ const server = http.createServer(async (req, res) => {
         headless,
         inputFileName,
         inputMode: "local-file",
+        previewPdfDownloadRootDirectory,
+        previewPdfDownloadDirectory,
         totalPoCount: poRows.length,
       });
 
@@ -463,6 +482,9 @@ const server = http.createServer(async (req, res) => {
           headless,
           shipmentScanAction: isXinlongtaiShippingRun ? "remove-change-equipment-id" : "assign-equipment-id",
           fillOriginDeclaration: isXinlongtaiShippingRun && shouldFillOriginDeclaration(body),
+          downloadPreviewPdf: isXinlongtaiShippingRun,
+          previewPdfDownloadRootDirectory,
+          previewPdfDownloadDirectory,
         });
         result.artifacts = await persistRunArtifacts(result, poRows, activeRun.runId);
         recordCompletedRun({
@@ -475,6 +497,12 @@ const server = http.createServer(async (req, res) => {
           totalPoCount: result.totalPoCount,
           completedPoCount: result.completedPoCount,
           failedPoCount: result.failedPoCount,
+          previewPdfDownloadRootDirectory: result.previewPdfDownloadRootDirectory || "",
+          previewPdfDownloadDirectory: result.previewPdfDownloadDirectory || "",
+          previewPdfDownloadedCount: result.previewPdfDownloadedCount || 0,
+          previewPdfDownloadFailedCount: result.previewPdfDownloadFailedCount || 0,
+          previewPdfDownloadSkippedCount: result.previewPdfDownloadSkippedCount || 0,
+          previewPdfSavedPaths: result.previewPdfSavedPaths || [],
         });
         sendJson(res, result.ok ? 200 : 500, result);
       } finally {
@@ -576,6 +604,8 @@ function buildHealthPayload() {
       tcInvAutomation: true,
       packingListAutoDownload: true,
       packingListAutoDownloadDirectoryPicker: true,
+      xinlongtaiShippingPreviewPdfDownload: true,
+      xinlongtaiShippingPreviewPdfDirectoryPicker: true,
     },
     config: {
       version: executorVersion,
@@ -1187,7 +1217,7 @@ async function injectInfornexusAutoAddContinuationPanel(page) {
     root.style.cssText = [
       "position:fixed",
       "right:18px",
-      "bottom:18px",
+      "top:18px",
       "z-index:2147483647",
       "width:310px",
       "max-width:calc(100vw - 36px)",
@@ -1761,6 +1791,108 @@ function sanitizeFileSegment(value) {
     .slice(0, 80) || "run";
 }
 
+function isXinlongtaiShippingPreviewPdfDirectoryRoute(requestPath) {
+  return requestPath === "/select-xinlongtai-shipping-pdf-directory"
+    || requestPath === "/api/select-xinlongtai-shipping-pdf-directory";
+}
+
+async function selectXinlongtaiShippingPreviewPdfDirectory(body = {}) {
+  if (process.platform !== "win32") {
+    return {
+      statusCode: 501,
+      body: {
+        ok: false,
+        message: "Directory picker is currently implemented for Windows local executors only.",
+      },
+    };
+  }
+
+  const initialDirectory = String(
+    body?.initialDirectory
+      || body?.previewPdfDownloadDirectory
+      || body?.defaultPath
+      || "",
+  ).trim();
+
+  try {
+    const selectedPath = await selectWindowsDirectory(initialDirectory, "Select Xinlongtai Preview PDF folder");
+    if (!selectedPath) {
+      return {
+        statusCode: 200,
+        body: {
+          ok: false,
+          canceled: true,
+          path: "",
+          message: "Directory selection was cancelled.",
+        },
+      };
+    }
+    return {
+      statusCode: 200,
+      body: {
+        ok: true,
+        canceled: false,
+        path: selectedPath,
+      },
+    };
+  } catch (error) {
+    return {
+      statusCode: 500,
+      body: {
+        ok: false,
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+async function selectWindowsDirectory(initialDirectory, description = "Select TOS download folder") {
+  const script = [
+    "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
+    "Add-Type -AssemblyName System.Windows.Forms",
+    "$owner = New-Object System.Windows.Forms.Form",
+    "$owner.TopMost = $true",
+    "$owner.ShowInTaskbar = $false",
+    "$owner.StartPosition = 'CenterScreen'",
+    "$owner.Width = 1",
+    "$owner.Height = 1",
+    "$owner.Opacity = 0",
+    "$owner.Show()",
+    "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog",
+    "$dialog.Description = $env:TOS_DIRECTORY_DIALOG_DESCRIPTION",
+    "$dialog.ShowNewFolderButton = $true",
+    "if ($env:TOS_INITIAL_DIRECTORY -and (Test-Path -LiteralPath $env:TOS_INITIAL_DIRECTORY)) { $dialog.SelectedPath = $env:TOS_INITIAL_DIRECTORY }",
+    "$result = $dialog.ShowDialog($owner)",
+    "$owner.Close()",
+    "$owner.Dispose()",
+    "if ($result -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dialog.SelectedPath; exit 0 }",
+    "exit 2",
+  ].join("; ");
+
+  try {
+    const { stdout } = await execFileAsync(
+      "powershell.exe",
+      ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", script],
+      {
+        env: {
+          ...process.env,
+          TOS_INITIAL_DIRECTORY: String(initialDirectory || ""),
+          TOS_DIRECTORY_DIALOG_DESCRIPTION: String(description || "Select TOS download folder"),
+        },
+        timeout: 120000,
+        windowsHide: true,
+        maxBuffer: 1024 * 1024,
+      },
+    );
+    return String(stdout || "").trim();
+  } catch (error) {
+    if (error?.code === 2) {
+      return "";
+    }
+    throw error;
+  }
+}
+
 async function resolveExecutorVersion() {
   const envVersion = String(process.env.TOS_AUTOMATION_HELPER_VERSION || "").trim();
   if (envVersion) {
@@ -1829,6 +1961,78 @@ function shouldFillOriginDeclaration(body) {
   );
 }
 
+function resolveXinlongtaiShippingPreviewPdfDownloadDirectory(body) {
+  const value = String(
+    body?.previewPdfDownloadDirectory
+      || body?.previewPdfSaveDirectory
+      || body?.pdfSaveDirectory
+      || "",
+  ).trim();
+  if (!value) {
+    const error = new Error("请先选择新龙泰 Preview PDF 保存目录。");
+    error.statusCode = 400;
+    throw error;
+  }
+  return path.resolve(value);
+}
+
+function createXinlongtaiPreviewPdfRunDirectory(rootDirectory) {
+  const rootPath = path.resolve(String(rootDirectory || "").trim());
+  if (!rootPath) {
+    const error = new Error("请先选择新龙泰 Preview PDF 保存目录。");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  mkdirSync(rootPath, { recursive: true });
+  const baseName = sanitizeWindowsDirectoryName(`YUEN TAI+XO ${formatBeijingDateForDirectory()}`, "YUEN TAI+XO");
+  return createUniqueChildDirectorySync(rootPath, baseName);
+}
+
+function formatBeijingDateForDirectory(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(date);
+  const get = (type) => Number(parts.find((part) => part.type === type)?.value || 0);
+  const year = get("year") || date.getFullYear();
+  const month = get("month") || date.getMonth() + 1;
+  const day = get("day") || date.getDate();
+  return `${year}-${month}-${day}`;
+}
+
+function sanitizeWindowsDirectoryName(value, fallback = "folder") {
+  return String(value || fallback)
+    .replace(/[<>:"/\\|?*\x00-\x1F]+/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/[ .]+$/g, "")
+    .trim()
+    .slice(0, 120) || fallback;
+}
+
+function createUniqueChildDirectorySync(parentDirectory, baseName) {
+  let index = 0;
+  while (index < 1000) {
+    const suffix = index === 0 ? "" : `-${index}`;
+    const candidate = path.join(parentDirectory, `${baseName}${suffix}`);
+    try {
+      mkdirSync(candidate);
+      return candidate;
+    } catch (error) {
+      if (error?.code !== "EEXIST") {
+        throw error;
+      }
+      index += 1;
+    }
+  }
+
+  const error = new Error(`无法创建唯一的新龙泰 Preview PDF 保存子目录：${parentDirectory}`);
+  error.statusCode = 500;
+  throw error;
+}
+
 function resolveShipmentScanAction(runContext) {
   return normalizeShipmentScanAction(runContext?.shipmentScanAction);
 }
@@ -1883,6 +2087,9 @@ async function runShippingFile(credentials, poRows, inputFileName, runId, option
     targetPage: "shipment-scan",
     shipmentScanAction: options?.shipmentScanAction,
     fillOriginDeclaration: Boolean(options?.fillOriginDeclaration),
+    downloadPreviewPdf: Boolean(options?.downloadPreviewPdf),
+    previewPdfDownloadRootDirectory: options?.previewPdfDownloadRootDirectory,
+    previewPdfDownloadDirectory: options?.previewPdfDownloadDirectory,
   });
 }
 
@@ -2219,6 +2426,9 @@ async function runShippingWorkflow(credentials, runContext) {
   let createShipmentBatches = [];
   let createShipmentEquipmentIds = [];
   const fillOriginDeclaration = Boolean(runContext?.fillOriginDeclaration);
+  const downloadPreviewPdf = Boolean(runContext?.downloadPreviewPdf);
+  const previewPdfDownloadRootDirectory = String(runContext?.previewPdfDownloadRootDirectory || "").trim();
+  const previewPdfDownloadDirectory = String(runContext?.previewPdfDownloadDirectory || "").trim();
   let releasedBulkResult = null;
   let unreleasedBulkResult = null;
   const automationBadgeTitle = resolveShippingAutomationBadgeTitle({
@@ -2418,6 +2628,8 @@ async function runShippingWorkflow(credentials, runContext) {
       createShipmentBatches = collectCreateShipmentBatches(poRows);
       createShipmentBatches.forEach((batch) => {
         batch.fillOriginDeclaration = fillOriginDeclaration;
+        batch.downloadPreviewPdf = downloadPreviewPdf;
+        batch.previewPdfDownloadDirectory = previewPdfDownloadDirectory;
       });
       createShipmentEquipmentIds = createShipmentBatches.map((batch) => batch.changeEquipmentId);
       if (createShipmentBatches.length > 0) {
@@ -2457,6 +2669,7 @@ async function runShippingWorkflow(credentials, runContext) {
             poNos: createShipmentBatch.poNos,
             ok: true,
             originDeclarationFillResult: createShipmentResult?.originDeclarationFillResult || null,
+            previewPdfDownloadResult: createShipmentResult?.previewPdfDownloadResult || null,
           });
           await showRunBadge(`Create Shipment 设备 ${changeEquipmentId} 已完成`, {
             phase: "create-shipment",
@@ -2536,6 +2749,9 @@ async function runShippingWorkflow(credentials, runContext) {
     const businessDataEmptyPoCount = countBusinessDataEmptyResults(poResults);
     const businessDataEmptyCreateShipmentCount = countBusinessDataEmptyResults(createShipmentResults);
     const cartonRangeSummary = summarizeCartonRangeChecks(poResults);
+    const previewPdfDownloads = collectCreateShipmentPreviewPdfDownloads(createShipmentResults);
+    const previewPdfDownloadFailures = collectCreateShipmentPreviewPdfFailures(createShipmentResults);
+    const previewPdfDownloadSkippedCount = countCreateShipmentPreviewPdfSkipped(createShipmentResults);
     const shipping2BulkResult = shipping2BulkType === "released"
       ? releasedBulkResult
       : shipping2BulkType === "unreleased"
@@ -2586,6 +2802,13 @@ async function runShippingWorkflow(credentials, runContext) {
       completedCreateShipmentCount,
       failedCreateShipmentCount,
       businessDataEmptyCreateShipmentCount,
+      previewPdfDownloadEnabled: downloadPreviewPdf,
+      previewPdfDownloadRootDirectory,
+      previewPdfDownloadDirectory,
+      previewPdfDownloadedCount: previewPdfDownloads.length,
+      previewPdfDownloadFailedCount: previewPdfDownloadFailures.length,
+      previewPdfDownloadSkippedCount,
+      previewPdfSavedPaths: previewPdfDownloads.map((item) => item.filePath).filter(Boolean),
       createShipmentResults,
       selectedAction: isShipping2BulkRun ? shipping2BulkLabel : shouldFillPoNumbers ? shipmentScanAction : "",
       message: shouldFillPoNumbers
@@ -2653,6 +2876,9 @@ async function runShippingWorkflow(credentials, runContext) {
       createShipmentEquipmentIds.length - completedCreateShipmentCount,
       createShipmentResults.filter((item) => !item.ok).length,
     );
+    const previewPdfDownloads = collectCreateShipmentPreviewPdfDownloads(createShipmentResults);
+    const previewPdfDownloadFailures = collectCreateShipmentPreviewPdfFailures(createShipmentResults);
+    const previewPdfDownloadSkippedCount = countCreateShipmentPreviewPdfSkipped(createShipmentResults);
 
     const result = {
       runId,
@@ -2713,6 +2939,13 @@ async function runShippingWorkflow(credentials, runContext) {
       completedCreateShipmentCount,
       failedCreateShipmentCount,
       businessDataEmptyCreateShipmentCount,
+      previewPdfDownloadEnabled: downloadPreviewPdf,
+      previewPdfDownloadRootDirectory,
+      previewPdfDownloadDirectory,
+      previewPdfDownloadedCount: previewPdfDownloads.length,
+      previewPdfDownloadFailedCount: previewPdfDownloadFailures.length,
+      previewPdfDownloadSkippedCount,
+      previewPdfSavedPaths: previewPdfDownloads.map((item) => item.filePath).filter(Boolean),
       createShipmentResults,
       selectedAction: isShipping2BulkRun ? shipping2BulkLabel : shouldFillPoNumbers ? shipmentScanAction : "",
       message: shouldFillPoNumbers
@@ -4170,6 +4403,7 @@ async function processCreateShipmentEquipmentId(page, createShipmentBatch) {
   await applyCreateShipmentShipmentDate(page, createShipmentBatch);
   const originDeclarationFillResult = await applyCreateShipmentOriginDeclaration(page, createShipmentBatch);
   await clickCreateShipmentPreviewStep(page, createShipmentBatch);
+  const previewPdfDownloadResult = await downloadCreateShipmentPreviewPdfSafely(page, createShipmentBatch);
   await page.waitForTimeout(config.postLoginWaitMs).catch(() => {});
   log("Completed Create Shipment row.", {
     changeEquipmentId: normalizedChangeEquipmentId,
@@ -4180,10 +4414,39 @@ async function processCreateShipmentEquipmentId(page, createShipmentBatch) {
     missingTargetPairCount: selectionSummary.missingTargetPairCount,
     originDeclarationFilled: Boolean(originDeclarationFillResult?.filled),
     originDeclarationPoNo: originDeclarationFillResult?.poNo || "",
+    previewPdfDownloaded: Boolean(previewPdfDownloadResult?.ok),
+    previewPdfFilePath: previewPdfDownloadResult?.filePath || "",
   });
   return {
     originDeclarationFillResult,
+    previewPdfDownloadResult,
   };
+}
+
+async function downloadCreateShipmentPreviewPdfSafely(page, createShipmentBatch) {
+  try {
+    return await downloadCreateShipmentPreviewPdf(page, createShipmentBatch);
+  } catch (error) {
+    const changeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
+    const message = error instanceof Error ? error.message : String(error || "Preview PDF 下载失败。");
+    await closeCreateShipmentPreviewPdfModal(page).catch(() => {});
+    log("Create Shipment Preview PDF download failed.", {
+      changeEquipmentId,
+      poNos: createShipmentBatch?.poNos || [],
+      error: message,
+    });
+    return {
+      enabled: Boolean(createShipmentBatch?.downloadPreviewPdf),
+      ok: false,
+      reason: "download-failed",
+      error: message,
+      fileName: "",
+      filePath: "",
+      pdfUrl: "",
+      downloadSource: "",
+      size: 0,
+    };
+  }
 }
 
 async function openCreateShipmentDialog(page) {
@@ -4942,6 +5205,207 @@ async function clickCreateShipmentPreviewStep(page, createShipmentBatch) {
   }
 
   throw new Error(`Create Shipment ${changeEquipmentId}: Preview step did not open after clicking Preview.`);
+}
+
+async function downloadCreateShipmentPreviewPdf(page, createShipmentBatch) {
+  if (!createShipmentBatch?.downloadPreviewPdf) {
+    return {
+      enabled: false,
+      ok: false,
+      reason: "disabled",
+    };
+  }
+
+  const changeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
+  const downloadDirectory = String(createShipmentBatch?.previewPdfDownloadDirectory || "").trim();
+  if (!downloadDirectory) {
+    throw new Error(`Create Shipment ${changeEquipmentId}: Preview PDF 保存目录为空。`);
+  }
+
+  await mkdir(downloadDirectory, { recursive: true });
+  const pdfInfo = await waitForCreateShipmentPreviewPdfFrame(page, createShipmentBatch);
+  const fileName = nextAvailableFileNameSync(
+    downloadDirectory,
+    buildCreateShipmentPreviewPdfFileName(createShipmentBatch, pdfInfo),
+  );
+  const filePath = path.join(downloadDirectory, fileName);
+
+  try {
+    const result = await fetchAndSaveCreateShipmentPreviewPdf({
+      context: page.context(),
+      fileName,
+      filePath,
+      pdfUrl: pdfInfo.pdfUrl,
+      referer: safePageUrl(page),
+    });
+    log("Downloaded Create Shipment Preview PDF.", {
+      changeEquipmentId,
+      poNos: createShipmentBatch?.poNos || [],
+      fileName: result.fileName,
+      filePath: result.filePath,
+      pdfUrl: result.pdfUrl,
+      source: result.downloadSource,
+      size: result.size,
+    });
+    return result;
+  } finally {
+    await closeCreateShipmentPreviewPdfModal(page).catch(() => {});
+  }
+}
+
+async function waitForCreateShipmentPreviewPdfFrame(page, createShipmentBatch) {
+  const changeEquipmentId = String(createShipmentBatch?.changeEquipmentId || "").trim();
+  const timeoutMs = Math.min(config.navigationTimeoutMs, XINLONGTAI_PREVIEW_PDF_WAIT_MS);
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const info = await page.evaluate(() => {
+      const isVisible = (element) => {
+        if (!element) return false;
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== "none"
+          && style.visibility !== "hidden"
+          && rect.width > 0
+          && rect.height > 0;
+      };
+      const iframe = Array.from(document.querySelectorAll('div.modal.is-active iframe[src*="PackingManifestPDF.jsp"], div.modal.is-visible iframe[src*="PackingManifestPDF.jsp"], iframe[src*="PackingManifestPDF.jsp"]'))
+        .find((candidate) => isVisible(candidate) || isVisible(candidate.closest(".modal")));
+      if (!iframe) {
+        return null;
+      }
+      const rawSrc = iframe.getAttribute("src") || "";
+      if (!rawSrc) {
+        return null;
+      }
+      const modal = iframe.closest(".modal");
+      return {
+        pdfUrl: new URL(rawSrc.replace(/&amp;/g, "&"), window.location.href).toString(),
+        iframeSrc: rawSrc,
+        modalId: modal?.id || "",
+        source: "preview-iframe",
+      };
+    }).catch(() => null);
+
+    if (info?.pdfUrl) {
+      return info;
+    }
+
+    const currentPagePdfInfo = await deriveCreateShipmentPreviewPdfUrlFromPage(page);
+    if (currentPagePdfInfo?.pdfUrl) {
+      return currentPagePdfInfo;
+    }
+
+    await page.waitForTimeout(250).catch(() => {});
+  }
+
+  throw new Error(`Create Shipment ${changeEquipmentId}: Preview 页面已打开，但未找到 Packing Manifest PDF 弹窗 iframe。`);
+}
+
+async function deriveCreateShipmentPreviewPdfUrlFromPage(page) {
+  return page.evaluate(() => {
+    const href = String(window.location.href || "");
+    let url = null;
+    try {
+      url = new URL(href);
+    } catch {
+      return null;
+    }
+
+    if (!/\/en\/trade\/PackingManifest$/i.test(url.pathname)) {
+      return null;
+    }
+
+    const key = String(url.searchParams.get("key") || "").trim();
+    if (!key) {
+      return null;
+    }
+
+    const pdfUrl = new URL("/en/trade/PackingManifestPDF.jsp", url.origin);
+    pdfUrl.searchParams.set("key", key);
+    pdfUrl.searchParams.set("OrderAssignment", "");
+    pdfUrl.searchParams.set("OrderAssignmentTYPE", "");
+    return {
+      pdfUrl: pdfUrl.toString(),
+      iframeSrc: "",
+      modalId: "",
+      source: "preview-page-key",
+    };
+  }).catch(() => null);
+}
+
+async function fetchAndSaveCreateShipmentPreviewPdf(options) {
+  const {
+    context,
+    fileName,
+    filePath,
+    pdfUrl,
+    referer = "",
+  } = options;
+  const response = await context.request.get(pdfUrl, {
+    headers: {
+      Accept: "application/pdf,application/octet-stream,*/*",
+      ...(referer ? { Referer: referer } : {}),
+    },
+    timeout: XINLONGTAI_PREVIEW_PDF_WAIT_MS,
+  });
+  const buffer = await response.body();
+  if (!response.ok() || !isPdfBuffer(buffer)) {
+    const preview = Buffer.from(buffer || []).toString("utf8", 0, Math.min(Buffer.from(buffer || []).length, 180));
+    throw new Error(`Create Shipment Preview PDF 下载失败：HTTP ${response.status()}，返回内容不是有效 PDF。${preview}`);
+  }
+
+  await writeFile(filePath, buffer);
+  return {
+    enabled: true,
+    ok: true,
+    fileName,
+    filePath,
+    pdfUrl,
+    downloadSource: "preview-iframe-request",
+    size: buffer.length,
+  };
+}
+
+async function closeCreateShipmentPreviewPdfModal(page) {
+  const closeButton = page.locator("#rsModalCloseButton0, div.modal.is-active button.btn-close, div.modal.is-visible button.btn-close, button.btn-close").first();
+  if (!await closeButton.isVisible({ timeout: 800 }).catch(() => false)) {
+    return false;
+  }
+  await closeButton.click({ timeout: 3000 }).catch(async () => {
+    await closeButton.evaluate((button) => button.click()).catch(() => {});
+  });
+  await page.waitForTimeout(250).catch(() => {});
+  return true;
+}
+
+function buildCreateShipmentPreviewPdfFileName(createShipmentBatch, pdfInfo = {}) {
+  const equipmentId = sanitizeFileSegment(createShipmentBatch?.changeEquipmentId || "equipment");
+  const poText = Array.isArray(createShipmentBatch?.poNos)
+    ? createShipmentBatch.poNos.map((value) => sanitizeFileSegment(value)).filter(Boolean).slice(0, 3).join("-")
+    : "";
+  const keyMatch = String(pdfInfo?.pdfUrl || "").match(/[?&]key=([^&]+)/i);
+  const keyText = keyMatch?.[1] ? sanitizeFileSegment(keyMatch[1]) : "";
+  const suffix = [poText, keyText].filter(Boolean).join("-");
+  const baseName = `Xinlongtai-Preview-${equipmentId}${suffix ? `-${suffix}` : ""}.pdf`;
+  return baseName.slice(0, 170);
+}
+
+function nextAvailableFileNameSync(directory, fileName) {
+  const parsed = path.parse(fileName || "Xinlongtai-Preview.pdf");
+  const baseName = parsed.name || "Xinlongtai-Preview";
+  const extension = parsed.ext || ".pdf";
+  let candidate = `${baseName}${extension}`;
+  let index = 1;
+  while (existsSync(path.join(directory, candidate))) {
+    candidate = `${baseName}-${index}${extension}`;
+    index += 1;
+  }
+  return candidate;
+}
+
+function isPdfBuffer(buffer) {
+  return Buffer.from(buffer || []).subarray(0, 4).toString("utf8") === "%PDF";
 }
 
 async function reopenPrintScanShipForNextCreateShipmentBatch(page, currentBatch, nextBatch) {
@@ -6137,7 +6601,7 @@ async function writeRunResultWorkbook(targetPath, result, poRows) {
     xlsx.utils.json_to_sheet(createShipmentRows, {
       header: createShipmentRows.length > 0
         ? undefined
-        : ["changeEquipmentId", "poNos", "ok", "originDeclarationFilled", "originDeclarationPoNo", "originDeclarationRemark", "originDeclarationSource", "originDeclarationReason", "failedStep", "errorCode", "failureReason"],
+        : ["changeEquipmentId", "poNos", "ok", "originDeclarationFilled", "originDeclarationPoNo", "originDeclarationRemark", "originDeclarationSource", "originDeclarationReason", "previewPdfDownloaded", "previewPdfFileName", "previewPdfFilePath", "previewPdfUrl", "previewPdfSource", "previewPdfSize", "failedStep", "errorCode", "failureReason"],
     }),
     "Create Shipment",
   );
@@ -6216,6 +6680,7 @@ function buildCreateShipmentWorkbookRows(result) {
     const failureReason = item?.ok
       ? ""
       : String(item?.error || result?.message || "").trim();
+    const previewPdf = item?.previewPdfDownloadResult || null;
     return {
       changeEquipmentId: String(item?.changeEquipmentId || "").trim(),
       poNos: Array.isArray(item?.poNos) ? item.poNos.join(", ") : "",
@@ -6225,6 +6690,12 @@ function buildCreateShipmentWorkbookRows(result) {
       originDeclarationRemark: String(item?.originDeclarationFillResult?.remark || ""),
       originDeclarationSource: String(item?.originDeclarationFillResult?.source || ""),
       originDeclarationReason: String(item?.originDeclarationFillResult?.reason || ""),
+      previewPdfDownloaded: Boolean(previewPdf?.ok),
+      previewPdfFileName: String(previewPdf?.fileName || ""),
+      previewPdfFilePath: String(previewPdf?.filePath || ""),
+      previewPdfUrl: String(previewPdf?.pdfUrl || ""),
+      previewPdfSource: String(previewPdf?.downloadSource || ""),
+      previewPdfSize: Number(previewPdf?.size || 0),
       failedStep: item?.ok ? "" : item?.failedStep || classifyPoFailureStep(failureReason),
       errorCode: item?.ok ? "" : String(item?.errorCode || ""),
       failureReason,
@@ -6473,6 +6944,26 @@ function countShippingFailureResultItems(poResults, createShipmentResults) {
   return failedPoCount + failedCreateShipmentCount;
 }
 
+function collectCreateShipmentPreviewPdfDownloads(createShipmentResults) {
+  return (Array.isArray(createShipmentResults) ? createShipmentResults : [])
+    .map((item) => item?.previewPdfDownloadResult)
+    .filter((item) => item?.ok && item?.filePath);
+}
+
+function collectCreateShipmentPreviewPdfFailures(createShipmentResults) {
+  return (Array.isArray(createShipmentResults) ? createShipmentResults : [])
+    .map((item) => item?.previewPdfDownloadResult)
+    .filter((item) => item && item.enabled !== false && !item.ok);
+}
+
+function countCreateShipmentPreviewPdfSkipped(createShipmentResults) {
+  return (Array.isArray(createShipmentResults) ? createShipmentResults : [])
+    .filter((item) => {
+      const result = item?.previewPdfDownloadResult;
+      return !result || result.enabled === false || result.reason === "disabled";
+    }).length;
+}
+
 function formatShippingFailureDetail(type, item) {
   const rawReason = item?.error || item?.failureReason || "";
   const reason = formatReadableShippingFailureReason(rawReason) || "未返回具体错误。";
@@ -6570,6 +7061,12 @@ function buildRunSummaryRows(result, poResultRows, createShipmentRows) {
     { metric: "completedCreateShipmentCount", value: Number(result?.completedCreateShipmentCount ?? createShipmentRows.filter((item) => item.ok).length) },
     { metric: "failedCreateShipmentCount", value: Number(result?.failedCreateShipmentCount ?? createShipmentRows.filter((item) => !item.ok).length) },
     { metric: "businessDataEmptyCreateShipmentCount", value: Number(result?.businessDataEmptyCreateShipmentCount ?? createShipmentRows.filter((item) => isBusinessDataEmptyResult(item)).length) },
+    { metric: "previewPdfDownloadEnabled", value: Boolean(result?.previewPdfDownloadEnabled) ? "true" : "false" },
+    { metric: "previewPdfDownloadRootDirectory", value: String(result?.previewPdfDownloadRootDirectory || "") },
+    { metric: "previewPdfDownloadDirectory", value: String(result?.previewPdfDownloadDirectory || "") },
+    { metric: "previewPdfDownloadedCount", value: Number(result?.previewPdfDownloadedCount ?? 0) },
+    { metric: "previewPdfDownloadFailedCount", value: Number(result?.previewPdfDownloadFailedCount ?? 0) },
+    { metric: "previewPdfDownloadSkippedCount", value: Number(result?.previewPdfDownloadSkippedCount ?? 0) },
     { metric: "finalUrl", value: String(result?.finalUrl || "") },
   ];
 }

@@ -78,67 +78,69 @@
               </div>
               <span v-if="executorHealth?.ok" class="sa-chip sa-chip--ok">{{ text('就绪') }}</span>
               <span v-else class="sa-chip sa-chip--warn">{{ text('等待执行器') }}</span>
-            </div>
-
-            <!-- Credential Notice -->
-            <div v-if="hasStoredCredentials" class="sa-cred-note">
-              <AppIcon name="check-circle" />
-              <span>{{ credentialStatusText }}</span>
+              <div v-if="isTicketOwnerStatisticsScenario" class="sa-ticket-mode" role="tablist" :aria-label="text('Ticket ownership 操作模式')">
+                <button
+                  class="sa-ticket-mode__btn"
+                  :class="{ 'sa-ticket-mode__btn--active': ticketOwnerCardMode === 'collect' }"
+                  :disabled="isAnyExecutorActionRunning"
+                  type="button"
+                  role="tab"
+                  :aria-selected="ticketOwnerCardMode === 'collect'"
+                  @click="ticketOwnerCardMode = 'collect'"
+                >
+                  <AppIcon name="file-search" />{{ text('采集生成') }}
+                </button>
+                <button
+                  class="sa-ticket-mode__btn"
+                  :class="{ 'sa-ticket-mode__btn--active': ticketOwnerCardMode === 'postProcess' }"
+                  :disabled="isAnyExecutorActionRunning"
+                  type="button"
+                  role="tab"
+                  :aria-selected="ticketOwnerCardMode === 'postProcess'"
+                  @click="ticketOwnerCardMode = 'postProcess'"
+                >
+                  <AppIcon name="sparkles" />{{ text('补全结果表') }}
+                </button>
+              </div>
             </div>
 
             <!-- Credentials -->
-            <div v-if="isInfornexusDirectScenario || isMicrosoftScenario" class="sa-card__bd">
-              <div class="sa-cred-grid">
-                <template v-if="isInfornexusDirectScenario">
-                  <label class="sa-field">
-                    <span>{{ text('User ID') }}</span>
-                    <div class="sa-inp-wrap">
-                      <AppIcon name="user" class="sa-inp-icon" />
-                      <input v-model.trim="shippingUsername" type="text" class="sa-inp" :placeholder="text('请输入 User ID')" autocomplete="username" />
-                    </div>
-                  </label>
-                  <label class="sa-field">
-                    <span>{{ text('Password') }}</span>
-                    <div class="sa-inp-wrap">
-                      <AppIcon name="shield-check" class="sa-inp-icon" />
-                      <input v-model="shippingPassword" :type="showShippingPassword ? 'text' : 'password'" class="sa-inp" placeholder="Enter password" autocomplete="current-password" />
-                      <button class="sa-inp__btn" type="button" @click="showShippingPassword = !showShippingPassword"><AppIcon name="eye" /></button>
-                    </div>
-                  </label>
-                </template>
-                <template v-else-if="isMicrosoftScenario">
-                  <label class="sa-field">
-                    <span>{{ text('Microsoft 账号') }}</span>
-                    <div class="sa-inp-wrap">
-                      <AppIcon name="user" class="sa-inp-icon" />
-                      <input v-model.trim="microsoftUsername" type="text" class="sa-inp" :placeholder="text('请输入 Microsoft 账号')" autocomplete="username" />
-                    </div>
-                  </label>
-                  <label class="sa-field">
-                    <span>{{ text('Microsoft 密码') }}</span>
-                    <div class="sa-inp-wrap">
-                      <AppIcon name="shield-check" class="sa-inp-icon" />
-                      <input v-model="microsoftPassword" :type="showMicrosoftPassword ? 'text' : 'password'" class="sa-inp" placeholder="Enter password" autocomplete="current-password" />
-                      <button class="sa-inp__btn" type="button" @click="showMicrosoftPassword = !showMicrosoftPassword"><AppIcon name="eye" /></button>
-                    </div>
-                  </label>
-                </template>
-              </div>
-              <div class="sa-cred-row">
-                <button class="sa-btn sa-btn--pri" :disabled="credentialSaving || !activeUsername || !activePassword" @click="saveCurrentCredentials">
-                  <AppIcon name="shield-check" />{{ credentialSaving ? text('保存中') : text('保存登录账号密码') }}
-                </button>
-                <button class="sa-btn" :disabled="credentialClearing || !hasStoredCredentials" @click="clearCurrentCredentials">
-                  <AppIcon name="stop-circle" />{{ text('清除') }}
-                </button>
-                <button v-if="requiresExcel" class="sa-btn" :disabled="templateLoading" @click="downloadPrimaryTemplate">
-                  <AppIcon name="download" />{{ templateButtonLabel }}
-                </button>
-              </div>
+            <div v-if="(isInfornexusDirectScenario || isMicrosoftScenario) && !isTicketOwnerPostProcessMode" class="sa-card__bd">
+              <AutomationAccountProfileManager
+                v-if="isInfornexusDirectScenario"
+                ref="credentialProfileRef"
+                v-model:selected-key="selectedCredentialKey"
+                v-model:username="shippingUsername"
+                v-model:password="shippingPassword"
+                :automation-id="entry.id"
+                :default-username="DEFAULT_INFOR_NEXUS_USERNAME"
+                :extra-action-label="requiresExcel ? templateButtonLabel : ''"
+                extra-action-icon="download"
+                :extra-action-disabled="templateLoading || !primaryTemplate"
+                :extra-action-loading="templateLoading"
+                @state="handleCredentialState"
+                @notice="handleCredentialNotice"
+                @extra-action="downloadPrimaryTemplate"
+              />
+              <AutomationAccountProfileManager
+                v-else-if="isMicrosoftScenario"
+                ref="credentialProfileRef"
+                v-model:selected-key="selectedCredentialKey"
+                v-model:username="microsoftUsername"
+                v-model:password="microsoftPassword"
+                :automation-id="entry.id"
+                :extra-action-label="requiresExcel ? templateButtonLabel : ''"
+                extra-action-icon="download"
+                :extra-action-disabled="templateLoading || !primaryTemplate"
+                :extra-action-loading="templateLoading"
+                @state="handleCredentialState"
+                @notice="handleCredentialNotice"
+                @extra-action="downloadPrimaryTemplate"
+              />
             </div>
 
             <!-- File Dropzone -->
-            <div v-if="requiresExcel" class="sa-card__bd" style="border-top: 1px solid #f1f5f9;">
+            <div v-if="requiresExcel && !isTicketOwnerPostProcessMode" class="sa-card__bd" style="border-top: 1px solid #f1f5f9;">
               <label class="sa-field"><span>{{ text('Excel 文件') }}</span></label>
               <div class="sa-drop" :class="{ 'sa-drop--on': selectedFile, 'sa-drop--over': isDragging }"
                 @click="openFilePicker" @dragenter.prevent="handleDragEnter" @dragover.prevent="handleDragOver" @dragleave.prevent="handleDragLeave" @drop.prevent="handleDrop">
@@ -160,6 +162,42 @@
                 </template>
                 <div v-if="isDragging" class="sa-drop__overlay">{{ text('释放以上传文件') }}</div>
               </div>
+            </div>
+
+            <div v-if="isTicketOwnerPostProcessMode" class="sa-card__bd sa-ticket-result-source" style="border-top: 1px solid #f1f5f9;">
+              <label class="sa-field">
+                <span>{{ text('已生成结果表') }}</span>
+              </label>
+              <div
+                class="sa-drop sa-drop--compact"
+                :class="{ 'sa-drop--on': ticketOwnerResultFile, 'sa-drop--over': ticketOwnerResultDragging }"
+                @click="openTicketOwnerResultFilePicker"
+                @dragenter.prevent="handleTicketOwnerResultDragEnter"
+                @dragover.prevent="handleTicketOwnerResultDragOver"
+                @dragleave.prevent="handleTicketOwnerResultDragLeave"
+                @drop.prevent="handleTicketOwnerResultDrop"
+              >
+                <input ref="ticketOwnerResultFileInput" type="file" accept=".xlsx,.xls,.json" @click.stop @change="handleTicketOwnerResultFileSelect" />
+                <template v-if="ticketOwnerResultFile">
+                  <div class="sa-drop__ico sa-drop__ico--ok"><AppIcon name="check-circle" /></div>
+                  <div class="sa-drop__info">
+                    <b>{{ ticketOwnerResultFile.name }}</b>
+                    <small>{{ formatSize(ticketOwnerResultFile.size) }}</small>
+                  </div>
+                  <button class="sa-drop__x" type="button" @click.stop="clearTicketOwnerResultFile"><AppIcon name="stop-circle" /></button>
+                </template>
+                <template v-else>
+                  <div class="sa-drop__ico sa-drop__ico--float"><AppIcon name="upload" /></div>
+                  <div class="sa-drop__info">
+                    <b>{{ text('拖入或选择第一次生成的 Ticket ownership 表') }}</b>
+                    <small>{{ text('支持 .xlsx / .xls / .json；再配合下方辅助表补全 Factory / Merch') }}</small>
+                  </div>
+                </template>
+                <div v-if="ticketOwnerResultDragging" class="sa-drop__overlay">{{ text('释放以上传结果表') }}</div>
+              </div>
+              <p class="sa-ticket-result-source__hint">
+                {{ text('适合先不上传辅助表完成浏览器采集，再查看结果并上传辅助表进行二次补全。') }}
+              </p>
             </div>
 
             <!-- Optional lookup workbooks -->
@@ -233,11 +271,15 @@
 
             <!-- Execute -->
             <div class="sa-card__ft">
-              <button v-if="isInfornexusDirectScenario" class="sa-btn sa-btn--execute" :disabled="!canRunShippingAutomation" @click="runInfornexusDirectWithExcel">
+              <button v-if="isTicketOwnerPostProcessMode" class="sa-btn sa-btn--execute" :disabled="!canRunTicketOwnerLookupPostProcess" @click="runTicketOwnerLookupPostProcess">
+                <AppIcon :name="ticketOwnerPostProcessRunning ? 'loader' : 'play-circle'" :class="{ 'sa-spin': ticketOwnerPostProcessRunning }" />
+                <span>{{ ticketOwnerPostProcessRunning ? text('补全中...') : text('生成补全后的 Excel') }}</span>
+              </button>
+              <button v-if="!isTicketOwnerPostProcessMode && isInfornexusDirectScenario" class="sa-btn sa-btn--execute" :disabled="!canRunShippingAutomation" @click="runInfornexusDirectWithExcel">
                 <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'sa-spin': sending }" />
                 <span>{{ sending ? text('执行中...') : text(directScenarioRunLabel) }}</span>
               </button>
-              <button v-else class="sa-btn sa-btn--execute" :disabled="!canRunDirectExecutor" @click="sendDirectToExecutor">
+              <button v-else-if="!isTicketOwnerPostProcessMode" class="sa-btn sa-btn--execute" :disabled="!canRunDirectExecutor" @click="sendDirectToExecutor">
                 <AppIcon :name="sending ? 'loader' : 'play-circle'" :class="{ 'sa-spin': sending }" />
                 <span>{{ sending ? text('执行中...') : text(directRunButtonLabel) }}</span>
               </button>
@@ -245,7 +287,7 @@
 
             <!-- Inline Status -->
             <transition name="sa-alert-anim">
-              <div v-if="lastResult || sending" class="sa-status" :class="inlineStatusClass">
+              <div v-if="lastResult || sending || ticketOwnerPostProcessRunning" class="sa-status" :class="inlineStatusClass">
                 <AppIcon :name="statusIconName" />{{ text(statusText) }}
               </div>
             </transition>
@@ -404,31 +446,42 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'; import { useRoute, useRouter } from 'vue-router'; import AppIcon from '../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../shared/ui/BrowserVisibilitySwitch.vue'
+import AutomationAccountProfileManager from './components/AutomationAccountProfileManager.vue'
 import AutomationStartupProgress from './components/AutomationStartupProgress.vue'
 import AutomationRunHistoryPanel from './components/AutomationRunHistoryPanel.vue'
 import { downloadUrlAsFile } from '../../shared/api/backendClient'
 import { showAppAlert } from '../../shared/ui/appAlert'
 import type { AutomationAppInfo } from '../../types/electronApi'; import type { AutomationRunFileInput, AutomationRunFileRecord, AutomationRunRecord, AutomationTemplate, ExecutorCredentials, LocalExecutorHealth } from './webAutomationApi'
-import { buildAutomationRunFileDownloadUrl, clearExecutorCredentials, createAutomationRunRecord, downloadAutomationTemplate, fetchAutomationTemplates, fetchExecutorCredentials, openAutomationHelperDownload, fetchAutomationApps, finishAutomationRunRecord, getAutomationHelperUpdateMessage, hasElectronAutomationSupport, launchAutomationConsole, primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealthPayload, probeLocalExecutorHealth, recordWebAutomationEvent, resolveAutomationCredentials, saveExecutorCredentials, stopAutomationConsole } from './webAutomationApi'
+import { buildAutomationRunFileDownloadUrl, createAutomationRunRecord, downloadAutomationTemplate, fetchAutomationTemplates, fetchExecutorCredentials, openAutomationHelperDownload, fetchAutomationApps, finishAutomationRunRecord, getAutomationHelperUpdateMessage, hasElectronAutomationSupport, launchAutomationConsole, primeLocalAutomationLauncherBoot, probeLocalAutomationLauncherHealthPayload, probeLocalExecutorHealth, recordWebAutomationEvent, stopAutomationConsole } from './webAutomationApi'
 import { formatAutomationExecutorMessage, shouldShowAutomationErrorDialog, showAutomationErrorDialog } from './webAutomationErrors'
 import { useAutomationStartupProgress } from './composables/useAutomationStartupProgress'
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from './webAutomationModel'
 import { canSyncActiveAppRuntime, planExecutorReadinessActions } from './webAutomationScenarioRuntime'
+import { DEFAULT_INFOR_NEXUS_USERNAME } from './webAutomationCredentials'
 import { useAppLanguage } from '../../shared/i18n/appLanguage'
 
 const route = useRoute(); const router = useRouter(); const { text } = useAppLanguage()
-const DSU = ''; const DSP = ''; const DMU = ''; const DMP = ''
+const DSU = DEFAULT_INFOR_NEXUS_USERNAME; const DSP = ''; const DMU = ''; const DMP = ''
 const electronSupported = hasElectronAutomationSupport()
 const BROWSER_PROGRESS_OVERLAY_STORAGE_KEY = 'tos.ticketOwner.showBrowserProgressOverlay'
 const activeApp = ref<AutomationAppInfo | null>(null); const executorHealth = ref<LocalExecutorHealth | null>(null); const executorCredentials = ref<ExecutorCredentials | null>(null); const automationTemplates = ref<AutomationTemplate[]>([])
-const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false); const templateLoading = ref(false); const credentialSaving = ref(false); const credentialClearing = ref(false); const sending = ref(false); const restoredActiveRun = ref(false); const credentialsHydrated = ref(false)
+const launcherReachable = ref(false); const launching = ref(false); const refreshing = ref(false); const templateLoading = ref(false); const sending = ref(false); const restoredActiveRun = ref(false)
 type TicketLookupFileKind = 'release' | 'factoryPrice'
+type TicketOwnerCardMode = 'collect' | 'postProcess'
+type CredentialProfileRef = {
+  refresh: (accountKey?: string) => Promise<void>
+  resolveCredentials: () => Promise<{ username: string; password: string; accountKey: string }>
+}
+type CredentialProfileState = { hasStoredCredentials: boolean; username: string; accountKey: string }
+type CredentialNotice = { tone: WebAutomationNoticeTone; message: string }
 
 const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info'); const isHealthLogOpen = ref(false); const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
-const ticketReleaseFileInput = ref<HTMLInputElement | null>(null); const ticketFactoryPriceFileInput = ref<HTMLInputElement | null>(null)
-const selectedFile = ref<File | null>(null); const ticketReleaseFiles = ref<File[]>([]); const ticketFactoryPriceFiles = ref<File[]>([]); const ticketLookupDragTarget = ref<TicketLookupFileKind | ''>(''); const ticketLookupDragDepth = ref(0); const webhookUrl = ref('http://127.0.0.1:5678/webhook/microsoft-login-excel-demo')
-const shippingUsername = ref(DSU); const shippingPassword = ref(DSP); const showShippingPassword = ref(true)
-const microsoftUsername = ref(DMU); const microsoftPassword = ref(DMP); const showMicrosoftPassword = ref(true)
+const ticketReleaseFileInput = ref<HTMLInputElement | null>(null); const ticketFactoryPriceFileInput = ref<HTMLInputElement | null>(null); const ticketOwnerResultFileInput = ref<HTMLInputElement | null>(null)
+const selectedFile = ref<File | null>(null); const ticketReleaseFiles = ref<File[]>([]); const ticketFactoryPriceFiles = ref<File[]>([]); const ticketOwnerResultFile = ref<File | null>(null); const ticketLookupDragTarget = ref<TicketLookupFileKind | ''>(''); const ticketLookupDragDepth = ref(0); const ticketOwnerResultDragging = ref(false); const ticketOwnerResultDragDepth = ref(0); const ticketOwnerCardMode = ref<TicketOwnerCardMode>('collect'); const ticketOwnerPostProcessRunning = ref(false); const webhookUrl = ref('http://127.0.0.1:5678/webhook/microsoft-login-excel-demo')
+const shippingUsername = ref(DSU); const shippingPassword = ref(DSP)
+const microsoftUsername = ref(DMU); const microsoftPassword = ref(DMP)
+const selectedCredentialKey = ref('default')
+const credentialProfileRef = ref<CredentialProfileRef | null>(null)
 const showBrowserView = ref(true)
 const showBrowserProgressOverlay = ref(loadBooleanPreference(BROWSER_PROGRESS_OVERLAY_STORAGE_KEY, true))
 const statusText = ref(''); const statusLabel = ref('待命'); const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
@@ -456,6 +509,7 @@ const entry = computed(() => getWebAutomationEntry(String(route.params.scenarioI
 const isShippingScenario = computed(() => entry.value?.id === 'shipping-automation')
 const isInfornexusAutoAddScenario = computed(() => entry.value?.id === 'infornexus-auto-add')
 const isTicketOwnerStatisticsScenario = computed(() => entry.value?.id === 'ticket-owner-statistics')
+const isTicketOwnerPostProcessMode = computed(() => isTicketOwnerStatisticsScenario.value && ticketOwnerCardMode.value === 'postProcess')
 const isInfornexusDirectScenario = computed(() => isShippingScenario.value || isInfornexusAutoAddScenario.value)
 const isMicrosoftScenario = computed(() => entry.value?.appId === 'microsoft-login-n8n-demo')
 const requiresExcel = computed(() => entry.value?.requiresExcel !== false)
@@ -475,22 +529,20 @@ const artifactResultExcelLabel = computed(() => isTicketOwnerStatisticsScenario.
 const artifactResultExcelDownloadName = computed(() => isTicketOwnerStatisticsScenario.value ? 'Ticket ownership.xlsx' : 'shipping-last-result.xlsx')
 const healthRaw = computed(() => executorHealth.value ? JSON.stringify(executorHealth.value, null, 2) : '{}')
 const executorStatusLabel = computed(() => { if (activeApp.value) { const l = text(getAutomationAppStatusLabel(activeApp.value)); if (executorHealth.value?.ok) { const c = Number(executorHealth.value.activeRunCount || 0); return c > 0 ? `${l} / ${c} ${text('个任务')}` : `${l} / ${text('就绪')}` }; if (activeApp.value.running) return `${l} / ${text('未连通')}`; return l }; return executorHealth.value?.ok ? text('就绪') : text('未启动') })
-const inlineStatusClass = computed(() => { if (sending.value) return 'pg-status--info'; if (lastResult.value?.ok) return 'pg-status--ok'; if (lastResult.value && !lastResult.value.ok) return 'pg-status--err'; return '' })
-const statusIconName = computed(() => { if (sending.value) return 'loader'; if (lastResult.value?.ok) return 'check-circle'; if (lastResult.value && !lastResult.value.ok) return 'alert-circle'; return 'activity' })
+const inlineStatusClass = computed(() => { if (sending.value || ticketOwnerPostProcessRunning.value) return 'pg-status--info'; if (lastResult.value?.ok) return 'pg-status--ok'; if (lastResult.value && !lastResult.value.ok) return 'pg-status--err'; return '' })
+const statusIconName = computed(() => { if (sending.value || ticketOwnerPostProcessRunning.value) return 'loader'; if (lastResult.value?.ok) return 'check-circle'; if (lastResult.value && !lastResult.value.ok) return 'alert-circle'; return 'activity' })
 const canLaunchActiveApp = computed(() => Boolean(entry.value?.appId) && !launching.value)
 const canStopActiveApp = computed(() => Boolean(activeApp.value?.running || executorHealth.value?.ok) && !launching.value)
 const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReachable.value)
-const showTicketOwnerRunProgress = computed(() => isTicketOwnerStatisticsScenario.value && sending.value)
+const showTicketOwnerRunProgress = computed(() => isTicketOwnerStatisticsScenario.value && sending.value && !isTicketOwnerPostProcessMode.value)
 const hasStoredCredentials = computed(() => Boolean(executorCredentials.value?.hasStoredCredentials))
-const savedCredentialUsername = computed(() => executorCredentials.value?.username || '')
 const primaryTemplate = computed(() => automationTemplates.value[0] || null)
 const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
-const activeUsername = computed(() => isInfornexusDirectScenario.value ? shippingUsername.value : microsoftUsername.value)
-const activePassword = computed(() => isInfornexusDirectScenario.value ? shippingPassword.value : microsoftPassword.value)
 const loginSiteName = computed(() => isMicrosoftScenario.value ? 'Microsoft / SAP BTP' : 'Infor Nexus')
-const credentialStatusText = computed(() => { const sn = loginSiteName.value; return hasStoredCredentials.value ? `${text('已保存')} ${sn} ${text('登录账号')}: ${savedCredentialUsername.value}` : `${text('未保存')} ${sn} ${text('登录账号密码')}` })
-const canRunShippingAutomation = computed(() => !sending.value)
-const canRunDirectExecutor = computed(() => !sending.value)
+const isAnyExecutorActionRunning = computed(() => sending.value || ticketOwnerPostProcessRunning.value)
+const canRunShippingAutomation = computed(() => !isAnyExecutorActionRunning.value)
+const canRunDirectExecutor = computed(() => !isAnyExecutorActionRunning.value)
+const canRunTicketOwnerLookupPostProcess = computed(() => isTicketOwnerPostProcessMode.value && !ticketOwnerPostProcessRunning.value && Boolean(ticketOwnerResultFile.value))
 const startupActiveRun = computed(() => findCurrentScenarioActiveRun())
 const {
   showStartupProgress,
@@ -540,7 +592,7 @@ async function initializeScenario(): Promise<void> {
   else if (isInfornexusAutoAddScenario.value) { shippingUsername.value = shippingUsername.value || DSU; shippingPassword.value = shippingPassword.value || DSP; statusLabel.value = '待命'; statusText.value = '等待上传 Excel 并执行 Infornexus 自动搜索添加。' }
   else if (isMicrosoftScenario.value) { microsoftUsername.value = microsoftUsername.value || DMU; microsoftPassword.value = microsoftPassword.value || DMP; statusLabel.value = '待命'; statusText.value = isTicketOwnerStatisticsScenario.value ? '等待启动浏览器采集并生成 Ticket ownership Excel。' : '等待上传 Excel 并执行。' }
   await refreshAutomationTemplates(); await refreshExecutorCredentials(); await refreshExecutorState(true)
-  if (electronSupported && shouldSyncActiveAppRuntime()) await startActiveApp(true, { forceUpdate: true })
+  if (electronSupported && entry.value && activeApp.value?.available && !executorHealth.value?.ok && !isExecutorBusy()) await startActiveApp(true)
 }
 async function refreshExecutorState(silent: boolean): Promise<void> {
   if (!entry.value || refreshing.value) return
@@ -797,35 +849,39 @@ function formatRunTime(value: string): string {
 async function refreshExecutorCredentials(): Promise<void> {
   if (!entry.value) return
   try {
-    executorCredentials.value = await fetchExecutorCredentials(entry.value.id)
+    await refreshCredentialProfile()
+    executorCredentials.value = await fetchExecutorCredentials(entry.value.id, selectedCredentialKey.value)
     const u = executorCredentials.value.username || ''
-    if (u && isInfornexusDirectScenario.value) shippingUsername.value = u
-    if (u && isMicrosoftScenario.value) microsoftUsername.value = u
-    if (executorCredentials.value.hasStoredCredentials && !credentialsHydrated.value) await fillStored()
-    if (!executorCredentials.value.hasStoredCredentials) credentialsHydrated.value = false
+    applyCredUser(u)
   } catch {
     executorCredentials.value = null
-    credentialsHydrated.value = false
   }
 }
-async function fillStored(): Promise<void> {
-  if (!entry.value) return
-  const r = await resolveAutomationCredentials(entry.value.id)
-  if (isInfornexusDirectScenario.value) {
-    shippingUsername.value = r.username
-    shippingPassword.value = r.password
-  } else if (isMicrosoftScenario.value) {
-    microsoftUsername.value = r.username
-    microsoftPassword.value = r.password
+
+async function refreshCredentialProfile(): Promise<void> {
+  await credentialProfileRef.value?.refresh(selectedCredentialKey.value)
+}
+
+function handleCredentialState(state: CredentialProfileState): void {
+  selectedCredentialKey.value = state.accountKey
+  executorCredentials.value = {
+    ok: true,
+    hasStoredCredentials: state.hasStoredCredentials,
+    username: state.username,
+    automationId: entry.value?.id,
+    accountKey: state.accountKey,
   }
-  credentialsHydrated.value = true
+  applyCredUser(state.username)
+}
+
+function handleCredentialNotice(notice: CredentialNotice): void {
+  messageTone.value = notice.tone
+  message.value = notice.message
 }
 async function refreshAutomationTemplates(): Promise<void> { if (!entry.value) return; templateLoading.value = true; try { automationTemplates.value = await fetchAutomationTemplates(entry.value.id) } catch { automationTemplates.value = [] } finally { templateLoading.value = false } }
 async function downloadPrimaryTemplate(): Promise<void> { try { await downloadAutomationTemplate(primaryTemplate.value); messageTone.value = 'success'; message.value = text('模板下载已开始。') } catch (e) { const m = readErrorMessage(e, text('模板下载失败。')); messageTone.value = 'warning'; message.value = m; void showAppAlert(m, { tone: 'warning' }) } }
 function downloadAutomationHelper(): void { void openAutomationHelperDownload() }
 function bootLocalHelper(): void { primeLocalAutomationLauncherBoot(); messageTone.value = 'info'; message.value = text('已尝试启动本机自动化助手。'); window.setTimeout(() => { void refreshExecutorState(true) }, 1200) }
-async function saveCurrentCredentials(): Promise<void> { if (!entry.value || credentialSaving.value) return; const u = activeUsername.value.trim(); const p = activePassword.value; if (!u || !p) { messageTone.value = 'warning'; message.value = text('请先填写账号和密码。'); return }; credentialSaving.value = true; try { executorCredentials.value = await saveExecutorCredentials(entry.value.id, u, p); credentialsHydrated.value = true; await refreshExecutorCredentials(); if (isInfornexusDirectScenario.value) { shippingUsername.value = executorCredentials.value.username || u; shippingPassword.value = p } else if (isMicrosoftScenario.value) { microsoftUsername.value = executorCredentials.value.username || u; microsoftPassword.value = p }; messageTone.value = 'success'; message.value = text('已保存。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('保存失败。')) } finally { credentialSaving.value = false } }
-async function clearCurrentCredentials(): Promise<void> { if (!entry.value || credentialClearing.value) return; credentialClearing.value = true; try { executorCredentials.value = await clearExecutorCredentials(entry.value.id); credentialsHydrated.value = false; messageTone.value = 'info'; message.value = text('已清除。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('清除失败。')) } finally { credentialClearing.value = false } }
 async function waitForExecutorHealthReady(timeoutMs = 90000): Promise<boolean> {
   if (!entry.value) return false
   const startedAt = Date.now()
@@ -850,7 +906,7 @@ async function waitForExecutorHealthReady(timeoutMs = 90000): Promise<boolean> {
   })
   return false
 }
-async function startActiveApp(silent: boolean, options: { forceUpdate?: boolean } = {}): Promise<void> { if (!entry.value || launching.value) return; if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot(); launching.value = true; try { const forceUpdate = options.forceUpdate !== false; const r = await launchAutomationConsole(entry.value.appId, { forceUpdate }); if (!r.success) throw new Error(r.error || '启动失败'); const executorReady = await waitForExecutorHealthReady(90000); if (!executorReady) throw new Error('执行器已启动，但健康检查暂时未连上。请点刷新，或稍后重试。'); if (!silent) { messageTone.value = 'success'; message.value = forceUpdate ? text('已同步最新自动化逻辑。') : r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') } } catch (e) { const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.value.appId, entryId: entry.value.id, forceUpdate: options.forceUpdate !== false, error: m }); if (!silent) { messageTone.value = 'error'; message.value = m } } finally { launching.value = false } }
+async function startActiveApp(silent: boolean, options: { forceUpdate?: boolean } = {}): Promise<void> { if (!entry.value || launching.value) return; if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot(); launching.value = true; try { const forceUpdate = options.forceUpdate === true; const r = await launchAutomationConsole(entry.value.appId, { forceUpdate }); if (!r.success) throw new Error(r.error || '启动失败'); const executorReady = await waitForExecutorHealthReady(90000); if (!executorReady) throw new Error('执行器已启动，但健康检查暂时未连上。请点刷新，或稍后重试。'); if (!silent) { messageTone.value = 'success'; message.value = forceUpdate ? text('已同步最新自动化逻辑。') : r.alreadyRunning ? text('执行器已在运行。') : text('执行器已启动。') } } catch (e) { const m = readErrorMessage(e, text('启动失败')); await recordWebAutomationEvent('launch-exception', { appId: entry.value.appId, entryId: entry.value.id, forceUpdate: options.forceUpdate === true, error: m }); if (!silent) { messageTone.value = 'error'; message.value = m } } finally { launching.value = false } }
 async function stopActiveApp(): Promise<void> { if (!entry.value) return; try { const r = await stopAutomationConsole(entry.value.appId); if (!r.success) throw new Error(r.error || '停止失败'); executorHealth.value = null; clearRestoredActiveRunState(); if (activeApp.value) activeApp.value = { ...activeApp.value, running: false }; await refreshExecutorState(true).catch(() => {}); messageTone.value = 'info'; message.value = text('执行器已停止。') } catch (e) { messageTone.value = 'error'; message.value = readErrorMessage(e, text('停止失败')) } }
 function handleFileSelect(e: Event): void { const f = getExcelFile((e.target as HTMLInputElement).files); if (f) setSelectedFile(f) }
 function handleDragEnter(e: DragEvent): void { if (!hasDraggedFiles(e) || isInternalDragMove(e)) return; dragDepth.value += 1; isDragging.value = true }
@@ -859,6 +915,13 @@ function handleDragLeave(e: DragEvent): void { if (isInternalDragMove(e)) return
 function handleDrop(e: DragEvent): void { resetDragging(); const f = getExcelFile(e.dataTransfer?.files); if (f) setSelectedFile(f) }
 function openFilePicker(): void { fileInput.value?.click() }
 function clearFile(): void { selectedFile.value = null; resetDragging(); if (fileInput.value) fileInput.value.value = '' }
+function openTicketOwnerResultFilePicker(): void { ticketOwnerResultFileInput.value?.click() }
+function handleTicketOwnerResultFileSelect(e: Event): void { const f = getTicketOwnerResultFile((e.target as HTMLInputElement).files); if (f) setTicketOwnerResultFile(f); if (ticketOwnerResultFileInput.value) ticketOwnerResultFileInput.value.value = '' }
+function handleTicketOwnerResultDragEnter(e: DragEvent): void { if (!hasDraggedFiles(e) || isInternalDragMove(e)) return; ticketOwnerResultDragDepth.value += 1; ticketOwnerResultDragging.value = true }
+function handleTicketOwnerResultDragOver(e: DragEvent): void { if (!hasDraggedFiles(e)) return; if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; ticketOwnerResultDragging.value = true }
+function handleTicketOwnerResultDragLeave(e: DragEvent): void { if (isInternalDragMove(e)) return; ticketOwnerResultDragDepth.value = Math.max(0, ticketOwnerResultDragDepth.value - 1); if (ticketOwnerResultDragDepth.value === 0) resetTicketOwnerResultDrag() }
+function handleTicketOwnerResultDrop(e: DragEvent): void { resetTicketOwnerResultDrag(); const f = getTicketOwnerResultFile(e.dataTransfer?.files); if (f) setTicketOwnerResultFile(f) }
+function clearTicketOwnerResultFile(): void { ticketOwnerResultFile.value = null; resetTicketOwnerResultDrag(); if (ticketOwnerResultFileInput.value) ticketOwnerResultFileInput.value.value = '' }
 function openTicketReleaseFilePicker(): void { ticketReleaseFileInput.value?.click() }
 function openTicketFactoryPriceFilePicker(): void { ticketFactoryPriceFileInput.value?.click() }
 function handleTicketReleaseFileSelect(e: Event): void { appendTicketLookupFiles('release', (e.target as HTMLInputElement).files); if (ticketReleaseFileInput.value) ticketReleaseFileInput.value.value = '' }
@@ -887,6 +950,8 @@ function clearTicketReleaseFiles(): void { ticketReleaseFiles.value = []; if (ti
 function clearTicketFactoryPriceFiles(): void { ticketFactoryPriceFiles.value = []; if (ticketFactoryPriceFileInput.value) ticketFactoryPriceFileInput.value.value = '' }
 function setSelectedFile(file: File): void { if (!isExcelFile(file)) { messageTone.value = 'warning'; message.value = text('请上传 .xlsx 或 .xls 文件。'); return }; selectedFile.value = file; message.value = '' }
 function getExcelFile(files: FileList | null | undefined): File | null { const list = files ? Array.from(files) : []; const f = list.find(isExcelFile) || null; if (!f && list.length > 0) { messageTone.value = 'warning'; message.value = text('请上传 .xlsx 或 .xls 文件。') }; return f }
+function setTicketOwnerResultFile(file: File): void { if (!isTicketOwnerResultFile(file)) { messageTone.value = 'warning'; message.value = text('请上传 .xlsx / .xls / .json 结果表。'); return }; ticketOwnerResultFile.value = file; message.value = '' }
+function getTicketOwnerResultFile(files: FileList | null | undefined): File | null { const list = files ? Array.from(files) : []; const f = list.find(isTicketOwnerResultFile) || null; if (!f && list.length > 0) { messageTone.value = 'warning'; message.value = text('请上传 .xlsx / .xls / .json 结果表。') }; return f }
 function getExcelFiles(files: FileList | File[] | null | undefined): File[] {
   const list = files ? Array.from(files) : []
   const excelFiles = list.filter(isExcelFile)
@@ -900,15 +965,35 @@ function getExcelFiles(files: FileList | File[] | null | undefined): File[] {
   return excelFiles
 }
 function isExcelFile(file: File): boolean { return /\.(xlsx|xls)$/i.test(file.name) }
+function isTicketOwnerResultFile(file: File): boolean { return /\.(xlsx|xls|json)$/i.test(file.name) }
 function hasDraggedFiles(e: DragEvent): boolean { return Array.from(e.dataTransfer?.types || []).includes('Files') }
 function isInternalDragMove(e: DragEvent): boolean { const current = e.currentTarget; const related = e.relatedTarget; return current instanceof Node && related instanceof Node && current.contains(related) }
 function resetDragging(): void { dragDepth.value = 0; isDragging.value = false }
 function resetTicketLookupDrag(): void { ticketLookupDragDepth.value = 0; ticketLookupDragTarget.value = '' }
+function resetTicketOwnerResultDrag(): void { ticketOwnerResultDragDepth.value = 0; ticketOwnerResultDragging.value = false }
 function formatSize(b: number): string { if (b < 1024) return `${b} B`; if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`; return `${(b / (1024 * 1024)).toFixed(1)} MB` }
 function readFileIdentity(file: File): string { return `${file.name}::${file.size}::${file.lastModified}` }
 function buildFileKey(file: File, index: number): string { return `${readFileIdentity(file)}::${index}` }
 function resetWebhookUrl(): void { webhookUrl.value = entry.value?.webhookUrl || 'http://127.0.0.1:5678/webhook/microsoft-login-excel-demo' }
-async function resolveRunCredentialsPayload(uv: string, pv: string): Promise<Record<string, string>> { if (!entry.value) return {}; const u = uv.trim(); const tp = pv; if (tp.trim()) { if (!u) throw new Error('请填写账号密码。'); executorCredentials.value = await saveExecutorCredentials(entry.value.id, u, tp); await refreshExecutorCredentials(); applyCredUser(executorCredentials.value.username || u); return { username: u, password: tp } }; const r = await resolveAutomationCredentials(entry.value.id); applyCredUser(r.username); if (isInfornexusDirectScenario.value) shippingPassword.value = r.password; else if (isMicrosoftScenario.value) microsoftPassword.value = r.password; return { username: r.username, password: r.password } }
+async function resolveRunCredentialsPayload(_uv: string, _pv: string): Promise<Record<string, string>> {
+  if (!entry.value) return {}
+  const resolved = await credentialProfileRef.value?.resolveCredentials()
+  if (!resolved?.username || !resolved.password) {
+    throw new Error(`请先新增并保存 ${loginSiteName.value} 登录账号密码。`)
+  }
+  selectedCredentialKey.value = resolved.accountKey
+  applyCredUser(resolved.username)
+  if (isInfornexusDirectScenario.value) shippingPassword.value = resolved.password
+  else if (isMicrosoftScenario.value) microsoftPassword.value = resolved.password
+  executorCredentials.value = {
+    ok: true,
+    hasStoredCredentials: true,
+    username: resolved.username,
+    automationId: entry.value.id,
+    accountKey: resolved.accountKey,
+  }
+  return { username: resolved.username, password: resolved.password }
+}
 function applyCredUser(u: string): void { if (!u) return; if (isInfornexusDirectScenario.value) shippingUsername.value = u; else if (isMicrosoftScenario.value) microsoftUsername.value = u }
 async function createBackendRunRecord(f: File | null = null): Promise<AutomationRunRecord | null> { if (!entry.value) return null; return createAutomationRunRecord(entry.value.id, f, entry.value.title) }
 async function finishBackendRunRecord(r: AutomationRunRecord | null, ok: boolean, msg: string, p: Record<string, any> | null): Promise<AutomationRunFileRecord[]> {
@@ -918,7 +1003,6 @@ async function finishBackendRunRecord(r: AutomationRunRecord | null, ok: boolean
   return payload.files
 }
 async function collectResultFiles(p: Record<string, any> | null): Promise<AutomationRunFileInput[]> {
-  if (isTicketOwnerStatisticsScenario.value) return []
   const u = p?.artifacts?.downloadUrls
   if (!u || typeof u !== 'object') return []
   const resultExcelName = isTicketOwnerStatisticsScenario.value ? 'Ticket ownership.xlsx' : 'shipping-last-result.xlsx'
@@ -1028,6 +1112,82 @@ function stopTicketOwnerProgress(done = false): void {
 async function runInfornexusDirectWithExcel(): Promise<void> { if (isInfornexusAutoAddScenario.value) { await runInfornexusAutoAdd(); return }; await runShipping() }
 async function runShipping(): Promise<void> { if (sending.value) return; if (!validateShippingInputs()) return; if (!(await ensureReady())) { setNotReady(); void showAppAlert(statusText.value, { tone: 'warning' }); return }; const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload(shippingUsername.value, shippingPassword.value); const { res, raw, j } = await postExecutorWithModuleRetry(shippingExecutorRunUrl.value, { fileName: file.name, fileBase64: fb64, token: entry.value?.localExecutorToken || '', headless: !showBrowserView.value, ...cp }); lastRawResponse.value = raw; updateShippingArtifactLinks(j); await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(j?.message || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }; if (!j) throw new Error('无法解析响应。'); if (j?.ok && j?.shipmentScanOpened) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedPoCount ?? 0}/${j.totalPoCount ?? '?'} 个 PO。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }; statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。') } catch (e) { const m = formatAutomationExecutorMessage(readErrorMessage(e, '网络错误'), '自动化执行异常。'); statusLabel.value = '异常'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
 async function runInfornexusAutoAdd(): Promise<void> { if (sending.value) return; if (!validateAutoAddInputs()) return; if (!(await ensureReady())) { setNotReady(); void showAppAlert(statusText.value, { tone: 'warning' }); return }; const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; lastRawResponse.value = ''; message.value = ''; try { const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload(shippingUsername.value, shippingPassword.value); const { res, raw, j } = await postExecutorWithModuleRetry(infornexusAutoAddExecutorRunUrl.value, { fileName: file.name, fileBase64: fb64, token: entry.value?.localExecutorToken || '', headless: !showBrowserView.value, ...cp }); lastRawResponse.value = raw; await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), j?.message || '', j); if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(j?.message || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }; if (!j) throw new Error('无法解析响应。'); if (j?.ok) { statusLabel.value = '成功'; statusText.value = `已完成 ${j.completedIdCount ?? 0}/${j.totalIdCount ?? '?'} 个 ID。`; lastResult.value = { ok: true, message: j.message }; messageTone.value = 'success'; message.value = text('执行完成。'); return }; statusLabel.value = '未完成'; statusText.value = j?.message || '未确认完成。'; lastResult.value = { ok: false, message: j?.message }; messageTone.value = 'warning'; message.value = text('已触发，结果未确认。') } catch (e) { const m = formatAutomationExecutorMessage(readErrorMessage(e, '网络错误'), '自动化执行异常。'); statusLabel.value = '异常'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m } finally { sending.value = false; await refreshExecutorState(true).catch(() => {}) } }
+async function runTicketOwnerLookupPostProcess(): Promise<void> {
+  if (ticketOwnerPostProcessRunning.value) return
+  if (!entry.value || !isTicketOwnerPostProcessMode.value) return
+  const file = ticketOwnerResultFile.value
+  if (!file) {
+    showRunRequirementDialog('请先上传第一次生成的 Ticket ownership 结果表。')
+    return
+  }
+  if (!(await ensureReady())) {
+    setNotReady()
+    void showAppAlert(statusText.value, { tone: 'warning' })
+    return
+  }
+  ticketOwnerPostProcessRunning.value = true
+  statusLabel.value = '执行中'
+  statusText.value = '正在用辅助表补全 Ticket ownership Excel...'
+  lastResult.value = null
+  shippingArtifactLinks.value = null
+  autoDownloadedArtifactKey.value = ''
+  lastRawResponse.value = ''
+  message.value = ''
+  try {
+    const rr = await createBackendRunRecord(file)
+    const requestBody: Record<string, unknown> = {
+      token: entry.value.localExecutorToken || '',
+      sourceFileName: file.name,
+      sourceFileBase64: await fileToBase64(file),
+    }
+    await appendTicketOwnerLookupFiles(requestBody)
+    const baseUrl = String(entry.value.executorBaseUrl || '').replace(/\/+$/, '')
+    const runUrl = `${baseUrl}/api/run-ticket-owner-statistics-lookup`
+    const { res, raw, j } = await postExecutorWithModuleRetry(runUrl, requestBody)
+    lastRawResponse.value = raw
+    updateShippingArtifactLinks(j)
+    await finishBackendRunRecord(rr, res.ok && j?.ok !== false, j?.message || '', j)
+    if (!res.ok) {
+      const m = buildExecutorResponseMessage(res, raw, j, 'Ticket ownership 补全失败。')
+      statusLabel.value = '失败'
+      statusText.value = m
+      lastResult.value = { ok: false, message: m }
+      messageTone.value = 'error'
+      message.value = m
+      return
+    }
+    if (!j) throw new Error('无法解析补全响应。')
+    if (j.ok !== false) {
+      const rowCount = Number(j.ticketOwnerStatistics?.rowCount ?? 0)
+      const changedRowCount = Number(j.ticketOwnerStatistics?.changedRowCount ?? 0)
+      statusLabel.value = '成功'
+      statusText.value = `已生成 ${rowCount || '?'} 行补全结果，补全 ${changedRowCount || 0} 行。`
+      lastResult.value = { ok: true, message: j.message }
+      messageTone.value = 'success'
+      message.value = text('补全 Excel 已生成。')
+      const currentArtifacts = shippingArtifactLinks.value as SAL | null
+      const resultExcelUrl = currentArtifacts?.resultExcelUrl || ''
+      if (resultExcelUrl) autoDownloadTicketOwnerResult(resultExcelUrl, buildResponseDownloadKey(j, resultExcelUrl))
+      return
+    }
+    const m = j.message || '补全结果未确认成功。'
+    statusLabel.value = '未完成'
+    statusText.value = m
+    lastResult.value = { ok: false, message: m }
+    messageTone.value = 'warning'
+    message.value = m
+  } catch (e) {
+    const m = formatAutomationExecutorMessage(readErrorMessage(e, '网络错误'), 'Ticket ownership 补全异常。')
+    statusLabel.value = '异常'
+    statusText.value = m
+    lastResult.value = { ok: false, message: m }
+    messageTone.value = 'error'
+    message.value = m
+  } finally {
+    ticketOwnerPostProcessRunning.value = false
+    await refreshExecutorState(true).catch(() => {})
+  }
+}
 async function sendDirectToExecutor(): Promise<void> {
   if (sending.value) return
   if (!validateDirectExecutorInputs()) return
@@ -1376,7 +1536,7 @@ function readErrorMessage(e: unknown, fb: string): string { return e instanceof 
   animation: sa-rise .5s cubic-bezier(.22,1,.36,1) both;
   &--primary { border-top: 4px solid var(--a); }
   &__hd {
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
     padding: 16px 20px; border-bottom: 1px solid #f1f5f9;
   }
   &__hd-ico {
@@ -1452,7 +1612,34 @@ function readErrorMessage(e: unknown, fb: string): string { return e instanceof 
   &__overlay { position: absolute; inset: 4px; display: flex; align-items: center; justify-content: center; background: rgba(240,249,255,.92); border: 2px dashed var(--a); border-radius: 10px; font-size: 12px; font-weight: 700; color: var(--a); pointer-events: none; backdrop-filter: blur(4px); animation: sa-dashPulse .8s ease-in-out infinite alternate; }
 }
 
+.sa-ticket-mode {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px;
+  flex: 0 1 280px; width: min(280px, 36vw); min-width: 236px;
+  margin: 0 0 0 8px; padding: 4px; border: 1px solid #bae6fd; border-radius: 12px;
+  background: #f0f9ff;
+}
+.sa-ticket-mode__btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 0; height: 30px; border: 0; border-radius: 9px; background: transparent;
+  color: #0369a1; font-size: 11px; font-weight: 800; cursor: pointer;
+  transition: background .18s ease, color .18s ease, box-shadow .18s ease;
+  :deep(.app-icon) { font-size: 12px; flex-shrink: 0; }
+  &:disabled { cursor: not-allowed; opacity: .55; }
+}
+.sa-ticket-mode__btn--active {
+  background: linear-gradient(135deg, var(--a), var(--ag)); color: #fff;
+  box-shadow: 0 3px 10px rgba(14,165,233,.24);
+}
 .sa-lookup-files { display: flex; flex-direction: column; gap: 10px; }
+.sa-ticket-result-source {
+  display: flex; flex-direction: column; gap: 10px; background: #fff;
+  &__hint { margin: 0; font-size: 10px; line-height: 1.55; color: #64748b; }
+}
+.sa-drop--compact {
+  min-height: 78px; padding: 14px; flex-direction: row; align-items: center; justify-content: flex-start;
+  .sa-drop__info { align-items: flex-start; text-align: left; }
+  b { text-align: left; }
+}
 .sa-lookup-file {
   position: relative; display: flex; align-items: center; gap: 10px;
   padding: 10px 12px; border: 1px solid var(--br); border-radius: 10px;
@@ -1686,6 +1873,7 @@ function readErrorMessage(e: unknown, fb: string): string { return e instanceof 
   .sa-card__hd { align-items: flex-start; padding: 14px 16px; }
   .sa-card__bd { padding: 12px 16px; }
   .sa-card__ft { padding: 0 16px 14px; }
+  .sa-ticket-mode { flex-basis: 100%; width: 100%; min-width: 0; margin: 8px 0 0; }
   .sa-cred-note { margin: 10px 16px 0; align-items: flex-start; line-height: 1.45; }
   .sa-lookup-file { flex-wrap: wrap; align-items: flex-start; }
   .sa-lookup-file .sa-btn { margin-left: auto; }
@@ -1705,6 +1893,9 @@ function readErrorMessage(e: unknown, fb: string): string { return e instanceof 
   .sa-cred-note,
   .sa-status,
   .sa-progress { margin-inline: 12px; }
+  .sa-ticket-mode { grid-template-columns: 1fr; }
+  .sa-drop--compact { flex-direction: column; align-items: center; }
+  .sa-drop--compact .sa-drop__info { align-items: center; text-align: center; }
   .sa-cred-row .sa-btn { flex: 1 1 130px; }
   .sa-btn { min-width: 0; white-space: normal; line-height: 1.2; }
   .sa-btn-grid { flex-direction: column; }

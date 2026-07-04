@@ -211,8 +211,9 @@ const invoiceMessage = reactive<NoticeState>({ message: '', tone: 'info' })
 const extractMessage = reactive<NoticeState>({ message: '', tone: 'info' })
 const poMessage = reactive<NoticeState>({ message: '', tone: 'info' })
 
-const parsedPoCount = computed(() => parsePoList(poOrderText.value).length)
-const canGenerate = computed(() => Boolean(invoiceFile.value && poFile.value))
+const parsedPoList = computed(() => parsePoList(poOrderText.value))
+const parsedPoCount = computed(() => parsedPoList.value.length)
+const canGenerate = computed(() => Boolean(poFile.value && parsedPoCount.value > 0))
 const matchRows = computed(() =>
   buildMatchRows({
     poOrderText: poOrderText.value,
@@ -406,8 +407,13 @@ function setExtractPreset(pattern: string, type: JasonPdfReorderExtractSearchTyp
 }
 
 async function generatePdf(): Promise<void> {
-  if (!invoiceFile.value || !poFile.value) {
-    setNotice(poMessage, '请先上传发票 PDF 和 PO PDF', 'error')
+  if (!poFile.value) {
+    setNotice(poMessage, '请先上传 PO 原始文件 PDF', 'error')
+    return
+  }
+
+  if (parsedPoCount.value === 0) {
+    setNotice(poMessage, '请先在排序与核对中心输入 PO 顺序，或上传发票 PDF 自动提取', 'error')
     return
   }
 
@@ -444,13 +450,22 @@ async function generatePdf(): Promise<void> {
 }
 
 async function generateSinglePo(po: string): Promise<void> {
-  if (!invoiceFile.value || !poFile.value) {
-    setNotice(poMessage, '请先上传发票 PDF 和 PO PDF', 'error')
+  if (!poFile.value) {
+    setNotice(poMessage, '请先上传 PO 原始文件 PDF', 'error')
+    return
+  }
+
+  if (!parsePoList(po).length) {
+    setNotice(poMessage, '当前 PO 无效，无法单独生成', 'error')
     return
   }
 
   busyAction.value = `single-${po}`
+  downloadHref.value = ''
+  resultStatusText.value = `正在单独生成 PO ${po} 的重排 PDF，请稍候...`
+  resultStatusTone.value = 'idle'
   setNotice(poMessage, `正在生成单个 PO：${po}`, 'info')
+  addLog(`[前端] 开始单独生成 PO：${po}`)
 
   try {
     const response = await processJasonPdfReorder({
@@ -463,9 +478,15 @@ async function generateSinglePo(po: string): Promise<void> {
     })
     await applyProcessResult(response)
     setNotice(poMessage, `单个 PO 生成完成：${po}`, 'success')
-    openResultPdf()
+    resultStatusText.value = `PO ${po} 生成成功，可下载结果文件`
+    resultStatusTone.value = 'success'
+    addLog(`[前端] 单独生成 PO 完成：${po}`)
   } catch (error) {
-    setNotice(poMessage, readErrorMessage(error, '单个 PO 生成失败'), 'error')
+    const message = readErrorMessage(error, '单个 PO 生成失败')
+    setNotice(poMessage, message, 'error')
+    resultStatusText.value = `PO ${po} 生成失败，请检查输入后重试`
+    resultStatusTone.value = 'error'
+    addLog(`[前端] 单独生成 PO ${po} 失败：${message}`)
   } finally {
     busyAction.value = null
   }
@@ -621,14 +642,12 @@ function clearInvoice(): void {
   invoiceEntries.value = []
   invoiceSummary.value = null
   invoiceInputKey.value += 1
-  syncInvoiceToPoList(false)
   setNotice(invoiceMessage, '已清空发票数据', 'info')
 }
 
 function clearPo(): void {
   poFile.value = null
   poPages.value = new Map()
-  poOrderText.value = ''
   latestResult.value = null
   downloadHref.value = ''
   poInputKey.value += 1
@@ -716,6 +735,7 @@ async function handleFastReorder(): Promise<void> {
 function clearAllFiles(): void {
   clearInvoice()
   clearPo()
+  clearPoOrderOnly()
   addLog('[前端] 已清空全部文件')
 }
 
