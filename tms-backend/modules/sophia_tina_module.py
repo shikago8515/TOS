@@ -313,25 +313,38 @@ class SophiaTinaModule:
             country_rows = self._country_analysis_source_rows(results)
             ship_method_rows = self._ship_method_source_rows(results)
             s2s_rows = self._s2s_development_source_rows(results, development_style_rows)
+            s2s_display_rows = self._s2s_development_analysis_display_rows(s2s_rows)
             country_ref = f"A1:J{max(len(country_rows) + 1, 1)}"
             ship_method_ref = f"A1:H{max(len(ship_method_rows) + 1, 1)}"
             s2s_ref = f"A1:E{max(len(s2s_rows) + 1, 1)}"
+            s2s_pivot_ref = f"A1:E{max(len(s2s_display_rows) + 1, 1)}"
 
             replacements: Dict[str, bytes] = {
                 "xl/styles.xml": styles_xml,
                 "xl/worksheets/sheet3.xml": self._updated_country_summary_sheet_xml(
                     archive.read("xl/worksheets/sheet3.xml"),
                     results,
-                    19,
+                    1,
                     "Season",
                 ),
                 "xl/worksheets/sheet4.xml": self._updated_country_summary_sheet_xml(
                     archive.read("xl/worksheets/sheet4.xml"),
                     results,
-                    16,
+                    1,
                     "Year",
                 ),
+                "xl/worksheets/sheet7.xml": self._ship_method_analysis_sheet_xml(results),
+                "xl/worksheets/_rels/sheet3.xml.rels": self._without_pivot_table_relationship(
+                    archive.read("xl/worksheets/_rels/sheet3.xml.rels")
+                ),
+                "xl/worksheets/_rels/sheet4.xml.rels": self._without_pivot_table_relationship(
+                    archive.read("xl/worksheets/_rels/sheet4.xml.rels")
+                ),
+                "xl/worksheets/_rels/sheet7.xml.rels": self._without_pivot_table_relationship(
+                    archive.read("xl/worksheets/_rels/sheet7.xml.rels")
+                ),
                 "xl/worksheets/sheet8.xml": self._development_style_qty_sheet_xml(),
+                "xl/worksheets/sheet9.xml": self._s2s_development_analysis_sheet_xml(s2s_rows),
                 "xl/worksheets/sheet10.xml": self._result_sheet_xml(results, table_ref, style_ids),
                 "xl/worksheets/sheet11.xml": self._rules_sheet_xml(),
                 "xl/worksheets/sheet12.xml": self._diagnostics_sheet_xml(diagnostics),
@@ -486,6 +499,7 @@ class SophiaTinaModule:
                     ("Bulk Qty (pcs)", 4, None, "3"),
                 ],
                 5,
+                location_ref=s2s_pivot_ref,
             )
             replacements["xl/slicerCaches/slicerCache1.xml"] = self._updated_y2y_slicer_cache_xml(
                 archive.read("xl/slicerCaches/slicerCache1.xml")
@@ -606,7 +620,7 @@ class SophiaTinaModule:
     def _rules_sheet_xml(self) -> bytes:
         rows = [
             ["Field", "Source / Rule"],
-            ["Pack", "Factory Price Pack; match by Working Number + Season, with Working Number fallback when unique."],
+            ["Pack", "Factory Price Pack; match by Working Number + Season, then matched Factory Price record Pack, with Working Number fallback when unique."],
             ["Season", "TMS Price Season (M), matched by Working Number (M) + Article Number (A)."],
             ["Factory", "Allocation Factory PO -> Allocation overrides TMS Factory when provided."],
             ["Working Number", "Released / Unreleased Working Number."],
@@ -619,7 +633,7 @@ class SophiaTinaModule:
             ["Shipment Method", "Shipment Method shippinginstruction_desc when split; otherwise TMS shipment field."],
             ["Marketing Forecast(M)", "TMS Price Marketing Forecast (M)."],
             ["Quantity", "Shipment Method pord_order_qty when single-combo split; otherwise TMS Ordered Quantity."],
-            ["Factory Price(USD)", "Factory Price by Season + Working Number + Factory; when multiple prices exist, keep the first matched value and highlight it."],
+            ["Factory Price(USD)", "Factory Price by Season + Working Number + Factory, fallback to Working Number + Factory; when multiple prices exist, keep the first matched value and highlight it."],
             ["Factory Amount(USD)", "Excel formula: Factory Price(USD) * Quantity."],
             ["TMS Price(USD)", "TMS Price Intl. FOB (C), priority Final > P2 > P1 > PREC; Factory Price TMS Price fallback."],
             ["TMS Amount(USD)", "Excel formula: TMS Price(USD) * Quantity."],
@@ -785,6 +799,213 @@ class SophiaTinaModule:
             ])
         return rows
 
+    def _ship_method_analysis_sheet_xml(self, results: List[Dict[str, Any]]) -> bytes:
+        headers = [
+            "Factory",
+            "Years",
+            "PODD",
+            "Shipment Method",
+            "Quantity (Y)",
+            "Quantity (%)",
+            "TMS Amount (USD)",
+            "TMS Amount (%)",
+        ]
+        summary_rows = self._ship_method_analysis_rows(results)
+        sheet_rows = [
+            self._row_xml(
+                1,
+                [self._cell_xml(1, col_idx, header, 4) for col_idx, header in enumerate(headers, 1)],
+            )
+        ]
+        for row_idx, row in enumerate(summary_rows, 2):
+            values = row["values"]
+            formulas = row["formulas"]
+            style_ids = row["style_ids"]
+            cells = [
+                self._cell_xml(
+                    row_idx,
+                    col_idx,
+                    value,
+                    style_ids[col_idx - 1],
+                    formula=formulas[col_idx - 1],
+                )
+                for col_idx, value in enumerate(values, 1)
+            ]
+            sheet_rows.append(self._row_xml(row_idx, cells))
+
+        end_row = max(len(summary_rows) + 1, 1)
+        dimension = f"A1:H{end_row}"
+        return self._worksheet_xml(
+            dimension,
+            "".join(sheet_rows),
+            '<cols><col min="1" max="1" width="18" customWidth="1"/>'
+            '<col min="2" max="2" width="12" customWidth="1"/>'
+            '<col min="3" max="4" width="18" customWidth="1"/>'
+            '<col min="5" max="8" width="18" customWidth="1"/></cols>',
+            freeze_panes=True,
+            auto_filter_ref=dimension,
+        )
+
+    def _ship_method_analysis_rows(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        detail_metrics: Dict[Tuple[str, int, int, str], Dict[str, float]] = defaultdict(self._empty_metrics)
+        monthly_totals: Dict[Tuple[str, int, int], Dict[str, float]] = defaultdict(self._empty_metrics)
+        yearly_totals: Dict[Tuple[str, int], Dict[str, float]] = defaultdict(self._empty_metrics)
+
+        for row in results:
+            podd = self._to_datetime(row.get("PODD"))
+            if podd is None:
+                continue
+            factory = self._clean_text(row.get("Factory"))
+            shipment_method = self._clean_text(row.get("Shipment Method"))
+            detail_key = (factory, podd.year, podd.month, shipment_method)
+            month_key = (factory, podd.year, podd.month)
+            year_key = (factory, podd.year)
+            self._add_metrics(detail_metrics[detail_key], row)
+            self._add_metrics(monthly_totals[month_key], row)
+            self._add_metrics(yearly_totals[year_key], row)
+
+        rows: List[Dict[str, Any]] = []
+        previous_month_key: Optional[Tuple[str, int, int]] = None
+        for factory, year, month, shipment_method in sorted(detail_metrics):
+            month_key = (factory, year, month)
+            if previous_month_key is not None and previous_month_key != month_key:
+                rows.append(self._ship_method_total_row(previous_month_key, monthly_totals, yearly_totals, len(rows) + 2))
+            detail_row_index = len(rows) + 2
+            metrics = detail_metrics[(factory, year, month, shipment_method)]
+            month_total = monthly_totals[month_key]
+            rows.append(self._ship_method_detail_row(
+                factory,
+                year,
+                month,
+                shipment_method,
+                metrics,
+                month_total,
+                detail_row_index,
+            ))
+            previous_month_key = month_key
+
+        if previous_month_key is not None:
+            rows.append(self._ship_method_total_row(previous_month_key, monthly_totals, yearly_totals, len(rows) + 2))
+        return rows
+
+    def _ship_method_detail_row(
+        self,
+        factory: str,
+        year: int,
+        month: int,
+        shipment_method: str,
+        metrics: Dict[str, float],
+        month_total: Dict[str, float],
+        row_index: int,
+    ) -> Dict[str, Any]:
+        quantity = metrics["quantity"]
+        tms_amount = metrics["tms_amount"]
+        return {
+            "values": [
+                factory,
+                year,
+                datetime(2000, month, 1).strftime("%b"),
+                shipment_method,
+                quantity,
+                quantity / month_total["quantity"] if month_total["quantity"] else 0,
+                tms_amount,
+                tms_amount / month_total["tms_amount"] if month_total["tms_amount"] else 0,
+            ],
+            "formulas": [
+                None,
+                None,
+                None,
+                None,
+                self._ship_method_month_sumifs_formula("M", row_index, include_method=True),
+                self._ship_method_month_percentage_formula("M", "E", row_index),
+                self._ship_method_month_sumifs_formula("Q", row_index, include_method=True),
+                self._ship_method_month_percentage_formula("Q", "G", row_index),
+            ],
+            "style_ids": self._ship_method_style_ids(),
+        }
+
+    def _ship_method_total_row(
+        self,
+        month_key: Tuple[str, int, int],
+        monthly_totals: Dict[Tuple[str, int, int], Dict[str, float]],
+        yearly_totals: Dict[Tuple[str, int], Dict[str, float]],
+        row_index: int,
+    ) -> Dict[str, Any]:
+        factory, year, month = month_key
+        month_total = monthly_totals[month_key]
+        year_total = yearly_totals[(factory, year)]
+        quantity = month_total["quantity"]
+        tms_amount = month_total["tms_amount"]
+        return {
+            "values": [
+                factory,
+                year,
+                f"{datetime(2000, month, 1).strftime('%b')} Total",
+                None,
+                quantity,
+                quantity / year_total["quantity"] if year_total["quantity"] else 0,
+                tms_amount,
+                tms_amount / year_total["tms_amount"] if year_total["tms_amount"] else 0,
+            ],
+            "formulas": [
+                None,
+                None,
+                None,
+                None,
+                self._ship_method_month_sumifs_formula("M", row_index, include_method=False),
+                self._ship_method_year_percentage_formula("M", "E", row_index),
+                self._ship_method_month_sumifs_formula("Q", row_index, include_method=False),
+                self._ship_method_year_percentage_formula("Q", "G", row_index),
+            ],
+            "style_ids": self._ship_method_style_ids(),
+        }
+
+    def _ship_method_style_ids(self) -> List[int]:
+        return [
+            self.COUNTRY_SUMMARY_TEXT_STYLE,
+            self.COUNTRY_SUMMARY_TEXT_STYLE,
+            self.COUNTRY_SUMMARY_TEXT_STYLE,
+            self.COUNTRY_SUMMARY_TEXT_STYLE,
+            self.COUNTRY_SUMMARY_TEXT_STYLE,
+            self.COUNTRY_SUMMARY_PERCENT_STYLE,
+            self.COUNTRY_SUMMARY_CURRENCY_STYLE,
+            self.COUNTRY_SUMMARY_PERCENT_STYLE,
+        ]
+
+    @staticmethod
+    def _ship_method_month_start_formula(row_index: int) -> str:
+        return (
+            f'DATE($B{row_index},'
+            f'MATCH(LEFT($C{row_index},3),{{"Jan","Feb","Mar","Apr","May","Jun",'
+            f'"Jul","Aug","Sep","Oct","Nov","Dec"}},0),1)'
+        )
+
+    def _ship_method_month_sumifs_formula(self, metric_column: str, row_index: int, include_method: bool) -> str:
+        month_start = self._ship_method_month_start_formula(row_index)
+        criteria = [
+            f"Result!$C:$C,$A{row_index}",
+            f'Result!$H:$H,">="&{month_start}',
+            f'Result!$H:$H,"<"&EDATE({month_start},1)',
+        ]
+        if include_method:
+            criteria.append(f"Result!$K:$K,$D{row_index}")
+        return f"SUMIFS(Result!${metric_column}:${metric_column},{','.join(criteria)})"
+
+    def _ship_method_year_sumifs_formula(self, metric_column: str, row_index: int) -> str:
+        return (
+            f'SUMIFS(Result!${metric_column}:${metric_column},Result!$C:$C,$A{row_index},'
+            f'Result!$H:$H,">="&DATE($B{row_index},1,1),'
+            f'Result!$H:$H,"<"&DATE($B{row_index}+1,1,1))'
+        )
+
+    def _ship_method_month_percentage_formula(self, metric_column: str, value_column: str, row_index: int) -> str:
+        denominator = self._ship_method_month_sumifs_formula(metric_column, row_index, include_method=False)
+        return f"IFERROR({value_column}{row_index}/{denominator},0)"
+
+    def _ship_method_year_percentage_formula(self, metric_column: str, value_column: str, row_index: int) -> str:
+        denominator = self._ship_method_year_sumifs_formula(metric_column, row_index)
+        return f"IFERROR({value_column}{row_index}/{denominator},0)"
+
     def _s2s_development_source_rows(
         self,
         results: List[Dict[str, Any]],
@@ -815,6 +1036,69 @@ class SophiaTinaModule:
             ])
         return rows
 
+    def _s2s_development_analysis_sheet_xml(self, source_rows: List[List[Any]]) -> bytes:
+        return self._simple_sheet_xml(
+            ["Season", "Factory", "Development Style Count", "Bulk Style Count", "Bulk Qty (pcs)"],
+            self._s2s_development_analysis_display_rows(source_rows),
+            '<cols><col min="1" max="2" width="18" customWidth="1"/>'
+            '<col min="3" max="5" width="24" customWidth="1"/></cols>',
+        )
+
+    def _s2s_development_analysis_display_rows(self, source_rows: List[List[Any]]) -> List[List[Any]]:
+        grouped: Dict[str, List[List[Any]]] = defaultdict(list)
+        for row in source_rows:
+            if len(row) < 5:
+                continue
+            grouped[self._clean_text(row[0])].append(row)
+
+        display_rows: List[List[Any]] = []
+        grand_development_count = 0
+        grand_bulk_count = 0
+        grand_bulk_quantity = 0.0
+        for season in sorted(grouped, key=lambda value: (value == "", value)):
+            season_label = season or "(blank)"
+            season_development_count = 0
+            season_bulk_count = 0
+            season_bulk_quantity = 0.0
+            first_factory_for_season = True
+            for row in sorted(grouped[season], key=lambda item: self._clean_text(item[1])):
+                factory = self._clean_text(row[1])
+                development_count = int(self._optional_float(row[2]) or 0)
+                bulk_count = int(self._optional_float(row[3]) or 0)
+                bulk_quantity = self._optional_float(row[4]) or 0.0
+                display_rows.append([
+                    season_label if first_factory_for_season else "",
+                    factory,
+                    development_count,
+                    bulk_count,
+                    bulk_quantity,
+                ])
+                first_factory_for_season = False
+                season_development_count += development_count
+                season_bulk_count += bulk_count
+                season_bulk_quantity += bulk_quantity
+
+            display_rows.append([
+                f"{season_label} Total",
+                "",
+                season_development_count,
+                season_bulk_count,
+                season_bulk_quantity,
+            ])
+            grand_development_count += season_development_count
+            grand_bulk_count += season_bulk_count
+            grand_bulk_quantity += season_bulk_quantity
+
+        if display_rows:
+            display_rows.append([
+                "Grand Total",
+                "",
+                grand_development_count,
+                grand_bulk_count,
+                grand_bulk_quantity,
+            ])
+        return display_rows
+
     def _updated_country_summary_sheet_xml(
         self,
         xml_bytes: bytes,
@@ -828,23 +1112,26 @@ class SophiaTinaModule:
             return xml_bytes
 
         for row in list(sheet_data):
-            row_number = self._worksheet_row_number(row)
-            if row_number is not None and row_number >= start_row:
-                sheet_data.remove(row)
+            sheet_data.remove(row)
 
-        summary_rows = self._country_summary_block_rows(results, period_kind)
-        for offset, (row_kind, values) in enumerate(summary_rows):
+        summary_rows = self._country_summary_block_rows(results, period_kind, start_row)
+        for offset, (row_kind, values, formulas) in enumerate(summary_rows):
             row_index = start_row + offset
             style_ids = self._country_summary_style_ids(row_kind)
             cells = [
-                self._cell_xml(row_index, column_index, value, style_ids[column_index - 1])
+                self._cell_xml(
+                    row_index,
+                    column_index,
+                    value,
+                    style_ids[column_index - 1],
+                    formula=formulas[column_index - 1],
+                )
                 for column_index, value in enumerate(values, 1)
             ]
             sheet_data.append(self._row_element(self._row_xml(row_index, cells)))
 
         dimension = root.find(f"{{{self.OOXML_MAIN_NS}}}dimension")
         if dimension is not None:
-            end_column = self._dimension_end_column(dimension.attrib.get("ref", "A1:F1"))
             max_row = max(
                 [
                     self._worksheet_row_number(row) or 0
@@ -852,7 +1139,7 @@ class SophiaTinaModule:
                 ]
                 or [start_row + len(summary_rows) - 1]
             )
-            dimension.set("ref", f"A1:{end_column}{max_row}")
+            dimension.set("ref", f"A1:F{max_row}")
 
         return self._serialize_spreadsheet_xml(root)
 
@@ -860,7 +1147,8 @@ class SophiaTinaModule:
         self,
         results: List[Dict[str, Any]],
         period_kind: str,
-    ) -> List[Tuple[str, List[Any]]]:
+        start_row: int,
+    ) -> List[Tuple[str, List[Any], List[Optional[str]]]]:
         grouped_metrics: Dict[Tuple[Any, str], Dict[str, Dict[str, float]]] = defaultdict(
             lambda: defaultdict(self._empty_metrics)
         )
@@ -877,11 +1165,16 @@ class SophiaTinaModule:
             metrics["tms_amount"] += self._country_summary_tms_amount(row)
             period_labels[period_key] = period_label
 
+        empty_formulas: List[Optional[str]] = [None] * 6
         if not grouped_metrics:
             header_label = "Year" if period_kind == "Year" else "Season"
-            return [("header", [header_label, "Factory", *[label for _, label in self.COUNTRY_SUMMARY_BUCKETS], "Total Order"])]
+            return [(
+                "header",
+                [header_label, "Factory", *[label for _, label in self.COUNTRY_SUMMARY_BUCKETS], "Total Order"],
+                empty_formulas,
+            )]
 
-        summary_rows: List[Tuple[str, List[Any]]] = []
+        summary_rows: List[Tuple[str, List[Any], List[Optional[str]]]] = []
         previous_period_key: Any = None
         for period_key, factory in sorted(
             grouped_metrics,
@@ -896,6 +1189,7 @@ class SophiaTinaModule:
                         *[label for _, label in self.COUNTRY_SUMMARY_BUCKETS],
                         "Total Order",
                     ],
+                    empty_formulas,
                 ))
                 previous_period_key = period_key
 
@@ -912,14 +1206,92 @@ class SophiaTinaModule:
                 value / total_value if total_value else 0
                 for value in values
             ]
+            qty_row = start_row + len(summary_rows)
+            value_row = qty_row + 2
             summary_rows.extend([
-                ("qty", ["Qty(pcs)", factory, *quantities, total_quantity]),
-                ("qty_pct", ["Qty percentage", factory, *quantity_percentages, None]),
-                ("value", ["Value(usd)", factory, *values, total_value]),
-                ("value_pct", ["Value percentage", factory, *value_percentages, None]),
+                (
+                    "qty",
+                    ["Qty(pcs)", factory, *quantities, total_quantity],
+                    self._country_summary_metric_formulas("M", period_kind, period_key, qty_row),
+                ),
+                (
+                    "qty_pct",
+                    ["Qty percentage", factory, *quantity_percentages, None],
+                    self._country_summary_percentage_formulas(qty_row),
+                ),
+                (
+                    "value",
+                    ["Value(usd)", factory, *values, total_value],
+                    self._country_summary_metric_formulas("Q", period_kind, period_key, value_row),
+                ),
+                (
+                    "value_pct",
+                    ["Value percentage", factory, *value_percentages, None],
+                    self._country_summary_percentage_formulas(value_row),
+                ),
             ])
-
         return summary_rows
+
+    def _country_summary_metric_formulas(
+        self,
+        metric_column: str,
+        period_kind: str,
+        period_key: Any,
+        row_index: int,
+    ) -> List[Optional[str]]:
+        formulas: List[Optional[str]] = [None, None]
+        formulas.extend([
+            self._country_summary_sumifs_formula(metric_column, period_kind, period_key, row_index, "CHINA"),
+            self._country_summary_sumifs_formula(metric_column, period_kind, period_key, row_index, "UNITED STATES"),
+            self._country_summary_sumifs_formula(metric_column, period_kind, period_key, row_index, "OTHER COUNTRIES"),
+            f"SUM(C{row_index}:E{row_index})",
+        ])
+        return formulas
+
+    @staticmethod
+    def _country_summary_percentage_formulas(source_row: int) -> List[Optional[str]]:
+        return [
+            None,
+            None,
+            f"IF($F{source_row}=0,0,C{source_row}/$F{source_row})",
+            f"IF($F{source_row}=0,0,D{source_row}/$F{source_row})",
+            f"IF($F{source_row}=0,0,E{source_row}/$F{source_row})",
+            None,
+        ]
+
+    def _country_summary_sumifs_formula(
+        self,
+        metric_column: str,
+        period_kind: str,
+        period_key: Any,
+        row_index: int,
+        bucket: str,
+    ) -> str:
+        criteria = [
+            f"Result!$C:$C,$B{row_index}",
+        ]
+        if bucket == "OTHER COUNTRIES":
+            criteria.extend([
+                'Result!$J:$J,"<>CHINA"',
+                'Result!$J:$J,"<>UNITED STATES"',
+            ])
+        else:
+            criteria.append(f"Result!$J:$J,{self._excel_formula_string(bucket)}")
+
+        if period_kind == "Year":
+            year = int(period_key)
+            criteria.extend([
+                f'Result!$H:$H,">="&DATE({year},1,1)',
+                f'Result!$H:$H,"<"&DATE({year + 1},1,1)',
+            ])
+        else:
+            criteria.append(f"Result!$B:$B,{self._excel_formula_string(str(period_key))}")
+
+        return f"SUMIFS(Result!${metric_column}:${metric_column},{','.join(criteria)})"
+
+    @staticmethod
+    def _excel_formula_string(value: str) -> str:
+        return '"' + value.replace('"', '""') + '"'
 
     def _country_summary_period(
         self,
@@ -933,8 +1305,9 @@ class SophiaTinaModule:
             return podd.year, f"Year {podd.year}"
 
         season = self._clean_text(row.get("Season"))
-        season_key = season or "(blank)"
-        return season_key, f"Season {season_key}"
+        if season:
+            return season, f"Season {season}"
+        return "", "Season (blank)"
 
     @staticmethod
     def _country_summary_sort_key(key: Tuple[Any, str], period_kind: str) -> Tuple[Any, str]:
@@ -997,12 +1370,6 @@ class SophiaTinaModule:
         except ValueError:
             return None
 
-    @staticmethod
-    def _dimension_end_column(dimension_ref: str) -> str:
-        end_ref = dimension_ref.split(":")[-1]
-        end_column = "".join(char for char in end_ref if char.isalpha())
-        return end_column or "F"
-
     def _worksheet_xml(
         self,
         dimension: str,
@@ -1010,6 +1377,7 @@ class SophiaTinaModule:
         columns_xml: str,
         freeze_panes: bool = False,
         table_rel_id: Optional[str] = None,
+        auto_filter_ref: Optional[str] = None,
     ) -> bytes:
         if freeze_panes:
             sheet_views = (
@@ -1025,6 +1393,7 @@ class SophiaTinaModule:
             if table_rel_id
             else ""
         )
+        auto_filter = f'<autoFilter ref="{auto_filter_ref}"/>' if auto_filter_ref else ""
         xml = (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
             f'<worksheet xmlns="{self.OOXML_MAIN_NS}" xmlns:r="{self.OOXML_REL_NS}" '
@@ -1035,6 +1404,7 @@ class SophiaTinaModule:
             '<sheetFormatPr defaultRowHeight="15" x14ac:dyDescent="0.25"/>'
             f'{columns_xml}'
             f'<sheetData>{sheet_data}</sheetData>'
+            f'{auto_filter}'
             '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>'
             f'{table_parts}'
             '</worksheet>'
@@ -1244,9 +1614,14 @@ class SophiaTinaModule:
         column_fields: List[int],
         data_fields: List[Tuple[str, int, Optional[str], str]],
         field_count: int,
+        location_ref: Optional[str] = None,
     ) -> bytes:
         root = ElementTree.fromstring(xml_bytes)
         root.set("cacheId", cache_id)
+        if location_ref:
+            location = root.find(f"{{{self.OOXML_MAIN_NS}}}location")
+            if location is not None:
+                location.set("ref", location_ref)
         self._replace_pivot_child(root, "pivotFields", self._pivot_fields_element(
             field_count,
             row_fields,
@@ -1326,7 +1701,26 @@ class SophiaTinaModule:
                     f"{{{self.OOXML_X14_NS}}}pivotTable",
                     {"tabId": "8", "name": name},
                 )
-        return self._serialize_spreadsheet_xml(root)
+        xml = self._serialize_spreadsheet_xml(root)
+        return self._ensure_xmlns_prefix(xml, "x", self.OOXML_MAIN_NS)
+
+    @staticmethod
+    def _ensure_xmlns_prefix(xml_bytes: bytes, prefix: str, namespace: str) -> bytes:
+        declaration = f'xmlns:{prefix}="{namespace}"'
+        xml = xml_bytes.decode("utf-8")
+        if declaration in xml:
+            return xml_bytes
+
+        first_tag_start = xml.find("<", xml.find("?>") + 2 if "?>" in xml[:80] else 0)
+        if first_tag_start < 0:
+            return xml_bytes
+        first_tag_end = xml.find(">", first_tag_start)
+        if first_tag_end < 0:
+            return xml_bytes
+        tag_close_offset = -1 if xml[first_tag_end - 1] == "/" else 0
+        insert_at = first_tag_end + tag_close_offset
+        xml = f"{xml[:insert_at]} {declaration}{xml[insert_at:]}"
+        return xml.encode("utf-8")
 
     def _updated_workbook_xml(self, xml_bytes: bytes) -> bytes:
         root = ElementTree.fromstring(xml_bytes)
@@ -1455,6 +1849,14 @@ class SophiaTinaModule:
         return cls._serialize_package_relationships_xml(root)
 
     @classmethod
+    def _without_pivot_table_relationship(cls, xml_bytes: bytes) -> bytes:
+        root = ElementTree.fromstring(xml_bytes)
+        for relationship in list(root):
+            if relationship.attrib.get("Type", "").endswith("/pivotTable"):
+                root.remove(relationship)
+        return cls._serialize_package_relationships_xml(root)
+
+    @classmethod
     def _without_calc_chain_content_type(cls, xml_bytes: bytes) -> bytes:
         root = ElementTree.fromstring(xml_bytes)
         for child in list(root):
@@ -1529,7 +1931,7 @@ class SophiaTinaModule:
         ws = wb.create_sheet("Rules")
         rows = [
             ["Field", "Source / Rule"],
-            ["Pack", "Factory Price 表 Pack 列：按 Working Number + Season 匹配；唯一 Working Number 时允许兜底。"],
+            ["Pack", "Factory Price 表 Pack 列：按 Working Number + Season 匹配；命中 Factory Price 记录时使用同一记录 Pack；唯一 Working Number 时允许兜底。"],
             ["Season", "TMS Price 表 Season (M)，按 Working Number (M) + Article Number (A) 匹配。"],
             ["Factory", "优先按 Allocation Factory 表 PO -> Allocation 覆盖；未上传或未匹配时使用 Released / Unreleased 表 Factory。"],
             ["Working Number", "Released / Unreleased 表 P 列 Working Number。"],
@@ -1542,7 +1944,7 @@ class SophiaTinaModule:
             ["Shipment Method", "未上传 Shipment Method 文件时使用 Released / Unreleased 表 Shipment Method/Shipment Mode；上传后按 PO 覆盖。"],
             ["Marketing Forecast(M)", "TMS Price 表 Marketing Forecast (M)。"],
             ["Quantity", "默认按 Result 明细维度汇总 Released / Unreleased 表 Ordered Quantity；上传 Shipment Method 后，单一业务组合 PO 按 pord_order_qty 拆分。"],
-            ["Factory Price(USD)", "Factory Price 表 G 列，按 Season + Working Number + Factory 匹配；多价格时保留首个匹配值并高亮。"],
+            ["Factory Price(USD)", "Factory Price 表 G 列，优先按 Season + Working Number + Factory 匹配，失败后按 Working Number + Factory 兜底；多价格时保留首个匹配值并高亮。"],
             ["Factory Amount(USD)", "Excel 公式：Factory Price(USD) * Quantity。"],
             ["TMS Price(USD)", "TMS Price 表 Intl. FOB (C)，优先级 Final > P2 > P1 > PREC；缺失时使用 Factory Price 表 TMS Price 后备。"],
             ["TMS Amount(USD)", "Excel 公式：TMS Price(USD) * Quantity。"],
@@ -2003,11 +2405,7 @@ class SophiaTinaModule:
         thin_border: Border,
     ) -> None:
         ws = wb.create_sheet("Development Style Qty")
-        rows = [
-            [row["Season"], row["Factory"], row["Development Style Count"]]
-            for row in development_style_rows
-        ]
-        self._append_summary_table(ws, ["Season", "Factory", "Development Style Count"], rows, thin_border)
+        self._append_summary_table(ws, ["Season", "Factory", "Development Style Count"], [], thin_border)
 
     def _write_s2s_development_analysis(
         self,
@@ -2453,6 +2851,7 @@ class SophiaTinaModule:
             pack_lookup: Dict[Tuple[str, str], Any] = {}
             pack_by_working: Dict[str, Set[Any]] = {}
             price_group_records: Dict[Tuple[str, str, str], List[Dict[str, Any]]] = defaultdict(list)
+            price_factory_records: Dict[Tuple[str, str], List[Dict[str, Any]]] = defaultdict(list)
             for _, row in price_df.iterrows():
                 working_key = self._clean_key(row[price_columns["working"]]).upper()
                 season_key = self._clean_key(row[price_columns["season"]]).upper()
@@ -2476,16 +2875,19 @@ class SophiaTinaModule:
                     pack_lookup[(working_key, season_key)] = pack_value
                 if factory_price is None:
                     continue
-                group_key = self._make_factory_group_key(season_key, working_key, factory_key)
-                if not all(group_key):
-                    continue
-                price_group_records[group_key].append({
+                price_record = {
                     "pack": pack_value,
                     "factory_price": factory_price,
                     "tms_price": tms_price_fallback,
                     "factory": factory_key,
                     "article": article_key,
-                })
+                }
+                if factory_key:
+                    price_factory_records[(working_key, factory_key)].append(price_record)
+                group_key = self._make_factory_group_key(season_key, working_key, factory_key)
+                if not all(group_key):
+                    continue
+                price_group_records[group_key].append(price_record)
 
             if pack_df is not None:
                 pack_working_col = self._find_column(pack_df, ["Working Number"])
@@ -2506,9 +2908,18 @@ class SophiaTinaModule:
                 key: records[0]
                 for key, records in price_group_records.items()
             }
+            price_factory_lookup = {
+                key: records[0]
+                for key, records in price_factory_records.items()
+            }
             factory_conflict_groups = {
                 key: {record["factory_price"] for record in records}
                 for key, records in price_group_records.items()
+                if len({record["factory_price"] for record in records}) > 1
+            }
+            factory_fallback_conflict_groups = {
+                key: {record["factory_price"] for record in records}
+                for key, records in price_factory_records.items()
                 if len({record["factory_price"] for record in records}) > 1
             }
             development_style_rows = [
@@ -2557,6 +2968,61 @@ class SophiaTinaModule:
                 pack_value = pack_lookup.get((working_key, season_key))
                 missing_pack = False
                 ambiguous_pack = False
+
+                factory_lookup_key = self._make_factory_group_key(season_value, working_key, factory_key)
+                price_record = price_group_lookup.get(factory_lookup_key)
+                matched_price_key: Tuple[str, ...] = factory_lookup_key
+                matched_price_rule = "Season + Working Number + Factory"
+                conflict_values = factory_conflict_groups.get(factory_lookup_key)
+                if price_record is None and factory_key != source_factory_key:
+                    source_factory_lookup_key = self._make_factory_group_key(
+                        season_value,
+                        working_key,
+                        source_factory_key,
+                    )
+                    price_record = price_group_lookup.get(source_factory_lookup_key)
+                    if price_record is not None:
+                        matched_price_key = source_factory_lookup_key
+                        matched_price_rule = "Season + Working Number + Factory"
+                        conflict_values = factory_conflict_groups.get(source_factory_lookup_key)
+                        add_diagnostic(
+                            "INFO",
+                            "FACTORY_PRICE_SOURCE_FACTORY_FALLBACK",
+                            f"{po_key or 'NO_PO'} / {working_key} / {article_key}",
+                            "Allocation 覆盖后的 Factory 未匹配到价格，已按 TMS 原 Factory 匹配 Factory Price。",
+                        )
+                if price_record is None:
+                    factory_fallback_key = (working_key, factory_key)
+                    price_record = price_factory_lookup.get(factory_fallback_key)
+                    if price_record is not None:
+                        matched_price_key = factory_fallback_key
+                        matched_price_rule = "Working Number + Factory"
+                        conflict_values = factory_fallback_conflict_groups.get(factory_fallback_key)
+                if price_record is None and factory_key != source_factory_key:
+                    source_factory_fallback_key = (working_key, source_factory_key)
+                    price_record = price_factory_lookup.get(source_factory_fallback_key)
+                    if price_record is not None:
+                        matched_price_key = source_factory_fallback_key
+                        matched_price_rule = "Working Number + Factory"
+                        conflict_values = factory_fallback_conflict_groups.get(source_factory_fallback_key)
+                        add_diagnostic(
+                            "INFO",
+                            "FACTORY_PRICE_SOURCE_FACTORY_FALLBACK",
+                            f"{po_key or 'NO_PO'} / {working_key} / {article_key}",
+                            "Allocation 覆盖后的 Factory 未匹配到价格，已按 TMS 原 Factory + Working Number 匹配 Factory Price。",
+                        )
+                factory_price_conflict = bool(conflict_values)
+                if factory_price_conflict:
+                    highlighted_factory_conflicts += 1
+                    add_diagnostic(
+                        "WARN",
+                        "FACTORY_PRICE_CONFLICT",
+                        " / ".join(matched_price_key),
+                        f"Factory Price 表同一个 {matched_price_rule} 存在多个 Factory Price：{sorted(conflict_values)}；Result 已填写第一个匹配价格并高亮对应价格单元格。",
+                    )
+                factory_price = price_record.get("factory_price") if price_record else None
+                if price_record and price_record.get("pack"):
+                    pack_value = price_record["pack"]
                 if not pack_value:
                     fallback_packs = {pack for pack in pack_by_working.get(working_key, set()) if pack}
                     if len(fallback_packs) == 1:
@@ -2577,39 +3043,8 @@ class SophiaTinaModule:
                             "WARN",
                             "PACK_MISSING",
                             f"{working_key} / {season_key or 'NO_SEASON'}",
-                            "Pack 表未匹配到 Working Number + Season，也没有唯一 Working Number 兜底值。",
+                            "Pack 表未匹配到 Working Number + Season、命中的 Factory Price 记录 Pack，或唯一 Working Number 兜底值。",
                         )
-
-                factory_lookup_key = self._make_factory_group_key(season_value, working_key, factory_key)
-                price_record = price_group_lookup.get(factory_lookup_key)
-                matched_factory_group_key = factory_lookup_key
-                if price_record is None and factory_key != source_factory_key:
-                    source_factory_lookup_key = self._make_factory_group_key(
-                        season_value,
-                        working_key,
-                        source_factory_key,
-                    )
-                    price_record = price_group_lookup.get(source_factory_lookup_key)
-                    if price_record is not None:
-                        matched_factory_group_key = source_factory_lookup_key
-                        add_diagnostic(
-                            "INFO",
-                            "FACTORY_PRICE_SOURCE_FACTORY_FALLBACK",
-                            f"{po_key or 'NO_PO'} / {working_key} / {article_key}",
-                            "Allocation 覆盖后的 Factory 未匹配到价格，已按 TMS 原 Factory 匹配 Factory Price。",
-                        )
-                factory_price_conflict = matched_factory_group_key in factory_conflict_groups
-                if factory_price_conflict:
-                    highlighted_factory_conflicts += 1
-                    add_diagnostic(
-                        "WARN",
-                        "FACTORY_PRICE_CONFLICT",
-                        " / ".join(matched_factory_group_key),
-                        f"同一个 Season + Working Number + Factory 存在多个 Factory Price：{sorted(factory_conflict_groups[matched_factory_group_key])}；Result 已填写第一个匹配价格并高亮对应价格单元格。",
-                    )
-                factory_price = price_record.get("factory_price") if price_record else None
-                if price_record and price_record.get("pack"):
-                    pack_value = price_record["pack"]
                 missing_factory_price = factory_price is None
                 if missing_factory_price:
                     missing_factory_prices += 1
@@ -2617,7 +3052,7 @@ class SophiaTinaModule:
                         "WARN",
                         "FACTORY_PRICE_MISSING",
                         " / ".join(factory_lookup_key),
-                        "Factory Price 表未按 Season + Working Number + Factory 匹配到价格。",
+                        "Factory Price 表未按 Season + Working Number + Factory 或 Working Number + Factory 匹配到价格。",
                     )
 
                 if tms_price is None:

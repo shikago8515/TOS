@@ -51,7 +51,7 @@ class OriginCertificateOcrParser:
     )
     ACFTA_FORM_E_ITEM_RE = re.compile(
         r"(?m)^(?P<item>\d{1,2})\s+(?:CART\s+NO\.\s*)?"
-        r"(?P<words>[A-Z][A-Z\s-]+?)\s*\((?P<cartons>\d+)\)\s*CARTONS?\s+OF\s+(?P<tail>.*)$",
+        r"(?P<words>[A-Z][A-Z\s-]+?)\s*\((?P<cartons>\d+)\)\s*CARTONS?\s+OF\s*(?P<tail>.*)$",
         re.IGNORECASE,
     )
     RCEP_ITEM_RE = re.compile(
@@ -532,6 +532,7 @@ class OriginCertificateOcrParser:
     def _clean_acfta_description_part(self, text: str) -> str:
         text = self._normalize_text(text)
         text = re.sub(r"^CUST\s+O/N\s+", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"^PO\s+NO\s+", "", text, flags=re.IGNORECASE)
         if re.fullmatch(r"(?:ADIDAS\s+BRAND\s+GARMENT|OF\s+ADIDAS\s+BRAND\s+GARMENT)", text, re.IGNORECASE):
             return ""
         text = re.split(r"\b(?:PSR|CTH)\b", text, maxsplit=1, flags=re.IGNORECASE)[0]
@@ -787,8 +788,11 @@ class OriginCertificateOcrParser:
         normalized = normalized.replace("＃", "#").replace("：", ":")
         normalized = re.sub(r"\bP[O0]\s*#", "PO#", normalized, flags=re.IGNORECASE)
         normalized = re.sub(r"\bPO\s+NO\s+PO\s*#", "PO#", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\bART\s+NO\s+PO\s*#", "PO#", normalized, flags=re.IGNORECASE)
         normalized = re.sub(r"\bART\s+NO\s+ARTICLE\s+NO\.?", "ARTICLE NO.", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\bSIZE\s+ARTICLE\s+NO\.?\s+ARTICLE\s+NO\.?", "ARTICLE NO.", normalized, flags=re.IGNORECASE)
         normalized = re.sub(r"\bSIZE\s+ARTICLE\s+NO\.?\s+STYLE\s+NO\.?", "STYLE NO.", normalized, flags=re.IGNORECASE)
+        normalized = re.sub(r"\bQTY\s+STYLE\s+NO\.?\s+STYLE\s+NO\.?", "STYLE NO.", normalized, flags=re.IGNORECASE)
         normalized = re.sub(r"\bQTY\s+STYLE\s+NO\.?\s+CUST\s+ORDER\s+NO\.?", "CUST ORDER NO.", normalized, flags=re.IGNORECASE)
         normalized = re.sub(r"\bCUST\s*[O0]RDER\b", "CUST ORDER", normalized, flags=re.IGNORECASE)
         normalized = re.sub(r"\bCUST\s*[O0]\s*/\s*N\b", "CUST O/N", normalized, flags=re.IGNORECASE)

@@ -97,6 +97,21 @@ class ReleaseUpdateSyncTest(unittest.TestCase):
             scripts["release:updates:dry-run"],
             "python scripts/release_update_sync.py --pull --limit 300 --dry-run",
         )
+        self.assertEqual(
+            scripts["release:updates:sync-local"],
+            "python scripts/release_update_sync.py --sync-local",
+        )
+        self.assertEqual(
+            scripts["release:updates:check-local"],
+            "python scripts/release_update_sync.py --check-local",
+        )
+
+    def test_quick_checks_validate_release_update_cache_before_backend_unittest(self) -> None:
+        run_checks = (release_update_sync.WORKSPACE_ROOT / "scripts" / "engineering" / "run-checks.mjs").read_text(encoding="utf-8")
+
+        self.assertIn("release-update-cache-check", run_checks)
+        self.assertIn("'--check-local'", run_checks)
+        self.assertLess(run_checks.index("release-update-cache-check"), run_checks.index("backend:unittest"))
 
     def test_git_hooks_support_release_update_skip_flag(self) -> None:
         for hook_name in ("post-commit", "post-merge"):
@@ -215,6 +230,64 @@ class ReleaseUpdateSyncTest(unittest.TestCase):
 
             seed_records = json.loads(seed_path.read_text(encoding="utf-8"))
             self.assertEqual(seed_records[0]["recordKey"], "server-only")
+
+    def test_sync_local_cache_uses_frontend_history_as_backend_seed_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            history_path = root / "tms-frontend" / "src" / "shared" / "version" / "releaseHistory.json"
+            seed_path = root / "tms-backend" / "data" / "release_updates_seed.json"
+            history_path.parent.mkdir(parents=True)
+            seed_path.parent.mkdir(parents=True)
+            history_payload = [
+                {
+                    "recordKey": "local-only",
+                    "version": "1.0.0-beta.3.6",
+                    "releaseDate": "2026-07-03",
+                    "category": "fixed",
+                    "pageName": "TC INV 自动化",
+                    "pagePath": "/web-automation/scenarios/tc-inv-automation",
+                    "title": "补齐 Preview 后的 Validate",
+                    "description": "本地前端 fallback 新增记录必须同步到后端默认 seed。",
+                }
+            ]
+            history_path.write_text(json.dumps(history_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            seed_path.write_text("[]\n", encoding="utf-8")
+
+            result = release_update_sync.sync_local_release_update_cache(workspace_root=root)
+
+            self.assertEqual(result["recordCount"], 1)
+            self.assertEqual(json.loads(seed_path.read_text(encoding="utf-8")), history_payload)
+            self.assertEqual(release_update_sync.check_local_release_update_cache(workspace_root=root)["ok"], True)
+
+    def test_check_local_cache_detects_frontend_backend_seed_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            history_path = root / "tms-frontend" / "src" / "shared" / "version" / "releaseHistory.json"
+            seed_path = root / "tms-backend" / "data" / "release_updates_seed.json"
+            history_path.parent.mkdir(parents=True)
+            seed_path.parent.mkdir(parents=True)
+            history_path.write_text(
+                json.dumps([
+                    {
+                        "recordKey": "frontend-only",
+                        "version": "1.0.0-beta.3.6",
+                        "releaseDate": "2026-07-03",
+                        "category": "fixed",
+                        "pageName": "版本更新",
+                        "pagePath": "/release-updates",
+                        "title": "frontend only",
+                        "description": "frontend",
+                    }
+                ], ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            seed_path.write_text("[]\n", encoding="utf-8")
+
+            status = release_update_sync.check_local_release_update_cache(workspace_root=root)
+
+            self.assertEqual(status["ok"], False)
+            self.assertEqual(status["frontendCount"], 1)
+            self.assertEqual(status["backendCount"], 0)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,25 @@
 [
   {
+    "recordKey": "release-v1.0.0-beta.3.9",
+    "version": "1.0.0-beta.3.9",
+    "releaseDate": "2026-07-04",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.9",
+    "description": "Release v1.0.0-beta.3.9. Channel: beta.3. Commit: 8c274101dea2ec2c8ad2e4276a753186e469df68. Release notes: 收口自动化执行器契约类型回流."
+  },
+  {
+    "recordKey": "release-v1.0.0-beta.3.8",
+    "version": "1.0.0-beta.3.8",
+    "releaseDate": "2026-07-04",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.8",
+    "description": "Release v1.0.0-beta.3.8. Channel: beta.3. Commit: baee9352f715a21704dbbd2b6907abd16fc8dd74. Release notes: 完善自动化多模块执行体验；根治版本更新缓存不同步；调整 iPlex 数据核对表文案."
+  },
+  {
     "recordKey": "release-v1.0.0-beta.3.7",
     "version": "1.0.0-beta.3.7",
     "releaseDate": "2026-07-03",

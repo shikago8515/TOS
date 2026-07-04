@@ -344,9 +344,13 @@ import {
   recordWebAutomationEvent, stopAutomationConsole,
 } from '../../web-automation/webAutomationApi'
 import {
+  extractExecutorRunProgress,
   getExecutorArtifactDownloadUrls,
+  isJsonRecord,
   readExecutorResponseText,
   safeParseExecutorJson,
+  type ExecutorProgress,
+  type JsonRecord,
   type ExecutorResponsePayload,
   type LocalExecutorRun,
 } from '../../web-automation/automationExecutorResponse'
@@ -483,10 +487,8 @@ const startupProgressDetail = computed(() => {
 onMounted(() => { void initializeScenario() })
 onBeforeUnmount(() => { stopActiveRunStatePolling(); stopStartupProgressTimer() })
 
-function normalizeActiveRunProgress(activeRun: Record<string, any> | null): Record<string, any> | null {
-  const progress = activeRun?.progress
-  if (!progress || typeof progress !== 'object') return null
-  return progress as Record<string, any>
+function normalizeActiveRunProgress(activeRun: LocalExecutorRun | null): ExecutorProgress | null {
+  return extractExecutorRunProgress(activeRun)
 }
 
 function startupStagePercent(stage: StartupStage): number {
@@ -755,7 +757,7 @@ async function selectPreviewPdfDirectory(): Promise<void> {
       }),
     })
     const raw = await response.text()
-    const result = safeParseExecutorJson(raw) as Record<string, any> | null
+    const result = safeParseExecutorJson(raw)
     if (response.status === 404) {
       messageTone.value = 'warning'
       message.value = text('本机自动化助手缺少新龙泰目录选择接口，请同步最新自动化模块后重试，或手动填写完整本机路径。')
@@ -865,7 +867,7 @@ function collectResultFiles(p: ExecutorResponsePayload | null): AutomationRunFil
 function bfi(rp: unknown, fr: string, fn: string): AutomationRunFileInput | null { const u = buildShippingArtifactUrl(rp); if (!u) return null; return { url: u, fileRole: fr, fileName: fn } }
 
 function collectPreviewPdfSavedPaths(p: ExecutorResponsePayload | null): string[] {
-  const payload = p as Record<string, any> | null
+  const payload = p
   const values: string[] = []
   const direct = Array.isArray(payload?.previewPdfSavedPaths) ? payload?.previewPdfSavedPaths : []
   for (const item of direct) {
@@ -874,23 +876,25 @@ function collectPreviewPdfSavedPaths(p: ExecutorResponsePayload | null): string[
   }
   const createShipmentResults = Array.isArray(payload?.createShipmentResults) ? payload?.createShipmentResults : []
   for (const item of createShipmentResults) {
-    const value = String(item?.previewPdfDownloadResult?.filePath || item?.previewPdfFilePath || '').trim()
+    const row = isJsonRecord(item) ? item : null
+    const previewResult = isJsonRecord(row?.previewPdfDownloadResult) ? row.previewPdfDownloadResult : null
+    const value = String(previewResult?.filePath || row?.previewPdfFilePath || '').trim()
     if (value) values.push(value)
   }
   return Array.from(new Set(values))
 }
 
 function collectPreviewPdfResults(p: ExecutorResponsePayload | null): PreviewPdfResultItem[] {
-  const payload = p as Record<string, any> | null
+  const payload = p
   const createShipmentResults = Array.isArray(payload?.createShipmentResults) ? payload.createShipmentResults : []
   const rows: PreviewPdfResultItem[] = []
-  createShipmentResults.forEach((item: Record<string, any>, index: number) => {
-    const result = item?.previewPdfDownloadResult && typeof item.previewPdfDownloadResult === 'object'
-      ? item.previewPdfDownloadResult as Record<string, any>
-      : null
-    const changeEquipmentId = String(item?.changeEquipmentId || '').trim()
-    const poNos = Array.isArray(item?.poNos)
-      ? item.poNos.map((value: unknown) => String(value || '').trim()).filter(Boolean)
+  createShipmentResults.forEach((item: unknown, index: number) => {
+    const row = isJsonRecord(item) ? item : null
+    if (!row) return
+    const result = isJsonRecord(row.previewPdfDownloadResult) ? row.previewPdfDownloadResult : null
+    const changeEquipmentId = String(row.changeEquipmentId || '').trim()
+    const poNos = Array.isArray(row.poNos)
+      ? row.poNos.map((value: unknown) => String(value || '').trim()).filter(Boolean)
       : []
     const labelParts = [
       changeEquipmentId ? `设备 ${changeEquipmentId}` : '',
@@ -945,13 +949,13 @@ function collectPreviewPdfResults(p: ExecutorResponsePayload | null): PreviewPdf
       return
     }
 
-    if (item?.ok === false) {
+    if (row.ok === false) {
       rows.push({
         key,
         status: 'skipped',
         label,
         statusText: '未执行',
-        message: String(item.error || item.failureReason || 'Create Shipment 未完成，所以没有执行 Preview PDF 下载。'),
+        message: String(row.error || row.failureReason || 'Create Shipment 未完成，所以没有执行 Preview PDF 下载。'),
         fileName: '',
         filePath: '',
         pdfUrl: '',
@@ -1005,7 +1009,7 @@ function summarizePreviewPdfResults(items: PreviewPdfResultItem[]): PreviewPdfRe
 }
 
 function buildPreviewPdfResultMessage(payload: ExecutorResponsePayload | null, items: PreviewPdfResultItem[]): string {
-  const raw = payload as Record<string, any> | null
+  const raw = payload as JsonRecord | null
   if (items.length > 0) return ''
   if (raw?.previewPdfDownloadEnabled === false) return '本次未启用 Preview PDF 下载。'
   if (raw?.previewPdfDownloadEnabled === true) return '本次没有返回 Preview PDF 下载结果，可能未进入 Preview 页面或执行器版本未同步。'

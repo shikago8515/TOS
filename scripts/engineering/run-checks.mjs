@@ -62,6 +62,11 @@ const commandGroups = {
     command('release-update-sync-test', '.', pythonBin, [
       'scripts/release_update_sync_test.py',
     ]),
+    command('release-update-cache-check', '.', pythonBin, [
+      'scripts/release_update_sync.py',
+      '--check-local',
+      '--quiet',
+    ]),
   ],
   frontendFull: [
     command('frontend:lint', 'tms-frontend', npmCommand.executable, [...npmCommand.args, 'run', 'lint'], npmCommand.shell),

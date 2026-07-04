@@ -37,11 +37,11 @@ export function buildIplexDualTableCompareSummary(
 ): ProcessSummaryItem[] {
   return [
     {
-      label: 'RC输出行数',
+      label: '目标表输出行数',
       value: String(response.main_row_count ?? '-'),
     },
     {
-      label: 'PO查找行数',
+      label: '汇总表查找行数',
       value: String(response.lookup_row_count ?? '-'),
     },
     {
@@ -81,28 +81,28 @@ export function buildAutoIplexDualTableCompareProcessRequest(
     poHeaderRow: poSheet.header_row,
     rcHeaderRow: rcSheet.header_row,
     poKeyColumn: findRequiredSuggestedColumn(poSheet.headers, 'PO #', {
-      fieldLabel: 'PO 表 Key 列',
+      fieldLabel: '汇总表 Key 列',
       preferredLetter: 'A',
     }),
     rcKeyColumn: findRequiredSuggestedColumn(rcSheet.headers, 'BUYER ORDER NO.', {
-      fieldLabel: 'RC 表 Key 列',
+      fieldLabel: '目标表 Key 列',
       preferredLetter: 'C',
     }),
     poFourDigitColumn: findRequiredSuggestedColumn(poSheet.headers, 'Adjustment_per_unit', {
-      fieldLabel: 'PO 表 4位数值列',
+      fieldLabel: '汇总表 4位数值列',
       preferredLetter: 'AE',
     }),
     rcFourDigitColumn: findRequiredSuggestedColumn(rcSheet.headers, 'SHAS PRICE PER UNIT', {
-      fieldLabel: 'RC 表 4位数值列',
+      fieldLabel: '目标表 4位数值列',
       preferredLetter: 'G',
     }),
     poTwoDigitColumn: findRequiredSuggestedColumn(poSheet.headers, 'Total Adjustment Amount', {
-      fieldLabel: 'PO 表 2位数值列',
+      fieldLabel: '汇总表 2位数值列',
       preferredLetter: 'AF',
       preferLast: true,
     }),
     rcTwoDigitColumn: findRequiredSuggestedColumn(rcSheet.headers, 'TOTAL ADJUSTMENT', {
-      fieldLabel: 'RC 表 2位数值列',
+      fieldLabel: '目标表 2位数值列',
       preferredLetter: 'J',
     }),
   })

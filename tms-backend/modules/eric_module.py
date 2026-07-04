@@ -982,6 +982,16 @@ class EricModule:
             return CHECK_OK
         return CHECK_QTY_DIFF
 
+    @staticmethod
+    def size_check_remark(status: str) -> Optional[str]:
+        if status == CHECK_YTIC_ONLY:
+            return "Final_Data 未匹配到对应 PO/Article/Size"
+        if status == CHECK_FINAL_ONLY:
+            return "YTIC Size 未匹配到对应 PO/Article/Size"
+        if status == CHECK_QTY_DIFF:
+            return "数量不一致"
+        return None
+
     def build_size_check_rows(
         self,
         final_quantity_map: Dict[QuantityKey, int],
@@ -1206,13 +1216,14 @@ class EricModule:
                 row[4],
                 row[3],
                 f"=E{row_index}-D{row_index}",
+                self.size_check_remark(row[6]),
             ]
             for row_index, row in enumerate(size_check_rows, start=2)
         ]
         self.write_table_sheet(
             wb,
             "Size_Check",
-            ["PO Number", "Article Number", "Size", "PO Quantity", "Final Quantity", "margin"],
+            ["PO Number", "Article Number", "Size", "PO Quantity", "Final Quantity", "margin", "Remarks"],
             size_check_export_rows,
         )
         self.write_table_sheet(
@@ -1259,7 +1270,7 @@ class EricModule:
             ytic_destination_rows.append(export_row)
         self.write_table_sheet(
             wb,
-            "Destination1Extract",
+            "Destination_Extract",
             ytic_data["destination_headers"],
             ytic_destination_rows,
         )

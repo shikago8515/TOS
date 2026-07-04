@@ -176,6 +176,24 @@ CARTONS ONLY
 """
 
 
+INDONESIA_FORM_E_TEXT = """
+ASEAN-CHINA FREE TRADE AREA
+PREFERENTIAL TARIFF CERTIFICATE OF ORIGIN
+FORM E
+5.Item 6. Marks and 7.Number and type of packages, description of products 8.Origin criteria 9.Gross weight or net 10.Number,
+number numbers on (including quantity where appropriate and HS number in (see Overleaf weight or other quantity, date of
+packages six digit code) Notes) and value (FOB) only Invoices
+1 CART NO. THIRTEEN (13) CARTONS OFWOMEN'S KNITTED JACKET, PSR 124 PIECES 6541181456
+CUST O/N MAIN MATERIAL: Outer: 100% POLYURETHANE,Inner:100% JUL.03,2026
+PO NO POLYESTER RECYCLED,LINING:100% POLYESTER RECYCLED
+ART NO PO# 0902774332
+SIZE ARTICLE NO. ARTICLE NO.: LH1945
+QTY STYLE NO. STYLE NO.: RC2616OW007
+MADE IN CHINA HS Code:611300
+SAY TOTAL THIRTEEN (13) CARTONS ONLY
+"""
+
+
 JAPAN_RCEP_PAGES = [
     """
 REGIONAL COMPREHENSIVE ECONOMIC PARTNERSHIP AGREEMENT
@@ -468,6 +486,25 @@ class OriginCertificateOcrParserTests(unittest.TestCase):
         self.assertEqual(last_record.hs_code, "620462")
         self.assertEqual(last_record.goods_description, "WOMEN'S WOVEN DENIM PANTS,MAIN MATERIAL: 100% COTTON")
         self.assertTrue(all("PSR" not in record.goods_description for record in records))
+
+    def test_parse_indonesia_form_e_ignores_marks_column_labels(self):
+        records = self.parser.parse_text(INDONESIA_FORM_E_TEXT)
+
+        self.assertEqual(len(records), 1)
+        record = records[0]
+        self.assertEqual(record.po_number, "0902774332")
+        self.assertEqual(record.working_number, "RC2616OW007")
+        self.assertEqual(record.article_number, "LH1945")
+        self.assertEqual(record.customer_number, "")
+        self.assertEqual(record.quantity, 124)
+        self.assertEqual(record.cartons, 13)
+        self.assertEqual(record.cartons_in_words, "THIRTEEN")
+        self.assertEqual(record.hs_code, "611300")
+        self.assertEqual(
+            record.goods_description,
+            "WOMEN'S KNITTED JACKET,MAIN MATERIAL: Outer: 100% POLYURETHANE,"
+            "Inner:100% POLYESTER RECYCLED,LINING:100% POLYESTER RECYCLED",
+        )
 
     def test_parse_japan_rcep_item_blocks_merges_continuation_fields(self):
         records = self.parser.parse_pages(JAPAN_RCEP_PAGES)

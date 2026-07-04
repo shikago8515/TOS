@@ -20,6 +20,28 @@ describe('IplexDualTableComparePage source', () => {
     expect(uploadFieldsBlock).not.toContain('hint:')
   })
 
+  it('labels the second upload field as the target workbook', () => {
+    const uploadFieldsBlock = extractUploadFieldsBlock(readPageSource())
+
+    expect(uploadFieldsBlock).toContain("label: 'Total Adjustment & Shas Vas Price 汇总表'")
+    expect(uploadFieldsBlock).toContain("label: '目标表'")
+  })
+
+  it('uses business workbook names in mismatch preview headings', () => {
+    const pageSource = readPageSource()
+
+    expect(pageSource).toContain("text('目标表行号')")
+    expect(pageSource).toContain("text('目标表单价')")
+    expect(pageSource).toContain("text('汇总表单价')")
+    expect(pageSource).toContain("text('目标表金额')")
+    expect(pageSource).toContain("text('汇总表金额')")
+    expect(pageSource).not.toContain("text('RC 行号')")
+    expect(pageSource).not.toContain("text('RC 单价')")
+    expect(pageSource).not.toContain("text('PO 单价')")
+    expect(pageSource).not.toContain("text('RC 金额')")
+    expect(pageSource).not.toContain("text('PO 金额')")
+  })
+
   it('does not render helper copy under the mismatch preview title', () => {
     const pageSource = readPageSource()
 
