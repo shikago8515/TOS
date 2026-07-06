@@ -1,12 +1,13 @@
 {
-  "version": "1.0.0-beta.3.13",
+  "version": "1.0.0-beta.3.14",
   "date": "2026-07-06",
-  "noticeId": "2026-07-06-v1.0.0-beta.3.13",
+  "noticeId": "2026-07-06-v1.0.0-beta.3.14",
   "showPopup": false,
   "added": [],
   "improved": [],
   "fixed": [
-    "更新 iPlex 目标表上传标题"
+    "箱单下载必须先点击审批",
+    "箱单下载前先审批详情页"
   ],
   "modules": [],
   "sections": []

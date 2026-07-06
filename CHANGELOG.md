@@ -1,3 +1,10 @@
+## [1.0.0-beta.3.14](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.13...v1.0.0-beta.3.14) (2026-07-06)
+
+### Bug Fixes
+
+* 箱单下载前先审批详情页 ([b56e8df](http://172.16.48.208:3001/luenthai-ai/TOS/commit/b56e8dfa88063e939c39d849f889d90c7bab7a01))
+* 箱单下载必须先点击审批 ([f3c0bbf](http://172.16.48.208:3001/luenthai-ai/TOS/commit/f3c0bbfc5c198836b432abcc06eb96a1a8c0c6f5))
+
 ## [1.0.0-beta.3.13](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.12...v1.0.0-beta.3.13) (2026-07-06)
 
 ### Bug Fixes

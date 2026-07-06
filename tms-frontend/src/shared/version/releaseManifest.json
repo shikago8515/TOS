@@ -1,25 +1,26 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.13",
-  "tag": "v1.0.0-beta.3.13",
-  "gitSha": "0de22a8d94c33158f0a107fd7827688506bad1e0",
+  "version": "1.0.0-beta.3.14",
+  "tag": "v1.0.0-beta.3.14",
+  "gitSha": "f3c0bbfc5c198836b432abcc06eb96a1a8c0c6f5",
   "releaseDate": "2026-07-06",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.13",
+    "version": "1.0.0-beta.3.14",
     "date": "2026-07-06",
-    "noticeId": "2026-07-06-v1.0.0-beta.3.13",
+    "noticeId": "2026-07-06-v1.0.0-beta.3.14",
     "showPopup": false,
     "added": [],
     "improved": [],
     "fixed": [
-      "更新 iPlex 目标表上传标题"
+      "箱单下载必须先点击审批",
+      "箱单下载前先审批详情页"
     ],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.13",
-    "version": "1.0.0-beta.3.13",
+    "noticeId": "v1.0.0-beta.3.14",
+    "version": "1.0.0-beta.3.14",
     "releaseDate": "2026-07-06",
     "showPopup": false,
     "level": "maintenance",
@@ -29,7 +30,8 @@
         "title": "修复",
         "icon": "check-circle",
         "items": [
-          "更新 iPlex 目标表上传标题"
+          "箱单下载必须先点击审批",
+          "箱单下载前先审批详情页"
         ]
       }
     ]
