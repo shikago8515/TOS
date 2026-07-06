@@ -179,7 +179,7 @@ const uploadFields = computed<ExcelFileField[]>(() => [
   },
   {
     id: 'lookup',
-    label: '目标表',
+    label: 'Total Adjustment & Shas Vas Price 目标表',
     files: lookupFiles.value,
     accept: '.xls,.xlsx,.xlsm',
     acceptLabel: '支持 .xls / .xlsx / .xlsm',
