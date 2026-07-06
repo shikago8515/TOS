@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "release-v1.0.0-beta.3.14",
+    "version": "1.0.0-beta.3.14",
+    "releaseDate": "2026-07-06",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.14",
+    "description": "Release v1.0.0-beta.3.14. Channel: beta.3. Commit: f3c0bbfc5c198836b432abcc06eb96a1a8c0c6f5. Release notes: 箱单下载必须先点击审批；箱单下载前先审批详情页."
+  },
+  {
     "recordKey": "release-v1.0.0-beta.3.13",
     "version": "1.0.0-beta.3.13",
     "releaseDate": "2026-07-06",
