@@ -1,13 +1,12 @@
 {
-  "version": "1.0.0-beta.3.14",
+  "version": "1.0.0-beta.3.15",
   "date": "2026-07-06",
-  "noticeId": "2026-07-06-v1.0.0-beta.3.14",
+  "noticeId": "2026-07-06-v1.0.0-beta.3.15",
   "showPopup": false,
   "added": [],
   "improved": [],
   "fixed": [
-    "箱单下载必须先点击审批",
-    "箱单下载前先审批详情页"
+    "放宽自动化模块热更新等待时间"
   ],
   "modules": [],
   "sections": []

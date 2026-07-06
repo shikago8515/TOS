@@ -1,3 +1,9 @@
+## [1.0.0-beta.3.15](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.14...v1.0.0-beta.3.15) (2026-07-06)
+
+### Bug Fixes
+
+* 放宽自动化模块热更新等待时间 ([0d93197](http://172.16.48.208:3001/luenthai-ai/TOS/commit/0d9319716e839e6fcd5ed38e7383bc70b2ddee7c))
+
 ## [1.0.0-beta.3.14](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.13...v1.0.0-beta.3.14) (2026-07-06)
 
 ### Bug Fixes
