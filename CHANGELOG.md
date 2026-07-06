@@ -1,3 +1,9 @@
+## [1.0.0-beta.3.21](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.20...v1.0.0-beta.3.21) (2026-07-06)
+
+### Bug Fixes
+
+* improve Sophia Tina Excel 2013 output ([a384a7e](http://172.16.48.208:3001/luenthai-ai/TOS/commit/a384a7e2e377e54d5a89a397bffb5c9fa8302a94))
+
 ## [1.0.0-beta.3.20](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.19...v1.0.0-beta.3.20) (2026-07-06)
 
 ## [1.0.0-beta.3.19](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.18...v1.0.0-beta.3.19) (2026-07-06)

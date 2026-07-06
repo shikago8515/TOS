@@ -1,35 +1,35 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.20",
-  "tag": "v1.0.0-beta.3.20",
-  "gitSha": "c1bc531927fdaa3bf1ee85cda57aac46d5bdce49",
+  "version": "1.0.0-beta.3.21",
+  "tag": "v1.0.0-beta.3.21",
+  "gitSha": "a384a7e2e377e54d5a89a397bffb5c9fa8302a94",
   "releaseDate": "2026-07-06",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.20",
+    "version": "1.0.0-beta.3.21",
     "date": "2026-07-06",
-    "noticeId": "2026-07-06-v1.0.0-beta.3.20",
+    "noticeId": "2026-07-06-v1.0.0-beta.3.21",
     "showPopup": false,
     "added": [],
-    "improved": [
-      "补齐 Jane 子流程响应契约 schema"
+    "improved": [],
+    "fixed": [
+      "improve Sophia Tina Excel 2013 output"
     ],
-    "fixed": [],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.20",
-    "version": "1.0.0-beta.3.20",
+    "noticeId": "v1.0.0-beta.3.21",
+    "version": "1.0.0-beta.3.21",
     "releaseDate": "2026-07-06",
     "showPopup": false,
     "level": "maintenance",
     "title": "本次更新内容",
     "groups": [
       {
-        "title": "优化",
-        "icon": "activity",
+        "title": "修复",
+        "icon": "check-circle",
         "items": [
-          "补齐 Jane 子流程响应契约 schema"
+          "improve Sophia Tina Excel 2013 output"
         ]
       }
     ]

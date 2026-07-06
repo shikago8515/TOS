@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "release-v1.0.0-beta.3.21",
+    "version": "1.0.0-beta.3.21",
+    "releaseDate": "2026-07-06",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.21",
+    "description": "Release v1.0.0-beta.3.21. Channel: beta.3. Commit: a384a7e2e377e54d5a89a397bffb5c9fa8302a94. Release notes: improve Sophia Tina Excel 2013 output."
+  },
+  {
     "recordKey": "release-v1.0.0-beta.3.20",
     "version": "1.0.0-beta.3.20",
     "releaseDate": "2026-07-06",
