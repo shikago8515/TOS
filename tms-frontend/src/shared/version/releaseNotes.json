@@ -1,12 +1,12 @@
 {
-  "version": "1.0.0-beta.3.11",
+  "version": "1.0.0-beta.3.12",
   "date": "2026-07-06",
-  "noticeId": "2026-07-06-v1.0.0-beta.3.11",
-  "showPopup": false,
-  "added": [],
-  "improved": [
-    "补齐 Jessca 响应契约 schema"
+  "noticeId": "2026-07-06-v1.0.0-beta.3.12",
+  "showPopup": true,
+  "added": [
+    "archive Xinlongtai preview PDFs"
   ],
+  "improved": [],
   "fixed": [],
   "modules": [],
   "sections": []
