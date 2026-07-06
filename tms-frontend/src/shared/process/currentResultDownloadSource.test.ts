@@ -6,6 +6,7 @@ const currentResultPages = [
   '../../pages/draft-packing-compare/DraftPackingComparePage.vue',
   '../../pages/excel-template-mapper-test/ExcelTemplateMapperTestPage.vue',
   '../../pages/iplex-dual-table-compare/IplexDualTableComparePage.vue',
+  '../../pages/jason-result-set-excel/JasonResultSetExcelPage.vue',
   '../../pages/jane/JanePage.vue',
   '../../pages/jane-bom-compare/JaneBomComparePage.vue',
   '../../pages/jane-bom-summary/JaneBomSummaryPage.vue',

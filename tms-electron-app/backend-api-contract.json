@@ -17,6 +17,8 @@
     "/api/jason/pdf-reorder/preview-invoice",
     "/api/jason/pdf-reorder/preview-po",
     "/api/jason/pdf-reorder/process",
+    "/api/jason/result-set-excel/download/{filename}",
+    "/api/jason/result-set-excel/process",
     "/api/it-invoice-pdf-reorder/download/{job_id}",
     "/api/it-invoice-pdf-reorder/extract-numbers",
     "/api/it-invoice-pdf-reorder/health",

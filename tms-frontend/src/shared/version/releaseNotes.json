@@ -1,11 +1,11 @@
 {
-  "version": "1.0.0-beta.3.9",
-  "date": "2026-07-04",
-  "noticeId": "2026-07-04-v1.0.0-beta.3.9",
+  "version": "1.0.0-beta.3.11",
+  "date": "2026-07-06",
+  "noticeId": "2026-07-06-v1.0.0-beta.3.11",
   "showPopup": false,
   "added": [],
   "improved": [
-    "收口自动化执行器契约类型回流"
+    "补齐 Jessca 响应契约 schema"
   ],
   "fixed": [],
   "modules": [],

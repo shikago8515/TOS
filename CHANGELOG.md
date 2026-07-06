@@ -1,3 +1,17 @@
+## [1.0.0-beta.3.11](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.10...v1.0.0-beta.3.11) (2026-07-06)
+
+## [1.0.0-beta.3.10](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.9...v1.0.0-beta.3.10) (2026-07-04)
+
+### Features
+
+* 完善自动化模块与PDF重排流程 ([2b6d6a7](http://172.16.48.208:3001/luenthai-ai/TOS/commit/2b6d6a72a5c39e95298b897ffbacd18aa3533393))
+* 添加 Jason Result Set Excel 模块 ([9981ef9](http://172.16.48.208:3001/luenthai-ai/TOS/commit/9981ef9e057bb7c193f5cf5e64a8355184f24f48))
+
+### Bug Fixes
+
+* 修复 Jason 手动重排结果下载 ([099452b](http://172.16.48.208:3001/luenthai-ai/TOS/commit/099452b45bed5d42c7fe2a883af9efd2defa2418))
+* 补充自动化页面英文翻译 ([09aab49](http://172.16.48.208:3001/luenthai-ai/TOS/commit/09aab49fb32dd32adfac52766f3a69ec28470761))
+
 ## [1.0.0-beta.3.9](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.8...v1.0.0-beta.3.9) (2026-07-04)
 
 ## [1.0.0-beta.3.8](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.7...v1.0.0-beta.3.8) (2026-07-04)
