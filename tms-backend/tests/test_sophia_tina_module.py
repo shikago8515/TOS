@@ -643,6 +643,81 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
             finally:
                 wb.close()
 
+    def test_factory_price_reads_first_complete_sheet_with_detected_header(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            work_dir = Path(temp_dir)
+            tms_path = self._write_excel(
+                work_dir,
+                "tms.xlsx",
+                [
+                    {
+                        "Factory": "FACTORY-A",
+                        "PO Number": "PO-SCAN",
+                        "Working Number": "WN-SCAN",
+                        "Article Number": "ART-SCAN",
+                        "Article Description": "Scanned factory price row",
+                        "Customer Request Date (CRD)": "2026-01-01",
+                        "PODD": "2026-02-01",
+                        "Shipment Method": "Ocean",
+                        "Gps Customer Number": "GPS-SCAN",
+                        "Country/Region": "CHINA",
+                        "Ordered Quantity": 10,
+                    },
+                ],
+            )
+            tms_price_path = self._write_excel(
+                work_dir,
+                "tms-price.xlsx",
+                [
+                    {
+                        "Working Number (M)": "WN-SCAN",
+                        "Article Number (A)": "ART-SCAN",
+                        "Season (M)": "SS26",
+                        "Marketing Forecast (M)": 100,
+                        "Milestone (C)": "Final",
+                        "Intl. FOB (C)": 20.0,
+                        "Factory Group Code (MF)": "FACTORY-A",
+                    },
+                ],
+            )
+            price_path = work_dir / "factory-price.xlsx"
+            price_wb = Workbook()
+            incomplete_ws = price_wb.active
+            incomplete_ws.title = "Summary"
+            incomplete_ws.append([])
+            incomplete_ws.append([])
+            incomplete_ws.append(["Pack", "Season", "Working Number", "Factory", "Factory Price", "TMS Price"])
+            incomplete_ws.append(["PACK-IGNORED", "SS26", "WN-SCAN", "FACTORY-A", 1.0, 2.0])
+            valid_ws = price_wb.create_sheet("Factory Price")
+            valid_ws.append(["Pack", "Season", "Working Number", "Article Number", "Factory", "Factory Price", "TMS Price"])
+            valid_ws.append(["PACK-SCAN", "SS26", "WN-SCAN", "ART-SCAN", "FACTORY-A", 9.0, 19.0])
+            price_wb.save(price_path)
+            price_wb.close()
+
+            result = self.module.process_reports(
+                [tms_path],
+                [tms_price_path],
+                [str(price_path)],
+                output_dir=str(work_dir),
+            )
+
+            self.assertTrue(result["success"], result["message"])
+            wb = load_workbook(result["output_path"], data_only=False, read_only=True)
+            try:
+                result_ws = wb["Result"]
+                headers = [cell.value for cell in result_ws[1]]
+                column_by_name = {name: index + 1 for index, name in enumerate(headers)}
+                self.assertEqual(
+                    result_ws.cell(row=2, column=column_by_name["Pack"]).value,
+                    "PACK-SCAN",
+                )
+                self.assertEqual(
+                    result_ws.cell(row=2, column=column_by_name["Factory Price(USD)"]).value,
+                    9.0,
+                )
+            finally:
+                wb.close()
+
     def test_tms_price_uses_milestone_priority_order_instead_of_source_row_order(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             work_dir = Path(temp_dir)

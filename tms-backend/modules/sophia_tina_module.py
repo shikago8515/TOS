@@ -2052,28 +2052,46 @@ class SophiaTinaModule:
         self,
         file_list: List[str],
         required_aliases: List[List[str]],
+        scan_all_sheets: bool = False,
     ) -> Tuple[Optional[pd.DataFrame], List[str]]:
         """读取标题行位置不固定的 Excel 文件，按字段名而不是固定行列定位。"""
         dfs: List[pd.DataFrame] = []
         logs: List[str] = []
 
         for file_path in file_list:
+            file_name = os.path.basename(file_path)
             try:
+                if scan_all_sheets:
+                    # Factory Price 文件可能把辅助 sheet 放在最前面，需按必需字段选择第一个有效 sheet。
+                    raw_sheets = pd.read_excel(file_path, sheet_name=None, header=None)
+                    selected_df: Optional[pd.DataFrame] = None
+                    for sheet_name, raw_df in raw_sheets.items():
+                        header_row_index = self._detect_header_row(raw_df, required_aliases)
+                        if header_row_index is None:
+                            continue
+                        selected_df = self._build_detected_header_dataframe(raw_df, header_row_index)
+                        dfs.append(selected_df)
+                        logs.append(
+                            f"  - 读取成功：{file_name} / {sheet_name}，"
+                            f"标题行 {header_row_index + 1}，共 {len(selected_df)} 行"
+                        )
+                        break
+                    if selected_df is None:
+                        logs.append(f"  ⚠️ 未找到标题行：{file_name}")
+                    continue
+
                 raw_df = pd.read_excel(file_path, header=None)
                 header_row_index = self._detect_header_row(raw_df, required_aliases)
                 if header_row_index is None:
-                    logs.append(f"  ⚠️ 未找到标题行：{os.path.basename(file_path)}")
+                    logs.append(f"  ⚠️ 未找到标题行：{file_name}")
                     continue
-                headers = raw_df.iloc[header_row_index].tolist()
-                df = raw_df.iloc[header_row_index + 1:].copy()
-                df.columns = headers
-                df = df.dropna(how='all')
+                df = self._build_detected_header_dataframe(raw_df, header_row_index)
                 dfs.append(df)
                 logs.append(
-                    f"  - 读取成功：{os.path.basename(file_path)}，标题行 {header_row_index + 1}，共 {len(df)} 行"
+                    f"  - 读取成功：{file_name}，标题行 {header_row_index + 1}，共 {len(df)} 行"
                 )
             except Exception as e:
-                logs.append(f"  ⚠️ 读取失败：{os.path.basename(file_path)}，错误：{str(e)}")
+                logs.append(f"  ⚠️ 读取失败：{file_name}，错误：{str(e)}")
 
         if not dfs:
             return None, logs
@@ -2083,6 +2101,13 @@ class SophiaTinaModule:
         result = pd.concat(dfs, axis=0, ignore_index=True)
         logs.append(f"  ✅ 合并成功，总计 {len(result)} 行")
         return result, logs
+
+    @staticmethod
+    def _build_detected_header_dataframe(raw_df: pd.DataFrame, header_row_index: int) -> pd.DataFrame:
+        headers = raw_df.iloc[header_row_index].tolist()
+        df = raw_df.iloc[header_row_index + 1:].copy()
+        df.columns = headers
+        return df.dropna(how='all')
 
     def _detect_header_row(self, raw_df: pd.DataFrame, required_aliases: List[List[str]]) -> Optional[int]:
         for row_index in range(min(len(raw_df), 12)):
@@ -2588,7 +2613,11 @@ class SophiaTinaModule:
             log(f"✅ TMS Price 文件读取完成，共 {len(tms_price_df)} 行数据")
 
             log("\n📖 正在读取 Factory Price 文件...")
-            price_df, price_logs = self.read_excel_files(price_paths)
+            price_df, price_logs = self.read_excel_files_with_detected_header(
+                price_paths,
+                [["Season"], ["Working Number"], ["Article Number"], ["Factory"], ["Factory Price"]],
+                scan_all_sheets=True,
+            )
             result['logs'].extend(price_logs)
 
             if price_df is None:
