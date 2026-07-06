@@ -26,6 +26,7 @@ const defaultAutomationHelperDownloadPath = '/api/system/config/automation-helpe
 const localHealthProbeTimeoutMs = 2500
 const localLauncherProbeTimeoutMs = 1200
 const localLauncherRequestTimeoutMs = 15000
+const localLauncherModuleSyncTimeoutMs = 300000
 const localLauncherStartTimeoutMs = 90000
 const automationTemplateBackendTarget = 'remote'
 export const minimumAutomationHelperVersion = '1.0.0-beta.3.4'
@@ -1039,7 +1040,7 @@ export async function syncLocalAutomationModules(
   await ensureLocalAutomationLauncher()
   return requestLauncherJson<LocalAutomationModuleSyncResult>('POST', '/api/modules/sync-all', {
     forceUpdate: options.forceUpdate !== false,
-  })
+  }, localLauncherModuleSyncTimeoutMs)
 }
 
 export async function fetchLocalAutomationModuleSyncStatus(): Promise<LocalAutomationModuleSyncResult> {
@@ -1373,7 +1374,9 @@ async function fetchWithTimeout(
   timeoutMs: number,
 ): Promise<Response> {
   const controller = new AbortController()
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+  const timer = window.setTimeout(() => {
+    controller.abort(new DOMException(`Request timed out after ${timeoutMs}ms.`, 'TimeoutError'))
+  }, timeoutMs)
 
   try {
     return await window.fetch(input, {
