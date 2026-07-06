@@ -1,14 +1,12 @@
 {
-  "version": "1.0.0-beta.3.16",
+  "version": "1.0.0-beta.3.17",
   "date": "2026-07-06",
-  "noticeId": "2026-07-06-v1.0.0-beta.3.16",
+  "noticeId": "2026-07-06-v1.0.0-beta.3.17",
   "showPopup": false,
   "added": [],
-  "improved": [
-    "补齐 Jane 响应契约 schema"
-  ],
+  "improved": [],
   "fixed": [
-    "收敛箱单下载审批链路"
+    "箱单审批后确认签核"
   ],
   "modules": [],
   "sections": []

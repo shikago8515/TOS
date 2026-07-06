@@ -1,3 +1,9 @@
+## [1.0.0-beta.3.17](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.16...v1.0.0-beta.3.17) (2026-07-06)
+
+### Bug Fixes
+
+* 箱单审批后确认签核 ([87f6454](http://172.16.48.208:3001/luenthai-ai/TOS/commit/87f64541a5ac957e9f6ad3c7a8417c865a622191))
+
 ## [1.0.0-beta.3.16](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.15...v1.0.0-beta.3.16) (2026-07-06)
 
 ### Bug Fixes
