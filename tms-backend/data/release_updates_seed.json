@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "release-v1.0.0-beta.3.18",
+    "version": "1.0.0-beta.3.18",
+    "releaseDate": "2026-07-06",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.18",
+    "description": "Release v1.0.0-beta.3.18. Channel: beta.3. Commit: 2bedaffed5c84894a24ea0b1cca1805333478b58. Release notes: 修复 Sophia Tina Factory Price 表头识别."
+  },
+  {
     "recordKey": "release-v1.0.0-beta.3.17",
     "version": "1.0.0-beta.3.17",
     "releaseDate": "2026-07-06",

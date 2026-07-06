@@ -1,25 +1,25 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.17",
-  "tag": "v1.0.0-beta.3.17",
-  "gitSha": "74e6e951103ff756b00de2c9dfcd0cb9ec7fde7a",
+  "version": "1.0.0-beta.3.18",
+  "tag": "v1.0.0-beta.3.18",
+  "gitSha": "2bedaffed5c84894a24ea0b1cca1805333478b58",
   "releaseDate": "2026-07-06",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.17",
+    "version": "1.0.0-beta.3.18",
     "date": "2026-07-06",
-    "noticeId": "2026-07-06-v1.0.0-beta.3.17",
+    "noticeId": "2026-07-06-v1.0.0-beta.3.18",
     "showPopup": false,
     "added": [],
     "improved": [],
     "fixed": [
-      "箱单审批后确认签核"
+      "修复 Sophia Tina Factory Price 表头识别"
     ],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.17",
-    "version": "1.0.0-beta.3.17",
+    "noticeId": "v1.0.0-beta.3.18",
+    "version": "1.0.0-beta.3.18",
     "releaseDate": "2026-07-06",
     "showPopup": false,
     "level": "maintenance",
@@ -29,7 +29,7 @@
         "title": "修复",
         "icon": "check-circle",
         "items": [
-          "箱单审批后确认签核"
+          "修复 Sophia Tina Factory Price 表头识别"
         ]
       }
     ]

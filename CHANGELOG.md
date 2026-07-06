@@ -1,3 +1,9 @@
+## [1.0.0-beta.3.18](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.17...v1.0.0-beta.3.18) (2026-07-06)
+
+### Bug Fixes
+
+* 修复 Sophia Tina Factory Price 表头识别 ([209b36e](http://172.16.48.208:3001/luenthai-ai/TOS/commit/209b36e3a6f11761e0a3831b03ad668d8bcf76ae))
+
 ## [1.0.0-beta.3.17](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.16...v1.0.0-beta.3.17) (2026-07-06)
 
 ### Bug Fixes
