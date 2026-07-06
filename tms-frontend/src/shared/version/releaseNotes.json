@@ -1,13 +1,13 @@
 {
-  "version": "1.0.0-beta.3.19",
+  "version": "1.0.0-beta.3.20",
   "date": "2026-07-06",
-  "noticeId": "2026-07-06-v1.0.0-beta.3.19",
+  "noticeId": "2026-07-06-v1.0.0-beta.3.20",
   "showPopup": false,
   "added": [],
-  "improved": [],
-  "fixed": [
-    "修正 Sophia Tina 报表生成格式"
+  "improved": [
+    "补齐 Jane 子流程响应契约 schema"
   ],
+  "fixed": [],
   "modules": [],
   "sections": []
 }

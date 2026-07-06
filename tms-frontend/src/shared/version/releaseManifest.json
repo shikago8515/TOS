@@ -1,35 +1,35 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.19",
-  "tag": "v1.0.0-beta.3.19",
-  "gitSha": "21cad5280a43188beda789adb1a5b3e022ac5b8d",
+  "version": "1.0.0-beta.3.20",
+  "tag": "v1.0.0-beta.3.20",
+  "gitSha": "c1bc531927fdaa3bf1ee85cda57aac46d5bdce49",
   "releaseDate": "2026-07-06",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.19",
+    "version": "1.0.0-beta.3.20",
     "date": "2026-07-06",
-    "noticeId": "2026-07-06-v1.0.0-beta.3.19",
+    "noticeId": "2026-07-06-v1.0.0-beta.3.20",
     "showPopup": false,
     "added": [],
-    "improved": [],
-    "fixed": [
-      "修正 Sophia Tina 报表生成格式"
+    "improved": [
+      "补齐 Jane 子流程响应契约 schema"
     ],
+    "fixed": [],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.19",
-    "version": "1.0.0-beta.3.19",
+    "noticeId": "v1.0.0-beta.3.20",
+    "version": "1.0.0-beta.3.20",
     "releaseDate": "2026-07-06",
     "showPopup": false,
     "level": "maintenance",
     "title": "本次更新内容",
     "groups": [
       {
-        "title": "修复",
-        "icon": "check-circle",
+        "title": "优化",
+        "icon": "activity",
         "items": [
-          "修正 Sophia Tina 报表生成格式"
+          "补齐 Jane 子流程响应契约 schema"
         ]
       }
     ]
