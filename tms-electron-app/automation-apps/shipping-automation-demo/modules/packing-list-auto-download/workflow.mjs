@@ -3624,9 +3624,10 @@ async function downloadPackingManifestPdfForGroup(options) {
   }
 
   const approvalResult = await approvePackingManifestDetailIfPresent(downloadPage, config);
-  if (approvalResult.clicked) {
-    context = downloadPage.context();
+  if (!approvalResult.clicked) {
+    throw new Error(`箱单详情页未成功点击 Approve，已停止下载 PDF。原因：${approvalResult.source || "approve-click-failed"}`);
   }
+  context = downloadPage.context();
 
   const directRequestResult = absoluteDetailUrl
     ? await downloadPackingManifestPdfByDetailRequest({
@@ -3748,52 +3749,113 @@ async function approvePackingManifestDetailIfPresent(page, config) {
     return { clicked: false, source: "page-closed" };
   }
 
-  const roots = [page, ...page.frames()];
-  const selectors = [
-    'input[type="button"][value="Approve"][onclick*="signDoc"]',
-    'input.styledActionButton[type="button"][value="Approve"][onclick*="signDoc"]',
-    'input.styledActionButton[type="button"][value="Approve"]',
-    'input[type="button"][value="Approve"]',
-  ];
+  const deadline = Date.now() + Math.min(Number(config.navigationTimeoutMs) || 30000, 10000);
+  let lastFoundSource = "";
 
-  for (const root of roots) {
-    for (const selector of selectors) {
-      const button = root.locator(selector).first();
-      if (!await isLocatorVisible(button, 700)) {
-        continue;
-      }
-
-      await button.scrollIntoViewIfNeeded({ timeout: 1000 }).catch(() => {});
-      const dialogHandler = (dialog) => {
-        dialog.accept().catch(() => {});
-      };
-      page.once("dialog", dialogHandler);
-      try {
-        await button.evaluate((element) => {
-          try {
-            window.isReauthRequiredToSign = false;
-          } catch {
-            // The page owns this flag; ignore if a frame blocks direct assignment.
-          }
-          element.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, cancelable: true, view: window }));
-          element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
-          element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
-          element.click();
-        }).catch(async () => {
-          await button.click({ timeout: Math.min(Number(config.navigationTimeoutMs) || 30000, 3000) });
-        });
-        await page.waitForLoadState("domcontentloaded", {
-          timeout: Math.min(Number(config.navigationTimeoutMs) || 30000, 5000),
-        }).catch(() => {});
+  while (Date.now() < deadline) {
+    const roots = [page, ...page.frames()];
+    for (const root of roots) {
+      const clickResult = await clickPackingManifestApproveButtonInRoot(page, root);
+      if (clickResult.clicked) {
+        await Promise.race([
+          page.waitForLoadState("domcontentloaded", {
+            timeout: Math.min(Number(config.navigationTimeoutMs) || 30000, 5000),
+          }).catch(() => null),
+          delay(1200),
+        ]);
         await waitForPageSettled(page, config);
-        return { clicked: true, source: selector };
-      } finally {
-        page.off?.("dialog", dialogHandler);
+        return clickResult;
+      }
+      if (clickResult.found) {
+        lastFoundSource = clickResult.source || "approve-button-found-not-clicked";
       }
     }
+    await delay(250);
   }
 
-  return { clicked: false, source: "approve-button-not-present" };
+  return {
+    clicked: false,
+    source: lastFoundSource || "approve-button-not-present",
+  };
+}
+
+async function clickPackingManifestApproveButtonInRoot(page, root) {
+  if (!root || page.isClosed?.()) {
+    return { clicked: false, found: false, source: "page-closed" };
+  }
+
+  const dialogHandler = (dialog) => {
+    dialog.accept().catch(() => {});
+  };
+  page.once("dialog", dialogHandler);
+  try {
+    return await root.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll('input[type="button"], button'))
+        .map((element) => {
+          const value = String(element.value || element.textContent || "").trim();
+          const onclick = String(element.getAttribute("onclick") || "");
+          const className = String(element.className || "");
+          const source = element.outerHTML
+            ? element.outerHTML.replace(/\s+/g, " ").slice(0, 220)
+            : "approve-button";
+          return {
+            element,
+            value,
+            onclick,
+            className,
+            source,
+          };
+        })
+        .filter((item) => (
+          item.value.toLowerCase() === "approve"
+          && (
+            /signDoc\s*\(/i.test(item.onclick)
+            || /\bstyledActionButton\b/i.test(item.className)
+          )
+        ));
+
+      if (candidates.length === 0) {
+        return { clicked: false, found: false, source: "approve-button-not-present" };
+      }
+
+      const isUsable = (element) => {
+        if (!element || element.disabled) {
+          return false;
+        }
+        const style = window.getComputedStyle(element);
+        if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
+          return false;
+        }
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      };
+      const target = candidates.find((item) => isUsable(item.element)) || candidates[0];
+      if (target.element.disabled) {
+        return { clicked: false, found: true, source: "approve-button-disabled" };
+      }
+
+      try {
+        window.isReauthRequiredToSign = false;
+      } catch {
+        // The Infor page owns this flag; ignore if the browser blocks assignment.
+      }
+      target.element.scrollIntoView({ block: "center", inline: "center" });
+      target.element.focus?.();
+      target.element.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, cancelable: true, view: window }));
+      target.element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+      target.element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+      target.element.click();
+      return { clicked: true, found: true, source: target.source || "approve-button" };
+    });
+  } catch (error) {
+    return {
+      clicked: false,
+      found: false,
+      source: `approve-click-evaluate-failed:${error?.message || error}`,
+    };
+  } finally {
+    page.off?.("dialog", dialogHandler);
+  }
 }
 
 function withPackingManifestApprovalInfo(result, approvalResult) {
