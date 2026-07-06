@@ -2028,14 +2028,14 @@ async function processPackingManifestGroup(options) {
         text: linkInfo.text || "",
       });
       updateProgress({
-        phase: "请求箱单详情",
-        message: `NO ${no} 的 PO ${poNumber} 已搜到结果，正在请求箱单详情并下载 PDF。`,
+        phase: "审批箱单",
+        message: `NO ${no} 的 PO ${poNumber} 已搜到结果，正在进入详情页并点击 Approve。`,
         currentPackingListNumbers: [no],
         currentPoNumbers: [poNumber],
       });
       const detailPage = openResult.page || page;
-      await showProgressBadge(detailPage, `已搜到 PO ${poNumber}，正在下载箱单`, {
-        phase: "download-pdf",
+      await showProgressBadge(detailPage, `已搜到 PO ${poNumber}，准备点击 Approve`, {
+        phase: "approve-packing-list",
         no,
         poNumber,
         totalCount: groupTotal,
@@ -3610,20 +3610,6 @@ async function downloadPackingManifestPdfForGroup(options) {
     ? new URL(detailUrl, downloadPage.url()).toString()
     : "";
 
-  const directRequestResult = absoluteDetailUrl
-    ? await downloadPackingManifestPdfByDetailRequest({
-      context,
-      detailUrl: absoluteDetailUrl,
-      fileName,
-      filePath,
-      linkInfo,
-      referer: downloadPage.url(),
-    })
-    : null;
-  if (directRequestResult) {
-    return directRequestResult;
-  }
-
   if (absoluteDetailUrl && isPackingManifestResultsUrl(downloadPage.url())) {
     downloadPage = await openPackingManifestDetailByUrl(downloadPage, {
       ...linkInfo,
@@ -3637,6 +3623,29 @@ async function downloadPackingManifestPdfForGroup(options) {
     throw new Error(`PackingManifest detail page was not opened; refusing to look for View PDF on the results page: ${absoluteDetailUrl || "missing detail url"}`);
   }
 
+  const approvalResult = await approvePackingManifestDetailIfPresent(downloadPage, config);
+  if (approvalResult.clicked) {
+    context = downloadPage.context();
+  }
+
+  const directRequestResult = absoluteDetailUrl
+    ? await downloadPackingManifestPdfByDetailRequest({
+      context,
+      detailUrl: absoluteDetailUrl,
+      fileName,
+      filePath,
+      linkInfo,
+      referer: downloadPage.url(),
+    })
+    : null;
+  if (directRequestResult) {
+    return {
+      ...directRequestResult,
+      approvalClicked: approvalResult.clicked,
+      approvalSource: approvalResult.source || "",
+    };
+  }
+
   const directPdfUrl = await resolvePackingManifestPdfUrlFromDetailPage(downloadPage);
   if (directPdfUrl) {
     const directFetchResult = await fetchAndSavePackingManifestPdfUrl({
@@ -3648,7 +3657,11 @@ async function downloadPackingManifestPdfForGroup(options) {
       source: "packing-manifest-pdf-request",
     });
     if (directFetchResult) {
-      return directFetchResult;
+      return {
+        ...directFetchResult,
+        approvalClicked: approvalResult.clicked,
+        approvalSource: approvalResult.source || "",
+      };
     }
   }
 
@@ -3678,7 +3691,10 @@ async function downloadPackingManifestPdfForGroup(options) {
     delay(3000).then(() => null),
   ]);
   if (earlyDownload) {
-    return saveDownloadAs(earlyDownload, filePath, fileName, "playwright-download");
+    return withPackingManifestApprovalInfo(
+      await saveDownloadAs(earlyDownload, filePath, fileName, "playwright-download"),
+      approvalResult,
+    );
   }
 
   const response = await Promise.race([
@@ -3693,7 +3709,7 @@ async function downloadPackingManifestPdfForGroup(options) {
       response,
     });
     if (responseResult) {
-      return responseResult;
+      return withPackingManifestApprovalInfo(responseResult, approvalResult);
     }
   }
 
@@ -3702,7 +3718,10 @@ async function downloadPackingManifestPdfForGroup(options) {
     await waitForPdfViewerSurface(pdfViewerPage, 5000);
     const viewerDownload = await triggerPdfViewerSaveDownload(pdfViewerPage, config);
     if (viewerDownload) {
-      return saveDownloadAs(viewerDownload, filePath, fileName, "pdf-viewer-save-button");
+      return withPackingManifestApprovalInfo(
+        await saveDownloadAs(viewerDownload, filePath, fileName, "pdf-viewer-save-button"),
+        approvalResult,
+      );
     }
 
     const embedSrc = await findPdfEmbedSource(pdfViewerPage, 8000);
@@ -3716,12 +3735,73 @@ async function downloadPackingManifestPdfForGroup(options) {
         source: "pdf-embed-src",
       });
       if (fetchResult) {
-        return fetchResult;
+        return withPackingManifestApprovalInfo(fetchResult, approvalResult);
       }
     }
   }
 
   throw new Error("已点击 View PDF，但未能捕获 PDF 下载、PDF 响应或可保存的 PDF 地址。");
+}
+
+async function approvePackingManifestDetailIfPresent(page, config) {
+  if (!page || page.isClosed?.()) {
+    return { clicked: false, source: "page-closed" };
+  }
+
+  const roots = [page, ...page.frames()];
+  const selectors = [
+    'input[type="button"][value="Approve"][onclick*="signDoc"]',
+    'input.styledActionButton[type="button"][value="Approve"][onclick*="signDoc"]',
+    'input.styledActionButton[type="button"][value="Approve"]',
+    'input[type="button"][value="Approve"]',
+  ];
+
+  for (const root of roots) {
+    for (const selector of selectors) {
+      const button = root.locator(selector).first();
+      if (!await isLocatorVisible(button, 700)) {
+        continue;
+      }
+
+      await button.scrollIntoViewIfNeeded({ timeout: 1000 }).catch(() => {});
+      const dialogHandler = (dialog) => {
+        dialog.accept().catch(() => {});
+      };
+      page.once("dialog", dialogHandler);
+      try {
+        await button.evaluate((element) => {
+          try {
+            window.isReauthRequiredToSign = false;
+          } catch {
+            // The page owns this flag; ignore if a frame blocks direct assignment.
+          }
+          element.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, cancelable: true, view: window }));
+          element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+          element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+          element.click();
+        }).catch(async () => {
+          await button.click({ timeout: Math.min(Number(config.navigationTimeoutMs) || 30000, 3000) });
+        });
+        await page.waitForLoadState("domcontentloaded", {
+          timeout: Math.min(Number(config.navigationTimeoutMs) || 30000, 5000),
+        }).catch(() => {});
+        await waitForPageSettled(page, config);
+        return { clicked: true, source: selector };
+      } finally {
+        page.off?.("dialog", dialogHandler);
+      }
+    }
+  }
+
+  return { clicked: false, source: "approve-button-not-present" };
+}
+
+function withPackingManifestApprovalInfo(result, approvalResult) {
+  return {
+    ...result,
+    approvalClicked: Boolean(approvalResult?.clicked),
+    approvalSource: approvalResult?.source || "",
+  };
 }
 
 async function resolvePackingManifestPdfUrlFromDetailRequest(options) {
