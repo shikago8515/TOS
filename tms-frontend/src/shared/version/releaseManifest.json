@@ -1,35 +1,35 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.11",
-  "tag": "v1.0.0-beta.3.11",
-  "gitSha": "e4540c2f4d8dd25f6d6ad8e1130f41aac2006eed",
+  "version": "1.0.0-beta.3.13",
+  "tag": "v1.0.0-beta.3.13",
+  "gitSha": "0de22a8d94c33158f0a107fd7827688506bad1e0",
   "releaseDate": "2026-07-06",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.11",
+    "version": "1.0.0-beta.3.13",
     "date": "2026-07-06",
-    "noticeId": "2026-07-06-v1.0.0-beta.3.11",
+    "noticeId": "2026-07-06-v1.0.0-beta.3.13",
     "showPopup": false,
     "added": [],
-    "improved": [
-      "补齐 Jessca 响应契约 schema"
+    "improved": [],
+    "fixed": [
+      "更新 iPlex 目标表上传标题"
     ],
-    "fixed": [],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.11",
-    "version": "1.0.0-beta.3.11",
+    "noticeId": "v1.0.0-beta.3.13",
+    "version": "1.0.0-beta.3.13",
     "releaseDate": "2026-07-06",
     "showPopup": false,
     "level": "maintenance",
     "title": "本次更新内容",
     "groups": [
       {
-        "title": "优化",
-        "icon": "activity",
+        "title": "修复",
+        "icon": "check-circle",
         "items": [
-          "补齐 Jessca 响应契约 schema"
+          "更新 iPlex 目标表上传标题"
         ]
       }
     ]

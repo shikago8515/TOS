@@ -1,5 +1,25 @@
 [
   {
+    "recordKey": "release-v1.0.0-beta.3.13",
+    "version": "1.0.0-beta.3.13",
+    "releaseDate": "2026-07-06",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.13",
+    "description": "Release v1.0.0-beta.3.13. Channel: beta.3. Commit: 0de22a8d94c33158f0a107fd7827688506bad1e0. Release notes: 更新 iPlex 目标表上传标题."
+  },
+  {
+    "recordKey": "release-v1.0.0-beta.3.12",
+    "version": "1.0.0-beta.3.12",
+    "releaseDate": "2026-07-06",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.12",
+    "description": "Release v1.0.0-beta.3.12. Channel: beta.3. Commit: ec66514431c4ec09cad0c0370bada758a7432463. Release notes: archive Xinlongtai preview PDFs."
+  },
+  {
     "recordKey": "release-v1.0.0-beta.3.11",
     "version": "1.0.0-beta.3.11",
     "releaseDate": "2026-07-06",

@@ -24,7 +24,7 @@ describe('IplexDualTableComparePage source', () => {
     const uploadFieldsBlock = extractUploadFieldsBlock(readPageSource())
 
     expect(uploadFieldsBlock).toContain("label: 'Total Adjustment & Shas Vas Price 汇总表'")
-    expect(uploadFieldsBlock).toContain("label: '目标表'")
+    expect(uploadFieldsBlock).toContain("label: 'Total Adjustment & Shas Vas Price 目标表'")
   })
 
   it('uses business workbook names in mismatch preview headings', () => {

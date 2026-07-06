@@ -1,13 +1,13 @@
 {
-  "version": "1.0.0-beta.3.11",
+  "version": "1.0.0-beta.3.13",
   "date": "2026-07-06",
-  "noticeId": "2026-07-06-v1.0.0-beta.3.11",
+  "noticeId": "2026-07-06-v1.0.0-beta.3.13",
   "showPopup": false,
   "added": [],
-  "improved": [
-    "补齐 Jessca 响应契约 schema"
+  "improved": [],
+  "fixed": [
+    "更新 iPlex 目标表上传标题"
   ],
-  "fixed": [],
   "modules": [],
   "sections": []
 }
