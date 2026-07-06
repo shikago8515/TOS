@@ -131,12 +131,58 @@ def _pivot_data_field_names(path: str, entry: str) -> list[str | None]:
     ]
 
 
+def _pivot_cache_field_names(path: str, entry: str) -> list[str | None]:
+    namespace = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    with zipfile.ZipFile(path) as archive:
+        root = ElementTree.fromstring(archive.read(entry))
+    return [
+        field.attrib.get("name")
+        for field in root.findall(".//main:cacheFields/main:cacheField", namespace)
+    ]
+
+
+def _pivot_axis_field_names(path: str, pivot_entry: str, cache_entry: str, axis: str) -> list[str | None]:
+    namespace = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    cache_field_names = _pivot_cache_field_names(path, cache_entry)
+    with zipfile.ZipFile(path) as archive:
+        root = ElementTree.fromstring(archive.read(pivot_entry))
+
+    axis_node = root.find(f"main:{axis}", namespace)
+    if axis_node is None:
+        return []
+
+    names: list[str | None] = []
+    for field in axis_node.findall("main:field", namespace):
+        field_index = int(field.attrib["x"])
+        if field_index < 0:
+            names.append(field.attrib["x"])
+            continue
+        names.append(cache_field_names[field_index] if field_index < len(cache_field_names) else None)
+    return names
+
+
 def _pivot_location_ref(path: str, entry: str) -> str | None:
     namespace = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     with zipfile.ZipFile(path) as archive:
         root = ElementTree.fromstring(archive.read(entry))
     location = root.find("main:location", namespace)
     return location.attrib.get("ref") if location is not None else None
+
+
+def _chart_series(path: str, entry: str) -> list[tuple[str | None, list[str]]]:
+    namespace = {"c": "http://schemas.openxmlformats.org/drawingml/2006/chart"}
+    with zipfile.ZipFile(path) as archive:
+        root = ElementTree.fromstring(archive.read(entry))
+
+    series: list[tuple[str | None, list[str]]] = []
+    for series_node in root.findall(".//c:ser", namespace):
+        name_node = series_node.find(".//c:tx//c:v", namespace)
+        value_refs = [
+            value_ref.text or ""
+            for value_ref in series_node.findall(".//c:val//c:f", namespace)
+        ]
+        series.append((name_node.text if name_node is not None else None, value_refs))
+    return series
 
 
 def _slicer_pivot_table_names(path: str, entry: str) -> list[str | None]:
@@ -227,7 +273,7 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
         pd.DataFrame(rows).to_excel(path, index=False)
         return str(path)
 
-    def test_development_style_qty_fallback_is_header_only(self):
+    def test_development_style_qty_fallback_writes_prefilled_rows_sorted(self):
         wb = Workbook()
 
         self.module._write_development_style_qty(
@@ -235,15 +281,49 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
             [
                 {"Season": "FW26", "Factory": "1L8006", "Development Style Count": 50},
                 {"Season": "FW26", "Factory": "1L8012", "Development Style Count": 30},
+                {"Season": "SS26", "Factory": "1L8006", "Development Style Count": 20},
             ],
             Border(),
         )
 
         ws = wb["Development Style Qty"]
-        self.assertEqual(ws.max_row, 1)
+        self.assertEqual(ws.max_row, 4)
         self.assertEqual(
             [ws.cell(1, column).value for column in range(1, 4)],
             ["Season", "Factory", "Development Style Count"],
+        )
+        self.assertEqual(
+            [
+                [ws.cell(row, column).value for column in range(1, 4)]
+                for row in range(2, ws.max_row + 1)
+            ],
+            [
+                ["SS26", "1L8006", 20],
+                ["FW26", "1L8006", 50],
+                ["FW26", "1L8012", 30],
+            ],
+        )
+
+    def test_s2s_development_source_rows_union_development_and_result_keys(self):
+        rows = self.module._s2s_development_source_rows(
+            [
+                {"Season": "SS26", "Factory": "1L8006", "Working Number": "BULK-A", "Quantity": 10},
+                {"Season": "SS26", "Factory": "1L8006", "Working Number": "BULK-B", "Quantity": 5},
+                {"Season": "FW26", "Factory": "1L8012", "Working Number": "BULK-C", "Quantity": 7},
+            ],
+            [
+                {"Season": "SS26", "Factory": "1L8006", "Development Style Count": 50},
+                {"Season": "SS26", "Factory": "1L9999", "Development Style Count": 20},
+            ],
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                ["SS26", "1L8006", 50, 2, 15],
+                ["SS26", "1L9999", 20, 0, 0],
+                ["FW26", "1L8012", 0, 1, 7],
+            ],
         )
 
     def test_country_analysis_summary_blocks_are_formula_driven_plain_tables(self):
@@ -476,6 +556,207 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
         self.assertIn('Result!$B:$B,""', summary_rows[3][2][2])
         self.assertNotIn("(blank)", summary_rows[1][2][2])
 
+    def test_country_analysis_inserts_blank_row_between_period_groups(self):
+        season_rows = self.module._country_summary_block_rows(
+            [
+                {
+                    "Season": "FW25",
+                    "Factory": "FACTORY-A",
+                    "Country/Region": "CHINA",
+                    "Quantity": 10,
+                    "TMS Amount(USD)": 100,
+                },
+                {
+                    "Season": "FW26",
+                    "Factory": "FACTORY-A",
+                    "Country/Region": "UNITED STATES",
+                    "Quantity": 20,
+                    "TMS Amount(USD)": 200,
+                },
+            ],
+            "Season",
+            1,
+        )
+        year_rows = self.module._country_summary_block_rows(
+            [
+                {
+                    "PODD": "2026-02-01",
+                    "Factory": "FACTORY-A",
+                    "Country/Region": "CHINA",
+                    "Quantity": 10,
+                    "TMS Amount(USD)": 100,
+                },
+                {
+                    "PODD": "2027-02-01",
+                    "Factory": "FACTORY-A",
+                    "Country/Region": "UNITED STATES",
+                    "Quantity": 20,
+                    "TMS Amount(USD)": 200,
+                },
+            ],
+            "Year",
+            1,
+        )
+
+        for summary_rows, first_header, second_header in (
+            (season_rows, "Season FW25", "Season FW26"),
+            (year_rows, "Year 2026", "Year 2027"),
+        ):
+            self.assertEqual(summary_rows[0][0], "header")
+            self.assertEqual(summary_rows[0][1][0], first_header)
+            self.assertEqual(summary_rows[5], ("spacer", [None] * 6, [None] * 6))
+            self.assertEqual(self.module._country_summary_style_ids("spacer"), [None] * 6)
+            self.assertEqual(summary_rows[6][0], "header")
+            self.assertEqual(summary_rows[6][1][0], second_header)
+            self.assertEqual(summary_rows[8][2][2], "IF($F8=0,0,C8/$F8)")
+            self.assertEqual(summary_rows[10][2][2], "IF($F10=0,0,C10/$F10)")
+
+    def test_summary_sheets_sort_seasons_and_years_chronologically(self):
+        results = [
+            {
+                "Season": "FW25",
+                "PODD": "2027-02-01",
+                "Factory": "FACTORY-B",
+                "Country/Region": "CHINA",
+                "Shipment Method": "Ocean",
+                "Working Number": "WN-FW25",
+                "Quantity": 40,
+                "_factory_amount_value": 400,
+                "_tms_amount_value": 800,
+            },
+            {
+                "Season": "SS24",
+                "PODD": "2024-01-01",
+                "Factory": "FACTORY-C",
+                "Country/Region": "UNITED STATES",
+                "Shipment Method": "Air",
+                "Working Number": "WN-SS24",
+                "Quantity": 10,
+                "_factory_amount_value": 100,
+                "_tms_amount_value": 200,
+            },
+            {
+                "Season": "FW24",
+                "PODD": "2024-03-01",
+                "Factory": "FACTORY-A",
+                "Country/Region": "MEXICO",
+                "Shipment Method": "Rail",
+                "Working Number": "WN-FW24",
+                "Quantity": 20,
+                "_factory_amount_value": 200,
+                "_tms_amount_value": 400,
+            },
+            {
+                "Season": "SS25",
+                "PODD": "2025-05-01",
+                "Factory": "FACTORY-A",
+                "Country/Region": "CHINA",
+                "Shipment Method": "Express",
+                "Working Number": "WN-SS25",
+                "Quantity": 30,
+                "_factory_amount_value": 300,
+                "_tms_amount_value": 600,
+            },
+            {
+                "Season": "",
+                "PODD": "2026-07-01",
+                "Factory": "FACTORY-D",
+                "Country/Region": "BRAZIL",
+                "Shipment Method": "Truck",
+                "Working Number": "WN-BLANK",
+                "Quantity": 50,
+                "_factory_amount_value": 500,
+                "_tms_amount_value": 1000,
+            },
+        ]
+
+        expected_seasons = ["SS24", "FW24", "SS25", "FW25", ""]
+        expected_country_season_headers = [
+            "Season SS24",
+            "Season FW24",
+            "Season SS25",
+            "Season FW25",
+            "Season (blank)",
+        ]
+        expected_country_year_headers = ["Year 2024", "Year 2025", "Year 2026", "Year 2027"]
+        expected_year_months = [
+            (2024, "Jan"),
+            (2024, "Mar"),
+            (2025, "May"),
+            (2026, "Jul"),
+            (2027, "Feb"),
+        ]
+
+        country_season_rows = self.module._country_summary_block_rows(results, "Season", 1)
+        country_year_rows = self.module._country_summary_block_rows(results, "Year", 1)
+        self.assertEqual(
+            [row[1][0] for row in country_season_rows if row[0] == "header"],
+            expected_country_season_headers,
+        )
+        self.assertEqual(sum(1 for row in country_season_rows if row[0] == "spacer"), 4)
+        self.assertEqual(
+            [row[1][0] for row in country_year_rows if row[0] == "header"],
+            expected_country_year_headers,
+        )
+
+        country_source_rows = self.module._country_analysis_source_rows(results)
+        self.assertEqual(
+            [(row[0], row[1], row[2]) for row in country_source_rows],
+            [
+                ("SS24", 2024, "FACTORY-C"),
+                ("FW24", 2024, "FACTORY-A"),
+                ("SS25", 2025, "FACTORY-A"),
+                ("FW25", 2027, "FACTORY-B"),
+                ("", 2026, "FACTORY-D"),
+            ],
+        )
+
+        seasonal_wb = Workbook()
+        self.module._write_seasonal_summary(seasonal_wb, results, Border())
+        seasonal_ws = seasonal_wb["Seasonal Summary (By Fty)"]
+        self.assertEqual(
+            [seasonal_ws.cell(row, 1).value or "" for row in range(2, seasonal_ws.max_row + 1)],
+            expected_seasons,
+        )
+
+        development_style_rows = [
+            {"Season": row["Season"], "Factory": row["Factory"], "Development Style Count": 1}
+            for row in results
+        ]
+        s2s_source_rows = self.module._s2s_development_source_rows(results, development_style_rows)
+        self.assertEqual([row[0] for row in s2s_source_rows], expected_seasons)
+        s2s_display_rows = self.module._s2s_development_analysis_display_rows(s2s_source_rows)
+        self.assertEqual(
+            [
+                row[0]
+                for row in s2s_display_rows
+                if row[0] and row[0] != "Grand Total" and not str(row[0]).endswith(" Total")
+            ],
+            ["SS24", "FW24", "SS25", "FW25", "(blank)"],
+        )
+
+        monthly_wb = Workbook()
+        self.module._write_monthly_summary(monthly_wb, results, Border())
+        monthly_ws = monthly_wb["Monthly Summary (By Fty)"]
+        self.assertEqual(
+            [(monthly_ws.cell(row, 1).value, monthly_ws.cell(row, 2).value) for row in range(2, monthly_ws.max_row + 1)],
+            expected_year_months,
+        )
+
+        y2y_wb = Workbook()
+        self.module._write_y2y_comparison(y2y_wb, results, Border())
+        y2y_ws = y2y_wb["Y2Y Comparison(Qtty & Value)"]
+        self.assertEqual(
+            [(y2y_ws.cell(row, 1).value, y2y_ws.cell(row, 2).value) for row in range(2, y2y_ws.max_row + 1)],
+            expected_year_months,
+        )
+
+        ship_source_rows = self.module._ship_method_source_rows(results)
+        self.assertEqual([(row[1], row[2]) for row in ship_source_rows], expected_year_months)
+        ship_analysis_rows = self.module._ship_method_analysis_rows(results)
+        ship_detail_values = [row["values"] for row in ship_analysis_rows if row["values"][3] is not None]
+        self.assertEqual([(row[1], row[2]) for row in ship_detail_values], expected_year_months)
+
     def test_factory_price_falls_back_to_working_and_factory_when_result_season_is_blank(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             work_dir = Path(temp_dir)
@@ -608,6 +889,15 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
                     result_ws.cell(fallback_row, column=column_by_name["TMS Price(USD)"]).value,
                     19.0,
                 )
+                factory_price_format = result_ws.cell(
+                    fallback_row,
+                    column=column_by_name["Factory Price(USD)"],
+                ).number_format
+                self.assertEqual(
+                    factory_price_format,
+                    result_ws.cell(fallback_row, column=column_by_name["TMS Price(USD)"]).number_format,
+                )
+                self.assertIn("$", factory_price_format)
 
                 conflict_row = rows_by_working["WN-CONFLICT"]
                 self.assertEqual(
@@ -621,6 +911,10 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
                 self.assertEqual(
                     result_ws.cell(conflict_row, column=column_by_name["Factory Price(USD)"]).fill.fgColor.rgb,
                     "FFFFF2CC",
+                )
+                self.assertEqual(
+                    result_ws.cell(conflict_row, column=column_by_name["Factory Price(USD)"]).number_format,
+                    factory_price_format,
                 )
 
                 no_pack_row = rows_by_working["WN-NO-PACK"]
@@ -1126,15 +1420,38 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
                     [ws.cell(4, column).value for column in range(1, 5)],
                     ["FACTORY-A", 2026, "Mar Total", None],
                 )
+                self.assertEqual(
+                    [ws.cell(6, column).value for column in range(1, 5)],
+                    ["FACTORY-A", 2026, "Apr Total", None],
+                )
+                self.assertEqual(
+                    [ws.cell(7, column).value for column in range(1, 5)],
+                    ["FACTORY-A", "2026 Total", None, None],
+                )
                 self.assertAlmostEqual(cached_ws["F2"].value, 10 / 40)
                 self.assertAlmostEqual(cached_ws["H2"].value, 40 / 100)
                 self.assertAlmostEqual(cached_ws["F4"].value, 40 / 100)
                 self.assertAlmostEqual(cached_ws["H4"].value, 100 / 160)
+                self.assertEqual(cached_ws["F7"].value, 1)
+                self.assertEqual(cached_ws["H7"].value, 1)
                 self.assertIn("SUMIFS(Result!$M:$M", ws["F2"].value)
                 self.assertIn("SUMIFS(Result!$M:$M", ws["F4"].value)
+                self.assertIn("SUMIFS(Result!$M:$M", ws["E7"].value)
                 self.assertIn("SUMIFS(Result!$Q:$Q", ws["H2"].value)
                 self.assertIn("SUMIFS(Result!$Q:$Q", ws["H4"].value)
-                self.assertNotIn("SUBTOTAL", ws["F2"].value + ws["F4"].value + ws["H2"].value + ws["H4"].value)
+                self.assertIn("SUMIFS(Result!$Q:$Q", ws["G7"].value)
+                self.assertNotIn(
+                    "SUBTOTAL",
+                    ws["F2"].value
+                    + ws["F4"].value
+                    + ws["H2"].value
+                    + ws["H4"].value
+                    + ws["E7"].value
+                    + ws["G7"].value,
+                )
+                self.assertEqual(ws["A2"].fill.fgColor.rgb, "00000000")
+                self.assertEqual(ws["A4"].fill.fgColor.rgb, "FFD9D9D9")
+                self.assertEqual(ws["A7"].fill.fgColor.rgb, "FFD9D9D9")
             finally:
                 wb.close()
                 cached_wb.close()
@@ -1375,6 +1692,54 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
             y2y_drawing_anchors = _drawing_anchor_markers(result["output_path"], "xl/drawings/drawing1.xml")
             self.assertEqual(y2y_drawing_anchors["Factory"], {"from": (6, 1), "to": (8, 7)})
             self.assertEqual(y2y_drawing_anchors["Chart 1"], {"from": (9, 1), "to": (17, 16)})
+            self.assertEqual(
+                _pivot_data_field_names(result["output_path"], "xl/pivotTables/pivotTable5.xml"),
+                ["Quantity (Y)", "Y2Y - Qty"],
+            )
+            self.assertEqual(
+                _pivot_location_ref(result["output_path"], "xl/pivotTables/pivotTable5.xml"),
+                "I20:M34",
+            )
+            self.assertEqual(
+                [name.strip() if name else name for name in _pivot_data_field_names(
+                    result["output_path"],
+                    "xl/pivotTables/pivotTable6.xml",
+                )],
+                ["Quantity (Y)", "Y2Y - Qty", "TMS Amount (USD)", "Y2Y - Amount"],
+            )
+            self.assertEqual(
+                [name for name, _ in _chart_series(result["output_path"], "xl/charts/chart1.xml")],
+                ["Quantity (Y)", "Y2Y - Qty"],
+            )
+            chart_value_refs = [
+                value_ref
+                for _, value_refs in _chart_series(result["output_path"], "xl/charts/chart1.xml")
+                for value_ref in value_refs
+            ]
+            self.assertEqual(
+                chart_value_refs,
+                [
+                    "'Y2Y Comparison(Qtty & Value)'!$C$2:$C$19",
+                    "'Y2Y Comparison(Qtty & Value)'!$D$2:$D$19",
+                ],
+            )
+            y2y_sheet_relationships = _worksheet_relationship_types(
+                result["output_path"],
+                "xl/worksheets/_rels/sheet5.xml.rels",
+            )
+            self.assertIn(
+                "http://schemas.microsoft.com/office/2007/relationships/slicer",
+                y2y_sheet_relationships,
+            )
+            content_types_xml = _zip_entry_text(result["output_path"], "[Content_Types].xml")
+            self.assertIn(
+                'PartName="/xl/slicers/slicer1.xml" '
+                'ContentType="application/vnd.ms-excel.slicer+xml"',
+                content_types_xml,
+            )
+            y2y_drawing_xml = _zip_entry_text(result["output_path"], "xl/drawings/drawing1.xml")
+            self.assertIn("<mc:Choice Requires=\"a14\">", y2y_drawing_xml)
+            self.assertIn("<a14:slicer name=\"Factory\"", y2y_drawing_xml)
 
             content_types_xml = _zip_entry_text(result["output_path"], "[Content_Types].xml")
             self.assertIn(
@@ -1569,10 +1934,15 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
                 self.assertIn("FACTORY_PRICE_CONFLICT", diagnostics_text)
 
                 development_ws = wb["Development Style Qty"]
-                self.assertEqual(development_ws.max_row, 1)
+                self.assertEqual(development_ws.sheet_state, "visible")
+                self.assertEqual(development_ws.max_row, 2)
                 self.assertEqual(
                     [development_ws.cell(1, column).value for column in range(1, 4)],
                     ["Season", "Factory", "Development Style Count"],
+                )
+                self.assertEqual(
+                    [development_ws.cell(2, column).value for column in range(1, 4)],
+                    ["SS26", "FACTORY-A", 4],
                 )
 
                 self.assertEqual(wb["Country Analysis Source"].sheet_state, "hidden")
@@ -1616,19 +1986,15 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
                     header: wb["S2S Development Source"].cell(row=2, column=index + 1).value
                     for index, header in enumerate(s2s_headers)
                 }
-                self.assertEqual(s2s_row["Development Style Count"], 4)
+                self.assertEqual(
+                    s2s_row["Development Style Count"],
+                    "=SUMIFS('Development Style Qty'!$C:$C,'Development Style Qty'!$A:$A,A2,"
+                    "'Development Style Qty'!$B:$B,B2)",
+                )
                 self.assertEqual(s2s_row["Bulk Style Count"], 3)
                 self.assertEqual(s2s_row["Bulk Qty (pcs)"], 30)
 
-                s2s_visible_ws = wb["S2S Development Analysis"]
-                self.assertEqual(
-                    [s2s_visible_ws.cell(1, column).value for column in range(1, 6)],
-                    ["Season", "Factory", "Development Style Count", "Bulk Style Count", "Bulk Qty (pcs)"],
-                )
-                self.assertEqual(
-                    [s2s_visible_ws.cell(2, column).value for column in range(1, 6)],
-                    ["SS26", "FACTORY-A", 4, 3, 30],
-                )
+                self.assertIn("S2S Development Analysis", wb.sheetnames)
             finally:
                 wb.close()
 
@@ -1652,9 +2018,34 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
                 "Bulk Qty (pcs)",
                 _zip_entry_text(result["output_path"], "xl/pivotTables/pivotTable9.xml"),
             )
+            self.assertIn(
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotTable",
+                _worksheet_relationship_types(result["output_path"], "xl/worksheets/_rels/sheet9.xml.rels"),
+            )
+            self.assertIn(
+                "<pivotTableDefinition",
+                _zip_entry_text(result["output_path"], "xl/worksheets/sheet9.xml"),
+            )
+            self.assertIn(
+                (
+                    "xl/pivotCache/pivotCacheDefinition6.xml",
+                    "S2S Development Source",
+                    "A1:E2",
+                ),
+                _pivot_cache_sources(result["output_path"]),
+            )
             self.assertEqual(
-                _pivot_data_field_names(result["output_path"], "xl/pivotTables/pivotTable9.xml")[:2],
-                ["Development Style Count", "Bulk Style Count"],
+                _pivot_axis_field_names(
+                    result["output_path"],
+                    "xl/pivotTables/pivotTable9.xml",
+                    "xl/pivotCache/pivotCacheDefinition6.xml",
+                    "rowFields",
+                ),
+                ["Season", "Factory"],
+            )
+            self.assertEqual(
+                _pivot_data_field_names(result["output_path"], "xl/pivotTables/pivotTable9.xml"),
+                ["Development Style Count", "Bulk Style Count", "Bulk Qty (pcs)"],
             )
             self.assertEqual(
                 _pivot_location_ref(result["output_path"], "xl/pivotTables/pivotTable9.xml"),
