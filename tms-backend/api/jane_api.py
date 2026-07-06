@@ -13,6 +13,8 @@ from uuid import uuid4
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
+from api.jane_schemas import JaneProcessResponse
+
 # 导入模块
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -168,7 +170,7 @@ async def test_jane(
         shutil.rmtree(work_dir, ignore_errors=True)
 
 
-@router.post("/process")
+@router.post("/process", response_model=JaneProcessResponse, response_model_exclude_none=True)
 async def process_jane(
     tms_file: UploadFile = File(...),
     country_file: UploadFile = File(...),
