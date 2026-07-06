@@ -24,6 +24,9 @@ TOS 是一个 Windows x64 桌面工具，当前源码工作区由三部分组成
 - `docs/frontend-engineering-standards.md`：前端重建的 Vue/TypeScript 可执行规范、共享组件复用、API 边界和变更接收检查项。
 - `docs/engineering-entrypoints.md`：根目录工程入口、检查矩阵、验证分层和命令边界。
 - `docs/engineering-closure-roadmap.md`：未完全工程化部分的优先级、边界和验收标准。
+- `docs/software-development-lifecycle.md`：TOS 轻量企业版 SDLC 流程，覆盖需求、设计、开发、测试、上线和运维阶段。
+- `docs/sdlc-document-map.md`：标准企业文档与当前仓库现有资料的映射表，说明已覆盖、部分覆盖和待补齐项。
+- `docs/templates/sdlc/`：需求、设计、测试、上线、运维类文档模板。
 - `docs/tos-ai-workflow.md`：TOS-AI 从 Gitea 同步、分支开发、版本、CI 到服务器发布的完整工作流。
 - `docs/server-deployment-runbook.md`：服务器 `~/TOS` 目录式 Docker Compose 更新、备份、验证和回滚流程。
 - `docs/server-deployment-runbook.md` 同时记录桌面安装包在服务器 MinIO Docker volume 中的物理位置、对象 key、旧安装包删除规则和公开下载代理地址。
@@ -38,6 +41,7 @@ TOS 是一个 Windows x64 桌面工具，当前源码工作区由三部分组成
 - 做前端页面、路由、状态、样式、请求封装或 Excel 处理页复用：看 `docs/frontend-engineering-standards.md` 和 `tms-frontend/README.md`。
 - 做后端 API、Excel/PDF 处理、上传下载、错误脱敏或模块测试：看 `tms-backend/README.md`。
 - 做 Electron 主进程、preload、自动化 helper、安装包、更新清单或发布产物：看 `tms-electron-app/README.md`。
+- 做需求、设计、测试、UAT、上线或运维文档归档：看 `docs/software-development-lifecycle.md` 和 `docs/sdlc-document-map.md`。
 - 不确定该运行哪个命令：看 `docs/engineering-entrypoints.md`，先用 `npm run check:changed:dry-run` 预览最小检查集。
 - 做从需求到 Gitea `main`、自动版本、服务器部署和回滚的完整流程：看 `docs/tos-ai-workflow.md`。
 
