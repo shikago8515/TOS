@@ -131,8 +131,6 @@ class SophiaTinaModule:
     ]
     COUNTRY_PIVOT_CACHE_ID = "500"
     S2S_PIVOT_CACHE_ID = "501"
-    Y2Y_RIGHT_PIVOT_LOCATION_REF = "I20:M34"
-    Y2Y_AMOUNT_FIELD_NAMES = {"TMS Amount (USD)", "Y2Y - Amount"}
     SHIP_METHOD_TOTAL_FILL_RGB = "FFD9D9D9"
     PIVOT_TEMPLATE_PATH = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "templates", PIVOT_TEMPLATE_FILENAME)
@@ -297,9 +295,10 @@ class SophiaTinaModule:
         template_path: str,
     ) -> None:
         """Write editable Result data into the native PivotTable template."""
-        table_ref = f"A1:Q{max(len(results) + 1, 1)}"
+        sorted_results = self._sorted_result_rows(results)
+        table_ref = f"A1:Q{max(len(sorted_results) + 1, 1)}"
         replacements = self._build_pivot_template_replacements(
-            results,
+            sorted_results,
             diagnostics,
             development_style_rows,
             table_ref,
@@ -322,6 +321,8 @@ class SophiaTinaModule:
             ship_method_rows = self._ship_method_source_rows(results)
             s2s_rows = self._s2s_development_source_rows(results, development_style_rows)
             s2s_display_rows = self._s2s_development_analysis_display_rows(s2s_rows)
+            y2y_years = self._y2y_years(results)
+            y2y_right_pivot_ref = self._y2y_right_pivot_location_ref(y2y_years)
             country_ref = f"A1:J{max(len(country_rows) + 1, 1)}"
             ship_method_ref = f"A1:H{max(len(ship_method_rows) + 1, 1)}"
             s2s_ref = f"A1:E{max(len(s2s_rows) + 1, 1)}"
@@ -502,10 +503,11 @@ class SophiaTinaModule:
                 location_ref=s2s_pivot_ref,
             )
             replacements["xl/pivotTables/pivotTable5.xml"] = self._y2y_quantity_only_pivot_table_xml(
-                archive.read("xl/pivotTables/pivotTable5.xml")
+                archive.read("xl/pivotTables/pivotTable5.xml"),
+                y2y_right_pivot_ref,
             )
             replacements["xl/charts/chart1.xml"] = self._y2y_quantity_only_chart_xml(
-                archive.read("xl/charts/chart1.xml")
+                y2y_years,
             )
             replacements["xl/drawings/drawing1.xml"] = self._normalized_y2y_drawing_xml(
                 archive.read("xl/drawings/drawing1.xml")
@@ -1505,6 +1507,39 @@ class SophiaTinaModule:
         return (*cls._season_sort_key(season), cls._clean_text(factory))
 
     @classmethod
+    def _result_sort_key(cls, row: Dict[str, Any]) -> Tuple[Any, ...]:
+        podd = cls._to_datetime(row.get("PODD"))
+        podd_missing = 1 if podd is None else 0
+        podd_key = podd or datetime.max
+        return (
+            *cls._season_sort_key(row.get("Season")),
+            podd_missing,
+            podd_key,
+            cls._clean_text(row.get("Factory")),
+            cls._clean_text(row.get("Working Number")),
+            cls._clean_text(row.get("Article Number")),
+        )
+
+    @classmethod
+    def _sorted_result_rows(cls, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        return sorted(results, key=cls._result_sort_key)
+
+    @classmethod
+    def _y2y_years(cls, results: List[Dict[str, Any]]) -> List[int]:
+        years: Set[int] = set()
+        for row in results:
+            podd = cls._to_datetime(row.get("PODD"))
+            if podd is not None:
+                years.add(podd.year)
+        return sorted(years)
+
+    @staticmethod
+    def _y2y_right_pivot_location_ref(years: List[int]) -> str:
+        year_count = max(len(years), 1)
+        end_column = openpyxl.utils.get_column_letter(openpyxl.utils.column_index_from_string("I") + year_count * 2)
+        return f"I20:{end_column}34"
+
+    @classmethod
     def _season_sort_key(cls, value: Any) -> Tuple[int, int, int, str]:
         season = cls._clean_text(value).upper()
         if not season:
@@ -1798,7 +1833,29 @@ class SophiaTinaModule:
         if source is not None:
             source.set("sheet", "Result")
             source.set("ref", table_ref)
+        self._reset_pivot_cache_shared_items(root)
         return self._serialize_spreadsheet_xml(root)
+
+    def _reset_pivot_cache_shared_items(self, root: ElementTree.Element) -> None:
+        cache_fields = root.find(f"{{{self.OOXML_MAIN_NS}}}cacheFields")
+        if cache_fields is None:
+            return
+
+        for cache_field in cache_fields.findall(f"{{{self.OOXML_MAIN_NS}}}cacheField"):
+            has_field_group = cache_field.find(f"{{{self.OOXML_MAIN_NS}}}fieldGroup") is not None
+            for child in list(cache_field):
+                if child.tag == f"{{{self.OOXML_MAIN_NS}}}sharedItems":
+                    cache_field.remove(child)
+            if not has_field_group:
+                ElementTree.SubElement(
+                    cache_field,
+                    f"{{{self.OOXML_MAIN_NS}}}sharedItems",
+                    {"count": "0"},
+                )
+
+        ext_list = root.find(f"{{{self.OOXML_MAIN_NS}}}extLst")
+        if ext_list is not None:
+            root.remove(ext_list)
 
     def _with_pivot_table_definition(self, xml_bytes: bytes, relationship_id: str) -> bytes:
         root = ElementTree.fromstring(xml_bytes)
@@ -1890,7 +1947,23 @@ class SophiaTinaModule:
         self._replace_pivot_child(root, "rowFields", self._pivot_axis_fields_element("rowFields", row_fields))
         self._replace_pivot_child(root, "colFields", self._pivot_axis_fields_element("colFields", column_fields))
         self._replace_pivot_child(root, "dataFields", self._pivot_data_fields_element(data_fields))
+        self._remove_pivot_runtime_children(root)
         return self._serialize_spreadsheet_xml(root)
+
+    def _remove_pivot_runtime_children(self, root: ElementTree.Element) -> None:
+        # Excel 会在刷新时重建这些 item/format 缓存；保留旧缓存容易让 Excel 2013 判定 PivotTable 损坏。
+        runtime_child_names = {
+            "rowItems",
+            "colItems",
+            "formats",
+            "conditionalFormats",
+            "chartFormats",
+            "extLst",
+        }
+        runtime_tags = {f"{{{self.OOXML_MAIN_NS}}}{name}" for name in runtime_child_names}
+        for child in list(root):
+            if child.tag in runtime_tags:
+                root.remove(child)
 
     def _replace_pivot_child(
         self,
@@ -1943,101 +2016,133 @@ class SophiaTinaModule:
             ElementTree.SubElement(root, f"{{{self.OOXML_MAIN_NS}}}dataField", attrs)
         return root
 
-    def _y2y_quantity_only_pivot_table_xml(self, xml_bytes: bytes) -> bytes:
+    def _y2y_quantity_only_pivot_table_xml(self, xml_bytes: bytes, location_ref: str) -> bytes:
         root = ElementTree.fromstring(xml_bytes)
         location = root.find(f"{{{self.OOXML_MAIN_NS}}}location")
         if location is not None:
-            location.set("ref", self.Y2Y_RIGHT_PIVOT_LOCATION_REF)
+            location.set("ref", location_ref)
 
-        data_fields = root.find(f"{{{self.OOXML_MAIN_NS}}}dataFields")
-        retained_field_indexes: Set[str] = set()
-        if data_fields is not None:
-            for data_field in list(data_fields):
-                field_name = (data_field.attrib.get("name") or "").strip()
-                if field_name in self.Y2Y_AMOUNT_FIELD_NAMES:
-                    data_fields.remove(data_field)
-                    continue
-                field_index = data_field.attrib.get("fld")
-                if field_index is not None:
-                    retained_field_indexes.add(field_index)
-            data_fields.set("count", str(len(list(data_fields))))
-
-        self._sync_pivot_data_field_flags(root, retained_field_indexes)
-        self._trim_pivot_column_items_for_data_field_count(root, 2)
+        self._replace_pivot_child(root, "pivotFields", self._pivot_fields_element(
+            18,
+            [7],
+            [17],
+            [12],
+        ))
+        self._replace_pivot_child(root, "rowFields", self._pivot_axis_fields_element("rowFields", [7]))
+        self._replace_pivot_child(root, "colFields", self._pivot_axis_fields_element("colFields", [17, -2]))
+        self._replace_pivot_child(root, "dataFields", self._y2y_quantity_data_fields_element())
+        self._remove_pivot_runtime_children(root)
         return self._serialize_spreadsheet_xml(root)
 
-    def _sync_pivot_data_field_flags(
+    def _y2y_quantity_data_fields_element(self) -> ElementTree.Element:
+        root = ElementTree.Element(f"{{{self.OOXML_MAIN_NS}}}dataFields", {"count": "2"})
+        ElementTree.SubElement(
+            root,
+            f"{{{self.OOXML_MAIN_NS}}}dataField",
+            {"name": "Quantity (Y)", "fld": "12", "numFmtId": "3"},
+        )
+        ElementTree.SubElement(
+            root,
+            f"{{{self.OOXML_MAIN_NS}}}dataField",
+            {
+                "name": "Y2Y - Qty",
+                "fld": "12",
+                "showDataAs": "percentDiff",
+                "baseField": "17",
+                "numFmtId": "9",
+            },
+        )
+        return root
+
+    def _y2y_quantity_only_chart_xml(self, years: List[int]) -> bytes:
+        category_ref = self._y2y_chart_range("I", 23, 34)
+        column_series = [
+            self._chart_series_xml(
+                index=index,
+                name=f"{year} - Quantity (Y)",
+                category_ref=category_ref,
+                value_ref=self._y2y_chart_range(
+                    openpyxl.utils.get_column_letter(openpyxl.utils.column_index_from_string("J") + index * 2),
+                    23,
+                    34,
+                ),
+            )
+            for index, year in enumerate(years)
+        ]
+        line_series = [
+            self._chart_series_xml(
+                index=len(years) + index,
+                name=f"{year} - Y2Y - Qty",
+                category_ref=category_ref,
+                value_ref=self._y2y_chart_range(
+                    openpyxl.utils.get_column_letter(openpyxl.utils.column_index_from_string("K") + index * 2),
+                    23,
+                    34,
+                ),
+                marker=True,
+            )
+            for index, year in enumerate(years)
+        ]
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+            f'<c:chartSpace xmlns:c="{self.OOXML_CHART_NS}" '
+            f'xmlns:a="{self.OOXML_DRAWING_MAIN_NS}" '
+            f'xmlns:r="{self.OOXML_REL_NS}">'
+            '<c:date1904 val="0"/><c:lang val="en-US"/><c:roundedCorners val="0"/>'
+            '<c:chart>'
+            '<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r>'
+            '<a:rPr lang="en-US" sz="1400"/><a:t>Y2Y</a:t>'
+            '</a:r></a:p></c:rich></c:tx><c:layout/></c:title>'
+            '<c:autoTitleDeleted val="0"/>'
+            '<c:plotArea><c:layout/>'
+            '<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>'
+            f'{"".join(column_series)}'
+            '<c:axId val="100001"/><c:axId val="100002"/></c:barChart>'
+            '<c:lineChart><c:grouping val="standard"/>'
+            f'{"".join(line_series)}'
+            '<c:axId val="100001"/><c:axId val="100003"/></c:lineChart>'
+            '<c:catAx><c:axId val="100001"/><c:scaling><c:orientation val="minMax"/></c:scaling>'
+            '<c:delete val="0"/><c:axPos val="b"/><c:tickLblPos val="nextTo"/>'
+            '<c:crossAx val="100002"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/>'
+            '<c:lblOffset val="100"/></c:catAx>'
+            '<c:valAx><c:axId val="100002"/><c:scaling><c:orientation val="minMax"/></c:scaling>'
+            '<c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="#,##0" sourceLinked="1"/>'
+            '<c:tickLblPos val="nextTo"/><c:crossAx val="100001"/><c:crosses val="autoZero"/>'
+            '<c:crossBetween val="between"/></c:valAx>'
+            '<c:valAx><c:axId val="100003"/><c:scaling><c:orientation val="minMax"/></c:scaling>'
+            '<c:delete val="0"/><c:axPos val="r"/><c:numFmt formatCode="0%" sourceLinked="0"/>'
+            '<c:tickLblPos val="nextTo"/><c:crossAx val="100001"/><c:crosses val="max"/>'
+            '<c:crossBetween val="between"/></c:valAx>'
+            '</c:plotArea>'
+            '<c:legend><c:legendPos val="b"/><c:layout/><c:overlay val="0"/></c:legend>'
+            '<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/><c:showDLblsOverMax val="0"/>'
+            '</c:chart>'
+            '<c:printSettings><c:headerFooter/><c:pageMargins b="0.75" l="0.7" r="0.7" t="0.75" '
+            'header="0.3" footer="0.3"/><c:pageSetup/></c:printSettings>'
+            '</c:chartSpace>'
+        )
+        return xml.encode("utf-8")
+
+    @staticmethod
+    def _y2y_chart_range(column: str, start_row: int, end_row: int) -> str:
+        return f"'Y2Y Comparison(Qtty & Value)'!${column}${start_row}:${column}${end_row}"
+
+    def _chart_series_xml(
         self,
-        root: ElementTree.Element,
-        retained_field_indexes: Set[str],
-    ) -> None:
-        pivot_fields = root.find(f"{{{self.OOXML_MAIN_NS}}}pivotFields")
-        if pivot_fields is None:
-            return
-        for index, pivot_field in enumerate(pivot_fields.findall(f"{{{self.OOXML_MAIN_NS}}}pivotField")):
-            if str(index) in retained_field_indexes:
-                pivot_field.set("dataField", "1")
-            else:
-                pivot_field.attrib.pop("dataField", None)
-
-    def _trim_pivot_column_items_for_data_field_count(
-        self,
-        root: ElementTree.Element,
-        retained_data_field_count: int,
-    ) -> None:
-        col_items = root.find(f"{{{self.OOXML_MAIN_NS}}}colItems")
-        if col_items is None:
-            return
-
-        trimmed_items: List[ElementTree.Element] = []
-        for item in list(col_items):
-            value_nodes = item.findall(f"{{{self.OOXML_MAIN_NS}}}x")
-            if len(value_nodes) >= 2:
-                trimmed_items.append(item)
-                continue
-            data_field_value = value_nodes[0].attrib.get("v") if value_nodes else None
-            if data_field_value is None:
-                trimmed_items.append(item)
-                continue
-            try:
-                data_field_index = int(data_field_value)
-            except ValueError:
-                trimmed_items.append(item)
-                continue
-            if data_field_index < retained_data_field_count:
-                trimmed_items.append(item)
-
-        for item in list(col_items):
-            col_items.remove(item)
-        for item in trimmed_items:
-            col_items.append(item)
-        col_items.set("count", str(len(trimmed_items)))
-
-    def _y2y_quantity_only_chart_xml(self, xml_bytes: bytes) -> bytes:
-        root = ElementTree.fromstring(xml_bytes)
-        retained_series: List[ElementTree.Element] = []
-        series_tag = f"{{{self.OOXML_CHART_NS}}}ser"
-
-        for parent in root.iter():
-            for child in list(parent):
-                if child.tag != series_tag:
-                    continue
-                series_name = (self._chart_series_name(child) or "").strip()
-                if series_name in self.Y2Y_AMOUNT_FIELD_NAMES:
-                    parent.remove(child)
-                    continue
-                retained_series.append(child)
-
-        for index, series in enumerate(retained_series):
-            for tag_name in ("idx", "order"):
-                node = series.find(f"{{{self.OOXML_CHART_NS}}}{tag_name}")
-                if node is not None:
-                    node.set("val", str(index))
-        return self._serialize_chart_xml(root)
-
-    def _chart_series_name(self, series: ElementTree.Element) -> Optional[str]:
-        name_node = series.find(f".//{{{self.OOXML_CHART_NS}}}tx//{{{self.OOXML_CHART_NS}}}v")
-        return name_node.text if name_node is not None else None
+        index: int,
+        name: str,
+        category_ref: str,
+        value_ref: str,
+        marker: bool = False,
+    ) -> str:
+        marker_xml = '<c:marker><c:symbol val="circle"/></c:marker>' if marker else ""
+        return (
+            f'<c:ser><c:idx val="{index}"/><c:order val="{index}"/>'
+            f'<c:tx><c:v>{escape(name)}</c:v></c:tx>{marker_xml}'
+            f'<c:cat><c:strRef><c:f>{escape(category_ref)}</c:f></c:strRef></c:cat>'
+            f'<c:val><c:numRef><c:f>{escape(value_ref)}</c:f></c:numRef></c:val>'
+            '</c:ser>'
+        )
 
     def _normalized_y2y_drawing_xml(self, xml_bytes: bytes) -> bytes:
         root = ElementTree.fromstring(xml_bytes)
@@ -2083,6 +2188,17 @@ class SophiaTinaModule:
 
     def _updated_workbook_xml(self, xml_bytes: bytes) -> bytes:
         root = ElementTree.fromstring(xml_bytes)
+        root.attrib.pop(f"{{{self.OOXML_MC_NS}}}Ignorable", None)
+        for child in list(root):
+            if child.tag == f"{{{self.OOXML_MC_NS}}}AlternateContent":
+                root.remove(child)
+
+        workbook_pr = root.find(f"{{{self.OOXML_MAIN_NS}}}workbookPr")
+        if workbook_pr is not None:
+            workbook_pr.attrib.pop("hidePivotFieldList", None)
+            if not workbook_pr.attrib and not list(workbook_pr):
+                root.remove(workbook_pr)
+
         sheets = root.find(f"{{{self.OOXML_MAIN_NS}}}sheets")
         if sheets is not None:
             existing_sheet_names = {

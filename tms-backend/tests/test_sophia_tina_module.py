@@ -185,6 +185,17 @@ def _chart_series(path: str, entry: str) -> list[tuple[str | None, list[str]]]:
     return series
 
 
+def _chart_category_refs(path: str, entry: str) -> list[str]:
+    namespace = {"c": "http://schemas.openxmlformats.org/drawingml/2006/chart"}
+    with zipfile.ZipFile(path) as archive:
+        root = ElementTree.fromstring(archive.read(entry))
+
+    return [
+        category_ref.text or ""
+        for category_ref in root.findall(".//c:cat//c:f", namespace)
+    ]
+
+
 def _slicer_pivot_table_names(path: str, entry: str) -> list[str | None]:
     namespace = {"x14": "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"}
     with zipfile.ZipFile(path) as archive:
@@ -687,6 +698,18 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
             (2027, "Feb"),
         ]
 
+        sorted_results = self.module._sorted_result_rows(results)
+        self.assertEqual(
+            [(row["Season"], row["Factory"], row["Working Number"]) for row in sorted_results],
+            [
+                ("SS24", "FACTORY-C", "WN-SS24"),
+                ("FW24", "FACTORY-A", "WN-FW24"),
+                ("SS25", "FACTORY-A", "WN-SS25"),
+                ("FW25", "FACTORY-B", "WN-FW25"),
+                ("", "FACTORY-D", "WN-BLANK"),
+            ],
+        )
+
         country_season_rows = self.module._country_summary_block_rows(results, "Season", 1)
         country_year_rows = self.module._country_summary_block_rows(results, "Year", 1)
         self.assertEqual(
@@ -756,6 +779,108 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
         ship_analysis_rows = self.module._ship_method_analysis_rows(results)
         ship_detail_values = [row["values"] for row in ship_analysis_rows if row["values"][3] is not None]
         self.assertEqual([(row[1], row[2]) for row in ship_detail_values], expected_year_months)
+
+    def test_result_sorting_and_y2y_chart_use_month_axis_with_dynamic_years(self):
+        def result_row(
+            season: str,
+            podd: str,
+            factory: str,
+            working_number: str,
+            article_number: str,
+            quantity: int,
+        ) -> dict:
+            return {
+                "Pack": "",
+                "Season": season,
+                "Factory": factory,
+                "Working Number": working_number,
+                "Article Number": article_number,
+                "Article Name": article_number,
+                "CRD": podd,
+                "PODD": podd,
+                "Gps Customer Number": "GPS",
+                "Country/Region": "CHINA",
+                "Shipment Method": "Ocean",
+                "Marketing Forecast(M)": quantity,
+                "Quantity": quantity,
+                "Factory Price(USD)": 1.0,
+                "_factory_amount_value": float(quantity),
+                "TMS Price(USD)": 2.0,
+                "_tms_amount_value": float(quantity * 2),
+            }
+
+        results = [
+            result_row("FW25", "2025-08-01", "1L8006", "WN-FW25", "ART-4", 400),
+            result_row("", "2026-09-01", "1L8012", "WN-BLANK", "ART-5", 500),
+            result_row("SS24", "2024-04-01", "1L8006", "WN-SS24", "ART-1", 100),
+            result_row("FW24", "2024-10-01", "1L8012", "WN-FW24", "ART-2", 200),
+            result_row("SS25", "2025-05-01", "1L8006", "WN-SS25", "ART-3", 300),
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = str(Path(temp_dir) / "sophia.xlsx")
+            self.module.save_st_result(results, output_path, diagnostics=[], development_style_rows=[])
+
+            wb = load_workbook(output_path, data_only=False, read_only=True)
+            try:
+                result_ws = wb["Result"]
+                headers = [cell.value for cell in result_ws[1]]
+                season_col = headers.index("Season") + 1
+                working_col = headers.index("Working Number") + 1
+                self.assertEqual(
+                    [
+                        (
+                            result_ws.cell(row_index, season_col).value or "",
+                            result_ws.cell(row_index, working_col).value,
+                        )
+                        for row_index in range(2, result_ws.max_row + 1)
+                    ],
+                    [
+                        ("SS24", "WN-SS24"),
+                        ("FW24", "WN-FW24"),
+                        ("SS25", "WN-SS25"),
+                        ("FW25", "WN-FW25"),
+                        ("", "WN-BLANK"),
+                    ],
+                )
+            finally:
+                wb.close()
+
+            self.assertEqual(
+                _pivot_location_ref(output_path, "xl/pivotTables/pivotTable5.xml"),
+                "I20:O34",
+            )
+            self.assertEqual(
+                [name for name, _ in _chart_series(output_path, "xl/charts/chart1.xml")],
+                [
+                    "2024 - Quantity (Y)",
+                    "2025 - Quantity (Y)",
+                    "2026 - Quantity (Y)",
+                    "2024 - Y2Y - Qty",
+                    "2025 - Y2Y - Qty",
+                    "2026 - Y2Y - Qty",
+                ],
+            )
+            chart_value_refs = [
+                value_ref
+                for _, value_refs in _chart_series(output_path, "xl/charts/chart1.xml")
+                for value_ref in value_refs
+            ]
+            self.assertEqual(
+                chart_value_refs,
+                [
+                    "'Y2Y Comparison(Qtty & Value)'!$J$23:$J$34",
+                    "'Y2Y Comparison(Qtty & Value)'!$L$23:$L$34",
+                    "'Y2Y Comparison(Qtty & Value)'!$N$23:$N$34",
+                    "'Y2Y Comparison(Qtty & Value)'!$K$23:$K$34",
+                    "'Y2Y Comparison(Qtty & Value)'!$M$23:$M$34",
+                    "'Y2Y Comparison(Qtty & Value)'!$O$23:$O$34",
+                ],
+            )
+            self.assertEqual(
+                _chart_category_refs(output_path, "xl/charts/chart1.xml"),
+                ["'Y2Y Comparison(Qtty & Value)'!$I$23:$I$34"] * 6,
+            )
 
     def test_factory_price_falls_back_to_working_and_factory_when_result_season_is_blank(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1698,8 +1823,14 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
             )
             self.assertEqual(
                 _pivot_location_ref(result["output_path"], "xl/pivotTables/pivotTable5.xml"),
-                "I20:M34",
+                "I20:K34",
             )
+            pivot_table5_xml = _zip_entry_text(result["output_path"], "xl/pivotTables/pivotTable5.xml")
+            self.assertNotIn("<rowItems", pivot_table5_xml)
+            self.assertNotIn("<colItems", pivot_table5_xml)
+            self.assertNotIn("<extLst", pivot_table5_xml)
+            self.assertNotIn("TMS Amount (USD)", pivot_table5_xml)
+            self.assertNotIn("Y2Y - Amount", pivot_table5_xml)
             self.assertEqual(
                 [name.strip() if name else name for name in _pivot_data_field_names(
                     result["output_path"],
@@ -1709,8 +1840,12 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
             )
             self.assertEqual(
                 [name for name, _ in _chart_series(result["output_path"], "xl/charts/chart1.xml")],
-                ["Quantity (Y)", "Y2Y - Qty"],
+                ["2026 - Quantity (Y)", "2026 - Y2Y - Qty"],
             )
+            chart_xml = _zip_entry_text(result["output_path"], "xl/charts/chart1.xml")
+            self.assertNotIn("<c:pivotSource>", chart_xml)
+            self.assertNotIn("TMS Amount (USD)", chart_xml)
+            self.assertNotIn("Y2Y - Amount", chart_xml)
             chart_value_refs = [
                 value_ref
                 for _, value_refs in _chart_series(result["output_path"], "xl/charts/chart1.xml")
@@ -1719,8 +1854,15 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
             self.assertEqual(
                 chart_value_refs,
                 [
-                    "'Y2Y Comparison(Qtty & Value)'!$C$2:$C$19",
-                    "'Y2Y Comparison(Qtty & Value)'!$D$2:$D$19",
+                    "'Y2Y Comparison(Qtty & Value)'!$J$23:$J$34",
+                    "'Y2Y Comparison(Qtty & Value)'!$K$23:$K$34",
+                ],
+            )
+            self.assertEqual(
+                _chart_category_refs(result["output_path"], "xl/charts/chart1.xml"),
+                [
+                    "'Y2Y Comparison(Qtty & Value)'!$I$23:$I$34",
+                    "'Y2Y Comparison(Qtty & Value)'!$I$23:$I$34",
                 ],
             )
             y2y_sheet_relationships = _worksheet_relationship_types(
@@ -1756,11 +1898,9 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
             self.assertNotIn("<ns0:Relationships", workbook_rels_xml)
 
             workbook_xml = _zip_entry_text(result["output_path"], "xl/workbook.xml")
-            self.assertIn('mc:Ignorable="x15"', workbook_xml)
-            self.assertIn(
-                'xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"',
-                workbook_xml,
-            )
+            self.assertNotIn("x15ac:absPath", workbook_xml)
+            self.assertNotIn("<mc:AlternateContent", workbook_xml)
+            self.assertNotIn('hidePivotFieldList="1"', workbook_xml)
 
     def test_0617_report_contracts_use_grouped_price_helpers_and_updated_pivots(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2051,6 +2191,10 @@ class SophiaTinaModulePricePriorityTests(unittest.TestCase):
                 _pivot_location_ref(result["output_path"], "xl/pivotTables/pivotTable9.xml"),
                 "A1:E4",
             )
+            pivot_table9_xml = _zip_entry_text(result["output_path"], "xl/pivotTables/pivotTable9.xml")
+            self.assertNotIn("<rowItems", pivot_table9_xml)
+            self.assertNotIn("<colItems", pivot_table9_xml)
+            self.assertNotIn("<extLst", pivot_table9_xml)
             self.assertEqual(
                 set(_slicer_pivot_table_names(result["output_path"], "xl/slicerCaches/slicerCache1.xml")),
                 {"PivotTable15", "PivotTable16"},
