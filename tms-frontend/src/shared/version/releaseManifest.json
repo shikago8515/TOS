@@ -1,26 +1,25 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.14",
-  "tag": "v1.0.0-beta.3.14",
-  "gitSha": "f3c0bbfc5c198836b432abcc06eb96a1a8c0c6f5",
+  "version": "1.0.0-beta.3.15",
+  "tag": "v1.0.0-beta.3.15",
+  "gitSha": "48f8f43eb5b1bb071a550aed83301690088c50fd",
   "releaseDate": "2026-07-06",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.14",
+    "version": "1.0.0-beta.3.15",
     "date": "2026-07-06",
-    "noticeId": "2026-07-06-v1.0.0-beta.3.14",
+    "noticeId": "2026-07-06-v1.0.0-beta.3.15",
     "showPopup": false,
     "added": [],
     "improved": [],
     "fixed": [
-      "箱单下载必须先点击审批",
-      "箱单下载前先审批详情页"
+      "放宽自动化模块热更新等待时间"
     ],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.14",
-    "version": "1.0.0-beta.3.14",
+    "noticeId": "v1.0.0-beta.3.15",
+    "version": "1.0.0-beta.3.15",
     "releaseDate": "2026-07-06",
     "showPopup": false,
     "level": "maintenance",
@@ -30,8 +29,7 @@
         "title": "修复",
         "icon": "check-circle",
         "items": [
-          "箱单下载必须先点击审批",
-          "箱单下载前先审批详情页"
+          "放宽自动化模块热更新等待时间"
         ]
       }
     ]
