@@ -1,3 +1,9 @@
+## [1.0.0-beta.3.19](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.18...v1.0.0-beta.3.19) (2026-07-06)
+
+### Bug Fixes
+
+* 修正 Sophia Tina 报表生成格式 ([21cad52](http://172.16.48.208:3001/luenthai-ai/TOS/commit/21cad5280a43188beda789adb1a5b3e022ac5b8d))
+
 ## [1.0.0-beta.3.18](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.17...v1.0.0-beta.3.18) (2026-07-06)
 
 ### Bug Fixes

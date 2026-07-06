@@ -1,25 +1,25 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.18",
-  "tag": "v1.0.0-beta.3.18",
-  "gitSha": "2bedaffed5c84894a24ea0b1cca1805333478b58",
+  "version": "1.0.0-beta.3.19",
+  "tag": "v1.0.0-beta.3.19",
+  "gitSha": "21cad5280a43188beda789adb1a5b3e022ac5b8d",
   "releaseDate": "2026-07-06",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.18",
+    "version": "1.0.0-beta.3.19",
     "date": "2026-07-06",
-    "noticeId": "2026-07-06-v1.0.0-beta.3.18",
+    "noticeId": "2026-07-06-v1.0.0-beta.3.19",
     "showPopup": false,
     "added": [],
     "improved": [],
     "fixed": [
-      "修复 Sophia Tina Factory Price 表头识别"
+      "修正 Sophia Tina 报表生成格式"
     ],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.18",
-    "version": "1.0.0-beta.3.18",
+    "noticeId": "v1.0.0-beta.3.19",
+    "version": "1.0.0-beta.3.19",
     "releaseDate": "2026-07-06",
     "showPopup": false,
     "level": "maintenance",
@@ -29,7 +29,7 @@
         "title": "修复",
         "icon": "check-circle",
         "items": [
-          "修复 Sophia Tina Factory Price 表头识别"
+          "修正 Sophia Tina 报表生成格式"
         ]
       }
     ]

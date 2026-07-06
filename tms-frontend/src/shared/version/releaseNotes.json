@@ -1,12 +1,12 @@
 {
-  "version": "1.0.0-beta.3.18",
+  "version": "1.0.0-beta.3.19",
   "date": "2026-07-06",
-  "noticeId": "2026-07-06-v1.0.0-beta.3.18",
+  "noticeId": "2026-07-06-v1.0.0-beta.3.19",
   "showPopup": false,
   "added": [],
   "improved": [],
   "fixed": [
-    "修复 Sophia Tina Factory Price 表头识别"
+    "修正 Sophia Tina 报表生成格式"
   ],
   "modules": [],
   "sections": []
