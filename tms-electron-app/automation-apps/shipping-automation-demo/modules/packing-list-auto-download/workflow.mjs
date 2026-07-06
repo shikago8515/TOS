@@ -835,14 +835,14 @@ export async function openPackingListPoSearchResultAttempt(options) {
     text: linkInfo.text || "",
   });
   setRunProgress(activeRun, {
-    phase: "请求箱单详情",
-    message: `NO ${no} 的 PO ${poNumber} 已搜到结果，正在请求箱单详情并下载 PDF。`,
+    phase: "审批箱单",
+    message: `NO ${no} 的 PO ${poNumber} 已搜到结果，正在进入详情页并点击 Approve。`,
     currentPackingListNumbers: [no],
     currentPoNumbers: [poNumber],
   });
   const detailPage = openResult.page || page;
-  await showPackingListAutomationBadge(detailPage, `已搜到 PO ${poNumber}，正在下载箱单`, {
-    phase: "download-pdf",
+  await showPackingListAutomationBadge(detailPage, `已搜到 PO ${poNumber}，准备进入详情页并点击 Approve`, {
+    phase: "approve-packing-list",
     no,
     poNumber,
     totalCount: groupTotal,
@@ -888,6 +888,22 @@ export async function downloadPackingListPoPdfAttempt(options) {
     url: linkInfo.href || "",
     browserUrl: detailPage.url(),
   });
+  setRunProgress(activeRun, {
+    phase: "审批箱单",
+    message: `NO ${no} 的 PO ${poNumber} 正在进入详情页并点击 Approve。`,
+    currentPackingListNumbers: [no],
+    currentPoNumbers: [poNumber],
+  });
+  await showPackingListAutomationBadge(detailPage, `正在进入详情页并点击 Approve：PO ${poNumber}`, {
+    phase: "approve-packing-list",
+    no,
+    poNumber,
+    totalCount: groupTotal,
+    completedCount: groupIndex,
+    attemptedCount: poIndex + 1,
+    currentPoIndex: poIndex + 1,
+    totalPoCount: poNumbers.length,
+  });
   const downloadResult = await downloadPackingManifestPdfForGroup({
     config,
     downloadDirectory,
@@ -895,6 +911,14 @@ export async function downloadPackingListPoPdfAttempt(options) {
     groupNo: no,
     linkInfo,
     page: detailPage,
+    poNumber,
+    progressDetails: {
+      totalCount: groupTotal,
+      completedCount: groupIndex,
+      attemptedCount: poIndex + 1,
+      currentPoIndex: poIndex + 1,
+      totalPoCount: poNumbers.length,
+    },
   });
   if (detailPage !== page && !detailPage.isClosed()) {
     await detailPage.close().catch(() => {});
