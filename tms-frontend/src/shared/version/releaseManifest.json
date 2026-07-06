@@ -1,48 +1,35 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.10",
-  "tag": "v1.0.0-beta.3.10",
-  "gitSha": "09aab49fb32dd32adfac52766f3a69ec28470761",
-  "releaseDate": "2026-07-04",
+  "version": "1.0.0-beta.3.11",
+  "tag": "v1.0.0-beta.3.11",
+  "gitSha": "e4540c2f4d8dd25f6d6ad8e1130f41aac2006eed",
+  "releaseDate": "2026-07-06",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.10",
-    "date": "2026-07-04",
-    "noticeId": "2026-07-04-v1.0.0-beta.3.10",
-    "showPopup": true,
-    "added": [
-      "添加 Jason Result Set Excel 模块",
-      "完善自动化模块与PDF重排流程"
+    "version": "1.0.0-beta.3.11",
+    "date": "2026-07-06",
+    "noticeId": "2026-07-06-v1.0.0-beta.3.11",
+    "showPopup": false,
+    "added": [],
+    "improved": [
+      "补齐 Jessca 响应契约 schema"
     ],
-    "improved": [],
-    "fixed": [
-      "补充自动化页面英文翻译",
-      "修复 Jason 手动重排结果下载"
-    ],
+    "fixed": [],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.10",
-    "version": "1.0.0-beta.3.10",
-    "releaseDate": "2026-07-04",
-    "showPopup": true,
-    "level": "feature",
+    "noticeId": "v1.0.0-beta.3.11",
+    "version": "1.0.0-beta.3.11",
+    "releaseDate": "2026-07-06",
+    "showPopup": false,
+    "level": "maintenance",
     "title": "本次更新内容",
     "groups": [
       {
-        "title": "新增",
-        "icon": "sparkles",
+        "title": "优化",
+        "icon": "activity",
         "items": [
-          "添加 Jason Result Set Excel 模块",
-          "完善自动化模块与PDF重排流程"
-        ]
-      },
-      {
-        "title": "修复",
-        "icon": "check-circle",
-        "items": [
-          "补充自动化页面英文翻译",
-          "修复 Jason 手动重排结果下载"
+          "补齐 Jessca 响应契约 schema"
         ]
       }
     ]

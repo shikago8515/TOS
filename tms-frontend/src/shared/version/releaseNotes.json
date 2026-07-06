@@ -1,17 +1,13 @@
 {
-  "version": "1.0.0-beta.3.10",
-  "date": "2026-07-04",
-  "noticeId": "2026-07-04-v1.0.0-beta.3.10",
-  "showPopup": true,
-  "added": [
-    "添加 Jason Result Set Excel 模块",
-    "完善自动化模块与PDF重排流程"
+  "version": "1.0.0-beta.3.11",
+  "date": "2026-07-06",
+  "noticeId": "2026-07-06-v1.0.0-beta.3.11",
+  "showPopup": false,
+  "added": [],
+  "improved": [
+    "补齐 Jessca 响应契约 schema"
   ],
-  "improved": [],
-  "fixed": [
-    "补充自动化页面英文翻译",
-    "修复 Jason 手动重排结果下载"
-  ],
+  "fixed": [],
   "modules": [],
   "sections": []
 }

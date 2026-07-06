@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "release-v1.0.0-beta.3.11",
+    "version": "1.0.0-beta.3.11",
+    "releaseDate": "2026-07-06",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.11",
+    "description": "Release v1.0.0-beta.3.11. Channel: beta.3. Commit: e4540c2f4d8dd25f6d6ad8e1130f41aac2006eed. Release notes: 补齐 Jessca 响应契约 schema."
+  },
+  {
     "recordKey": "release-v1.0.0-beta.3.10",
     "version": "1.0.0-beta.3.10",
     "releaseDate": "2026-07-04",
