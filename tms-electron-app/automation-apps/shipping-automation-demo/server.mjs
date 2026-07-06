@@ -1,7 +1,7 @@
 ﻿import http from "node:http";
 import { execFile, execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -6466,6 +6466,7 @@ async function persistRunArtifacts(result, poRows, runId) {
   await mkdir(artifactsDir, { recursive: true });
 
   const safeRunId = sanitizeFileSegment(runId || result?.runId || createRunId("artifact"));
+  const previewPdfArtifacts = await persistCreateShipmentPreviewPdfArtifacts(result, safeRunId);
   const resultJsonName = `${safeRunId}-result.json`;
   const resultExcelName = `${safeRunId}-result.xlsx`;
   const failedJsonName = `${safeRunId}-failed-po-rows.json`;
@@ -6509,12 +6510,14 @@ async function persistRunArtifacts(result, poRows, runId) {
     latestCartonRangeCheckExcelPath,
     failedRowCount: failedRows.length,
     cartonRangeMismatchCount: Number(result?.cartonRangeMismatchCount || 0),
+    previewPdfArtifactCount: previewPdfArtifacts.length,
     downloadUrls: {
       resultJsonUrl: `/artifacts/${resultJsonName}`,
       resultExcelUrl: `/artifacts/${resultExcelName}`,
       failedPoJsonUrl: `/artifacts/${failedJsonName}`,
       failedPoExcelUrl: `/artifacts/${failedExcelName}`,
       cartonRangeCheckExcelUrl: `/artifacts/${cartonRangeCheckExcelName}`,
+      previewPdfUrls: previewPdfArtifacts.map((item) => item.url),
       latestResultJsonUrl: "/artifacts/last-result.json",
       latestResultExcelUrl: "/artifacts/last-result.xlsx",
       latestFailedPoJsonUrl: "/artifacts/last-failed-po-rows.json",
@@ -6522,6 +6525,72 @@ async function persistRunArtifacts(result, poRows, runId) {
       latestCartonRangeCheckExcelUrl: "/artifacts/last-carton-range-check.xlsx",
     },
   };
+}
+
+async function persistCreateShipmentPreviewPdfArtifacts(result, safeRunId) {
+  const createShipmentResults = Array.isArray(result?.createShipmentResults)
+    ? result.createShipmentResults
+    : [];
+  const artifacts = [];
+
+  for (const [index, item] of createShipmentResults.entries()) {
+    const previewPdf = item?.previewPdfDownloadResult;
+    const sourcePath = String(previewPdf?.filePath || "").trim();
+    if (!previewPdf?.ok || !sourcePath) {
+      continue;
+    }
+
+    const artifactName = buildCreateShipmentPreviewPdfArtifactName(safeRunId, previewPdf, index);
+    const artifactPath = path.join(artifactsDir, artifactName);
+    const artifactUrl = `/artifacts/${artifactName}`;
+
+    try {
+      const resolvedSourcePath = path.resolve(sourcePath);
+      const resolvedArtifactPath = path.resolve(artifactPath);
+      if (resolvedSourcePath !== resolvedArtifactPath) {
+        await copyFile(resolvedSourcePath, resolvedArtifactPath);
+      }
+      const size = existsSync(resolvedArtifactPath) ? statSync(resolvedArtifactPath).size : Number(previewPdf.size || 0);
+      Object.assign(previewPdf, {
+        artifactFileName: artifactName,
+        artifactPath,
+        artifactUrl,
+        archiveUrl: artifactUrl,
+        contentType: "application/pdf",
+        artifactSize: size,
+      });
+      artifacts.push({
+        changeEquipmentId: String(item?.changeEquipmentId || "").trim(),
+        poNos: Array.isArray(item?.poNos) ? item.poNos : [],
+        fileName: artifactName,
+        originalFileName: String(previewPdf.fileName || artifactName),
+        filePath: artifactPath,
+        url: artifactUrl,
+        contentType: "application/pdf",
+        size,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || "Preview PDF artifact persist failed.");
+      previewPdf.artifactError = message;
+      log("Create Shipment Preview PDF artifact persist failed.", {
+        sourcePath,
+        artifactPath,
+        error: message,
+      });
+    }
+  }
+
+  if (artifacts.length > 0) {
+    result.previewPdfArtifactFiles = artifacts;
+  }
+  return artifacts;
+}
+
+function buildCreateShipmentPreviewPdfArtifactName(safeRunId, previewPdf, index) {
+  const sourceFileName = String(previewPdf?.fileName || path.basename(String(previewPdf?.filePath || "")) || `preview-${index + 1}.pdf`);
+  const sourceBaseName = sanitizeFileSegment(path.parse(sourceFileName).name || `preview-${index + 1}`);
+  const sequence = String(index + 1).padStart(2, "0");
+  return `${safeRunId}-preview-pdf-${sequence}-${sourceBaseName}.pdf`;
 }
 
 function extractFailedPoRows(result, poRows) {
@@ -8228,7 +8297,7 @@ function resolveArtifactDownload(requestPath) {
     return artifactMap[normalizedPath];
   }
 
-  const dynamicMatch = normalizedPath.match(/^\/(?:api\/)?artifacts\/([A-Za-z0-9._-]+\.(?:json|xlsx|png))$/);
+  const dynamicMatch = normalizedPath.match(/^\/(?:api\/)?artifacts\/([A-Za-z0-9._-]+\.(?:json|xlsx|png|pdf))$/);
   if (!dynamicMatch) {
     return null;
   }
@@ -8242,6 +8311,8 @@ function resolveArtifactDownload(requestPath) {
   const ext = path.extname(downloadName).toLowerCase();
   const contentType = ext === ".xlsx"
     ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    : ext === ".pdf"
+      ? "application/pdf"
     : ext === ".png"
       ? "image/png"
       : "application/json; charset=utf-8";

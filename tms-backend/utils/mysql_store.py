@@ -452,6 +452,7 @@ def _file_role_label(file_role: str) -> str:
         "result_excel": "结果 Excel",
         "failed_po_excel": "失败明细 Excel",
         "failed_po_json": "失败明细 JSON",
+        "preview_pdf": "Preview PDF",
         "result_file": "结果文件",
     }
     return labels.get(str(file_role or ""), str(file_role or "文件"))

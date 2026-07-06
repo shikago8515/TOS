@@ -17,8 +17,8 @@ const REQUIRED_OUTPUT_FIELDS = [
   "PO Number",
   "Working Number",
 ];
-const DEFAULT_REQUEST_LOOKUP_CONCURRENCY = 3;
-const MAX_REQUEST_LOOKUP_CONCURRENCY = 5;
+const DEFAULT_REQUEST_LOOKUP_CONCURRENCY = 6;
+const MAX_REQUEST_LOOKUP_CONCURRENCY = 6;
 
 export async function buildTicketOwnerRowsFromTaskCenterTasks(page, tasks, options = {}) {
   const maxTicketCount = normalizePositiveInteger(options.maxTicketCount, 200);

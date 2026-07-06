@@ -862,9 +862,48 @@ async function finishBackendRunRecord(r: AutomationRunRecord | null, ok: boolean
 }
 function collectResultFiles(p: ExecutorResponsePayload | null): AutomationRunFileInput[] {
   const u = getExecutorArtifactDownloadUrls(p); if (!u) return []
-  return [bfi(u.resultExcelUrl, 'result_excel', 'shipping-last-result.xlsx'), bfi(u.resultJsonUrl, 'result_json', 'shipping-last-result.json'), bfi(u.failedPoExcelUrl, 'failed_rows_excel', 'shipping-last-failed-po-rows.xlsx'), bfi(u.failedPoJsonUrl, 'failed_rows_json', 'shipping-last-failed-po-rows.json'), bfi(u.cartonRangeCheckExcelUrl || u.latestCartonRangeCheckExcelUrl, 'carton_range_check_excel', 'shipping-last-carton-range-check.xlsx')].filter((x): x is AutomationRunFileInput => Boolean(x))
+  return [
+    bfi(u.resultExcelUrl, 'result_excel', 'shipping-last-result.xlsx'),
+    bfi(u.resultJsonUrl, 'result_json', 'shipping-last-result.json'),
+    bfi(u.failedPoExcelUrl, 'failed_rows_excel', 'shipping-last-failed-po-rows.xlsx'),
+    bfi(u.failedPoJsonUrl, 'failed_rows_json', 'shipping-last-failed-po-rows.json'),
+    bfi(u.cartonRangeCheckExcelUrl || u.latestCartonRangeCheckExcelUrl, 'carton_range_check_excel', 'shipping-last-carton-range-check.xlsx'),
+    ...collectPreviewPdfArchiveFiles(p),
+  ].filter((x): x is AutomationRunFileInput => Boolean(x))
 }
 function bfi(rp: unknown, fr: string, fn: string): AutomationRunFileInput | null { const u = buildShippingArtifactUrl(rp); if (!u) return null; return { url: u, fileRole: fr, fileName: fn } }
+
+function collectPreviewPdfArchiveFiles(p: ExecutorResponsePayload | null): AutomationRunFileInput[] {
+  const files: AutomationRunFileInput[] = []
+  const seen = new Set<string>()
+  const add = (rawUrl: unknown, rawFileName: unknown, index: number): void => {
+    const url = buildShippingArtifactUrl(rawUrl)
+    if (!url || seen.has(url)) return
+    seen.add(url)
+    const fileName = String(rawFileName || '').trim() || `xinlongtai-preview-${index + 1}.pdf`
+    files.push({ url, fileRole: 'preview_pdf', fileName, contentType: 'application/pdf' })
+  }
+
+  const payload = isJsonRecord(p) ? p : null
+  const artifactFiles: unknown[] = Array.isArray(payload?.previewPdfArtifactFiles)
+    ? payload.previewPdfArtifactFiles
+    : []
+  artifactFiles.forEach((item: unknown, index: number) => {
+    const row = isJsonRecord(item) ? item : null
+    if (!row) return
+    add(row.url || row.artifactUrl || row.archiveUrl, row.originalFileName || row.fileName, index)
+  })
+
+  const createShipmentResults = Array.isArray(p?.createShipmentResults) ? p.createShipmentResults : []
+  createShipmentResults.forEach((item: unknown, index: number) => {
+    const row = isJsonRecord(item) ? item : null
+    const result = isJsonRecord(row?.previewPdfDownloadResult) ? row.previewPdfDownloadResult : null
+    if (!result?.ok) return
+    add(result.artifactUrl || result.archiveUrl || result.downloadUrl, result.fileName || result.artifactFileName, files.length + index)
+  })
+
+  return files
+}
 
 function collectPreviewPdfSavedPaths(p: ExecutorResponsePayload | null): string[] {
   const payload = p
