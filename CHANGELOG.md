@@ -1,3 +1,9 @@
+## [1.0.0-beta.3.13](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.12...v1.0.0-beta.3.13) (2026-07-06)
+
+### Bug Fixes
+
+* 更新 iPlex 目标表上传标题 ([0de22a8](http://172.16.48.208:3001/luenthai-ai/TOS/commit/0de22a8d94c33158f0a107fd7827688506bad1e0))
+
 ## [1.0.0-beta.3.12](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.11...v1.0.0-beta.3.12) (2026-07-06)
 
 ### Features

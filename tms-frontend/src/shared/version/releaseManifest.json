@@ -1,35 +1,35 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.12",
-  "tag": "v1.0.0-beta.3.12",
-  "gitSha": "ec66514431c4ec09cad0c0370bada758a7432463",
+  "version": "1.0.0-beta.3.13",
+  "tag": "v1.0.0-beta.3.13",
+  "gitSha": "0de22a8d94c33158f0a107fd7827688506bad1e0",
   "releaseDate": "2026-07-06",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.12",
+    "version": "1.0.0-beta.3.13",
     "date": "2026-07-06",
-    "noticeId": "2026-07-06-v1.0.0-beta.3.12",
-    "showPopup": true,
-    "added": [
-      "archive Xinlongtai preview PDFs"
-    ],
+    "noticeId": "2026-07-06-v1.0.0-beta.3.13",
+    "showPopup": false,
+    "added": [],
     "improved": [],
-    "fixed": [],
+    "fixed": [
+      "更新 iPlex 目标表上传标题"
+    ],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.12",
-    "version": "1.0.0-beta.3.12",
+    "noticeId": "v1.0.0-beta.3.13",
+    "version": "1.0.0-beta.3.13",
     "releaseDate": "2026-07-06",
-    "showPopup": true,
-    "level": "feature",
+    "showPopup": false,
+    "level": "maintenance",
     "title": "本次更新内容",
     "groups": [
       {
-        "title": "新增",
-        "icon": "sparkles",
+        "title": "修复",
+        "icon": "check-circle",
         "items": [
-          "archive Xinlongtai preview PDFs"
+          "更新 iPlex 目标表上传标题"
         ]
       }
     ]
