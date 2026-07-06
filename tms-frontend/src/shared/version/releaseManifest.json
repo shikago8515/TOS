@@ -1,44 +1,35 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.16",
-  "tag": "v1.0.0-beta.3.16",
-  "gitSha": "efdc83689ffc6cdf15a5837fc6e6c47d2ac7e013",
+  "version": "1.0.0-beta.3.17",
+  "tag": "v1.0.0-beta.3.17",
+  "gitSha": "74e6e951103ff756b00de2c9dfcd0cb9ec7fde7a",
   "releaseDate": "2026-07-06",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.16",
+    "version": "1.0.0-beta.3.17",
     "date": "2026-07-06",
-    "noticeId": "2026-07-06-v1.0.0-beta.3.16",
+    "noticeId": "2026-07-06-v1.0.0-beta.3.17",
     "showPopup": false,
     "added": [],
-    "improved": [
-      "补齐 Jane 响应契约 schema"
-    ],
+    "improved": [],
     "fixed": [
-      "收敛箱单下载审批链路"
+      "箱单审批后确认签核"
     ],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.16",
-    "version": "1.0.0-beta.3.16",
+    "noticeId": "v1.0.0-beta.3.17",
+    "version": "1.0.0-beta.3.17",
     "releaseDate": "2026-07-06",
     "showPopup": false,
     "level": "maintenance",
     "title": "本次更新内容",
     "groups": [
       {
-        "title": "优化",
-        "icon": "activity",
-        "items": [
-          "补齐 Jane 响应契约 schema"
-        ]
-      },
-      {
         "title": "修复",
         "icon": "check-circle",
         "items": [
-          "收敛箱单下载审批链路"
+          "箱单审批后确认签核"
         ]
       }
     ]

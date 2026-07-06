@@ -3651,6 +3651,12 @@ async function downloadPackingManifestPdfForGroup(options) {
   if (!approvalResult.clicked) {
     throw new Error(`箱单详情页未成功点击 Approve，已停止下载 PDF。原因：${approvalResult.source || "approve-click-failed"}`);
   }
+  const approvalOkResult = await confirmPackingManifestApprovalIfNeeded(downloadPage, config);
+  if (!approvalOkResult.clicked) {
+    throw new Error(`箱单详情页点击 Approve 后未成功点击 Ok，已停止下载 PDF。原因：${approvalOkResult.source || "approve-ok-click-failed"}`);
+  }
+  approvalResult.okClicked = approvalOkResult.clicked;
+  approvalResult.okSource = approvalOkResult.source || "";
   context = downloadPage.context();
 
   const directRequestResult = absoluteDetailUrl
@@ -3664,11 +3670,7 @@ async function downloadPackingManifestPdfForGroup(options) {
     })
     : null;
   if (directRequestResult) {
-    return {
-      ...directRequestResult,
-      approvalClicked: approvalResult.clicked,
-      approvalSource: approvalResult.source || "",
-    };
+    return withPackingManifestApprovalInfo(directRequestResult, approvalResult);
   }
 
   const directPdfUrl = await resolvePackingManifestPdfUrlFromDetailPage(downloadPage);
@@ -3682,11 +3684,7 @@ async function downloadPackingManifestPdfForGroup(options) {
       source: "packing-manifest-pdf-request",
     });
     if (directFetchResult) {
-      return {
-        ...directFetchResult,
-        approvalClicked: approvalResult.clicked,
-        approvalSource: approvalResult.source || "",
-      };
+      return withPackingManifestApprovalInfo(directFetchResult, approvalResult);
     }
   }
 
@@ -3803,6 +3801,35 @@ async function approvePackingManifestDetailIfPresent(page, config) {
   };
 }
 
+async function confirmPackingManifestApprovalIfNeeded(page, config) {
+  if (!page || page.isClosed?.()) {
+    return { clicked: false, source: "page-closed" };
+  }
+
+  const deadline = Date.now() + Math.min(Number(config.navigationTimeoutMs) || 30000, 12000);
+  let lastFoundSource = "";
+
+  while (Date.now() < deadline) {
+    const roots = [page, ...page.frames()];
+    for (const root of roots) {
+      const clickResult = await clickPackingManifestApprovalOkButtonInRoot(page, root);
+      if (clickResult.clicked) {
+        await waitForPackingManifestApprovalOkSettled(page, config);
+        return clickResult;
+      }
+      if (clickResult.found) {
+        lastFoundSource = clickResult.source || "approval-ok-found-not-clicked";
+      }
+    }
+    await delay(250);
+  }
+
+  return {
+    clicked: false,
+    source: lastFoundSource || "approval-ok-button-not-present",
+  };
+}
+
 async function clickPackingManifestApproveButtonInRoot(page, root) {
   if (!root || page.isClosed?.()) {
     return { clicked: false, found: false, source: "page-closed" };
@@ -3882,11 +3909,161 @@ async function clickPackingManifestApproveButtonInRoot(page, root) {
   }
 }
 
+async function clickPackingManifestApprovalOkButtonInRoot(page, root) {
+  if (!root || page.isClosed?.()) {
+    return { clicked: false, found: false, source: "page-closed" };
+  }
+
+  const dialogHandler = (dialog) => {
+    dialog.accept().catch(() => {});
+  };
+  page.once("dialog", dialogHandler);
+  try {
+    return await root.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll('input[type="button"], button'))
+        .map((element) => {
+          const value = String(element.value || element.textContent || "").trim();
+          const onclick = String(element.getAttribute("onclick") || "");
+          const className = String(element.className || "");
+          const source = element.outerHTML
+            ? element.outerHTML.replace(/\s+/g, " ").slice(0, 220)
+            : "approval-ok-button";
+          return {
+            element,
+            value,
+            onclick,
+            className,
+            source,
+          };
+        })
+        .filter((item) => (
+          item.value.toLowerCase() === "ok"
+          && (
+            /doSignSubmit\s*\(/i.test(item.onclick)
+            || (
+              /\bstyledActionButton\b/i.test(item.className)
+              && /\bMB_focusable\b/i.test(item.className)
+            )
+          )
+        ));
+
+      if (candidates.length === 0) {
+        return { clicked: false, found: false, source: "approval-ok-button-not-present" };
+      }
+
+      const isUsable = (element) => {
+        if (!element || element.disabled) {
+          return false;
+        }
+        const style = window.getComputedStyle(element);
+        if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
+          return false;
+        }
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      };
+      const target = candidates.find((item) => isUsable(item.element)) || candidates[0];
+      if (target.element.disabled) {
+        return { clicked: false, found: true, source: "approval-ok-button-disabled" };
+      }
+
+      target.element.scrollIntoView({ block: "center", inline: "center" });
+      target.element.focus?.();
+      target.element.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, cancelable: true, view: window }));
+      target.element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+      target.element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+      target.element.click();
+      return { clicked: true, found: true, source: target.source || "approval-ok-button" };
+    });
+  } catch (error) {
+    return {
+      clicked: false,
+      found: false,
+      source: `approval-ok-click-evaluate-failed:${error?.message || error}`,
+    };
+  } finally {
+    page.off?.("dialog", dialogHandler);
+  }
+}
+
+async function waitForPackingManifestApprovalOkSettled(page, config) {
+  if (!page || page.isClosed?.()) {
+    return;
+  }
+
+  const timeoutMs = Math.min(Number(config.navigationTimeoutMs) || 30000, 12000);
+  await Promise.race([
+    page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: timeoutMs }).catch(() => null),
+    waitForPackingManifestApprovalOkButtonGone(page, timeoutMs).catch(() => null),
+    delay(timeoutMs),
+  ]);
+  await page.waitForLoadState("domcontentloaded", {
+    timeout: Math.min(Number(config.navigationTimeoutMs) || 30000, 5000),
+  }).catch(() => {});
+  await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
+  await page.waitForTimeout(500).catch(() => {});
+}
+
+async function waitForPackingManifestApprovalOkButtonGone(page, timeoutMs) {
+  const deadline = Date.now() + Math.max(Number(timeoutMs) || 0, 1000);
+  while (Date.now() < deadline) {
+    const stillVisible = await hasVisiblePackingManifestApprovalOkButton(page).catch(() => false);
+    if (!stillVisible) {
+      return true;
+    }
+    await delay(250);
+  }
+  return false;
+}
+
+async function hasVisiblePackingManifestApprovalOkButton(page) {
+  if (!page || page.isClosed?.()) {
+    return false;
+  }
+
+  const roots = [page, ...page.frames()];
+  for (const root of roots) {
+    const visible = await root.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll('input[type="button"], button'))
+        .filter((element) => {
+          const value = String(element.value || element.textContent || "").trim();
+          const onclick = String(element.getAttribute("onclick") || "");
+          const className = String(element.className || "");
+          return value.toLowerCase() === "ok"
+            && (
+              /doSignSubmit\s*\(/i.test(onclick)
+              || (
+                /\bstyledActionButton\b/i.test(className)
+                && /\bMB_focusable\b/i.test(className)
+              )
+            );
+        });
+      return candidates.some((element) => {
+        if (!element || element.disabled) {
+          return false;
+        }
+        const style = window.getComputedStyle(element);
+        if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
+          return false;
+        }
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      });
+    }).catch(() => false);
+    if (visible) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function withPackingManifestApprovalInfo(result, approvalResult) {
   return {
     ...result,
     approvalClicked: Boolean(approvalResult?.clicked),
     approvalSource: approvalResult?.source || "",
+    approvalOkClicked: Boolean(approvalResult?.okClicked),
+    approvalOkSource: approvalResult?.okSource || "",
   };
 }
 
