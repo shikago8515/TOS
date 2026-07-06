@@ -1,3 +1,9 @@
+## [1.0.0-beta.3.16](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.15...v1.0.0-beta.3.16) (2026-07-06)
+
+### Bug Fixes
+
+* 收敛箱单下载审批链路 ([d0da03f](http://172.16.48.208:3001/luenthai-ai/TOS/commit/d0da03f04ac951bacfa381a59729de9d3e72df44))
+
 ## [1.0.0-beta.3.15](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.14...v1.0.0-beta.3.15) (2026-07-06)
 
 ### Bug Fixes
