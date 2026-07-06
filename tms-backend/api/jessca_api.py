@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse
 # 导入模块
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from api.jessca_schemas import JesscaProcessResponse
 from modules.jessca_module import JesscaModule
 from utils.excel_result_history import archive_process_output_history
 from utils.excel_upload_backup import ExcelUploadBackupContext
@@ -151,7 +152,7 @@ def _save_tc_invoice_uploads(files: List[UploadFile], work_dir: str) -> List[str
     return paths
 
 
-@router.post("/process")
+@router.post("/process", response_model=JesscaProcessResponse)
 async def process_jessca(
     invoices: List[UploadFile] = File(...),
     reference_file: UploadFile = File(...),
