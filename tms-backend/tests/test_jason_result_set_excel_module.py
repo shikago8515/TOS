@@ -56,6 +56,8 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
             )
 
             workbook = openpyxl.load_workbook(result["output_path"], data_only=False, keep_links=False)
+            self.assertEqual(workbook.sheetnames[0], "Sheet1")
+            summary_sheet = workbook["Sheet1"]
             sheet = workbook["目标表"]
 
             self.assertEqual(result["success"], True)
@@ -64,6 +66,41 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
             self.assertEqual(result["partial_row_count"], 1)
             self.assertEqual(result["unknown_lookup_count"], 1)
             self.assertGreaterEqual(len(result["warnings"]), 1)
+
+            self.assertEqual(summary_sheet.max_row, 64)
+            self.assertEqual(
+                [summary_sheet.cell(row=1, column=column_index).value for column_index in range(1, 11)],
+                ["Order Type", "(Multiple Items)", None, None, None, None, None, None, None, None],
+            )
+            self.assertEqual(
+                [summary_sheet.cell(row=3, column=column_index).value for column_index in range(1, 11)],
+                [
+                    "Working Number",
+                    "Article Number",
+                    "PO Number",
+                    "Market PO Number",
+                    "Gps Customer Number",
+                    "Assigned Factory",
+                    "PODD",
+                    "Price Per Unit",
+                    "Total Adjustments",
+                    "Sum of Ordered Quantity",
+                ],
+            )
+            self.assertEqual(summary_sheet.auto_filter.ref, "A3:J63")
+            self.assertEqual(summary_sheet.cell(row=4, column=1).value, "WN000")
+            self.assertEqual(summary_sheet.cell(row=4, column=3).value, "0900000000")
+            self.assertEqual(summary_sheet.cell(row=4, column=7).value.date().isoformat(), "2026-07-15")
+            self.assertEqual(summary_sheet.cell(row=4, column=8).value, 120)
+            self.assertEqual(summary_sheet.cell(row=4, column=9).value, 5)
+            self.assertEqual(summary_sheet.cell(row=4, column=10).value, 10)
+            self.assertEqual(summary_sheet.cell(row=63, column=1).value, "WN999")
+            self.assertEqual(summary_sheet.cell(row=63, column=3).value, "0900009999")
+            self.assertEqual(summary_sheet.cell(row=63, column=7).value.date().isoformat(), "2026-06-30")
+            self.assertEqual(summary_sheet.cell(row=63, column=9).value, 6)
+            self.assertEqual(summary_sheet.cell(row=63, column=10).value, 4)
+            self.assertEqual(summary_sheet.cell(row=64, column=1).value, "Grand Total")
+            self.assertEqual(summary_sheet.cell(row=64, column=10).value, 594)
 
             self.assertEqual(sheet.max_row, 63)
             self.assertIsNone(sheet.cell(row=3, column=1).value)
@@ -74,7 +111,7 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
             self.assertEqual(sheet.cell(row=3, column=9).value, "苏州仓")
             self.assertEqual(sheet.cell(row=3, column=10).value.date().isoformat(), "2026-07-10")
             self.assertEqual(sheet.cell(row=3, column=11).value, 10)
-            self.assertEqual(sheet.cell(row=3, column=12).value, 100)
+            self.assertIsNone(sheet.cell(row=3, column=12).value)
             self.assertEqual(sheet.cell(row=3, column=13).value, "=ROUND(0.13*L3*K3,2)")
             self.assertEqual(sheet.cell(row=3, column=14).value, "=ROUND(L3*K3+M3,2)")
             self.assertEqual(sheet.cell(row=3, column=15).value, 120)
@@ -89,12 +126,24 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
             self.assertEqual(sheet.cell(row=62, column=6).value, "0900009999")
             self.assertEqual(sheet.cell(row=62, column=10).value.date().isoformat(), "2026-06-30")
             self.assertEqual(sheet.cell(row=62, column=11).value, 4)
+            self.assertIsNone(sheet.cell(row=62, column=12).value)
             self.assertEqual(sheet.cell(row=62, column=17).value, 6)
+            price_fill_columns = set(range(12, 19))
+            for row_index in (3, 62):
+                for column_index in range(1, 24):
+                    fill_type = sheet.cell(row=row_index, column=column_index).fill.fill_type
+                    if column_index in price_fill_columns:
+                        self.assertEqual(fill_type, "solid")
+                    else:
+                        self.assertIsNone(fill_type)
 
             self.assertEqual(sheet.cell(row=63, column=6).value, "=COUNTA(F3:F62)")
             self.assertEqual(sheet.cell(row=63, column=11).value, "=SUM(K3:K62)")
             self.assertEqual(sheet.cell(row=63, column=13).value, "=SUM(M3:M62)")
+            self.assertEqual(sheet.cell(row=63, column=14).value, "=SUM(N3:N62)")
             self.assertEqual(sheet.cell(row=63, column=18).value, "=SUM(R3:R62)")
+            for column_index in range(1, 24):
+                self.assertIsNone(sheet.cell(row=63, column=column_index).fill.fill_type)
             self.assertEqual({str(range_ref) for range_ref in sheet.merged_cells.ranges}, EXPECTED_HEADER_MERGES)
             self.assertIsNone(sheet.auto_filter.ref)
             workbook.close()
@@ -137,6 +186,116 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
                 self.assertEqual(sheet.cell(row=3, column=5).value, "Source Description 0")
                 self.assertEqual(sheet.cell(row=3, column=22).value, "Source TMS 0")
                 self.assertEqual(sheet.cell(row=3, column=23).value, "Source Factory 0")
+            finally:
+                workbook.close()
+
+    def test_process_sorts_rows_by_working_number_then_po_number(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            source_path = temp_path / "result-set-sort.xlsx"
+            template_path = temp_path / "template.xlsx"
+            self._write_result_set_workbook(source_path, not_shipped_count=0)
+
+            source_workbook = openpyxl.load_workbook(source_path)
+            try:
+                source_sheet = source_workbook["Result Set"]
+                self._append_result_set_row(
+                    source_sheet,
+                    po="0900000002",
+                    market_po="0300000002",
+                    working_number="WN100",
+                    article_number="ART001",
+                    gps_customer_number="825066",
+                    assigned_factory="1L8006",
+                    podd=datetime(2026, 7, 15),
+                    order_type="ZGPS",
+                    shipped_status="Not Shipped",
+                    price=120,
+                    adjustments=5,
+                    ordered_quantity=10,
+                    shipped_quantity=0,
+                )
+                self._append_result_set_row(
+                    source_sheet,
+                    po="0900009998",
+                    market_po="0300009998",
+                    working_number="WN050",
+                    article_number="ART001",
+                    gps_customer_number="825066",
+                    assigned_factory="1L8006",
+                    podd=datetime(2026, 7, 15),
+                    order_type="ZGPS",
+                    shipped_status="Not Shipped",
+                    price=120,
+                    adjustments=5,
+                    ordered_quantity=10,
+                    shipped_quantity=0,
+                )
+                self._append_result_set_row(
+                    source_sheet,
+                    po="0900000001",
+                    market_po="0300000001",
+                    working_number="WN100",
+                    article_number="ART999",
+                    gps_customer_number="825066",
+                    assigned_factory="1L8006",
+                    podd=datetime(2026, 7, 15),
+                    order_type="ZGPS",
+                    shipped_status="Not Shipped",
+                    price=120,
+                    adjustments=5,
+                    ordered_quantity=10,
+                    shipped_quantity=0,
+                )
+                source_workbook.save(source_path)
+            finally:
+                source_workbook.close()
+            self._write_template_workbook(template_path)
+
+            module = JasonResultSetExcelModule(template_path=template_path)
+            result = module.process_result_set(
+                result_set_path=source_path,
+                target_month="2026-07",
+                output_dir=temp_path,
+            )
+
+            workbook = openpyxl.load_workbook(result["output_path"], data_only=False, keep_links=False)
+            try:
+                sheet = workbook["目标表"]
+                summary_sheet = workbook["Sheet1"]
+                self.assertEqual(result["written_row_count"], 4)
+                self.assertEqual(
+                    [
+                        (
+                            sheet.cell(row=row_index, column=3).value,
+                            sheet.cell(row=row_index, column=6).value,
+                            sheet.cell(row=row_index, column=4).value,
+                        )
+                        for row_index in range(3, 7)
+                    ],
+                    [
+                        ("WN050", "0900009998", "ART001"),
+                        ("WN100", "0900000001", "ART999"),
+                        ("WN100", "0900000002", "ART001"),
+                        ("WN999", "0900009999", "ART999"),
+                    ],
+                )
+                self.assertEqual(
+                    [
+                        (
+                            summary_sheet.cell(row=row_index, column=1).value,
+                            summary_sheet.cell(row=row_index, column=3).value,
+                            summary_sheet.cell(row=row_index, column=2).value,
+                        )
+                        for row_index in range(4, 8)
+                    ],
+                    [
+                        ("WN050", "0900009998", "ART001"),
+                        ("WN100", "0900000001", "ART999"),
+                        ("WN100", "0900000002", "ART001"),
+                        ("WN999", "0900009999", "ART999"),
+                    ],
+                )
             finally:
                 workbook.close()
 
@@ -450,6 +609,11 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
         ])
         target.append([None, None, None, None, None, "=COUNTA(F3:F4)", None, None, None, None, "=SUM(K3:K4)"])
         target.auto_filter.ref = "A2:W5"
+        for column_index in range(1, 24):
+            target.cell(row=3, column=column_index).fill = openpyxl.styles.PatternFill(
+                fill_type="solid",
+                fgColor="D9EAF7",
+            )
 
         warehouse = workbook.create_sheet("Sheet2")
         warehouse.append(["Gps Customer Number", "Customer Warehouse"])
