@@ -1113,9 +1113,8 @@ async function runPoAutoDownload(): Promise<void> {
       statusLabel.value = '成功'
       statusText.value = buildPoDownloadCompletionStatusText(json)
       lastResult.value = { ok: true, message: readExecutorResponseText(json) || undefined }
-      messageTone.value = 'success'
-      message.value = text('执行完成。')
-      void showAppAlert(statusText.value, { tone: 'success' })
+      messageTone.value = 'info'
+      message.value = ''
       void showPoDownloadResultDialog(json)
       return
     }
@@ -1319,8 +1318,8 @@ function applyCompletedPoDownloadRunFromHealth(health: LocalExecutorHealth | nul
     ? buildPoDownloadCompletionStatusText(completedRun)
     : buildPoDownloadSummaryMessage(completedRun, readExecutorResponseText(completedRun) || text('后台下载任务已结束。'))
   lastResult.value = { ok: completedOk, message: readExecutorResponseText(completedRun) || statusText.value }
-  messageTone.value = completedOk ? 'success' : 'warning'
-  message.value = completedOk ? text('执行完成。') : statusText.value
+  messageTone.value = completedOk ? 'info' : 'warning'
+  message.value = completedOk ? '' : statusText.value
   void showPoDownloadResultDialog(completedRun)
   return true
 }
