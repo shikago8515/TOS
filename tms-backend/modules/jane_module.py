@@ -1093,6 +1093,15 @@ class JaneModule:
                 return 'NUM'
             return tech_size[:1] or 'OTHER'
 
+        def detail_sort_text(value: Any) -> str:
+            return self._normalize_text(value).upper()
+
+        def detail_numeric_sort_key(value: Any) -> Tuple[int, Any]:
+            number = self._normalize_int(value)
+            if number is not None:
+                return (0, number)
+            return (1, detail_sort_text(value))
+
         def build_groups(df_wn: pd.DataFrame) -> List[Dict[str, Any]]:
             """按尺码结构聚类；特殊目的地可按国家独立成段。
 
@@ -1151,6 +1160,20 @@ class JaneModule:
                 target_group['sizes'].setdefault(tech_size, customer_size)
 
             for group in groups:
+                group['rows'] = [
+                    row
+                    for _, row in sorted(
+                        enumerate(group['rows']),
+                        key=lambda item: (
+                            resolve_destination(item[1]),
+                            self._normalize_customer_no(item[1].get('Gps Customer Number')),
+                            detail_sort_text(item[1].get('Article Number')),
+                            detail_numeric_sort_key(item[1].get('PO Number')),
+                            detail_numeric_sort_key(item[1].get('PO Line Item #')),
+                            item[0],
+                        )
+                    )
+                ]
                 group['size_order'] = sorted(group['sizes'].keys(), key=self._sort_size_key)
 
             family_order = {'NUM': 0, 'OTHER': 1, 'A': 2}

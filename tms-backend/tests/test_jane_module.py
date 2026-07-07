@@ -478,6 +478,50 @@ class JaneModuleWorkbookTests(unittest.TestCase):
 
         self.assertEqual([101, 102], list(sorted_rows["PO Number"]))
 
+    def test_working_sheet_detail_rows_sort_within_size_section(self) -> None:
+        rows = [
+            self._tms_row("WN-001", "LK0680", "CHINA", "825066", 300, 20, 20),
+            self._tms_row("WN-001", "LK0680", "INDONESIA", "800005", 100, 10, 10),
+            self._tms_row("WN-001", "LK0682", "CHINA", "806020", 200, 10, 30),
+            self._tms_row("WN-001", "LK0680", "CHINA", "806020", 180, 30, 40),
+            self._tms_row("WN-001", "LK0680", "CHINA", "806020", 180, 10, 50),
+            self._tms_row("WN-001", "LK0682", "CHINA", "825066", 301, 10, 60),
+            self._tms_row("WN-001", "LK0682", "INDONESIA", "800005", 101, 10, 70),
+        ]
+
+        wb = self.module.create_auto_workbook(pd.DataFrame(rows), ["WN-001"], {}, [])
+        ws = wb["WN-001"]
+        destination_col = 14
+        data_rows: List[tuple[str, str, str, Any, Any]] = []
+        for row_idx in range(3, ws.max_row + 1):
+            destination = ws.cell(row=row_idx, column=destination_col).value
+            if destination == "Sub. Total ":
+                break
+            if not destination:
+                continue
+            data_rows.append(
+                (
+                    str(destination),
+                    str(ws.cell(row=row_idx, column=13).value),
+                    str(ws.cell(row=row_idx, column=6).value),
+                    ws.cell(row=row_idx, column=1).value,
+                    ws.cell(row=row_idx, column=3).value,
+                )
+            )
+
+        self.assertEqual(
+            [
+                ("CHINA", "806020", "LK0680", "0000000180", 10),
+                ("CHINA", "806020", "LK0680", None, 30),
+                ("CHINA", "806020", "LK0682", "0000000200", 10),
+                ("CHINA", "825066", "LK0680", "0000000300", 20),
+                ("CHINA", "825066", "LK0682", "0000000301", 10),
+                ("INDONESIA", "800005", "LK0680", "0000000100", 10),
+                ("INDONESIA", "800005", "LK0682", "0000000101", 10),
+            ],
+            data_rows,
+        )
+
     def test_summary_working_order_uses_natural_ascending_working_number(self) -> None:
         rows = [
             self._tms_row("RC2702OW006", "LK0670", "GERMANY", "1001", 1006, 10, 240),
