@@ -78,6 +78,20 @@ test('initial Infornexus auto-add run attempts Remove before filling Excel IDs',
   assert.match(source, /removeOnInitialEntry,/)
 })
 
+test('Infornexus auto-add waits two seconds after each Customer PO Number entry', () => {
+  const source = fs.readFileSync(serverPath, 'utf8')
+  const processStart = source.indexOf('async function processInfornexusAutoAddId')
+  const fillCall = source.indexOf('await fillInfornexusAutoAddSearchInput(page, normalizedId);', processStart)
+  const pacingWait = source.indexOf('await page.waitForTimeout(AUTO_ADD_CUSTOMER_PO_NUMBER_ENTRY_INTERVAL_MS);', fillCall)
+  const searchClick = source.indexOf('forceClickLocator(searchButton, "Infornexus Search")', pacingWait)
+
+  assert.match(source, /AUTO_ADD_CUSTOMER_PO_NUMBER_ENTRY_INTERVAL_MS = 2000/)
+  assert.notEqual(processStart, -1, 'auto-add ID processing should exist')
+  assert(fillCall > processStart, 'auto-add should fill the Customer PO Number before waiting')
+  assert(pacingWait > fillCall, 'auto-add should wait after filling each Customer PO Number')
+  assert(searchClick > pacingWait, 'auto-add should search only after the two-second pacing wait')
+})
+
 test('browser automation status badge is draggable from its title row', () => {
   const source = fs.readFileSync(serverPath, 'utf8')
 

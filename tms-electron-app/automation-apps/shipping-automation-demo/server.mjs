@@ -125,6 +125,7 @@ const recentRuns = [];
 const AUTO_ADD_CONTINUE_PANEL_ID = "tos-infornexus-auto-add-continue-panel";
 const AUTO_ADD_CONTINUE_BINDING = "__tosInfornexusAutoAddUpload";
 const AUTO_ADD_REMOVE_BATCH_PRINT_ITEM_SELECTOR = 'a[href*="remove.batch.print.item"]';
+const AUTO_ADD_CUSTOMER_PO_NUMBER_ENTRY_INTERVAL_MS = 2000;
 const retainedAutoAddBrowserSessions = new Map();
 const autoAddManualSessionManager = createInfornexusAutoAddManualSessionManager({
   browserEngines,
@@ -3236,7 +3237,7 @@ async function processInfornexusAutoAddId(page, id) {
 
   await waitForInfornexusAutoAddSearchReady(page);
   await fillInfornexusAutoAddSearchInput(page, normalizedId);
-  await page.waitForTimeout(100);
+  await page.waitForTimeout(AUTO_ADD_CUSTOMER_PO_NUMBER_ENTRY_INTERVAL_MS);
 
   const searchButton = getInfornexusAutoAddSearchButton(page);
   await Promise.all([
