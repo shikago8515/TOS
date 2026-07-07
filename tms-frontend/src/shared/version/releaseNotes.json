@@ -1,12 +1,16 @@
 {
-  "version": "1.0.0-beta.3.25",
+  "version": "1.0.0-beta.3.26",
   "date": "2026-07-07",
-  "noticeId": "2026-07-07-v1.0.0-beta.3.25",
-  "showPopup": false,
-  "added": [],
-  "improved": [],
+  "noticeId": "2026-07-07-v1.0.0-beta.3.26",
+  "showPopup": true,
+  "added": [
+    "TC INV Validate 后下载PDF"
+  ],
+  "improved": [
+    "修复 Gitea checkout 旧提交失败"
+  ],
   "fixed": [
-    "name Xinlongtai preview PDF by invoice"
+    "修复 Jane 成品表尺码分组"
   ],
   "modules": [],
   "sections": []

@@ -1,35 +1,53 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.25",
-  "tag": "v1.0.0-beta.3.25",
-  "gitSha": "725850ee664290ee90947e2b691d3ccc2c1e4839",
+  "version": "1.0.0-beta.3.26",
+  "tag": "v1.0.0-beta.3.26",
+  "gitSha": "c75db10aea466630f6134788b8e91a8c00a3b667",
   "releaseDate": "2026-07-07",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.25",
+    "version": "1.0.0-beta.3.26",
     "date": "2026-07-07",
-    "noticeId": "2026-07-07-v1.0.0-beta.3.25",
-    "showPopup": false,
-    "added": [],
-    "improved": [],
+    "noticeId": "2026-07-07-v1.0.0-beta.3.26",
+    "showPopup": true,
+    "added": [
+      "TC INV Validate 后下载PDF"
+    ],
+    "improved": [
+      "修复 Gitea checkout 旧提交失败"
+    ],
     "fixed": [
-      "name Xinlongtai preview PDF by invoice"
+      "修复 Jane 成品表尺码分组"
     ],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.25",
-    "version": "1.0.0-beta.3.25",
+    "noticeId": "v1.0.0-beta.3.26",
+    "version": "1.0.0-beta.3.26",
     "releaseDate": "2026-07-07",
-    "showPopup": false,
-    "level": "maintenance",
+    "showPopup": true,
+    "level": "feature",
     "title": "本次更新内容",
     "groups": [
+      {
+        "title": "新增",
+        "icon": "sparkles",
+        "items": [
+          "TC INV Validate 后下载PDF"
+        ]
+      },
+      {
+        "title": "优化",
+        "icon": "activity",
+        "items": [
+          "修复 Gitea checkout 旧提交失败"
+        ]
+      },
       {
         "title": "修复",
         "icon": "check-circle",
         "items": [
-          "name Xinlongtai preview PDF by invoice"
+          "修复 Jane 成品表尺码分组"
         ]
       }
     ]
