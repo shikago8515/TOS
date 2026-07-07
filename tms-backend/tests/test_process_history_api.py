@@ -225,6 +225,7 @@ class ProcessHistoryApiTests(unittest.TestCase):
     def test_process_history_owner_lookup_supports_canonical_module_aliases(self):
         self.assertEqual(mysql_store._owner_key_for_module("excel-jessca"), "jessica")
         self.assertEqual(mysql_store._owner_key_for_module("excel-jane"), "jane")
+        self.assertEqual(mysql_store._owner_key_for_module("jason-result-set-excel"), "jason")
 
     def test_download_process_history_result_file_streams_minio_object(self):
         row = {

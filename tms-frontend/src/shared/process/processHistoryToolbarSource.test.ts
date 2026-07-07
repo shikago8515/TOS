@@ -11,6 +11,7 @@ const excelProcessPages = [
   '../../pages/jane-bom-compare/JaneBomComparePage.vue',
   '../../pages/jane-bom-summary/JaneBomSummaryPage.vue',
   '../../pages/jane-outbound-compare/JaneOutboundComparePage.vue',
+  '../../pages/jason-result-set-excel/JasonResultSetExcelPage.vue',
   '../../pages/jessca/JesscaPage.vue',
   '../../pages/sophia-tina/SophiaTinaPage.vue',
   '../../pages/tms-finance-internal-reconciliation/TmsFinanceInternalReconciliationPage.vue',

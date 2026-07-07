@@ -52,6 +52,7 @@ const processHistoryPersonGroups: Array<{
   { id: 'sophia', group: 'sophia' },
   { id: 'jane', group: 'jane' },
   { id: 'eric', group: 'eric' },
+  { id: 'jason', group: 'jason' },
   { id: 'lucia', group: 'finance-excel' },
   { id: 'general-tools', group: 'general-tools' },
 ]

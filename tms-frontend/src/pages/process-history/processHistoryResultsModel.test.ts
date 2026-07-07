@@ -5,6 +5,7 @@ import {
   filterDownloadableProcessRecords,
   filterLocalDownloadableProcessRecords,
   formatHistoryFileSize,
+  mergeDownloadableProcessRecords,
 } from './processHistoryResultsModel'
 import type { ProcessHistoryRecord } from '../../shared/process/processHistory'
 
@@ -43,6 +44,32 @@ describe('processHistoryResultsModel', () => {
     ])
 
     expect(records.map((record) => record.id)).toEqual(['downloadable-2026-06-30T00:00:00.000Z'])
+  })
+
+  it('merges remote history with local downloadable cache on the first page', () => {
+    const remoteDuplicate = buildRecord('jason-result-set-excel', '2026-06-30T00:00:00.000Z', true)
+    const localDuplicate = {
+      ...remoteDuplicate,
+      moduleName: 'local duplicate should not replace remote',
+    }
+    const merged = mergeDownloadableProcessRecords(
+      [
+        remoteDuplicate,
+        buildRecord('excel-jane', '2026-06-29T00:00:00.000Z', true),
+      ],
+      [
+        buildRecord('jason-result-set-excel', '2026-07-01T00:00:00.000Z', true),
+        localDuplicate,
+        buildRecord('jason-result-set-excel', '2026-07-02T00:00:00.000Z', false),
+      ],
+    )
+
+    expect(merged.map((record) => record.id)).toEqual([
+      'jason-result-set-excel-2026-07-01T00:00:00.000Z',
+      'jason-result-set-excel-2026-06-30T00:00:00.000Z',
+      'excel-jane-2026-06-29T00:00:00.000Z',
+    ])
+    expect(merged[1].moduleName).toBe('jason-result-set-excel')
   })
 
   it('allows local fallback filters to include selected module aliases', () => {

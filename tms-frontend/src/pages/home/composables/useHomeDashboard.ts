@@ -1,4 +1,4 @@
-import { computed, onMounted, ref, type Component } from 'vue'
+import { computed, onActivated, onMounted, ref, type Component } from 'vue'
 import {
   Calendar,
   CircleCheckFilled,
@@ -95,9 +95,16 @@ export function useHomeDashboard() {
   const localProcessRecords = ref<ProcessHistoryRecord[]>([])
   const processHistoryPersisted = ref(false)
   const lastUpdated = ref<Date | null>(null)
+  const hasLoadedOnce = ref(false)
 
   onMounted(() => {
     void loadDashboardData()
+  })
+
+  onActivated(() => {
+    if (hasLoadedOnce.value) {
+      void loadDashboardData()
+    }
   })
 
   const todayLabel = computed(() =>
@@ -284,6 +291,7 @@ export function useHomeDashboard() {
         localProcessRecords.value = collectLocalProcessRecords()
       }
       lastUpdated.value = new Date()
+      hasLoadedOnce.value = true
       loading.value = false
     }
   }
