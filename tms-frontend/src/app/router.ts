@@ -173,7 +173,7 @@ const scenarioRoutes: RouteRecordRaw[] = [
     name: 'web-automation-scenario-tc-inv-automation',
     component: TcInvAutomationPage,
     meta: {
-      title: 'Trade Card INV amount',
+      title: 'VENT+YUEN TAI-Trade Card INV amount',
     },
   },
   {

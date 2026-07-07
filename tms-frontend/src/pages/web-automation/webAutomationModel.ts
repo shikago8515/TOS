@@ -82,9 +82,9 @@ export const webAutomationEntries: WebAutomationEntry[] = [
   },
   {
     id: 'tc-inv-automation',
-    title: 'Trade Card INV amount',
-    subtitle: 'Trade Card INV amount 自动化',
-    description: 'Trade Card INV amount 出货明细与费用录入自动化。',
+    title: 'VENT+YUEN TAI-Trade Card INV amount',
+    subtitle: 'VENT+YUEN TAI-Trade Card INV amount 自动化',
+    description: 'VENT+YUEN TAI-Trade Card INV amount 出货明细与费用录入自动化。',
     appId: 'shipping-automation-demo',
     executorBaseUrl: buildAutomationProxyBaseUrl('shipping-automation-demo'),
     localExecutorToken: 'local-shipping-automation-72fd26f0f3b54db49c619bbda2be0f8f',

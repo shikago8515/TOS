@@ -96,8 +96,8 @@ describe('moduleCatalog', () => {
       group: 'jessica',
       path: '/web-automation/scenarios/tc-inv-automation',
       routeName: 'web-automation-scenario-tc-inv-automation',
-      title: 'Jessica / Trade Card INV amount',
-      navLabel: 'Trade Card INV amount',
+      title: 'Jessica / VENT+YUEN TAI-Trade Card INV amount',
+      navLabel: 'VENT+YUEN TAI-Trade Card INV amount',
       category: 'browser-automation',
       navParentId: 'jessica-infornexus-automation',
     })
