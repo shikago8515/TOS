@@ -268,7 +268,7 @@ class JaneModuleWorkbookTests(unittest.TestCase):
         self.assertTrue(any("GERMANY" in section["destinations"] for section in non_korea_sections))
         self.assertFalse(any("KOREA" in section["destinations"] for section in non_korea_sections))
 
-    def test_inch_customer_sizes_with_and_without_quote_share_one_section(self) -> None:
+    def test_inch_customer_sizes_with_and_without_quote_split_sections(self) -> None:
         size_pairs = [
             ("40", "28", '28"'),
             ("42", "30", '30"'),
@@ -316,22 +316,64 @@ class JaneModuleWorkbookTests(unittest.TestCase):
             if ws.cell(row=row_idx, column=destination_col).value == "sourcing size"
         ]
 
-        self.assertEqual(1, len(section_rows))
-        header_row = section_rows[0]
-        customer_sizes: List[str] = []
-        col_idx = size_start_col
-        while col_idx <= ws.max_column:
-            header = ws.cell(row=header_row, column=col_idx).value
-            if header == "PO QTY":
-                break
-            if header:
-                customer_sizes.append(str(ws.cell(row=header_row + 1, column=col_idx).value))
-            col_idx += 1
+        sections: List[Dict[str, Any]] = []
+        for header_row in section_rows:
+            sizes: List[str] = []
+            customer_sizes: List[str] = []
+            col_idx = size_start_col
+            while col_idx <= ws.max_column:
+                header = ws.cell(row=header_row, column=col_idx).value
+                if header == "PO QTY":
+                    break
+                if header:
+                    sizes.append(str(header))
+                    customer_sizes.append(str(ws.cell(row=header_row + 1, column=col_idx).value))
+                col_idx += 1
 
-        self.assertEqual(
-            ['28"', '30"', '32"', '34"', '36"', '38"', '40"'],
-            customer_sizes,
-        )
+            data_start_row = header_row + 2
+            data_end_row = data_start_row - 1
+            for candidate_row in range(data_start_row, ws.max_row + 1):
+                label = ws.cell(row=candidate_row, column=destination_col).value
+                if label in {"Sub. Total ", "sourcing size"}:
+                    data_end_row = candidate_row - 1
+                    break
+
+            destinations = [
+                str(ws.cell(row=data_row, column=destination_col).value)
+                for data_row in range(data_start_row, data_end_row + 1)
+                if ws.cell(row=data_row, column=destination_col).value
+            ]
+            column_totals = [
+                sum(
+                    ws.cell(row=data_row, column=size_start_col + offset).value or 0
+                    for data_row in range(data_start_row, data_end_row + 1)
+                )
+                for offset in range(len(sizes))
+            ]
+            sections.append(
+                {
+                    "sizes": sizes,
+                    "customer_sizes": customer_sizes,
+                    "destinations": destinations,
+                    "column_totals": column_totals,
+                }
+            )
+
+        self.assertEqual(2, len(sections), sections)
+        sections_by_customer_size = {
+            tuple(section["customer_sizes"]): section
+            for section in sections
+        }
+        plain_section = sections_by_customer_size[("28", "30", "32", "34", "36", "38", "40")]
+        quoted_section = sections_by_customer_size[('28"', '30"', '32"', '34"', '36"', '38"', '40"')]
+
+        expected_sizes = ["40", "42", "46", "50", "54", "58", "62"]
+        self.assertEqual(expected_sizes, plain_section["sizes"])
+        self.assertEqual(expected_sizes, quoted_section["sizes"])
+        self.assertEqual({"BRAZIL"}, set(plain_section["destinations"]))
+        self.assertEqual({"GERMANY"}, set(quoted_section["destinations"]))
+        self.assertEqual([1, 2, 3, 4, 5, 6, 7], plain_section["column_totals"])
+        self.assertEqual([21, 22, 23, 24, 25, 26, 27], quoted_section["column_totals"])
 
     def test_south_africa_is_merged_into_europe_category(self) -> None:
         rows = [
@@ -387,26 +429,36 @@ class JaneModuleWorkbookTests(unittest.TestCase):
 
         self.assertEqual(["欧美单"], data_categories)
 
-    def test_process_reports_sorts_by_article_country_then_working(self) -> None:
+    def test_process_reports_sorts_by_article_customer_country_then_working(self) -> None:
         rows = [
-            self._tms_row("WN-B", "ART-2", "SOUTH AFRICA", "1003", 103, 10, 30),
-            self._tms_row("WN-A", "ART-1", "ITALY", "1002", 102, 10, 20),
-            self._tms_row("WN-Z", "ART-1", "GERMANY", "1001", 101, 10, 10),
-            self._tms_row("WN-C", "ART-1", "USA", "1004", 104, 10, 40),
+            self._tms_row("WN-4", "ART-2", "AUSTRALIA", "0001", 106, 10, 60),
+            self._tms_row("WN-1", "ART-1", "BRAZIL", "1002", 104, 10, 40),
+            self._tms_row("WN-3", "ART-1", "ITALY", "1001", 103, 10, 30),
+            self._tms_row("WN-10", "ART-1", "GERMANY", "1001", 102, 10, 20),
+            self._tms_row("WN-0", "ART-0", "USA", "9999", 105, 10, 50),
+            self._tms_row("WN-2", "ART-1", "GERMANY", "1001", 101, 10, 10),
         ]
 
         sorted_rows = self.module.sort_tms_rows_for_generation(pd.DataFrame(rows))
-        self.assertEqual(["WN-Z", "WN-A", "WN-C", "WN-B"], list(sorted_rows["Working Number"]))
+        self.assertEqual(
+            ["WN-0", "WN-2", "WN-10", "WN-3", "WN-1", "WN-4"],
+            list(sorted_rows["Working Number"]),
+        )
 
         wb = self._process_rows(rows)
 
-        self.assertEqual(["Summary", "WN-A", "WN-B", "WN-C", "WN-Z"], wb.sheetnames)
+        self.assertEqual(
+            ["Summary", "WN-0", "WN-2", "WN-10", "WN-3", "WN-1", "WN-4"],
+            wb.sheetnames,
+        )
         self.assertEqual(
             [
-                ("WN-A", "ART-1"),
-                ("WN-B", "ART-2"),
-                ("WN-C", "ART-1"),
-                ("WN-Z", "ART-1"),
+                ("WN-0", "ART-0"),
+                ("WN-2", "ART-1"),
+                ("WN-10", "ART-1"),
+                ("WN-3", "ART-1"),
+                ("WN-1", "ART-1"),
+                ("WN-4", "ART-2"),
             ],
             self._summary_working_article_rows(wb),
         )
@@ -428,9 +480,9 @@ class JaneModuleWorkbookTests(unittest.TestCase):
     def test_summary_working_order_uses_natural_ascending_working_number(self) -> None:
         rows = [
             self._tms_row("RC2702OW006", "LK0670", "GERMANY", "1001", 1006, 10, 240),
-            self._tms_row("RC2702OW005", "LK0674", "GERMANY", "1001", 1005, 10, 170),
-            self._tms_row("RC2702OW001", "LK0688", "GERMANY", "1001", 1001, 10, 600),
-            self._tms_row("RC2702OW000", "LK0693", "GERMANY", "1001", 1000, 10, 754),
+            self._tms_row("RC2702OW005", "LK0670", "GERMANY", "1001", 1005, 10, 170),
+            self._tms_row("RC2702OW001", "LK0670", "GERMANY", "1001", 1001, 10, 600),
+            self._tms_row("RC2702OW000", "LK0670", "GERMANY", "1001", 1000, 10, 754),
         ]
 
         wb = self._process_rows(rows)
@@ -458,16 +510,16 @@ class JaneModuleWorkbookTests(unittest.TestCase):
             self._summary_working_order(wb),
         )
 
-    def test_working_filter_sorts_filtered_rows_by_article_country_then_working(self) -> None:
+    def test_working_filter_sorts_filtered_rows_by_article_customer_country_then_working(self) -> None:
         rows = [
-            self._tms_row("WN-B", "ART-2", "SOUTH AFRICA", "1003", 103, 10, 30),
-            self._tms_row("WN-A", "ART-1", "ITALY", "1002", 102, 10, 20),
-            self._tms_row("WN-Z", "ART-1", "GERMANY", "1001", 101, 10, 10),
+            self._tms_row("WN-1", "ART-1", "BRAZIL", "1002", 103, 10, 30),
+            self._tms_row("WN-10", "ART-1", "GERMANY", "1001", 102, 10, 20),
+            self._tms_row("WN-2", "ART-1", "GERMANY", "1001", 101, 10, 10),
         ]
 
-        wb = self._process_rows(rows, working_filters=["WN-B", "WN-A", "WN-Z"])
+        wb = self._process_rows(rows, working_filters=["WN-1", "WN-10", "WN-2"])
 
-        self.assertEqual(["Summary", "WN-A", "WN-B", "WN-Z"], wb.sheetnames)
+        self.assertEqual(["Summary", "WN-2", "WN-10", "WN-1"], wb.sheetnames)
 
 
 if __name__ == "__main__":

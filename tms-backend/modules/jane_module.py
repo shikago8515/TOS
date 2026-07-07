@@ -45,7 +45,6 @@ class JaneModule:
     }
     DEFAULT_CATEGORY = '其他'
     DEDICATED_DESTINATION_GROUPS = {'KOREA'}
-    INCH_QUOTE_SUFFIXES = {'"', '”', '″'}
     MIN_REQUIRED_FIELD_RATE = 0.9
     MIN_COUNTRY_MATCH_RATE = 0.8
     MAX_TEMPLATE_MISSING_RATE = 0.2
@@ -110,24 +109,6 @@ class JaneModule:
         if text.endswith('.0') and text[:-2].isdigit():
             return text[:-2]
         return text
-
-    @classmethod
-    def _customer_size_group_key(cls, value: Any) -> str:
-        text = cls._normalize_size(value)
-        unquoted = text[:-1].strip() if text[-1:] in cls.INCH_QUOTE_SUFFIXES else text
-        if unquoted.isdigit():
-            return f"INCH:{unquoted}"
-        return text
-
-    @classmethod
-    def _prefer_customer_size_display(cls, current: str, candidate: str) -> str:
-        if not current:
-            return candidate
-        if cls._customer_size_group_key(current) != cls._customer_size_group_key(candidate):
-            return current
-        current_has_quote = current[-1:] in cls.INCH_QUOTE_SUFFIXES
-        candidate_has_quote = candidate[-1:] in cls.INCH_QUOTE_SUFFIXES
-        return candidate if candidate_has_quote and not current_has_quote else current
 
     @staticmethod
     def _format_identifier(value: Any, width: Optional[int] = None) -> str:
@@ -251,7 +232,7 @@ class JaneModule:
             if not working_text:
                 continue
             working_by_key.setdefault(working_text.upper(), working_text)
-        return sorted(working_by_key.values(), key=self._natural_text_sort_key)
+        return list(working_by_key.values())
 
     @staticmethod
     def _safe_sheet_name(value: Any, used_names: Optional[Set[str]] = None) -> str:
@@ -387,7 +368,7 @@ class JaneModule:
         country_lookup: Optional[Dict[str, Dict[str, str]]] = None,
         logs: Optional[List[str]] = None
     ) -> pd.DataFrame:
-        """按业务指定顺序生成：Article Number -> Country/Region -> Working Number。"""
+        """按业务指定顺序生成：Article Number -> Gps Customer Number -> Country/Region -> Working Number。"""
 
         country_lookup = country_lookup or {}
         destination_col = self._find_column(df, ['Country/Region', 'DESTINATION', 'Destination'])
@@ -409,13 +390,16 @@ class JaneModule:
             range(len(source_rows)),
             key=lambda row_idx: (
                 normalized_sort_text(source_rows.iloc[row_idx].get('Article Number')),
+                self._normalize_customer_no(source_rows.iloc[row_idx].get('Gps Customer Number')),
                 resolve_country(source_rows.iloc[row_idx]),
-                normalized_sort_text(source_rows.iloc[row_idx].get('Working Number')),
+                self._natural_text_sort_key(source_rows.iloc[row_idx].get('Working Number')),
                 row_idx,
             ),
         )
         if logs is not None:
-            logs.append("  已按 Article Number -> Country/Region -> Working Number 排序生成")
+            logs.append(
+                "  已按 Article Number -> Gps Customer Number -> Country/Region -> Working Number 排序生成"
+            )
         return source_rows.iloc[sorted_indices].reset_index(drop=True)
 
     def get_category(self, destination: Any, region: Any) -> str:
@@ -1109,7 +1093,6 @@ class JaneModule:
                     self._normalize_size(source_row.get(customer_size_col))
                     if customer_size_col else ''
                 ) or tech_size
-                customer_size_key = self._customer_size_group_key(customer_size)
                 family = (
                     size_family(source_row),
                     self._customer_size_family(customer_size),
@@ -1126,11 +1109,11 @@ class JaneModule:
                 for group in groups:
                     if group['group_key'] != group_key:
                         continue
-                    existing_customer_size_key = group['size_keys'].get(tech_size)
+                    existing_customer_size = group['sizes'].get(tech_size)
                     if (
                         not allow_customer_size_conflict
-                        and existing_customer_size_key is not None
-                        and existing_customer_size_key != customer_size_key
+                        and existing_customer_size is not None
+                        and existing_customer_size != customer_size
                     ):
                         continue
                     target_group = group
@@ -1143,17 +1126,11 @@ class JaneModule:
                         'first_index': len(groups),
                         'rows': [],
                         'sizes': {},
-                        'size_keys': {},
                     }
                     groups.append(target_group)
 
                 target_group['rows'].append(source_row)
-                target_group['size_keys'].setdefault(tech_size, customer_size_key)
-                existing_display = target_group['sizes'].get(tech_size, '')
-                target_group['sizes'][tech_size] = self._prefer_customer_size_display(
-                    existing_display,
-                    customer_size,
-                )
+                target_group['sizes'].setdefault(tech_size, customer_size)
 
             for group in groups:
                 group['size_order'] = sorted(group['sizes'].keys(), key=self._sort_size_key)
