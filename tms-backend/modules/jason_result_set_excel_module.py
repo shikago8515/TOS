@@ -9,6 +9,7 @@ from typing import Any, Iterable
 from uuid import uuid4
 
 import openpyxl
+from openpyxl.styles import Font, PatternFill
 
 
 @dataclass(frozen=True)
@@ -61,7 +62,6 @@ class ResultSetGroup:
 @dataclass(frozen=True)
 class TemplateLookupRow:
     bulk_handover_date: Any
-    factory_price: Any
 
 
 @dataclass(frozen=True)
@@ -76,8 +76,8 @@ class TargetRow:
     gps_customer_number: str
     customer_warehouse: str
     bulk_handover_date: Any
+    podd: datetime | None
     ordered_quantity: float
-    factory_price: Any
     tms_price: float
     total_adjustments: float
     factory_code: str
@@ -123,6 +123,19 @@ class JasonResultSetExcelModule:
         "U1:U2",
         "V1:V2",
         "W1:W2",
+    )
+    TARGET_PRICE_FILL_COLUMNS = frozenset(range(12, 19))
+    SHEET1_HEADERS = (
+        "Working Number",
+        "Article Number",
+        "PO Number",
+        "Market PO Number",
+        "Gps Customer Number",
+        "Assigned Factory",
+        "PODD",
+        "Price Per Unit",
+        "Total Adjustments",
+        "Sum of Ordered Quantity",
     )
 
     def __init__(self, template_path: str | Path | None = None) -> None:
@@ -228,7 +241,6 @@ class JasonResultSetExcelModule:
 
             lookup_row = TemplateLookupRow(
                 bulk_handover_date=target_sheet.cell(row=row_index, column=10).value,
-                factory_price=target_sheet.cell(row=row_index, column=12).value,
             )
             row_lookup[(working_number, article_number)] = lookup_row
             article_lookup.setdefault(article_number, lookup_row)
@@ -371,7 +383,7 @@ class JasonResultSetExcelModule:
 
             lookup = row_lookup.get((group.working_number, group.article_number)) or article_lookup.get(group.article_number)
             if lookup is None:
-                lookup = TemplateLookupRow(group.podd, None)
+                lookup = TemplateLookupRow(group.podd)
                 counts["unknown_lookup"] += 1
                 warnings.append(
                     f"未找到模板 lookup：Working Number={group.working_number}, Article={group.article_number}"
@@ -394,8 +406,8 @@ class JasonResultSetExcelModule:
                     gps_customer_number=group.gps_customer_number,
                     customer_warehouse=warehouse_lookup.get(group.gps_customer_number, ""),
                     bulk_handover_date=lookup.bulk_handover_date or group.podd,
+                    podd=group.podd,
                     ordered_quantity=self._format_quantity(quantity),
-                    factory_price=lookup.factory_price,
                     tms_price=group.price_per_unit,
                     total_adjustments=adjustment,
                     factory_code=group.assigned_factory,
@@ -414,6 +426,7 @@ class JasonResultSetExcelModule:
         target_rows: list[TargetRow],
         output_path: Path,
     ) -> None:
+        self._write_sheet1_summary(workbook, target_rows)
         target_sheet = workbook["目标表"]
         style_templates = [
             self._capture_cell_style(target_sheet.cell(row=3, column=column_index))
@@ -426,6 +439,7 @@ class JasonResultSetExcelModule:
 
         for row_offset, target_row in enumerate(target_rows, start=3):
             self._apply_row_style(target_sheet, row_offset, style_templates)
+            self._clear_non_price_data_row_fill(target_sheet, row_offset)
             values = [
                 target_row.pack,
                 target_row.season,
@@ -438,7 +452,7 @@ class JasonResultSetExcelModule:
                 target_row.customer_warehouse,
                 target_row.bulk_handover_date,
                 target_row.ordered_quantity,
-                target_row.factory_price,
+                None,
                 f"=ROUND(0.13*L{row_offset}*K{row_offset},2)",
                 f"=ROUND(L{row_offset}*K{row_offset}+M{row_offset},2)",
                 target_row.tms_price,
@@ -456,6 +470,7 @@ class JasonResultSetExcelModule:
 
         total_row = 3 + len(target_rows)
         self._apply_row_style(target_sheet, total_row, style_templates)
+        self._clear_row_fill(target_sheet, total_row)
         last_data_row = total_row - 1
         if target_rows:
             target_sheet.cell(row=total_row, column=6).value = f"=COUNTA(F3:F{last_data_row})"
@@ -469,6 +484,49 @@ class JasonResultSetExcelModule:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         workbook.save(output_path)
         workbook.close()
+
+    def _write_sheet1_summary(self, workbook: openpyxl.Workbook, target_rows: list[TargetRow]) -> None:
+        if "Sheet1" in workbook.sheetnames:
+            del workbook["Sheet1"]
+        sheet = workbook.create_sheet("Sheet1", 0)
+
+        sheet.cell(row=1, column=1).value = "Order Type"
+        sheet.cell(row=1, column=2).value = "(Multiple Items)"
+        for column_index, header in enumerate(self.SHEET1_HEADERS, start=1):
+            cell = sheet.cell(row=3, column=column_index)
+            cell.value = header
+            cell.font = Font(bold=True)
+
+        for row_index, target_row in enumerate(target_rows, start=4):
+            values = [
+                target_row.working_number,
+                target_row.article_number,
+                target_row.po_number,
+                target_row.market_po_number,
+                target_row.gps_customer_number,
+                target_row.factory_code,
+                target_row.podd,
+                target_row.tms_price,
+                target_row.total_adjustments,
+                target_row.ordered_quantity,
+            ]
+            for column_index, value in enumerate(values, start=1):
+                sheet.cell(row=row_index, column=column_index).value = value
+
+        last_detail_row = 3 + len(target_rows)
+        total_row = last_detail_row + 1
+        sheet.cell(row=total_row, column=1).value = "Grand Total"
+        sheet.cell(row=total_row, column=1).font = Font(bold=True)
+        sheet.cell(row=total_row, column=10).value = sum(row.ordered_quantity or 0 for row in target_rows)
+        sheet.cell(row=total_row, column=10).font = Font(bold=True)
+
+        sheet.auto_filter.ref = f"A3:J{last_detail_row}"
+        for row_index in range(4, total_row):
+            sheet.cell(row=row_index, column=7).number_format = "yyyy-mm-dd"
+            sheet.cell(row=row_index, column=8).number_format = "#,##0.00"
+            sheet.cell(row=row_index, column=9).number_format = "#,##0.00"
+            sheet.cell(row=row_index, column=10).number_format = "#,##0"
+        sheet.cell(row=total_row, column=10).number_format = "#,##0"
 
     def _ensure_target_header_merges(
         self,
@@ -516,6 +574,20 @@ class JasonResultSetExcelModule:
             cell.protection = copy(style["protection"])
 
     @staticmethod
+    def _clear_row_fill(sheet: openpyxl.worksheet.worksheet.Worksheet, row_index: int) -> None:
+        for column_index in range(1, 24):
+            sheet.cell(row=row_index, column=column_index).fill = PatternFill()
+
+    def _clear_non_price_data_row_fill(
+        self,
+        sheet: openpyxl.worksheet.worksheet.Worksheet,
+        row_index: int,
+    ) -> None:
+        for column_index in range(1, 24):
+            if column_index not in self.TARGET_PRICE_FILL_COLUMNS:
+                sheet.cell(row=row_index, column=column_index).fill = PatternFill()
+
+    @staticmethod
     def _fill_group_optional_fields(group: ResultSetGroup, row: ResultSetRow) -> None:
         if group.pack is None and row.pack is not None:
             group.pack = row.pack
@@ -528,8 +600,14 @@ class JasonResultSetExcelModule:
         if group.factory_merchandiser is None and row.factory_merchandiser is not None:
             group.factory_merchandiser = row.factory_merchandiser
 
-    def _group_sort_key(self, group: ResultSetGroup) -> tuple[str, str, str]:
-        return (group.working_number, group.article_number, group.po_number)
+    def _group_sort_key(self, group: ResultSetGroup) -> tuple[str, str, str, str, str]:
+        return (
+            group.working_number,
+            group.po_number,
+            group.article_number,
+            group.market_po_number,
+            group.gps_customer_number,
+        )
 
     @staticmethod
     def _parse_target_month(target_month: str) -> tuple[int, int]:
