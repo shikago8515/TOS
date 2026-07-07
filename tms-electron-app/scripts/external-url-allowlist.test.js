@@ -12,6 +12,7 @@ const {
 test('allows only known HTTPS business and update-source URLs', () => {
   assert.equal(isAllowedExternalUrl('https://network.infornexus.com/'), true)
   assert.equal(isAllowedExternalUrl('https://ai.tomwell.net:56130/tos/tos-desktop/download'), true)
+  assert.equal(isAllowedExternalUrl('http://172.16.8.13:56130/tos/tos-desktop/download'), true)
   assert.equal(
     isAllowedExternalUrl('https://updates.example.internal/tos/releases/download.zip', {
       updateFeedUrl: 'https://updates.example.internal/tos/releases/',
@@ -22,6 +23,7 @@ test('allows only known HTTPS business and update-source URLs', () => {
 
 test('rejects unsafe protocols, invalid URLs, and unknown hosts', () => {
   assert.equal(isAllowedExternalUrl('http://network.infornexus.com/'), false)
+  assert.equal(isAllowedExternalUrl('https://172.16.8.13:56130/tos/tos-desktop/download'), false)
   assert.equal(isAllowedExternalUrl('file:///C:/Windows/System32/calc.exe'), false)
   assert.equal(isAllowedExternalUrl('javascript:alert(1)'), false)
   assert.equal(isAllowedExternalUrl('data:text/html,hello'), false)

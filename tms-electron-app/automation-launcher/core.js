@@ -6,7 +6,7 @@ const os = require('os')
 const path = require('path')
 const { execFile, spawn } = require('child_process')
 
-const DEFAULT_AUTOMATION_MODULE_MANIFEST_URL = 'https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/automation-modules'
+const DEFAULT_AUTOMATION_MODULE_MANIFEST_URL = 'http://172.16.8.13:56130/tos/desktop-api/api/system/config/automation-modules'
 const AUTOMATION_MODULE_CACHE_DIR = 'automation-module-cache'
 
 function execFileAsync(file, args, options = {}) {

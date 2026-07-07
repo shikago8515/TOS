@@ -28,7 +28,7 @@ const backendApiNotFoundMessage = '当前后端版本缺少此接口，请重启
 const backendConnectionErrorMessage = '无法连接后端服务，请确认本地后端已启动并已重启到当前版本。'
 const backendVersionMismatchPrefix = '当前后端版本未更新'
 const localDevBackendUrl = 'http://127.0.0.1:8000'
-const remoteBackendUrl = 'https://ai.tomwell.net:56130/tos/desktop-api'
+const remoteBackendUrl = 'http://172.16.8.13:56130/tos/desktop-api'
 
 let backendStartPromise: Promise<string | undefined> | null = null
 

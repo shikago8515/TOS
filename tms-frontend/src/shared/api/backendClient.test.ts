@@ -56,7 +56,7 @@ describe('backendClient', () => {
 
     await expect(
       buildBackendDownloadUrl('/api/system/config/tos-desktop-full/download'),
-    ).resolves.toBe('https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/tos-desktop-full/download')
+    ).resolves.toBe('http://172.16.8.13:56130/tos/desktop-api/api/system/config/tos-desktop-full/download')
     expect(startBackendServer).not.toHaveBeenCalled()
   })
 
