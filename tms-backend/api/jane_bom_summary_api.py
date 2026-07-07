@@ -12,6 +12,7 @@ from uuid import uuid4
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
+from api.jane_schemas import JaneBomSummaryProcessResponse
 from modules.jane_bom_summary_module import JaneBomSummaryModule
 from utils.excel_result_history import archive_process_output_history
 from utils.excel_upload_backup import ExcelUploadBackupContext
@@ -95,7 +96,11 @@ def _copy_output_to_upload_dir(output_path: str) -> str:
     return output_filename
 
 
-@router.post("/process")
+@router.post(
+    "/process",
+    response_model=JaneBomSummaryProcessResponse,
+    response_model_exclude_none=True,
+)
 async def process_jane_bom_summary(
     bom_files: List[UploadFile] = File(...),
     pack_file: UploadFile = File(...),

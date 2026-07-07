@@ -13,6 +13,10 @@ from uuid import uuid4
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
+from api.iplex_dual_table_compare_schemas import (
+    IplexDualTableCompareProcessResponse,
+    IplexDualTableInspectionResponse,
+)
 from modules.iplex_dual_table_compare_module import (
     IplexDualTableCompareConfig,
     IplexDualTableCompareModule,
@@ -86,7 +90,7 @@ def _backup_context(
     )
 
 
-@router.post("/inspect")
+@router.post("/inspect", response_model=IplexDualTableInspectionResponse)
 async def inspect_iplex_workbook(
     excel_file: UploadFile = File(...),
     sheet_name: Optional[str] = Form(None),
@@ -125,7 +129,11 @@ async def inspect_iplex_workbook(
         shutil.rmtree(work_dir, ignore_errors=True)
 
 
-@router.post("/process")
+@router.post(
+    "/process",
+    response_model=IplexDualTableCompareProcessResponse,
+    response_model_exclude_none=True,
+)
 async def process_iplex_dual_table_compare(
     main_file: UploadFile = File(...),
     lookup_file: UploadFile = File(...),

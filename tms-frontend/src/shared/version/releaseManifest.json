@@ -1,28 +1,26 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.16",
-  "tag": "v1.0.0-beta.3.16",
-  "gitSha": "efdc83689ffc6cdf15a5837fc6e6c47d2ac7e013",
-  "releaseDate": "2026-07-06",
+  "version": "1.0.0-beta.3.23",
+  "tag": "v1.0.0-beta.3.23",
+  "gitSha": "1822c8cdfe11088b389ff1c52f3982d89afd7928",
+  "releaseDate": "2026-07-07",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.16",
-    "date": "2026-07-06",
-    "noticeId": "2026-07-06-v1.0.0-beta.3.16",
+    "version": "1.0.0-beta.3.23",
+    "date": "2026-07-07",
+    "noticeId": "2026-07-07-v1.0.0-beta.3.23",
     "showPopup": false,
     "added": [],
     "improved": [
-      "补齐 Jane 响应契约 schema"
+      "补齐 Lucia 财务响应契约 schema"
     ],
-    "fixed": [
-      "收敛箱单下载审批链路"
-    ],
+    "fixed": [],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.16",
-    "version": "1.0.0-beta.3.16",
-    "releaseDate": "2026-07-06",
+    "noticeId": "v1.0.0-beta.3.23",
+    "version": "1.0.0-beta.3.23",
+    "releaseDate": "2026-07-07",
     "showPopup": false,
     "level": "maintenance",
     "title": "本次更新内容",
@@ -31,14 +29,7 @@
         "title": "优化",
         "icon": "activity",
         "items": [
-          "补齐 Jane 响应契约 schema"
-        ]
-      },
-      {
-        "title": "修复",
-        "icon": "check-circle",
-        "items": [
-          "收敛箱单下载审批链路"
+          "补齐 Lucia 财务响应契约 schema"
         ]
       }
     ]

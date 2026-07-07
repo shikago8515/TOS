@@ -14,6 +14,7 @@ from uuid import uuid4
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
+from api.tms_finance_schemas import TmsFinanceWorkSalesProcessResponse
 from modules.tms_finance_work_sales_module import TmsFinanceWorkSalesModule
 from utils.excel_result_history import archive_process_output_history
 from utils.excel_upload_backup import ExcelUploadBackupContext
@@ -92,7 +93,11 @@ def _backup_context(
     )
 
 
-@router.post("/process")
+@router.post(
+    "/process",
+    response_model=TmsFinanceWorkSalesProcessResponse,
+    response_model_exclude_none=True,
+)
 async def process_work_sales(
     bulk_sales_file: Optional[UploadFile] = File(None),
     turnover_file: UploadFile = File(...),

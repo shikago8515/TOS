@@ -1,3 +1,33 @@
+## [1.0.0-beta.3.23](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.22...v1.0.0-beta.3.23) (2026-07-07)
+
+## [1.0.0-beta.3.22](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.21...v1.0.0-beta.3.22) (2026-07-07)
+
+## [1.0.0-beta.3.21](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.20...v1.0.0-beta.3.21) (2026-07-06)
+
+### Bug Fixes
+
+* improve Sophia Tina Excel 2013 output ([a384a7e](http://172.16.48.208:3001/luenthai-ai/TOS/commit/a384a7e2e377e54d5a89a397bffb5c9fa8302a94))
+
+## [1.0.0-beta.3.20](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.19...v1.0.0-beta.3.20) (2026-07-06)
+
+## [1.0.0-beta.3.19](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.18...v1.0.0-beta.3.19) (2026-07-06)
+
+### Bug Fixes
+
+* 修正 Sophia Tina 报表生成格式 ([21cad52](http://172.16.48.208:3001/luenthai-ai/TOS/commit/21cad5280a43188beda789adb1a5b3e022ac5b8d))
+
+## [1.0.0-beta.3.18](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.17...v1.0.0-beta.3.18) (2026-07-06)
+
+### Bug Fixes
+
+* 修复 Sophia Tina Factory Price 表头识别 ([209b36e](http://172.16.48.208:3001/luenthai-ai/TOS/commit/209b36e3a6f11761e0a3831b03ad668d8bcf76ae))
+
+## [1.0.0-beta.3.17](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.16...v1.0.0-beta.3.17) (2026-07-06)
+
+### Bug Fixes
+
+* 箱单审批后确认签核 ([87f6454](http://172.16.48.208:3001/luenthai-ai/TOS/commit/87f64541a5ac957e9f6ad3c7a8417c865a622191))
+
 ## [1.0.0-beta.3.16](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.15...v1.0.0-beta.3.16) (2026-07-06)
 
 ### Bug Fixes

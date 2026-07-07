@@ -1,15 +1,13 @@
 {
-  "version": "1.0.0-beta.3.16",
-  "date": "2026-07-06",
-  "noticeId": "2026-07-06-v1.0.0-beta.3.16",
+  "version": "1.0.0-beta.3.23",
+  "date": "2026-07-07",
+  "noticeId": "2026-07-07-v1.0.0-beta.3.23",
   "showPopup": false,
   "added": [],
   "improved": [
-    "补齐 Jane 响应契约 schema"
+    "补齐 Lucia 财务响应契约 schema"
   ],
-  "fixed": [
-    "收敛箱单下载审批链路"
-  ],
+  "fixed": [],
   "modules": [],
   "sections": []
 }

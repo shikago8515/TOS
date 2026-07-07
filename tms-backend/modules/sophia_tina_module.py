@@ -105,6 +105,11 @@ class SophiaTinaModule:
     OOXML_X15_NS = "http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"
     OOXML_X15AC_NS = "http://schemas.microsoft.com/office/spreadsheetml/2010/11/ac"
     OOXML_XML_NS = "http://www.w3.org/XML/1998/namespace"
+    OOXML_DRAWING_MAIN_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    OOXML_CHART_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
+    OOXML_CHART_2007_NS = "http://schemas.microsoft.com/office/drawing/2007/8/2/chart"
+    OOXML_SPREADSHEET_DRAWING_NS = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
+    OOXML_DRAWING_SLICER_2010_NS = "http://schemas.microsoft.com/office/drawing/2010/slicer"
     OPC_CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
     OPC_RELATIONSHIPS_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
     COUNTRY_SOURCE_SHEET = "Country Analysis Source"
@@ -126,6 +131,7 @@ class SophiaTinaModule:
     ]
     COUNTRY_PIVOT_CACHE_ID = "500"
     S2S_PIVOT_CACHE_ID = "501"
+    SHIP_METHOD_TOTAL_FILL_RGB = "FFD9D9D9"
     PIVOT_TEMPLATE_PATH = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "templates", PIVOT_TEMPLATE_FILENAME)
     )
@@ -289,9 +295,10 @@ class SophiaTinaModule:
         template_path: str,
     ) -> None:
         """Write editable Result data into the native PivotTable template."""
-        table_ref = f"A1:Q{max(len(results) + 1, 1)}"
+        sorted_results = self._sorted_result_rows(results)
+        table_ref = f"A1:Q{max(len(sorted_results) + 1, 1)}"
         replacements = self._build_pivot_template_replacements(
-            results,
+            sorted_results,
             diagnostics,
             development_style_rows,
             table_ref,
@@ -314,6 +321,8 @@ class SophiaTinaModule:
             ship_method_rows = self._ship_method_source_rows(results)
             s2s_rows = self._s2s_development_source_rows(results, development_style_rows)
             s2s_display_rows = self._s2s_development_analysis_display_rows(s2s_rows)
+            y2y_years = self._y2y_years(results)
+            y2y_right_pivot_ref = self._y2y_right_pivot_location_ref(y2y_years)
             country_ref = f"A1:J{max(len(country_rows) + 1, 1)}"
             ship_method_ref = f"A1:H{max(len(ship_method_rows) + 1, 1)}"
             s2s_ref = f"A1:E{max(len(s2s_rows) + 1, 1)}"
@@ -333,7 +342,7 @@ class SophiaTinaModule:
                     1,
                     "Year",
                 ),
-                "xl/worksheets/sheet7.xml": self._ship_method_analysis_sheet_xml(results),
+                "xl/worksheets/sheet7.xml": self._ship_method_analysis_sheet_xml(results, style_ids),
                 "xl/worksheets/_rels/sheet3.xml.rels": self._without_pivot_table_relationship(
                     archive.read("xl/worksheets/_rels/sheet3.xml.rels")
                 ),
@@ -343,8 +352,11 @@ class SophiaTinaModule:
                 "xl/worksheets/_rels/sheet7.xml.rels": self._without_pivot_table_relationship(
                     archive.read("xl/worksheets/_rels/sheet7.xml.rels")
                 ),
-                "xl/worksheets/sheet8.xml": self._development_style_qty_sheet_xml(),
-                "xl/worksheets/sheet9.xml": self._s2s_development_analysis_sheet_xml(s2s_rows),
+                "xl/worksheets/sheet8.xml": self._development_style_qty_sheet_xml(development_style_rows),
+                "xl/worksheets/sheet9.xml": self._with_pivot_table_definition(
+                    archive.read("xl/worksheets/sheet9.xml"),
+                    "rId1",
+                ),
                 "xl/worksheets/sheet10.xml": self._result_sheet_xml(results, table_ref, style_ids),
                 "xl/worksheets/sheet11.xml": self._rules_sheet_xml(),
                 "xl/worksheets/sheet12.xml": self._diagnostics_sheet_xml(diagnostics),
@@ -380,18 +392,7 @@ class SophiaTinaModule:
                     '<cols><col min="1" max="4" width="18" customWidth="1"/>'
                     '<col min="5" max="8" width="18" customWidth="1"/></cols>',
                 ),
-                "xl/worksheets/sheet15.xml": self._simple_sheet_xml(
-                    [
-                        "Season",
-                        "Factory",
-                        "Development Style Count",
-                        "Bulk Style Count",
-                        "Bulk Qty (pcs)",
-                    ],
-                    s2s_rows,
-                    '<cols><col min="1" max="2" width="18" customWidth="1"/>'
-                    '<col min="3" max="5" width="24" customWidth="1"/></cols>',
-                ),
+                "xl/worksheets/sheet15.xml": self._s2s_development_source_sheet_xml(s2s_rows),
             }
             replacements["xl/tables/table1.xml"] = self._updated_table_xml(
                 archive.read("xl/tables/table1.xml"),
@@ -500,6 +501,16 @@ class SophiaTinaModule:
                 ],
                 5,
                 location_ref=s2s_pivot_ref,
+            )
+            replacements["xl/pivotTables/pivotTable5.xml"] = self._y2y_quantity_only_pivot_table_xml(
+                archive.read("xl/pivotTables/pivotTable5.xml"),
+                y2y_right_pivot_ref,
+            )
+            replacements["xl/charts/chart1.xml"] = self._y2y_quantity_only_chart_xml(
+                y2y_years,
+            )
+            replacements["xl/drawings/drawing1.xml"] = self._normalized_y2y_drawing_xml(
+                archive.read("xl/drawings/drawing1.xml")
             )
             replacements["xl/slicerCaches/slicerCache1.xml"] = self._updated_y2y_slicer_cache_xml(
                 archive.read("xl/slicerCaches/slicerCache1.xml")
@@ -685,12 +696,47 @@ class SophiaTinaModule:
             freeze_panes=True,
         )
 
-    def _development_style_qty_sheet_xml(self) -> bytes:
+    def _development_style_qty_sheet_xml(self, development_style_rows: List[Dict[str, Any]]) -> bytes:
         return self._simple_sheet_xml(
             ["Season", "Factory", "Development Style Count"],
-            [],
+            self._development_style_qty_rows(development_style_rows),
             '<cols><col min="1" max="2" width="18" customWidth="1"/>'
             '<col min="3" max="3" width="26" customWidth="1"/></cols>',
+        )
+
+    def _s2s_development_source_sheet_xml(self, source_rows: List[List[Any]]) -> bytes:
+        headers = ["Season", "Factory", "Development Style Count", "Bulk Style Count", "Bulk Qty (pcs)"]
+        sheet_rows = [
+            self._row_xml(
+                1,
+                [self._cell_xml(1, col_idx, header, 4) for col_idx, header in enumerate(headers, 1)],
+            )
+        ]
+        for row_idx, row in enumerate(source_rows, 2):
+            cells = [
+                self._cell_xml(row_idx, 1, row[0], 5),
+                self._cell_xml(row_idx, 2, row[1], 5),
+                self._cell_xml(row_idx, 3, row[2], 5, formula=self._s2s_development_count_formula(row_idx)),
+                self._cell_xml(row_idx, 4, row[3], 5),
+                self._cell_xml(row_idx, 5, row[4], 5),
+            ]
+            sheet_rows.append(self._row_xml(row_idx, cells))
+
+        end_row = max(len(source_rows) + 1, 1)
+        return self._worksheet_xml(
+            f"A1:E{end_row}",
+            "".join(sheet_rows),
+            '<cols><col min="1" max="2" width="18" customWidth="1"/>'
+            '<col min="3" max="5" width="24" customWidth="1"/></cols>',
+            freeze_panes=True,
+        )
+
+    @staticmethod
+    def _s2s_development_count_formula(row_idx: int) -> str:
+        return (
+            "SUMIFS('Development Style Qty'!$C:$C,"
+            f"'Development Style Qty'!$A:$A,A{row_idx},"
+            f"'Development Style Qty'!$B:$B,B{row_idx})"
         )
 
     def _simple_sheet_xml(
@@ -746,7 +792,15 @@ class SophiaTinaModule:
                 year_totals[(podd.year, factory)]["tms_amount"] += normalized["tms_amount"]
 
         rows: List[List[Any]] = []
-        for row in normalized_rows:
+        for row in sorted(
+            normalized_rows,
+            key=lambda item: (
+                *self._season_sort_key(item["season"]),
+                self._year_sort_key(item["year"]),
+                item["factory"],
+                item["country_group"],
+            ),
+        ):
             season_total = season_totals[(row["season"], row["factory"])]
             year_total = (
                 year_totals[(row["year"], row["factory"])]
@@ -783,7 +837,10 @@ class SophiaTinaModule:
             self._add_metrics(monthly_totals[total_key], row)
 
         rows: List[List[Any]] = []
-        for (factory, year, month, shipment_method), values in sorted(metrics.items()):
+        for (factory, year, month, shipment_method), values in sorted(
+            metrics.items(),
+            key=lambda item: self._ship_method_sort_key(item[0]),
+        ):
             total = monthly_totals[(factory, year, month)]
             quantity_total = total["quantity"]
             tms_amount_total = total["tms_amount"]
@@ -799,7 +856,11 @@ class SophiaTinaModule:
             ])
         return rows
 
-    def _ship_method_analysis_sheet_xml(self, results: List[Dict[str, Any]]) -> bytes:
+    def _ship_method_analysis_sheet_xml(
+        self,
+        results: List[Dict[str, Any]],
+        style_ids: Optional[Dict[str, int]] = None,
+    ) -> bytes:
         headers = [
             "Factory",
             "Years",
@@ -810,7 +871,7 @@ class SophiaTinaModule:
             "TMS Amount (USD)",
             "TMS Amount (%)",
         ]
-        summary_rows = self._ship_method_analysis_rows(results)
+        summary_rows = self._ship_method_analysis_rows(results, style_ids)
         sheet_rows = [
             self._row_xml(
                 1,
@@ -846,7 +907,11 @@ class SophiaTinaModule:
             auto_filter_ref=dimension,
         )
 
-    def _ship_method_analysis_rows(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _ship_method_analysis_rows(
+        self,
+        results: List[Dict[str, Any]],
+        style_ids: Optional[Dict[str, int]] = None,
+    ) -> List[Dict[str, Any]]:
         detail_metrics: Dict[Tuple[str, int, int, str], Dict[str, float]] = defaultdict(self._empty_metrics)
         monthly_totals: Dict[Tuple[str, int, int], Dict[str, float]] = defaultdict(self._empty_metrics)
         yearly_totals: Dict[Tuple[str, int], Dict[str, float]] = defaultdict(self._empty_metrics)
@@ -866,10 +931,32 @@ class SophiaTinaModule:
 
         rows: List[Dict[str, Any]] = []
         previous_month_key: Optional[Tuple[str, int, int]] = None
-        for factory, year, month, shipment_method in sorted(detail_metrics):
+        previous_year: Optional[int] = None
+        for factory, year, month, shipment_method in sorted(
+            detail_metrics,
+            key=self._ship_method_sort_key,
+        ):
             month_key = (factory, year, month)
+            if previous_year is not None and year != previous_year:
+                if previous_month_key is not None:
+                    rows.append(self._ship_method_total_row(
+                        previous_month_key,
+                        monthly_totals,
+                        yearly_totals,
+                        len(rows) + 2,
+                        style_ids,
+                    ))
+                    previous_month_key = None
+                rows.extend(self._ship_method_year_total_rows(previous_year, yearly_totals, len(rows) + 2, style_ids))
+
             if previous_month_key is not None and previous_month_key != month_key:
-                rows.append(self._ship_method_total_row(previous_month_key, monthly_totals, yearly_totals, len(rows) + 2))
+                rows.append(self._ship_method_total_row(
+                    previous_month_key,
+                    monthly_totals,
+                    yearly_totals,
+                    len(rows) + 2,
+                    style_ids,
+                ))
             detail_row_index = len(rows) + 2
             metrics = detail_metrics[(factory, year, month, shipment_method)]
             month_total = monthly_totals[month_key]
@@ -883,9 +970,18 @@ class SophiaTinaModule:
                 detail_row_index,
             ))
             previous_month_key = month_key
+            previous_year = year
 
         if previous_month_key is not None:
-            rows.append(self._ship_method_total_row(previous_month_key, monthly_totals, yearly_totals, len(rows) + 2))
+            rows.append(self._ship_method_total_row(
+                previous_month_key,
+                monthly_totals,
+                yearly_totals,
+                len(rows) + 2,
+                style_ids,
+            ))
+        if previous_year is not None:
+            rows.extend(self._ship_method_year_total_rows(previous_year, yearly_totals, len(rows) + 2, style_ids))
         return rows
 
     def _ship_method_detail_row(
@@ -930,6 +1026,7 @@ class SophiaTinaModule:
         monthly_totals: Dict[Tuple[str, int, int], Dict[str, float]],
         yearly_totals: Dict[Tuple[str, int], Dict[str, float]],
         row_index: int,
+        style_ids: Optional[Dict[str, int]] = None,
     ) -> Dict[str, Any]:
         factory, year, month = month_key
         month_total = monthly_totals[month_key]
@@ -957,7 +1054,55 @@ class SophiaTinaModule:
                 self._ship_method_month_sumifs_formula("Q", row_index, include_method=False),
                 self._ship_method_year_percentage_formula("Q", "G", row_index),
             ],
-            "style_ids": self._ship_method_style_ids(),
+            "style_ids": self._ship_method_total_style_ids(style_ids),
+        }
+
+    def _ship_method_year_total_rows(
+        self,
+        year: int,
+        yearly_totals: Dict[Tuple[str, int], Dict[str, float]],
+        start_row_index: int,
+        style_ids: Optional[Dict[str, int]] = None,
+    ) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        year_keys = sorted(key for key in yearly_totals if key[1] == year)
+        for offset, year_key in enumerate(year_keys):
+            row_index = start_row_index + offset
+            rows.append(self._ship_method_year_total_row(year_key, yearly_totals[year_key], row_index, style_ids))
+        return rows
+
+    def _ship_method_year_total_row(
+        self,
+        year_key: Tuple[str, int],
+        year_total: Dict[str, float],
+        row_index: int,
+        style_ids: Optional[Dict[str, int]] = None,
+    ) -> Dict[str, Any]:
+        factory, year = year_key
+        quantity = year_total["quantity"]
+        tms_amount = year_total["tms_amount"]
+        return {
+            "values": [
+                factory,
+                f"{year} Total",
+                None,
+                None,
+                quantity,
+                1 if quantity else 0,
+                tms_amount,
+                1 if tms_amount else 0,
+            ],
+            "formulas": [
+                None,
+                None,
+                None,
+                None,
+                self._ship_method_year_sumifs_formula("M", row_index, year),
+                self._ship_method_year_percentage_formula("M", "E", row_index, year),
+                self._ship_method_year_sumifs_formula("Q", row_index, year),
+                self._ship_method_year_percentage_formula("Q", "G", row_index, year),
+            ],
+            "style_ids": self._ship_method_total_style_ids(style_ids),
         }
 
     def _ship_method_style_ids(self) -> List[int]:
@@ -970,6 +1115,20 @@ class SophiaTinaModule:
             self.COUNTRY_SUMMARY_PERCENT_STYLE,
             self.COUNTRY_SUMMARY_CURRENCY_STYLE,
             self.COUNTRY_SUMMARY_PERCENT_STYLE,
+        ]
+
+    def _ship_method_total_style_ids(self, style_ids: Optional[Dict[str, int]]) -> List[int]:
+        if not style_ids:
+            return self._ship_method_style_ids()
+        return [
+            style_ids["ship_method_total_text"],
+            style_ids["ship_method_total_text"],
+            style_ids["ship_method_total_text"],
+            style_ids["ship_method_total_text"],
+            style_ids["ship_method_total_text"],
+            style_ids["ship_method_total_percent"],
+            style_ids["ship_method_total_currency"],
+            style_ids["ship_method_total_percent"],
         ]
 
     @staticmethod
@@ -991,19 +1150,27 @@ class SophiaTinaModule:
             criteria.append(f"Result!$K:$K,$D{row_index}")
         return f"SUMIFS(Result!${metric_column}:${metric_column},{','.join(criteria)})"
 
-    def _ship_method_year_sumifs_formula(self, metric_column: str, row_index: int) -> str:
+    def _ship_method_year_sumifs_formula(self, metric_column: str, row_index: int, year: Optional[int] = None) -> str:
+        start_date = f"DATE({year},1,1)" if year is not None else f"DATE($B{row_index},1,1)"
+        end_date = f"DATE({year + 1},1,1)" if year is not None else f"DATE($B{row_index}+1,1,1)"
         return (
             f'SUMIFS(Result!${metric_column}:${metric_column},Result!$C:$C,$A{row_index},'
-            f'Result!$H:$H,">="&DATE($B{row_index},1,1),'
-            f'Result!$H:$H,"<"&DATE($B{row_index}+1,1,1))'
+            f'Result!$H:$H,">="&{start_date},'
+            f'Result!$H:$H,"<"&{end_date})'
         )
 
     def _ship_method_month_percentage_formula(self, metric_column: str, value_column: str, row_index: int) -> str:
         denominator = self._ship_method_month_sumifs_formula(metric_column, row_index, include_method=False)
         return f"IFERROR({value_column}{row_index}/{denominator},0)"
 
-    def _ship_method_year_percentage_formula(self, metric_column: str, value_column: str, row_index: int) -> str:
-        denominator = self._ship_method_year_sumifs_formula(metric_column, row_index)
+    def _ship_method_year_percentage_formula(
+        self,
+        metric_column: str,
+        value_column: str,
+        row_index: int,
+        year: Optional[int] = None,
+    ) -> str:
+        denominator = self._ship_method_year_sumifs_formula(metric_column, row_index, year)
         return f"IFERROR({value_column}{row_index}/{denominator},0)"
 
     def _s2s_development_source_rows(
@@ -1011,11 +1178,7 @@ class SophiaTinaModule:
         results: List[Dict[str, Any]],
         development_style_rows: List[Dict[str, Any]],
     ) -> List[List[Any]]:
-        development_lookup = {
-            (self._clean_text(row.get("Season")), self._clean_text(row.get("Factory"))):
-            int(row.get("Development Style Count") or 0)
-            for row in development_style_rows
-        }
+        development_totals = self._development_style_totals(development_style_rows)
         bulk_styles: Dict[Tuple[str, str], Set[str]] = defaultdict(set)
         quantities: Dict[Tuple[str, str], float] = defaultdict(float)
         for row in results:
@@ -1026,15 +1189,35 @@ class SophiaTinaModule:
             quantities[key] += self._optional_float(row.get("Quantity")) or 0.0
 
         rows: List[List[Any]] = []
-        for season, factory in sorted(bulk_styles):
+        source_keys = set(development_totals) | set(bulk_styles) | set(quantities)
+        for season, factory in sorted(source_keys, key=self._season_factory_sort_key):
             rows.append([
                 season,
                 factory,
-                development_lookup.get((season, factory), 0),
+                development_totals.get((season, factory), 0),
                 len(bulk_styles[(season, factory)]),
                 quantities[(season, factory)],
             ])
         return rows
+
+    def _development_style_qty_rows(self, development_style_rows: List[Dict[str, Any]]) -> List[List[Any]]:
+        return [
+            [season, factory, count]
+            for (season, factory), count in sorted(
+                self._development_style_totals(development_style_rows).items(),
+                key=lambda item: self._season_factory_sort_key(item[0]),
+            )
+        ]
+
+    def _development_style_totals(self, development_style_rows: List[Dict[str, Any]]) -> Dict[Tuple[str, str], int]:
+        totals: Dict[Tuple[str, str], int] = defaultdict(int)
+        for row in development_style_rows:
+            season = self._clean_text(row.get("Season"))
+            factory = self._clean_text(row.get("Factory"))
+            if not factory:
+                continue
+            totals[(season, factory)] += int(self._optional_float(row.get("Development Style Count")) or 0)
+        return totals
 
     def _s2s_development_analysis_sheet_xml(self, source_rows: List[List[Any]]) -> bytes:
         return self._simple_sheet_xml(
@@ -1055,7 +1238,7 @@ class SophiaTinaModule:
         grand_development_count = 0
         grand_bulk_count = 0
         grand_bulk_quantity = 0.0
-        for season in sorted(grouped, key=lambda value: (value == "", value)):
+        for season in sorted(grouped, key=self._season_sort_key):
             season_label = season or "(blank)"
             season_development_count = 0
             season_bulk_count = 0
@@ -1181,6 +1364,8 @@ class SophiaTinaModule:
             key=lambda key: self._country_summary_sort_key(key, period_kind),
         ):
             if period_key != previous_period_key:
+                if previous_period_key is not None:
+                    summary_rows.append(("spacer", [None] * 6, empty_formulas))
                 summary_rows.append((
                     "header",
                     [
@@ -1309,12 +1494,80 @@ class SophiaTinaModule:
             return season, f"Season {season}"
         return "", "Season (blank)"
 
-    @staticmethod
-    def _country_summary_sort_key(key: Tuple[Any, str], period_kind: str) -> Tuple[Any, str]:
+    @classmethod
+    def _country_summary_sort_key(cls, key: Tuple[Any, str], period_kind: str) -> Tuple[Any, ...]:
         period_key, factory = key
         if period_kind == "Year" and isinstance(period_key, int):
-            return (-period_key, factory)
-        return (str(period_key), factory)
+            return (0, period_key, factory)
+        return (*cls._season_sort_key(period_key), factory)
+
+    @classmethod
+    def _season_factory_sort_key(cls, key: Tuple[str, str]) -> Tuple[Any, ...]:
+        season, factory = key
+        return (*cls._season_sort_key(season), cls._clean_text(factory))
+
+    @classmethod
+    def _result_sort_key(cls, row: Dict[str, Any]) -> Tuple[Any, ...]:
+        podd = cls._to_datetime(row.get("PODD"))
+        podd_missing = 1 if podd is None else 0
+        podd_key = podd or datetime.max
+        return (
+            *cls._season_sort_key(row.get("Season")),
+            podd_missing,
+            podd_key,
+            cls._clean_text(row.get("Factory")),
+            cls._clean_text(row.get("Working Number")),
+            cls._clean_text(row.get("Article Number")),
+        )
+
+    @classmethod
+    def _sorted_result_rows(cls, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        return sorted(results, key=cls._result_sort_key)
+
+    @classmethod
+    def _y2y_years(cls, results: List[Dict[str, Any]]) -> List[int]:
+        years: Set[int] = set()
+        for row in results:
+            podd = cls._to_datetime(row.get("PODD"))
+            if podd is not None:
+                years.add(podd.year)
+        return sorted(years)
+
+    @staticmethod
+    def _y2y_right_pivot_location_ref(years: List[int]) -> str:
+        year_count = max(len(years), 1)
+        end_column = openpyxl.utils.get_column_letter(openpyxl.utils.column_index_from_string("I") + year_count * 2)
+        return f"I20:{end_column}34"
+
+    @classmethod
+    def _season_sort_key(cls, value: Any) -> Tuple[int, int, int, str]:
+        season = cls._clean_text(value).upper()
+        if not season:
+            return (2, 9999, 99, "")
+
+        compact = "".join(char for char in season if char.isalnum())
+        prefix = compact[:2]
+        year_digits = "".join(char for char in compact[2:] if char.isdigit())
+        if prefix in {"SS", "FW"} and year_digits:
+            if len(year_digits) >= 4:
+                year = int(year_digits[:4])
+            else:
+                year = 2000 + int(year_digits[:2])
+            season_order = 0 if prefix == "SS" else 1
+            return (0, year, season_order, season)
+
+        return (1, 9999, 99, season)
+
+    @staticmethod
+    def _year_sort_key(value: Any) -> Tuple[int, Any]:
+        if isinstance(value, int):
+            return (0, value)
+        return (1, str(value))
+
+    @staticmethod
+    def _ship_method_sort_key(key: Tuple[str, int, int, str]) -> Tuple[int, int, str, str]:
+        factory, year, month, shipment_method = key
+        return (year, month, factory, shipment_method)
 
     def _country_summary_tms_amount(self, row: Dict[str, Any]) -> float:
         tms_amount = self._optional_float(row.get("_tms_amount_value"))
@@ -1322,7 +1575,9 @@ class SophiaTinaModule:
             tms_amount = self._optional_float(row.get("TMS Amount(USD)"))
         return tms_amount or 0.0
 
-    def _country_summary_style_ids(self, row_kind: str) -> List[int]:
+    def _country_summary_style_ids(self, row_kind: str) -> List[Optional[int]]:
+        if row_kind == "spacer":
+            return [None] * 6
         if row_kind == "header":
             return [self.COUNTRY_SUMMARY_HEADER_STYLE] * 6
         if row_kind == "qty_pct":
@@ -1436,7 +1691,7 @@ class SophiaTinaModule:
         row_idx: int,
         col_idx: int,
         value: Any,
-        style_id: int,
+        style_id: Optional[int],
         formula: Optional[str] = None,
     ) -> str:
         ref = f"{openpyxl.utils.get_column_letter(col_idx)}{row_idx}"
@@ -1484,9 +1739,7 @@ class SophiaTinaModule:
             return 35
         if col_idx in {7, 8}:
             return 37
-        if col_idx == 14:
-            return 38
-        if col_idx in {15, 16}:
+        if col_idx in {14, 15, 16}:
             return 39
         if col_idx == 17:
             return 40
@@ -1506,9 +1759,30 @@ class SophiaTinaModule:
             normal_price_style,
             conflict_fill_id,
         )
+        ship_total_fill_id = self._find_or_append_solid_fill(fills, self.SHIP_METHOD_TOTAL_FILL_RGB)
+        ship_total_text_style_id = self._find_or_append_style_with_fill(
+            cell_xfs,
+            cell_xfs[self.COUNTRY_SUMMARY_TEXT_STYLE],
+            ship_total_fill_id,
+        )
+        ship_total_percent_style_id = self._find_or_append_style_with_fill(
+            cell_xfs,
+            cell_xfs[self.COUNTRY_SUMMARY_PERCENT_STYLE],
+            ship_total_fill_id,
+        )
+        ship_total_currency_style_id = self._find_or_append_style_with_fill(
+            cell_xfs,
+            cell_xfs[self.COUNTRY_SUMMARY_CURRENCY_STYLE],
+            ship_total_fill_id,
+        )
         fills.set("count", str(len(list(fills))))
         cell_xfs.set("count", str(len(list(cell_xfs))))
-        return self._serialize_spreadsheet_xml(root), {"factory_price_conflict": conflict_style_id}
+        return self._serialize_spreadsheet_xml(root), {
+            "factory_price_conflict": conflict_style_id,
+            "ship_method_total_text": ship_total_text_style_id,
+            "ship_method_total_percent": ship_total_percent_style_id,
+            "ship_method_total_currency": ship_total_currency_style_id,
+        }
 
     def _find_or_append_solid_fill(self, fills: ElementTree.Element, rgb: str) -> int:
         for index, fill in enumerate(list(fills)):
@@ -1559,6 +1833,48 @@ class SophiaTinaModule:
         if source is not None:
             source.set("sheet", "Result")
             source.set("ref", table_ref)
+        self._reset_pivot_cache_shared_items(root)
+        return self._serialize_spreadsheet_xml(root)
+
+    def _reset_pivot_cache_shared_items(self, root: ElementTree.Element) -> None:
+        cache_fields = root.find(f"{{{self.OOXML_MAIN_NS}}}cacheFields")
+        if cache_fields is None:
+            return
+
+        for cache_field in cache_fields.findall(f"{{{self.OOXML_MAIN_NS}}}cacheField"):
+            has_field_group = cache_field.find(f"{{{self.OOXML_MAIN_NS}}}fieldGroup") is not None
+            for child in list(cache_field):
+                if child.tag == f"{{{self.OOXML_MAIN_NS}}}sharedItems":
+                    cache_field.remove(child)
+            if not has_field_group:
+                ElementTree.SubElement(
+                    cache_field,
+                    f"{{{self.OOXML_MAIN_NS}}}sharedItems",
+                    {"count": "0"},
+                )
+
+        ext_list = root.find(f"{{{self.OOXML_MAIN_NS}}}extLst")
+        if ext_list is not None:
+            root.remove(ext_list)
+
+    def _with_pivot_table_definition(self, xml_bytes: bytes, relationship_id: str) -> bytes:
+        root = ElementTree.fromstring(xml_bytes)
+        rel_attr = f"{{{self.OOXML_REL_NS}}}id"
+        for child in root.findall(f"{{{self.OOXML_MAIN_NS}}}pivotTableDefinition"):
+            if child.attrib.get(rel_attr) == relationship_id:
+                return self._serialize_spreadsheet_xml(root)
+
+        pivot_definition = ElementTree.Element(
+            f"{{{self.OOXML_MAIN_NS}}}pivotTableDefinition",
+            {rel_attr: relationship_id},
+        )
+        ext_list_tag = f"{{{self.OOXML_MAIN_NS}}}extLst"
+        for index, child in enumerate(list(root)):
+            if child.tag == ext_list_tag:
+                root.insert(index, pivot_definition)
+                break
+        else:
+            root.append(pivot_definition)
         return self._serialize_spreadsheet_xml(root)
 
     def _pivot_cache_definition_xml(
@@ -1631,7 +1947,23 @@ class SophiaTinaModule:
         self._replace_pivot_child(root, "rowFields", self._pivot_axis_fields_element("rowFields", row_fields))
         self._replace_pivot_child(root, "colFields", self._pivot_axis_fields_element("colFields", column_fields))
         self._replace_pivot_child(root, "dataFields", self._pivot_data_fields_element(data_fields))
+        self._remove_pivot_runtime_children(root)
         return self._serialize_spreadsheet_xml(root)
+
+    def _remove_pivot_runtime_children(self, root: ElementTree.Element) -> None:
+        # Excel 会在刷新时重建这些 item/format 缓存；保留旧缓存容易让 Excel 2013 判定 PivotTable 损坏。
+        runtime_child_names = {
+            "rowItems",
+            "colItems",
+            "formats",
+            "conditionalFormats",
+            "chartFormats",
+            "extLst",
+        }
+        runtime_tags = {f"{{{self.OOXML_MAIN_NS}}}{name}" for name in runtime_child_names}
+        for child in list(root):
+            if child.tag in runtime_tags:
+                root.remove(child)
 
     def _replace_pivot_child(
         self,
@@ -1684,6 +2016,138 @@ class SophiaTinaModule:
             ElementTree.SubElement(root, f"{{{self.OOXML_MAIN_NS}}}dataField", attrs)
         return root
 
+    def _y2y_quantity_only_pivot_table_xml(self, xml_bytes: bytes, location_ref: str) -> bytes:
+        root = ElementTree.fromstring(xml_bytes)
+        location = root.find(f"{{{self.OOXML_MAIN_NS}}}location")
+        if location is not None:
+            location.set("ref", location_ref)
+
+        self._replace_pivot_child(root, "pivotFields", self._pivot_fields_element(
+            18,
+            [7],
+            [17],
+            [12],
+        ))
+        self._replace_pivot_child(root, "rowFields", self._pivot_axis_fields_element("rowFields", [7]))
+        self._replace_pivot_child(root, "colFields", self._pivot_axis_fields_element("colFields", [17, -2]))
+        self._replace_pivot_child(root, "dataFields", self._y2y_quantity_data_fields_element())
+        self._remove_pivot_runtime_children(root)
+        return self._serialize_spreadsheet_xml(root)
+
+    def _y2y_quantity_data_fields_element(self) -> ElementTree.Element:
+        root = ElementTree.Element(f"{{{self.OOXML_MAIN_NS}}}dataFields", {"count": "2"})
+        ElementTree.SubElement(
+            root,
+            f"{{{self.OOXML_MAIN_NS}}}dataField",
+            {"name": "Quantity (Y)", "fld": "12", "numFmtId": "3"},
+        )
+        ElementTree.SubElement(
+            root,
+            f"{{{self.OOXML_MAIN_NS}}}dataField",
+            {
+                "name": "Y2Y - Qty",
+                "fld": "12",
+                "showDataAs": "percentDiff",
+                "baseField": "17",
+                "numFmtId": "9",
+            },
+        )
+        return root
+
+    def _y2y_quantity_only_chart_xml(self, years: List[int]) -> bytes:
+        category_ref = self._y2y_chart_range("I", 23, 34)
+        column_series = [
+            self._chart_series_xml(
+                index=index,
+                name=f"{year} - Quantity (Y)",
+                category_ref=category_ref,
+                value_ref=self._y2y_chart_range(
+                    openpyxl.utils.get_column_letter(openpyxl.utils.column_index_from_string("J") + index * 2),
+                    23,
+                    34,
+                ),
+            )
+            for index, year in enumerate(years)
+        ]
+        line_series = [
+            self._chart_series_xml(
+                index=len(years) + index,
+                name=f"{year} - Y2Y - Qty",
+                category_ref=category_ref,
+                value_ref=self._y2y_chart_range(
+                    openpyxl.utils.get_column_letter(openpyxl.utils.column_index_from_string("K") + index * 2),
+                    23,
+                    34,
+                ),
+                marker=True,
+            )
+            for index, year in enumerate(years)
+        ]
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+            f'<c:chartSpace xmlns:c="{self.OOXML_CHART_NS}" '
+            f'xmlns:a="{self.OOXML_DRAWING_MAIN_NS}" '
+            f'xmlns:r="{self.OOXML_REL_NS}">'
+            '<c:date1904 val="0"/><c:lang val="en-US"/><c:roundedCorners val="0"/>'
+            '<c:chart>'
+            '<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r>'
+            '<a:rPr lang="en-US" sz="1400"/><a:t>Y2Y</a:t>'
+            '</a:r></a:p></c:rich></c:tx><c:layout/></c:title>'
+            '<c:autoTitleDeleted val="0"/>'
+            '<c:plotArea><c:layout/>'
+            '<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>'
+            f'{"".join(column_series)}'
+            '<c:axId val="100001"/><c:axId val="100002"/></c:barChart>'
+            '<c:lineChart><c:grouping val="standard"/>'
+            f'{"".join(line_series)}'
+            '<c:axId val="100001"/><c:axId val="100003"/></c:lineChart>'
+            '<c:catAx><c:axId val="100001"/><c:scaling><c:orientation val="minMax"/></c:scaling>'
+            '<c:delete val="0"/><c:axPos val="b"/><c:tickLblPos val="nextTo"/>'
+            '<c:crossAx val="100002"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/>'
+            '<c:lblOffset val="100"/></c:catAx>'
+            '<c:valAx><c:axId val="100002"/><c:scaling><c:orientation val="minMax"/></c:scaling>'
+            '<c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="#,##0" sourceLinked="1"/>'
+            '<c:tickLblPos val="nextTo"/><c:crossAx val="100001"/><c:crosses val="autoZero"/>'
+            '<c:crossBetween val="between"/></c:valAx>'
+            '<c:valAx><c:axId val="100003"/><c:scaling><c:orientation val="minMax"/></c:scaling>'
+            '<c:delete val="0"/><c:axPos val="r"/><c:numFmt formatCode="0%" sourceLinked="0"/>'
+            '<c:tickLblPos val="nextTo"/><c:crossAx val="100001"/><c:crosses val="max"/>'
+            '<c:crossBetween val="between"/></c:valAx>'
+            '</c:plotArea>'
+            '<c:legend><c:legendPos val="b"/><c:layout/><c:overlay val="0"/></c:legend>'
+            '<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/><c:showDLblsOverMax val="0"/>'
+            '</c:chart>'
+            '<c:printSettings><c:headerFooter/><c:pageMargins b="0.75" l="0.7" r="0.7" t="0.75" '
+            'header="0.3" footer="0.3"/><c:pageSetup/></c:printSettings>'
+            '</c:chartSpace>'
+        )
+        return xml.encode("utf-8")
+
+    @staticmethod
+    def _y2y_chart_range(column: str, start_row: int, end_row: int) -> str:
+        return f"'Y2Y Comparison(Qtty & Value)'!${column}${start_row}:${column}${end_row}"
+
+    def _chart_series_xml(
+        self,
+        index: int,
+        name: str,
+        category_ref: str,
+        value_ref: str,
+        marker: bool = False,
+    ) -> str:
+        marker_xml = '<c:marker><c:symbol val="circle"/></c:marker>' if marker else ""
+        return (
+            f'<c:ser><c:idx val="{index}"/><c:order val="{index}"/>'
+            f'<c:tx><c:v>{escape(name)}</c:v></c:tx>{marker_xml}'
+            f'<c:cat><c:strRef><c:f>{escape(category_ref)}</c:f></c:strRef></c:cat>'
+            f'<c:val><c:numRef><c:f>{escape(value_ref)}</c:f></c:numRef></c:val>'
+            '</c:ser>'
+        )
+
+    def _normalized_y2y_drawing_xml(self, xml_bytes: bytes) -> bytes:
+        root = ElementTree.fromstring(xml_bytes)
+        return self._serialize_drawing_xml(root)
+
     def _updated_y2y_slicer_cache_xml(self, xml_bytes: bytes) -> bytes:
         root = ElementTree.fromstring(xml_bytes)
         pivot_tables = root.find(f"{{{self.OOXML_X14_NS}}}pivotTables")
@@ -1724,6 +2188,17 @@ class SophiaTinaModule:
 
     def _updated_workbook_xml(self, xml_bytes: bytes) -> bytes:
         root = ElementTree.fromstring(xml_bytes)
+        root.attrib.pop(f"{{{self.OOXML_MC_NS}}}Ignorable", None)
+        for child in list(root):
+            if child.tag == f"{{{self.OOXML_MC_NS}}}AlternateContent":
+                root.remove(child)
+
+        workbook_pr = root.find(f"{{{self.OOXML_MAIN_NS}}}workbookPr")
+        if workbook_pr is not None:
+            workbook_pr.attrib.pop("hidePivotFieldList", None)
+            if not workbook_pr.attrib and not list(workbook_pr):
+                root.remove(workbook_pr)
+
         sheets = root.find(f"{{{self.OOXML_MAIN_NS}}}sheets")
         if sheets is not None:
             existing_sheet_names = {
@@ -1877,6 +2352,25 @@ class SophiaTinaModule:
     @classmethod
     def _serialize_spreadsheet_xml(cls, root: ElementTree.Element) -> bytes:
         cls._register_spreadsheet_namespaces()
+        return cls._serialize_xml(root)
+
+    @classmethod
+    def _serialize_chart_xml(cls, root: ElementTree.Element) -> bytes:
+        ElementTree.register_namespace("c", cls.OOXML_CHART_NS)
+        ElementTree.register_namespace("a", cls.OOXML_DRAWING_MAIN_NS)
+        ElementTree.register_namespace("r", cls.OOXML_REL_NS)
+        ElementTree.register_namespace("mc", cls.OOXML_MC_NS)
+        ElementTree.register_namespace("c14", cls.OOXML_CHART_2007_NS)
+        return cls._serialize_xml(root)
+
+    @classmethod
+    def _serialize_drawing_xml(cls, root: ElementTree.Element) -> bytes:
+        ElementTree.register_namespace("", cls.OOXML_SPREADSHEET_DRAWING_NS)
+        ElementTree.register_namespace("a", cls.OOXML_DRAWING_MAIN_NS)
+        ElementTree.register_namespace("c", cls.OOXML_CHART_NS)
+        ElementTree.register_namespace("r", cls.OOXML_REL_NS)
+        ElementTree.register_namespace("mc", cls.OOXML_MC_NS)
+        ElementTree.register_namespace("a14", cls.OOXML_DRAWING_SLICER_2010_NS)
         return cls._serialize_xml(root)
 
     @classmethod
@@ -2052,28 +2546,46 @@ class SophiaTinaModule:
         self,
         file_list: List[str],
         required_aliases: List[List[str]],
+        scan_all_sheets: bool = False,
     ) -> Tuple[Optional[pd.DataFrame], List[str]]:
         """读取标题行位置不固定的 Excel 文件，按字段名而不是固定行列定位。"""
         dfs: List[pd.DataFrame] = []
         logs: List[str] = []
 
         for file_path in file_list:
+            file_name = os.path.basename(file_path)
             try:
+                if scan_all_sheets:
+                    # Factory Price 文件可能把辅助 sheet 放在最前面，需按必需字段选择第一个有效 sheet。
+                    raw_sheets = pd.read_excel(file_path, sheet_name=None, header=None)
+                    selected_df: Optional[pd.DataFrame] = None
+                    for sheet_name, raw_df in raw_sheets.items():
+                        header_row_index = self._detect_header_row(raw_df, required_aliases)
+                        if header_row_index is None:
+                            continue
+                        selected_df = self._build_detected_header_dataframe(raw_df, header_row_index)
+                        dfs.append(selected_df)
+                        logs.append(
+                            f"  - 读取成功：{file_name} / {sheet_name}，"
+                            f"标题行 {header_row_index + 1}，共 {len(selected_df)} 行"
+                        )
+                        break
+                    if selected_df is None:
+                        logs.append(f"  ⚠️ 未找到标题行：{file_name}")
+                    continue
+
                 raw_df = pd.read_excel(file_path, header=None)
                 header_row_index = self._detect_header_row(raw_df, required_aliases)
                 if header_row_index is None:
-                    logs.append(f"  ⚠️ 未找到标题行：{os.path.basename(file_path)}")
+                    logs.append(f"  ⚠️ 未找到标题行：{file_name}")
                     continue
-                headers = raw_df.iloc[header_row_index].tolist()
-                df = raw_df.iloc[header_row_index + 1:].copy()
-                df.columns = headers
-                df = df.dropna(how='all')
+                df = self._build_detected_header_dataframe(raw_df, header_row_index)
                 dfs.append(df)
                 logs.append(
-                    f"  - 读取成功：{os.path.basename(file_path)}，标题行 {header_row_index + 1}，共 {len(df)} 行"
+                    f"  - 读取成功：{file_name}，标题行 {header_row_index + 1}，共 {len(df)} 行"
                 )
             except Exception as e:
-                logs.append(f"  ⚠️ 读取失败：{os.path.basename(file_path)}，错误：{str(e)}")
+                logs.append(f"  ⚠️ 读取失败：{file_name}，错误：{str(e)}")
 
         if not dfs:
             return None, logs
@@ -2083,6 +2595,13 @@ class SophiaTinaModule:
         result = pd.concat(dfs, axis=0, ignore_index=True)
         logs.append(f"  ✅ 合并成功，总计 {len(result)} 行")
         return result, logs
+
+    @staticmethod
+    def _build_detected_header_dataframe(raw_df: pd.DataFrame, header_row_index: int) -> pd.DataFrame:
+        headers = raw_df.iloc[header_row_index].tolist()
+        df = raw_df.iloc[header_row_index + 1:].copy()
+        df.columns = headers
+        return df.dropna(how='all')
 
     def _detect_header_row(self, raw_df: pd.DataFrame, required_aliases: List[List[str]]) -> Optional[int]:
         for row_index in range(min(len(raw_df), 12)):
@@ -2224,7 +2743,10 @@ class SophiaTinaModule:
 
         rows = [
             [season, factory, metrics["quantity"], metrics["factory_amount"], metrics["tms_amount"]]
-            for (season, factory), metrics in sorted(groups.items())
+            for (season, factory), metrics in sorted(
+                groups.items(),
+                key=lambda item: self._season_factory_sort_key(item[0]),
+            )
         ]
         ws = wb.create_sheet("Seasonal Summary (By Fty)")
         self._append_summary_table(
@@ -2258,7 +2780,10 @@ class SophiaTinaModule:
             self._add_metrics(totals[(period, factory)], row)
 
         rows: List[List[Any]] = []
-        for period, factory in sorted(totals):
+        for period, factory in sorted(
+            totals,
+            key=lambda key: self._country_summary_sort_key(key, period_kind),
+        ):
             total = totals[(period, factory)]
             row_values: List[Any] = [period, factory]
             for bucket in ("CHINA", "UNITED STATES", "OTHER COUNTRIES"):
@@ -2364,31 +2889,7 @@ class SophiaTinaModule:
         results: List[Dict[str, Any]],
         thin_border: Border,
     ) -> None:
-        groups: Dict[Tuple[str, int, int, str], Dict[str, float]] = defaultdict(self._empty_metrics)
-        totals: Dict[Tuple[str, int, int], Dict[str, float]] = defaultdict(self._empty_metrics)
-        for row in results:
-            podd = self._to_datetime(row.get("PODD"))
-            if podd is None:
-                continue
-            base_key = (self._clean_text(row.get("Factory")), podd.year, podd.month)
-            method = self._clean_text(row.get("Shipment Method"))
-            self._add_metrics(groups[base_key + (method,)], row)
-            self._add_metrics(totals[base_key], row)
-
-        rows = []
-        for factory, year, month, method in sorted(groups):
-            metrics = groups[(factory, year, month, method)]
-            total = totals[(factory, year, month)]
-            rows.append([
-                factory,
-                year,
-                datetime(2000, month, 1).strftime("%b"),
-                method,
-                metrics["quantity"],
-                metrics["quantity"] / total["quantity"] if total["quantity"] else 0,
-                metrics["tms_amount"],
-                metrics["tms_amount"] / total["tms_amount"] if total["tms_amount"] else 0,
-            ])
+        rows = [row["values"] for row in self._ship_method_analysis_rows(results)]
 
         ws = wb.create_sheet("Ship Method Analysis")
         self._append_summary_table(
@@ -2405,7 +2906,12 @@ class SophiaTinaModule:
         thin_border: Border,
     ) -> None:
         ws = wb.create_sheet("Development Style Qty")
-        self._append_summary_table(ws, ["Season", "Factory", "Development Style Count"], [], thin_border)
+        self._append_summary_table(
+            ws,
+            ["Season", "Factory", "Development Style Count"],
+            self._development_style_qty_rows(development_style_rows),
+            thin_border,
+        )
 
     def _write_s2s_development_analysis(
         self,
@@ -2414,23 +2920,7 @@ class SophiaTinaModule:
         development_style_rows: List[Dict[str, Any]],
         thin_border: Border,
     ) -> None:
-        development_lookup = {
-            (row["Season"], row["Factory"]): row["Development Style Count"]
-            for row in development_style_rows
-        }
-        bulk_styles: Dict[Tuple[str, str], Set[str]] = defaultdict(set)
-        quantities: Dict[Tuple[str, str], float] = defaultdict(float)
-        for row in results:
-            key = (self._clean_text(row.get("Season")), self._clean_text(row.get("Factory")))
-            working = self._clean_text(row.get("Working Number"))
-            if working:
-                bulk_styles[key].add(working)
-            quantities[key] += self._optional_float(row.get("Quantity")) or 0.0
-
-        rows = [
-            [season, factory, development_lookup.get((season, factory), 0), len(bulk_styles[(season, factory)]), quantities[(season, factory)]]
-            for season, factory in sorted(bulk_styles)
-        ]
+        rows = self._s2s_development_source_rows(results, development_style_rows)
         ws = wb.create_sheet("S2S Development Analysis")
         self._append_summary_table(
             ws,
@@ -2588,7 +3078,11 @@ class SophiaTinaModule:
             log(f"✅ TMS Price 文件读取完成，共 {len(tms_price_df)} 行数据")
 
             log("\n📖 正在读取 Factory Price 文件...")
-            price_df, price_logs = self.read_excel_files(price_paths)
+            price_df, price_logs = self.read_excel_files_with_detected_header(
+                price_paths,
+                [["Season"], ["Working Number"], ["Article Number"], ["Factory"], ["Factory Price"]],
+                scan_all_sheets=True,
+            )
             result['logs'].extend(price_logs)
 
             if price_df is None:
