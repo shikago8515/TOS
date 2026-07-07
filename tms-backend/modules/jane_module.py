@@ -44,6 +44,8 @@ class JaneModule:
         '南非单': '欧美单',
     }
     DEFAULT_CATEGORY = '其他'
+    DEDICATED_DESTINATION_GROUPS = {'KOREA'}
+    INCH_QUOTE_SUFFIXES = {'"', '”', '″'}
     MIN_REQUIRED_FIELD_RATE = 0.9
     MIN_COUNTRY_MATCH_RATE = 0.8
     MAX_TEMPLATE_MISSING_RATE = 0.2
@@ -108,6 +110,24 @@ class JaneModule:
         if text.endswith('.0') and text[:-2].isdigit():
             return text[:-2]
         return text
+
+    @classmethod
+    def _customer_size_group_key(cls, value: Any) -> str:
+        text = cls._normalize_size(value)
+        unquoted = text[:-1].strip() if text[-1:] in cls.INCH_QUOTE_SUFFIXES else text
+        if unquoted.isdigit():
+            return f"INCH:{unquoted}"
+        return text
+
+    @classmethod
+    def _prefer_customer_size_display(cls, current: str, candidate: str) -> str:
+        if not current:
+            return candidate
+        if cls._customer_size_group_key(current) != cls._customer_size_group_key(candidate):
+            return current
+        current_has_quote = current[-1:] in cls.INCH_QUOTE_SUFFIXES
+        candidate_has_quote = candidate[-1:] in cls.INCH_QUOTE_SUFFIXES
+        return candidate if candidate_has_quote and not current_has_quote else current
 
     @staticmethod
     def _format_identifier(value: Any, width: Optional[int] = None) -> str:
@@ -1073,10 +1093,11 @@ class JaneModule:
             return tech_size[:1] or 'OTHER'
 
         def build_groups(df_wn: pd.DataFrame) -> List[Dict[str, Any]]:
-            """按尺码结构聚类，而不是按国家或客户号拆分。
+            """按尺码结构聚类；特殊目的地可按国家独立成段。
 
             只要 Technical Size 对应的 Customer Size 不冲突，就认为属于同一段。
             例如德国/澳洲的 28-52 标准码会合并；Canada Tall 和 Japan A 码会拆开。
+            韩国单的尺码映射会与标准码冲突，业务要求同一 Working Number 内独立成一段。
             """
 
             groups: List[Dict[str, Any]] = []
@@ -1088,32 +1109,51 @@ class JaneModule:
                     self._normalize_size(source_row.get(customer_size_col))
                     if customer_size_col else ''
                 ) or tech_size
+                customer_size_key = self._customer_size_group_key(customer_size)
                 family = (
                     size_family(source_row),
                     self._customer_size_family(customer_size),
                 )
+                destination = resolve_destination(source_row)
+                if destination in self.DEDICATED_DESTINATION_GROUPS:
+                    group_key: Tuple[str, ...] = ('DESTINATION', destination)
+                    allow_customer_size_conflict = True
+                else:
+                    group_key = ('SIZE', family[0], family[1])
+                    allow_customer_size_conflict = False
 
                 target_group = None
                 for group in groups:
-                    if group['family'] != family:
+                    if group['group_key'] != group_key:
                         continue
-                    existing_customer_size = group['sizes'].get(tech_size)
-                    if existing_customer_size is not None and existing_customer_size != customer_size:
+                    existing_customer_size_key = group['size_keys'].get(tech_size)
+                    if (
+                        not allow_customer_size_conflict
+                        and existing_customer_size_key is not None
+                        and existing_customer_size_key != customer_size_key
+                    ):
                         continue
                     target_group = group
                     break
 
                 if target_group is None:
                     target_group = {
+                        'group_key': group_key,
                         'family': family,
                         'first_index': len(groups),
                         'rows': [],
                         'sizes': {},
+                        'size_keys': {},
                     }
                     groups.append(target_group)
 
                 target_group['rows'].append(source_row)
-                target_group['sizes'].setdefault(tech_size, customer_size)
+                target_group['size_keys'].setdefault(tech_size, customer_size_key)
+                existing_display = target_group['sizes'].get(tech_size, '')
+                target_group['sizes'][tech_size] = self._prefer_customer_size_display(
+                    existing_display,
+                    customer_size,
+                )
 
             for group in groups:
                 group['size_order'] = sorted(group['sizes'].keys(), key=self._sort_size_key)

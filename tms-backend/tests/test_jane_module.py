@@ -162,6 +162,177 @@ class JaneModuleWorkbookTests(unittest.TestCase):
             f"=SUM({po_qty_letter}3:{po_qty_letter}{subtotal_row - 1})",
         )
 
+    def test_korea_orders_are_combined_into_dedicated_size_section(self) -> None:
+        def sized_row(
+            country: str,
+            customer_no: str,
+            po_line: int,
+            technical_size: str,
+            customer_size: str,
+            quantity: int,
+        ) -> Dict[str, Any]:
+            row = self._tms_row(
+                "WN-001",
+                "ART-1",
+                country,
+                customer_no,
+                101 if country == "GERMANY" else 202,
+                po_line,
+                quantity,
+            )
+            row["Technical Size"] = technical_size
+            row["Customer Size"] = customer_size
+            return row
+
+        rows = [
+            sized_row("GERMANY", "1001", 10, "42", "XS", 10),
+            sized_row("GERMANY", "1001", 20, "46", "S", 20),
+            sized_row("GERMANY", "1001", 30, "50", "M", 30),
+            sized_row("GERMANY", "1001", 40, "54", "L", 40),
+            sized_row("GERMANY", "1001", 50, "58", "XL", 50),
+            sized_row("KOREA", "823016", 10, "42", "XS", 7),
+            sized_row("KOREA", "823016", 20, "46", "S", 62),
+            sized_row("KOREA", "823016", 30, "48", "M", 114),
+            sized_row("KOREA", "823016", 40, "50", "L", 136),
+            sized_row("KOREA", "823016", 50, "54", "XL", 106),
+            sized_row("KOREA", "823016", 60, "56", "2XL", 25),
+            sized_row("KOREA", "823016", 70, "58", "3XL", 5),
+        ]
+        wb = self.module.create_auto_workbook(pd.DataFrame(rows), ["WN-001"], {}, [])
+        ws = wb["WN-001"]
+        destination_col = 14
+        size_start_col = 15
+
+        sections: List[Dict[str, Any]] = []
+        row_idx = 1
+        while row_idx <= ws.max_row:
+            if ws.cell(row=row_idx, column=destination_col).value != "sourcing size":
+                row_idx += 1
+                continue
+
+            data_start_row = row_idx + 2
+            data_end_row = data_start_row - 1
+            next_row = row_idx + 1
+            for candidate_row in range(data_start_row, ws.max_row + 1):
+                label = ws.cell(row=candidate_row, column=destination_col).value
+                if label in {"Sub. Total ", "sourcing size"}:
+                    data_end_row = candidate_row - 1
+                    next_row = candidate_row + 1
+                    break
+
+            sizes: List[str] = []
+            customer_sizes: List[str] = []
+            col_idx = size_start_col
+            while col_idx <= ws.max_column:
+                header = ws.cell(row=row_idx, column=col_idx).value
+                if header == "PO QTY":
+                    break
+                if header:
+                    sizes.append(str(header))
+                    customer_sizes.append(str(ws.cell(row=row_idx + 1, column=col_idx).value))
+                col_idx += 1
+
+            destinations = [
+                str(ws.cell(row=data_row, column=destination_col).value)
+                for data_row in range(data_start_row, data_end_row + 1)
+                if ws.cell(row=data_row, column=destination_col).value
+            ]
+            sections.append(
+                {
+                    "sizes": sizes,
+                    "customer_sizes": customer_sizes,
+                    "destinations": destinations,
+                }
+            )
+            row_idx = next_row
+
+        korea_sections = [
+            section for section in sections
+            if "KOREA" in section["destinations"]
+        ]
+        non_korea_sections = [
+            section for section in sections
+            if "KOREA" not in section["destinations"]
+        ]
+
+        self.assertEqual(1, len(korea_sections), sections)
+        self.assertEqual({"KOREA"}, set(korea_sections[0]["destinations"]))
+        self.assertEqual(
+            ["42", "46", "48", "50", "54", "56", "58"],
+            korea_sections[0]["sizes"],
+        )
+        self.assertEqual(
+            ["XS", "S", "M", "L", "XL", "2XL", "3XL"],
+            korea_sections[0]["customer_sizes"],
+        )
+        self.assertTrue(any("GERMANY" in section["destinations"] for section in non_korea_sections))
+        self.assertFalse(any("KOREA" in section["destinations"] for section in non_korea_sections))
+
+    def test_inch_customer_sizes_with_and_without_quote_share_one_section(self) -> None:
+        size_pairs = [
+            ("40", "28", '28"'),
+            ("42", "30", '30"'),
+            ("46", "32", '32"'),
+            ("50", "34", '34"'),
+            ("54", "36", '36"'),
+            ("58", "38", '38"'),
+            ("62", "40", '40"'),
+        ]
+        rows: List[Dict[str, Any]] = []
+        for index, (technical_size, plain_customer_size, quoted_customer_size) in enumerate(size_pairs, 1):
+            plain_row = self._tms_row(
+                "WN-001",
+                "ART-1",
+                "BRAZIL",
+                "672027",
+                101,
+                index * 10,
+                index,
+            )
+            plain_row["Technical Size"] = technical_size
+            plain_row["Customer Size"] = plain_customer_size
+            rows.append(plain_row)
+
+            quoted_row = self._tms_row(
+                "WN-001",
+                "ART-1",
+                "GERMANY",
+                "516333",
+                202,
+                index * 10,
+                index + 20,
+            )
+            quoted_row["Technical Size"] = technical_size
+            quoted_row["Customer Size"] = quoted_customer_size
+            rows.append(quoted_row)
+
+        wb = self.module.create_auto_workbook(pd.DataFrame(rows), ["WN-001"], {}, [])
+        ws = wb["WN-001"]
+        destination_col = 14
+        size_start_col = 15
+        section_rows = [
+            row_idx
+            for row_idx in range(1, ws.max_row + 1)
+            if ws.cell(row=row_idx, column=destination_col).value == "sourcing size"
+        ]
+
+        self.assertEqual(1, len(section_rows))
+        header_row = section_rows[0]
+        customer_sizes: List[str] = []
+        col_idx = size_start_col
+        while col_idx <= ws.max_column:
+            header = ws.cell(row=header_row, column=col_idx).value
+            if header == "PO QTY":
+                break
+            if header:
+                customer_sizes.append(str(ws.cell(row=header_row + 1, column=col_idx).value))
+            col_idx += 1
+
+        self.assertEqual(
+            ['28"', '30"', '32"', '34"', '36"', '38"', '40"'],
+            customer_sizes,
+        )
+
     def test_south_africa_is_merged_into_europe_category(self) -> None:
         rows = [
             self._tms_row("WN-001", "ART-1", "SOUTH AFRICA", "1001", 101, 10, 400),
