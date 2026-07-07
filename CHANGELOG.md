@@ -1,3 +1,13 @@
+## [1.0.0-beta.3.26](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.25...v1.0.0-beta.3.26) (2026-07-07)
+
+### Features
+
+* TC INV Validate 后下载PDF ([16953c1](http://172.16.48.208:3001/luenthai-ai/TOS/commit/16953c1bfcccae5587a87706cadd9f3543307ae9))
+
+### Bug Fixes
+
+* 修复 Jane 成品表尺码分组 ([1bdf2f3](http://172.16.48.208:3001/luenthai-ai/TOS/commit/1bdf2f3df6f0460c37b0a6517d3adaee6490fca6))
+
 ## [1.0.0-beta.3.25](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.24...v1.0.0-beta.3.25) (2026-07-07)
 
 ### Bug Fixes
