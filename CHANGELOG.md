@@ -1,3 +1,9 @@
+## [1.0.0-beta.3.24](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.23...v1.0.0-beta.3.24) (2026-07-07)
+
+### Bug Fixes
+
+* 箱单签核弹窗确认按钮点击 ([0943599](http://172.16.48.208:3001/luenthai-ai/TOS/commit/09435998aca38841a6436e985aca557b93ff8b69))
+
 ## [1.0.0-beta.3.23](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.22...v1.0.0-beta.3.23) (2026-07-07)
 
 ## [1.0.0-beta.3.22](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.21...v1.0.0-beta.3.22) (2026-07-07)
