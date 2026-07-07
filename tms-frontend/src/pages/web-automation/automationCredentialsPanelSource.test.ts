@@ -12,6 +12,7 @@ const poAutoDownloadSource = readWorkspaceSource('../po-auto-download/components
 const shippingAutomationSource = readWorkspaceSource('../shipping-automation/components/ShippingAutomationWorkspace.vue')
 const shippingAutomation2Source = readWorkspaceSource('../shipping-automation-2/components/ShippingAutomation2Workspace.vue')
 const tcInvAutomationSource = readWorkspaceSource('../tc-inv-automation/components/TcInvAutomationWorkspace.vue')
+const xoTcInvAutomationSource = readWorkspaceSource('../xo-tc-inv-automation/components/XoTcInvAutomationWorkspace.vue')
 const xinlongtaiShippingSource = readWorkspaceSource('../xinlongtai-shipping-automation/components/XinlongtaiShippingAutomationWorkspace.vue')
 const infornexusAutoAddSource = readWorkspaceSource('../infornexus-auto-add/components/InfornexusAutoAddWorkspace.vue')
 
@@ -39,7 +40,7 @@ describe('AutomationCredentialsPanel source integration', () => {
   })
 
   it('uses the shared account profile manager in all direct Infor Nexus automation pages', () => {
-    for (const source of [shippingAutomationSource, shippingAutomation2Source, poAutoDownloadSource, packingListAutoDownloadSource, xinlongtaiShippingSource, tcInvAutomationSource, infornexusAutoAddSource]) {
+    for (const source of [shippingAutomationSource, shippingAutomation2Source, poAutoDownloadSource, packingListAutoDownloadSource, xinlongtaiShippingSource, tcInvAutomationSource, xoTcInvAutomationSource, infornexusAutoAddSource]) {
       expect(source).toContain('AutomationAccountProfileManager')
       expect(source).toContain('credentialProfileRef')
       expect(source).toContain('handleCredentialState')

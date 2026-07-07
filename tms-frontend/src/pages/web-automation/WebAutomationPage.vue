@@ -160,7 +160,7 @@ const sectionDefinitions = [
   {
     id: 'infornexus-automation',
     title: 'Infornexus自动化',
-    entryIds: ['shipping-automation', 'xinlongtai-shipping-automation', 'tc-inv-automation'],
+    entryIds: ['shipping-automation', 'xinlongtai-shipping-automation', 'tc-inv-automation', 'xo-tc-inv-automation'],
   },
   {
     id: 'packing-list-auto-download',

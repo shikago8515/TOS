@@ -43,6 +43,7 @@ describe('moduleCatalog', () => {
     const shippingModule = getModuleById('shipping-automation')
     const xinlongtaiModule = getModuleById('xinlongtai-shipping-automation')
     const tcInvModule = getModuleById('tc-inv-automation')
+    const xoTcInvModule = getModuleById('xo-tc-inv-automation')
     const poAutoDownloadModule = getModuleById('po-auto-download')
     const packingListAutoDownloadModule = getModuleById('packing-list-auto-download')
     const jessicaNavParents = getNavParentsByGroup('jessica')
@@ -101,6 +102,15 @@ describe('moduleCatalog', () => {
       category: 'browser-automation',
       navParentId: 'jessica-infornexus-automation',
     })
+    expect(xoTcInvModule).toMatchObject({
+      group: 'jessica',
+      path: '/web-automation/scenarios/xo-tc-inv-automation',
+      routeName: 'web-automation-scenario-xo-tc-inv-automation',
+      title: 'Jessica / XO-Trade Card INV amount',
+      navLabel: 'XO-Trade Card INV amount',
+      category: 'browser-automation',
+      navParentId: 'jessica-infornexus-automation',
+    })
     expect(packingListAutoDownloadModule).toMatchObject({
       group: 'jessica',
       path: '/web-automation/scenarios/packing-list-auto-download',
@@ -115,6 +125,7 @@ describe('moduleCatalog', () => {
         'shipping-automation',
         'xinlongtai-shipping-automation',
         'tc-inv-automation',
+        'xo-tc-inv-automation',
         'po-auto-download',
         'packing-list-auto-download',
       ]),
@@ -127,13 +138,16 @@ describe('moduleCatalog', () => {
       jessicaModuleIds.indexOf('shipping-automation'),
     )
     expect(jessicaModuleIds.indexOf('po-auto-download')).toBeGreaterThan(
-      jessicaModuleIds.indexOf('tc-inv-automation'),
+      jessicaModuleIds.indexOf('xo-tc-inv-automation'),
     )
     expect(jessicaModuleIds.indexOf('packing-list-auto-download')).toBeGreaterThan(
       jessicaModuleIds.indexOf('po-auto-download'),
     )
     expect(jessicaModuleIds.indexOf('tc-inv-automation')).toBeGreaterThan(
       jessicaModuleIds.indexOf('xinlongtai-shipping-automation'),
+    )
+    expect(jessicaModuleIds.indexOf('xo-tc-inv-automation')).toBeGreaterThan(
+      jessicaModuleIds.indexOf('tc-inv-automation'),
     )
   })
 

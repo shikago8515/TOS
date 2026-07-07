@@ -21,6 +21,7 @@ const templateModuleDefinitions = [
   { id: 'shipping-automation', templateTypes: defaultTemplateTypes },
   { id: 'xinlongtai-shipping-automation', templateTypes: defaultTemplateTypes },
   { id: 'tc-inv-automation', templateTypes: defaultTemplateTypes },
+  { id: 'xo-tc-inv-automation', templateTypes: defaultTemplateTypes },
   {
     id: 'shipping-automation-2',
     templateTypes: [

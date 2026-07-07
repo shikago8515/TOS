@@ -146,6 +146,15 @@ DEFAULT_TOS_MODULES: tuple[dict[str, Any], ...] = (
         "page_path": "/web-automation/scenarios/tc-inv-automation",
     },
     {
+        "module_id": "xo-tc-inv-automation",
+        "owner_key": "jessica",
+        "owner_name": "Jessica",
+        "module_name": "XO-Trade Card INV amount 自动化",
+        "module_name_en": "XO-Trade Card INV amount Automation",
+        "module_type": "browser-automation",
+        "page_path": "/web-automation/scenarios/xo-tc-inv-automation",
+    },
+    {
         "module_id": "po-auto-download",
         "owner_key": "jessica",
         "owner_name": "Jessica",

@@ -14,6 +14,7 @@ describe('automationTemplateModules', () => {
       'shipping-automation',
       'xinlongtai-shipping-automation',
       'tc-inv-automation',
+      'xo-tc-inv-automation',
       'shipping-automation-2',
       'infornexus-auto-add',
       'po-auto-download',

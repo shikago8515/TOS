@@ -326,6 +326,7 @@ const automationRunFilterIds = new Set<string>([
   'shipping-automation',
   'xinlongtai-shipping-automation',
   'tc-inv-automation',
+  'xo-tc-inv-automation',
   'po-auto-download',
   'packing-list-auto-download',
   'shipping-automation-2',

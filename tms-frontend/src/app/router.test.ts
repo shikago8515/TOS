@@ -16,6 +16,7 @@ import PoAutoDownloadPage from '../pages/po-auto-download/PoAutoDownloadPage.vue
 import ShippingAutomationPage from '../pages/shipping-automation/ShippingAutomationPage.vue'
 import TcInvAutomationPage from '../pages/tc-inv-automation/TcInvAutomationPage.vue'
 import WebAutomationPage from '../pages/web-automation/WebAutomationPage.vue'
+import XoTcInvAutomationPage from '../pages/xo-tc-inv-automation/XoTcInvAutomationPage.vue'
 import XinlongtaiShippingAutomationPage from '../pages/xinlongtai-shipping-automation/XinlongtaiShippingAutomationPage.vue'
 
 beforeAll(() => {
@@ -180,6 +181,17 @@ describe('router', () => {
 
     expect(route?.name).toBe('web-automation-scenario-tc-inv-automation')
     expect(route?.components?.default).toBe(TcInvAutomationPage)
+    expect(route?.components?.default).not.toBe(RoutePlaceholder)
+  })
+
+  it('routes XO TC INV automation to its standalone scenario page component', async () => {
+    const { router } = await import('./router')
+    const route = router
+      .getRoutes()
+      .find((entry) => entry.path === '/web-automation/scenarios/xo-tc-inv-automation')
+
+    expect(route?.name).toBe('web-automation-scenario-xo-tc-inv-automation')
+    expect(route?.components?.default).toBe(XoTcInvAutomationPage)
     expect(route?.components?.default).not.toBe(RoutePlaceholder)
   })
 

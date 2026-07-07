@@ -28,6 +28,10 @@ import {
   isTcInvAutomationRoute,
 } from "./modules/tc-inv-automation/index.mjs";
 import {
+  createXoTcInvAutomation,
+  isXoTcInvAutomationRoute,
+} from "./modules/xo-tc-inv-automation/index.mjs";
+import {
   createPackingListAutoDownloadAutomation,
   isPackingListAutoDownloadRoute,
 } from "./modules/packing-list-auto-download/index.mjs";
@@ -168,6 +172,23 @@ const tcInvAutomation = createTcInvAutomation({
   unregisterActiveRun: (runId) => activeRuns.delete(runId),
   xlsx,
 });
+const xoTcInvAutomation = createXoTcInvAutomation({
+  artifactsDir,
+  browserEngines,
+  buildVisibleBrowserLaunchOptions,
+  config,
+  ensureLoggedIn,
+  log,
+  normalizeUploadFileName,
+  recordCompletedRun,
+  registerActiveRun,
+  resolveCredentials,
+  safePageTitle,
+  safePageUrl,
+  showAutomationBadge,
+  unregisterActiveRun: (runId) => activeRuns.delete(runId),
+  xlsx,
+});
 const packingListAutoDownloadAutomation = createPackingListAutoDownloadAutomation({
   browserEngines,
   buildVisibleBrowserLaunchOptions,
@@ -235,6 +256,14 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "POST" && isXoTcInvPreviewPdfDirectoryRoute(requestPath)) {
+      const body = await readJsonBody(req);
+      authorize(req, body);
+      const result = await selectXoTcInvPreviewPdfDirectory(body);
+      sendJson(res, result.statusCode, result.body);
+      return;
+    }
+
     if (req.method === "POST" && isPoAutoDownloadDirectoryRoute(requestPath)) {
       const body = await readJsonBody(req);
       authorize(req, body);
@@ -255,6 +284,14 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       authorize(req, body);
       const result = await tcInvAutomation.handleRequest(body);
+      sendJson(res, result.statusCode, result.body);
+      return;
+    }
+
+    if (req.method === "POST" && isXoTcInvAutomationRoute(requestPath)) {
+      const body = await readJsonBody(req);
+      authorize(req, body);
+      const result = await xoTcInvAutomation.handleRequest(body);
       sendJson(res, result.statusCode, result.body);
       return;
     }
@@ -612,6 +649,9 @@ function buildHealthPayload() {
       tcInvAutomation: true,
       tcInvPreviewPdfDownload: true,
       tcInvPreviewPdfDirectoryPicker: true,
+      xoTcInvAutomation: true,
+      xoTcInvPreviewPdfDownload: true,
+      xoTcInvPreviewPdfDirectoryPicker: true,
       packingListAutoDownload: true,
       packingListAutoDownloadDirectoryPicker: true,
       xinlongtaiShippingPreviewPdfDownload: true,
@@ -1811,6 +1851,11 @@ function isTcInvPreviewPdfDirectoryRoute(requestPath) {
     || requestPath === "/api/select-tc-inv-pdf-directory";
 }
 
+function isXoTcInvPreviewPdfDirectoryRoute(requestPath) {
+  return requestPath === "/select-xo-tc-inv-pdf-directory"
+    || requestPath === "/api/select-xo-tc-inv-pdf-directory";
+}
+
 async function selectXinlongtaiShippingPreviewPdfDirectory(body = {}) {
   if (process.platform !== "win32") {
     return {
@@ -1875,6 +1920,7 @@ async function selectTcInvPreviewPdfDirectory(body = {}) {
   const initialDirectory = String(
     body?.initialDirectory
       || body?.previewPdfDownloadDirectory
+      || body?.xoTcInvPreviewPdfDownloadDirectory
       || body?.tcInvPreviewPdfDownloadDirectory
       || body?.defaultPath
       || "",
@@ -1910,6 +1956,10 @@ async function selectTcInvPreviewPdfDirectory(body = {}) {
       },
     };
   }
+}
+
+async function selectXoTcInvPreviewPdfDirectory(body = {}) {
+  return selectTcInvPreviewPdfDirectory(body);
 }
 
 async function selectWindowsDirectory(initialDirectory, description = "Select TOS download folder") {

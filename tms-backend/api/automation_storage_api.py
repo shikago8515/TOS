@@ -67,6 +67,8 @@ INFOR_NEXUS_SHARED_CREDENTIAL_IDS = (
     "shipping-automation-demo",
     "shipping-automation-2",
     "xinlongtai-shipping-automation",
+    "tc-inv-automation",
+    "xo-tc-inv-automation",
     "po-auto-download",
     "packing-list-auto-download",
     "released-bulk-automation",

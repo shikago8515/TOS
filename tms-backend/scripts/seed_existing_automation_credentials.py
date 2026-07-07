@@ -21,6 +21,8 @@ INFOR_NEXUS_AUTOMATION_IDS = [
     "xinlongtai-shipping-automation",
     "shipping-automation-2",
     "infornexus-auto-add",
+    "tc-inv-automation",
+    "xo-tc-inv-automation",
     "po-auto-download",
 ]
 MICROSOFT_AUTOMATION_IDS = [

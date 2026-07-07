@@ -1126,6 +1126,9 @@ const staticTextTranslations: Record<string, string> = {
     'VENT+YUEN TAI-Trade Card INV amount Automation',
   'VENT+YUEN TAI-Trade Card INV amount 出货明细与费用录入自动化。':
     'VENT+YUEN TAI-Trade Card INV amount shipping details and charge entry automation.',
+  'XO-Trade Card INV amount 自动化': 'XO-Trade Card INV amount Automation',
+  'XO-Trade Card INV amount 出货明细与费用录入自动化。':
+    'XO-Trade Card INV amount shipping details and charge entry automation.',
   'SLT、VENT、XO 工厂支持自动上传出货明细表，系统自动上传运费表，并同步录入货物交期、各项费用等信息。':
     'SLT, VENT, and XO factories support automatic shipping detail upload, freight table upload, and synchronized entry of delivery dates and charges.',
   自动下载箱单: 'Packing List Auto Download',

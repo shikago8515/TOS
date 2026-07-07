@@ -29,6 +29,7 @@ import SettingsPage from '../pages/settings/SettingsPage.vue'
 import ShippingAutomationPage from '../pages/shipping-automation/ShippingAutomationPage.vue'
 import ShippingAutomation2Page from '../pages/shipping-automation-2/ShippingAutomation2Page.vue'
 import TcInvAutomationPage from '../pages/tc-inv-automation/TcInvAutomationPage.vue'
+import XoTcInvAutomationPage from '../pages/xo-tc-inv-automation/XoTcInvAutomationPage.vue'
 import XinlongtaiShippingAutomationPage from '../pages/xinlongtai-shipping-automation/XinlongtaiShippingAutomationPage.vue'
 import PoAutoDownloadPage from '../pages/po-auto-download/PoAutoDownloadPage.vue'
 import SophiaTinaPage from '../pages/sophia-tina/SophiaTinaPage.vue'
@@ -99,6 +100,10 @@ const routeComponents: Partial<Record<string, Component>> = {
   'web-automation-scenario-tc-inv-automation': bindRouteComponentName(
     'web-automation-scenario-tc-inv-automation',
     TcInvAutomationPage,
+  ),
+  'web-automation-scenario-xo-tc-inv-automation': bindRouteComponentName(
+    'web-automation-scenario-xo-tc-inv-automation',
+    XoTcInvAutomationPage,
   ),
   'web-automation-scenario-po-auto-download': bindRouteComponentName(
     'web-automation-scenario-po-auto-download',
@@ -174,6 +179,14 @@ const scenarioRoutes: RouteRecordRaw[] = [
     component: TcInvAutomationPage,
     meta: {
       title: 'VENT+YUEN TAI-Trade Card INV amount',
+    },
+  },
+  {
+    path: '/web-automation/scenarios/xo-tc-inv-automation',
+    name: 'web-automation-scenario-xo-tc-inv-automation',
+    component: XoTcInvAutomationPage,
+    meta: {
+      title: 'XO-Trade Card INV amount',
     },
   },
   {

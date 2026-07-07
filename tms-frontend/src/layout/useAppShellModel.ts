@@ -548,6 +548,7 @@ export function useAppShellModel() {
       'shipping-automation': 'globe',
       'xinlongtai-shipping-automation': 'globe',
       'tc-inv-automation': 'workflow',
+      'xo-tc-inv-automation': 'workflow',
       'po-auto-download': 'download-cloud',
       'packing-list-auto-download': 'download-cloud',
       'draft-packing-compare': 'file-search',

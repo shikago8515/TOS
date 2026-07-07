@@ -16,6 +16,7 @@ const guardedProductionFiles = [
   '../xinlongtai-shipping-automation/components/XinlongtaiShippingAutomationWorkspace.vue',
   '../po-auto-download/components/PoAutoDownloadWorkspace.vue',
   '../tc-inv-automation/TcInvAutomationPage.vue',
+  '../xo-tc-inv-automation/XoTcInvAutomationPage.vue',
   '../infornexus-auto-add/InfornexusAutoAddPage.vue',
 ]
 
