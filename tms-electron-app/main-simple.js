@@ -28,7 +28,7 @@ const BACKEND_PORT = 8000;
 const BACKEND_PORT_CANDIDATES = [8000, 8001, 8002, 8003, 8004, 8005];
 const REQUIRED_BACKEND_OPENAPI_PATHS = requiredBackendOpenapiPaths;
 const REMOTE_BACKEND_URL = normalizeBackendBaseUrl(
-  process.env.TOS_REMOTE_BACKEND_URL || process.env.VITE_BACKEND_URL || 'http://172.16.8.13:56130/tos/desktop-api'
+  process.env.TOS_REMOTE_BACKEND_URL || process.env.VITE_BACKEND_URL || 'http://172.16.8.13:80/tos/desktop-api'
 );
 const USE_REMOTE_BACKEND = process.env.TOS_DESKTOP_BACKEND_MODE === 'remote';
 let activeBackendPort = BACKEND_PORT;
@@ -40,7 +40,7 @@ const AUTOMATION_LAUNCHER_URL = `http://${AUTOMATION_LAUNCHER_HOST}:${AUTOMATION
 const AUTOMATION_PROTOCOL = 'tos';
 const AUTOMATION_LAUNCHER_BACKGROUND_FLAG = '--automation-launcher-background';
 const DEFAULT_INSTALLER_MANIFEST_URL = process.env.TOS_INSTALLER_MANIFEST_URL
-  || 'http://172.16.8.13:56130/tos/desktop-api/api/system/config/installer-versions';
+  || 'http://172.16.8.13:80/tos/desktop-api/api/system/config/installer-versions';
 const DEFAULT_UPDATE_FEED_URL = process.env.TOS_UPDATE_FEED_URL || process.env.TMS_UPDATE_FEED_URL || '';
 const UPDATE_SOURCE_CONFIG_FILE = 'update-source.json';
 const UPDATE_STATUS_CHANNEL = 'update-status';

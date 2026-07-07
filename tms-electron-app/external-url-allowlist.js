@@ -10,7 +10,7 @@ const STATIC_ALLOWED_EXTERNAL_URLS = [
     protocol: 'https:',
   },
   {
-    host: '172.16.8.13:56130',
+    host: '172.16.8.13',
     pathPrefix: '/tos/',
     protocol: 'http:',
   },

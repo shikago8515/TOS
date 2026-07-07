@@ -24,12 +24,12 @@ const host = process.env.TMS_AUTOMATION_LAUNCHER_HOST || '127.0.0.1'
 const port = Number(process.env.TMS_AUTOMATION_LAUNCHER_PORT || 3210)
 const helperPackageId = process.env.TOS_AUTOMATION_HELPER_PACKAGE_ID || 'automation-helper'
 const installerVersionsUrl = process.env.TOS_INSTALLER_VERSIONS_URL
-  || 'http://172.16.8.13:56130/tos/desktop-api/api/system/config/installer-versions'
+  || 'http://172.16.8.13:80/tos/desktop-api/api/system/config/installer-versions'
 const helperInstallerDownloadUrl = process.env.TOS_AUTOMATION_HELPER_DOWNLOAD_URL
-  || 'http://172.16.8.13:56130/tos/desktop-api/api/system/config/automation-helper/download'
+  || 'http://172.16.8.13:80/tos/desktop-api/api/system/config/automation-helper/download'
 const automationModuleManifestUrl = process.env.TOS_AUTOMATION_MODULE_MANIFEST_URL
   || process.env.TMS_AUTOMATION_MODULE_MANIFEST_URL
-  || 'http://172.16.8.13:56130/tos/desktop-api/api/system/config/automation-modules'
+  || 'http://172.16.8.13:80/tos/desktop-api/api/system/config/automation-modules'
 const enableModuleUpdates = process.env.TOS_AUTOMATION_MODULE_UPDATES !== '0'
 const enableStartupModuleSync = process.env.TOS_AUTOMATION_MODULE_STARTUP_SYNC === '1'
 const moduleSyncIntervalMs = Math.max(

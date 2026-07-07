@@ -1,7 +1,7 @@
 param(
   [string]$NodeExe = (Get-Command node.exe).Source,
   [string]$MakeNsis = "C:\Program Files (x86)\NSIS\Bin\makensis.exe",
-  [string]$PayloadUrl = "http://172.16.8.13:56130/tos/automation-helper/payload/{sha256}",
+  [string]$PayloadUrl = "http://172.16.8.13:80/tos/automation-helper/payload/{sha256}",
   [string]$InforNexusBridgeSource = (Join-Path $env:USERPROFILE ".tradecard\bridge")
 )
 

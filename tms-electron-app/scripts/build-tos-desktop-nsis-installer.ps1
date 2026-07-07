@@ -1,7 +1,7 @@
 param(
   [string]$AppOutDir = "",
   [string]$MakeNsis = "C:\Program Files (x86)\NSIS\Bin\makensis.exe",
-  [string]$PayloadUrl = "http://172.16.8.13:56130/tos/tos-desktop/payload/{sha256}"
+  [string]$PayloadUrl = "http://172.16.8.13:80/tos/tos-desktop/payload/{sha256}"
 )
 
 $ErrorActionPreference = "Stop"
