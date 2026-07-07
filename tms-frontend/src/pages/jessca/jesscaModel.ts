@@ -66,5 +66,20 @@ export function buildJesscaSummary(
     )
   }
 
+  if (response.amount_words_count !== undefined) {
+    items.splice(
+      4,
+      0,
+      {
+        label: '大写金额核对',
+        value: String(response.amount_words_count ?? '-'),
+      },
+      {
+        label: '大写金额异常',
+        value: String(response.amount_words_issue_count ?? '-'),
+      },
+    )
+  }
+
   return items
 }

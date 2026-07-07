@@ -45,6 +45,7 @@ class JaneModule:
     }
     DEFAULT_CATEGORY = '其他'
     DEDICATED_DESTINATION_GROUPS = {'KOREA'}
+    CUSTOMER_SIZE_QUOTE_SUFFIXES = {'"', '”', '″'}
     MIN_REQUIRED_FIELD_RATE = 0.9
     MIN_COUNTRY_MATCH_RATE = 0.8
     MAX_TEMPLATE_MISSING_RATE = 0.2
@@ -109,6 +110,15 @@ class JaneModule:
         if text.endswith('.0') and text[:-2].isdigit():
             return text[:-2]
         return text
+
+    @classmethod
+    def _customer_size_section_variant(cls, value: Any) -> str:
+        text = cls._normalize_size(value)
+        has_quote_suffix = text[-1:] in cls.CUSTOMER_SIZE_QUOTE_SUFFIXES
+        unquoted_text = text[:-1].strip() if has_quote_suffix else text
+        if unquoted_text.isdigit():
+            return 'NUMERIC_QUOTED' if has_quote_suffix else 'NUMERIC_PLAIN'
+        return 'OTHER'
 
     @staticmethod
     def _format_identifier(value: Any, width: Optional[int] = None) -> str:
@@ -368,7 +378,7 @@ class JaneModule:
         country_lookup: Optional[Dict[str, Dict[str, str]]] = None,
         logs: Optional[List[str]] = None
     ) -> pd.DataFrame:
-        """按业务指定顺序生成：Article Number -> Gps Customer Number -> Country/Region -> Working Number。"""
+        """按连续点排序后的实际优先级生成：Working Number -> Country/Region -> GPS -> Article -> PO。"""
 
         country_lookup = country_lookup or {}
         destination_col = self._find_column(df, ['Country/Region', 'DESTINATION', 'Destination'])
@@ -385,20 +395,27 @@ class JaneModule:
             country_info = country_lookup.get(customer_no, {})
             return self._normalize_text(country_info.get('destination')).upper()
 
+        def po_sort_key(value: Any) -> Tuple[int, Any]:
+            po_number = self._normalize_int(value)
+            if po_number is not None:
+                return (0, po_number)
+            return (1, normalized_sort_text(value))
+
         source_rows = df.copy().reset_index(drop=True)
         sorted_indices = sorted(
             range(len(source_rows)),
             key=lambda row_idx: (
-                normalized_sort_text(source_rows.iloc[row_idx].get('Article Number')),
-                self._normalize_customer_no(source_rows.iloc[row_idx].get('Gps Customer Number')),
-                resolve_country(source_rows.iloc[row_idx]),
                 self._natural_text_sort_key(source_rows.iloc[row_idx].get('Working Number')),
+                resolve_country(source_rows.iloc[row_idx]),
+                self._normalize_customer_no(source_rows.iloc[row_idx].get('Gps Customer Number')),
+                normalized_sort_text(source_rows.iloc[row_idx].get('Article Number')),
+                po_sort_key(source_rows.iloc[row_idx].get('PO Number')),
                 row_idx,
             ),
         )
         if logs is not None:
             logs.append(
-                "  已按 Article Number -> Gps Customer Number -> Country/Region -> Working Number 排序生成"
+                "  已按连续点排序优先级 Working Number -> Country/Region -> Gps Customer Number -> Article Number -> PO Number 排序生成"
             )
         return source_rows.iloc[sorted_indices].reset_index(drop=True)
 
@@ -1097,12 +1114,13 @@ class JaneModule:
                     size_family(source_row),
                     self._customer_size_family(customer_size),
                 )
+                customer_size_variant = self._customer_size_section_variant(customer_size)
                 destination = resolve_destination(source_row)
                 if destination in self.DEDICATED_DESTINATION_GROUPS:
                     group_key: Tuple[str, ...] = ('DESTINATION', destination)
                     allow_customer_size_conflict = True
                 else:
-                    group_key = ('SIZE', family[0], family[1])
+                    group_key = ('SIZE', family[0], family[1], customer_size_variant)
                     allow_customer_size_conflict = False
 
                 target_group = None

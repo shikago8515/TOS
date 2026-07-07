@@ -278,7 +278,8 @@ class JaneModuleWorkbookTests(unittest.TestCase):
             ("58", "38", '38"'),
             ("62", "40", '40"'),
         ]
-        rows: List[Dict[str, Any]] = []
+        plain_rows: List[Dict[str, Any]] = []
+        quoted_rows: List[Dict[str, Any]] = []
         for index, (technical_size, plain_customer_size, quoted_customer_size) in enumerate(size_pairs, 1):
             plain_row = self._tms_row(
                 "WN-001",
@@ -291,7 +292,7 @@ class JaneModuleWorkbookTests(unittest.TestCase):
             )
             plain_row["Technical Size"] = technical_size
             plain_row["Customer Size"] = plain_customer_size
-            rows.append(plain_row)
+            plain_rows.append(plain_row)
 
             quoted_row = self._tms_row(
                 "WN-001",
@@ -304,7 +305,9 @@ class JaneModuleWorkbookTests(unittest.TestCase):
             )
             quoted_row["Technical Size"] = technical_size
             quoted_row["Customer Size"] = quoted_customer_size
-            rows.append(quoted_row)
+            quoted_rows.append(quoted_row)
+
+        rows = quoted_rows[:-1] + plain_rows + quoted_rows[-1:]
 
         wb = self.module.create_auto_workbook(pd.DataFrame(rows), ["WN-001"], {}, [])
         ws = wb["WN-001"]
@@ -429,44 +432,42 @@ class JaneModuleWorkbookTests(unittest.TestCase):
 
         self.assertEqual(["欧美单"], data_categories)
 
-    def test_process_reports_sorts_by_article_customer_country_then_working(self) -> None:
+    def test_process_reports_sorts_by_click_sort_priority(self) -> None:
         rows = [
-            self._tms_row("WN-4", "ART-2", "AUSTRALIA", "0001", 106, 10, 60),
-            self._tms_row("WN-1", "ART-1", "BRAZIL", "1002", 104, 10, 40),
-            self._tms_row("WN-3", "ART-1", "ITALY", "1001", 103, 10, 30),
-            self._tms_row("WN-10", "ART-1", "GERMANY", "1001", 102, 10, 20),
-            self._tms_row("WN-0", "ART-0", "USA", "9999", 105, 10, 50),
-            self._tms_row("WN-2", "ART-1", "GERMANY", "1001", 101, 10, 10),
+            self._tms_row("WN-2", "ART-2", "CANADA", "1002", 206, 10, 60),
+            self._tms_row("WN-1", "ART-2", "BRAZIL", "1002", 104, 10, 40),
+            self._tms_row("WN-1", "ART-2", "GERMANY", "1002", 103, 10, 30),
+            self._tms_row("WN-1", "ART-1", "GERMANY", "1001", 102, 10, 20),
+            self._tms_row("WN-1", "ART-1", "GERMANY", "1001", 101, 10, 10),
+            self._tms_row("WN-10", "ART-0", "USA", "9999", 305, 10, 50),
         ]
 
         sorted_rows = self.module.sort_tms_rows_for_generation(pd.DataFrame(rows))
         self.assertEqual(
-            ["WN-0", "WN-2", "WN-10", "WN-3", "WN-1", "WN-4"],
-            list(sorted_rows["Working Number"]),
+            [104, 101, 102, 103, 206, 305],
+            list(sorted_rows["PO Number"]),
         )
 
         wb = self._process_rows(rows)
 
         self.assertEqual(
-            ["Summary", "WN-0", "WN-2", "WN-10", "WN-3", "WN-1", "WN-4"],
+            ["Summary", "WN-1", "WN-2", "WN-10"],
             wb.sheetnames,
         )
         self.assertEqual(
             [
-                ("WN-0", "ART-0"),
-                ("WN-2", "ART-1"),
-                ("WN-10", "ART-1"),
-                ("WN-3", "ART-1"),
+                ("WN-1", "ART-2"),
                 ("WN-1", "ART-1"),
-                ("WN-4", "ART-2"),
+                ("WN-2", "ART-2"),
+                ("WN-10", "ART-0"),
             ],
             self._summary_working_article_rows(wb),
         )
 
     def test_detail_sort_uses_country_file_destination_when_tms_country_is_blank(self) -> None:
         rows = [
-            self._tms_row("WN-A", "ART-1", "", "1002", 102, 10, 20),
-            self._tms_row("WN-Z", "ART-1", "", "1001", 101, 10, 10),
+            self._tms_row("WN-001", "ART-1", "", "1002", 102, 10, 20),
+            self._tms_row("WN-001", "ART-1", "", "1001", 101, 10, 10),
         ]
         country_lookup = {
             "001002": {"destination": "ITALY"},
@@ -475,7 +476,7 @@ class JaneModuleWorkbookTests(unittest.TestCase):
 
         sorted_rows = self.module.sort_tms_rows_for_generation(pd.DataFrame(rows), country_lookup)
 
-        self.assertEqual(["WN-Z", "WN-A"], list(sorted_rows["Working Number"]))
+        self.assertEqual([101, 102], list(sorted_rows["PO Number"]))
 
     def test_summary_working_order_uses_natural_ascending_working_number(self) -> None:
         rows = [
@@ -510,7 +511,7 @@ class JaneModuleWorkbookTests(unittest.TestCase):
             self._summary_working_order(wb),
         )
 
-    def test_working_filter_sorts_filtered_rows_by_article_customer_country_then_working(self) -> None:
+    def test_working_filter_sorts_filtered_rows_by_click_sort_priority(self) -> None:
         rows = [
             self._tms_row("WN-1", "ART-1", "BRAZIL", "1002", 103, 10, 30),
             self._tms_row("WN-10", "ART-1", "GERMANY", "1001", 102, 10, 20),
@@ -519,7 +520,7 @@ class JaneModuleWorkbookTests(unittest.TestCase):
 
         wb = self._process_rows(rows, working_filters=["WN-1", "WN-10", "WN-2"])
 
-        self.assertEqual(["Summary", "WN-2", "WN-10", "WN-1"], wb.sheetnames)
+        self.assertEqual(["Summary", "WN-1", "WN-2", "WN-10"], wb.sheetnames)
 
 
 if __name__ == "__main__":
