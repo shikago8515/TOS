@@ -354,6 +354,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
@@ -461,6 +462,7 @@ const lastRawResponse = ref('')
 const runProgress = ref<ExecutorProgress | null>(null)
 const failureDetails = ref<InvoiceFailureDetail[]>([])
 const resultFileLinks = ref<ResultFileLinks>({})
+const lastShownResultDialogRunKey = ref('')
 let progressTimer: number | null = null
 
 const steps = [
@@ -657,6 +659,7 @@ function syncActiveRunViewFromHealth(): void {
   }
   if (!restoredActiveRun.value) return
   clearRestoredActiveRunState()
+  if (applyCompletedPoDownloadRunFromHealth(executorHealth.value)) return
   statusText.value = text('后台下载任务已结束，请查看执行记录或重新开始。')
 }
 
@@ -699,6 +702,7 @@ async function pollRunProgress(): Promise<void> {
     executorHealth.value = health
     if (restoredActiveRun.value && !findPoAutoDownloadActiveRun(health)) {
       clearRestoredActiveRunState()
+      if (applyCompletedPoDownloadRunFromHealth(health)) return
       statusText.value = text('后台下载任务已结束，请查看执行记录或重新开始。')
       return
     }
@@ -1106,18 +1110,13 @@ async function runPoAutoDownload(): Promise<void> {
     }
 
     if (json?.ok) {
-      const completed = Number(json.downloadedInvoiceCount ?? json.downloadedPoCount ?? json.completedPoCount ?? 0)
-      const total = Number(json.totalInvoiceCount ?? json.totalPoCount ?? 0)
       statusLabel.value = '成功'
-      statusText.value = total > 0
-        ? isEnglish.value
-          ? `Invoice PDF download complete. Downloaded ${completed}/${total}.`
-          : `Invoice PDF 下载完成。已下载 ${completed}/${total} 个 Invoice。`
-        : text('Invoice PDF 下载完成。')
+      statusText.value = buildPoDownloadCompletionStatusText(json)
       lastResult.value = { ok: true, message: readExecutorResponseText(json) || undefined }
       messageTone.value = 'success'
       message.value = text('执行完成。')
       void showAppAlert(statusText.value, { tone: 'success' })
+      void showPoDownloadResultDialog(json)
       return
     }
 
@@ -1126,6 +1125,9 @@ async function runPoAutoDownload(): Promise<void> {
     lastResult.value = { ok: false, message: statusText.value }
     messageTone.value = 'warning'
     message.value = statusText.value
+    if (isCompletedPoAutoDownloadExecutorRun(json)) {
+      void showPoDownloadResultDialog(json)
+    }
   } catch (error) {
     const friendlyMessage = formatAutomationExecutorMessage(readErrorMessage(error, text('网络错误')), text('自动化执行异常。'))
     statusLabel.value = '异常'
@@ -1304,12 +1306,77 @@ function buildExecutorResponseMessage(
   return formatAutomationExecutorMessage(`HTTP ${response.status}`, fallback)
 }
 
-function buildPoDownloadSummaryMessage(payload: ExecutorResponsePayload | null, fallback: string): string {
+function applyCompletedPoDownloadRunFromHealth(health: LocalExecutorHealth | null | undefined): boolean {
+  const completedRun = getPoAutoDownloadCompletedRunFromHealth(health)
+  if (!completedRun) return false
+  failureDetails.value = extractInvoiceFailureDetails(completedRun)
+  updateResultFileLinks(completedRun)
+  const completedProgress = extractExecutorRunProgress(completedRun)
+  if (completedProgress) runProgress.value = completedProgress
+  const completedOk = Boolean(completedRun.ok)
+  statusLabel.value = completedOk ? '成功' : '未完成'
+  statusText.value = completedOk
+    ? buildPoDownloadCompletionStatusText(completedRun)
+    : buildPoDownloadSummaryMessage(completedRun, readExecutorResponseText(completedRun) || text('后台下载任务已结束。'))
+  lastResult.value = { ok: completedOk, message: readExecutorResponseText(completedRun) || statusText.value }
+  messageTone.value = completedOk ? 'success' : 'warning'
+  message.value = completedOk ? text('执行完成。') : statusText.value
+  void showPoDownloadResultDialog(completedRun)
+  return true
+}
+
+function getPoAutoDownloadCompletedRunFromHealth(health: LocalExecutorHealth | null | undefined): LocalExecutorRun | null {
+  const candidates: LocalExecutorRun[] = []
+  const lastRun = isJsonRecord(health?.lastRun) ? health.lastRun as LocalExecutorRun : null
+  if (lastRun) candidates.push(lastRun)
+  if (Array.isArray(health?.recentRuns)) {
+    for (const item of health.recentRuns) {
+      const run = isJsonRecord(item) ? item as LocalExecutorRun : null
+      if (run) candidates.push(run)
+    }
+  }
+  return candidates.find(isCompletedPoAutoDownloadExecutorRun) || null
+}
+
+function isCompletedPoAutoDownloadExecutorRun(
+  run: LocalExecutorRun | ExecutorResponsePayload | null | undefined,
+): run is LocalExecutorRun {
+  if (!run || !isPoAutoDownloadExecutorRun(run)) return false
+  return Boolean(run.finishedAt || run.generatedAt || typeof run.ok === 'boolean')
+}
+
+function isPoAutoDownloadExecutorRun(run: LocalExecutorRun | ExecutorResponsePayload): boolean {
+  const action = String(run.action || '').trim()
+  const inputMode = String(run.inputMode || '').trim()
+  const automationId = String(run.automationId || '').trim()
+  return action === 'run-po-auto-download-file'
+    || inputMode === 'po-auto-download'
+    || automationId === ENTRY_ID
+}
+
+function buildPoDownloadCompletionStatusText(
+  payload: ExecutorResponsePayload | LocalExecutorRun | null | undefined,
+): string {
+  const { downloaded, failed, skipped, total } = readPoDownloadCounts(payload)
+  const summary = total > 0
+    ? isEnglish.value
+      ? `Invoice PDF download finished. Downloaded ${downloaded}/${total}.`
+      : `Invoice PDF 下载完成。已下载 ${downloaded}/${total} 个 Invoice。`
+    : isEnglish.value
+      ? 'Invoice PDF download finished.'
+      : 'Invoice PDF 下载完成。'
+  const extras: string[] = []
+  if (failed > 0) extras.push(isEnglish.value ? `Failed ${failed}` : `失败 ${failed}`)
+  if (skipped > 0) extras.push(isEnglish.value ? `Skipped ${skipped}` : `跳过 ${skipped}`)
+  return extras.length ? `${summary} ${extras.join(isEnglish.value ? ', ' : '，')}.` : summary
+}
+
+function buildPoDownloadSummaryMessage(
+  payload: ExecutorResponsePayload | LocalExecutorRun | null,
+  fallback: string,
+): string {
   if (!payload || typeof payload !== 'object') return fallback
-  const downloaded = normalizeCount(payload.downloadedInvoiceCount ?? payload.downloadedPoCount)
-  const total = normalizeCount(payload.totalInvoiceCount ?? payload.totalPoCount)
-  const failed = normalizeCount(payload.failedInvoiceCount ?? payload.failedPoCount ?? failureDetails.value.length)
-  const skipped = normalizeCount(payload.skippedInvoiceCount)
+  const { downloaded, failed, skipped, total } = readPoDownloadCounts(payload)
   const parts = [
     total > 0
       ? `Invoice PDF 下载未全部完成，已下载 ${downloaded}/${total} 个 Invoice`
@@ -1323,12 +1390,33 @@ function buildPoDownloadSummaryMessage(payload: ExecutorResponsePayload | null, 
   return `${parts.join('，')}。${suffix}`
 }
 
+function readPoDownloadCounts(payload: ExecutorResponsePayload | LocalExecutorRun | null | undefined): {
+  downloaded: number
+  failed: number
+  skipped: number
+  total: number
+} {
+  const downloaded = normalizeCount(payload?.downloadedInvoiceCount ?? payload?.downloadedPoCount ?? payload?.completedPoCount)
+  const failed = normalizeCount(payload?.failedInvoiceCount ?? payload?.failedPoCount ?? extractInvoiceFailureDetails(payload).length)
+  const skipped = normalizeCount(payload?.skippedInvoiceCount)
+  const progress = extractExecutorRunProgress(payload)
+  const total = normalizeCount(
+    payload?.totalInvoiceCount
+      ?? payload?.totalPoCount
+      ?? progress?.totalInvoiceCount
+      ?? progress?.totalPoCount
+      ?? progress?.activeInvoiceCount
+      ?? progress?.totalCount,
+  )
+  return { downloaded, failed, skipped, total }
+}
+
 function normalizeCount(value: unknown): number {
   const count = Number(value ?? 0)
   return Number.isFinite(count) && count > 0 ? count : 0
 }
 
-function updateResultFileLinks(payload: ExecutorResponsePayload | null): void {
+function updateResultFileLinks(payload: ExecutorResponsePayload | LocalExecutorRun | null): void {
   const urls = getExecutorArtifactDownloadUrls(payload)
   if (!urls) {
     resultFileLinks.value = {}
@@ -1342,7 +1430,9 @@ function updateResultFileLinks(payload: ExecutorResponsePayload | null): void {
   }
 }
 
-function extractInvoiceFailureDetails(payload: ExecutorResponsePayload | null): InvoiceFailureDetail[] {
+function extractInvoiceFailureDetails(
+  payload: ExecutorResponsePayload | LocalExecutorRun | null | undefined,
+): InvoiceFailureDetail[] {
   const direct = Array.isArray(payload?.failedInvoiceDetails) ? payload.failedInvoiceDetails : []
   if (direct.length > 0) {
     return direct.map(normalizeFailureDetail).filter((item): item is InvoiceFailureDetail => Boolean(item))
@@ -1374,6 +1464,135 @@ function normalizeFailureDetail(raw: unknown): InvoiceFailureDetail | null {
     error,
     step: String(raw.step || '').trim(),
   }
+}
+
+async function showPoDownloadResultDialog(
+  payload: ExecutorResponsePayload | LocalExecutorRun | null | undefined,
+): Promise<void> {
+  if (!payload || !isPoAutoDownloadExecutorRun(payload)) return
+  const runKey = readPoDownloadResultDialogRunKey(payload)
+  if (!runKey || lastShownResultDialogRunKey.value === runKey) return
+  lastShownResultDialogRunKey.value = runKey
+  const lines = buildPoDownloadResultDialogLines(payload)
+  if (!lines.length) return
+  try {
+    await ElMessageBox.alert(
+      lines.map((line) => escapeHtml(line)).join('<br />'),
+      Boolean(payload.ok)
+        ? (isEnglish.value ? 'Download Complete' : '下载完成')
+        : (isEnglish.value ? 'Download Result' : '下载结果'),
+      {
+        confirmButtonText: isEnglish.value ? 'OK' : '知道了',
+        dangerouslyUseHTMLString: true,
+        closeOnClickModal: false,
+        closeOnPressEscape: true,
+        type: Boolean(payload.ok) ? 'success' : 'warning',
+      },
+    )
+  } catch {
+    // Ignore dialog close/cancel errors.
+  }
+}
+
+function buildPoDownloadResultDialogLines(payload: ExecutorResponsePayload | LocalExecutorRun): string[] {
+  const { downloaded, failed, skipped, total } = readPoDownloadCounts(payload)
+  const lines: string[] = []
+  if (total > 0) {
+    lines.push(
+      isEnglish.value
+        ? `Processed ${total} invoices. Downloaded ${downloaded}, failed ${failed}.`
+        : `本次共处理 ${total} 个 Invoice，已下载 ${downloaded} 个，失败 ${failed} 个。`,
+    )
+  } else {
+    lines.push(Boolean(payload.ok)
+      ? (isEnglish.value ? 'Invoice PDF download finished.' : 'Invoice PDF 下载完成。')
+      : String(readExecutorResponseText(payload) || (isEnglish.value ? 'The download task has finished.' : '下载任务已结束。')),
+    )
+  }
+  if (skipped > 0) {
+    lines.push(isEnglish.value ? `Skipped ${skipped} rows.` : `跳过 ${skipped} 条非 active/new 记录。`)
+  }
+  const directory = readPoDownloadDirectory(payload)
+  if (directory) {
+    lines.push(isEnglish.value ? `Saved to: ${directory}` : `保存目录：${directory}`)
+  }
+  if (failed > 0) {
+    const details = extractInvoiceFailureDetails(payload)
+    const failedInvoices = details
+      .map((item) => item.invoiceNumber)
+      .filter(Boolean)
+      .slice(0, 5)
+    if (failedInvoices.length) {
+      lines.push(
+        isEnglish.value
+          ? `Failed invoices: ${failedInvoices.join(', ')}${details.length > failedInvoices.length ? ' ...' : ''}`
+          : `失败 Invoice：${failedInvoices.join('、')}${details.length > failedInvoices.length ? ' 等' : ''}`,
+      )
+    }
+    lines.push(
+      isEnglish.value
+        ? 'Open the failure panel or run history to download the failed-row Excel.'
+        : '可在右侧失败明细或执行记录中下载失败 Excel。',
+    )
+  }
+  return lines
+}
+
+function readPoDownloadResultDialogRunKey(payload: ExecutorResponsePayload | LocalExecutorRun): string {
+  const artifactRunId = isJsonRecord(payload.artifacts) ? String(payload.artifacts.runId || '').trim() : ''
+  if (artifactRunId) return artifactRunId
+  const runId = String(payload.runId || payload.backendRunId || '').trim()
+  if (runId) return runId
+  const finishedAt = String(payload.finishedAt || payload.generatedAt || '').trim()
+  const inputFileName = String(payload.inputFileName || '').trim()
+  return finishedAt || inputFileName ? `${inputFileName}:${finishedAt}` : ''
+}
+
+function readPoDownloadDirectory(payload: ExecutorResponsePayload | LocalExecutorRun): string {
+  const directDirectory = String(payload.downloadDirectory || payload.selectedDownloadDirectory || '').trim()
+  if (directDirectory) return directDirectory
+  const progress = extractExecutorRunProgress(payload)
+  const progressDirectory = String(progress?.downloadDirectory || '').trim()
+  if (progressDirectory) return progressDirectory
+  const filePaths = collectPoDownloadFilePaths(payload)
+  return filePaths.map(extractDirectoryFromPath).find(Boolean) || saveDirectory.value.trim()
+}
+
+function collectPoDownloadFilePaths(payload: ExecutorResponsePayload | LocalExecutorRun): string[] {
+  const values: string[] = []
+  const add = (value: unknown): void => {
+    const normalized = String(value || '').trim()
+    if (normalized) values.push(normalized)
+  }
+  const addArray = (items: unknown): void => {
+    if (Array.isArray(items)) items.forEach(add)
+  }
+  addArray(payload.downloadedFilePaths)
+  add(payload.firstDownloadedFilePath)
+  add(payload.lastDownloadedFilePath)
+  add(payload.filePath)
+  const progress = extractExecutorRunProgress(payload)
+  addArray(progress?.downloadedFilePaths)
+  add(progress?.firstDownloadedFilePath)
+  add(progress?.lastDownloadedFilePath)
+  add(progress?.filePath)
+  return values
+}
+
+function extractDirectoryFromPath(rawPath: string): string {
+  const normalizedPath = String(rawPath || '').trim()
+  if (!normalizedPath) return ''
+  const separatorIndex = Math.max(normalizedPath.lastIndexOf('\\'), normalizedPath.lastIndexOf('/'))
+  return separatorIndex > 0 ? normalizedPath.slice(0, separatorIndex) : ''
+}
+
+function escapeHtml(value: string): string {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
 }
 
 function downloadResultFile(url: string, fileName: string): void {
