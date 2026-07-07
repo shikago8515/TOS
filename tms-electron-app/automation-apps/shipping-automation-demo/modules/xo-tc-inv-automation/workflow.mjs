@@ -123,6 +123,7 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
       const invoiceOrdinal = invoiceIndex + 1;
       const currentPoddDate = workbook.poddDatesByInvoice?.[currentInvoiceNumber] || "";
       const currentInvoiceAdjustments = workbook.adjustmentsByInvoice?.[currentInvoiceNumber] || null;
+      const noChargeInvoice = isNoChargeInvoiceAdjustment(currentInvoiceAdjustments);
       clickedInvoiceText = "";
       cargoHandoverDateResult = createSkippedCargoHandoverDateResult(currentPoddDate, "not-reached");
       buildAdjustmentResult = createSkippedBuildAdjustmentResult("not-reached", currentInvoiceAdjustments);
@@ -163,7 +164,10 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
         if (await isInvoicePreviewPage(page)) {
           previewResult = await buildAlreadyOpenPreviewResult(page, currentInvoiceNumber);
           cargoHandoverDateResult = createSkippedCargoHandoverDateResult(currentPoddDate, "already-on-preview");
-          buildAdjustmentResult = createSkippedBuildAdjustmentResult("already-on-preview", currentInvoiceAdjustments);
+          buildAdjustmentResult = createSkippedBuildAdjustmentResult(
+            noChargeInvoice ? "no-charge-already-on-validate-page" : "already-on-preview",
+            currentInvoiceAdjustments,
+          );
 
           stage = `点击 Validate 并下载 PDF (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
           await showTcInvBadge(`正在点击 Invoice ${currentInvoiceNumber} Validate 并下载 PDF`, {
@@ -189,6 +193,48 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
             finalUrl: safePageUrl(page),
           });
           await showTcInvBadge(`Invoice ${currentInvoiceNumber} 已完成`, {
+            phase: "invoice-complete",
+            currentCount: invoiceOrdinal,
+            completedCount: processedInvoiceResults.filter((item) => item.ok).length,
+            failedCount: processedInvoiceResults.filter((item) => !item.ok).length,
+            invoiceNumber: currentInvoiceNumber,
+          });
+          continue;
+        }
+
+        if (noChargeInvoice) {
+          if (!await isPreviewValidateButtonVisible(page, config)) {
+            throw new Error(`Invoice ${currentInvoiceNumber}: Excel 金额为空，预期打开后直接进入 Validate 页面，但当前页面没有找到 Validate 按钮。`);
+          }
+          previewResult = await buildAlreadyOpenPreviewResult(page, currentInvoiceNumber);
+          previewResult.noCharge = true;
+          cargoHandoverDateResult = createSkippedCargoHandoverDateResult(currentPoddDate, "no-charge-skip-date");
+          buildAdjustmentResult = createSkippedBuildAdjustmentResult("no-charge-skip-build", currentInvoiceAdjustments);
+
+          stage = `点击 Validate 并下载 PDF (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
+          await showTcInvBadge(`正在点击空金额 Invoice ${currentInvoiceNumber} Validate 并下载 PDF`, {
+            phase: "invoice-validate",
+            currentCount: invoiceOrdinal,
+            invoiceNumber: currentInvoiceNumber,
+          });
+          previewResult.validateResult = await clickPreviewValidateButton(page, config, log, activeRun.runId, currentInvoiceNumber, {
+            downloadPreviewPdf,
+            previewPdfDownloadDirectory,
+          });
+          latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, `validated-no-charge-${invoiceOrdinal}`);
+
+          processedInvoiceResults.push({
+            ok: true,
+            invoiceIndex,
+            invoiceNumber: currentInvoiceNumber,
+            clickedInvoiceText,
+            poddDate: currentPoddDate,
+            cargoHandoverDateResult,
+            buildAdjustmentResult,
+            previewResult,
+            finalUrl: safePageUrl(page),
+          });
+          await showTcInvBadge(`空金额 Invoice ${currentInvoiceNumber} 已完成`, {
             phase: "invoice-complete",
             currentCount: invoiceOrdinal,
             completedCount: processedInvoiceResults.filter((item) => item.ok).length,
@@ -668,7 +714,26 @@ async function isInvoicePreviewPage(page) {
   }
 
   const reopenButton = page.locator("button, a").filter({ hasText: /^Reopen$/i }).first();
-  return isLocatorVisible(reopenButton, 1000);
+  if (await isLocatorVisible(reopenButton, 1000)) {
+    return true;
+  }
+
+  return isPreviewValidateButtonVisible(page, { navigationTimeoutMs: 1000 });
+}
+
+async function isPreviewValidateButtonVisible(page, config) {
+  const timeout = Math.min(Number(config?.navigationTimeoutMs || 1000), 1500);
+  const candidates = [
+    page.locator(PREVIEW_VALIDATE_BUTTON_SELECTOR).first(),
+    page.getByRole("button", { name: /^Validate$/i }).first(),
+    page.locator("button, input, a").filter({ hasText: /^Validate$/i }).first(),
+  ];
+  for (const candidate of candidates) {
+    if (await isLocatorVisible(candidate, timeout)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function buildAlreadyOpenPreviewResult(page, invoiceNumber) {
@@ -780,6 +845,10 @@ async function fillOptionalCargoHandoverFcrDate(page, poddDate, config, log, run
 }
 
 async function openBuildStepAndApplyAdjustments(page, invoiceAdjustments, config, log, runId) {
+  if (isNoChargeInvoiceAdjustment(invoiceAdjustments)) {
+    return createSkippedBuildAdjustmentResult("no-charge-skip-build", invoiceAdjustments);
+  }
+
   const buildStep = page.locator(BUILD_STEP_SELECTOR).filter({ hasText: /^[\s\u00a0]*Build[\s\u00a0]*$/i }).first();
   if (!await isLocatorVisible(buildStep, Math.min(config.navigationTimeoutMs, 8000))) {
     throw new Error("Build step is not visible on the invoice detail page.");
@@ -794,6 +863,7 @@ async function openBuildStepAndApplyAdjustments(page, invoiceAdjustments, config
   const result = {
     opened: true,
     chargeSelected: false,
+    noCharge: isNoChargeInvoiceAdjustment(invoiceAdjustments),
     selectedLabel: "",
     selectedValue: "",
     zeqs: null,
@@ -1052,6 +1122,7 @@ function createSkippedBuildAdjustmentResult(skippedReason, invoiceAdjustments = 
     adjustments: invoiceAdjustments,
     opened: false,
     chargeSelected: false,
+    noCharge: isNoChargeInvoiceAdjustment(invoiceAdjustments),
     selectedLabel: "",
     selectedValue: "",
     zeqs: null,
@@ -1059,6 +1130,12 @@ function createSkippedBuildAdjustmentResult(skippedReason, invoiceAdjustments = 
     zdoc: null,
     skippedReason,
   };
+}
+
+function isNoChargeInvoiceAdjustment(invoiceAdjustments) {
+  return Boolean(invoiceAdjustments?.noCharge || invoiceAdjustments?.skipBuild)
+    && !invoiceAdjustments?.hasZeqsAmount
+    && !String(invoiceAdjustments?.zeqsInputValue || invoiceAdjustments?.upchargeInputValue || "").trim();
 }
 
 async function openPreviewStep(page, config, log, runId, invoiceNumber) {

@@ -81,10 +81,10 @@ export function parseTcInvWorkbookPayload(body, deps) {
     throw error;
   }
 
-  const adjustmentsByInvoice = collectZeqsAdjustmentsByInvoice(normalizedRows);
+  const adjustmentsByInvoice = collectInvoiceActionsByInvoice(normalizedRows);
   const invoiceNumbers = collectInvoiceNumbers(normalizedRows, adjustmentsByInvoice);
   if (invoiceNumbers.length === 0) {
-    const error = new Error("XO TC INV Excel did not contain any Invoice rows with ZEQS upcharge amount.");
+    const error = new Error("XO TC INV Excel did not contain any executable Invoice rows.");
     error.statusCode = 400;
     throw error;
   }
@@ -228,7 +228,7 @@ function normalizeRows(sheetRows, headerInfo) {
     if (normalized.invoiceNumber) {
       activeInvoiceNumber = normalized.invoiceNumber;
       normalized.groupInvoiceNumber = normalized.invoiceNumber;
-    } else if (activeInvoiceNumber && normalized.hasZeqsAmount) {
+    } else if (activeInvoiceNumber && (normalized.hasZeqsAmount || normalized.poNumber || normalized.chargeCode)) {
       normalized.invoiceNumber = activeInvoiceNumber;
       normalized.groupInvoiceNumber = activeInvoiceNumber;
     }
@@ -315,18 +315,22 @@ function collectPoddDatesByInvoice(rows) {
   return datesByInvoice;
 }
 
-function collectZeqsAdjustmentsByInvoice(rows) {
+function collectInvoiceActionsByInvoice(rows) {
   const grouped = new Map();
   for (const row of rows) {
     const invoiceNumber = row.groupInvoiceNumber || row.invoiceNumber || "";
-    if (!invoiceNumber || !row.isZeqsCharge || !row.hasZeqsAmount) continue;
+    if (!invoiceNumber) continue;
 
     const group = grouped.get(invoiceNumber) || {
       amount: 0,
+      hasZeqsAmount: false,
       poNumbers: [],
       sourceRows: [],
     };
-    group.amount = roundCurrency(group.amount + row.zeqsAmount);
+    if (row.isZeqsCharge && row.hasZeqsAmount) {
+      group.amount = roundCurrency(group.amount + row.zeqsAmount);
+      group.hasZeqsAmount = true;
+    }
     if (row.poNumber) group.poNumbers.push(row.poNumber);
     group.sourceRows.push(row.rowIndex);
     grouped.set(invoiceNumber, group);
@@ -334,15 +338,18 @@ function collectZeqsAdjustmentsByInvoice(rows) {
 
   const adjustmentsByInvoice = {};
   for (const [invoiceNumber, group] of grouped.entries()) {
+    const hasZeqsAmount = Boolean(group.hasZeqsAmount);
     adjustmentsByInvoice[invoiceNumber] = {
-      chargeCode: ZEQS_CHARGE_CODE,
-      hasZeqsAmount: true,
+      chargeCode: hasZeqsAmount ? ZEQS_CHARGE_CODE : "",
+      hasZeqsAmount,
+      noCharge: !hasZeqsAmount,
       poNumbers: Array.from(new Set(group.poNumbers)),
+      skipBuild: !hasZeqsAmount,
       sourceRows: group.sourceRows,
       upchargeAmount: group.amount,
-      upchargeInputValue: formatCurrencyAmount(group.amount),
+      upchargeInputValue: hasZeqsAmount ? formatCurrencyAmount(group.amount) : "",
       zeqsAmount: group.amount,
-      zeqsInputValue: formatCurrencyAmount(group.amount),
+      zeqsInputValue: hasZeqsAmount ? formatCurrencyAmount(group.amount) : "",
     };
   }
   return adjustmentsByInvoice;
