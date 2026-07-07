@@ -26,7 +26,7 @@
     "name": "Shipping Automation Demo",
     "provider": "Playwright",
     "category": "网页自动化",
-    "version": "1.0.0-beta.3.16",
+    "version": "1.0.0-beta.3.17",
     "appDir": "shipping-automation-demo",
     "entry": "bin/start.js",
     "includeNodeModules": true,

@@ -3814,8 +3814,18 @@ async function confirmPackingManifestApprovalIfNeeded(page, config) {
     for (const root of roots) {
       const clickResult = await clickPackingManifestApprovalOkButtonInRoot(page, root);
       if (clickResult.clicked) {
-        await waitForPackingManifestApprovalOkSettled(page, config);
-        return clickResult;
+        const settled = await waitForPackingManifestApprovalOkSettled(page, config);
+        if (settled) {
+          return {
+            ...clickResult,
+            settled: true,
+          };
+        }
+        return {
+          clicked: false,
+          found: true,
+          source: `approval-ok-clicked-but-dialog-still-visible:${clickResult.source || "unknown"}`,
+        };
       }
       if (clickResult.found) {
         lastFoundSource = clickResult.source || "approval-ok-found-not-clicked";
@@ -3914,11 +3924,108 @@ async function clickPackingManifestApprovalOkButtonInRoot(page, root) {
     return { clicked: false, found: false, source: "page-closed" };
   }
 
+  const exactSelectors = [
+    '#MB_windowwrapper #MB_window #MB_frame #MB_content form#PasswordSignDoc td.okButton input[type="button"][value="Ok"][onclick*="doSignSubmit"]',
+    '#MB_windowwrapper #MB_window #MB_frame #MB_content input[type="button"][value="Ok"][onclick*="doSignSubmit"]',
+    '#MB_frame #MB_content form#PasswordSignDoc td.okButton input[type="button"][value="Ok"]',
+    '#MB_frame #MB_content input[type="button"][value="Ok"][onclick*="doSignSubmit"]',
+    'form#PasswordSignDoc input[type="button"][value="Ok"][onclick*="doSignSubmit"]',
+  ];
+
   const dialogHandler = (dialog) => {
     dialog.accept().catch(() => {});
   };
-  page.once("dialog", dialogHandler);
+  page.on?.("dialog", dialogHandler);
   try {
+    for (const selector of exactSelectors) {
+      const locator = root.locator(selector).first();
+      const count = await locator.count().catch(() => 0);
+      if (count <= 0) {
+        continue;
+      }
+      try {
+        await locator.scrollIntoViewIfNeeded({ timeout: 800 }).catch(() => {});
+        await locator.click({ timeout: 1800, force: true });
+        return {
+          clicked: true,
+          found: true,
+          source: `approval-ok-locator:${selector}`,
+        };
+      } catch (error) {
+        // Try the next exact selector, then fall back to an in-page click below.
+      }
+    }
+
+    const modalEvaluateResult = await root.evaluate(() => {
+      const modalRoots = Array.from(document.querySelectorAll("#MB_windowwrapper, #MB_window, #MB_frame, #MB_content, form#PasswordSignDoc"));
+      const searchRoots = modalRoots.length > 0 ? modalRoots : [document];
+      const candidates = [];
+      for (const searchRoot of searchRoots) {
+        candidates.push(...Array.from(searchRoot.querySelectorAll('form#PasswordSignDoc td.okButton input[type="button"][value="Ok"], input[type="button"][value="Ok"][onclick*="doSignSubmit"], button')));
+      }
+
+      const uniqueCandidates = Array.from(new Set(candidates))
+        .map((element) => {
+          const value = String(element.value || element.textContent || "").trim();
+          const onclick = String(element.getAttribute("onclick") || "");
+          const className = String(element.className || "");
+          const source = element.outerHTML
+            ? element.outerHTML.replace(/\s+/g, " ").slice(0, 220)
+            : "approval-ok-modal-button";
+          return {
+            element,
+            value,
+            onclick,
+            className,
+            source,
+          };
+        })
+        .filter((item) => (
+          item.value.toLowerCase() === "ok"
+          && (
+            /doSignSubmit\s*\(/i.test(item.onclick)
+            || item.element.closest?.("form#PasswordSignDoc")
+            || item.element.closest?.("td.okButton")
+          )
+        ));
+
+      if (uniqueCandidates.length === 0) {
+        return { clicked: false, found: false, source: "approval-ok-modal-button-not-present" };
+      }
+
+      const isUsable = (element) => {
+        if (!element || element.disabled) {
+          return false;
+        }
+        const style = window.getComputedStyle(element);
+        if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
+          return false;
+        }
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      };
+      const target = uniqueCandidates.find((item) => isUsable(item.element)) || uniqueCandidates[0];
+      if (target.element.disabled) {
+        return { clicked: false, found: true, source: "approval-ok-modal-button-disabled" };
+      }
+
+      target.element.scrollIntoView({ block: "center", inline: "center" });
+      target.element.focus?.();
+      target.element.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, cancelable: true, view: window }));
+      target.element.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, cancelable: true, view: window }));
+      target.element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+      target.element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+      target.element.click();
+      return { clicked: true, found: true, source: target.source || "approval-ok-modal-button" };
+    }).catch((error) => ({
+      clicked: false,
+      found: false,
+      source: `approval-ok-modal-evaluate-failed:${error?.message || error}`,
+    }));
+    if (modalEvaluateResult.clicked || modalEvaluateResult.found) {
+      return modalEvaluateResult;
+    }
+
     return await root.evaluate(() => {
       const candidates = Array.from(document.querySelectorAll('input[type="button"], button'))
         .map((element) => {
@@ -3988,20 +4095,24 @@ async function clickPackingManifestApprovalOkButtonInRoot(page, root) {
 
 async function waitForPackingManifestApprovalOkSettled(page, config) {
   if (!page || page.isClosed?.()) {
-    return;
+    return false;
   }
 
-  const timeoutMs = Math.min(Number(config.navigationTimeoutMs) || 30000, 12000);
-  await Promise.race([
+  const timeoutMs = Math.min(Number(config.navigationTimeoutMs) || 30000, 30000);
+  const settled = await Promise.race([
     page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: timeoutMs }).catch(() => null),
     waitForPackingManifestApprovalOkButtonGone(page, timeoutMs).catch(() => null),
-    delay(timeoutMs),
+    delay(timeoutMs).then(() => false),
   ]);
   await page.waitForLoadState("domcontentloaded", {
     timeout: Math.min(Number(config.navigationTimeoutMs) || 30000, 5000),
   }).catch(() => {});
   await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
   await page.waitForTimeout(500).catch(() => {});
+  if (settled === false) {
+    return false;
+  }
+  return !(await hasVisiblePackingManifestApprovalOkButton(page).catch(() => false));
 }
 
 async function waitForPackingManifestApprovalOkButtonGone(page, timeoutMs) {
