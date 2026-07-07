@@ -1,3 +1,5 @@
+## [1.0.0-beta.3.23](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.22...v1.0.0-beta.3.23) (2026-07-07)
+
 ## [1.0.0-beta.3.22](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.21...v1.0.0-beta.3.22) (2026-07-07)
 
 ## [1.0.0-beta.3.21](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.20...v1.0.0-beta.3.21) (2026-07-06)

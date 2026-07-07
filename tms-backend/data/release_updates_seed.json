@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "release-v1.0.0-beta.3.23",
+    "version": "1.0.0-beta.3.23",
+    "releaseDate": "2026-07-07",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.23",
+    "description": "Release v1.0.0-beta.3.23. Channel: beta.3. Commit: 1822c8cdfe11088b389ff1c52f3982d89afd7928. Release notes: 补齐 Lucia 财务响应契约 schema."
+  },
+  {
     "recordKey": "release-v1.0.0-beta.3.22",
     "version": "1.0.0-beta.3.22",
     "releaseDate": "2026-07-07",

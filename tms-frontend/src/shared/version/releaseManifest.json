@@ -1,25 +1,25 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.22",
-  "tag": "v1.0.0-beta.3.22",
-  "gitSha": "02e16e5607c24506f02d5b8ade9e0ca2576bbe08",
+  "version": "1.0.0-beta.3.23",
+  "tag": "v1.0.0-beta.3.23",
+  "gitSha": "1822c8cdfe11088b389ff1c52f3982d89afd7928",
   "releaseDate": "2026-07-07",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.22",
+    "version": "1.0.0-beta.3.23",
     "date": "2026-07-07",
-    "noticeId": "2026-07-07-v1.0.0-beta.3.22",
+    "noticeId": "2026-07-07-v1.0.0-beta.3.23",
     "showPopup": false,
     "added": [],
     "improved": [
-      "补齐 Eric iPlex 响应契约 schema"
+      "补齐 Lucia 财务响应契约 schema"
     ],
     "fixed": [],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.22",
-    "version": "1.0.0-beta.3.22",
+    "noticeId": "v1.0.0-beta.3.23",
+    "version": "1.0.0-beta.3.23",
     "releaseDate": "2026-07-07",
     "showPopup": false,
     "level": "maintenance",
@@ -29,7 +29,7 @@
         "title": "优化",
         "icon": "activity",
         "items": [
-          "补齐 Eric iPlex 响应契约 schema"
+          "补齐 Lucia 财务响应契约 schema"
         ]
       }
     ]
