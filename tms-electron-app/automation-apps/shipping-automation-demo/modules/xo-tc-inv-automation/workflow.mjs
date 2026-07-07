@@ -13,8 +13,8 @@ const BUILD_STEP_SELECTOR = "span.stepoff";
 const PRIMARY_ADJUSTMENT_APPLY_AS_SELECTOR = "#CommercialInvoice_adjustment__2_applyAs";
 const ANY_ADJUSTMENT_APPLY_AS_SELECTOR = 'select[name^="CommercialInvoice_adjustment__"][name$="_applyAs"]';
 const ADJUSTMENT_APPLY_AS_CHARGE_VALUE = "Fee";
-const ZADD_ADJUSTMENT_ROW_INDEX = 2;
-const ZDOC_ADJUSTMENT_ROW_INDEX = 3;
+const ZEQS_ADJUSTMENT_ROW_INDEX = 2;
+const ZEQS_CHARGE_CODE = "ZEQS";
 const PREVIEW_STEP_LINK_SELECTOR = 'a[href*="jumpToStep"][href*="Review"]';
 const PREVIEW_VALIDATE_BUTTON_SELECTOR = 'input[type="button"][value="Validate"], input.styledActionButton[value="Validate"], input[onclick*="submitUserAction"][onclick*="validate"]';
 const INVOICE_RESULT_WAIT_MS = 7000;
@@ -396,6 +396,8 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
       previewResult,
       previewOpened: invoiceSummary.completedInvoiceResults.some((item) => item.previewResult?.opened),
       invoiceNumbers: workbook.invoiceNumbers,
+      sheetName: workbook.sheetName,
+      headerRowIndex: workbook.headerRowIndex,
       totalRowCount: workbook.rows.length,
       factories: workbook.factories,
       workbookWarnings: workbook.warnings,
@@ -466,6 +468,8 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
       previewResult,
       previewOpened: previewResult.opened,
       invoiceNumbers: workbook.invoiceNumbers,
+      sheetName: workbook.sheetName,
+      headerRowIndex: workbook.headerRowIndex,
       totalRowCount: workbook.rows.length,
       factories: workbook.factories,
       workbookWarnings: workbook.warnings,
@@ -792,6 +796,7 @@ async function openBuildStepAndApplyAdjustments(page, invoiceAdjustments, config
     chargeSelected: false,
     selectedLabel: "",
     selectedValue: "",
+    zeqs: null,
     zadd: null,
     zdoc: null,
     adjustments: invoiceAdjustments || null,
@@ -801,22 +806,19 @@ async function openBuildStepAndApplyAdjustments(page, invoiceAdjustments, config
     throw new Error("Excel did not provide adjustment values for the current Invoice#.");
   }
 
-  result.zadd = await applyAdjustmentRow(page, {
-    amountInputValue: invoiceAdjustments.zaddPlusOtherCostInputValue || "0.00",
-    reasonCode: "ZADD",
-    rowIndex: ZADD_ADJUSTMENT_ROW_INDEX,
-  }, config);
-  result.chargeSelected = result.zadd.chargeSelected;
-  result.selectedLabel = result.zadd.selectedLabel;
-  result.selectedValue = result.zadd.selectedValue;
-
-  if (invoiceAdjustments.hasZdocAmount) {
-    result.zdoc = await applyAdjustmentRow(page, {
-      amountInputValue: invoiceAdjustments.zdocInputValue,
-      reasonCode: "ZDOC",
-      rowIndex: ZDOC_ADJUSTMENT_ROW_INDEX,
-    }, config);
+  const reasonCode = String(invoiceAdjustments.chargeCode || ZEQS_CHARGE_CODE).trim().toUpperCase();
+  if (reasonCode !== ZEQS_CHARGE_CODE) {
+    throw new Error(`XO TC INV only supports ${ZEQS_CHARGE_CODE} adjustment rows. Current charge code: ${reasonCode || "empty"}.`);
   }
+
+  result.zeqs = await applyAdjustmentRow(page, {
+    amountInputValue: invoiceAdjustments.zeqsInputValue || invoiceAdjustments.upchargeInputValue || "0.00",
+    reasonCode: ZEQS_CHARGE_CODE,
+    rowIndex: ZEQS_ADJUSTMENT_ROW_INDEX,
+  }, config);
+  result.chargeSelected = result.zeqs.chargeSelected;
+  result.selectedLabel = result.zeqs.selectedLabel;
+  result.selectedValue = result.zeqs.selectedValue;
 
   log("TC INV Build step adjustment rows applied.", {
     runId,
@@ -866,8 +868,8 @@ async function applyAdjustmentRow(page, options, config) {
   };
 }
 
-async function resolveAdjustmentApplyAsSelect(page, config, rowIndex = ZADD_ADJUSTMENT_ROW_INDEX) {
-  const primarySelector = rowIndex === ZADD_ADJUSTMENT_ROW_INDEX
+async function resolveAdjustmentApplyAsSelect(page, config, rowIndex = ZEQS_ADJUSTMENT_ROW_INDEX) {
+  const primarySelector = rowIndex === ZEQS_ADJUSTMENT_ROW_INDEX
     ? PRIMARY_ADJUSTMENT_APPLY_AS_SELECTOR
     : `#CommercialInvoice_adjustment__${rowIndex}_applyAs`;
   const primary = page.locator(primarySelector).first();
@@ -875,7 +877,7 @@ async function resolveAdjustmentApplyAsSelect(page, config, rowIndex = ZADD_ADJU
     return primary;
   }
 
-  const fallback = page.locator(ANY_ADJUSTMENT_APPLY_AS_SELECTOR).nth(Math.max(rowIndex - ZADD_ADJUSTMENT_ROW_INDEX, 0));
+  const fallback = page.locator(ANY_ADJUSTMENT_APPLY_AS_SELECTOR).nth(Math.max(rowIndex - ZEQS_ADJUSTMENT_ROW_INDEX, 0));
   if (await isLocatorVisible(fallback, Math.min(config.navigationTimeoutMs, 5000))) {
     return fallback;
   }
@@ -1052,6 +1054,7 @@ function createSkippedBuildAdjustmentResult(skippedReason, invoiceAdjustments = 
     chargeSelected: false,
     selectedLabel: "",
     selectedValue: "",
+    zeqs: null,
     zadd: null,
     zdoc: null,
     skippedReason,

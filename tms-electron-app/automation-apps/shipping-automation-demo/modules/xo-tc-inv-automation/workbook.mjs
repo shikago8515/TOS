@@ -1,42 +1,48 @@
 const SUPPORTED_FACTORIES = ["SLT", "VENT", "XO"];
+const ZEQS_CHARGE_CODE = "ZEQS";
 
 const INVOICE_HEADER_ALIASES = new Set([
-  "invoice#",
   "invoice",
+  "invoice#",
   "invoiceno",
   "invoicenum",
   "invoicenumber",
+  "inv",
   "inv#",
   "invno",
   "invnumber",
-  "发票号",
-  "发票号码",
-  "商业发票号",
+]);
+
+const CHARGE_CODE_HEADER_ALIASES = new Set([
+  "charge",
+  "chargecode",
+  "reason",
+  "reasoncode",
+  "code",
+]);
+
+const UPCHARGE_AMOUNT_HEADER_ALIASES = new Set([
+  "amount",
+  "fee",
+  "total",
+  "upcharge",
+  "upchargetotal",
+  "upchargeusd",
+  "upchargeusdtotal",
+  "upcharge$total",
 ]);
 
 const PODD_HEADER_ALIASES = new Set([
   "podd",
   "poddate",
   "podddate",
-  "podd日期",
-  "podd日",
-  "podd时间",
 ]);
 
-const ZADD_HEADER_ALIASES = new Set([
-  "zadd",
-]);
-
-const ZDOC_HEADER_ALIASES = new Set([
-  "zdoc",
-]);
-
-const OTHER_COST_HEADER_ALIASES = new Set([
-  "othercost",
-  "othercharge",
-  "othercharges",
-  "otherfee",
-  "otherfees",
+const PO_HEADER_ALIASES = new Set([
+  "po",
+  "po#",
+  "pono",
+  "ponumber",
 ]);
 
 export function parseTcInvWorkbookPayload(body, deps) {
@@ -47,67 +53,72 @@ export function parseTcInvWorkbookPayload(body, deps) {
   try {
     workbook = xlsx.read(workbookBuffer, { type: "buffer" });
   } catch (error) {
-    const parseError = new Error(`TC INV Excel 解析失败：${error.message || error}`);
+    const parseError = new Error(`XO TC INV Excel parse failed: ${error.message || error}`);
     parseError.statusCode = 400;
     throw parseError;
   }
 
-  const sheetName = resolveWorksheetName(workbook, body?.sheetName);
+  const sheetName = resolveWorksheetName(workbook, body?.sheetName, xlsx);
   if (!sheetName) {
-    const error = new Error("TC INV Excel 中没有可读取的工作表。请上传包含出货明细的 .xlsx 或 .xls 文件。");
+    const error = new Error("XO TC INV Excel does not contain a readable worksheet.");
     error.statusCode = 400;
     throw error;
   }
 
   const worksheet = workbook.Sheets[sheetName];
-  const rawRows = xlsx.utils.sheet_to_json(worksheet, {
-    defval: "",
-    raw: false,
-  });
-  const normalizedRows = normalizeRows(rawRows);
-
-  if (normalizedRows.length === 0) {
-    const error = new Error("TC INV Excel 没有可执行的数据行。请确认文件包含出货明细、交期或费用信息。");
+  const sheetRows = readSheetRows(worksheet, xlsx);
+  const headerInfo = findSorHeaderRow(sheetRows);
+  if (!headerInfo) {
+    const error = new Error("XO TC INV Excel header was not found. Please upload the PO issue list with columns: Inv No, Charge Code, upcharge $ total.");
     error.statusCode = 400;
     throw error;
   }
 
-  const invoiceNumbers = collectInvoiceNumbers(normalizedRows);
+  const normalizedRows = normalizeRows(sheetRows, headerInfo);
+  if (normalizedRows.length === 0) {
+    const error = new Error("XO TC INV Excel does not contain executable SOR rows.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const adjustmentsByInvoice = collectZeqsAdjustmentsByInvoice(normalizedRows);
+  const invoiceNumbers = collectInvoiceNumbers(normalizedRows, adjustmentsByInvoice);
   if (invoiceNumbers.length === 0) {
-    const error = new Error("TC INV Excel 未找到 Invoice# 列的有效发票号。请确认第一行表头包含 Invoice#，且下面填写了发票号码。");
+    const error = new Error("XO TC INV Excel did not contain any Invoice rows with ZEQS upcharge amount.");
     error.statusCode = 400;
     throw error;
   }
 
   const factories = collectFactories(normalizedRows);
   const poddDatesByInvoice = collectPoddDatesByInvoice(normalizedRows);
-  const adjustmentsByInvoice = collectAdjustmentsByInvoice(normalizedRows);
   const firstPoddDate = invoiceNumbers.length > 0 ? poddDatesByInvoice[invoiceNumbers[0]] || "" : "";
+
   return {
     adjustmentsByInvoice,
     factories,
     firstInvoiceNumber: invoiceNumbers[0],
     firstPoddDate,
+    headerRowIndex: headerInfo.rowIndex,
     invoiceNumbers,
     poddDatesByInvoice,
     rowCount: normalizedRows.length,
     rows: normalizedRows,
     sheetName,
-    warnings: buildWorkbookWarnings(factories, invoiceNumbers),
+    warnings: buildWorkbookWarnings(factories, invoiceNumbers, normalizedRows),
   };
 }
 
 function assertWorkbookPayload(body) {
   const fileBase64 = String(body?.fileBase64 || body?.fileContentBase64 || "").trim();
   if (!fileBase64) {
-    const error = new Error("请上传 TC INV Excel 文件。");
+    const error = new Error("Please upload the XO TC INV Excel file.");
     error.statusCode = 400;
     throw error;
   }
 
   const inputFileName = String(body?.fileName || body?.filename || "").trim();
   if (inputFileName && !/\.(xlsx|xls)$/i.test(inputFileName)) {
-    const error = new Error("TC INV 自动化仅支持 .xlsx 或 .xls 文件。");
+    const error = new Error("XO TC INV automation only supports .xlsx or .xls files.");
     error.statusCode = 400;
     throw error;
   }
@@ -115,7 +126,7 @@ function assertWorkbookPayload(body) {
   const normalizedBase64 = fileBase64.replace(/^data:.*;base64,/, "");
   const workbookBuffer = Buffer.from(normalizedBase64, "base64");
   if (!workbookBuffer.length) {
-    const error = new Error("TC INV Excel 文件内容为空，请重新上传。");
+    const error = new Error("XO TC INV Excel file is empty. Please upload it again.");
     error.statusCode = 400;
     throw error;
   }
@@ -123,30 +134,101 @@ function assertWorkbookPayload(body) {
   return workbookBuffer;
 }
 
-function resolveWorksheetName(workbook, preferredSheetName) {
+function resolveWorksheetName(workbook, preferredSheetName, xlsx) {
   if (preferredSheetName && workbook?.SheetNames?.includes(preferredSheetName)) {
     return preferredSheetName;
   }
-  return workbook?.SheetNames?.[0] || "";
+
+  const sheetNames = workbook?.SheetNames || [];
+  const sorSheetName = sheetNames.find((name) => /^sor$/i.test(String(name || "").trim()));
+  if (sorSheetName && worksheetHasSorHeader(workbook.Sheets[sorSheetName], xlsx)) {
+    return sorSheetName;
+  }
+
+  const detectedSheetName = sheetNames.find((name) => worksheetHasSorHeader(workbook.Sheets[name], xlsx));
+  return detectedSheetName || sheetNames[0] || "";
 }
 
-function normalizeRows(rawRows) {
-  const normalizedRows = [];
+function worksheetHasSorHeader(worksheet, xlsx) {
+  return Boolean(findSorHeaderRow(readSheetRows(worksheet, xlsx)));
+}
+
+function readSheetRows(worksheet, xlsx) {
+  return xlsx.utils.sheet_to_json(worksheet, {
+    blankrows: true,
+    defval: "",
+    header: 1,
+    raw: false,
+  });
+}
+
+function findSorHeaderRow(sheetRows) {
+  for (let index = 0; index < sheetRows.length; index += 1) {
+    const row = sheetRows[index] || [];
+    const columns = resolveHeaderColumns(row);
+    if (columns.invoiceColumn >= 0 && columns.amountColumn >= 0) {
+      return {
+        ...columns,
+        headers: row.map((cell) => normalizeCellValue(cell)),
+        rowIndex: index + 1,
+        zeroBasedRowIndex: index,
+      };
+    }
+  }
+  return null;
+}
+
+function resolveHeaderColumns(row) {
+  const columns = {
+    amountColumn: -1,
+    chargeCodeColumn: -1,
+    factoryColumn: -1,
+    invoiceColumn: -1,
+    poddColumn: -1,
+    poColumn: -1,
+  };
+
+  row.forEach((cell, index) => {
+    const label = normalizeHeaderLabel(cell);
+    if (!label) return;
+    if (columns.invoiceColumn < 0 && INVOICE_HEADER_ALIASES.has(label)) {
+      columns.invoiceColumn = index;
+    }
+    if (columns.chargeCodeColumn < 0 && CHARGE_CODE_HEADER_ALIASES.has(label)) {
+      columns.chargeCodeColumn = index;
+    }
+    if (columns.amountColumn < 0 && UPCHARGE_AMOUNT_HEADER_ALIASES.has(label)) {
+      columns.amountColumn = index;
+    }
+    if (columns.poddColumn < 0 && PODD_HEADER_ALIASES.has(label)) {
+      columns.poddColumn = index;
+    }
+    if (columns.poColumn < 0 && PO_HEADER_ALIASES.has(label)) {
+      columns.poColumn = index;
+    }
+    if (columns.factoryColumn < 0 && /factory|factorycode|vendor|supplier|fty/i.test(label)) {
+      columns.factoryColumn = index;
+    }
+  });
+
+  return columns;
+}
+
+function normalizeRows(sheetRows, headerInfo) {
+  const rows = [];
   let activeInvoiceNumber = "";
 
-  rawRows.forEach((row, index) => {
-    const normalized = normalizeTcInvRow(row, index + 2);
-    if (normalized.nonEmptyCellCount === 0) {
-      return;
+  for (let index = headerInfo.zeroBasedRowIndex + 1; index < sheetRows.length; index += 1) {
+    const rowValues = sheetRows[index] || [];
+    if (!rowValues.some((cell) => normalizeCellValue(cell))) {
+      continue;
     }
 
+    const normalized = normalizeSorRow(rowValues, headerInfo, index + 1);
     if (normalized.invoiceNumber) {
       activeInvoiceNumber = normalized.invoiceNumber;
       normalized.groupInvoiceNumber = normalized.invoiceNumber;
-    } else if (normalized.isInvoiceTotalRow) {
-      normalized.groupInvoiceNumber = activeInvoiceNumber;
-      activeInvoiceNumber = "";
-    } else if (!normalized.hasExplicitInvoiceCell && activeInvoiceNumber) {
+    } else if (activeInvoiceNumber && normalized.hasZeqsAmount) {
       normalized.invoiceNumber = activeInvoiceNumber;
       normalized.groupInvoiceNumber = activeInvoiceNumber;
     }
@@ -154,48 +236,154 @@ function normalizeRows(rawRows) {
       normalized.groupInvoiceNumber = normalized.invoiceNumber || activeInvoiceNumber || "";
     }
 
-    normalizedRows.push(normalized);
-  });
-
-  return normalizedRows;
-}
-
-function normalizeTcInvRow(row, rowIndex) {
-  const entries = Object.entries(row || {});
-  const normalized = {};
-  for (const [key, value] of entries) {
-    const header = String(key || "").trim();
-    if (!header) continue;
-    normalized[header] = normalizeCellValue(value);
+    rows.push(normalized);
   }
 
-  const invoiceCell = findInvoiceCell(normalized);
-  const invoiceNumber = normalizeInvoiceNumber(invoiceCell.value);
-  const poddCell = findPoddCell(normalized);
-  const poddDate = normalizePoddDate(poddCell.value);
-  const zaddCell = findAmountCell(normalized, ZADD_HEADER_ALIASES);
-  const zdocCell = findAmountCell(normalized, ZDOC_HEADER_ALIASES);
-  const otherCostCell = findAmountCell(normalized, OTHER_COST_HEADER_ALIASES);
-  const values = Object.values(normalized).filter(Boolean);
+  return rows;
+}
+
+function normalizeSorRow(rowValues, headerInfo, rowIndex) {
+  const originalRow = buildOriginalRow(rowValues, headerInfo.headers);
+  const invoiceNumber = normalizeInvoiceNumber(rowValues[headerInfo.invoiceColumn]);
+  const rawChargeCode = headerInfo.chargeCodeColumn >= 0 ? rowValues[headerInfo.chargeCodeColumn] : "";
+  const chargeCode = normalizeChargeCode(rawChargeCode);
+  const amountRawValue = rowValues[headerInfo.amountColumn];
+  const amountText = normalizeCellValue(amountRawValue);
+  const upchargeAmount = normalizeAmount(amountRawValue);
+  const effectiveChargeCode = chargeCode || (amountText ? ZEQS_CHARGE_CODE : "");
+  const isZeqsCharge = effectiveChargeCode === ZEQS_CHARGE_CODE;
+  const poddDate = headerInfo.poddColumn >= 0 ? normalizePoddDate(rowValues[headerInfo.poddColumn]) : "";
+  const poNumber = headerInfo.poColumn >= 0 ? normalizeCellValue(rowValues[headerInfo.poColumn]) : "";
+
   return {
-    rowIndex,
-    factory: detectFactory(normalized),
-    hasExplicitInvoiceCell: invoiceCell.found && Boolean(String(invoiceCell.value || "").trim()),
+    chargeCode,
+    effectiveChargeCode,
+    factory: detectFactory(originalRow),
+    groupInvoiceNumber: invoiceNumber,
+    hasExplicitInvoiceCell: Boolean(invoiceNumber),
+    hasZeqsAmount: isZeqsCharge && amountText !== "",
     invoiceNumber,
-    invoiceSourceHeader: invoiceCell.header,
-    isInvoiceTotalRow: isInvoiceTotalMarker(invoiceCell.value),
-    nonEmptyCellCount: values.length,
-    originalRow: normalized,
+    invoiceSourceHeader: headerInfo.headers[headerInfo.invoiceColumn] || "",
+    isZeqsCharge,
+    nonEmptyCellCount: Object.values(originalRow).filter(Boolean).length,
+    originalRow,
     poddDate,
-    poddSourceHeader: poddCell.header,
-    zaddAmount: normalizeAmount(zaddCell.value),
-    zaddSourceHeader: zaddCell.header,
-    zdocAmount: normalizeAmount(zdocCell.value),
-    zdocSourceHeader: zdocCell.header,
-    hasZdocAmount: zdocCell.found && normalizeCellValue(zdocCell.value) !== "",
-    otherCostAmount: normalizeAmount(otherCostCell.value),
-    otherCostSourceHeader: otherCostCell.header,
+    poddSourceHeader: headerInfo.poddColumn >= 0 ? headerInfo.headers[headerInfo.poddColumn] || "" : "",
+    poNumber,
+    rowIndex,
+    upchargeAmount,
+    upchargeInputValue: formatCurrencyAmount(upchargeAmount),
+    upchargeSourceHeader: headerInfo.headers[headerInfo.amountColumn] || "",
+    zeqsAmount: isZeqsCharge ? upchargeAmount : 0,
   };
+}
+
+function buildOriginalRow(rowValues, headers) {
+  const row = {};
+  headers.forEach((header, index) => {
+    const normalizedHeader = normalizeCellValue(header);
+    if (!normalizedHeader) return;
+    const value = normalizeCellValue(rowValues[index]);
+    if (Object.prototype.hasOwnProperty.call(row, normalizedHeader)) {
+      row[`${normalizedHeader}_${index + 1}`] = value;
+    } else {
+      row[normalizedHeader] = value;
+    }
+  });
+  return row;
+}
+
+function collectInvoiceNumbers(rows, adjustmentsByInvoice) {
+  const invoiceNumbers = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const invoiceNumber = row.groupInvoiceNumber || row.invoiceNumber || "";
+    if (!invoiceNumber || seen.has(invoiceNumber) || !adjustmentsByInvoice[invoiceNumber]) continue;
+    seen.add(invoiceNumber);
+    invoiceNumbers.push(invoiceNumber);
+  }
+  return invoiceNumbers;
+}
+
+function collectPoddDatesByInvoice(rows) {
+  const datesByInvoice = {};
+  for (const row of rows) {
+    const invoiceNumber = row.groupInvoiceNumber || row.invoiceNumber || "";
+    if (!invoiceNumber || !row.poddDate || datesByInvoice[invoiceNumber]) continue;
+    datesByInvoice[invoiceNumber] = row.poddDate;
+  }
+  return datesByInvoice;
+}
+
+function collectZeqsAdjustmentsByInvoice(rows) {
+  const grouped = new Map();
+  for (const row of rows) {
+    const invoiceNumber = row.groupInvoiceNumber || row.invoiceNumber || "";
+    if (!invoiceNumber || !row.isZeqsCharge || !row.hasZeqsAmount) continue;
+
+    const group = grouped.get(invoiceNumber) || {
+      amount: 0,
+      poNumbers: [],
+      sourceRows: [],
+    };
+    group.amount = roundCurrency(group.amount + row.zeqsAmount);
+    if (row.poNumber) group.poNumbers.push(row.poNumber);
+    group.sourceRows.push(row.rowIndex);
+    grouped.set(invoiceNumber, group);
+  }
+
+  const adjustmentsByInvoice = {};
+  for (const [invoiceNumber, group] of grouped.entries()) {
+    adjustmentsByInvoice[invoiceNumber] = {
+      chargeCode: ZEQS_CHARGE_CODE,
+      hasZeqsAmount: true,
+      poNumbers: Array.from(new Set(group.poNumbers)),
+      sourceRows: group.sourceRows,
+      upchargeAmount: group.amount,
+      upchargeInputValue: formatCurrencyAmount(group.amount),
+      zeqsAmount: group.amount,
+      zeqsInputValue: formatCurrencyAmount(group.amount),
+    };
+  }
+  return adjustmentsByInvoice;
+}
+
+function collectFactories(rows) {
+  const factories = new Set();
+  for (const row of rows) {
+    if (row.factory) factories.add(row.factory);
+  }
+  return Array.from(factories);
+}
+
+function detectFactory(row) {
+  for (const [key, value] of Object.entries(row)) {
+    const header = String(key || "").toLowerCase();
+    const cell = String(value || "").trim().toUpperCase();
+    if (/(factory|vendor|supplier|fty)/i.test(header)) {
+      const matched = SUPPORTED_FACTORIES.find((factory) => cell.includes(factory));
+      if (matched) return matched;
+    }
+  }
+
+  const allText = Object.values(row).join(" ").toUpperCase();
+  return SUPPORTED_FACTORIES.find((factory) => allText.includes(factory)) || "";
+}
+
+function buildWorkbookWarnings(factories, invoiceNumbers, rows) {
+  const warnings = [];
+  const unsupportedChargeCodes = Array.from(new Set(
+    rows
+      .map((row) => row.effectiveChargeCode)
+      .filter((code) => code && code !== ZEQS_CHARGE_CODE),
+  ));
+  if (unsupportedChargeCodes.length > 0) {
+    warnings.push(`Ignored non-ZEQS charge code rows: ${unsupportedChargeCodes.join(", ")}.`);
+  }
+  if (invoiceNumbers.length > 1) {
+    warnings.push(`Detected ${invoiceNumbers.length} invoices. They will be processed in Excel order.`);
+  }
+  return warnings;
 }
 
 function normalizeCellValue(value) {
@@ -203,46 +391,26 @@ function normalizeCellValue(value) {
   return String(value).trim();
 }
 
-function findInvoiceCell(row) {
-  for (const [key, value] of Object.entries(row)) {
-    if (INVOICE_HEADER_ALIASES.has(normalizeHeaderLabel(key))) {
-      return { found: true, header: key, value };
-    }
-  }
-  return { found: false, header: "", value: "" };
-}
-
-function findPoddCell(row) {
-  for (const [key, value] of Object.entries(row)) {
-    if (PODD_HEADER_ALIASES.has(normalizeHeaderLabel(key))) {
-      return { found: true, header: key, value };
-    }
-  }
-  return { found: false, header: "", value: "" };
-}
-
-function findAmountCell(row, aliases) {
-  for (const [key, value] of Object.entries(row)) {
-    if (aliases.has(normalizeHeaderLabel(key))) {
-      return { found: true, header: key, value };
-    }
-  }
-  return { found: false, header: "", value: "" };
-}
-
 function normalizeHeaderLabel(value) {
   return String(value || "")
     .trim()
-    .replace(/[＃#]/g, "#")
-    .replace(/[\s_\-./:：]+/g, "")
+    .replace(/[#＃]/g, "#")
+    .replace(/\$/g, "usd")
+    .replace(/[^A-Za-z0-9#]+/g, "")
     .toLowerCase();
 }
 
 function normalizeInvoiceNumber(value) {
   const text = normalizeCellValue(value);
-  if (!text || isInvoiceTotalMarker(text)) return "";
+  if (!text || /^(total|subtotal)$/i.test(text)) return "";
   if (!/\d/.test(text)) return "";
   return text;
+}
+
+function normalizeChargeCode(value) {
+  return normalizeCellValue(value)
+    .replace(/[^A-Za-z0-9]+/g, "")
+    .toUpperCase();
 }
 
 function normalizeAmount(value) {
@@ -251,7 +419,7 @@ function normalizeAmount(value) {
 
   const isParenthesizedNegative = /^\(.*\)$/.test(text);
   const numericText = text
-    .replace(/[,\s$￥¥€£]/g, "")
+    .replace(/[,\s$￥¥]/g, "")
     .replace(/[()]/g, "")
     .replace(/[^0-9.-]/g, "");
   if (!numericText || numericText === "-" || numericText === ".") return 0;
@@ -267,10 +435,6 @@ function roundCurrency(value) {
 
 function formatCurrencyAmount(value) {
   return roundCurrency(value).toFixed(2);
-}
-
-function isInvoiceTotalMarker(value) {
-  return /^(total|subtotal|合计|总计|小计)$/i.test(normalizeCellValue(value));
 }
 
 function normalizePoddDate(value) {
@@ -290,11 +454,6 @@ function normalizePoddDate(value) {
   const yearFirst = text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
   if (yearFirst) {
     return normalizeDateParts(yearFirst[1], yearFirst[2], yearFirst[3]);
-  }
-
-  const chineseDate = text.match(/^(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日?$/);
-  if (chineseDate) {
-    return normalizeDateParts(chineseDate[1], chineseDate[2], chineseDate[3]);
   }
 
   const dayMonthName = text.match(/^(\d{1,2})[-\s/]?([A-Za-z]{3,9})[-,\s/]+(\d{2,4})$/);
@@ -382,120 +541,4 @@ function parseMonthName(value) {
     december: 12,
   };
   return months[String(value || "").trim().toLowerCase()] || 0;
-}
-
-function collectInvoiceNumbers(rows) {
-  const invoiceNumbers = [];
-  const seen = new Set();
-  for (const row of rows) {
-    if (!row.invoiceNumber || seen.has(row.invoiceNumber)) continue;
-    seen.add(row.invoiceNumber);
-    invoiceNumbers.push(row.invoiceNumber);
-  }
-  return invoiceNumbers;
-}
-
-function collectPoddDatesByInvoice(rows) {
-  const datesByInvoice = {};
-  for (const row of rows) {
-    if (!row.invoiceNumber || !row.poddDate || datesByInvoice[row.invoiceNumber]) continue;
-    datesByInvoice[row.invoiceNumber] = row.poddDate;
-  }
-  return datesByInvoice;
-}
-
-function collectAdjustmentsByInvoice(rows) {
-  const grouped = new Map();
-  for (const row of rows) {
-    const invoiceNumber = row.groupInvoiceNumber || row.invoiceNumber || "";
-    if (!invoiceNumber) continue;
-
-    const group = grouped.get(invoiceNumber) || createAdjustmentGroup();
-    if (row.isInvoiceTotalRow) {
-      group.totalZaddAmount = roundCurrency(group.totalZaddAmount + row.zaddAmount);
-      group.totalOtherCostAmount = roundCurrency(group.totalOtherCostAmount + row.otherCostAmount);
-      group.totalZdocAmount = roundCurrency(group.totalZdocAmount + row.zdocAmount);
-      group.hasTotalZaddAmount = group.hasTotalZaddAmount || row.zaddAmount !== 0;
-      group.hasTotalOtherCostAmount = group.hasTotalOtherCostAmount || row.otherCostAmount !== 0;
-      group.hasTotalZdocAmount = group.hasTotalZdocAmount || row.hasZdocAmount;
-    } else {
-      group.detailZaddAmount = roundCurrency(group.detailZaddAmount + row.zaddAmount);
-      group.detailOtherCostAmount = roundCurrency(group.detailOtherCostAmount + row.otherCostAmount);
-      group.detailZdocAmount = roundCurrency(group.detailZdocAmount + row.zdocAmount);
-      group.hasDetailZaddAmount = group.hasDetailZaddAmount || row.zaddAmount !== 0;
-      group.hasDetailOtherCostAmount = group.hasDetailOtherCostAmount || row.otherCostAmount !== 0;
-      group.hasDetailZdocAmount = group.hasDetailZdocAmount || row.hasZdocAmount;
-    }
-    grouped.set(invoiceNumber, group);
-  }
-
-  const adjustmentsByInvoice = {};
-  for (const [invoiceNumber, group] of grouped.entries()) {
-    const zaddAmount = group.hasTotalZaddAmount ? group.totalZaddAmount : group.detailZaddAmount;
-    const otherCostAmount = group.hasTotalOtherCostAmount ? group.totalOtherCostAmount : group.detailOtherCostAmount;
-    const zdocAmount = group.hasTotalZdocAmount ? group.totalZdocAmount : group.detailZdocAmount;
-    const hasZdocAmount = group.hasTotalZdocAmount || group.hasDetailZdocAmount;
-    const zaddPlusOtherCostAmount = roundCurrency(zaddAmount + otherCostAmount);
-
-    adjustmentsByInvoice[invoiceNumber] = {
-      zaddAmount,
-      otherCostAmount,
-      zaddPlusOtherCostAmount,
-      zaddPlusOtherCostInputValue: formatCurrencyAmount(zaddPlusOtherCostAmount),
-      zdocAmount,
-      zdocInputValue: hasZdocAmount ? formatCurrencyAmount(zdocAmount) : "",
-      hasZdocAmount,
-    };
-  }
-  return adjustmentsByInvoice;
-}
-
-function createAdjustmentGroup() {
-  return {
-    detailZaddAmount: 0,
-    detailOtherCostAmount: 0,
-    detailZdocAmount: 0,
-    totalZaddAmount: 0,
-    totalOtherCostAmount: 0,
-    totalZdocAmount: 0,
-    hasDetailZaddAmount: false,
-    hasDetailOtherCostAmount: false,
-    hasDetailZdocAmount: false,
-    hasTotalZaddAmount: false,
-    hasTotalOtherCostAmount: false,
-    hasTotalZdocAmount: false,
-  };
-}
-
-function collectFactories(rows) {
-  const factories = new Set();
-  for (const row of rows) {
-    if (row.factory) factories.add(row.factory);
-  }
-  return Array.from(factories);
-}
-
-function detectFactory(row) {
-  for (const [key, value] of Object.entries(row)) {
-    const header = String(key || "").toLowerCase();
-    const cell = String(value || "").trim().toUpperCase();
-    if (/(factory|工厂|厂别|厂区|vendor|supplier|fty)/i.test(header)) {
-      const matched = SUPPORTED_FACTORIES.find((factory) => cell.includes(factory));
-      if (matched) return matched;
-    }
-  }
-
-  const allText = Object.values(row).join(" ").toUpperCase();
-  return SUPPORTED_FACTORIES.find((factory) => allText.includes(factory)) || "";
-}
-
-function buildWorkbookWarnings(factories, invoiceNumbers) {
-  const warnings = [];
-  if (factories.length === 0) {
-    warnings.push("未在 Excel 中识别到 SLT、VENT 或 XO 工厂字段；当前阶段会先按 Invoice# 进入 TC INV 详情页。");
-  }
-  if (invoiceNumbers.length > 1) {
-    warnings.push(`已识别 ${invoiceNumbers.length} 张发票，将按 Invoice# 顺序批量处理；查不到的发票会记录后继续下一张。`);
-  }
-  return warnings;
 }
