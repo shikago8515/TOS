@@ -40,7 +40,8 @@ jobs:
           else
             auth_repo_url="$repo_url"
           fi
-          git clone --no-checkout --depth 1 "$auth_repo_url" repo_workspace
+          # 保留 main 历史，避免 push 后 main 又前进时浅克隆无法 checkout 事件 SHA。
+          git clone --no-checkout "$auth_repo_url" repo_workspace
           cd repo_workspace
           git remote set-url origin "$repo_url"
           if [ -n "$GITEA_REF" ]; then
