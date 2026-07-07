@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from datetime import date
+from decimal import Decimal
 from typing import Any, Dict, List, Tuple
 
 from openpyxl import Workbook, load_workbook
@@ -302,6 +303,124 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
             summary = self.module.read_invoice_summary(invoice_path, records)
 
         self.assertEqual(summary.documentation_charge, 100.0)
+
+    def test_parse_invoice_amount_words_text_handles_usd_cents_after_cents_label(self):
+        amount = self.module._parse_amount_words_text(
+            "TOTALLY SAY USD ONE HUNDRED THIRTEEN THOUSAND NINE HUNDRED "
+            "SIXTY-NINE AND CENTS SIXTY ONLY"
+        )
+
+        self.assertEqual(amount, Decimal("113969.60"))
+
+    def test_read_invoice_summary_finds_amount_words_in_another_sheet(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            invoice_path = os.path.join(temp_dir, "invoice.xlsx")
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Invoice"
+            ws["I4"] = "Inv#:"
+            ws["J4"] = "10-06-26-0712"
+            ws.append([None, None, "Total", None, None, 7498, None, None, "USD", 113969.60])
+            ws.append([None, None, "Final Total", None, None, None, None, None, "USD", 113969.60])
+            words_ws = wb.create_sheet("Amount Words")
+            words_ws["B3"] = (
+                "TOTALLY SAY USD ONE HUNDRED THIRTEEN THOUSAND NINE HUNDRED "
+                "SIXTY-NINE AND CENTS SIXTY ONLY"
+            )
+            wb.save(invoice_path)
+
+            summary = self.module.read_invoice_summary(invoice_path, [])
+
+        self.assertEqual(summary.invoice_number, "10-06-26-0712")
+        self.assertEqual(summary.final_total_amount, 113969.60)
+        self.assertEqual(summary.amount_words_sheet, "Amount Words")
+        self.assertEqual(
+            summary.amount_words_text,
+            "TOTALLY SAY USD ONE HUNDRED THIRTEEN THOUSAND NINE HUNDRED SIXTY-NINE AND CENTS SIXTY ONLY",
+        )
+        self.assertEqual(summary.amount_words_amount, Decimal("113969.60"))
+
+    def test_process_invoices_writes_amount_words_mismatch_sheet(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            invoice_path = os.path.join(temp_dir, "invoice.xlsx")
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Invoice"
+            ws["I4"] = "Inv#:"
+            ws["J4"] = "10-06-26-0712"
+            ws.append(["PO NO.", "STOCK NO.", "COLOR", "DESCRIPTIONS", None, "QTY(PC)", "UNIT PRICE(PC)", None, "FOB"])
+            ws.append(["WOMEN'S KNITTED SHORT"])
+            ws.append(["PO:", "0902694555", None, None, None, 200, "USD", 6.6, "USD", 1320.0])
+            ws.append(["ARTICLE NO.:", "LG4321"])
+            ws.append(["STYLE NO.:", "RC2620OW008"])
+            ws.append([None, None, "Total", None, None, 200, None, None, "USD", 113969.60])
+            ws.append([None, None, "Final Total", None, None, None, None, None, "USD", 113969.60])
+            words_ws = wb.create_sheet("Amount Words")
+            words_ws["A1"] = (
+                "TOTALLY SAY USD ONE HUNDRED THIRTEEN THOUSAND NINE HUNDRED "
+                "SIXTY-EIGHT AND CENTS SIXTY ONLY"
+            )
+            wb.save(invoice_path)
+
+            ref_path = os.path.join(temp_dir, "reference.xlsx")
+            pd.DataFrame(
+                [{"Price": 6.6, "Style NO.": "RC2620OW008", "Article NO.": "LG4321"}]
+            ).to_excel(ref_path, index=False)
+
+            result = self.module.process_invoices([invoice_path], ref_path, temp_dir)
+            workbook = load_workbook(result["output_path"])
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["amount_words_count"], 1)
+        self.assertEqual(result["amount_words_matched_count"], 0)
+        self.assertEqual(result["amount_words_issue_count"], 1)
+        self.assertIn("大写金额核对", workbook.sheetnames)
+        records = self._sheet_records(workbook["大写金额核对"])
+        self.assertEqual(len(records), 1)
+        row = records[0]["values"]
+        self.assertEqual(row["来源发票"], "invoice.xlsx")
+        self.assertEqual(row["Invoice Number"], "10-06-26-0712")
+        self.assertEqual(row["文本所在Sheet"], "Amount Words")
+        self.assertEqual(row["核对口径"], "Final Total")
+        self.assertEqual(row["数字金额"], 113969.60)
+        self.assertEqual(row["解析金额"], 113968.60)
+        self.assertEqual(row["差额"], -1.0)
+        self.assertEqual(row["状态"], "不一致")
+        self.assertEqual(records[0]["cells"]["状态"].fill.fgColor.rgb, "FFFFDDDD")
+
+    def test_process_invoices_writes_missing_amount_words_row(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            invoice_path = os.path.join(temp_dir, "invoice.xlsx")
+            wb = Workbook()
+            ws = wb.active
+            ws["I4"] = "Inv#:"
+            ws["J4"] = "10-06-26-0712"
+            ws.append(["PO NO.", "STOCK NO.", "COLOR", "DESCRIPTIONS", None, "QTY(PC)", "UNIT PRICE(PC)", None, "FOB"])
+            ws.append(["WOMEN'S KNITTED SHORT"])
+            ws.append(["PO:", "0902694555", None, None, None, 200, "USD", 6.6, "USD", 1320.0])
+            ws.append(["ARTICLE NO.:", "LG4321"])
+            ws.append(["STYLE NO.:", "RC2620OW008"])
+            ws.append([None, None, "Total", None, None, 200, None, None, "USD", 1320.0])
+            wb.save(invoice_path)
+
+            ref_path = os.path.join(temp_dir, "reference.xlsx")
+            pd.DataFrame(
+                [{"Price": 6.6, "Style NO.": "RC2620OW008", "Article NO.": "LG4321"}]
+            ).to_excel(ref_path, index=False)
+
+            result = self.module.process_invoices([invoice_path], ref_path, temp_dir)
+            workbook = load_workbook(result["output_path"])
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["amount_words_count"], 1)
+        self.assertEqual(result["amount_words_matched_count"], 0)
+        self.assertEqual(result["amount_words_issue_count"], 1)
+        records = self._sheet_records(workbook["大写金额核对"])
+        self.assertEqual(records[0]["values"]["核对口径"], "Total")
+        self.assertEqual(records[0]["values"]["数字金额"], 1320.0)
+        self.assertEqual(records[0]["values"]["解析金额"], "-")
+        self.assertEqual(records[0]["values"]["状态"], "缺失")
+        self.assertEqual(records[0]["cells"]["状态"].fill.fgColor.rgb, "FFFFFFCC")
 
     def test_parse_optional_number_treats_parentheses_as_negative(self):
         self.assertEqual(self.module._parse_optional_number("(795.31)"), -795.31)

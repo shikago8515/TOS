@@ -14,6 +14,7 @@ import pandas as pd
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from typing import DefaultDict, List, Dict, Tuple, Any, Optional, Set
 
@@ -35,6 +36,7 @@ STATUS_REFERENCE_MULTI_CANDIDATE = "参考表字段疑似错误-候选多条"
 STATUS_REFERENCE_MISSING = "参考表未找到"
 STATUS_NOT_IN_INVOICE = "未在发票中找到"
 TC_GROUP_SEPARATOR_FILL_COLOR = "FFD9EAF7"
+MONEY_QUANT = Decimal("0.01")
 TcDisplayRow = Tuple[List[Any], Set[int], Set[int], Optional[str]]
 
 DIAGNOSTIC_COLUMNS = [
@@ -102,6 +104,25 @@ class InvoiceSummaryRecord:
     agreed_discount: Optional[float] = None
     final_total_amount: Optional[float] = None
     currency: str = ""
+    amount_words_sheet: str = ""
+    amount_words_text: str = ""
+    amount_words_amount: Optional[Decimal] = None
+
+
+@dataclass(frozen=True)
+class AmountWordsComparisonRow:
+    """FTY 发票数字金额与英文大写金额的核对结果。"""
+
+    source_file: str
+    invoice_number: str
+    sheet_name: str
+    compare_basis: str
+    numeric_amount: Optional[Decimal]
+    amount_words_text: str
+    parsed_amount: Optional[Decimal]
+    difference: Optional[Decimal]
+    status: str
+    note: str
 
 
 @dataclass(frozen=True)
@@ -294,17 +315,21 @@ class JesscaModule:
         try:
             if invoice_path.lower().endswith('.xls'):
                 wb = xlrd.open_workbook(invoice_path, formatting_info=False)
-                sheet = wb.sheet_by_index(0)
-                adapter = XlrdAdapter(wb, sheet)
+                sheet_adapters = [
+                    (wb.sheet_by_index(sheet_index).name, XlrdAdapter(wb, wb.sheet_by_index(sheet_index)))
+                    for sheet_index in range(wb.nsheets)
+                ]
             else:
                 wb = openpyxl.load_workbook(invoice_path, data_only=True)
-                ws = wb.active
-                adapter = OpenpyxlAdapter(wb, ws)
-
-            try:
-                return self._parse_invoice_summary(adapter, invoice_file)
-            finally:
-                adapter.close()
+                try:
+                    sheet_adapters = [
+                        (worksheet.title, OpenpyxlAdapter(wb, worksheet))
+                        for worksheet in wb.worksheets
+                    ]
+                    return self._parse_invoice_summary(sheet_adapters, invoice_file)
+                finally:
+                    wb.close()
+            return self._parse_invoice_summary(sheet_adapters, invoice_file)
         except Exception:
             return self._build_invoice_summary_from_records(invoice_file, invoice_records or [])
 
@@ -319,8 +344,12 @@ class JesscaModule:
             for record in self._parse_invoice_records(adapter, "")
         ]
 
-    def _parse_invoice_summary(self, adapter: ExcelRowAdapter, invoice_file: str) -> InvoiceSummaryRecord:
-        invoice_number, _ = self._extract_invoice_header(adapter)
+    def _parse_invoice_summary(
+        self,
+        sheet_adapters: List[Tuple[str, ExcelRowAdapter]],
+        invoice_file: str,
+    ) -> InvoiceSummaryRecord:
+        invoice_number = ""
         total_quantity: Optional[float] = None
         total_amount: Optional[float] = None
         freight_charge: Optional[float] = None
@@ -328,33 +357,48 @@ class JesscaModule:
         agreed_discount: Optional[float] = None
         final_total_amount: Optional[float] = None
         currency = ""
+        amount_words_sheet = ""
+        amount_words_text = ""
+        amount_words_amount: Optional[Decimal] = None
 
-        for row_idx in range(adapter.get_row_count()):
-            row_texts = [
-                self._normalize_invoice_text(adapter.get_cell_value(row_idx, col_idx))
-                for col_idx in range(adapter.get_col_count(row_idx))
-            ]
-            labels = {
-                self._normalize_invoice_summary_label(text)
-                for text in row_texts
-                if text
-            }
-            if "TOTAL" in labels:
-                total_quantity = self._extract_total_quantity(adapter, row_idx)
-                total_amount = self._extract_last_numeric_value(adapter, row_idx)
-                currency = currency or self._extract_currency_from_row(adapter, row_idx)
-            if "FREIGHTCHARGE" in labels:
-                freight_charge = self._extract_last_numeric_value(adapter, row_idx)
-                currency = currency or self._extract_currency_from_row(adapter, row_idx)
-            if self.FTY_DOCUMENTATION_CHARGE_LABELS & labels:
-                documentation_charge = self._extract_last_numeric_value(adapter, row_idx)
-                currency = currency or self._extract_currency_from_row(adapter, row_idx)
-            if "AGREEDDISCOUNT" in labels:
-                agreed_discount = self._extract_last_numeric_value(adapter, row_idx)
-                currency = currency or self._extract_currency_from_row(adapter, row_idx)
-            if "FINALTOTAL" in labels:
-                final_total_amount = self._extract_last_numeric_value(adapter, row_idx)
-                currency = currency or self._extract_currency_from_row(adapter, row_idx)
+        for sheet_name, adapter in sheet_adapters:
+            if not invoice_number:
+                current_invoice_number, _ = self._extract_invoice_header(adapter)
+                invoice_number = current_invoice_number
+
+            for row_idx in range(adapter.get_row_count()):
+                row_texts = [
+                    self._normalize_invoice_text(adapter.get_cell_value(row_idx, col_idx))
+                    for col_idx in range(adapter.get_col_count(row_idx))
+                ]
+                labels = {
+                    self._normalize_invoice_summary_label(text)
+                    for text in row_texts
+                    if text
+                }
+                if "TOTAL" in labels:
+                    total_quantity = self._extract_total_quantity(adapter, row_idx)
+                    total_amount = self._extract_last_numeric_value(adapter, row_idx)
+                    currency = currency or self._extract_currency_from_row(adapter, row_idx)
+                if "FREIGHTCHARGE" in labels:
+                    freight_charge = self._extract_last_numeric_value(adapter, row_idx)
+                    currency = currency or self._extract_currency_from_row(adapter, row_idx)
+                if self.FTY_DOCUMENTATION_CHARGE_LABELS & labels:
+                    documentation_charge = self._extract_last_numeric_value(adapter, row_idx)
+                    currency = currency or self._extract_currency_from_row(adapter, row_idx)
+                if "AGREEDDISCOUNT" in labels:
+                    agreed_discount = self._extract_last_numeric_value(adapter, row_idx)
+                    currency = currency or self._extract_currency_from_row(adapter, row_idx)
+                if "FINALTOTAL" in labels:
+                    final_total_amount = self._extract_last_numeric_value(adapter, row_idx)
+                    currency = currency or self._extract_currency_from_row(adapter, row_idx)
+                if not amount_words_text:
+                    row_text = " ".join(text for text in row_texts if text)
+                    candidate_text = self._extract_amount_words_phrase(row_text)
+                    if candidate_text:
+                        amount_words_sheet = sheet_name
+                        amount_words_text = candidate_text
+                        amount_words_amount = self._parse_amount_words_text(candidate_text)
 
         return InvoiceSummaryRecord(
             source_file=invoice_file,
@@ -366,6 +410,9 @@ class JesscaModule:
             agreed_discount=agreed_discount,
             final_total_amount=final_total_amount,
             currency=currency,
+            amount_words_sheet=amount_words_sheet,
+            amount_words_text=amount_words_text,
+            amount_words_amount=amount_words_amount,
         )
 
     def _build_invoice_summary_from_records(
@@ -562,6 +609,145 @@ class JesscaModule:
         if isinstance(value, float) and value.is_integer():
             return str(int(value))
         return str(value).strip()
+
+    @staticmethod
+    def _extract_amount_words_phrase(text: str) -> str:
+        normalized = re.sub(r"\s+", " ", str(text or "").strip())
+        if not normalized:
+            return ""
+        match = re.search(
+            r"\b(?:TOTALLY\s+)?SAY\b.*?\bONLY\b",
+            normalized,
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            return ""
+        return match.group(0).strip()
+
+    def _parse_amount_words_text(self, text: str) -> Optional[Decimal]:
+        tokens = re.findall(r"[A-Z]+", str(text or "").upper().replace("-", " "))
+        if not tokens:
+            return None
+
+        skip_tokens = {
+            "TOTALLY",
+            "SAY",
+            "USD",
+            "US",
+            "DOLLAR",
+            "DOLLARS",
+            "ONLY",
+        }
+        useful_tokens = [token for token in tokens if token not in skip_tokens]
+        if not useful_tokens:
+            return None
+
+        cent_tokens: List[str] = []
+        whole_tokens = useful_tokens
+        cent_index = next(
+            (index for index, token in enumerate(useful_tokens) if token in {"CENT", "CENTS"}),
+            None,
+        )
+        if cent_index is not None:
+            before_cent = useful_tokens[:cent_index]
+            after_cent = useful_tokens[cent_index + 1:]
+            if after_cent:
+                whole_tokens = before_cent
+                cent_tokens = after_cent
+            else:
+                and_index = next(
+                    (
+                        index
+                        for index in range(len(before_cent) - 1, -1, -1)
+                        if before_cent[index] == "AND"
+                    ),
+                    None,
+                )
+                if and_index is not None:
+                    whole_tokens = before_cent[:and_index]
+                    cent_tokens = before_cent[and_index + 1:]
+                else:
+                    whole_tokens = before_cent
+
+        whole_value = self._parse_integer_amount_words(whole_tokens)
+        if whole_value is None:
+            return None
+
+        cents_value = 0
+        if cent_tokens:
+            cents_value = self._parse_integer_amount_words(cent_tokens) or 0
+            if cents_value < 0 or cents_value > 99:
+                return None
+
+        return (Decimal(whole_value) + (Decimal(cents_value) / Decimal("100"))).quantize(MONEY_QUANT)
+
+    @staticmethod
+    def _parse_integer_amount_words(tokens: List[str]) -> Optional[int]:
+        units = {
+            "ZERO": 0,
+            "ONE": 1,
+            "TWO": 2,
+            "THREE": 3,
+            "FOUR": 4,
+            "FIVE": 5,
+            "SIX": 6,
+            "SEVEN": 7,
+            "EIGHT": 8,
+            "NINE": 9,
+            "TEN": 10,
+            "ELEVEN": 11,
+            "TWELVE": 12,
+            "THIRTEEN": 13,
+            "FOURTEEN": 14,
+            "FIFTEEN": 15,
+            "SIXTEEN": 16,
+            "SEVENTEEN": 17,
+            "EIGHTEEN": 18,
+            "NINETEEN": 19,
+        }
+        tens = {
+            "TWENTY": 20,
+            "THIRTY": 30,
+            "FORTY": 40,
+            "FOURTY": 40,
+            "FIFTY": 50,
+            "SIXTY": 60,
+            "SEVENTY": 70,
+            "EIGHTY": 80,
+            "NINETY": 90,
+        }
+        scales = {
+            "THOUSAND": 1000,
+            "MILLION": 1000000,
+        }
+        total = 0
+        current = 0
+        found_number = False
+        for token in tokens:
+            if token == "AND":
+                continue
+            if token in units:
+                current += units[token]
+                found_number = True
+                continue
+            if token in tens:
+                current += tens[token]
+                found_number = True
+                continue
+            if token == "HUNDRED":
+                current = max(current, 1) * 100
+                found_number = True
+                continue
+            if token in scales:
+                total += max(current, 1) * scales[token]
+                current = 0
+                found_number = True
+                continue
+            return None
+
+        if not found_number:
+            return None
+        return total + current
 
     def _find_next_non_empty_cell_text(self, adapter: ExcelRowAdapter, row_idx: int, start_col: int) -> str:
         for col_idx in range(start_col, adapter.get_col_count(row_idx)):
@@ -1754,7 +1940,69 @@ class JesscaModule:
             agreed_discount=self._sum_optional_numbers(summary.agreed_discount for summary in summaries),
             final_total_amount=self._sum_optional_numbers(summary.final_total_amount for summary in summaries),
             currency=next((summary.currency for summary in summaries if summary.currency), ""),
+            amount_words_sheet=next((summary.amount_words_sheet for summary in summaries if summary.amount_words_sheet), ""),
+            amount_words_text=next((summary.amount_words_text for summary in summaries if summary.amount_words_text), ""),
+            amount_words_amount=next((summary.amount_words_amount for summary in summaries if summary.amount_words_amount), None),
         )
+
+    def build_invoice_amount_words_comparison(
+        self,
+        invoice_summaries: List[InvoiceSummaryRecord],
+    ) -> List[AmountWordsComparisonRow]:
+        rows: List[AmountWordsComparisonRow] = []
+        for summary in invoice_summaries:
+            compare_basis = "Final Total" if summary.final_total_amount is not None else "Total"
+            numeric_amount = self._money_decimal(
+                summary.final_total_amount
+                if summary.final_total_amount is not None
+                else summary.total_amount
+            )
+            parsed_amount = self._money_decimal(summary.amount_words_amount)
+            difference = (
+                (parsed_amount - numeric_amount).quantize(MONEY_QUANT)
+                if parsed_amount is not None and numeric_amount is not None
+                else None
+            )
+
+            status = STATUS_MATCHED
+            note = ""
+            if numeric_amount is None:
+                status = "缺失"
+                note = "未识别到 Total / Final Total 数字金额"
+            elif not summary.amount_words_text:
+                status = "缺失"
+                note = "未识别到英文大写金额"
+            elif parsed_amount is None:
+                status = "无法解析"
+                note = "英文大写金额无法解析为数字"
+            elif difference != Decimal("0.00"):
+                status = "不一致"
+                note = "英文大写金额与数字金额不一致"
+
+            rows.append(
+                AmountWordsComparisonRow(
+                    source_file=summary.source_file,
+                    invoice_number=summary.invoice_number,
+                    sheet_name=summary.amount_words_sheet,
+                    compare_basis=compare_basis,
+                    numeric_amount=numeric_amount,
+                    amount_words_text=summary.amount_words_text,
+                    parsed_amount=parsed_amount,
+                    difference=difference,
+                    status=status,
+                    note=note,
+                )
+            )
+        return rows
+
+    @staticmethod
+    def _money_decimal(value: Any) -> Optional[Decimal]:
+        if value is None:
+            return None
+        try:
+            return Decimal(str(value)).quantize(MONEY_QUANT, rounding=ROUND_HALF_UP)
+        except (InvalidOperation, ValueError):
+            return None
 
     def _aggregate_tc_summaries(self, summaries: List[TcInvoiceSummary]) -> TcInvoiceSummary:
         return TcInvoiceSummary(
@@ -2014,6 +2262,7 @@ class JesscaModule:
                                 invoice_file_paths: List[str],
                                  ref_df: pd.DataFrame,
                                  output_path: str,
+                                 amount_words_rows: Optional[List[AmountWordsComparisonRow]] = None,
                                  tc_comparison_rows: Optional[List[TcComparisonRow]] = None,
                                  tc_summary_rows: Optional[List[TcSummaryComparisonRow]] = None,
                                  tc_confirmed_invoice_keys: Optional[Set[Tuple[str, str, str, int]]] = None) -> Dict[str, Any]:
@@ -2075,6 +2324,18 @@ class JesscaModule:
             thin_border,
             packing_confirmed_invoice_keys=tc_confirmed_invoice_keys,
         )
+
+        amount_words_stats = {
+            'amount_words_count': 0,
+            'amount_words_matched_count': 0,
+            'amount_words_issue_count': 0,
+        }
+        if amount_words_rows is not None:
+            ws_amount_words = wb.create_sheet("大写金额核对")
+            amount_words_stats = self._write_amount_words_comparison_sheet(
+                ws_amount_words,
+                amount_words_rows,
+            )
 
         tc_stats = {
             'tc_count': 0,
@@ -2140,8 +2401,126 @@ class JesscaModule:
             'missing_count': summary_stats['missing_count'],
             'data_count': summary_stats['data_count'],
             'diagnostics': summary_stats['diagnostics'],
+            **amount_words_stats,
             **tc_stats,
         }
+
+    def _write_amount_words_comparison_sheet(
+        self,
+        ws: openpyxl.worksheet.worksheet.Worksheet,
+        rows: List[AmountWordsComparisonRow],
+    ) -> Dict[str, int]:
+        thin_border = create_thin_border()
+        header_fill = PatternFill(start_color="FF4472C4", end_color="FF4472C4", fill_type="solid")
+        matched_fill = PatternFill(start_color="FFDDFFDD", end_color="FFDDFFDD", fill_type="solid")
+        issue_fill = PatternFill(start_color="FFFFDDDD", end_color="FFFFDDDD", fill_type="solid")
+        warning_fill = PatternFill(start_color="FFFFFFCC", end_color="FFFFFFCC", fill_type="solid")
+        headers = [
+            "来源发票",
+            "Invoice Number",
+            "文本所在Sheet",
+            "核对口径",
+            "数字金额",
+            "大写金额文本",
+            "解析金额",
+            "差额",
+            "状态",
+            "备注",
+        ]
+
+        ws.row_dimensions[1].height = 28
+        for column_index, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=column_index, value=header)
+            cell.font = Font(bold=True, color="FFFFFFFF", size=11)
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.border = thin_border
+
+        if not rows:
+            cell = ws.cell(row=2, column=1, value="无大写金额核对记录")
+            cell.fill = warning_fill
+            cell.border = thin_border
+            ws.freeze_panes = "A2"
+            self._adjust_column_widths(ws, {1: 24})
+            return {
+                "amount_words_count": 0,
+                "amount_words_matched_count": 0,
+                "amount_words_issue_count": 0,
+            }
+
+        for row_index, row in enumerate(rows, 2):
+            values = [
+                row.source_file,
+                row.invoice_number or "-",
+                row.sheet_name or "-",
+                row.compare_basis,
+                self._decimal_for_excel(row.numeric_amount),
+                row.amount_words_text or "-",
+                self._decimal_for_excel(row.parsed_amount),
+                self._decimal_for_excel(row.difference),
+                row.status,
+                row.note,
+            ]
+            status_fill = (
+                matched_fill
+                if row.status == STATUS_MATCHED
+                else warning_fill
+                if row.status in {"缺失", "无法解析"}
+                else issue_fill
+            )
+            for column_index, value in enumerate(values, 1):
+                cell = ws.cell(row=row_index, column=column_index, value=value)
+                cell.border = thin_border
+                cell.alignment = Alignment(
+                    horizontal="left" if column_index in {1, 2, 3, 6, 10} else "center",
+                    vertical="center",
+                    wrap_text=column_index in {6, 10},
+                )
+                if column_index == 9:
+                    cell.fill = status_fill
+                if column_index in {5, 7, 8} and isinstance(value, (int, float)):
+                    cell.number_format = "#,##0.00"
+
+        self._adjust_column_widths(
+            ws,
+            {
+                1: 24,
+                2: 18,
+                3: 20,
+                4: 14,
+                5: 16,
+                6: 72,
+                7: 16,
+                8: 14,
+                9: 12,
+                10: 32,
+            },
+            {
+                1: 16,
+                2: 14,
+                3: 14,
+                4: 12,
+                5: 12,
+                6: 36,
+                7: 12,
+                8: 10,
+                9: 10,
+                10: 18,
+            },
+        )
+        ws.freeze_panes = "A2"
+        matched_count = sum(1 for row in rows if row.status == STATUS_MATCHED)
+        return {
+            "amount_words_count": len(rows),
+            "amount_words_matched_count": matched_count,
+            "amount_words_issue_count": len(rows) - matched_count,
+        }
+
+    @staticmethod
+    def _decimal_for_excel(value: Optional[Decimal]) -> Any:
+        if value is None:
+            return "-"
+        return float(value)
 
     def _write_tc_invoice_comparison_sheet(
         self,
@@ -3511,6 +3890,9 @@ class JesscaModule:
             'total_items': 0,
             'matches': {'一致': 0, '不一致': 0, '未找到': 0},
             'diagnostics': {},
+            'amount_words_count': 0,
+            'amount_words_matched_count': 0,
+            'amount_words_issue_count': 0,
             'tc_count': 0,
             'tc_matched_count': 0,
             'tc_issue_count': 0,
@@ -3609,6 +3991,20 @@ class JesscaModule:
                 output_dir = os.path.dirname(ref_path)
 
             ensure_dir(output_dir)
+            amount_words_rows = self.build_invoice_amount_words_comparison(invoice_summaries)
+            result['amount_words_count'] = len(amount_words_rows)
+            result['amount_words_matched_count'] = sum(
+                1 for row in amount_words_rows if row.status == STATUS_MATCHED
+            )
+            result['amount_words_issue_count'] = (
+                result['amount_words_count'] - result['amount_words_matched_count']
+            )
+            log(
+                "✅ 大写金额核对完成："
+                f"共 {result['amount_words_count']} 条，"
+                f"异常 {result['amount_words_issue_count']} 条"
+            )
+
             tc_comparison_rows: Optional[List[TcComparisonRow]] = None
             tc_summary_rows: Optional[List[TcSummaryComparisonRow]] = None
             tc_confirmed_invoice_keys: Set[Tuple[str, str, str, int]] = set()
@@ -3684,6 +4080,7 @@ class JesscaModule:
                 invoice_file_paths,
                 ref_df,
                 output_path,
+                amount_words_rows=amount_words_rows,
                 tc_comparison_rows=tc_comparison_rows,
                 tc_summary_rows=tc_summary_rows,
                 tc_confirmed_invoice_keys=tc_confirmed_invoice_keys,
@@ -3692,6 +4089,18 @@ class JesscaModule:
             result['output_path'] = output_path
             result['save_result'] = save_result
             result['diagnostics'] = save_result.get('diagnostics', {})
+            result['amount_words_count'] = save_result.get(
+                'amount_words_count',
+                result['amount_words_count'],
+            )
+            result['amount_words_matched_count'] = save_result.get(
+                'amount_words_matched_count',
+                result['amount_words_matched_count'],
+            )
+            result['amount_words_issue_count'] = save_result.get(
+                'amount_words_issue_count',
+                result['amount_words_issue_count'],
+            )
             result['tc_count'] = save_result.get('tc_count', result['tc_count'])
             result['tc_matched_count'] = save_result.get('tc_matched_count', result['tc_matched_count'])
             result['tc_issue_count'] = save_result.get('tc_issue_count', result['tc_issue_count'])

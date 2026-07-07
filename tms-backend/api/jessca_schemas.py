@@ -20,6 +20,9 @@ class JesscaProcessResponse(BaseModel):
     total_items: int = 0
     matches: dict[str, int] = Field(default_factory=dict)
     diagnostics: dict[str, object] = Field(default_factory=dict)
+    amount_words_count: int = 0
+    amount_words_matched_count: int = 0
+    amount_words_issue_count: int = 0
     tc_count: int = 0
     tc_matched_count: int = 0
     tc_issue_count: int = 0

@@ -19,6 +19,9 @@ export interface JesscaProcessResponse {
   total_items?: number
   matches?: Record<string, number>
   diagnostics?: Record<string, number>
+  amount_words_count?: number
+  amount_words_matched_count?: number
+  amount_words_issue_count?: number
   tc_count?: number
   tc_matched_count?: number
   tc_issue_count?: number
