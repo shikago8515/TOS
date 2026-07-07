@@ -38,6 +38,44 @@ function Assert-Under([string]$Path, [string]$Root) {
   }
 }
 
+function Copy-AutomationAppsPayload([string]$Source, [string]$Destination) {
+  New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+
+  $excludeDirs = @(
+    "uploads",
+    "runs",
+    "run-artifacts",
+    "playwright-user-data"
+  )
+  $excludeFiles = @(
+    "*.log",
+    "*.stdout.json",
+    "*.stderr.json",
+    "*.local.json",
+    "*.secret.local.json",
+    "executor.secret*.json",
+    "temp-*.py",
+    "*.xlsx"
+  )
+  $robocopyArgs = @(
+    $Source,
+    $Destination,
+    "/E",
+    "/NFL",
+    "/NDL",
+    "/NJH",
+    "/NJS",
+    "/NP",
+    "/XD"
+  ) + $excludeDirs + @("/XF") + $excludeFiles
+
+  & robocopy @robocopyArgs | Out-Null
+  if ($LASTEXITCODE -gt 7) {
+    throw "Automation apps payload copy failed with robocopy exit code $LASTEXITCODE"
+  }
+  $global:LASTEXITCODE = 0
+}
+
 Require-Path $NodeExe "Node runtime"
 Require-Path $MakeNsis "NSIS compiler"
 Require-Path $Csc "C# compiler"
@@ -61,7 +99,7 @@ New-Item -ItemType Directory -Path (Join-Path $PayloadRoot "node") -Force | Out-
 Copy-Item -LiteralPath $NodeExe -Destination (Join-Path $PayloadRoot "node\node.exe") -Force
 Copy-Item -LiteralPath (Join-Path $ElectronDir "automation-helper-version.json") -Destination (Join-Path $PayloadRoot "automation-helper-version.json") -Force
 Copy-Item -LiteralPath (Join-Path $ElectronDir "automation-launcher") -Destination (Join-Path $PayloadRoot "automation-launcher") -Recurse -Force
-Copy-Item -LiteralPath (Join-Path $ElectronDir "automation-apps") -Destination (Join-Path $PayloadRoot "automation-apps") -Recurse -Force
+Copy-AutomationAppsPayload (Join-Path $ElectronDir "automation-apps") (Join-Path $PayloadRoot "automation-apps")
 Copy-Item -LiteralPath (Join-Path $ElectronDir "adidas-materials-main.js") -Destination (Join-Path $PayloadRoot "adidas-materials-main.js") -Force
 Copy-Item -LiteralPath (Join-Path $ElectronDir "adidas-materials-preload.js") -Destination (Join-Path $PayloadRoot "adidas-materials-preload.js") -Force
 $InforNexusBridgeTarget = Join-Path $PayloadRoot "automation-apps\shipping-automation-demo\native-hosts\infornexus"
