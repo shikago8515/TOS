@@ -1,13 +1,13 @@
 {
-  "version": "1.0.0-beta.3.21",
-  "date": "2026-07-06",
-  "noticeId": "2026-07-06-v1.0.0-beta.3.21",
+  "version": "1.0.0-beta.3.22",
+  "date": "2026-07-07",
+  "noticeId": "2026-07-07-v1.0.0-beta.3.22",
   "showPopup": false,
   "added": [],
-  "improved": [],
-  "fixed": [
-    "improve Sophia Tina Excel 2013 output"
+  "improved": [
+    "补齐 Eric iPlex 响应契约 schema"
   ],
+  "fixed": [],
   "modules": [],
   "sections": []
 }

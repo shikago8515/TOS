@@ -1,5 +1,15 @@
 [
   {
+    "recordKey": "release-v1.0.0-beta.3.22",
+    "version": "1.0.0-beta.3.22",
+    "releaseDate": "2026-07-07",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.22",
+    "description": "Release v1.0.0-beta.3.22. Channel: beta.3. Commit: 02e16e5607c24506f02d5b8ade9e0ca2576bbe08. Release notes: 补齐 Eric iPlex 响应契约 schema."
+  },
+  {
     "recordKey": "release-v1.0.0-beta.3.21",
     "version": "1.0.0-beta.3.21",
     "releaseDate": "2026-07-06",

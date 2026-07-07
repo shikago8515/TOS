@@ -1,35 +1,35 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.21",
-  "tag": "v1.0.0-beta.3.21",
-  "gitSha": "a384a7e2e377e54d5a89a397bffb5c9fa8302a94",
-  "releaseDate": "2026-07-06",
+  "version": "1.0.0-beta.3.22",
+  "tag": "v1.0.0-beta.3.22",
+  "gitSha": "02e16e5607c24506f02d5b8ade9e0ca2576bbe08",
+  "releaseDate": "2026-07-07",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.21",
-    "date": "2026-07-06",
-    "noticeId": "2026-07-06-v1.0.0-beta.3.21",
+    "version": "1.0.0-beta.3.22",
+    "date": "2026-07-07",
+    "noticeId": "2026-07-07-v1.0.0-beta.3.22",
     "showPopup": false,
     "added": [],
-    "improved": [],
-    "fixed": [
-      "improve Sophia Tina Excel 2013 output"
+    "improved": [
+      "补齐 Eric iPlex 响应契约 schema"
     ],
+    "fixed": [],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.21",
-    "version": "1.0.0-beta.3.21",
-    "releaseDate": "2026-07-06",
+    "noticeId": "v1.0.0-beta.3.22",
+    "version": "1.0.0-beta.3.22",
+    "releaseDate": "2026-07-07",
     "showPopup": false,
     "level": "maintenance",
     "title": "本次更新内容",
     "groups": [
       {
-        "title": "修复",
-        "icon": "check-circle",
+        "title": "优化",
+        "icon": "activity",
         "items": [
-          "improve Sophia Tina Excel 2013 output"
+          "补齐 Eric iPlex 响应契约 schema"
         ]
       }
     ]
