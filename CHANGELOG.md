@@ -1,3 +1,19 @@
+## [1.0.0-beta.3.27](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.26...v1.0.0-beta.3.27) (2026-07-07)
+
+### Features
+
+* Invoice 自动下载新增 `STATUS = new` 下载支持
+
+### Improvements
+
+* Invoice 自动下载请求链路增加 302/502 重试与重定向跟随，降低同批次波动失败
+* 下载成功后页面弹窗展示完成数量、失败项与保存目录
+
+### Bug Fixes
+
+* Invoice 查无结果或 PDF 暂不可用时，直接返回更直观友好的失败提示
+* 修复 Infornexus 自动搜索并添加 `completedCount` 未定义报错
+
 ## [1.0.0-beta.3.26](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.25...v1.0.0-beta.3.26) (2026-07-07)
 
 ### Features

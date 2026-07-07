@@ -9,6 +9,9 @@ import {
 
 const DEFAULT_CONCURRENCY = 6;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60000;
+const DEFAULT_DOWNLOAD_RETRY_COUNT = 3;
+const DEFAULT_DOWNLOAD_RETRY_BASE_DELAY_MS = 1200;
+const MAX_MANUAL_REDIRECTS = 5;
 const DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0";
 const INFORNEXUS_LOGIN_PATH = "/en/trade/login.jsp";
 const INFORNEXUS_HOME_PATH = "/en/trade/Homepage.jsp?nav=Homenav";
@@ -16,6 +19,8 @@ const INVOICES_VIEW_PATH = "/en/trade/InvoicesView.jsp";
 const IN_PROGRESS_INVOICES_PATH = "/en/trade/InProgressInvoices";
 const PAGE_RESOLVER_PATH = "/en/trade/PageResolver";
 const PDF_TOPIC_NAME = "ADIDAS_FINANCIAL_INVOICE_PDF";
+const RETRYABLE_HTTP_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const REDIRECT_HTTP_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
 const execFileAsync = promisify(execFile);
 
 export function isPoAutoDownloadRoute(requestPath) {
@@ -824,7 +829,25 @@ function resolveRequestOptions(body, config) {
   return {
     saveDiagnostics: Boolean(body?.saveDiagnostics ?? configured.saveDiagnostics ?? false),
     timeoutMs: Number(body?.downloadTimeoutMs || configured.downloadTimeoutMs || DEFAULT_REQUEST_TIMEOUT_MS),
+    retryCount: resolveBoundedInteger(
+      body?.downloadRetryCount ?? body?.retryCount ?? configured.downloadRetryCount ?? configured.retryCount,
+      DEFAULT_DOWNLOAD_RETRY_COUNT,
+      0,
+      5,
+    ),
+    retryBaseDelayMs: resolveBoundedInteger(
+      body?.downloadRetryBaseDelayMs ?? configured.downloadRetryBaseDelayMs,
+      DEFAULT_DOWNLOAD_RETRY_BASE_DELAY_MS,
+      250,
+      10000,
+    ),
   };
+}
+
+function resolveBoundedInteger(value, fallback, minimum, maximum) {
+  const numeric = Number(value ?? fallback);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(Math.max(Math.floor(numeric), minimum), maximum);
 }
 
 function shouldSaveDiagnostics(requestOptions) {
@@ -1149,6 +1172,68 @@ async function fetchWithAuthSession(url, options = {}) {
   });
 }
 
+async function fetchWithAuthSessionFollowingRedirects(url, options = {}, maxRedirects = MAX_MANUAL_REDIRECTS) {
+  let currentUrl = String(url || "");
+  let method = options.method || "GET";
+  let body = options.body;
+  let headers = {
+    ...(options.headers || {}),
+  };
+  let redirectCount = 0;
+
+  while (redirectCount <= maxRedirects) {
+    const response = await fetchWithAuthSession(currentUrl, {
+      ...options,
+      method,
+      headers,
+      body,
+      redirect: "manual",
+    });
+    if (!REDIRECT_HTTP_STATUS_CODES.has(response.status)) {
+      return {
+        response,
+        finalUrl: currentUrl,
+        redirectCount,
+      };
+    }
+
+    const location = response.headers.get("location") || "";
+    if (!location || redirectCount >= maxRedirects) {
+      return {
+        response,
+        finalUrl: currentUrl,
+        redirectCount,
+      };
+    }
+
+    await response.arrayBuffer().catch(() => null);
+    const nextUrl = new URL(location, currentUrl).toString();
+    headers = {
+      ...headers,
+      Referer: currentUrl,
+    };
+    if (response.status === 303 || ((response.status === 301 || response.status === 302) && !["GET", "HEAD"].includes(String(method).toUpperCase()))) {
+      method = "GET";
+      body = undefined;
+      delete headers["Content-Type"];
+    }
+    currentUrl = nextUrl;
+    redirectCount += 1;
+  }
+
+  return {
+    response: await fetchWithAuthSession(currentUrl, {
+      ...options,
+      method,
+      headers,
+      body,
+      redirect: "manual",
+    }),
+    finalUrl: currentUrl,
+    redirectCount,
+  };
+}
+
 export function createCookieJarFromBrowserCookies(browserCookies = []) {
   const jar = createCookieJar();
   for (const cookie of Array.isArray(browserCookies) ? browserCookies : []) {
@@ -1333,6 +1418,39 @@ async function runDownloadPool(rows, concurrency, worker) {
 }
 
 async function downloadInvoicePdfFromRequestFlow(options) {
+  const invoiceNumber = resolveInvoiceFilterValue(options?.row);
+  const retryCount = resolveBoundedInteger(
+    options?.requestOptions?.retryCount,
+    DEFAULT_DOWNLOAD_RETRY_COUNT,
+    0,
+    5,
+  );
+
+  let lastError = null;
+  for (let attemptIndex = 0; attemptIndex <= retryCount; attemptIndex += 1) {
+    try {
+      const result = await downloadInvoicePdfFromRequestFlowAttempt(options);
+      if (attemptIndex > 0) {
+        result.retryAttemptCount = attemptIndex;
+        result.retryRecovered = true;
+      }
+      return result;
+    } catch (error) {
+      lastError = error;
+      if (attemptIndex >= retryCount || !isRetryableInvoiceDownloadError(error)) {
+        if (attemptIndex > 0 && isRetryableInvoiceDownloadError(error)) {
+          throw new Error(buildRetryExhaustedMessage(invoiceNumber, error, attemptIndex));
+        }
+        throw error;
+      }
+      await delay(resolveRetryDelayMs(options?.requestOptions, attemptIndex));
+    }
+  }
+
+  throw lastError || new Error(`Invoice ${invoiceNumber || "(blank)"} download failed.`);
+}
+
+async function downloadInvoicePdfFromRequestFlowAttempt(options) {
   const {
     authSession,
     downloadDirectory,
@@ -1389,6 +1507,46 @@ async function downloadInvoicePdfFromRequestFlow(options) {
   };
 }
 
+function isRetryableInvoiceDownloadError(error) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  if (!message) return false;
+  const statusMatch = message.match(/\bHTTP\s+(\d{3})\b/i);
+  if (statusMatch && RETRYABLE_HTTP_STATUS_CODES.has(Number(statusMatch[1]))) {
+    return true;
+  }
+  if (/\bHTTP\s+30[12378]\b/i.test(message)) {
+    return true;
+  }
+  return /(fetch failed|network|socket|ECONNRESET|ETIMEDOUT|EAI_AGAIN|AbortError|aborted|timed out|timeout)/i.test(message);
+}
+
+function resolveRetryDelayMs(requestOptions, attemptIndex) {
+  const baseDelayMs = resolveBoundedInteger(
+    requestOptions?.retryBaseDelayMs,
+    DEFAULT_DOWNLOAD_RETRY_BASE_DELAY_MS,
+    250,
+    10000,
+  );
+  return Math.min(baseDelayMs * (2 ** attemptIndex), 10000);
+}
+
+function buildRetryExhaustedMessage(invoiceNumber, error, retryCount) {
+  const label = formatInvoiceNumberForMessage(invoiceNumber);
+  const message = error instanceof Error ? error.message : String(error || "");
+  if (/\bPageResolver HTTP 502\b/i.test(message)) {
+    return `Invoice ${label}: Infor Nexus 页面服务临时返回 502，系统已自动重试 ${retryCount} 次仍失败。请稍后只重试失败清单；如果同一个 Invoice 连续失败，再手工打开确认。`;
+  }
+  if (/\bInvoice PDF HTTP 302\b/i.test(message)) {
+    return `Invoice ${label}: Infor Nexus 将 PDF 下载请求重定向，系统已自动重试 ${retryCount} 次仍失败。通常是登录会话、权限或 PDF 生成状态临时异常，请稍后只重试失败清单。`;
+  }
+  const compactMessage = stripHtmlForMessage(message).slice(0, 180);
+  return `Invoice ${label}: 下载请求临时失败，系统已自动重试 ${retryCount} 次仍失败。${compactMessage}`;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export function buildInvoiceNotFoundMessage(invoiceNumber) {
   const label = formatInvoiceNumberForMessage(invoiceNumber);
   return `Invoice ${label}: Infor Nexus 系统没有找到这个 Invoice 的可打开结果。请确认 Excel 中的 INVOICE NUMBER 是否正确、该发票是否已在 Infor Nexus 创建，或当前账号是否有权限查看。`;
@@ -1420,7 +1578,7 @@ async function fetchInvoicePage(options) {
   const referer = new URL(IN_PROGRESS_INVOICES_PATH, loginOrigin).toString();
 
   try {
-    const response = await fetchWithAuthSession(pageResolverUrl, {
+    const pageResponse = await fetchWithAuthSessionFollowingRedirects(pageResolverUrl, {
       authSession,
       method: "GET",
       headers: {
@@ -1436,6 +1594,7 @@ async function fetchInvoicePage(options) {
       redirect: "manual",
       signal: controller.signal,
     });
+    const response = pageResponse.response;
     const html = await response.text().catch(() => "");
     if (!response.ok) {
       throw new Error(`PageResolver HTTP ${response.status} ${response.statusText}${html ? `: ${html.slice(0, 240)}` : ""}`);
@@ -1450,6 +1609,8 @@ async function fetchInvoicePage(options) {
       filePath: "",
       status: response.status,
       contentType: response.headers.get("content-type") || "",
+      finalUrl: pageResponse.finalUrl || pageResolverUrl,
+      redirectCount: pageResponse.redirectCount || 0,
     };
 
     if (shouldSaveDiagnostics(requestOptions)) {
@@ -1485,7 +1646,7 @@ async function downloadInvoicePdfFile(options) {
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetchWithAuthSession(pdfUrl, {
+    const pdfResponse = await fetchWithAuthSessionFollowingRedirects(pdfUrl, {
       authSession,
       method: "GET",
       headers: {
@@ -1501,6 +1662,7 @@ async function downloadInvoicePdfFile(options) {
       redirect: "manual",
       signal: controller.signal,
     });
+    const response = pdfResponse.response;
     const buffer = Buffer.from(await response.arrayBuffer());
     if (!response.ok) {
       const errorText = buffer.toString("utf8", 0, Math.min(buffer.length, 240));
@@ -1525,6 +1687,8 @@ async function downloadInvoicePdfFile(options) {
       contentType,
       size: buffer.length,
       downloadedAt: new Date().toISOString(),
+      finalPdfUrl: pdfResponse.finalUrl || pdfUrl,
+      pdfRedirectCount: pdfResponse.redirectCount || 0,
     };
   } finally {
     clearTimeout(timeout);

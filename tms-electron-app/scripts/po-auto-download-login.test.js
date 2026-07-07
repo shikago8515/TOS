@@ -1,5 +1,7 @@
 const assert = require('assert')
+const fs = require('fs/promises')
 const http = require('http')
+const os = require('os')
 const path = require('path')
 const test = require('node:test')
 const { pathToFileURL } = require('url')
@@ -192,6 +194,108 @@ test('invoice request-flow errors are user-facing messages', async () => {
   assert.doesNotMatch(pdfUnavailable, /dyncon URL was not found/i)
 })
 
+test('invoice request flow retries transient PageResolver 502 failures', async () => {
+  const {
+    createPoAutoDownloadAutomation,
+  } = await import(poAutoDownloadModuleUrl)
+
+  let pageResolverHits = 0
+  await withHttpServer(async (req, res) => {
+    const pathname = new URL(req.url || '/', 'http://127.0.0.1').pathname
+    if (handleRequestLoginFixture(req, res, pathname)) return
+    if (req.method === 'POST' && pathname === '/en/trade/InProgressInvoices') {
+      await readRequestBody(req)
+      res.writeHead(200, { 'Content-Type': 'text/html' })
+      res.end(`
+        <html><body>
+          <a href="/en/trade/PageResolver?pageResolverType=InvoicePageResolver&destination=CommercialInvoice&originType=Shipment&originKey=1">INV-RETRY-1</a>
+        </body></html>
+      `)
+      return
+    }
+    if (req.method === 'GET' && pathname === '/en/trade/PageResolver') {
+      pageResolverHits += 1
+      if (pageResolverHits === 1) {
+        res.writeHead(502, { 'Content-Type': 'text/html' })
+        res.end('<!DOCTYPE html><html><body>Bad Gateway</body></html>')
+        return
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html' })
+      res.end('<iframe src="/dyncon/?renderType=PDF&type=CommercialInvoice&topicName=ADIDAS_FINANCIAL_INVOICE_PDF"></iframe>')
+      return
+    }
+    if (req.method === 'GET' && pathname === '/dyncon/') {
+      res.writeHead(200, { 'Content-Type': 'application/pdf' })
+      res.end(Buffer.from('%PDF-1.4\n% test pdf\n'))
+      return
+    }
+    res.writeHead(404)
+    res.end('not found')
+  }, async (baseUrl) => {
+    const result = await runSingleInvoiceAutomation({
+      baseUrl,
+      invoiceNumber: 'INV-RETRY-1',
+      body: {
+        downloadRetryCount: 1,
+        downloadRetryBaseDelayMs: 1,
+      },
+    })
+
+    assert.equal(result.ok, true)
+    assert.equal(result.downloadedPoCount, 1)
+    assert.equal(pageResolverHits, 2)
+    assert.equal(result.poResults[0].retryRecovered, true)
+    assert.equal(result.poResults[0].retryAttemptCount, 1)
+  })
+})
+
+test('invoice request flow follows PDF HTTP 302 redirects', async () => {
+  const {
+    createPoAutoDownloadAutomation,
+  } = await import(poAutoDownloadModuleUrl)
+
+  await withHttpServer(async (req, res) => {
+    const pathname = new URL(req.url || '/', 'http://127.0.0.1').pathname
+    if (handleRequestLoginFixture(req, res, pathname)) return
+    if (req.method === 'POST' && pathname === '/en/trade/InProgressInvoices') {
+      await readRequestBody(req)
+      res.writeHead(200, { 'Content-Type': 'text/html' })
+      res.end(`
+        <html><body>
+          <a href="/en/trade/PageResolver?pageResolverType=InvoicePageResolver&destination=CommercialInvoice&originType=Shipment&originKey=1">INV-REDIRECT-1</a>
+        </body></html>
+      `)
+      return
+    }
+    if (req.method === 'GET' && pathname === '/en/trade/PageResolver') {
+      res.writeHead(200, { 'Content-Type': 'text/html' })
+      res.end('<iframe src="/dyncon/?renderType=PDF&type=CommercialInvoice&topicName=ADIDAS_FINANCIAL_INVOICE_PDF"></iframe>')
+      return
+    }
+    if (req.method === 'GET' && pathname === '/dyncon/') {
+      res.writeHead(302, { Location: '/pdf/INV-REDIRECT-1.pdf' })
+      res.end('')
+      return
+    }
+    if (req.method === 'GET' && pathname === '/pdf/INV-REDIRECT-1.pdf') {
+      res.writeHead(200, { 'Content-Type': 'application/pdf' })
+      res.end(Buffer.from('%PDF-1.4\n% redirected pdf\n'))
+      return
+    }
+    res.writeHead(404)
+    res.end('not found')
+  }, async (baseUrl) => {
+    const result = await runSingleInvoiceAutomation({
+      baseUrl,
+      invoiceNumber: 'INV-REDIRECT-1',
+    })
+
+    assert.equal(result.ok, true)
+    assert.equal(result.downloadedPoCount, 1)
+    assert.equal(result.poResults[0].pdfRedirectCount, 1)
+  })
+})
+
 async function withHttpServer(handler, callback) {
   const server = http.createServer((req, res) => {
     Promise.resolve(handler(req, res)).catch((error) => {
@@ -218,6 +322,110 @@ async function withHttpServer(handler, callback) {
       })
     })
   }
+}
+
+function handleRequestLoginFixture(req, res, pathname) {
+  if (req.method === 'GET' && pathname === '/') {
+    res.writeHead(200, { 'Content-Type': 'text/html' })
+    res.end(`
+      <form action="/en/trade/login.jsp" method="POST">
+        <input name="userid" value="">
+        <input name="uPassword" value="">
+        <input name="LCSRF_VAL" value="csrf-value">
+      </form>
+    `)
+    return true
+  }
+  if (req.method === 'POST' && pathname === '/en/trade/login.jsp') {
+    req.resume()
+    res.writeHead(200, {
+      'Content-Type': 'text/html',
+      'Set-Cookie': [
+        'userToken=user-token-value; Path=/',
+        'JSESSIONID=session-cookie-value; Path=/',
+        'sToken=s-token-value; Path=/',
+      ],
+    })
+    res.end('<html><title>Infor Nexus Home</title><body>APPLICATIONS</body></html>')
+    return true
+  }
+  if (req.method === 'GET' && pathname === '/en/trade/Homepage.jsp') {
+    res.writeHead(200, { 'Content-Type': 'text/html' })
+    res.end('<html><body>Home</body></html>')
+    return true
+  }
+  if (req.method === 'GET' && pathname === '/en/trade/InvoicesView.jsp') {
+    res.writeHead(200, { 'Content-Type': 'text/html' })
+    res.end('<html><body>InProgressInvoicePageManager</body></html>')
+    return true
+  }
+  return false
+}
+
+async function runSingleInvoiceAutomation(options) {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'po-auto-download-test-'))
+  const invoiceNumber = options.invoiceNumber || 'INV-1'
+  const body = {
+    fileName: 'invoice-test.xlsx',
+    fileBase64: Buffer.from('fake workbook').toString('base64'),
+    downloadDirectory: tmpDir,
+    headless: true,
+    requestConcurrency: 1,
+    ...options.body,
+  }
+  const xlsx = {
+    read: () => ({
+      SheetNames: ['Sheet1'],
+      Sheets: { Sheet1: {} },
+    }),
+    utils: {
+      sheet_to_json: () => [
+        {
+          'INVOICE NUMBER': invoiceNumber,
+          STATUS: 'active',
+        },
+      ],
+    },
+  }
+  const activeRuns = new Map()
+  const {
+    createPoAutoDownloadAutomation,
+  } = await import(poAutoDownloadModuleUrl)
+  const automation = createPoAutoDownloadAutomation({
+    artifactsDir: '',
+    browserEngines: {},
+    buildVisibleBrowserLaunchOptions: () => ({}),
+    config: {
+      browser: 'chromium',
+      headless: true,
+      loginUrl: options.baseUrl,
+    },
+    ensureLoggedIn: async () => ({}),
+    log: () => {},
+    normalizeUploadFileName: (payload) => payload.fileName || 'invoice-test.xlsx',
+    recordCompletedRun: () => {},
+    registerActiveRun: (run) => {
+      const activeRun = {
+        ...run,
+        runId: 'test-run',
+        startedAt: new Date().toISOString(),
+      }
+      activeRuns.set(activeRun.runId, activeRun)
+      return activeRun
+    },
+    resolveCredentials: () => ({
+      username: 'test-user',
+      password: 'test-password',
+    }),
+    safePageTitle: async () => '',
+    safePageUrl: async () => '',
+    showAutomationBadge: async () => {},
+    unregisterActiveRun: (runId) => activeRuns.delete(runId),
+    xlsx,
+  })
+  const response = await automation.handleRequest(body)
+  assert.equal(response.statusCode, 200)
+  return response.body
 }
 
 async function readRequestBody(req) {
