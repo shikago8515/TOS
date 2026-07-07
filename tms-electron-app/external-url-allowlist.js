@@ -14,6 +14,11 @@ const STATIC_ALLOWED_EXTERNAL_URLS = [
     pathPrefix: '/tos/',
     protocol: 'http:',
   },
+  {
+    host: '218.240.184.58',
+    pathPrefix: '/tos/',
+    protocol: 'http:',
+  },
 ]
 
 function parseUrl(value) {

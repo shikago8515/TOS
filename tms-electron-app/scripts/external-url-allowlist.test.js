@@ -13,6 +13,7 @@ test('allows only known HTTPS business and update-source URLs', () => {
   assert.equal(isAllowedExternalUrl('https://network.infornexus.com/'), true)
   assert.equal(isAllowedExternalUrl('https://ai.tomwell.net:56130/tos/tos-desktop/download'), true)
   assert.equal(isAllowedExternalUrl('http://172.16.8.13:80/tos/tos-desktop/download'), true)
+  assert.equal(isAllowedExternalUrl('http://218.240.184.58/tos/tos-desktop/download'), true)
   assert.equal(
     isAllowedExternalUrl('https://updates.example.internal/tos/releases/download.zip', {
       updateFeedUrl: 'https://updates.example.internal/tos/releases/',
