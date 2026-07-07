@@ -1,3 +1,9 @@
+## [1.0.0-beta.3.25](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.24...v1.0.0-beta.3.25) (2026-07-07)
+
+### Bug Fixes
+
+* name Xinlongtai preview PDF by invoice ([da93fc7](http://172.16.48.208:3001/luenthai-ai/TOS/commit/da93fc7607f2dca9b7faf2f96409931e3c65f390))
+
 ## [1.0.0-beta.3.24](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.23...v1.0.0-beta.3.24) (2026-07-07)
 
 ### Bug Fixes

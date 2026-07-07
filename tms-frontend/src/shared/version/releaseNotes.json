@@ -1,12 +1,12 @@
 {
-  "version": "1.0.0-beta.3.24",
+  "version": "1.0.0-beta.3.25",
   "date": "2026-07-07",
-  "noticeId": "2026-07-07-v1.0.0-beta.3.24",
+  "noticeId": "2026-07-07-v1.0.0-beta.3.25",
   "showPopup": false,
   "added": [],
   "improved": [],
   "fixed": [
-    "箱单签核弹窗确认按钮点击"
+    "name Xinlongtai preview PDF by invoice"
   ],
   "modules": [],
   "sections": []
