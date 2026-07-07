@@ -14,6 +14,7 @@ from uuid import uuid4
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
+from api.tms_finance_schemas import TmsFinanceInternalReconciliationProcessResponse
 from modules.tms_finance_internal_reconciliation_module import (
     TmsFinanceInternalReconciliationModule,
 )
@@ -89,7 +90,11 @@ def _backup_context(
     )
 
 
-@router.post("/process")
+@router.post(
+    "/process",
+    response_model=TmsFinanceInternalReconciliationProcessResponse,
+    response_model_exclude_none=True,
+)
 async def process_internal_reconciliation(
     target_file: UploadFile = File(...),
     source_files: Optional[List[UploadFile]] = File(None),
