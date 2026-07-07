@@ -1,3 +1,4 @@
+import { mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const INVOICES_PAGE_PATH = "/en/trade/InvoicesView.jsp";
@@ -20,6 +21,7 @@ const INVOICE_RESULT_WAIT_MS = 7000;
 const PAGE_NETWORK_IDLE_WAIT_MS = 2500;
 const PAGE_SETTLE_EXTRA_WAIT_MS = 250;
 const LOGIN_PAGE_OPEN_RETRY_COUNT = 3;
+const TC_INV_PREVIEW_PDF_WAIT_MS = 20000;
 const NO_INVOICE_RESULTS_PATTERN = /There are no invoices at this time with the specified filters/i;
 
 export async function runTcInvInvoiceSearchWorkflow(options) {
@@ -30,10 +32,13 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
     buildVisibleBrowserLaunchOptions,
     config,
     credentials,
+    downloadPreviewPdf = false,
     ensureLoggedIn,
     headless,
     inputFileName,
     log,
+    previewPdfDownloadDirectory = "",
+    previewPdfDownloadRootDirectory = "",
     safePageTitle,
     safePageUrl,
     showAutomationBadge,
@@ -84,7 +89,7 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
 
   try {
     browser = await engine.launch(launchOptions);
-    context = await browser.newContext({ viewport: null });
+    context = await browser.newContext({ viewport: null, acceptDownloads: true });
     page = await context.newPage();
     page.setDefaultTimeout(config.navigationTimeoutMs);
     page.setDefaultNavigationTimeout(config.navigationTimeoutMs);
@@ -160,13 +165,16 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
           cargoHandoverDateResult = createSkippedCargoHandoverDateResult(currentPoddDate, "already-on-preview");
           buildAdjustmentResult = createSkippedBuildAdjustmentResult("already-on-preview", currentInvoiceAdjustments);
 
-          stage = `点击 Validate (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
-          await showTcInvBadge(`正在点击 Invoice ${currentInvoiceNumber} Validate`, {
+          stage = `点击 Validate 并下载 PDF (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
+          await showTcInvBadge(`正在点击 Invoice ${currentInvoiceNumber} Validate 并下载 PDF`, {
             phase: "invoice-validate",
             currentCount: invoiceOrdinal,
             invoiceNumber: currentInvoiceNumber,
           });
-          previewResult.validateResult = await clickPreviewValidateButton(page, config, log, activeRun.runId, currentInvoiceNumber);
+          previewResult.validateResult = await clickPreviewValidateButton(page, config, log, activeRun.runId, currentInvoiceNumber, {
+            downloadPreviewPdf,
+            previewPdfDownloadDirectory,
+          });
           latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, `validated-preview-${invoiceOrdinal}`);
 
           processedInvoiceResults.push({
@@ -219,13 +227,16 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
         previewResult = await openPreviewStep(page, config, log, activeRun.runId, currentInvoiceNumber);
         latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, `preview-${invoiceOrdinal}`);
 
-        stage = `点击 Validate (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
-        await showTcInvBadge(`正在点击 Invoice ${currentInvoiceNumber} Validate`, {
+        stage = `点击 Validate 并下载 PDF (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
+        await showTcInvBadge(`正在点击 Invoice ${currentInvoiceNumber} Validate 并下载 PDF`, {
           phase: "invoice-validate",
           currentCount: invoiceOrdinal,
           invoiceNumber: currentInvoiceNumber,
         });
-        previewResult.validateResult = await clickPreviewValidateButton(page, config, log, activeRun.runId, currentInvoiceNumber);
+        previewResult.validateResult = await clickPreviewValidateButton(page, config, log, activeRun.runId, currentInvoiceNumber, {
+          downloadPreviewPdf,
+          previewPdfDownloadDirectory,
+        });
         latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, `validated-${invoiceOrdinal}`);
 
         processedInvoiceResults.push({
@@ -248,6 +259,32 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
         });
       } catch (invoiceError) {
         const invoiceErrorMessage = invoiceError instanceof Error ? invoiceError.message : String(invoiceError || "");
+        if (
+          downloadPreviewPdf
+          && previewResult?.opened
+          && /Validate|PDF/i.test(stage)
+          && !previewResult?.validateResult?.previewPdfDownloadResult
+        ) {
+          previewResult = {
+            ...previewResult,
+            validateResult: {
+              ...(previewResult.validateResult || {}),
+              invoiceNumber: currentInvoiceNumber,
+              previewPdfDownloadResult: {
+                enabled: true,
+                ok: false,
+                invoiceNumber: currentInvoiceNumber,
+                fileName: "",
+                filePath: "",
+                pdfUrl: "",
+                downloadDirectory: previewPdfDownloadDirectory,
+                downloadSource: "",
+                error: invoiceErrorMessage,
+                size: 0,
+              },
+            },
+          };
+        }
         latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, `invoice-error-${invoiceOrdinal}`).catch(() => latestScreenshotPath);
         processedInvoiceResults.push({
           ok: false,
@@ -280,6 +317,11 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
     }
 
     const invoiceSummary = summarizeInvoiceResults(processedInvoiceResults, invoiceNumbersToProcess.length);
+    const previewPdfDownloadSummary = summarizeTcInvPreviewPdfDownloads(processedInvoiceResults, {
+      downloadPreviewPdf,
+      previewPdfDownloadDirectory,
+      previewPdfDownloadRootDirectory,
+    });
     await showTcInvBadge(
       invoiceSummary.failedInvoiceCount > 0
         ? "TC INV 自动化已完成，存在失败记录"
@@ -337,6 +379,13 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
       hasInvoiceFailures: invoiceSummary.hasInvoiceFailures,
       allInvoicesAttempted: invoiceSummary.allInvoicesAttempted,
       processedInvoiceResults,
+      previewPdfDownloadEnabled: previewPdfDownloadSummary.enabled,
+      previewPdfDownloadRootDirectory,
+      previewPdfDownloadDirectory,
+      previewPdfDownloadedCount: previewPdfDownloadSummary.downloadedCount,
+      previewPdfDownloadFailedCount: previewPdfDownloadSummary.failedCount,
+      previewPdfSavedPaths: previewPdfDownloadSummary.savedPaths,
+      previewPdfDownloadResults: previewPdfDownloadSummary.results,
       clickedInvoiceText,
       firstPoddDate: poddDate,
       cargoHandoverDateResult,
@@ -353,13 +402,18 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
       finalUrl,
       title,
       latestScreenshotPath,
-      message: buildTcInvCompletionMessage(invoiceSummary),
+      message: buildTcInvCompletionMessage(invoiceSummary, previewPdfDownloadSummary),
     };
   } catch (error) {
     latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, "error").catch(() => "");
     const finalUrl = safePageUrl(page);
     const title = await safePageTitle(page);
     const invoiceSummary = summarizeInvoiceResults(processedInvoiceResults, invoiceNumbersToProcess.length);
+    const previewPdfDownloadSummary = summarizeTcInvPreviewPdfDownloads(processedInvoiceResults, {
+      downloadPreviewPdf,
+      previewPdfDownloadDirectory,
+      previewPdfDownloadRootDirectory,
+    });
     await showTcInvBadge("TC INV 自动化失败，已记录错误信息", {
       phase: "failed",
       completedCount: invoiceSummary.completedInvoiceCount,
@@ -395,6 +449,13 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
       hasInvoiceFailures: invoiceSummary.hasInvoiceFailures,
       allInvoicesAttempted: invoiceSummary.allInvoicesAttempted,
       processedInvoiceResults,
+      previewPdfDownloadEnabled: previewPdfDownloadSummary.enabled,
+      previewPdfDownloadRootDirectory,
+      previewPdfDownloadDirectory,
+      previewPdfDownloadedCount: previewPdfDownloadSummary.downloadedCount,
+      previewPdfDownloadFailedCount: previewPdfDownloadSummary.failedCount,
+      previewPdfSavedPaths: previewPdfDownloadSummary.savedPaths,
+      previewPdfDownloadResults: previewPdfDownloadSummary.results,
       clickedInvoiceText,
       firstPoddDate: poddDate,
       cargoHandoverDateResult,
@@ -1018,13 +1079,30 @@ async function openPreviewStep(page, config, log, runId, invoiceNumber) {
   return result;
 }
 
-async function clickPreviewValidateButton(page, config, log, runId, invoiceNumber) {
+async function clickPreviewValidateButton(page, config, log, runId, invoiceNumber, options = {}) {
   const validateButton = await resolvePreviewValidateButton(page, config);
+  const shouldDownloadPreviewPdf = Boolean(options?.downloadPreviewPdf);
+  const previewPdfDownloadDirectory = String(options?.previewPdfDownloadDirectory || "").trim();
+  const downloadEventWaitMs = Math.min(config.navigationTimeoutMs, 8000);
+  const popupWaitMs = Math.min(config.navigationTimeoutMs, 5000);
+  const downloadPromise = shouldDownloadPreviewPdf
+    ? page.waitForEvent("download", { timeout: downloadEventWaitMs }).catch(() => null)
+    : Promise.resolve(null);
+  const popupPromise = shouldDownloadPreviewPdf
+    ? page.context().waitForEvent("page", { timeout: popupWaitMs }).catch(() => null)
+    : Promise.resolve(null);
   await Promise.all([
     page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: Math.min(config.navigationTimeoutMs, 8000) }).catch(() => null),
     validateButton.click({ timeout: Math.min(config.navigationTimeoutMs, 8000) }),
   ]);
   await waitForPageSettled(page, config);
+
+  const directDownload = await downloadPromise;
+  const popupPage = await popupPromise;
+  if (popupPage && popupPage !== page && !popupPage.isClosed?.()) {
+    await popupPage.waitForLoadState("domcontentloaded", { timeout: Math.min(config.navigationTimeoutMs, 8000) }).catch(() => {});
+    await waitForPageSettled(popupPage, config).catch(() => {});
+  }
 
   const result = {
     clicked: true,
@@ -1032,11 +1110,393 @@ async function clickPreviewValidateButton(page, config, log, runId, invoiceNumbe
     title: await page.title().catch(() => ""),
     url: page.url(),
   };
+
+  if (shouldDownloadPreviewPdf) {
+    result.previewPdfDownloadResult = await downloadTcInvPreviewPdfAfterValidate({
+      page,
+      popupPage,
+      config,
+      directDownload,
+      downloadDirectory: previewPdfDownloadDirectory,
+      invoiceNumber,
+      log,
+      runId,
+    });
+  }
+
   log("TC INV Preview Validate clicked.", {
     runId,
     ...result,
   });
   return result;
+}
+
+async function downloadTcInvPreviewPdfAfterValidate(options) {
+  const {
+    page,
+    popupPage,
+    config,
+    directDownload,
+    downloadDirectory,
+    invoiceNumber,
+    log,
+    runId,
+  } = options;
+  const normalizedDirectory = String(downloadDirectory || "").trim();
+  if (!normalizedDirectory) {
+    throw new Error(`Invoice ${invoiceNumber}: TC INV Preview PDF 保存目录为空。`);
+  }
+
+  await mkdir(normalizedDirectory, { recursive: true });
+
+  if (directDownload) {
+    const fileName = await nextAvailableTcInvPdfFileName(normalizedDirectory, buildTcInvPreviewPdfFileName(invoiceNumber));
+    const filePath = path.join(normalizedDirectory, fileName);
+    return saveTcInvPlaywrightDownload(directDownload, {
+      downloadSource: "validate-download-event",
+      fileName,
+      filePath,
+      invoiceNumber,
+      log,
+      runId,
+    });
+  }
+
+  const candidatePages = uniqueOpenPages([popupPage, page]);
+  for (const candidatePage of candidatePages) {
+    const pdfInfo = await waitForTcInvPreviewPdfInfo(candidatePage, config, invoiceNumber);
+    if (!pdfInfo?.pdfUrl) {
+      continue;
+    }
+
+    const fileName = await nextAvailableTcInvPdfFileName(normalizedDirectory, buildTcInvPreviewPdfFileName(invoiceNumber));
+    const filePath = path.join(normalizedDirectory, fileName);
+    return fetchAndSaveTcInvPreviewPdf({
+      context: candidatePage.context(),
+      downloadSource: pdfInfo.source || "preview-pdf-url",
+      fileName,
+      filePath,
+      invoiceNumber,
+      log,
+      pdfUrl: pdfInfo.pdfUrl,
+      referer: candidatePage.url(),
+      runId,
+    });
+  }
+
+  for (const candidatePage of candidatePages) {
+    const clickedDownload = await triggerTcInvPreviewPdfDownloadClick(candidatePage, config);
+    if (!clickedDownload) {
+      continue;
+    }
+
+    const fileName = await nextAvailableTcInvPdfFileName(normalizedDirectory, buildTcInvPreviewPdfFileName(invoiceNumber));
+    const filePath = path.join(normalizedDirectory, fileName);
+    return saveTcInvPlaywrightDownload(clickedDownload, {
+      downloadSource: "preview-download-control",
+      fileName,
+      filePath,
+      invoiceNumber,
+      log,
+      runId,
+    });
+  }
+
+  throw new Error(`Invoice ${invoiceNumber}: Validate 后没有找到可下载的 TC INV PDF。请确认 Preview 页面是否生成了商业发票 PDF。`);
+}
+
+function uniqueOpenPages(pages) {
+  const seen = new Set();
+  const result = [];
+  for (const page of pages) {
+    if (!page || page.isClosed?.()) {
+      continue;
+    }
+    if (seen.has(page)) {
+      continue;
+    }
+    seen.add(page);
+    result.push(page);
+  }
+  return result;
+}
+
+async function saveTcInvPlaywrightDownload(download, options) {
+  const {
+    downloadSource,
+    fileName,
+    filePath,
+    invoiceNumber,
+    log,
+    runId,
+  } = options;
+  const suggestedFileName = await download.suggestedFilename().catch(() => "");
+  const failure = await download.failure().catch(() => null);
+  if (failure) {
+    throw new Error(`Invoice ${invoiceNumber}: TC INV PDF 下载失败：${failure}`);
+  }
+
+  await download.saveAs(filePath);
+  const buffer = await readFile(filePath);
+  if (!isPdfBuffer(buffer)) {
+    await unlink(filePath).catch(() => {});
+    throw new Error(`Invoice ${invoiceNumber}: Validate 下载返回内容不是有效 PDF。`);
+  }
+
+  const result = {
+    enabled: true,
+    ok: true,
+    invoiceNumber,
+    fileName,
+    filePath,
+    suggestedFileName,
+    pdfUrl: typeof download.url === "function" ? download.url() : "",
+    downloadSource,
+    size: buffer.length,
+    savedAt: new Date().toISOString(),
+  };
+  log("Downloaded TC INV Preview PDF.", {
+    runId,
+    ...result,
+  });
+  return result;
+}
+
+async function waitForTcInvPreviewPdfInfo(page, config, invoiceNumber) {
+  const timeoutMs = Math.min(config.navigationTimeoutMs, TC_INV_PREVIEW_PDF_WAIT_MS);
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const info = await findTcInvPreviewPdfInfo(page, invoiceNumber);
+    if (info?.pdfUrl) {
+      return info;
+    }
+    await page.waitForTimeout(250).catch(() => {});
+  }
+
+  return null;
+}
+
+async function findTcInvPreviewPdfInfo(page, invoiceNumber) {
+  return page.evaluate((invoiceValue) => {
+    const invoiceNumberText = String(invoiceValue || "").trim().toLowerCase();
+    const decode = (value) => {
+      const text = String(value || "")
+        .replace(/\\u0026/g, "&")
+        .replace(/\\\//g, "/")
+        .replace(/&amp;/g, "&")
+        .trim();
+      if (!text) return "";
+      const textarea = document.createElement("textarea");
+      textarea.innerHTML = text;
+      return textarea.value.trim();
+    };
+    const toAbsoluteUrl = (value) => {
+      const cleaned = decode(value).replace(/^["']|["']$/g, "");
+      if (!cleaned || cleaned.startsWith("javascript:") || cleaned.startsWith("#")) {
+        return "";
+      }
+      try {
+        return new URL(cleaned, window.location.href).toString();
+      } catch {
+        return "";
+      }
+    };
+    const scorePdfUrl = (url, context = "") => {
+      const lowerUrl = String(url || "").toLowerCase();
+      const lowerContext = String(context || "").toLowerCase();
+      if (!lowerUrl) return 0;
+
+      let score = 0;
+      if (lowerUrl.includes("/dyncon/") && lowerUrl.includes("rendertype=pdf") && lowerUrl.includes("type=commercialinvoice")) score += 120;
+      if (lowerUrl.includes("topicname=adidas_financial_invoice_pdf")) score += 80;
+      if (lowerUrl.includes("commercialinvoice") && lowerUrl.includes("pdf")) score += 70;
+      if (/\.pdf(?:[?#]|$)/i.test(url)) score += 50;
+      if (lowerUrl.includes("pdf")) score += 25;
+      if (invoiceNumberText && (lowerUrl.includes(invoiceNumberText) || lowerContext.includes(invoiceNumberText))) score += 15;
+      if (lowerUrl.includes("validate")) score -= 40;
+      return score;
+    };
+    const candidates = [];
+    const addCandidate = (rawUrl, source, context = "") => {
+      const url = toAbsoluteUrl(rawUrl);
+      const score = scorePdfUrl(url, context);
+      if (score <= 0) return;
+      candidates.push({ pdfUrl: url, source, context: String(context || "").slice(0, 180), score });
+    };
+
+    addCandidate(window.location.href, "current-page", document.title || "");
+
+    const selector = [
+      "iframe",
+      "embed",
+      "object",
+      "a",
+      "form",
+      "link",
+      "script",
+      "input",
+      "button",
+    ].join(",");
+    const attrs = ["src", "href", "data", "data-url", "data-href", "action", "value", "onclick"];
+    for (const element of Array.from(document.querySelectorAll(selector))) {
+      const context = `${element.textContent || ""} ${element.getAttribute("title") || ""} ${element.getAttribute("aria-label") || ""}`;
+      for (const attr of attrs) {
+        const value = element.getAttribute(attr) || "";
+        if (value) addCandidate(value, `${element.tagName.toLowerCase()}-${attr}`, context);
+      }
+    }
+
+    const html = document.documentElement?.innerHTML || "";
+    const patterns = [
+      /(?:href|src|data-url|data-href|action)\s*=\s*["']([^"']+)["']/gi,
+      /["']([^"']*(?:\/dyncon\/\?|CommercialInvoice|commercialinvoice|renderType=pdf|rendertype=pdf)[^"']*)["']/gi,
+      /(\/dyncon\/\?[^"'<>\\\s]+)/gi,
+    ];
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(html)) !== null) {
+        const rawUrl = match[1] || match[0] || "";
+        const start = Math.max(0, match.index - 500);
+        const end = Math.min(html.length, match.index + rawUrl.length + 500);
+        addCandidate(rawUrl, "html-url", html.slice(start, end));
+      }
+    }
+
+    candidates.sort((left, right) => right.score - left.score);
+    const seen = new Set();
+    return candidates.find((candidate) => {
+      if (seen.has(candidate.pdfUrl)) return false;
+      seen.add(candidate.pdfUrl);
+      return true;
+    }) || null;
+  }, invoiceNumber).catch(() => null);
+}
+
+async function triggerTcInvPreviewPdfDownloadClick(page, config) {
+  const candidates = [
+    page.getByRole("link", { name: /download|pdf|print|view/i }).first(),
+    page.getByRole("button", { name: /download|pdf|print|view/i }).first(),
+    page.locator('input[type="button"][value*="PDF" i], input[type="button"][value*="Download" i], input[type="button"][value*="Print" i]').first(),
+    page.locator('a[href*="renderType=pdf" i], a[href*="type=CommercialInvoice" i], a[href*=".pdf" i], a[href*="/dyncon/" i]').first(),
+  ];
+
+  for (const candidate of candidates) {
+    if (!await isLocatorVisible(candidate, Math.min(config.navigationTimeoutMs, 1500))) {
+      continue;
+    }
+
+    const downloadPromise = page.waitForEvent("download", {
+      timeout: Math.min(config.navigationTimeoutMs, TC_INV_PREVIEW_PDF_WAIT_MS),
+    }).catch(() => null);
+    await candidate.click({ timeout: Math.min(config.navigationTimeoutMs, 5000) }).catch(async () => {
+      await candidate.evaluate((element) => element.click()).catch(() => {});
+    });
+    const download = await downloadPromise;
+    if (download) {
+      return download;
+    }
+    await waitForPageSettled(page, config).catch(() => {});
+  }
+
+  return null;
+}
+
+async function fetchAndSaveTcInvPreviewPdf(options) {
+  const {
+    context,
+    downloadSource,
+    fileName,
+    filePath,
+    invoiceNumber,
+    log,
+    pdfUrl,
+    referer = "",
+    runId,
+  } = options;
+  const response = await context.request.get(pdfUrl, {
+    headers: {
+      Accept: "application/pdf,application/octet-stream,*/*",
+      ...(referer ? { Referer: referer } : {}),
+    },
+    timeout: TC_INV_PREVIEW_PDF_WAIT_MS,
+  });
+  const buffer = await response.body();
+  if (!response.ok() || !isPdfBuffer(buffer)) {
+    const preview = Buffer.from(buffer || []).toString("utf8", 0, Math.min(Buffer.from(buffer || []).length, 180));
+    throw new Error(`Invoice ${invoiceNumber}: TC INV PDF 下载失败：HTTP ${response.status()}，返回内容不是有效 PDF。${preview}`);
+  }
+
+  await writeFile(filePath, buffer);
+  const result = {
+    enabled: true,
+    ok: true,
+    invoiceNumber,
+    fileName,
+    filePath,
+    pdfUrl,
+    downloadSource,
+    size: buffer.length,
+    savedAt: new Date().toISOString(),
+  };
+  log("Downloaded TC INV Preview PDF.", {
+    runId,
+    ...result,
+  });
+  return result;
+}
+
+function buildTcInvPreviewPdfFileName(invoiceNumber) {
+  const invoicePart = sanitizeTcInvFileNameSegment(invoiceNumber, "invoice");
+  return sanitizeTcInvFileName(`TC INV ${invoicePart}.pdf`, "TC INV.pdf");
+}
+
+function sanitizeTcInvFileNameSegment(value, fallback = "file") {
+  return String(value || fallback)
+    .replace(/[<>:"/\\|?*\x00-\x1F]+/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/[ .]+$/g, "")
+    .trim()
+    .slice(0, 130) || fallback;
+}
+
+function sanitizeTcInvFileName(value, fallback = "TC INV.pdf") {
+  return String(value || fallback)
+    .replace(/[<>:"/\\|?*\x00-\x1F]+/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/[ .]+$/g, "")
+    .trim()
+    .slice(0, 170) || fallback;
+}
+
+async function nextAvailableTcInvPdfFileName(directory, fileName) {
+  const parsed = path.parse(fileName || "TC INV.pdf");
+  const baseName = parsed.name || "TC INV";
+  const extension = parsed.ext || ".pdf";
+  for (let index = 0; index < 1000; index += 1) {
+    const suffix = index === 0 ? "" : `-${index}`;
+    const candidate = `${baseName}${suffix}${extension}`;
+    if (!await pathExists(path.join(directory, candidate))) {
+      return candidate;
+    }
+  }
+  throw new Error(`无法创建唯一的 TC INV PDF 文件名：${directory}`);
+}
+
+async function pathExists(targetPath) {
+  try {
+    await stat(targetPath);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function isPdfBuffer(buffer) {
+  return Buffer.from(buffer || []).subarray(0, 4).toString("utf8") === "%PDF";
 }
 
 async function resolvePreviewValidateButton(page, config) {
@@ -1102,13 +1562,37 @@ function summarizeInvoiceResults(processedInvoiceResults, totalInvoiceCount) {
   };
 }
 
-function buildTcInvCompletionMessage(summary) {
+function summarizeTcInvPreviewPdfDownloads(processedInvoiceResults, options = {}) {
+  const results = processedInvoiceResults
+    .map((item) => item?.previewResult?.validateResult?.previewPdfDownloadResult)
+    .filter(Boolean);
+  const downloadedResults = results.filter((item) => item?.ok);
+  const failedResults = results.filter((item) => item?.ok === false);
+  return {
+    enabled: Boolean(options.downloadPreviewPdf),
+    rootDirectory: String(options.previewPdfDownloadRootDirectory || ""),
+    downloadDirectory: String(options.previewPdfDownloadDirectory || ""),
+    results,
+    downloadedCount: downloadedResults.length,
+    failedCount: failedResults.length,
+    savedPaths: downloadedResults.map((item) => String(item.filePath || "")).filter(Boolean),
+    failedResults,
+  };
+}
+
+function buildTcInvCompletionMessage(summary, previewPdfDownloadSummary = null) {
   const base = `TC INV 自动化已尝试 ${summary.attemptedInvoiceCount}/${summary.totalInvoiceCount} 张 Invoice，完成 ${summary.completedInvoiceCount} 张`;
   if (summary.failedInvoiceCount > 0) {
     const failedList = summary.failedInvoiceNumbers.join(", ");
     return `${base}，记录失败 ${summary.failedInvoiceCount} 张${failedList ? `：${failedList}` : ""}。`;
   }
-  return `${base}，并已进入 Preview。`;
+  if (previewPdfDownloadSummary?.enabled) {
+    const directory = previewPdfDownloadSummary.downloadDirectory
+      ? `，保存目录：${previewPdfDownloadSummary.downloadDirectory}`
+      : "";
+    return `${base}，并已进入 Preview、点击 Validate，下载 TC INV PDF ${previewPdfDownloadSummary.downloadedCount} 份${directory}。`;
+  }
+  return `${base}，并已进入 Preview、点击 Validate。`;
 }
 
 async function hasCargoHandoverFcrDateLabel(page) {

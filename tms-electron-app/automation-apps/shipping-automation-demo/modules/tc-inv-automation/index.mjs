@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 import { persistTcInvArtifacts } from "./artifacts.mjs";
 import { formatTcInvAutomationError } from "./errors.mjs";
 import { parseTcInvWorkbookPayload } from "./workbook.mjs";
@@ -30,6 +32,13 @@ export function createTcInvAutomation(deps) {
     const workbook = parseTcInvWorkbookPayload(body, deps);
     const inputFileName = normalizeUploadFileName(body);
     const headless = resolveRunHeadless(body, config);
+    const downloadPreviewPdf = resolveDownloadPreviewPdf(body);
+    const previewPdfDownloadRootDirectory = downloadPreviewPdf
+      ? resolveTcInvPreviewPdfDownloadRootDirectory(body)
+      : "";
+    const previewPdfDownloadDirectory = previewPdfDownloadRootDirectory
+      ? createTcInvPreviewPdfRunDirectory(previewPdfDownloadRootDirectory)
+      : "";
     const firstInvoiceAdjustments = workbook.adjustmentsByInvoice?.[workbook.firstInvoiceNumber] || null;
     const activeRun = registerActiveRun({
       action: "run-tc-inv-file",
@@ -41,6 +50,8 @@ export function createTcInvAutomation(deps) {
       inputMode: "tc-inv-invoice-search",
       invoiceNumber: workbook.firstInvoiceNumber,
       poddDate: workbook.firstPoddDate,
+      previewPdfDownloadRootDirectory,
+      previewPdfDownloadDirectory,
       zaddPlusOtherCost: firstInvoiceAdjustments?.zaddPlusOtherCostInputValue || "",
       zdoc: firstInvoiceAdjustments?.zdocInputValue || "",
       totalInvoiceCount: workbook.invoiceNumbers.length,
@@ -52,8 +63,11 @@ export function createTcInvAutomation(deps) {
         ...deps,
         activeRun,
         credentials,
+        downloadPreviewPdf,
         headless,
         inputFileName,
+        previewPdfDownloadDirectory,
+        previewPdfDownloadRootDirectory,
         workbook,
       });
       result.artifacts = await persistTcInvArtifacts({
@@ -77,6 +91,12 @@ export function createTcInvAutomation(deps) {
         buildStepOpened: result.buildStepOpened,
         adjustmentChargeSelected: result.adjustmentChargeSelected,
         previewOpened: result.previewOpened,
+        previewPdfDownloadEnabled: result.previewPdfDownloadEnabled,
+        previewPdfDownloadRootDirectory: result.previewPdfDownloadRootDirectory || "",
+        previewPdfDownloadDirectory: result.previewPdfDownloadDirectory || "",
+        previewPdfDownloadedCount: result.previewPdfDownloadedCount || 0,
+        previewPdfDownloadFailedCount: result.previewPdfDownloadFailedCount || 0,
+        previewPdfSavedPaths: result.previewPdfSavedPaths || [],
         attemptedInvoiceCount: result.attemptedInvoiceCount,
         completedInvoiceCount: result.completedInvoiceCount,
         completedInvoiceNumbers: result.completedInvoiceNumbers,
@@ -113,6 +133,8 @@ export function createTcInvAutomation(deps) {
           inputFileName,
           inputMode: "tc-inv-invoice-search",
           firstPoddDate: workbook.firstPoddDate,
+          previewPdfDownloadRootDirectory,
+          previewPdfDownloadDirectory,
           searchedInvoiceNumber: workbook.firstInvoiceNumber,
           totalInvoiceCount: workbook.invoiceNumbers.length,
           totalRowCount: workbook.rows.length,
@@ -139,4 +161,89 @@ function resolveRunHeadless(body, config) {
     if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
   }
   return Boolean(config.headless);
+}
+
+function resolveDownloadPreviewPdf(body) {
+  const value = body?.downloadPreviewPdf ?? body?.downloadTcInvPreviewPdf ?? true;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
+    if (["1", "true", "yes", "y", "on"].includes(normalized)) return true;
+  }
+  return true;
+}
+
+function resolveTcInvPreviewPdfDownloadRootDirectory(body) {
+  const value = String(
+    body?.previewPdfDownloadDirectory
+      || body?.previewPdfSaveDirectory
+      || body?.tcInvPreviewPdfDownloadDirectory
+      || body?.pdfSaveDirectory
+      || "",
+  ).trim();
+  if (!value) {
+    const error = new Error("请先选择 TC INV Preview PDF 保存目录。");
+    error.statusCode = 400;
+    throw error;
+  }
+  return path.resolve(value);
+}
+
+function createTcInvPreviewPdfRunDirectory(rootDirectory) {
+  const rootPath = path.resolve(String(rootDirectory || "").trim());
+  if (!rootPath) {
+    const error = new Error("请先选择 TC INV Preview PDF 保存目录。");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  mkdirSync(rootPath, { recursive: true });
+  const baseName = sanitizeWindowsDirectoryName(`${formatBeijingDateForDirectory()} TC INV`, "TC INV");
+  return createUniqueChildDirectorySync(rootPath, baseName);
+}
+
+function formatBeijingDateForDirectory(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(date);
+  const get = (type) => Number(parts.find((part) => part.type === type)?.value || 0);
+  const year = get("year") || date.getFullYear();
+  const month = get("month") || date.getMonth() + 1;
+  const day = get("day") || date.getDate();
+  return `${year}-${month}-${day}`;
+}
+
+function sanitizeWindowsDirectoryName(value, fallback = "folder") {
+  return String(value || fallback)
+    .replace(/[<>:"/\\|?*\x00-\x1F]+/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/[ .]+$/g, "")
+    .trim()
+    .slice(0, 120) || fallback;
+}
+
+function createUniqueChildDirectorySync(parentDirectory, baseName) {
+  let index = 0;
+  while (index < 1000) {
+    const suffix = index === 0 ? "" : `-${index}`;
+    const candidate = path.join(parentDirectory, `${baseName}${suffix}`);
+    try {
+      mkdirSync(candidate);
+      return candidate;
+    } catch (error) {
+      if (error?.code !== "EEXIST") {
+        throw error;
+      }
+      index += 1;
+    }
+  }
+
+  const error = new Error(`无法创建唯一的 TC INV Preview PDF 保存子目录：${parentDirectory}`);
+  error.statusCode = 500;
+  throw error;
 }

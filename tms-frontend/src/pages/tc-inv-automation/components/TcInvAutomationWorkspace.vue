@@ -98,6 +98,29 @@
               />
             </div>
 
+            <!-- Preview PDF save directory -->
+            <div class="sa-card__bd">
+              <label class="sa-field">
+                <span>{{ text('Preview PDF 保存目录') }}</span>
+                <div class="sa-path">
+                  <div class="sa-input-wrap sa-input-wrap--path">
+                    <AppIcon name="folder" />
+                    <input
+                      v-model.trim="previewPdfSaveDirectory"
+                      class="sa-input"
+                      type="text"
+                      :placeholder="text('例如：D:\\Downloads\\InforNexus\\TCINV')"
+                      @change="persistPreviewPdfDirectory"
+                    />
+                  </div>
+                  <button class="sa-btn" type="button" :disabled="directorySelecting" @click="selectPreviewPdfDirectory">
+                    <AppIcon :name="directorySelecting ? 'loader' : 'folder'" :class="{ 'sa-spin': directorySelecting }" />
+                    {{ directorySelecting ? text('打开中...') : canSelectPreviewPdfDirectory ? text('选择目录') : text('手动填写') }}
+                  </button>
+                </div>
+              </label>
+            </div>
+
             <!-- File Dropzone -->
             <div class="sa-card__bd">
               <label class="sa-field"><span>{{ text('Excel 文件') }}</span></label>
@@ -274,6 +297,7 @@ import { useAutomationStartupProgress } from '../../web-automation/composables/u
 import { getAutomationAppStatusLabel, getWebAutomationEntry, type WebAutomationEntry, type WebAutomationNoticeTone } from '../../web-automation/webAutomationModel'
 
 const TC_INV_ENTRY_ID = 'tc-inv-automation'
+const PREVIEW_PDF_DIR_STORAGE_KEY = 'tos-tc-inv-preview-pdf-directory'
 
 type CredentialProfileRef = {
   refresh: (accountKey?: string) => Promise<void>
@@ -294,12 +318,14 @@ const templateLoading = ref(false); const sending = ref(false); const restoredAc
 const message = ref(''); const messageTone = ref<WebAutomationNoticeTone>('info')
 const isHealthLogOpen = ref(false)
 const isDragging = ref(false); const dragDepth = ref(0); const fileInput = ref<HTMLInputElement | null>(null)
+const directorySelecting = ref(false)
 const selectedFile = ref<File | null>(null)
 const shippingUsername = ref(''); const shippingPassword = ref('')
 const selectedCredentialKey = ref('default')
 const hasStoredCredentials = ref(false)
 const credentialProfileRef = ref<CredentialProfileRef | null>(null)
 const showBrowserView = ref(true)
+const previewPdfSaveDirectory = ref('')
 const statusText = ref(''); const statusLabel = ref('待命')
 const lastResult = ref<{ ok: boolean; message?: string } | null>(null); const lastRawResponse = ref('')
 let activeRunStateTimer: number | null = null
@@ -310,7 +336,7 @@ const steps = [
   { title: '输入账号密码', desc: '使用 Infor Nexus 登录账号密码。' },
   { title: '启动本地执行器', desc: '网页端和 EXE 同套启动器。' },
   { title: '打开 TC INV 板块', desc: '进入 SLT、VENT、XO 工厂对应网页流程。' },
-  { title: '上传 Excel 执行', desc: '上传出货明细表，同步交期与各项费用。' },
+  { title: 'Validate 后下载 PDF', desc: '上传出货明细表，同步交期与费用并保存 TC INV PDF。' },
 ]
 
 const healthRaw = computed(() => executorHealth.value ? JSON.stringify(executorHealth.value, null, 2) : '{}')
@@ -325,6 +351,9 @@ const showLocalHelperPrompt = computed(() => !electronSupported && !launcherReac
 const primaryTemplate = computed(() => automationTemplates.value[0] || null)
 const templateButtonLabel = computed(() => { if (templateLoading.value) return text('模板加载中...'); return primaryTemplate.value ? text('下载 Excel 模板') : text('暂无模板') })
 const shippingExecutorRunUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/run-tc-inv-file` : '' })
+const previewPdfDirectorySelectUrl = computed(() => { const b = String(entry?.executorBaseUrl || '').replace(/\/+$/, ''); return b ? `${b}/api/select-tc-inv-pdf-directory` : '' })
+const canSelectPreviewPdfDirectory = computed(() => Boolean(window.electronAPI?.selectDirectory || previewPdfDirectorySelectUrl.value))
+const executorSupportsPreviewPdfDirectoryPicker = computed(() => Boolean(window.electronAPI?.selectDirectory || executorHealth.value?.capabilities?.tcInvPreviewPdfDirectoryPicker))
 const canRunTcInvAutomation = computed(() => !sending.value && hasStoredCredentials.value)
 const messageIconName = computed(() => { if (messageTone.value === 'success') return 'check-circle'; if (messageTone.value === 'error') return 'alert-circle'; if (messageTone.value === 'warning') return 'info'; return 'activity' })
 const startupActiveRun = computed(() => findTcInvActiveRun(executorHealth.value))
@@ -349,6 +378,7 @@ onMounted(() => { void initializeScenario() })
 onBeforeUnmount(() => { stopActiveRunStatePolling() })
 
 async function initializeScenario(): Promise<void> {
+  restorePreviewPdfDirectory()
   statusLabel.value = '待命'; statusText.value = '等待上传出货明细表并执行 TC INV 自动化。'
   await refreshAutomationTemplates(); await refreshCredentialProfile(); await refreshExecutorState(true)
   if (electronSupported && activeApp.value?.available && !isLocalExecutorBusy(executorHealth.value)) await startActiveApp(true)
@@ -445,6 +475,103 @@ async function downloadPrimaryTemplate(): Promise<void> {
 function downloadAutomationHelper(): void { void openAutomationHelperDownload() }
 function bootLocalHelper(): void { primeLocalAutomationLauncherBoot(); messageTone.value = 'info'; message.value = text('已尝试启动本机自动化助手。'); window.setTimeout(() => { void refreshExecutorState(true) }, 1200) }
 
+function restorePreviewPdfDirectory(): void {
+  previewPdfSaveDirectory.value = window.localStorage.getItem(PREVIEW_PDF_DIR_STORAGE_KEY) || ''
+}
+
+function persistPreviewPdfDirectory(): void {
+  window.localStorage.setItem(PREVIEW_PDF_DIR_STORAGE_KEY, previewPdfSaveDirectory.value.trim())
+}
+
+async function selectPreviewPdfDirectory(): Promise<void> {
+  if (directorySelecting.value) return
+  directorySelecting.value = true
+  if (window.electronAPI?.selectDirectory) {
+    try {
+      const result = await window.electronAPI.selectDirectory({
+        title: text('选择 TC INV Preview PDF 保存目录'),
+        defaultPath: previewPdfSaveDirectory.value.trim() || undefined,
+      })
+      if (!result.success) {
+        messageTone.value = 'error'
+        message.value = result.error || text('选择目录失败。')
+        return
+      }
+      if (!result.canceled && result.path) {
+        previewPdfSaveDirectory.value = result.path
+        persistPreviewPdfDirectory()
+        messageTone.value = 'success'
+        message.value = text('已选择 Preview PDF 保存目录。')
+      }
+    } finally {
+      directorySelecting.value = false
+    }
+    return
+  }
+
+  if (!previewPdfDirectorySelectUrl.value) {
+    messageTone.value = 'warning'
+    message.value = text('当前浏览器环境无法打开系统目录选择器，请手动填写完整本机路径。')
+    directorySelecting.value = false
+    return
+  }
+
+  if (!await ensureReady()) {
+    setNotReady()
+    directorySelecting.value = false
+    return
+  }
+
+  if (!executorSupportsPreviewPdfDirectoryPicker.value) {
+    messageTone.value = 'warning'
+    message.value = text('本机自动化助手版本落后，请同步最新自动化模块后重试，或手动填写完整本机路径。')
+    directorySelecting.value = false
+    return
+  }
+
+  try {
+    messageTone.value = 'info'
+    message.value = text('正在打开 TC INV Preview PDF 保存目录选择器，请留意系统弹窗。')
+    const response = await fetch(previewPdfDirectorySelectUrl.value, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Executor-Token': entry?.localExecutorToken || '',
+      },
+      body: JSON.stringify({
+        token: entry?.localExecutorToken,
+        initialDirectory: previewPdfSaveDirectory.value.trim(),
+      }),
+    })
+    const raw = await response.text()
+    const result = safeParseExecutorJson(raw)
+    if (response.status === 404) {
+      messageTone.value = 'warning'
+      message.value = text('本机自动化助手缺少 TC INV 目录选择接口，请同步最新自动化模块后重试，或手动填写完整本机路径。')
+      return
+    }
+    if (result?.canceled) {
+      messageTone.value = 'info'
+      message.value = text('已取消选择目录。')
+      return
+    }
+    if (!response.ok || !result?.ok || !result.path) {
+      messageTone.value = 'error'
+      message.value = String(result?.message || text('选择目录失败。'))
+      return
+    }
+    previewPdfSaveDirectory.value = String(result.path)
+    persistPreviewPdfDirectory()
+    messageTone.value = 'success'
+    message.value = text('已选择 Preview PDF 保存目录。')
+  } catch (error) {
+    messageTone.value = 'error'
+    message.value = readErrorMessage(error, text('选择目录失败。'))
+  } finally {
+    directorySelecting.value = false
+  }
+}
+
 async function startActiveApp(silent: boolean): Promise<void> {
   if (!entry || launching.value) return
   if (!electronSupported && !launcherReachable.value) primeLocalAutomationLauncherBoot()
@@ -534,6 +661,7 @@ function showRunRequirementDialog(rawMessage: string): false {
 function validateShippingInputs(): boolean {
   if (!entry) return showRunRequirementDialog('当前入口不存在，请从 Jessica 浏览器自动化菜单重新进入。')
   if (!selectedFile.value) return showRunRequirementDialog('请先上传 TC INV Excel 文件，文件需包含工厂、交期、费用等字段。')
+  if (!previewPdfSaveDirectory.value.trim()) return showRunRequirementDialog('请先选择或填写 Preview PDF 保存目录。')
   const username = shippingUsername.value.trim()
   const password = shippingPassword.value.trim()
   if (password && !username) return showRunRequirementDialog('请先填写 User ID。')
@@ -547,10 +675,11 @@ async function runTcInv(): Promise<void> {
   if (!(await ensureReady())) { setNotReady(); void showAppAlert(statusText.value, { tone: 'warning' }); return }
   const currentEntry = entry
   if (!currentEntry) { showRunRequirementDialog('当前入口不存在，请从 Jessica 浏览器自动化菜单重新进入。'); return }
+  persistPreviewPdfDirectory()
   const file = selectedFile.value as File; sending.value = true; statusLabel.value = '执行中'; statusText.value = '正在上传 Excel 并执行...'; lastResult.value = null; shippingArtifactLinks.value = null; lastRawResponse.value = ''; message.value = ''
   try {
     const rr = await createBackendRunRecord(file); const fb64 = await fileToBase64(file); const cp = await resolveRunCredentialsPayload()
-    const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': currentEntry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: currentEntry.localExecutorToken, headless: !showBrowserView.value, ...cp, automationId: currentEntry.id }) })
+    const res = await fetch(shippingExecutorRunUrl.value, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Executor-Token': currentEntry.localExecutorToken }, body: JSON.stringify({ fileName: file.name, fileBase64: fb64, token: currentEntry.localExecutorToken, headless: !showBrowserView.value, ...cp, automationId: currentEntry.id, downloadPreviewPdf: true, previewPdfDownloadDirectory: previewPdfSaveDirectory.value.trim() }) })
     const raw = await res.text(); lastRawResponse.value = raw; const j = safeParseExecutorJson(raw); const executorMessage = readExecutorResponseText(j); updateShippingArtifactLinks(j)
     await finishBackendRunRecord(rr, res.ok && Boolean(j?.ok), executorMessage, j)
     if (!res.ok) { const m = buildExecutorResponseMessage(res, raw, j); if (shouldShowAutomationErrorDialog(executorMessage || m)) showAutomationErrorDialog(m); statusLabel.value = '失败'; statusText.value = m; lastResult.value = { ok: false, message: m }; messageTone.value = 'error'; message.value = m; return }
@@ -715,6 +844,47 @@ function goBack(): void { if (window.history.length > 1) router.back(); else voi
 /* ─── Fields ─── */
 .sa-field { display: flex; flex-direction: column; gap: 4px;
   > span { font-size: 11px; font-weight: 600; color: var(--ink); }
+}
+
+.sa-path {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.sa-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 11px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #f8fbff;
+
+  :deep(.app-icon) {
+    flex-shrink: 0;
+    font-size: 14px;
+    color: var(--a);
+  }
+}
+
+.sa-input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+
+  &::placeholder {
+    color: #94a3b8;
+    font-weight: 500;
+  }
 }
 
 /* ─── Dropzone ─── */

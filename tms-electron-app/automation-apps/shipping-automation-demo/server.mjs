@@ -227,6 +227,14 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "POST" && isTcInvPreviewPdfDirectoryRoute(requestPath)) {
+      const body = await readJsonBody(req);
+      authorize(req, body);
+      const result = await selectTcInvPreviewPdfDirectory(body);
+      sendJson(res, result.statusCode, result.body);
+      return;
+    }
+
     if (req.method === "POST" && isPoAutoDownloadDirectoryRoute(requestPath)) {
       const body = await readJsonBody(req);
       authorize(req, body);
@@ -602,6 +610,8 @@ function buildHealthPayload() {
       poAutoDownloadDirectoryPicker: true,
       poAutoDownloadRequestDownload: true,
       tcInvAutomation: true,
+      tcInvPreviewPdfDownload: true,
+      tcInvPreviewPdfDirectoryPicker: true,
       packingListAutoDownload: true,
       packingListAutoDownloadDirectoryPicker: true,
       xinlongtaiShippingPreviewPdfDownload: true,
@@ -1796,6 +1806,11 @@ function isXinlongtaiShippingPreviewPdfDirectoryRoute(requestPath) {
     || requestPath === "/api/select-xinlongtai-shipping-pdf-directory";
 }
 
+function isTcInvPreviewPdfDirectoryRoute(requestPath) {
+  return requestPath === "/select-tc-inv-pdf-directory"
+    || requestPath === "/api/select-tc-inv-pdf-directory";
+}
+
 async function selectXinlongtaiShippingPreviewPdfDirectory(body = {}) {
   if (process.platform !== "win32") {
     return {
@@ -1816,6 +1831,57 @@ async function selectXinlongtaiShippingPreviewPdfDirectory(body = {}) {
 
   try {
     const selectedPath = await selectWindowsDirectory(initialDirectory, "Select Xinlongtai Preview PDF folder");
+    if (!selectedPath) {
+      return {
+        statusCode: 200,
+        body: {
+          ok: false,
+          canceled: true,
+          path: "",
+          message: "Directory selection was cancelled.",
+        },
+      };
+    }
+    return {
+      statusCode: 200,
+      body: {
+        ok: true,
+        canceled: false,
+        path: selectedPath,
+      },
+    };
+  } catch (error) {
+    return {
+      statusCode: 500,
+      body: {
+        ok: false,
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+async function selectTcInvPreviewPdfDirectory(body = {}) {
+  if (process.platform !== "win32") {
+    return {
+      statusCode: 501,
+      body: {
+        ok: false,
+        message: "Directory picker is currently implemented for Windows local executors only.",
+      },
+    };
+  }
+
+  const initialDirectory = String(
+    body?.initialDirectory
+      || body?.previewPdfDownloadDirectory
+      || body?.tcInvPreviewPdfDownloadDirectory
+      || body?.defaultPath
+      || "",
+  ).trim();
+
+  try {
+    const selectedPath = await selectWindowsDirectory(initialDirectory, "Select TC INV Preview PDF folder");
     if (!selectedPath) {
       return {
         statusCode: 200,
