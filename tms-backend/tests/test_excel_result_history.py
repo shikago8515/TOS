@@ -34,6 +34,7 @@ class ExcelResultHistoryTests(unittest.TestCase):
             "sophia-tina": "excel-sophia-tina",
             "tms-finance-internal-reconciliation": "excel-tms-finance-internal-reconciliation",
             "tms-finance-work-sales": "excel-tms-finance-work-sales",
+            "jason-result-set-excel": "jason-result-set-excel",
             "eric": "eric",
             "iplex-dual-table-compare": "iplex-dual-table-compare",
             "excel-template-mapper-test": "excel-template-mapper-test",

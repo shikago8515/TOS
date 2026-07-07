@@ -14,7 +14,10 @@ describe('ProcessHistoryResultsPage source', () => {
     expect(source).toContain("backendTarget: 'remote'")
     expect(source).toContain('filterDownloadableProcessRecords(payload.records)')
     expect(source).toContain('filterLocalDownloadableProcessRecords')
+    expect(source).toContain('mergeDownloadableProcessRecords')
+    expect(source).toContain('personId: selectedHistoryModuleIds.value.length > 0 ? undefined : personId.value')
     expect(source).toContain('selectedHistoryModuleIds.value.length > 0 ? selectedHistoryModuleIds.value : undefined')
+    expect(source).toContain('pagination.page === 1')
     expect(source).toContain('module.historyModuleIds')
   })
 

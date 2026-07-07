@@ -18,6 +18,27 @@ if BACKEND_ROOT not in sys.path:
 from modules.jason_result_set_excel_module import JasonResultSetExcelModule  # noqa: E402
 
 
+EXPECTED_HEADER_MERGES = {
+    "A1:A2",
+    "B1:B2",
+    "C1:C2",
+    "D1:D2",
+    "E1:E2",
+    "F1:F2",
+    "G1:G2",
+    "H1:H2",
+    "I1:I2",
+    "J1:J2",
+    "K1:K2",
+    "L1:N1",
+    "O1:R1",
+    "S1:T1",
+    "U1:U2",
+    "V1:V2",
+    "W1:W2",
+}
+
+
 class JasonResultSetExcelModuleTests(unittest.TestCase):
     def test_process_generates_target_rows_formulas_and_totals_without_external_links(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -45,9 +66,10 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
             self.assertGreaterEqual(len(result["warnings"]), 1)
 
             self.assertEqual(sheet.max_row, 63)
-            self.assertEqual(sheet.cell(row=3, column=1).value, "Pack A")
-            self.assertEqual(sheet.cell(row=3, column=2).value, "SS26")
+            self.assertIsNone(sheet.cell(row=3, column=1).value)
+            self.assertIsNone(sheet.cell(row=3, column=2).value)
             self.assertEqual(sheet.cell(row=3, column=3).value, "WN000")
+            self.assertIsNone(sheet.cell(row=3, column=5).value)
             self.assertEqual(sheet.cell(row=3, column=6).value, "0900000000")
             self.assertEqual(sheet.cell(row=3, column=9).value, "苏州仓")
             self.assertEqual(sheet.cell(row=3, column=10).value.date().isoformat(), "2026-07-10")
@@ -60,8 +82,8 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
             self.assertEqual(sheet.cell(row=3, column=17).value, 5)
             self.assertEqual(sheet.cell(row=3, column=18).value, "=ROUND(O3*K3+P3+Q3,2)")
             self.assertEqual(sheet.cell(row=3, column=20).value, "丹东新龙太")
-            self.assertEqual(sheet.cell(row=3, column=22).value, "Bacy")
-            self.assertEqual(sheet.cell(row=3, column=23).value, "Jasmine")
+            self.assertIsNone(sheet.cell(row=3, column=22).value)
+            self.assertIsNone(sheet.cell(row=3, column=23).value)
 
             self.assertEqual(sheet.cell(row=62, column=3).value, "WN999")
             self.assertEqual(sheet.cell(row=62, column=6).value, "0900009999")
@@ -73,6 +95,8 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
             self.assertEqual(sheet.cell(row=63, column=11).value, "=SUM(K3:K62)")
             self.assertEqual(sheet.cell(row=63, column=13).value, "=SUM(M3:M62)")
             self.assertEqual(sheet.cell(row=63, column=18).value, "=SUM(R3:R62)")
+            self.assertEqual({str(range_ref) for range_ref in sheet.merged_cells.ranges}, EXPECTED_HEADER_MERGES)
+            self.assertIsNone(sheet.auto_filter.ref)
             workbook.close()
 
             with ZipFile(result["output_path"]) as output_zip:
@@ -85,6 +109,36 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
                     if name.endswith(".xml") or name.endswith(".rels")
                 )
                 self.assertNotIn(b"MR.xlsx", all_xml)
+
+    def test_process_uses_optional_target_fields_from_result_set_when_present(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            source_path = temp_path / "result-set-with-optional-fields.xlsx"
+            template_path = temp_path / "template.xlsx"
+            self._write_result_set_workbook(
+                source_path,
+                not_shipped_count=2,
+                include_optional_target_fields=True,
+            )
+            self._write_template_workbook(template_path)
+
+            module = JasonResultSetExcelModule(template_path=template_path)
+            result = module.process_result_set(
+                result_set_path=source_path,
+                target_month="2026-07",
+                output_dir=temp_path,
+            )
+
+            workbook = openpyxl.load_workbook(result["output_path"], data_only=False, keep_links=False)
+            try:
+                sheet = workbook["目标表"]
+                self.assertEqual(sheet.cell(row=3, column=1).value, "Source Pack 0")
+                self.assertEqual(sheet.cell(row=3, column=2).value, "Source Season 0")
+                self.assertEqual(sheet.cell(row=3, column=5).value, "Source Description 0")
+                self.assertEqual(sheet.cell(row=3, column=22).value, "Source TMS 0")
+                self.assertEqual(sheet.cell(row=3, column=23).value, "Source Factory 0")
+            finally:
+                workbook.close()
 
     def test_process_rejects_missing_required_result_set_columns(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -107,7 +161,13 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
                     output_dir=temp_path,
                 )
 
-    def _write_result_set_workbook(self, path: Path, *, not_shipped_count: int) -> None:
+    def _write_result_set_workbook(
+        self,
+        path: Path,
+        *,
+        not_shipped_count: int,
+        include_optional_target_fields: bool = False,
+    ) -> None:
         workbook = openpyxl.Workbook()
         sheet = workbook.active
         sheet.title = "Result Set"
@@ -166,9 +226,26 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
             "Ordered Quantity",
             "Shipped Qty",
         ]
+        if include_optional_target_fields:
+            headers.extend([
+                "Pack",
+                "Season",
+                "Description",
+                "TMS Merchandiser",
+                "Factory Merchandiser",
+            ])
         sheet.append(headers)
 
         for index in range(not_shipped_count):
+            optional_target_fields = None
+            if include_optional_target_fields:
+                optional_target_fields = {
+                    "Pack": f"Source Pack {index}",
+                    "Season": f"Source Season {index}",
+                    "Description": f"Source Description {index}",
+                    "TMS Merchandiser": f"Source TMS {index}",
+                    "Factory Merchandiser": f"Source Factory {index}",
+                }
             self._append_result_set_row(
                 sheet,
                 po=f"090000{index:04d}",
@@ -184,6 +261,7 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
                 adjustments=5,
                 ordered_quantity=10,
                 shipped_quantity=0,
+                optional_target_fields=optional_target_fields,
             )
 
         self._append_result_set_row(
@@ -201,6 +279,7 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
             adjustments=10,
             ordered_quantity=10,
             shipped_quantity=6,
+            optional_target_fields=None,
         )
         self._append_result_set_row(
             sheet,
@@ -217,6 +296,7 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
             adjustments=5,
             ordered_quantity=10,
             shipped_quantity=10,
+            optional_target_fields=None,
         )
         workbook.save(path)
 
@@ -237,6 +317,7 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
         adjustments: float,
         ordered_quantity: int,
         shipped_quantity: int,
+        optional_target_fields: dict[str, object] | None = None,
     ) -> None:
         row = [None] * 53
         row[2] = assigned_factory
@@ -253,6 +334,14 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
         row[45] = adjustments
         row[51] = ordered_quantity
         row[52] = shipped_quantity
+        if optional_target_fields is not None:
+            row.extend([
+                optional_target_fields.get("Pack"),
+                optional_target_fields.get("Season"),
+                optional_target_fields.get("Description"),
+                optional_target_fields.get("TMS Merchandiser"),
+                optional_target_fields.get("Factory Merchandiser"),
+            ])
         sheet.append(row)
 
     def _write_template_workbook(self, path: Path) -> None:
@@ -360,6 +449,7 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
             "Judy",
         ])
         target.append([None, None, None, None, None, "=COUNTA(F3:F4)", None, None, None, None, "=SUM(K3:K4)"])
+        target.auto_filter.ref = "A2:W5"
 
         warehouse = workbook.create_sheet("Sheet2")
         warehouse.append(["Gps Customer Number", "Customer Warehouse"])

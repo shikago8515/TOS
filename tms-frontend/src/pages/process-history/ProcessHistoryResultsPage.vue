@@ -158,6 +158,7 @@ import {
   filterDownloadableProcessRecords,
   filterLocalDownloadableProcessRecords,
   formatHistoryFileSize,
+  mergeDownloadableProcessRecords,
   readHistoryFileName,
   readHistoryMessage,
 } from './processHistoryResultsModel'
@@ -221,7 +222,7 @@ async function loadRecords(): Promise<void> {
 
   try {
     const payload = await fetchPersistedProcessHistoryRecordPage({
-      personId: personId.value,
+      personId: selectedHistoryModuleIds.value.length > 0 ? undefined : personId.value,
       moduleIds: selectedHistoryModuleIds.value.length > 0 ? selectedHistoryModuleIds.value : undefined,
       createdFrom: range.value.createdFrom,
       createdTo: range.value.createdTo,
@@ -232,10 +233,22 @@ async function loadRecords(): Promise<void> {
     })
     const downloadableRecords = filterDownloadableProcessRecords(payload.records)
     const hiddenRecordCount = payload.records.length - downloadableRecords.length
-    records.value = downloadableRecords
+    const localDownloadableRecords = filterLocalDownloadableProcessRecords(
+      collectLocalPersonRecords(),
+      {
+        personId: personId.value,
+        moduleIds: selectedHistoryModuleIds.value.length > 0 ? selectedHistoryModuleIds.value : undefined,
+        createdFrom: range.value.createdFrom,
+        createdTo: range.value.createdTo,
+      },
+    )
+    const mergedRecords = pagination.page === 1
+      ? mergeDownloadableProcessRecords(downloadableRecords, localDownloadableRecords)
+      : downloadableRecords
+    records.value = mergedRecords.slice(0, pagination.pageSize)
     Object.assign(pagination, {
       ...payload.pagination,
-      total: Math.max(downloadableRecords.length, payload.pagination.total - hiddenRecordCount),
+      total: Math.max(records.value.length, payload.pagination.total - hiddenRecordCount),
     })
   } catch (error) {
     const fallbackRecords = filterLocalDownloadableProcessRecords(

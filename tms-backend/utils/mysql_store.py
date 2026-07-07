@@ -272,6 +272,15 @@ DEFAULT_TOS_MODULES: tuple[dict[str, Any], ...] = (
         "page_path": "/jason/pdf-reorder",
     },
     {
+        "module_id": "jason-result-set-excel",
+        "owner_key": "jason",
+        "owner_name": "Jason",
+        "module_name": "Result Set Excel",
+        "module_name_en": "Result Set Excel",
+        "module_type": "excel",
+        "page_path": "/jason/result-set-excel",
+    },
+    {
         "module_id": "tms-finance-internal-reconciliation",
         "owner_key": "lucia",
         "owner_name": "Lucia",

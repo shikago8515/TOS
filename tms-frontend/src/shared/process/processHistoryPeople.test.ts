@@ -29,6 +29,22 @@ describe('processHistoryPeople', () => {
     expect(modules).not.toContain('jason-pdf-reorder')
   })
 
+  it('maps Jason Result Set Excel to the Jason history page', () => {
+    const modules = getProcessHistoryModulesForPerson('jason').map((module) => module.id)
+    const person = findProcessHistoryPersonByModuleId('jason-result-set-excel')
+
+    expect(person?.id).toBe('jason')
+    expect(modules).toContain('jason-result-set-excel')
+    expect(modules).not.toContain('jason-pdf-reorder')
+    expect(buildProcessHistoryPersonRoute('jason-result-set-excel')).toEqual({
+      path: '/process-history/jason',
+      query: { moduleId: 'jason-result-set-excel' },
+    })
+    expect(getProcessHistoryModuleIdsForQuery('jason-result-set-excel')).toEqual([
+      'jason-result-set-excel',
+    ])
+  })
+
   it('supports route catalog ids as aliases for history page lookup', () => {
     const person = findProcessHistoryPersonByModuleId('jane-bom-compare')
 
@@ -67,6 +83,7 @@ describe('processHistoryPeople', () => {
     expect(getProcessHistoryModuleIdsForQuery('eric')).toEqual(['eric'])
     expect(getProcessHistoryModuleIdsForQuery('iplex-dual-table-compare')).toEqual(['iplex-dual-table-compare'])
     expect(getProcessHistoryModuleIdsForQuery('excel-template-mapper-test')).toEqual(['excel-template-mapper-test'])
+    expect(getProcessHistoryModuleIdsForQuery('jason-result-set-excel')).toEqual(['jason-result-set-excel'])
   })
 
   it('resolves all Excel history ids back to their catalog route metadata', () => {
@@ -81,6 +98,7 @@ describe('processHistoryPeople', () => {
       ['iplex-dual-table-compare', '/iplex/dual-table-compare'],
       ['excel-tms-finance-internal-reconciliation', '/tms-finance-internal-reconciliation'],
       ['excel-tms-finance-work-sales', '/tms-finance-work-sales'],
+      ['jason-result-set-excel', '/jason/result-set-excel'],
       ['excel-template-mapper-test', '/excel-template-mapper-test'],
       ['pdf-draft-packing-compare', '/draft-packing-compare'],
     ] as const

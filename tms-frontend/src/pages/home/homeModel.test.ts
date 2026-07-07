@@ -18,10 +18,15 @@ describe('homeModel', () => {
   it('resolves Jason PDF reorder to the Jason owner and canonical route', () => {
     const module = findHomeModuleByActivityId('jason-pdf-reorder')
     const person = findHomePersonByModuleId('jason-pdf-reorder')
+    const resultSetModule = findHomeModuleByActivityId('jason-result-set-excel')
+    const resultSetPerson = findHomePersonByModuleId('jason-result-set-excel')
 
     expect(module?.path).toBe('/jason/pdf-reorder')
     expect(module?.routeName).toBe('jason-pdf-reorder')
     expect(person?.label).toBe('Jason')
+    expect(resultSetModule?.path).toBe('/jason/result-set-excel')
+    expect(resultSetModule?.routeName).toBe('jason-result-set-excel')
+    expect(resultSetPerson?.label).toBe('Jason')
   })
 
   it('uses the Eric Infornexus canonical owner instead of legacy Jessica routes', () => {
@@ -41,6 +46,7 @@ describe('homeModel', () => {
       ['excel-jane-bom-compare', '/jane-bom-compare', 'Jane'],
       ['excel-sophia-tina', '/sophia-tina', 'Sophia'],
       ['excel-tms-finance-work-sales', '/tms-finance-work-sales', 'Lucia'],
+      ['jason-result-set-excel', '/jason/result-set-excel', 'Jason'],
     ] as const
 
     for (const [historyModuleId, path, personLabel] of cases) {
@@ -56,6 +62,8 @@ describe('homeModel', () => {
     expect(historyModuleIds).toContain('excel-jane-bom-compare')
     expect(historyModuleIds).toContain('excel-sophia-tina')
     expect(historyModuleIds).toContain('excel-tms-finance-work-sales')
+    expect(historyModuleIds).toContain('jason-result-set-excel')
+    expect(historyModuleIds).not.toContain('jason-pdf-reorder')
     expect(historyModuleIds).not.toContain('draft-packing-compare')
     expect(historyModuleIds).not.toContain('jane-bom-compare')
     expect(historyModuleIds).not.toContain('sophia-tina')
@@ -74,6 +82,7 @@ describe('homeModel', () => {
       'jane-bom-summary',
       'excel-sophia-tina',
       'sophia-tina',
+      'jason-result-set-excel',
       'excel-tms-finance-work-sales',
       'tms-finance-work-sales',
     ]))

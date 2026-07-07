@@ -33,6 +33,24 @@ export function filterDownloadableProcessRecords(
   return records.filter((record) => Boolean(record.resultDownloadPath))
 }
 
+export function mergeDownloadableProcessRecords(
+  remoteRecords: readonly ProcessHistoryRecord[],
+  localRecords: readonly ProcessHistoryRecord[],
+): ProcessHistoryRecord[] {
+  const recordsById = new Map<string, ProcessHistoryRecord>()
+
+  for (const record of [...remoteRecords, ...localRecords]) {
+    if (!record.id || !record.resultDownloadPath || recordsById.has(record.id)) {
+      continue
+    }
+    recordsById.set(record.id, record)
+  }
+
+  return [...recordsById.values()].sort(
+    (left, right) => readRecordTimestamp(right) - readRecordTimestamp(left),
+  )
+}
+
 export function filterLocalDownloadableProcessRecords(
   records: readonly ProcessHistoryRecord[],
   filters: LocalProcessHistoryFilter,
@@ -87,4 +105,9 @@ function readFileName(path: unknown): string {
   }
   const normalized = path.replace(/\\/g, '/')
   return normalized.split('/').filter(Boolean).pop() || ''
+}
+
+function readRecordTimestamp(record: ProcessHistoryRecord): number {
+  const timestamp = Date.parse(record.createdAt)
+  return Number.isNaN(timestamp) ? 0 : timestamp
 }

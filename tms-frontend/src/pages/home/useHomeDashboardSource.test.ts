@@ -16,4 +16,12 @@ describe('useHomeDashboard source', () => {
     expect(source).not.toContain('homeDashboardModules.map((module) => module.id)')
     expect(source).not.toContain('return homeDashboardModules')
   })
+
+  it('refreshes cached home tabs on activation without double loading the first mount', () => {
+    const source = readDashboardSource()
+
+    expect(source).toContain('onActivated')
+    expect(source).toContain('hasLoadedOnce')
+    expect(source).toContain('if (hasLoadedOnce.value)')
+  })
 })

@@ -26,6 +26,11 @@ class ResultSetRow:
     shipped_quantity: float
     shipped_status: str
     order_type: str
+    pack: Any = None
+    season: Any = None
+    description: Any = None
+    tms_merchandiser: Any = None
+    factory_merchandiser: Any = None
 
 
 @dataclass
@@ -39,6 +44,11 @@ class ResultSetGroup:
     podd: datetime | None
     price_per_unit: float
     total_adjustments: float
+    pack: Any = None
+    season: Any = None
+    description: Any = None
+    tms_merchandiser: Any = None
+    factory_merchandiser: Any = None
     ordered_quantity: float = 0
     shipped_quantity: float = 0
     statuses: set[str] | None = None
@@ -50,13 +60,8 @@ class ResultSetGroup:
 
 @dataclass(frozen=True)
 class TemplateLookupRow:
-    pack: Any
-    season: Any
-    description: Any
     bulk_handover_date: Any
     factory_price: Any
-    tms_merchandiser: Any
-    factory_merchandiser: Any
 
 
 @dataclass(frozen=True)
@@ -100,6 +105,25 @@ class JasonResultSetExcelModule:
         "Order Type",
     ]
     ALLOWED_ORDER_TYPES = {"ZGPS", "ZREG"}
+    TARGET_HEADER_MERGES = (
+        "A1:A2",
+        "B1:B2",
+        "C1:C2",
+        "D1:D2",
+        "E1:E2",
+        "F1:F2",
+        "G1:G2",
+        "H1:H2",
+        "I1:I2",
+        "J1:J2",
+        "K1:K2",
+        "L1:N1",
+        "O1:R1",
+        "S1:T1",
+        "U1:U2",
+        "V1:V2",
+        "W1:W2",
+    )
 
     def __init__(self, template_path: str | Path | None = None) -> None:
         self.template_path = Path(template_path) if template_path is not None else self._default_template_path()
@@ -203,13 +227,8 @@ class JasonResultSetExcelModule:
                 continue
 
             lookup_row = TemplateLookupRow(
-                pack=target_sheet.cell(row=row_index, column=1).value,
-                season=target_sheet.cell(row=row_index, column=2).value,
-                description=target_sheet.cell(row=row_index, column=5).value,
                 bulk_handover_date=target_sheet.cell(row=row_index, column=10).value,
                 factory_price=target_sheet.cell(row=row_index, column=12).value,
-                tms_merchandiser=target_sheet.cell(row=row_index, column=22).value,
-                factory_merchandiser=target_sheet.cell(row=row_index, column=23).value,
             )
             row_lookup[(working_number, article_number)] = lookup_row
             article_lookup.setdefault(article_number, lookup_row)
@@ -254,6 +273,10 @@ class JasonResultSetExcelModule:
             index = headers[self._normalize_header(column_name)]
             return values[index] if index < len(values) else None
 
+        def read_optional(column_name: str) -> Any:
+            index = headers.get(self._normalize_header(column_name))
+            return values[index] if index is not None and index < len(values) else None
+
         return ResultSetRow(
             working_number=self._normalize_identifier(read("Working Number")),
             article_number=self._normalize_identifier(read("Article Number")),
@@ -268,6 +291,11 @@ class JasonResultSetExcelModule:
             shipped_quantity=self._coerce_float(read("Shipped Qty")),
             shipped_status=self._normalize_text(read("Shipped Status")),
             order_type=self._normalize_identifier(read("Order Type")),
+            pack=self._normalize_optional_output_value(read_optional("Pack")),
+            season=self._normalize_optional_output_value(read_optional("Season")),
+            description=self._normalize_optional_output_value(read_optional("Description")),
+            tms_merchandiser=self._normalize_optional_output_value(read_optional("TMS Merchandiser")),
+            factory_merchandiser=self._normalize_optional_output_value(read_optional("Factory Merchandiser")),
         )
 
     def _build_target_rows(
@@ -318,12 +346,18 @@ class JasonResultSetExcelModule:
                     podd=row.podd,
                     price_per_unit=row.price_per_unit,
                     total_adjustments=row.total_adjustments,
+                    pack=row.pack,
+                    season=row.season,
+                    description=row.description,
+                    tms_merchandiser=row.tms_merchandiser,
+                    factory_merchandiser=row.factory_merchandiser,
                 )
                 groups[group_key] = group
 
             group.ordered_quantity += row.ordered_quantity
             group.shipped_quantity += row.shipped_quantity
             group.statuses.add(row.shipped_status)
+            self._fill_group_optional_fields(group, row)
 
         warnings: list[str] = []
         target_rows: list[TargetRow] = []
@@ -337,7 +371,7 @@ class JasonResultSetExcelModule:
 
             lookup = row_lookup.get((group.working_number, group.article_number)) or article_lookup.get(group.article_number)
             if lookup is None:
-                lookup = TemplateLookupRow("", "", "", group.podd, "", "", "")
+                lookup = TemplateLookupRow(group.podd, None)
                 counts["unknown_lookup"] += 1
                 warnings.append(
                     f"未找到模板 lookup：Working Number={group.working_number}, Article={group.article_number}"
@@ -350,11 +384,11 @@ class JasonResultSetExcelModule:
             )
             target_rows.append(
                 TargetRow(
-                    pack=lookup.pack,
-                    season=lookup.season,
+                    pack=group.pack,
+                    season=group.season,
                     working_number=group.working_number,
                     article_number=group.article_number,
-                    description=lookup.description,
+                    description=group.description,
                     po_number=group.po_number,
                     market_po_number=group.market_po_number,
                     gps_customer_number=group.gps_customer_number,
@@ -366,8 +400,8 @@ class JasonResultSetExcelModule:
                     total_adjustments=adjustment,
                     factory_code=group.assigned_factory,
                     factory_name=factory_lookup.get(group.assigned_factory, ""),
-                    tms_merchandiser=lookup.tms_merchandiser,
-                    factory_merchandiser=lookup.factory_merchandiser,
+                    tms_merchandiser=group.tms_merchandiser,
+                    factory_merchandiser=group.factory_merchandiser,
                 )
             )
             counts["partial" if is_partial else "not_shipped"] += 1
@@ -388,6 +422,7 @@ class JasonResultSetExcelModule:
 
         if target_sheet.max_row >= 3:
             target_sheet.delete_rows(3, target_sheet.max_row - 2)
+        self._ensure_target_header_merges(target_sheet)
 
         for row_offset, target_row in enumerate(target_rows, start=3):
             self._apply_row_style(target_sheet, row_offset, style_templates)
@@ -435,6 +470,24 @@ class JasonResultSetExcelModule:
         workbook.save(output_path)
         workbook.close()
 
+    def _ensure_target_header_merges(
+        self,
+        sheet: openpyxl.worksheet.worksheet.Worksheet,
+    ) -> None:
+        for merged_range in list(sheet.merged_cells.ranges):
+            if (
+                merged_range.min_row <= 2
+                and merged_range.max_row >= 1
+                and merged_range.min_col <= 23
+                and merged_range.max_col >= 1
+            ):
+                sheet.unmerge_cells(str(merged_range))
+
+        for range_ref in self.TARGET_HEADER_MERGES:
+            sheet.merge_cells(range_ref)
+
+        sheet.auto_filter.ref = None
+
     def _capture_cell_style(self, cell: openpyxl.cell.cell.Cell) -> dict[str, Any]:
         return {
             "style": copy(cell._style),
@@ -461,6 +514,19 @@ class JasonResultSetExcelModule:
             cell.border = copy(style["border"])
             cell.alignment = copy(style["alignment"])
             cell.protection = copy(style["protection"])
+
+    @staticmethod
+    def _fill_group_optional_fields(group: ResultSetGroup, row: ResultSetRow) -> None:
+        if group.pack is None and row.pack is not None:
+            group.pack = row.pack
+        if group.season is None and row.season is not None:
+            group.season = row.season
+        if group.description is None and row.description is not None:
+            group.description = row.description
+        if group.tms_merchandiser is None and row.tms_merchandiser is not None:
+            group.tms_merchandiser = row.tms_merchandiser
+        if group.factory_merchandiser is None and row.factory_merchandiser is not None:
+            group.factory_merchandiser = row.factory_merchandiser
 
     def _group_sort_key(self, group: ResultSetGroup) -> tuple[str, str, str]:
         return (group.working_number, group.article_number, group.po_number)
@@ -509,6 +575,15 @@ class JasonResultSetExcelModule:
             return ""
         text = str(value).strip()
         return "" if text.lower() in {"none", "nan"} else text
+
+    @classmethod
+    def _normalize_optional_output_value(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            text = cls._normalize_text(value)
+            return text or None
+        return value
 
     @classmethod
     def _normalize_identifier(cls, value: Any) -> str:
