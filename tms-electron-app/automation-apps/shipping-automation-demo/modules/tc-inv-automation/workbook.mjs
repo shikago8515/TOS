@@ -31,6 +31,10 @@ const ZDOC_HEADER_ALIASES = new Set([
   "zdoc",
 ]);
 
+const ZEQS_HEADER_ALIASES = new Set([
+  "zeqs",
+]);
+
 const OTHER_COST_HEADER_ALIASES = new Set([
   "othercost",
   "othercharge",
@@ -175,6 +179,7 @@ function normalizeTcInvRow(row, rowIndex) {
   const poddDate = normalizePoddDate(poddCell.value);
   const zaddCell = findAmountCell(normalized, ZADD_HEADER_ALIASES);
   const zdocCell = findAmountCell(normalized, ZDOC_HEADER_ALIASES);
+  const zeqsCell = findAmountCell(normalized, ZEQS_HEADER_ALIASES);
   const otherCostCell = findAmountCell(normalized, OTHER_COST_HEADER_ALIASES);
   const values = Object.values(normalized).filter(Boolean);
   return {
@@ -193,6 +198,9 @@ function normalizeTcInvRow(row, rowIndex) {
     zdocAmount: normalizeAmount(zdocCell.value),
     zdocSourceHeader: zdocCell.header,
     hasZdocAmount: zdocCell.found && normalizeCellValue(zdocCell.value) !== "",
+    zeqsAmount: normalizeAmount(zeqsCell.value),
+    zeqsSourceHeader: zeqsCell.header,
+    hasZeqsAmount: zeqsCell.found && normalizeCellValue(zeqsCell.value) !== "",
     otherCostAmount: normalizeAmount(otherCostCell.value),
     otherCostSourceHeader: otherCostCell.header,
   };
@@ -415,16 +423,20 @@ function collectAdjustmentsByInvoice(rows) {
       group.totalZaddAmount = roundCurrency(group.totalZaddAmount + row.zaddAmount);
       group.totalOtherCostAmount = roundCurrency(group.totalOtherCostAmount + row.otherCostAmount);
       group.totalZdocAmount = roundCurrency(group.totalZdocAmount + row.zdocAmount);
+      group.totalZeqsAmount = roundCurrency(group.totalZeqsAmount + row.zeqsAmount);
       group.hasTotalZaddAmount = group.hasTotalZaddAmount || row.zaddAmount !== 0;
       group.hasTotalOtherCostAmount = group.hasTotalOtherCostAmount || row.otherCostAmount !== 0;
       group.hasTotalZdocAmount = group.hasTotalZdocAmount || row.hasZdocAmount;
+      group.hasTotalZeqsAmount = group.hasTotalZeqsAmount || row.hasZeqsAmount;
     } else {
       group.detailZaddAmount = roundCurrency(group.detailZaddAmount + row.zaddAmount);
       group.detailOtherCostAmount = roundCurrency(group.detailOtherCostAmount + row.otherCostAmount);
       group.detailZdocAmount = roundCurrency(group.detailZdocAmount + row.zdocAmount);
+      group.detailZeqsAmount = roundCurrency(group.detailZeqsAmount + row.zeqsAmount);
       group.hasDetailZaddAmount = group.hasDetailZaddAmount || row.zaddAmount !== 0;
       group.hasDetailOtherCostAmount = group.hasDetailOtherCostAmount || row.otherCostAmount !== 0;
       group.hasDetailZdocAmount = group.hasDetailZdocAmount || row.hasZdocAmount;
+      group.hasDetailZeqsAmount = group.hasDetailZeqsAmount || row.hasZeqsAmount;
     }
     grouped.set(invoiceNumber, group);
   }
@@ -435,6 +447,8 @@ function collectAdjustmentsByInvoice(rows) {
     const otherCostAmount = group.hasTotalOtherCostAmount ? group.totalOtherCostAmount : group.detailOtherCostAmount;
     const zdocAmount = group.hasTotalZdocAmount ? group.totalZdocAmount : group.detailZdocAmount;
     const hasZdocAmount = group.hasTotalZdocAmount || group.hasDetailZdocAmount;
+    const zeqsAmount = group.hasTotalZeqsAmount ? group.totalZeqsAmount : group.detailZeqsAmount;
+    const hasZeqsAmount = group.hasTotalZeqsAmount || group.hasDetailZeqsAmount;
     const zaddPlusOtherCostAmount = roundCurrency(zaddAmount + otherCostAmount);
 
     adjustmentsByInvoice[invoiceNumber] = {
@@ -445,6 +459,9 @@ function collectAdjustmentsByInvoice(rows) {
       zdocAmount,
       zdocInputValue: hasZdocAmount ? formatCurrencyAmount(zdocAmount) : "",
       hasZdocAmount,
+      zeqsAmount,
+      zeqsInputValue: hasZeqsAmount ? formatCurrencyAmount(zeqsAmount) : "",
+      hasZeqsAmount,
     };
   }
   return adjustmentsByInvoice;
@@ -455,15 +472,19 @@ function createAdjustmentGroup() {
     detailZaddAmount: 0,
     detailOtherCostAmount: 0,
     detailZdocAmount: 0,
+    detailZeqsAmount: 0,
     totalZaddAmount: 0,
     totalOtherCostAmount: 0,
     totalZdocAmount: 0,
+    totalZeqsAmount: 0,
     hasDetailZaddAmount: false,
     hasDetailOtherCostAmount: false,
     hasDetailZdocAmount: false,
+    hasDetailZeqsAmount: false,
     hasTotalZaddAmount: false,
     hasTotalOtherCostAmount: false,
     hasTotalZdocAmount: false,
+    hasTotalZeqsAmount: false,
   };
 }
 

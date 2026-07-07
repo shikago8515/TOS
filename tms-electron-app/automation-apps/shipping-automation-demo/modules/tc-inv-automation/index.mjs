@@ -54,6 +54,7 @@ export function createTcInvAutomation(deps) {
       previewPdfDownloadDirectory,
       zaddPlusOtherCost: firstInvoiceAdjustments?.zaddPlusOtherCostInputValue || "",
       zdoc: firstInvoiceAdjustments?.zdocInputValue || "",
+      zeqs: firstInvoiceAdjustments?.zeqsInputValue || "",
       totalInvoiceCount: workbook.invoiceNumbers.length,
       totalRowCount: workbook.rows.length,
     });
@@ -105,6 +106,7 @@ export function createTcInvAutomation(deps) {
         hasInvoiceFailures: result.hasInvoiceFailures,
         zaddPlusOtherCost: result.buildAdjustmentResult?.zadd?.actualAmount || firstInvoiceAdjustments?.zaddPlusOtherCostInputValue || "",
         zdoc: result.buildAdjustmentResult?.zdoc?.actualAmount || firstInvoiceAdjustments?.zdocInputValue || "",
+        zeqs: result.buildAdjustmentResult?.zeqs?.actualAmount || firstInvoiceAdjustments?.zeqsInputValue || "",
         searchedInvoiceNumber: result.searchedInvoiceNumber,
         totalInvoiceCount: workbook.invoiceNumbers.length,
         totalRowCount: result.totalRowCount,

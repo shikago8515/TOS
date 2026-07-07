@@ -15,6 +15,7 @@ const ANY_ADJUSTMENT_APPLY_AS_SELECTOR = 'select[name^="CommercialInvoice_adjust
 const ADJUSTMENT_APPLY_AS_CHARGE_VALUE = "Fee";
 const ZADD_ADJUSTMENT_ROW_INDEX = 2;
 const ZDOC_ADJUSTMENT_ROW_INDEX = 3;
+const ZEQS_ADJUSTMENT_ROW_INDEX = 4;
 const PREVIEW_STEP_LINK_SELECTOR = 'a[href*="jumpToStep"][href*="Review"]';
 const PREVIEW_VALIDATE_BUTTON_SELECTOR = 'input[type="button"][value="Validate"], input.styledActionButton[value="Validate"], input[onclick*="submitUserAction"][onclick*="validate"]';
 const INVOICE_RESULT_WAIT_MS = 7000;
@@ -794,6 +795,7 @@ async function openBuildStepAndApplyAdjustments(page, invoiceAdjustments, config
     selectedValue: "",
     zadd: null,
     zdoc: null,
+    zeqs: null,
     adjustments: invoiceAdjustments || null,
   };
 
@@ -815,6 +817,14 @@ async function openBuildStepAndApplyAdjustments(page, invoiceAdjustments, config
       amountInputValue: invoiceAdjustments.zdocInputValue,
       reasonCode: "ZDOC",
       rowIndex: ZDOC_ADJUSTMENT_ROW_INDEX,
+    }, config);
+  }
+
+  if (invoiceAdjustments.hasZeqsAmount) {
+    result.zeqs = await applyAdjustmentRow(page, {
+      amountInputValue: invoiceAdjustments.zeqsInputValue,
+      reasonCode: "ZEQS",
+      rowIndex: ZEQS_ADJUSTMENT_ROW_INDEX,
     }, config);
   }
 
@@ -1054,6 +1064,7 @@ function createSkippedBuildAdjustmentResult(skippedReason, invoiceAdjustments = 
     selectedValue: "",
     zadd: null,
     zdoc: null,
+    zeqs: null,
     skippedReason,
   };
 }
