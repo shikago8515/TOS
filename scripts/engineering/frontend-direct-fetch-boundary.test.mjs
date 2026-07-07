@@ -21,6 +21,7 @@ const allowedDirectRequestFiles = new Set([
   'tms-frontend/src/pages/shipping-automation-2/components/ShippingAutomation2Workspace.vue',
   'tms-frontend/src/pages/tc-inv-automation/components/TcInvAutomationWorkspace.vue',
   'tms-frontend/src/pages/xinlongtai-shipping-automation/components/XinlongtaiShippingAutomationWorkspace.vue',
+  'tms-frontend/src/pages/xo-tc-inv-automation/components/XoTcInvAutomationWorkspace.vue',
 ])
 
 test('frontend direct HTTP requests stay inside approved API boundaries', async () => {
