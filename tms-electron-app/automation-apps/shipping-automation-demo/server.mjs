@@ -5380,6 +5380,11 @@ async function closeCreateShipmentPreviewPdfModal(page) {
 }
 
 function buildCreateShipmentPreviewPdfFileName(createShipmentBatch, pdfInfo = {}) {
+  const invoiceNumber = sanitizePreviewPdfInvoiceNumber(createShipmentBatch?.invoiceNumber);
+  if (invoiceNumber) {
+    return `preview PL ${invoiceNumber}.pdf`.slice(0, 170);
+  }
+
   const equipmentId = sanitizeFileSegment(createShipmentBatch?.changeEquipmentId || "equipment");
   const poText = Array.isArray(createShipmentBatch?.poNos)
     ? createShipmentBatch.poNos.map((value) => sanitizeFileSegment(value)).filter(Boolean).slice(0, 3).join("-")
@@ -5389,6 +5394,15 @@ function buildCreateShipmentPreviewPdfFileName(createShipmentBatch, pdfInfo = {}
   const suffix = [poText, keyText].filter(Boolean).join("-");
   const baseName = `Xinlongtai-Preview-${equipmentId}${suffix ? `-${suffix}` : ""}.pdf`;
   return baseName.slice(0, 170);
+}
+
+function sanitizePreviewPdfInvoiceNumber(value) {
+  return String(value || "")
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]+/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/[. ]+$/g, "")
+    .slice(0, 120);
 }
 
 function nextAvailableFileNameSync(directory, fileName) {
