@@ -456,8 +456,8 @@ class JaneModuleWorkbookTests(unittest.TestCase):
         )
         self.assertEqual(
             [
-                ("WN-1", "ART-2"),
                 ("WN-1", "ART-1"),
+                ("WN-1", "ART-2"),
                 ("WN-2", "ART-2"),
                 ("WN-10", "ART-0"),
             ],
@@ -477,6 +477,19 @@ class JaneModuleWorkbookTests(unittest.TestCase):
         sorted_rows = self.module.sort_tms_rows_for_generation(pd.DataFrame(rows), country_lookup)
 
         self.assertEqual([101, 102], list(sorted_rows["PO Number"]))
+
+    def test_summary_sorts_articles_within_same_working_number(self) -> None:
+        rows = [
+            self._tms_row("WN-001", "LJ7420", "UNITED STATES", "600000", 202, 10, 20),
+            self._tms_row("WN-001", "LJ7421", "COLOMBIA", "659018", 101, 10, 10),
+        ]
+
+        wb = self._process_rows(rows)
+
+        self.assertEqual(
+            [("WN-001", "LJ7420"), ("WN-001", "LJ7421")],
+            self._summary_working_article_rows(wb),
+        )
 
     def test_working_sheet_detail_rows_sort_within_size_section(self) -> None:
         rows = [

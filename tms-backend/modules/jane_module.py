@@ -1634,7 +1634,13 @@ class JaneModule:
         for wn in working_order:
             wn_str = self._normalize_text(wn)
             df_wn = df[df['Working Number'].apply(self._normalize_text) == wn_str]
-            articles = df_wn['Article Number'].unique()
+            article_by_key: Dict[str, Any] = {}
+            for article_value in df_wn['Article Number']:
+                article_text = self._normalize_text(article_value)
+                if not article_text:
+                    continue
+                article_by_key.setdefault(article_text.upper(), article_value)
+            articles = sorted(article_by_key.values(), key=self._natural_text_sort_key)
             group_start_row = row_idx
             detail_sheet_name = next(
                 (sheet_name for sheet_name in wb.sheetnames if self._normalize_text(sheet_name) == wn_str),
