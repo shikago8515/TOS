@@ -1,32 +1,12 @@
 {
-  "version": "1.0.0-beta.3.30",
+  "version": "1.0.0-beta.3.28",
   "date": "2026-07-08",
-  "noticeId": "2026-07-08-v1.0.0-beta.3.30",
-  "showPopup": true,
-  "added": [
-    "添加发票大写金额核对",
-    "完善 Jason Result Set Excel 输出",
-    "新增 XO Trade Card INV 自动化模块"
-  ],
+  "noticeId": "2026-07-08-v1.0.0-beta.3.28",
+  "showPopup": false,
+  "added": [],
   "improved": [],
   "fixed": [
-    "调整 XO TC INV 空金额日期预览流程",
-    "修复 PO 自动下载前端测试",
-    "修复 PO 自动下载 lint 错误",
-    "修复 Jane Summary Article 排序",
-    "小助手安装包排除运行产物",
-    "修复 Jane 成品表段内明细排序",
-    "支持 TC INV ZEQS 费用行",
-    "支持 XO TC INV 空金额直接 Validate",
-    "修复 Jane 成品表连续点排序",
-    "keep single invoice download completion dialog",
-    "add invoice download result dialog",
-    "调整 InforNexus 自动添加录入节奏",
-    "统一 automation modules 到 3.27 并增强 invoice 下载容错",
-    "修复 Jane 成品表尺码与排序",
-    "修复 Jason Result Set Excel 输出和历史统计",
-    "调整 XO TC INV ZEQS 费用解析",
-    "修复两台服务器下小助手热更新源选择"
+    "按当前站点下发自动化模块清单地址"
   ],
   "modules": [],
   "sections": []

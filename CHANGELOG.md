@@ -1,3 +1,9 @@
+## [1.0.0-beta.3.28](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.27...v1.0.0-beta.3.28) (2026-07-08)
+
+### Bug Fixes
+
+* 按当前站点下发自动化模块清单地址 ([16e7d4c](http://172.16.48.208:3001/luenthai-ai/TOS/commit/16e7d4cffce8841f6d04d7f59656c8fe5edc40f5))
+
 ## [1.0.0-beta.3.27](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.26...v1.0.0-beta.3.27) (2026-07-08)
 
 ### Features

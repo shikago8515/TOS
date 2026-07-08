@@ -10,6 +10,16 @@
     "description": "小助手壳子更新到 1.0.0-beta.3.30，热更新模块清单会按当前访问的 TOS 服务器生成，避免 172 内网与 218 公网两条链路互相串源。"
   },
   {
+    "recordKey": "release-v1.0.0-beta.3.28",
+    "version": "1.0.0-beta.3.28",
+    "releaseDate": "2026-07-08",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.28",
+    "description": "Release v1.0.0-beta.3.28. Channel: beta.3. Commit: 0ee04d5cad62fd3e60ba38da1c87e4c94c728255. Release notes: 按当前站点下发自动化模块清单地址."
+  },
+  {
     "recordKey": "release-v1.0.0-beta.3.27",
     "version": "1.0.0-beta.3.27",
     "releaseDate": "2026-07-08",
