@@ -125,6 +125,7 @@ class JasonResultSetExcelModule:
         "W1:W2",
     )
     TARGET_PRICE_FILL_COLUMNS = frozenset(range(12, 19))
+    TARGET_SHEET_ORDER = ("目标表", "Sheet1", "Sheet2", "Sheet3")
     SHEET1_HEADERS = (
         "Working Number",
         "Article Number",
@@ -436,6 +437,7 @@ class JasonResultSetExcelModule:
         if target_sheet.max_row >= 3:
             target_sheet.delete_rows(3, target_sheet.max_row - 2)
         self._ensure_target_header_merges(target_sheet)
+        self._sync_factory_subheader_fill(target_sheet)
 
         for row_offset, target_row in enumerate(target_rows, start=3):
             self._apply_row_style(target_sheet, row_offset, style_templates)
@@ -482,6 +484,7 @@ class JasonResultSetExcelModule:
             target_sheet.cell(row=total_row, column=18).value = f"=SUM(R3:R{last_data_row})"
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        self._ensure_workbook_sheet_order(workbook)
         workbook.save(output_path)
         workbook.close()
 
@@ -545,6 +548,23 @@ class JasonResultSetExcelModule:
             sheet.merge_cells(range_ref)
 
         sheet.auto_filter.ref = None
+
+    @staticmethod
+    def _sync_factory_subheader_fill(
+        sheet: openpyxl.worksheet.worksheet.Worksheet,
+    ) -> None:
+        factory_header_fill = copy(sheet["S1"].fill)
+        sheet["S2"].fill = copy(factory_header_fill)
+        sheet["T2"].fill = copy(factory_header_fill)
+
+    def _ensure_workbook_sheet_order(self, workbook: openpyxl.Workbook) -> None:
+        ordered_sheet_index = 0
+        for sheet_name in self.TARGET_SHEET_ORDER:
+            if sheet_name not in workbook.sheetnames:
+                continue
+            current_index = workbook.sheetnames.index(sheet_name)
+            workbook.move_sheet(workbook[sheet_name], offset=ordered_sheet_index - current_index)
+            ordered_sheet_index += 1
 
     def _capture_cell_style(self, cell: openpyxl.cell.cell.Cell) -> dict[str, Any]:
         return {

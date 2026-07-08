@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { cp, mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { validateAppVersion } from './sync-version.mjs'
@@ -244,15 +245,36 @@ async function readGitValue(repoRoot, args) {
 }
 
 async function runFrontendBuild(repoRoot, backendUrl) {
-  const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-  await runCommand(npmBin, ['--prefix', 'tms-frontend', 'run', 'build'], {
+  const npmCli = resolveNpmCli()
+  await runCommand(process.execPath, [npmCli, '--prefix', 'tms-frontend', 'run', 'build'], {
     cwd: repoRoot,
     env: {
       ...process.env,
       VITE_BACKEND_URL: backendUrl,
     },
-    shell: process.platform === 'win32',
   })
+}
+
+function resolveNpmCli() {
+  const npmExecPath = process.env.npm_execpath
+  if (isNpmCli(npmExecPath)) {
+    return npmExecPath
+  }
+
+  const bundledNpmCli = resolve(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')
+  if (isNpmCli(bundledNpmCli)) {
+    return bundledNpmCli
+  }
+
+  throw new Error([
+    'Unable to locate a real npm CLI.',
+    'Expected process.env.npm_execpath or the current Node installation to provide npm/bin/npm-cli.js.',
+    'Refusing to fall back to node_modules/.bin/npm because local npm shims can shadow the system npm.',
+  ].join(' '))
+}
+
+function isNpmCli(candidate) {
+  return Boolean(candidate && basename(candidate).toLowerCase() === 'npm-cli.js' && existsSync(candidate))
 }
 
 function runCommand(executable, args, options = {}) {

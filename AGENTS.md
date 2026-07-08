@@ -194,9 +194,10 @@
 3. 服务器部署默认只更新 `tos-backend` 和 `tos-frontend`，保留服务器侧 Dockerfile、`nginx.conf`、`docker-compose.tos.yml` 和 `authelia/`。
 4. 服务器部署不等于 Windows Electron 打包；只有发布桌面安装包、自动更新包或正式 Windows 客户端时，才运行 `npm run build:win`。
 5. `~/TOS/.deploy_uploads/` 仍作为部署脚本内部包落地和应用目录；只有 Gitea 或服务器拉代码不可用时，才退回“本机生成 `.tar.gz` 后手动上传 `.deploy_uploads`”的备用流程。
-6. 服务器发布包不包含 `tms-electron-app/automation-apps`、`automation-launcher`、`browser-plugins` 或 `external-apps`；桌面自动化修复需要单独走 Electron/automation helper 交付链路。
-7. 截图或服务器中如存在 `_deploy_uploads`、`_source_uploads`，视为历史目录；新流程不写入这些目录。
-8. `~/TOS-source` 仍是源码 Git checkout；`~/TOS` 仍是 Docker Compose 部署目录，不允许在 `~/TOS` 中执行 `git pull`。
+6. 自己的测试服务器继续使用 `deploy-tos`；北京测试服务器固定使用本机 PowerShell 一键脚本 `scripts/server/deploy-beijing-from-local.ps1` 生成标准服务器包，再由本机 `scp` 上传到 `/home/tosadmin/TOS-source/release/server/`，最后脚本自动在北京服务器执行包内 `deploy/apply-server-update.sh`。不要再使用或恢复 `scripts/server/deploy-to-beijing.sh` 这类从公司测试服务器中转北京的 SSH 推送脚本。
+7. 服务器发布包不包含 `tms-electron-app/automation-apps`、`automation-launcher`、`browser-plugins` 或 `external-apps`；桌面自动化修复需要单独走 Electron/automation helper 交付链路。
+8. 截图或服务器中如存在 `_deploy_uploads`、`_source_uploads`，视为历史目录；新流程不写入这些目录。
+9. `~/TOS-source` 仍是源码 Git checkout；`~/TOS` 仍是 Docker Compose 部署目录，不允许在 `~/TOS` 中执行 `git pull`。
 
 ## 可用检查命令
 

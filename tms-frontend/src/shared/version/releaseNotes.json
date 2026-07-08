@@ -2,8 +2,10 @@
   "version": "1.0.0-beta.3.30",
   "date": "2026-07-08",
   "noticeId": "2026-07-08-v1.0.0-beta.3.30",
-  "showPopup": false,
-  "added": [],
+  "showPopup": true,
+  "added": [
+    "添加北京服务器本机部署脚本"
+  ],
   "improved": [
     "XO TC INV 支持把 Submission 列识别为交接日期",
     "自动下载箱单支持识别 PO NUMBER、inv number 和 PODD DATE 模板列"
@@ -11,6 +13,8 @@
   "fixed": [
     "万代 Shipping 支持识别 inv number 发票号并填写 Create Shipment 发票信息",
     "万代 Shipping 接入 Preview PDF 保存目录、下载执行和页面结果展示",
+    "修复北京部署远端脚本传输",
+    "修复本机服务器包前端构建",
     "按当前站点下发自动化模块清单地址",
     "发布小助手壳子 1.0.0-beta.3.30",
     "发布 automation modules 1.0.0-beta.3.30"

@@ -119,6 +119,51 @@ test('Gitea main deployment script packages and applies the standard server upda
   assert.match(deployScript, /wait_for_command "frontend static site" curl -fsSI http:\/\/127\.0\.0\.1:18080\//)
 })
 
+test('local Beijing deployment script packages, uploads, and applies the standard server update archive', async () => {
+  const deployScript = await readFile(new URL('../server/deploy-beijing-from-local.ps1', import.meta.url), 'utf8')
+  const packageJson = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'))
+
+  assert.equal(
+    packageJson.scripts['server:deploy:beijing'],
+    'powershell -ExecutionPolicy Bypass -File scripts/server/deploy-beijing-from-local.ps1',
+  )
+  assert.match(deployScript, /"fetch", "gitea", "main", "--prune"/)
+  assert.match(deployScript, /"merge", "--ff-only", "gitea\/main"/)
+  assert.match(deployScript, /"run", "test:server-package"/)
+  assert.match(deployScript, /"run", "server:package:dry-run"/)
+  assert.match(deployScript, /"run", "server:package"/)
+  assert.match(deployScript, /tos-server-update-\*\.tar\.gz/)
+  assert.match(deployScript, /\$RemoteSourceDir = "\/home\/tosadmin\/TOS-source"/)
+  assert.match(deployScript, /\$remoteReleaseDir = "\$RemoteSourceDir\/release\/server"/)
+  assert.match(deployScript, /\$RemoteDeployDir = "\/home\/tosadmin\/TOS"/)
+  assert.match(deployScript, /\$remoteUploadsDir = "\$RemoteDeployDir\/.deploy_uploads"/)
+  assert.match(deployScript, /scp/)
+  assert.match(deployScript, /ssh/)
+  assert.match(deployScript, /deploy\/apply-server-update\.sh/)
+  assert.match(deployScript, /TOS_DOCKER_NO_CACHE/)
+  assert.match(deployScript, /http:\/\/127\.0\.0\.1\/tos\/desktop-api\/health/)
+  assert.match(deployScript, /http:\/\/127\.0\.0\.1\/tos\//)
+  assert.match(deployScript, /\$normalizedInputText = \$InputText -replace "`r`n\?", "`n"/)
+  assert.match(deployScript, /New-TemporaryFile/)
+  assert.match(deployScript, /"type"/)
+  assert.match(deployScript, /"\|"/)
+  assert.match(deployScript, /cmd\.exe/)
+  assert.doesNotMatch(deployScript, /\$InputText \| & \$File @Arguments/)
+  assert.doesNotMatch(deployScript, /deploy-to-beijing\.sh/)
+  assert.doesNotMatch(deployScript, /git pull/)
+})
+
+test('server package frontend build uses the real npm CLI instead of local npm shims', async () => {
+  const packageScript = await readFile(new URL('./package-server-update.mjs', import.meta.url), 'utf8')
+
+  assert.match(packageScript, /function resolveNpmCli\(\)/)
+  assert.match(packageScript, /process\.env\.npm_execpath/)
+  assert.match(packageScript, /node_modules', 'npm', 'bin', 'npm-cli\.js'/)
+  assert.match(packageScript, /runCommand\(process\.execPath, \[npmCli, '--prefix', 'tms-frontend', 'run', 'build'\]/)
+  assert.doesNotMatch(packageScript, /process\.platform === 'win32' \? 'npm\.cmd' : 'npm'/)
+  assert.doesNotMatch(packageScript, /runCommand\(npmBin, \['--prefix', 'tms-frontend', 'run', 'build'\]/)
+})
+
 test('rejects release notes that are not synced to the app version', async () => {
   const root = await createFixture({
     appVersion: '0.9.8-beta.3.3',

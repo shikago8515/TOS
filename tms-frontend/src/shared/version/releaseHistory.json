@@ -33,11 +33,21 @@
     "recordKey": "release-v1.0.0-beta.3.30",
     "version": "1.0.0-beta.3.30",
     "releaseDate": "2026-07-08",
-    "category": "fixed",
-    "pageName": "TOS 自动化助手",
-    "pagePath": "/settings",
-    "title": "小助手热更新源修复",
-    "description": "小助手壳子更新到 1.0.0-beta.3.30，热更新模块清单会按当前访问的 TOS 服务器生成，避免 172 内网与 218 公网两条链路互相串源。"
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.30",
+    "description": "Release v1.0.0-beta.3.30. Channel: beta.3. Commit: c58d5e222bc44035e093daa6952538b523cba50e. Release notes: 添加北京服务器本机部署脚本；修复北京部署远端脚本传输；修复本机服务器包前端构建."
+  },
+  {
+    "recordKey": "release-v1.0.0-beta.3.29",
+    "version": "1.0.0-beta.3.29",
+    "releaseDate": "2026-07-08",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.29",
+    "description": "Release v1.0.0-beta.3.29. Channel: beta.3. Commit: b61ae888833974282a183a0b6c5ae2e12edb62a1. Release notes: 调整 Jason Result Set Excel 输出格式."
   },
   {
     "recordKey": "release-v1.0.0-beta.3.28",

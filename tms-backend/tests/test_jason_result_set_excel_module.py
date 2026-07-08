@@ -56,7 +56,7 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
             )
 
             workbook = openpyxl.load_workbook(result["output_path"], data_only=False, keep_links=False)
-            self.assertEqual(workbook.sheetnames[0], "Sheet1")
+            self.assertEqual(workbook.sheetnames, ["目标表", "Sheet1", "Sheet2", "Sheet3"])
             summary_sheet = workbook["Sheet1"]
             sheet = workbook["目标表"]
 
@@ -145,6 +145,11 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
             for column_index in range(1, 24):
                 self.assertIsNone(sheet.cell(row=63, column=column_index).fill.fill_type)
             self.assertEqual({str(range_ref) for range_ref in sheet.merged_cells.ranges}, EXPECTED_HEADER_MERGES)
+            self.assertEqual(sheet["S1"].fill.fill_type, "solid")
+            self.assertEqual(sheet["S2"].fill.fill_type, sheet["S1"].fill.fill_type)
+            self.assertEqual(sheet["T2"].fill.fill_type, sheet["S1"].fill.fill_type)
+            self.assertEqual(sheet["S2"].fill.fgColor.rgb, sheet["S1"].fill.fgColor.rgb)
+            self.assertEqual(sheet["T2"].fill.fgColor.rgb, sheet["S1"].fill.fgColor.rgb)
             self.assertIsNone(sheet.auto_filter.ref)
             workbook.close()
 
@@ -614,6 +619,9 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
                 fill_type="solid",
                 fgColor="D9EAF7",
             )
+        target["S1"].fill = openpyxl.styles.PatternFill(fill_type="solid", fgColor="F4C7A1")
+        target["S2"].fill = openpyxl.styles.PatternFill(fill_type="solid", fgColor="D9E6EF")
+        target["T2"].fill = openpyxl.styles.PatternFill(fill_type="solid", fgColor="D9E6EF")
 
         warehouse = workbook.create_sheet("Sheet2")
         warehouse.append(["Gps Customer Number", "Customer Warehouse"])

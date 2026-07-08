@@ -282,6 +282,101 @@ TOS_GITEA_REMOTE_URL=ssh://git@gitea-tos/luenthai-ai/TOS.git bash ~/TOS-source/s
 TOS_SOURCE_DIR=/home/obito_li/TOS-source TOS_DEPLOY_ROOT=/home/obito_li/TOS bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
 ```
 
+## 北京测试服务器手动包部署
+
+北京测试服务器不能访问 LT 内网 Gitea，也不能从公司测试服务器稳定接收 SSH 推送。北京部署不使用一键 SSH 上传脚本，不在北京服务器 `~/TOS` 里执行 `git pull`，也不要把整仓源码覆盖到 `~/TOS`。
+
+固定流程是：本机 PowerShell 从最新 Gitea `main` 生成标准服务器包，通过本机 `scp` 上传到北京服务器 `~/TOS-source/release/server/`，再自动 SSH 到北京服务器执行包内 `deploy/apply-server-update.sh`。脚本只上传标准 `.tar.gz` 包，不把整仓源码覆盖到 `~/TOS`。
+
+本机一键打包、上传并部署：
+
+```powershell
+Set-Location D:\project\TOS-main
+npm run server:deploy:beijing
+```
+
+如需先预演本地检查和远端动作，不上传、不部署：
+
+```powershell
+Set-Location D:\project\TOS-main
+npm run server:deploy:beijing -- -DryRun
+```
+
+脚本默认参数：
+
+```text
+RemoteHost=218.240.184.58
+RemoteUser=tosadmin
+RemoteSourceDir=/home/tosadmin/TOS-source
+RemoteDeployDir=/home/tosadmin/TOS
+```
+
+脚本会：
+
+- 确认本地在 `main` 分支、工作区 clean。
+- `git fetch gitea main --prune` 并 `git merge --ff-only gitea/main`。
+- 确认本地 `HEAD` 与 `gitea/main` 一致。
+- 运行 `npm run test:server-package`、`npm run server:package:dry-run` 和 `npm run server:package`。
+- 把本机 `release/server/tos-server-update-*.tar.gz` 上传到北京服务器 `/home/tosadmin/TOS-source/release/server/`。
+- 在北京服务器复制该包到 `/home/tosadmin/TOS/.deploy_uploads/`，解压到 `.deploy_uploads/work/<deployId>/`，再执行包内 `deploy/apply-server-update.sh`。
+- 部署后验证 Docker Compose、`http://127.0.0.1/tos/` 和 `http://127.0.0.1/tos/desktop-api/health`。
+
+本机手动生成包备用：
+
+```powershell
+Set-Location D:\project\TOS-main
+
+git status --short --branch
+git fetch gitea main --prune
+git merge --ff-only gitea/main
+
+npm run test:server-package
+npm run server:package:dry-run
+npm run server:package
+
+$pkg = Get-ChildItem .\release\server\tos-server-update-*.tar.gz |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -First 1
+
+$pkg.FullName
+```
+
+本机手动上传到北京服务器源码包目录：
+
+```powershell
+scp $pkg.FullName tosadmin@218.240.184.58:/home/tosadmin/TOS-source/release/server/
+```
+
+如果使用 MobaXterm，也可以在 SFTP 面板把 `$pkg.FullName` 对应的 `.tar.gz` 上传到：
+
+```text
+/home/tosadmin/TOS-source/release/server/
+```
+
+北京服务器执行部署：
+
+```bash
+cd ~/TOS
+
+PKG_SOURCE="$(ls -t ~/TOS-source/release/server/tos-server-update-*.tar.gz | head -n 1)"
+PKG=".deploy_uploads/$(basename "$PKG_SOURCE")"
+DEPLOY_ID="$(date +%Y%m%d%H%M%S)"
+WORK=".deploy_uploads/work/$DEPLOY_ID"
+
+test -f "$PKG_SOURCE" || { echo "missing $PKG_SOURCE"; exit 1; }
+mkdir -p .deploy_uploads
+cp -f "$PKG_SOURCE" "$PKG"
+test -f "$PKG" || { echo "missing $PKG"; exit 1; }
+
+rm -rf "$WORK"
+mkdir -p "$WORK"
+tar -xzf "$PKG" -C "$WORK"
+
+PKG="$PWD/$PKG" DEPLOY_ID="$DEPLOY_ID" TOS_ROOT="$PWD" bash "$WORK/deploy/apply-server-update.sh"
+```
+
+北京部署只更新 `tms-backend`、`tms-frontend` 和 `app-version.json` 等应用内容，保留北京服务器侧 `docker-compose.tos.yml`、Dockerfile、Nginx、`authelia/` 和私有配置。
+
 ## 回滚
 
 如果重建失败或页面异常，使用本次部署记录的 `DEPLOY_ID` 回滚：

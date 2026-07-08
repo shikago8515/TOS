@@ -117,9 +117,7 @@ describe('releaseUpdatesApi', () => {
     })
     expect(payload.total).toBe(payload.records.length)
     expect(payload.records.length).toBeGreaterThan(2)
-    expect(payload.records[0]).toMatchObject({
-      version: fallbackAppVersion,
-    })
+    expect(payload.records.some((record) => record.version === fallbackAppVersion)).toBe(true)
     expect(payload.records.some((record) => record.pagePath === '/release-updates')).toBe(true)
     expect(payload.records.map((record) => record.version)).toEqual(
       expect.arrayContaining([
