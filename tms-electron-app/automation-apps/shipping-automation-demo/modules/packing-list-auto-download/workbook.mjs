@@ -44,6 +44,14 @@ const NO_HEADER_ALIASES = new Set([
   "编号",
 ]);
 
+const PODD_HEADER_ALIASES = new Set([
+  "podd",
+  "podddate",
+  "podddates",
+  "podeliverydate",
+  "poddrequired",
+]);
+
 const STATUS_HEADER_ALIASES = new Set([
   "status",
   "状态",
@@ -175,6 +183,7 @@ function normalizePackingListRow(row, rowIndex) {
   const poCell = findCellByAliases(normalized, PO_HEADER_ALIASES);
   const poNumbers = splitPoNumbers(poCell.value);
   const noCell = findCellByAliases(normalized, NO_HEADER_ALIASES);
+  const poddCell = findCellByAliases(normalized, PODD_HEADER_ALIASES);
   const statusCell = findCellByAliases(normalized, STATUS_HEADER_ALIASES);
   return {
     rowIndex,
@@ -185,6 +194,8 @@ function normalizePackingListRow(row, rowIndex) {
     poNumber: poNumbers[0] || "",
     poNumbers,
     poSourceHeader: poCell.header,
+    poddDate: normalizeCellValue(poddCell.value),
+    poddSourceHeader: poddCell.header,
     status: normalizeCellValue(statusCell.value),
     statusSourceHeader: statusCell.header,
   };
@@ -232,6 +243,8 @@ function collectNoGroups(rows) {
     if (!group) {
       group = {
         no,
+        firstPoddDate: "",
+        poddDates: [],
         rows: [],
         poNumbers: [],
       };
@@ -239,6 +252,13 @@ function collectNoGroups(rows) {
       groups.push(group);
     }
     group.rows.push(row);
+    const poddDate = normalizeCellValue(row.poddDate);
+    if (poddDate && !group.poddDates.includes(poddDate)) {
+      group.poddDates.push(poddDate);
+      if (!group.firstPoddDate) {
+        group.firstPoddDate = poddDate;
+      }
+    }
     for (const poNumber of poNumbers) {
       if (!group.poNumbers.includes(poNumber)) {
         group.poNumbers.push(poNumber);

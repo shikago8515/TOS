@@ -138,7 +138,7 @@
                     <div class="pad-drop__icon"><AppIcon name="upload" /></div>
                     <div class="pad-drop__text">
                       <strong>{{ text('点击或拖入 Excel 文件') }}</strong>
-                      <small>{{ text('请包含 PO# 和 Invoice# 列') }}</small>
+                      <small>{{ text('请包含 PO NUMBER、inv number 和 PODD DATE 列') }}</small>
                     </div>
                   </template>
                   <div v-if="isDragging" class="pad-drop__overlay">{{ text('释放以上传文件') }}</div>
@@ -433,7 +433,7 @@ let reconcilingRunRecord = false
 let lastBatchProgressRefreshAt = 0
 
 const steps = [
-  { title: '上传 Excel 文件', desc: '读取 PO# 和 Invoice# 列生成箱单下载清单。' },
+  { title: '上传 Excel 文件', desc: '读取 PO NUMBER、inv number 和 PODD DATE 列生成箱单下载清单。' },
   { title: '选择保存目录', desc: '文件会直接保存到用户电脑指定目录。' },
   { title: '请求下载优先', desc: '本机执行器优先使用登录态发起箱单下载请求。' },
   { title: '查看下载结果', desc: '完成数量、失败箱单和保存路径会返回页面。' },
@@ -1217,7 +1217,7 @@ function validatePackingListDownloadInputs(options: { requireFile?: boolean } = 
     return showRunRequirementDialog('当前入口不存在，请从 Jessica 浏览器自动化菜单重新进入。')
   }
   if (requireFile && !selectedFile.value) {
-    return showRunRequirementDialog('请先上传 Excel 文件，文件需包含 PO# 和 Invoice# 列。')
+    return showRunRequirementDialog('请先上传 Excel 文件，文件需包含 PO NUMBER、inv number 和 PODD DATE 列。')
   }
   if (!saveDirectory.value.trim()) {
     return showRunRequirementDialog('请先选择或填写下载保存目录。')

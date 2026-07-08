@@ -241,10 +241,13 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (req.method === "POST" && isXinlongtaiShippingPreviewPdfDirectoryRoute(requestPath)) {
+    if (req.method === "POST" && isShippingPreviewPdfDirectoryRoute(requestPath)) {
       const body = await readJsonBody(req);
       authorize(req, body);
-      const result = await selectXinlongtaiShippingPreviewPdfDirectory(body);
+      const result = await selectShippingPreviewPdfDirectory(
+        body,
+        resolveShippingPreviewPdfDirectoryLabel(requestPath, body),
+      );
       sendJson(res, result.statusCode, result.body);
       return;
     }
@@ -502,14 +505,16 @@ const server = http.createServer(async (req, res) => {
       const credentials = resolveCredentials(body);
       const headless = resolveRunHeadless(body);
       const isXinlongtaiShippingRun = isXinlongtaiShippingFileRequest || isXinlongtaiShippingRequestBody(body);
-      const previewPdfDownloadRootDirectory = isXinlongtaiShippingRun
-        ? resolveXinlongtaiShippingPreviewPdfDownloadDirectory(body)
+      const previewPdfDownloadEnabled = isXinlongtaiShippingRun || shouldDownloadPreviewPdf(body);
+      const previewPdfDirectoryLabel = isXinlongtaiShippingRun ? "YUEN TAI+XO" : "VENT";
+      const previewPdfDownloadRootDirectory = previewPdfDownloadEnabled
+        ? resolveShippingPreviewPdfDownloadDirectory(body, previewPdfDirectoryLabel)
         : "";
       const poRows = extractPoRowsFromWorkbookPayload(body, {
         isXinlongtaiWorkbook: isXinlongtaiShippingRun,
       });
       const previewPdfDownloadDirectory = previewPdfDownloadRootDirectory
-        ? createXinlongtaiPreviewPdfRunDirectory(previewPdfDownloadRootDirectory)
+        ? createShippingPreviewPdfRunDirectory(previewPdfDownloadRootDirectory, previewPdfDirectoryLabel)
         : "";
       const inputFileName = normalizeUploadFileName(body);
       const activeRun = registerActiveRun({
@@ -528,7 +533,7 @@ const server = http.createServer(async (req, res) => {
           headless,
           shipmentScanAction: isXinlongtaiShippingRun ? "remove-change-equipment-id" : "assign-equipment-id",
           fillOriginDeclaration: isXinlongtaiShippingRun && shouldFillOriginDeclaration(body),
-          downloadPreviewPdf: isXinlongtaiShippingRun,
+          downloadPreviewPdf: previewPdfDownloadEnabled,
           previewPdfDownloadRootDirectory,
           previewPdfDownloadDirectory,
         });
@@ -655,6 +660,8 @@ function buildHealthPayload() {
       xoTcInvPreviewPdfDirectoryPicker: true,
       packingListAutoDownload: true,
       packingListAutoDownloadDirectoryPicker: true,
+      shippingPreviewPdfDownload: true,
+      shippingPreviewPdfDirectoryPicker: true,
       xinlongtaiShippingPreviewPdfDownload: true,
       xinlongtaiShippingPreviewPdfDirectoryPicker: true,
     },
@@ -1842,9 +1849,22 @@ function sanitizeFileSegment(value) {
     .slice(0, 80) || "run";
 }
 
-function isXinlongtaiShippingPreviewPdfDirectoryRoute(requestPath) {
-  return requestPath === "/select-xinlongtai-shipping-pdf-directory"
+function isShippingPreviewPdfDirectoryRoute(requestPath) {
+  return requestPath === "/select-shipping-pdf-directory"
+    || requestPath === "/api/select-shipping-pdf-directory"
+    || requestPath === "/select-xinlongtai-shipping-pdf-directory"
     || requestPath === "/api/select-xinlongtai-shipping-pdf-directory";
+}
+
+function resolveShippingPreviewPdfDirectoryLabel(requestPath, body = {}) {
+  if (
+    requestPath === "/select-xinlongtai-shipping-pdf-directory"
+    || requestPath === "/api/select-xinlongtai-shipping-pdf-directory"
+    || isXinlongtaiShippingRequestBody(body)
+  ) {
+    return "YUEN TAI+XO";
+  }
+  return "VENT";
 }
 
 function isTcInvPreviewPdfDirectoryRoute(requestPath) {
@@ -1857,7 +1877,7 @@ function isXoTcInvPreviewPdfDirectoryRoute(requestPath) {
     || requestPath === "/api/select-xo-tc-inv-pdf-directory";
 }
 
-async function selectXinlongtaiShippingPreviewPdfDirectory(body = {}) {
+async function selectShippingPreviewPdfDirectory(body = {}, label = "VENT") {
   if (process.platform !== "win32") {
     return {
       statusCode: 501,
@@ -1876,7 +1896,7 @@ async function selectXinlongtaiShippingPreviewPdfDirectory(body = {}) {
   ).trim();
 
   try {
-    const selectedPath = await selectWindowsDirectory(initialDirectory, "Select Xinlongtai Preview PDF folder");
+    const selectedPath = await selectWindowsDirectory(initialDirectory, `Select ${label} Preview PDF folder`);
     if (!selectedPath) {
       return {
         statusCode: 200,
@@ -1905,6 +1925,10 @@ async function selectXinlongtaiShippingPreviewPdfDirectory(body = {}) {
       },
     };
   }
+}
+
+async function selectXinlongtaiShippingPreviewPdfDirectory(body = {}) {
+  return selectShippingPreviewPdfDirectory(body, "YUEN TAI+XO");
 }
 
 async function selectTcInvPreviewPdfDirectory(body = {}) {
@@ -2078,7 +2102,16 @@ function shouldFillOriginDeclaration(body) {
   );
 }
 
-function resolveXinlongtaiShippingPreviewPdfDownloadDirectory(body) {
+function shouldDownloadPreviewPdf(body) {
+  return toBoolean(
+    body?.downloadPreviewPdf
+      ?? body?.previewPdfDownloadEnabled
+      ?? body?.previewPdfEnabled,
+    false,
+  );
+}
+
+function resolveShippingPreviewPdfDownloadDirectory(body, label = "Shipping") {
   const value = String(
     body?.previewPdfDownloadDirectory
       || body?.previewPdfSaveDirectory
@@ -2086,24 +2119,33 @@ function resolveXinlongtaiShippingPreviewPdfDownloadDirectory(body) {
       || "",
   ).trim();
   if (!value) {
-    const error = new Error("请先选择新龙泰 Preview PDF 保存目录。");
+    const error = new Error(`请先选择 ${label} Preview PDF 保存目录。`);
     error.statusCode = 400;
     throw error;
   }
   return path.resolve(value);
 }
 
-function createXinlongtaiPreviewPdfRunDirectory(rootDirectory) {
+function resolveXinlongtaiShippingPreviewPdfDownloadDirectory(body) {
+  return resolveShippingPreviewPdfDownloadDirectory(body, "新龙泰");
+}
+
+function createShippingPreviewPdfRunDirectory(rootDirectory, label = "Shipping") {
   const rootPath = path.resolve(String(rootDirectory || "").trim());
   if (!rootPath) {
-    const error = new Error("请先选择新龙泰 Preview PDF 保存目录。");
+    const error = new Error(`请先选择 ${label} Preview PDF 保存目录。`);
     error.statusCode = 400;
     throw error;
   }
 
   mkdirSync(rootPath, { recursive: true });
-  const baseName = sanitizeWindowsDirectoryName(`YUEN TAI+XO ${formatBeijingDateForDirectory()}`, "YUEN TAI+XO");
+  const safeLabel = sanitizeWindowsDirectoryName(label, "Shipping");
+  const baseName = sanitizeWindowsDirectoryName(`${safeLabel} ${formatBeijingDateForDirectory()}`, safeLabel);
   return createUniqueChildDirectorySync(rootPath, baseName);
+}
+
+function createXinlongtaiPreviewPdfRunDirectory(rootDirectory) {
+  return createShippingPreviewPdfRunDirectory(rootDirectory, "YUEN TAI+XO");
 }
 
 function formatBeijingDateForDirectory(date = new Date()) {
@@ -7622,7 +7664,9 @@ function extractIssueDateValue(row) {
     "Issue Date",
     "issue date",
     "PODD Date",
+    "PODD DATE",
     "PODD  Date",
+    "podd date",
     "PODD",
     "Date",
     "date",
@@ -7643,7 +7687,7 @@ function extractIssueDateValue(row) {
   return dateKey ? String(row[dateKey] ?? "").trim() : "";
 }
 
-function extractInvoiceNumberValue(row, options = {}) {
+function extractInvoiceNumberValue(row) {
   if (!row || typeof row !== "object") {
     return "";
   }
@@ -7654,6 +7698,9 @@ function extractInvoiceNumberValue(row, options = {}) {
     "Invoice No",
     "Invoice No.",
     "invoice no",
+    "Inv Number",
+    "inv number",
+    "INV NUMBER",
     "Invoice",
   ];
   for (const key of preferredKeys) {
@@ -7667,8 +7714,9 @@ function extractInvoiceNumberValue(row, options = {}) {
     const normalizedKey = normalizeHeaderName(key);
     return normalizedKey === "invoicenumber"
       || normalizedKey === "invoiceno"
+      || normalizedKey === "invnumber"
       || normalizedKey === "invoice"
-      || (options?.isXinlongtaiWorkbook && normalizedKey === "invnumber");
+      || normalizedKey === "invno";
   });
   return invoiceKey ? String(row[invoiceKey] ?? "").trim() : "";
 }

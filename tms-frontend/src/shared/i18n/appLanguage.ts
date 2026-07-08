@@ -485,6 +485,8 @@ const staticTextTranslations: Record<string, string> = {
   '执行器仍在下载 Invoice PDF，请勿重复启动。': 'The executor is still downloading Invoice PDFs. Do not start it again.',
   '请先上传 Excel 文件，文件需包含 PO# 和 Invoice# 列。':
     'Upload an Excel file first. It must include PO# and Invoice# columns.',
+  '请先上传 Excel 文件，文件需包含 PO NUMBER、inv number 和 PODD DATE 列。':
+    'Upload an Excel file first. It must include PO NUMBER, inv number, and PODD DATE columns.',
   '请先上传 Excel 文件，文件需包含 INVOICE NUMBER 和 STATUS 列。':
     'Upload an Excel file first. It must include INVOICE NUMBER and STATUS columns.',
   '请先选择或填写下载保存目录。': 'Choose or enter the download folder first.',
@@ -897,6 +899,9 @@ const staticTextTranslations: Record<string, string> = {
   '如 090|45 或 \\\\d{10}': 'Example: 090|45 or \\\\d{10}',
   请包含PO和Invoice列: 'Include PO# and Invoice# columns',
   '请包含 PO# 和 Invoice# 列': 'Include PO# and Invoice# columns',
+  '请包含 PO NUMBER、inv number 和 PODD DATE 列': 'Include PO NUMBER, inv number, and PODD DATE columns',
+  '读取 PO NUMBER、inv number 和 PODD DATE 列生成箱单下载清单。':
+    'Read PO NUMBER, inv number, and PODD DATE columns to build the packing list download queue.',
   已保存PDF: 'Saved PDFs',
   '已保存 PDF': 'Saved PDFs',
   未下载成功批次: 'Unsuccessful Download Batches',
