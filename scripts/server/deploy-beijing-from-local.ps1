@@ -56,12 +56,34 @@ function Invoke-External {
   if ($null -eq $InputText) {
     & $File @Arguments
   } else {
-    $InputText | & $File @Arguments
+    $normalizedInputText = $InputText -replace "`r`n?", "`n"
+    $inputFile = New-TemporaryFile
+    try {
+      $utf8NoBom = New-Object System.Text.UTF8Encoding -ArgumentList $false
+      [System.IO.File]::WriteAllText($inputFile.FullName, $normalizedInputText, $utf8NoBom)
+
+      $resolvedFile = (Get-Command $File -ErrorAction Stop).Source
+      $cmdArguments = @(
+        "type",
+        (Format-CmdArgument $inputFile.FullName),
+        "|",
+        (Format-CmdArgument $resolvedFile)
+      ) + ($Arguments | ForEach-Object { Format-CmdArgument $_ })
+
+      & cmd.exe /d /s /c ($cmdArguments -join " ")
+    } finally {
+      Remove-Item -LiteralPath $inputFile.FullName -Force -ErrorAction SilentlyContinue
+    }
   }
 
   if ($LASTEXITCODE -ne 0) {
     throw "$File failed with exit code $LASTEXITCODE"
   }
+}
+
+function Format-CmdArgument {
+  param([string]$Value)
+  return '"' + ($Value -replace '"', '\"') + '"'
 }
 
 function Get-GitOutput {
