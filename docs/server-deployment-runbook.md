@@ -282,36 +282,63 @@ TOS_GITEA_REMOTE_URL=ssh://git@gitea-tos/luenthai-ai/TOS.git bash ~/TOS-source/s
 TOS_SOURCE_DIR=/home/obito_li/TOS-source TOS_DEPLOY_ROOT=/home/obito_li/TOS bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
 ```
 
-## 北京测试服务器无法访问 Gitea 时的推送部署
+## 北京测试服务器手动包部署
 
-如果北京测试服务器不能访问 LT 内网 Gitea `172.16.48.208:222`，不要在北京服务器 `~/TOS` 里执行 `git pull`，也不要把整仓源码直接覆盖到 `~/TOS`。从一台能访问 Gitea、且能 SSH 到北京服务器的机器执行推送部署：
+北京测试服务器不能访问 LT 内网 Gitea，也不能从公司测试服务器稳定接收 SSH 推送。北京部署不使用一键 SSH 上传脚本，不在北京服务器 `~/TOS` 里执行 `git pull`，也不要把整仓源码覆盖到 `~/TOS`。
 
-```bash
-cd /path/to/TOS-main
-bash scripts/server/deploy-to-beijing.sh
+固定流程是：本机 PowerShell 从最新 Gitea `main` 生成标准服务器包，通过本机 `scp` 或 MobaXterm SFTP 上传到北京服务器，再在北京服务器执行包内 `deploy/apply-server-update.sh`。
+
+本机 PowerShell 生成包：
+
+```powershell
+Set-Location D:\project\TOS-main
+
+git status --short --branch
+git fetch gitea main --prune
+git merge --ff-only gitea/main
+
+npm run test:server-package
+npm run server:package:dry-run
+npm run server:package
+
+$pkg = Get-ChildItem .\release\server\tos-server-update-*.tar.gz |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -First 1
+
+$pkg.FullName
 ```
 
-默认目标：
+本机上传到北京服务器：
+
+```powershell
+scp $pkg.FullName tosadmin@218.240.184.58:/home/tosadmin/TOS/.deploy_uploads/
+```
+
+如果使用 MobaXterm，也可以在 SFTP 面板把 `$pkg.FullName` 对应的 `.tar.gz` 上传到：
 
 ```text
-SSH: tosadmin@218.240.184.58
-部署目录: /home/tosadmin/TOS
-上传目录: /home/tosadmin/TOS/.deploy_uploads/
+/home/tosadmin/TOS/.deploy_uploads/
 ```
 
-脚本会在本机生成标准服务器更新包 `release/server/tos-server-update-*.tar.gz`，通过 `scp` 上传到北京服务器，再远程执行包内 `deploy/apply-server-update.sh`。该流程只更新 `tms-backend`、`tms-frontend` 和 `app-version.json` 等应用内容，保留北京服务器侧 `docker-compose.tos.yml`、Dockerfile、Nginx、`authelia/` 和私有配置。
-
-常用环境变量：
+北京服务器执行部署：
 
 ```bash
-TOS_BEIJING_REMOTE_HOST=tosadmin@218.240.184.58 bash scripts/server/deploy-to-beijing.sh
-TOS_BEIJING_DEPLOY_ROOT=/home/tosadmin/TOS bash scripts/server/deploy-to-beijing.sh
-TOS_PULL=1 bash scripts/server/deploy-to-beijing.sh
-TOS_RUN_CHANGED_CHECKS=1 bash scripts/server/deploy-to-beijing.sh
-TOS_REMOTE_PUBLIC_URL=http://218.240.184.58/tos/ bash scripts/server/deploy-to-beijing.sh
+cd ~/TOS
+
+PKG="$(ls -t .deploy_uploads/tos-server-update-*.tar.gz | head -n 1)"
+DEPLOY_ID="$(date +%Y%m%d%H%M%S)"
+WORK=".deploy_uploads/work/$DEPLOY_ID"
+
+test -f "$PKG" || { echo "missing $PKG"; exit 1; }
+
+rm -rf "$WORK"
+mkdir -p "$WORK"
+tar -xzf "$PKG" -C "$WORK"
+
+PKG="$PWD/$PKG" DEPLOY_ID="$DEPLOY_ID" TOS_ROOT="$PWD" bash "$WORK/deploy/apply-server-update.sh"
 ```
 
-`TOS_PULL=1` 会在本机部署前执行 `git pull --ff-only`；本机工作区必须 clean。`TOS_RUN_CHANGED_CHECKS=1` 会先运行 `npm run check:changed`，适合正式推送北京测试服务器前复核。
+北京部署只更新 `tms-backend`、`tms-frontend` 和 `app-version.json` 等应用内容，保留北京服务器侧 `docker-compose.tos.yml`、Dockerfile、Nginx、`authelia/` 和私有配置。
 
 ## 回滚
 
