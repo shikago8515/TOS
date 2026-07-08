@@ -1,7 +1,7 @@
 {
-  "version": "1.0.0-beta.3.27",
+  "version": "1.0.0-beta.3.30",
   "date": "2026-07-08",
-  "noticeId": "2026-07-08-v1.0.0-beta.3.27",
+  "noticeId": "2026-07-08-v1.0.0-beta.3.30",
   "showPopup": true,
   "added": [
     "添加发票大写金额核对",
@@ -25,7 +25,8 @@
     "统一 automation modules 到 3.27 并增强 invoice 下载容错",
     "修复 Jane 成品表尺码与排序",
     "修复 Jason Result Set Excel 输出和历史统计",
-    "调整 XO TC INV ZEQS 费用解析"
+    "调整 XO TC INV ZEQS 费用解析",
+    "修复两台服务器下小助手热更新源选择"
   ],
   "modules": [],
   "sections": []
