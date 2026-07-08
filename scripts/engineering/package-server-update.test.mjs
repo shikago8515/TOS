@@ -119,6 +119,34 @@ test('Gitea main deployment script packages and applies the standard server upda
   assert.match(deployScript, /wait_for_command "frontend static site" curl -fsSI http:\/\/127\.0\.0\.1:18080\//)
 })
 
+test('local Beijing deployment script packages, uploads, and applies the standard server update archive', async () => {
+  const deployScript = await readFile(new URL('../server/deploy-beijing-from-local.ps1', import.meta.url), 'utf8')
+  const packageJson = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'))
+
+  assert.equal(
+    packageJson.scripts['server:deploy:beijing'],
+    'powershell -ExecutionPolicy Bypass -File scripts/server/deploy-beijing-from-local.ps1',
+  )
+  assert.match(deployScript, /"fetch", "gitea", "main", "--prune"/)
+  assert.match(deployScript, /"merge", "--ff-only", "gitea\/main"/)
+  assert.match(deployScript, /"run", "test:server-package"/)
+  assert.match(deployScript, /"run", "server:package:dry-run"/)
+  assert.match(deployScript, /"run", "server:package"/)
+  assert.match(deployScript, /tos-server-update-\*\.tar\.gz/)
+  assert.match(deployScript, /\$RemoteSourceDir = "\/home\/tosadmin\/TOS-source"/)
+  assert.match(deployScript, /\$remoteReleaseDir = "\$RemoteSourceDir\/release\/server"/)
+  assert.match(deployScript, /\$RemoteDeployDir = "\/home\/tosadmin\/TOS"/)
+  assert.match(deployScript, /\$remoteUploadsDir = "\$RemoteDeployDir\/.deploy_uploads"/)
+  assert.match(deployScript, /scp/)
+  assert.match(deployScript, /ssh/)
+  assert.match(deployScript, /deploy\/apply-server-update\.sh/)
+  assert.match(deployScript, /TOS_DOCKER_NO_CACHE/)
+  assert.match(deployScript, /http:\/\/127\.0\.0\.1\/tos\/desktop-api\/health/)
+  assert.match(deployScript, /http:\/\/127\.0\.0\.1\/tos\//)
+  assert.doesNotMatch(deployScript, /deploy-to-beijing\.sh/)
+  assert.doesNotMatch(deployScript, /git pull/)
+})
+
 test('rejects release notes that are not synced to the app version', async () => {
   const root = await createFixture({
     appVersion: '0.9.8-beta.3.3',

@@ -28,6 +28,7 @@
 | `npm run release:updates:check-local` | 本地版本记录缓存检查 | 检查前端 fallback 与后端默认 seed 是否一致 |
 | `npm run server:package:dry-run` | 服务器包计划检查 | 校验版本、更新内容和包清单，不生成正式包 |
 | `npm run server:package` | 服务器更新包生成 | 校验 clean worktree，构建服务器前端，生成 `release/server/tos-server-update-*.tar.gz`；默认由服务器 Gitea 部署脚本调用，本机手动运行只用于备用上传流程 |
+| `npm run server:deploy:beijing` | 北京测试服务器本机一键部署 | 在本机生成标准服务器包，上传到北京服务器 `/home/tosadmin/TOS-source/release/server/`，再通过 SSH 在北京服务器应用更新 |
 | `npm run dev:backend:restart` | 本地后端重启 | 使用工程脚本重启本机 `127.0.0.1:8000` 后端进程 |
 | `npm run cleanup:local:dry-run` | 本地运行产物清理预览 | 预览可清理的本地缓存、日志或运行产物，不删除文件 |
 | `npm run cleanup:local` | 本地运行产物清理 | 按清理脚本规则删除本地运行产物；执行前先用 dry-run 核对范围 |
@@ -71,7 +72,7 @@
 - 根目录入口不运行 `npm run pack`、`npm run build:win`、`verify:renderer-package`、`verify:release-package`、`write:update-changelog` 或 `write:manual-downloads`。
 - `check:changed` 是日常开发和本地主线推送前的默认入口；服务器部署、CI/CD、发布、Electron 打包和高风险工程脚本优先使用其专项映射，无法安全缩小时才使用 `check:quick`。
 - 发布、打包、更新清单和安装包校验仍按 `tms-electron-app/README.md` 与 `AGENTS.md` 的发布敏感规则单独执行。
-- `server:package` 只生成服务器 Docker Compose 部署用更新包，不生成 Windows Electron 安装包。默认服务器发布由 `scripts/server/deploy-gitea-main.sh` 在服务器 `~/TOS-source` 内调用；本机生成后手动上传只作为 Gitea 或服务器拉代码不可用时的备用流程。
+- `server:package` 只生成服务器 Docker Compose 部署用更新包，不生成 Windows Electron 安装包。默认自己的测试服务器发布由 `scripts/server/deploy-gitea-main.sh` 在服务器 `~/TOS-source` 内调用；北京测试服务器使用 `server:deploy:beijing` 从本机打包、上传并远端应用。
 - 子项目原生命令仍然可用；根目录入口只是日常开发检查的统一编排层。
 
 ## 请求边界
