@@ -7,7 +7,7 @@
     "pageName": "Version Release",
     "pagePath": "/release-updates",
     "title": "Release v1.0.0-beta.3.30",
-    "description": "Release v1.0.0-beta.3.30. Channel: beta.3. Commit: 87c9b915ad39eb7c982cc6740853cd500476b173. Release notes: 添加北京服务器本机部署脚本；修复本机服务器包前端构建."
+    "description": "Release v1.0.0-beta.3.30. Channel: beta.3. Commit: c58d5e222bc44035e093daa6952538b523cba50e. Release notes: 添加北京服务器本机部署脚本；修复北京部署远端脚本传输；修复本机服务器包前端构建."
   },
   {
     "recordKey": "release-v1.0.0-beta.3.29",

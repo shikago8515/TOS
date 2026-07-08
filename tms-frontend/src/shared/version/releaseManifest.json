@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "version": "1.0.0-beta.3.30",
   "tag": "v1.0.0-beta.3.30",
-  "gitSha": "87c9b915ad39eb7c982cc6740853cd500476b173",
+  "gitSha": "c58d5e222bc44035e093daa6952538b523cba50e",
   "releaseDate": "2026-07-08",
   "channel": "beta.3",
   "releaseNotes": {
@@ -15,6 +15,7 @@
     ],
     "improved": [],
     "fixed": [
+      "修复北京部署远端脚本传输",
       "修复本机服务器包前端构建"
     ],
     "modules": []
@@ -38,6 +39,7 @@
         "title": "修复",
         "icon": "check-circle",
         "items": [
+          "修复北京部署远端脚本传输",
           "修复本机服务器包前端构建"
         ]
       }
