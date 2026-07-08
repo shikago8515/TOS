@@ -147,6 +147,17 @@ test('local Beijing deployment script packages, uploads, and applies the standar
   assert.doesNotMatch(deployScript, /git pull/)
 })
 
+test('server package frontend build uses the real npm CLI instead of local npm shims', async () => {
+  const packageScript = await readFile(new URL('./package-server-update.mjs', import.meta.url), 'utf8')
+
+  assert.match(packageScript, /function resolveNpmCli\(\)/)
+  assert.match(packageScript, /process\.env\.npm_execpath/)
+  assert.match(packageScript, /node_modules', 'npm', 'bin', 'npm-cli\.js'/)
+  assert.match(packageScript, /runCommand\(process\.execPath, \[npmCli, '--prefix', 'tms-frontend', 'run', 'build'\]/)
+  assert.doesNotMatch(packageScript, /process\.platform === 'win32' \? 'npm\.cmd' : 'npm'/)
+  assert.doesNotMatch(packageScript, /runCommand\(npmBin, \['--prefix', 'tms-frontend', 'run', 'build'\]/)
+})
+
 test('rejects release notes that are not synced to the app version', async () => {
   const root = await createFixture({
     appVersion: '0.9.8-beta.3.3',
