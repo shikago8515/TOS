@@ -282,6 +282,37 @@ TOS_GITEA_REMOTE_URL=ssh://git@gitea-tos/luenthai-ai/TOS.git bash ~/TOS-source/s
 TOS_SOURCE_DIR=/home/obito_li/TOS-source TOS_DEPLOY_ROOT=/home/obito_li/TOS bash ~/TOS-source/scripts/server/deploy-gitea-main.sh
 ```
 
+## 北京测试服务器无法访问 Gitea 时的推送部署
+
+如果北京测试服务器不能访问 LT 内网 Gitea `172.16.48.208:222`，不要在北京服务器 `~/TOS` 里执行 `git pull`，也不要把整仓源码直接覆盖到 `~/TOS`。从一台能访问 Gitea、且能 SSH 到北京服务器的机器执行推送部署：
+
+```bash
+cd /path/to/TOS-main
+bash scripts/server/deploy-to-beijing.sh
+```
+
+默认目标：
+
+```text
+SSH: tosadmin@218.240.184.58
+部署目录: /home/tosadmin/TOS
+上传目录: /home/tosadmin/TOS/.deploy_uploads/
+```
+
+脚本会在本机生成标准服务器更新包 `release/server/tos-server-update-*.tar.gz`，通过 `scp` 上传到北京服务器，再远程执行包内 `deploy/apply-server-update.sh`。该流程只更新 `tms-backend`、`tms-frontend` 和 `app-version.json` 等应用内容，保留北京服务器侧 `docker-compose.tos.yml`、Dockerfile、Nginx、`authelia/` 和私有配置。
+
+常用环境变量：
+
+```bash
+TOS_BEIJING_REMOTE_HOST=tosadmin@218.240.184.58 bash scripts/server/deploy-to-beijing.sh
+TOS_BEIJING_DEPLOY_ROOT=/home/tosadmin/TOS bash scripts/server/deploy-to-beijing.sh
+TOS_PULL=1 bash scripts/server/deploy-to-beijing.sh
+TOS_RUN_CHANGED_CHECKS=1 bash scripts/server/deploy-to-beijing.sh
+TOS_REMOTE_PUBLIC_URL=http://218.240.184.58/tos/ bash scripts/server/deploy-to-beijing.sh
+```
+
+`TOS_PULL=1` 会在本机部署前执行 `git pull --ff-only`；本机工作区必须 clean。`TOS_RUN_CHANGED_CHECKS=1` 会先运行 `npm run check:changed`，适合正式推送北京测试服务器前复核。
+
 ## 回滚
 
 如果重建失败或页面异常，使用本次部署记录的 `DEPLOY_ID` 回滚：
