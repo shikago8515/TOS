@@ -1,3 +1,30 @@
+## [1.0.0-beta.3.27](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.26...v1.0.0-beta.3.27) (2026-07-08)
+
+### Features
+
+* 完善 Jason Result Set Excel 输出 ([3470433](http://172.16.48.208:3001/luenthai-ai/TOS/commit/347043315c463ac7d0f96a0e2cf99756ba90a435))
+* 新增 XO Trade Card INV 自动化模块 ([81f0d6d](http://172.16.48.208:3001/luenthai-ai/TOS/commit/81f0d6d9a5de24a217442fca805956c2e7c13972))
+* 添加发票大写金额核对 ([dbccd4e](http://172.16.48.208:3001/luenthai-ai/TOS/commit/dbccd4e0d5065402fcd914dfc0da44bb55da4a89))
+
+### Bug Fixes
+
+* add invoice download result dialog ([cf1a5c5](http://172.16.48.208:3001/luenthai-ai/TOS/commit/cf1a5c5305e3f2b9c2e266d2eac842105aba5371))
+* keep single invoice download completion dialog ([82389a8](http://172.16.48.208:3001/luenthai-ai/TOS/commit/82389a8832ce0df3212a6961a5d5117282ddcd4a))
+* 修复 Jane Summary Article 排序 ([978090a](http://172.16.48.208:3001/luenthai-ai/TOS/commit/978090ab8796c9a2a431dc4e5f7cb7c7548ef35c))
+* 修复 Jane 成品表尺码与排序 ([616f9c4](http://172.16.48.208:3001/luenthai-ai/TOS/commit/616f9c409e46a0c637cd94cae2f8c68197f62d2e))
+* 修复 Jane 成品表段内明细排序 ([1fbc950](http://172.16.48.208:3001/luenthai-ai/TOS/commit/1fbc95021bb04e75fb3fc5d7acd2ae52e9e8bf6d))
+* 修复 Jane 成品表连续点排序 ([ac5e42e](http://172.16.48.208:3001/luenthai-ai/TOS/commit/ac5e42e3c6ec49e778fc7b8e46a2bacc0c7b317a))
+* 修复 Jason Result Set Excel 输出和历史统计 ([0c8ca18](http://172.16.48.208:3001/luenthai-ai/TOS/commit/0c8ca18e6e8fc7642fc9da3939d800654e00da90))
+* 修复 PO 自动下载 lint 错误 ([8851605](http://172.16.48.208:3001/luenthai-ai/TOS/commit/8851605f4141436858621e783c4805c7e9d51a74))
+* 修复 PO 自动下载前端测试 ([6bc0b3d](http://172.16.48.208:3001/luenthai-ai/TOS/commit/6bc0b3d95c4b0953aa7236e3e309beb4640bc729))
+* 小助手安装包排除运行产物 ([3290bde](http://172.16.48.208:3001/luenthai-ai/TOS/commit/3290bdee25bee54c034369e35bcbac82060b5de4))
+* 支持 TC INV ZEQS 费用行 ([c6eea7e](http://172.16.48.208:3001/luenthai-ai/TOS/commit/c6eea7e736ba9821879547a22d27cb49e13864d0))
+* 支持 XO TC INV 空金额直接 Validate ([9437d94](http://172.16.48.208:3001/luenthai-ai/TOS/commit/9437d944086743a741274cd691b92d902afc7dee))
+* 统一 automation modules 到 3.27 并增强 invoice 下载容错 ([60e0258](http://172.16.48.208:3001/luenthai-ai/TOS/commit/60e025860a0394ae22ea96a02856bd2902801878))
+* 调整 InforNexus 自动添加录入节奏 ([bddb47d](http://172.16.48.208:3001/luenthai-ai/TOS/commit/bddb47d807ee2404cf8de3117fe525eab8fa486a))
+* 调整 XO TC INV ZEQS 费用解析 ([b826010](http://172.16.48.208:3001/luenthai-ai/TOS/commit/b82601044b91918c635ce5516447a64466af5c59))
+* 调整 XO TC INV 空金额日期预览流程 ([3ef3473](http://172.16.48.208:3001/luenthai-ai/TOS/commit/3ef3473815e9a71f9436aaae8f9a7d09f048bbc5))
+
 ## [1.0.0-beta.3.27](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.26...v1.0.0-beta.3.27) (2026-07-07)
 
 ### Features
