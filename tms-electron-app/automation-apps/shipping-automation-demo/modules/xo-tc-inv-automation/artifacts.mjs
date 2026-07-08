@@ -54,7 +54,7 @@ async function writeTcInvResultWorkbook(targetPath, result, rows, xlsx) {
 function buildSummaryRows(result) {
   return [
     { Field: "Module", Value: "XO-Trade Card INV amount" },
-    { Field: "Workflow", Value: "Infor Nexus / Invoices / Build ZEQS or no-charge Validate / PDF download" },
+    { Field: "Workflow", Value: "Infor Nexus / Invoices / Build ZEQS or date-only Preview Validate / PDF download" },
     { Field: "Result", Value: result.ok ? "Success" : "Failed" },
     { Field: "Message", Value: result.message || "" },
     { Field: "Input File", Value: result.inputFileName || "" },

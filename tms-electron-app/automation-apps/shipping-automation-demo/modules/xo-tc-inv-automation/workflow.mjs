@@ -203,15 +203,29 @@ export async function runTcInvInvoiceSearchWorkflow(options) {
         }
 
         if (noChargeInvoice) {
-          if (!await isPreviewValidateButtonVisible(page, config)) {
-            throw new Error(`Invoice ${currentInvoiceNumber}: Excel 金额为空，预期打开后直接进入 Validate 页面，但当前页面没有找到 Validate 按钮。`);
+          stage = `Fill Cargo handover/FCR date for date-only Invoice (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
+          await showTcInvBadge(`正在填写空金额 Invoice ${currentInvoiceNumber} 的日期`, {
+            phase: "invoice-date",
+            currentCount: invoiceOrdinal,
+            invoiceNumber: currentInvoiceNumber,
+          });
+          cargoHandoverDateResult = await fillOptionalCargoHandoverFcrDate(page, currentPoddDate, config, log, activeRun.runId);
+          if (cargoHandoverDateResult.attempted) {
+            latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, `detail-podd-no-charge-${invoiceOrdinal}`);
           }
-          previewResult = await buildAlreadyOpenPreviewResult(page, currentInvoiceNumber);
-          previewResult.noCharge = true;
-          cargoHandoverDateResult = createSkippedCargoHandoverDateResult(currentPoddDate, "no-charge-skip-date");
-          buildAdjustmentResult = createSkippedBuildAdjustmentResult("no-charge-skip-build", currentInvoiceAdjustments);
+          buildAdjustmentResult = createSkippedBuildAdjustmentResult("no-charge-date-only-skip-build", currentInvoiceAdjustments);
 
-          stage = `点击 Validate 并下载 PDF (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
+          stage = `Open Preview for date-only Invoice (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
+          await showTcInvBadge(`正在打开空金额 Invoice ${currentInvoiceNumber} Preview`, {
+            phase: "invoice-preview",
+            currentCount: invoiceOrdinal,
+            invoiceNumber: currentInvoiceNumber,
+          });
+          previewResult = await openPreviewStep(page, config, log, activeRun.runId, currentInvoiceNumber);
+          previewResult.noCharge = true;
+          latestScreenshotPath = await captureTcInvScreenshot(page, artifactsDir, activeRun.runId, `preview-no-charge-${invoiceOrdinal}`);
+
+          stage = `Click Validate and download PDF for date-only Invoice (${invoiceOrdinal}/${invoiceNumbersToProcess.length})`;
           await showTcInvBadge(`正在点击空金额 Invoice ${currentInvoiceNumber} Validate 并下载 PDF`, {
             phase: "invoice-validate",
             currentCount: invoiceOrdinal,
