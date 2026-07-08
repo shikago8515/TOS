@@ -5,6 +5,7 @@
   "showPopup": false,
   "added": [],
   "improved": [
+    "XO TC INV 支持把 Submission 列识别为交接日期",
     "自动下载箱单支持识别 PO NUMBER、inv number 和 PODD DATE 模板列"
   ],
   "fixed": [

@@ -36,6 +36,9 @@ const PODD_HEADER_ALIASES = new Set([
   "podd",
   "poddate",
   "podddate",
+  "submission",
+  "submissiondate",
+  "submitdate",
 ]);
 
 const PO_HEADER_ALIASES = new Set([
