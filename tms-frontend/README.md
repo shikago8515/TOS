@@ -64,6 +64,7 @@ npm run preview
 - `/jane-outbound-compare`
 - `/eric`
 - `/jason/pdf-reorder`
+- `/jason/result-set-excel`
 - `/draft-packing-compare`
 - `/tms-finance-internal-reconciliation`
 - `/tms-finance-work-sales`
@@ -71,15 +72,22 @@ npm run preview
 - `/web-automation`
 - `/web-automation/scenarios/shipping-automation`
 - `/web-automation/scenarios/xinlongtai-shipping-automation`
+- `/web-automation/scenarios/tc-inv-automation`
+- `/web-automation/scenarios/xo-tc-inv-automation`
 - `/web-automation/scenarios/shipping-automation-2`
+- `/web-automation/scenarios/infornexus-auto-add`
 - `/web-automation/scenarios/po-auto-download`
-- `/infornexus`
+- `/web-automation/scenarios/packing-list-auto-download`
+- `/excel-template-mapper-test`
 - `/jane-sap`
 - `/jane-infornexus`
 - `/eric-infornexus`
 - `/adidas-materials`
+- `/automation-runs`
+- `/automation-templates`
 - `/settings`
 - `/release-updates`
+- `/process-history/:personId`
 
 当前模块目录不保留隐藏 placeholder 模块；`src/pages/RoutePlaceholder.vue` 只作为路由接线异常时的开发期兜底。
 旧 `/#/it-invoice-pdf-reorder` 已作为历史链接重定向到 Jason canonical 路由 `/#/jason/pdf-reorder`。旧 `/#/browser-plugins` 和 `/#/jessica-infornexus` 已重定向到 `/#/eric-infornexus`，不再作为当前源码页面扩展。

@@ -84,17 +84,7 @@ powershell -NoProfile -ExecutionPolicy Bypass `
 dist-tos-desktop-full/TOS-Desktop-Full-Setup.<version>.exe
 ```
 
-当前已验证的完整包元数据：
-
-```text
-version: 0.9.8-beta.3.17
-size: 125591538 bytes
-sha256: b50cc00da0a27afa856c7c100d0f9c3d8ab6dd663925fb54a7b9d916f6a2ca8d
-builder: NSIS-full
-networkDuringInstall: false
-```
-
-`networkDuringInstall: false` 表示安装阶段解压内置 `TOS-Desktop-Payload.zip`，不会去 MinIO 下载 payload；应用启动后的业务 API 仍然连接远程 TOS 服务器后端。
+完整包版本、大小和 sha256 以本次 `app-version.json`、构建输出和 `verify:release-package` 校验结果为准；不要沿用历史文档中的固定元数据。完整离线安装包在安装阶段解压内置 `TOS-Desktop-Payload.zip`，不会去 MinIO 下载 payload；应用启动后的业务 API 仍然连接远程 TOS 服务器后端。
 
 ## Automation module hot updates
 

@@ -36,19 +36,27 @@
 - `/eric`
 - `/iplex/dual-table-compare`
 - `/eric-infornexus`
+- `/jason/result-set-excel`
 - `/web-automation`
 - `/web-automation/scenarios/shipping-automation`
 - `/web-automation/scenarios/xinlongtai-shipping-automation`
+- `/web-automation/scenarios/tc-inv-automation`
+- `/web-automation/scenarios/xo-tc-inv-automation`
 - `/web-automation/scenarios/shipping-automation-2`
+- `/web-automation/scenarios/infornexus-auto-add`
 - `/web-automation/scenarios/po-auto-download`
+- `/web-automation/scenarios/packing-list-auto-download`
 - `/jason/pdf-reorder`
 - `/draft-packing-compare`
 - `/tms-finance-internal-reconciliation`
 - `/tms-finance-work-sales`
-- `/infornexus`
+- `/excel-template-mapper-test`
 - `/adidas-materials`
+- `/automation-runs`
+- `/automation-templates`
 - `/settings`
 - `/release-updates`
+- `/process-history/:personId`
 
 旧 `/browser-plugins` 和 `/jessica-infornexus` 只验证能重定向到 `/eric-infornexus`；旧 `/module-a`、`/module-b` 已不属于当前模块目录。
 

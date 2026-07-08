@@ -12,17 +12,25 @@
 | `npm run check:electron` | Electron 脚本测试 | 自动发现 `tms-electron-app/scripts/*.test.js` 并运行 `node --test` |
 | `npm run check:changed:dry-run` | 变更范围检查预览 | 基于 `gitea/main...HEAD`、staged、working tree 和 untracked 文件打印建议检查，不执行命令 |
 | `npm run check:changed` | 变更范围检查 | 执行 `check:changed:dry-run` 建议的最小检查集；能映射到专项门禁时不升级到 `npm run check:quick` |
+| `npm run check:backend-version` | 本地后端版本哨兵 | 检查本机 `127.0.0.1:8000` 返回版本是否与 `app-version.json` 一致 |
 | `npm run check` | 完整工程检查 | 工程脚本测试、前端完整检查、后端完整检查、Electron 脚本测试 |
 | `npm run ci:install` | Gitea 检查环境依赖安装 | 根目录、前端、Electron、Playwright console 的 `npm ci`，以及在 CI `.venv` 中安装后端 `requirements.txt` |
 | `npm run test:server-package` | 服务器包脚本测试 | `node --test scripts/engineering/package-server-update.test.mjs` |
 | `npm run release:dry-run` | 自动发布预演 | 运行 `semantic-release --dry-run`，预览版本计算、CHANGELOG 和 release notes 生成 |
 | `npm run release` | 自动发布 | 由 Gitea 发布环境在 Gitea `main` push 后运行，生成版本提交、tag、当前 release notes、release manifest 和 Gitea Release |
+| `npm run version:set` | 手工指定本地版本 | 调用 `scripts/engineering/sync-version.mjs --set` 同步版本文件，只在用户明确指定版本时使用 |
+| `npm run version:bump` | 本地版本递增 | 调用 `scripts/engineering/sync-version.mjs --bump`，普通开发不手动运行 |
 | `npm run release:updates:pull` | 版本记录同步 | 从服务器 `/api/release-updates` 拉取记录，合并更新本地 fallback 和后端默认 seed |
 | `npm run release:updates:push` | 版本记录写入 | 将当前 commit 的版本记录写入服务器 `/api/release-updates` |
 | `npm run release:updates:push:dry-run` | 版本记录写入预览 | 预览当前 commit 将写入的记录，不 POST |
 | `npm run release:updates:dry-run` | 版本记录同步预览 | 预览服务器记录与本地缓存合并结果，不写文件、不 POST |
+| `npm run release:updates:sync-local` | 本地版本记录缓存同步 | 只同步本地 `releaseHistory.json` 和后端默认 seed，不访问服务器 |
+| `npm run release:updates:check-local` | 本地版本记录缓存检查 | 检查前端 fallback 与后端默认 seed 是否一致 |
 | `npm run server:package:dry-run` | 服务器包计划检查 | 校验版本、更新内容和包清单，不生成正式包 |
 | `npm run server:package` | 服务器更新包生成 | 校验 clean worktree，构建服务器前端，生成 `release/server/tos-server-update-*.tar.gz`；默认由服务器 Gitea 部署脚本调用，本机手动运行只用于备用上传流程 |
+| `npm run dev:backend:restart` | 本地后端重启 | 使用工程脚本重启本机 `127.0.0.1:8000` 后端进程 |
+| `npm run cleanup:local:dry-run` | 本地运行产物清理预览 | 预览可清理的本地缓存、日志或运行产物，不删除文件 |
+| `npm run cleanup:local` | 本地运行产物清理 | 按清理脚本规则删除本地运行产物；执行前先用 dry-run 核对范围 |
 
 ## 验证分层
 
@@ -49,6 +57,7 @@
 | `npm run dev:frontend:local` | `node scripts/engineering/run-npm.mjs --prefix tms-frontend run dev:local`，显式本地后端模式 |
 | `npm run preview:frontend` | `node scripts/engineering/run-npm.mjs --prefix tms-frontend run preview` |
 | `npm run dev:electron` | `node scripts/engineering/run-npm.mjs --prefix tms-electron-app run dev` |
+| `npm run dev:backend:restart` | `node scripts/engineering/restart-local-backend.mjs` |
 
 排查页面提示“无法连接后端服务”时，先确认：
 
@@ -78,7 +87,7 @@
 - 手动写入服务器前先运行 `npm run release:updates:push:dry-run` 检查当前 commit 将生成的记录；不要依赖 `npm run release:updates:push -- --dry-run` 这类参数透传。
 - commit/merge 自动记录通过 `.githooks` 调用 `scripts/release_update_sync.py`，默认从 `TOS_RELEASE_UPDATES_API_URL` 或 `tms-frontend/.env.server` 解析服务器 `/api/release-updates`，不得提交数据库账号或写入 token；该 hook 只作为辅助记录或预览，不作为正式版本发布事实来源。
 - `POST /api/release-updates` 可由服务器环境变量 `TOS_RELEASE_UPDATE_WRITE_TOKEN` 保护；`GET /api/release-updates` 必须保持公开读取，避免版本页不可用。
-- `semantic-release` 只在 Gitea `main` push 后由 `.gitea/workflows/tos-check.yml` 运行；发布环境使用 Gitea Actions 内置 `GITEA_TOKEN`，并同步暴露为 `TOS_GITEA_TOKEN`。`main` 作为 `beta.3` prerelease 分支，`stable` 仅作为 semantic-release 要求的稳定 release branch；首次启用前需要在当前基线提交补齐 `v0.9.8-beta.3.28` tag。
+- `semantic-release` 只在 Gitea `main` push 后由 `.gitea/workflows/tos-check.yml` 运行；发布环境使用 Gitea Actions 内置 `GITEA_TOKEN`，并同步暴露为 `TOS_GITEA_TOKEN`。`main` 作为 `beta.3` prerelease 分支，`stable` 仅作为 semantic-release 要求的稳定 release branch；发布基线以当前最新 `v*` release tag、`app-version.json` 和 `releaseManifest.json` 为准，不在文档中固定历史 bootstrap tag。
 - 普通功能、修复和文档清理不要手工维护 `releaseNotes.json` 或运行 `version:bump`；当前版本说明和 release manifest 由 `semantic-release` 根据 Conventional Commits 写入，服务器包生成前会校验版本一致，并在 manifest 存在时优先用它生成部署记录。
 
 ## Gitea 远端检查

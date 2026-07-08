@@ -93,11 +93,12 @@
 
 ## Jessica / Jessca 模块边界
 
-1. Jessica 组当前包含 `/#/jessca`、`/#/draft-packing-compare`、`/#/web-automation/scenarios/shipping-automation`、`/#/web-automation/scenarios/xinlongtai-shipping-automation` 和 `/#/web-automation/scenarios/po-auto-download` 等入口；分组与排序以 `tms-frontend/src/domain/moduleCatalog.ts` 为准。
+1. Jessica 组当前包含 `/#/jessca`、`/#/draft-packing-compare`、`/#/web-automation/scenarios/shipping-automation`、`/#/web-automation/scenarios/xinlongtai-shipping-automation`、`/#/web-automation/scenarios/tc-inv-automation`、`/#/web-automation/scenarios/xo-tc-inv-automation`、`/#/web-automation/scenarios/po-auto-download` 和 `/#/web-automation/scenarios/packing-list-auto-download` 等入口；分组与排序以 `tms-frontend/src/domain/moduleCatalog.ts` 为准。
 2. Jessca 发票核对前端主要位于 `tms-frontend/src/pages/jessca/`，后端主要位于 `tms-backend/api/jessca_api.py` 和 `tms-backend/modules/jessca_module.py`；修改 invoice 表头、参考表诊断或 optional packing PDF 逻辑时必须同步核对前后端契约和 `tms-backend/tests/test_jessca_module.py`。
 3. 产地证核对前端位于 `tms-frontend/src/pages/draft-packing-compare/`，后端位于 `tms-backend/api/draft_packing_compare_api.py`、`tms-backend/modules/draft_packing_compare_module.py` 和 `tms-backend/modules/origin_certificate_ocr.py`；修改 PDF 解析、多文件批量、Form D/Form E 或 Packing List 表格规则时至少运行 `python -m unittest tests.test_draft_packing_compare_module -v`。
 4. Jessica browser automation 场景的业务入口已直接出现在侧边栏；不要重新引入只作为中转的大卡片入口。旧 `/browser-plugins` 和 `/jessica-infornexus` 不再是当前模块入口，前端只保留兼容重定向到 `/eric-infornexus`。
 5. PO 自动下载前端位于 `tms-frontend/src/pages/po-auto-download/`，执行器逻辑位于 `tms-electron-app/automation-apps/shipping-automation-demo/po-auto-download/`；模板下载走后端 `/api/system/config/po-auto-download/template/download`，不要把模板固定放进前端 public 目录。
+6. TC INV、XO TC INV 和 Packing List 下载前端分别位于 `tms-frontend/src/pages/tc-inv-automation/`、`tms-frontend/src/pages/xo-tc-inv-automation/` 和 `tms-frontend/src/pages/packing-list-auto-download/`；执行器业务逻辑分别位于 `tms-electron-app/automation-apps/shipping-automation-demo/modules/tc-inv-automation/`、`modules/xo-tc-inv-automation/` 和 `modules/packing-list-auto-download/`。修改这些自动化流程时必须同步核对前端入口、执行器模块、运行记录和直连 fetch 白名单。
 
 ## Jane 模块边界
 
@@ -126,6 +127,7 @@
 2. `it-invoice-pdf-reorder` 是历史兼容技术标识；旧前端路由、旧 API prefix 和 legacy `/api/preview-invoice`、`/api/preview-po`、`/api/extract-numbers`、`/api/process` 在未确认历史包无调用前不得删除。
 3. Jason 前端源码主要位于 `tms-frontend/src/pages/jason-pdf-reorder/`；后端 API 仍位于 `tms-backend/api/it_invoice_pdf_reorder_api.py`，响应 schema 位于 `tms-backend/api/jason_pdf_reorder_schemas.py`。
 4. 修改 Jason 模块时不得改动业务字段名 `invoice_pdf`、`po_pdf`、下载 URL 形状或旧接口响应字段，除非明确进行 breaking change。
+5. Jason Result Set Excel 入口是 `/#/jason/result-set-excel`，前端位于 `tms-frontend/src/pages/jason-result-set-excel/`，后端位于 `tms-backend/api/jason_result_set_excel_api.py` 和 `tms-backend/modules/jason_result_set_excel_module.py`；修改该流程时同步核对处理历史 module id、下载 URL 和 `tms-backend/tests/test_jason_result_set_excel_*`。
 
 ## Eric / Infornexus 模块边界
 
@@ -165,7 +167,7 @@
 
 1. `/release-updates` 页面从后端 `/api/release-updates` 读取记录，后端不可用时使用 `tms-frontend/src/shared/version/releaseHistory.json` 作为本地 fallback。
 2. 版本发布事实以 `semantic-release` 生成的 Git tag、`tms-frontend/src/shared/version/releaseManifest.json` 和服务器包 `deploy/manifest.json` 为准；本地 Git hook 记录只作为辅助，不作为正式发布事实来源。
-3. 服务器 MySQL `release_update_records` 是版本更新页面查询主源；本地 `releaseHistory.json` 和后端默认 seed 是可再生成缓存，使用 `npm run release:updates:pull` 从服务器拉取合并。
+3. 服务器 MySQL `tos_release_records` 是版本更新页面查询主源；本地 `releaseHistory.json` 和后端默认 seed 是可再生成缓存，使用 `npm run release:updates:pull` 从服务器拉取合并。
 4. 写入版本更新记录默认通过服务器 `/api/release-updates`，使用 `npm run release:updates:push:dry-run` 预览、`npm run release:updates:push` 写入；禁止提交数据库账号、写入 token 或连接串。
 5. 后端默认 seed 位于 `tms-backend/data/release_updates_seed.json`，必须与 `releaseHistory.json` 保持同步；新增历史条目时运行相关一致性测试。
 6. 服务器发布包优先使用 release manifest 生成 `releaseUpdateRecord` 并在部署脚本中同步到后端记录接口；修改该链路时必须同时核对 `scripts/engineering/package-server-update.mjs`、`scripts/server/apply-server-update.sh` 和相关测试。
