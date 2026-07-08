@@ -167,7 +167,10 @@ export function createModuleHandler(deps) {
 | `xinlongtai-shipping-automation` | `xinlongtai-shipping` | 新龙泰 shipping 自动化 |
 | `shipping-automation-2` | `released-bulk` | released Bulk 自动化 |
 | `infornexus-auto-add` | `infornexus-auto-add` | Infor Nexus 自动搜索添加 |
+| `tc-inv-automation` | `modules/tc-inv-automation` | VENT+YUEN TAI Trade Card INV amount 自动化 |
+| `xo-tc-inv-automation` | `modules/xo-tc-inv-automation` | XO Trade Card INV amount 自动化 |
 | `po-auto-download` | `po-auto-download` | Invoice / PO 文件下载 |
+| `packing-list-auto-download` | `modules/packing-list-auto-download` | Packing List 文件下载 |
 
 前端页面、路由、执行器 module 名称不必完全相同，但必须在模块 `README.md` 中写清映射。
 

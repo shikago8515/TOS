@@ -39,10 +39,14 @@ npm run check:backend
 | Jane Outbound Compare | `api/jane_outbound_compare_api.py` | `modules/jane_outbound_compare_module.py` |
 | Eric | `api/eric_api.py` | `modules/eric_module.py` |
 | Jason PDF Reorder | `api/it_invoice_pdf_reorder_api.py` | `modules/it_invoice_pdf_reorder_module.py` |
+| Jason Result Set Excel | `api/jason_result_set_excel_api.py` | `modules/jason_result_set_excel_module.py` |
 | Draft & Packing List Compare | `api/draft_packing_compare_api.py` | `modules/draft_packing_compare_module.py` |
+| iPlex Dual Table Compare | `api/iplex_dual_table_compare_api.py` | `modules/iplex_dual_table_compare_module.py` |
+| Generic Excel Template Mapper | `api/excel_template_mapper_api.py` | `modules/excel_template_mapper_module.py` |
 | TMS Finance Internal Reconciliation | `api/tms_finance_internal_reconciliation_api.py` | `modules/tms_finance_internal_reconciliation_module.py` |
 | TMS Finance Work Sales | `api/tms_finance_work_sales_api.py` | `modules/tms_finance_work_sales_module.py` |
 | Automation Storage | `api/automation_storage_api.py` | `utils/mysql_store.py`, `utils/minio_storage.py` |
+| Process History | `api/process_history_api.py` | `utils/mysql_store.py`, `utils/minio_storage.py` |
 | System Config / Downloads | `api/system_config_api.py` | `utils/settings.py`, `utils/minio_storage.py`, `utils/automation_module_manifest.py` |
 | Release Updates | `api/release_updates_api.py` | `utils/mysql_store.py` |
 
@@ -51,8 +55,11 @@ npm run check:backend
 - Automation module hot updates use `/api/system/config/automation-modules` and `/api/system/config/automation-modules/{module_id}/download`; the manifest and zip packages are stored in MinIO under the downloads bucket.
 - Jason 的 canonical API prefix 是 `/api/jason/pdf-reorder/*`。
 - 旧 `/api/it-invoice-pdf-reorder/*` 和 legacy `/api/preview-invoice`、`/api/preview-po`、`/api/extract-numbers`、`/api/process` 继续保留兼容。
+- Jason Result Set Excel 的 API prefix 是 `/api/jason/result-set-excel/*`。
+- 通用 Excel 映射测试 API prefix 是 `/api/excel-template-mapper/*`，当前仍属于验证工具链，不作为生产业务模块扩展入口。
 - 系统配置下载接口包含自动化助手、TOS 轻量在线安装器、完整安装包、payload 和 PO 自动下载模板下载路径，例如 `/api/system/config/tos-desktop/download`、`/api/system/config/tos-desktop-full/download` 与 `/api/system/config/po-auto-download/template/download`。
-- `/api/release-updates` 提供版本更新记录读取和部署同步写入；服务器 MySQL 是主源，本地默认 seed `data/release_updates_seed.json` 需要通过 `npm run release:updates:pull` 与 `tms-frontend/src/shared/version/releaseHistory.json` 保持一致。
+- `/api/process-history/*` 提供 Excel 处理历史记录、历史结果归档和历史文件下载；本地后端归档到服务器时只调用 `/api/process-history/result-files`，不直连服务器 MySQL 或 MinIO。
+- `/api/release-updates` 提供版本更新记录读取和部署同步写入；服务器 MySQL `tos_release_records` 是主源，本地默认 seed `data/release_updates_seed.json` 需要通过 `npm run release:updates:pull` 与 `tms-frontend/src/shared/version/releaseHistory.json` 保持一致。
 - 自动化凭据接口 `/api/automation/credentials/{automation_id}` 负责保存 Infor Nexus 等登录凭据；`po-auto-download/default` 使用同一张 `tos_login_accounts` 表，前端只回显账号，执行时通过 resolve 接口取加密密码。
 
 ## Engineering Notes
