@@ -1,14 +1,12 @@
 {
-  "version": "1.0.0-beta.3.30",
+  "version": "1.0.0-beta.3.29",
   "date": "2026-07-08",
-  "noticeId": "2026-07-08-v1.0.0-beta.3.30",
+  "noticeId": "2026-07-08-v1.0.0-beta.3.29",
   "showPopup": false,
   "added": [],
   "improved": [],
   "fixed": [
-    "按当前站点下发自动化模块清单地址",
-    "发布小助手壳子 1.0.0-beta.3.30",
-    "发布 automation modules 1.0.0-beta.3.30"
+    "调整 Jason Result Set Excel 输出格式"
   ],
   "modules": [],
   "sections": []

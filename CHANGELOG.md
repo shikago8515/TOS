@@ -1,3 +1,9 @@
+## [1.0.0-beta.3.29](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.28...v1.0.0-beta.3.29) (2026-07-08)
+
+### Bug Fixes
+
+* 调整 Jason Result Set Excel 输出格式 ([b61ae88](http://172.16.48.208:3001/luenthai-ai/TOS/commit/b61ae888833974282a183a0b6c5ae2e12edb62a1))
+
 ## [1.0.0-beta.3.28](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.27...v1.0.0-beta.3.28) (2026-07-08)
 
 ### Bug Fixes

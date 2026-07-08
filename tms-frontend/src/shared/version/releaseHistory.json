@@ -10,6 +10,16 @@
     "description": "小助手壳子更新到 1.0.0-beta.3.30，热更新模块清单会按当前访问的 TOS 服务器生成，避免 172 内网与 218 公网两条链路互相串源。"
   },
   {
+    "recordKey": "release-v1.0.0-beta.3.29",
+    "version": "1.0.0-beta.3.29",
+    "releaseDate": "2026-07-08",
+    "category": "improved",
+    "pageName": "Version Release",
+    "pagePath": "/release-updates",
+    "title": "Release v1.0.0-beta.3.29",
+    "description": "Release v1.0.0-beta.3.29. Channel: beta.3. Commit: b61ae888833974282a183a0b6c5ae2e12edb62a1. Release notes: 调整 Jason Result Set Excel 输出格式."
+  },
+  {
     "recordKey": "release-v1.0.0-beta.3.28",
     "version": "1.0.0-beta.3.28",
     "releaseDate": "2026-07-08",
