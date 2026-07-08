@@ -420,6 +420,7 @@ const staticTextTranslations: Record<string, string> = {
     'The background executor task has ended. View run records or start again.',
   '后台下载任务已结束，请查看执行记录或重新开始。':
     'The background download task has ended. View run records or start again.',
+  '后台下载任务已结束。': 'The background download task has ended.',
   '模板加载中...': 'Loading template...',
   '下载 Excel 模板': 'Download Excel Template',
   '请输入 User ID': 'Enter User ID',

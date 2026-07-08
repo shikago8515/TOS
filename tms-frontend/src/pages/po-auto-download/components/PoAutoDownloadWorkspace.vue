@@ -354,7 +354,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
 import { useAppLanguage } from '../../../shared/i18n/appLanguage'
 import AppIcon from '../../../shared/ui/AppIcon.vue'
 import BrowserVisibilitySwitch from '../../../shared/ui/BrowserVisibilitySwitch.vue'
@@ -1475,19 +1474,14 @@ async function showPoDownloadResultDialog(
   const lines = buildPoDownloadResultDialogLines(payload)
   if (!lines.length) return
   try {
-    await ElMessageBox.alert(
-      lines.map((line) => escapeHtml(line)).join('<br />'),
-      Boolean(payload.ok)
+    await showAppAlert(lines.join('\n'), {
+      title: payload.ok
         ? (isEnglish.value ? 'Download Complete' : '下载完成')
         : (isEnglish.value ? 'Download Result' : '下载结果'),
-      {
-        confirmButtonText: isEnglish.value ? 'OK' : '知道了',
-        dangerouslyUseHTMLString: true,
-        closeOnClickModal: false,
-        closeOnPressEscape: true,
-        type: Boolean(payload.ok) ? 'success' : 'warning',
-      },
-    )
+      confirmText: isEnglish.value ? 'OK' : '知道了',
+      tone: payload.ok ? 'success' : 'warning',
+      compact: true,
+    })
   } catch {
     // Ignore dialog close/cancel errors.
   }
@@ -1503,7 +1497,7 @@ function buildPoDownloadResultDialogLines(payload: ExecutorResponsePayload | Loc
         : `本次共处理 ${total} 个 Invoice，已下载 ${downloaded} 个，失败 ${failed} 个。`,
     )
   } else {
-    lines.push(Boolean(payload.ok)
+    lines.push(payload.ok
       ? (isEnglish.value ? 'Invoice PDF download finished.' : 'Invoice PDF 下载完成。')
       : String(readExecutorResponseText(payload) || (isEnglish.value ? 'The download task has finished.' : '下载任务已结束。')),
     )
@@ -1583,15 +1577,6 @@ function extractDirectoryFromPath(rawPath: string): string {
   if (!normalizedPath) return ''
   const separatorIndex = Math.max(normalizedPath.lastIndexOf('\\'), normalizedPath.lastIndexOf('/'))
   return separatorIndex > 0 ? normalizedPath.slice(0, separatorIndex) : ''
-}
-
-function escapeHtml(value: string): string {
-  return String(value || '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
 }
 
 function downloadResultFile(url: string, fileName: string): void {
