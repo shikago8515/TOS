@@ -23,6 +23,7 @@ const moduleName = 'web-automation'
 const launcherBaseUrl = 'http://127.0.0.1:3210'
 const launcherProtocolUrl = 'tos://automation/launcher/start'
 const defaultAutomationHelperDownloadPath = '/api/system/config/automation-helper/download'
+const automationModuleManifestPath = '/api/system/config/automation-modules'
 const localHealthProbeTimeoutMs = 2500
 const localLauncherProbeTimeoutMs = 1200
 const localLauncherRequestTimeoutMs = 15000
@@ -166,6 +167,7 @@ export interface LocalAutomationModuleSyncResult {
 
 export interface LaunchAutomationConsoleOptions {
   forceUpdate?: boolean
+  automationModuleManifestUrl?: string
 }
 
 export interface ExecutorCredentials {
@@ -383,6 +385,24 @@ export async function openAutomationHelperDownload(): Promise<void> {
   openUrlAsBrowserDownload(downloadUrl, 'TOS-Automation-Helper-Setup.exe')
 }
 
+export async function resolveAutomationModuleManifestUrl(): Promise<string> {
+  const configuredUrl = await buildBackendDownloadUrl(automationModuleManifestPath, 'remote')
+  return resolveBrowserAbsoluteUrl(configuredUrl)
+}
+
+function resolveBrowserAbsoluteUrl(url: string): string {
+  const browserLocation = window.location
+  const baseHref = browserLocation?.href
+    || (browserLocation?.origin ? `${browserLocation.origin}/` : '')
+    || 'http://127.0.0.1/'
+
+  try {
+    return new URL(url, baseHref).toString()
+  } catch {
+    return url
+  }
+}
+
 export async function openAutomationHelperPanel(): Promise<AutomationHelperPanelOpenResult> {
   const status = await probeAutomationHelperUpdatePanel()
   if (status === 'available') {
@@ -420,17 +440,22 @@ export async function launchAutomationConsole(
   options: LaunchAutomationConsoleOptions = {},
 ): Promise<ElectronActionResult> {
   const forceUpdate = options.forceUpdate === true
-  await recordWebAutomationEvent('launch-start', { appId, forceUpdate })
+  const automationModuleManifestUrl = typeof options.automationModuleManifestUrl === 'string'
+    && options.automationModuleManifestUrl.trim()
+    ? options.automationModuleManifestUrl.trim()
+    : await resolveAutomationModuleManifestUrl()
+  const launcherOptions = { forceUpdate, automationModuleManifestUrl }
+  await recordWebAutomationEvent('launch-start', { appId, forceUpdate, automationModuleManifestUrl })
 
   let result: ElectronActionResult
   if (window.electronAPI?.launchAutomationApp) {
-    result = await window.electronAPI.launchAutomationApp(appId, { forceUpdate })
+    result = await window.electronAPI.launchAutomationApp(appId, launcherOptions)
   } else {
     await ensureLocalAutomationLauncher()
     result = await requestLauncherJson<ElectronActionResult>(
       'POST',
       `/api/apps/${encodeURIComponent(appId)}/start`,
-      { forceUpdate },
+      launcherOptions,
       localLauncherStartTimeoutMs,
     )
   }
@@ -1035,11 +1060,16 @@ export async function probeLocalAutomationLauncherHealthPayload(): Promise<Local
 }
 
 export async function syncLocalAutomationModules(
-  options: { forceUpdate?: boolean } = {},
+  options: { forceUpdate?: boolean; automationModuleManifestUrl?: string } = {},
 ): Promise<LocalAutomationModuleSyncResult> {
   await ensureLocalAutomationLauncher()
+  const automationModuleManifestUrl = typeof options.automationModuleManifestUrl === 'string'
+    && options.automationModuleManifestUrl.trim()
+    ? options.automationModuleManifestUrl.trim()
+    : await resolveAutomationModuleManifestUrl()
   return requestLauncherJson<LocalAutomationModuleSyncResult>('POST', '/api/modules/sync-all', {
     forceUpdate: options.forceUpdate !== false,
+    automationModuleManifestUrl,
   }, localLauncherModuleSyncTimeoutMs)
 }
 

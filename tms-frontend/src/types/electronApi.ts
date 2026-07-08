@@ -20,6 +20,7 @@ export interface ElectronActionResult {
 
 export interface LaunchAutomationAppOptions {
   forceUpdate?: boolean
+  automationModuleManifestUrl?: string
 }
 
 export interface DirectorySelectionResult {

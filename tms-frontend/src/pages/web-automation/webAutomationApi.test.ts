@@ -28,6 +28,8 @@ import {
 } from './webAutomationApi'
 
 const compatibleHelperVersion = '1.0.0-beta.3.4'
+const aiAutomationModuleManifestUrl = 'https://ai.tomwell.net:56130/tos/desktop-api/api/system/config/automation-modules'
+const publicAutomationModuleManifestUrl = 'http://218.240.184.58/tos/desktop-api/api/system/config/automation-modules'
 
 describe('webAutomationApi', () => {
   it('opens the Infornexus auto-add search page through the local executor', async () => {
@@ -191,6 +193,11 @@ describe('webAutomationApi', () => {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
       value: {
+        location: {
+          href: 'https://ai.tomwell.net:56130/tos/#/web-automation/scenarios/tc-inv-automation',
+          origin: 'https://ai.tomwell.net:56130',
+          pathname: '/tos/',
+        },
         electronAPI: {
           launchAutomationApp,
           recordDiagnosticEvent,
@@ -202,7 +209,10 @@ describe('webAutomationApi', () => {
       const result = await launchAutomationConsole('microsoft-login-n8n-demo', { forceUpdate: true })
 
       expect(result.success).toBe(true)
-      expect(launchAutomationApp).toHaveBeenCalledWith('microsoft-login-n8n-demo', { forceUpdate: true })
+      expect(launchAutomationApp).toHaveBeenCalledWith('microsoft-login-n8n-demo', {
+        forceUpdate: true,
+        automationModuleManifestUrl: aiAutomationModuleManifestUrl,
+      })
       expect(recordDiagnosticEvent).toHaveBeenCalled()
     } finally {
       if (originalWindowDescriptor) {
@@ -219,6 +229,11 @@ describe('webAutomationApi', () => {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
       value: {
+        location: {
+          href: 'https://ai.tomwell.net:56130/tos/#/web-automation/scenarios/shipping-automation-demo',
+          origin: 'https://ai.tomwell.net:56130',
+          pathname: '/tos/',
+        },
         electronAPI: {
           launchAutomationApp,
           recordDiagnosticEvent: vi.fn().mockResolvedValue({ success: true }),
@@ -229,7 +244,10 @@ describe('webAutomationApi', () => {
     try {
       await launchAutomationConsole('shipping-automation-demo')
 
-      expect(launchAutomationApp).toHaveBeenCalledWith('shipping-automation-demo', { forceUpdate: false })
+      expect(launchAutomationApp).toHaveBeenCalledWith('shipping-automation-demo', {
+        forceUpdate: false,
+        automationModuleManifestUrl: aiAutomationModuleManifestUrl,
+      })
     } finally {
       if (originalWindowDescriptor) {
         Object.defineProperty(globalThis, 'window', originalWindowDescriptor)
@@ -432,6 +450,11 @@ describe('webAutomationApi', () => {
     const mockWindow = {
       clearTimeout: vi.fn(),
       fetch: mockFetch,
+      location: {
+        href: 'http://218.240.184.58/tos/#/settings',
+        origin: 'http://218.240.184.58',
+        pathname: '/tos/',
+      },
       setTimeout: vi.fn(() => 1),
     } as unknown as Pick<Window, 'clearTimeout' | 'fetch' | 'setTimeout'>
     Object.defineProperty(globalThis, 'window', {
@@ -444,7 +467,10 @@ describe('webAutomationApi', () => {
 
       expect(result.installed).toBe(1)
       expect(requests).toEqual([{
-        body: { forceUpdate: true },
+        body: {
+          forceUpdate: true,
+          automationModuleManifestUrl: publicAutomationModuleManifestUrl,
+        },
         method: 'POST',
         url: 'http://127.0.0.1:3210/api/modules/sync-all',
       }])

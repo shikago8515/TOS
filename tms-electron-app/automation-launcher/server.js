@@ -138,9 +138,16 @@ const server = http.createServer(async (req, res) => {
       const requestBody = await readJsonBody(req)
       const forceUpdate = readBooleanParam(requestUrl.searchParams.get('forceUpdate'))
         || readBooleanParam(requestBody.forceUpdate)
+      const requestAutomationModuleManifestUrl = readAutomationModuleManifestUrl(
+        requestUrl.searchParams.get('automationModuleManifestUrl')
+        || requestUrl.searchParams.get('manifestUrl')
+        || requestBody.automationModuleManifestUrl
+        || requestBody.manifestUrl,
+      )
       const result = await runAutomationModuleSync({
         reason: 'manual',
         forceUpdate,
+        automationModuleManifestUrl: requestAutomationModuleManifestUrl,
       })
       sendJson(res, result.ok === false ? 502 : 200, result)
       return
@@ -175,8 +182,20 @@ const server = http.createServer(async (req, res) => {
       const action = appRouteMatch[2]
       const requestBody = action === 'start' ? await readJsonBody(req) : {}
       const forceUpdate = readBooleanParam(requestUrl.searchParams.get('forceUpdate')) || readBooleanParam(requestBody.forceUpdate)
+      const requestAutomationModuleManifestUrl = action === 'start'
+        ? readAutomationModuleManifestUrl(
+          requestUrl.searchParams.get('automationModuleManifestUrl')
+          || requestUrl.searchParams.get('manifestUrl')
+          || requestBody.automationModuleManifestUrl
+          || requestBody.manifestUrl,
+        )
+        : ''
       const result = action === 'start'
-        ? await launchAutomationApp(appId, { ...sharedOptions, forceUpdate })
+        ? await launchAutomationApp(appId, {
+          ...sharedOptions,
+          forceUpdate,
+          automationModuleManifestUrl: requestAutomationModuleManifestUrl || sharedOptions.automationModuleManifestUrl,
+        })
         : stopAutomationApp(appId, sharedOptions)
       if (action === 'start' && result && result.updatePending) {
         markModuleRestartPending(appId, result)
@@ -262,6 +281,7 @@ async function runAutomationModuleSync(options = {}) {
     const result = await syncAutomationModules({
       ...sharedOptions,
       forceUpdate: Boolean(options.forceUpdate),
+      automationModuleManifestUrl: options.automationModuleManifestUrl || sharedOptions.automationModuleManifestUrl,
     })
     moduleSyncState.lastResult = result
     moduleSyncState.lastError = result.error || ''
@@ -503,6 +523,22 @@ function readJsonBody(req) {
 
 function readBooleanParam(value) {
   return value === true || value === 'true' || value === '1'
+}
+
+function readAutomationModuleManifestUrl(value) {
+  const raw = String(value || '').trim()
+  if (!raw) {
+    return ''
+  }
+
+  try {
+    const parsed = new URL(raw)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+      ? parsed.toString()
+      : ''
+  } catch (_error) {
+    return ''
+  }
 }
 
 function sendHtml(res, statusCode, html) {

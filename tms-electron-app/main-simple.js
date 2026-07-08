@@ -1215,6 +1215,10 @@ async function launchCoreAutomationApp(appId, options = {}) {
   const result = await automationLauncherCore.launchAutomationApp(appId, {
     ...getCoreAutomationOptions(),
     forceUpdate: Boolean(launchOptions.forceUpdate),
+    automationModuleManifestUrl: typeof launchOptions.automationModuleManifestUrl === 'string'
+      && launchOptions.automationModuleManifestUrl.trim()
+      ? launchOptions.automationModuleManifestUrl.trim()
+      : undefined,
   });
   if (!result.success && /^Unknown automation app:/i.test(String(result.error || ''))) {
     const registry = loadAutomationAppRegistry();
