@@ -1,12 +1,14 @@
 {
-  "version": "1.0.0-beta.3.28",
+  "version": "1.0.0-beta.3.30",
   "date": "2026-07-08",
-  "noticeId": "2026-07-08-v1.0.0-beta.3.28",
+  "noticeId": "2026-07-08-v1.0.0-beta.3.30",
   "showPopup": false,
   "added": [],
   "improved": [],
   "fixed": [
-    "按当前站点下发自动化模块清单地址"
+    "按当前站点下发自动化模块清单地址",
+    "发布小助手壳子 1.0.0-beta.3.30",
+    "发布 automation modules 1.0.0-beta.3.30"
   ],
   "modules": [],
   "sections": []

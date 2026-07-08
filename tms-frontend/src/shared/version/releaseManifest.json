@@ -1,25 +1,27 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.28",
-  "tag": "v1.0.0-beta.3.28",
+  "version": "1.0.0-beta.3.30",
+  "tag": "v1.0.0-beta.3.30",
   "gitSha": "0ee04d5cad62fd3e60ba38da1c87e4c94c728255",
   "releaseDate": "2026-07-08",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.28",
+    "version": "1.0.0-beta.3.30",
     "date": "2026-07-08",
-    "noticeId": "2026-07-08-v1.0.0-beta.3.28",
+    "noticeId": "2026-07-08-v1.0.0-beta.3.30",
     "showPopup": false,
     "added": [],
     "improved": [],
     "fixed": [
-      "按当前站点下发自动化模块清单地址"
+      "按当前站点下发自动化模块清单地址",
+      "发布小助手壳子 1.0.0-beta.3.30",
+      "发布 automation modules 1.0.0-beta.3.30"
     ],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.28",
-    "version": "1.0.0-beta.3.28",
+    "noticeId": "v1.0.0-beta.3.30",
+    "version": "1.0.0-beta.3.30",
     "releaseDate": "2026-07-08",
     "showPopup": false,
     "level": "maintenance",
@@ -29,7 +31,9 @@
         "title": "修复",
         "icon": "check-circle",
         "items": [
-          "按当前站点下发自动化模块清单地址"
+          "按当前站点下发自动化模块清单地址",
+          "发布小助手壳子 1.0.0-beta.3.30",
+          "发布 automation modules 1.0.0-beta.3.30"
         ]
       }
     ]
