@@ -1477,7 +1477,7 @@ async function showPoDownloadResultDialog(
   try {
     await ElMessageBox.alert(
       lines.map((line) => escapeHtml(line)).join('<br />'),
-      Boolean(payload.ok)
+      payload.ok
         ? (isEnglish.value ? 'Download Complete' : '下载完成')
         : (isEnglish.value ? 'Download Result' : '下载结果'),
       {
@@ -1485,7 +1485,7 @@ async function showPoDownloadResultDialog(
         dangerouslyUseHTMLString: true,
         closeOnClickModal: false,
         closeOnPressEscape: true,
-        type: Boolean(payload.ok) ? 'success' : 'warning',
+        type: payload.ok ? 'success' : 'warning',
       },
     )
   } catch {
@@ -1503,7 +1503,7 @@ function buildPoDownloadResultDialogLines(payload: ExecutorResponsePayload | Loc
         : `本次共处理 ${total} 个 Invoice，已下载 ${downloaded} 个，失败 ${failed} 个。`,
     )
   } else {
-    lines.push(Boolean(payload.ok)
+    lines.push(payload.ok
       ? (isEnglish.value ? 'Invoice PDF download finished.' : 'Invoice PDF 下载完成。')
       : String(readExecutorResponseText(payload) || (isEnglish.value ? 'The download task has finished.' : '下载任务已结束。')),
     )
