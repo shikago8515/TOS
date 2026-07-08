@@ -1,35 +1,44 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.0-beta.3.29",
-  "tag": "v1.0.0-beta.3.29",
-  "gitSha": "b61ae888833974282a183a0b6c5ae2e12edb62a1",
+  "version": "1.0.0-beta.3.30",
+  "tag": "v1.0.0-beta.3.30",
+  "gitSha": "87c9b915ad39eb7c982cc6740853cd500476b173",
   "releaseDate": "2026-07-08",
   "channel": "beta.3",
   "releaseNotes": {
-    "version": "1.0.0-beta.3.29",
+    "version": "1.0.0-beta.3.30",
     "date": "2026-07-08",
-    "noticeId": "2026-07-08-v1.0.0-beta.3.29",
-    "showPopup": false,
-    "added": [],
+    "noticeId": "2026-07-08-v1.0.0-beta.3.30",
+    "showPopup": true,
+    "added": [
+      "添加北京服务器本机部署脚本"
+    ],
     "improved": [],
     "fixed": [
-      "调整 Jason Result Set Excel 输出格式"
+      "修复本机服务器包前端构建"
     ],
     "modules": []
   },
   "announcement": {
-    "noticeId": "v1.0.0-beta.3.29",
-    "version": "1.0.0-beta.3.29",
+    "noticeId": "v1.0.0-beta.3.30",
+    "version": "1.0.0-beta.3.30",
     "releaseDate": "2026-07-08",
-    "showPopup": false,
-    "level": "maintenance",
+    "showPopup": true,
+    "level": "feature",
     "title": "本次更新内容",
     "groups": [
+      {
+        "title": "新增",
+        "icon": "sparkles",
+        "items": [
+          "添加北京服务器本机部署脚本"
+        ]
+      },
       {
         "title": "修复",
         "icon": "check-circle",
         "items": [
-          "调整 Jason Result Set Excel 输出格式"
+          "修复本机服务器包前端构建"
         ]
       }
     ]

@@ -1,3 +1,13 @@
+## [1.0.0-beta.3.30](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.29...v1.0.0-beta.3.30) (2026-07-08)
+
+### Features
+
+* 添加北京服务器本机部署脚本 ([fa4d5b0](http://172.16.48.208:3001/luenthai-ai/TOS/commit/fa4d5b0c2c36824abf7a8b1eb1ebe78bcd8e5530))
+
+### Bug Fixes
+
+* 修复本机服务器包前端构建 ([87c9b91](http://172.16.48.208:3001/luenthai-ai/TOS/commit/87c9b915ad39eb7c982cc6740853cd500476b173))
+
 ## [1.0.0-beta.3.29](http://172.16.48.208:3001/luenthai-ai/TOS/compare/v1.0.0-beta.3.28...v1.0.0-beta.3.29) (2026-07-08)
 
 ### Bug Fixes

@@ -1,12 +1,14 @@
 {
-  "version": "1.0.0-beta.3.29",
+  "version": "1.0.0-beta.3.30",
   "date": "2026-07-08",
-  "noticeId": "2026-07-08-v1.0.0-beta.3.29",
-  "showPopup": false,
-  "added": [],
+  "noticeId": "2026-07-08-v1.0.0-beta.3.30",
+  "showPopup": true,
+  "added": [
+    "添加北京服务器本机部署脚本"
+  ],
   "improved": [],
   "fixed": [
-    "调整 Jason Result Set Excel 输出格式"
+    "修复本机服务器包前端构建"
   ],
   "modules": [],
   "sections": []
