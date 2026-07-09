@@ -1,5 +1,35 @@
 [
   {
+    "recordKey": "release-v1.0.0-beta.3.30-improved-xo-tc-inv-submission-date",
+    "version": "1.0.0-beta.3.30",
+    "releaseDate": "2026-07-08",
+    "category": "improved",
+    "pageName": "XO TC INV 自动化",
+    "pagePath": "/web-automation/scenarios/xo-tc-inv-automation",
+    "title": "XO TC INV 兼容 Submission 日期列",
+    "description": "XO TC INV 模板中的 Submission、Submission Date 或 Submit Date 列会被识别为交接日期，并继续写入发票对应的日期信息。"
+  },
+  {
+    "recordKey": "release-v1.0.0-beta.3.30-fixed-vent-shipping-preview-pdf",
+    "version": "1.0.0-beta.3.30",
+    "releaseDate": "2026-07-08",
+    "category": "fixed",
+    "pageName": "万代 Shipping 自动化",
+    "pagePath": "/web-automation/scenarios/shipping-automation",
+    "title": "万代 Shipping 后半段补齐发票号与 PDF 下载",
+    "description": "万代 Shipping 现在可以识别 VENT 模板里的 inv number 发票号和 PODD DATE 日期，并接入 Preview PDF 保存目录、下载执行和页面结果展示。"
+  },
+  {
+    "recordKey": "release-v1.0.0-beta.3.30-improved-packing-list-template-columns",
+    "version": "1.0.0-beta.3.30",
+    "releaseDate": "2026-07-08",
+    "category": "improved",
+    "pageName": "自动下载箱单",
+    "pagePath": "/web-automation/scenarios/packing-list-auto-download",
+    "title": "箱单下载兼容新版 Excel 模板列",
+    "description": "自动下载箱单会读取 PO NUMBER、inv number 和 PODD DATE 列，并在分组时保留每个 NO 对应的 PODD 日期信息。"
+  },
+  {
     "recordKey": "release-v1.0.0-beta.3.30",
     "version": "1.0.0-beta.3.30",
     "releaseDate": "2026-07-08",
