@@ -1086,6 +1086,11 @@ const staticTextTranslations: Record<string, string> = {
   未执行: 'Not run',
   'PDF 下载状态': 'PDF Download Status',
   '例如：D:\\Downloads\\InforNexus\\TCINV': 'Example: D:\\Downloads\\InforNexus\\TCINV',
+  '选择 VENT Preview PDF 保存目录': 'Choose VENT Preview PDF Save Folder',
+  '正在打开 VENT Preview PDF 保存目录选择器，请留意系统弹窗。':
+    'Opening the VENT Preview PDF folder picker. Watch for the system dialog.',
+  '本机自动化助手缺少 VENT 目录选择接口，请同步最新自动化模块后重试，或手动填写完整本机路径。':
+    'The local automation helper is missing the VENT folder picker API. Sync the latest automation module and try again, or enter the full local path manually.',
   '选择 TC INV Preview PDF 保存目录': 'Choose TC INV Preview PDF Save Folder',
   '本机自动化助手版本落后，请同步最新自动化模块后重试，或手动填写完整本机路径。':
     'The local automation helper is out of date. Sync the latest automation module and try again, or enter the full local path manually.',

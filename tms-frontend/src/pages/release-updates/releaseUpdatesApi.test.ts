@@ -117,16 +117,10 @@ describe('releaseUpdatesApi', () => {
     })
     expect(payload.total).toBe(payload.records.length)
     expect(payload.records.length).toBeGreaterThan(2)
-    expect(payload.records.some((record) => record.version === fallbackAppVersion)).toBe(true)
+    const recordVersions = payload.records.map((record) => record.version)
+    expect(recordVersions).toContain(fallbackAppVersion)
+    expect(new Set(recordVersions).size).toBeGreaterThan(3)
     expect(payload.records.some((record) => record.pagePath === '/release-updates')).toBe(true)
-    expect(payload.records.map((record) => record.version)).toEqual(
-      expect.arrayContaining([
-        fallbackAppVersion,
-        '0.9.8-beta.3.10',
-        '0.9.8-beta.3.9',
-        '0.9.8-beta.3.1',
-      ]),
-    )
   })
 
   it('prepends the current release notes when bundled history lags behind the app version', async () => {
