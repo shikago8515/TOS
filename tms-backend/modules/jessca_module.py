@@ -99,6 +99,7 @@ class InvoiceSummaryRecord:
     invoice_number: str = ""
     total_quantity: Optional[float] = None
     total_amount: Optional[float] = None
+    equivalent_sea_freight: Optional[float] = None
     freight_charge: Optional[float] = None
     documentation_charge: Optional[float] = None
     agreed_discount: Optional[float] = None
@@ -161,6 +162,7 @@ class TcInvoiceSummary:
     total_net_weight: Optional[float] = None
     total_net_net_weight: Optional[float] = None
     total_po_net_amount: Optional[float] = None
+    equivalent_sea_freight: Optional[float] = None
     additional_charge: Optional[float] = None
     documentation_charge: Optional[float] = None
     agreed_discount: Optional[float] = None
@@ -223,6 +225,8 @@ class TcSummaryComparisonRow:
     tc_total_vat: Optional[float]
     source_invoice: str
     source_tc_pdf: str
+    fty_equivalent_sea_freight: Optional[float] = None
+    tc_equivalent_sea_freight: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -352,6 +356,7 @@ class JesscaModule:
         invoice_number = ""
         total_quantity: Optional[float] = None
         total_amount: Optional[float] = None
+        equivalent_sea_freight: Optional[float] = None
         freight_charge: Optional[float] = None
         documentation_charge: Optional[float] = None
         agreed_discount: Optional[float] = None
@@ -380,6 +385,9 @@ class JesscaModule:
                     total_quantity = self._extract_total_quantity(adapter, row_idx)
                     total_amount = self._extract_last_numeric_value(adapter, row_idx)
                     currency = currency or self._extract_currency_from_row(adapter, row_idx)
+                if "EQUIVALENTSEAFREIGHT" in labels:
+                    equivalent_sea_freight = self._extract_last_numeric_value(adapter, row_idx)
+                    currency = currency or self._extract_currency_from_row(adapter, row_idx)
                 if "FREIGHTCHARGE" in labels:
                     freight_charge = self._extract_last_numeric_value(adapter, row_idx)
                     currency = currency or self._extract_currency_from_row(adapter, row_idx)
@@ -405,6 +413,7 @@ class JesscaModule:
             invoice_number=invoice_number,
             total_quantity=total_quantity,
             total_amount=total_amount,
+            equivalent_sea_freight=equivalent_sea_freight,
             freight_charge=freight_charge,
             documentation_charge=documentation_charge,
             agreed_discount=agreed_discount,
@@ -427,6 +436,7 @@ class JesscaModule:
             invoice_number=next((record.invoice_number for record in records if record.invoice_number), ""),
             total_quantity=total_quantity,
             total_amount=total_amount,
+            equivalent_sea_freight=None,
             freight_charge=None,
             documentation_charge=None,
             agreed_discount=None,
@@ -1364,6 +1374,14 @@ class JesscaModule:
         return abs(float(left) - float(right)) < 0.0001
 
     @staticmethod
+    def _same_optional_number_when_present(left: Optional[float], right: Optional[float]) -> bool:
+        if left is None and right is None:
+            return True
+        if left is None or right is None:
+            return False
+        return abs(float(left) - float(right)) < 0.0001
+
+    @staticmethod
     def _normalize_tc_header(value: Any) -> str:
         return re.sub(r"[^A-Z0-9]+", "", str(value or "").upper())
 
@@ -1538,6 +1556,7 @@ class JesscaModule:
             total_net_weight=self._extract_labeled_number(full_text, "Total Net Weight"),
             total_net_net_weight=self._extract_labeled_number(full_text, "Total Net Net Weight"),
             total_po_net_amount=self._extract_labeled_number(full_text, "Total PO Net Amount"),
+            equivalent_sea_freight=self._extract_labeled_number(full_text, "Equivalent sea freight"),
             additional_charge=self._extract_labeled_number(full_text, "Additional charge"),
             documentation_charge=self._extract_labeled_number(full_text, "Documentation charge"),
             agreed_discount=self._extract_labeled_number(full_text, "Agreed Discount"),
@@ -1555,6 +1574,7 @@ class JesscaModule:
             invoice_number=next((record.invoice_number for record in records if record.invoice_number), ""),
             total_quantity=self._sum_optional_numbers(record.quantity for record in records),
             total_po_net_amount=self._sum_optional_numbers(record.total_amount for record in records),
+            equivalent_sea_freight=None,
             invoice_total=self._sum_optional_numbers(record.total_amount for record in records),
         )
 
@@ -1841,6 +1861,15 @@ class JesscaModule:
                     f"FTY={self._format_optional_number(fty.total_amount)}；"
                     f"TC Total PO Net Amount={self._format_optional_number(tc.total_po_net_amount)}"
                 )
+            if not self._same_optional_number_when_present(
+                fty.equivalent_sea_freight,
+                tc.equivalent_sea_freight,
+            ):
+                issues.append(
+                    "Equivalent sea freight 不一致："
+                    f"FTY={self._format_optional_number(fty.equivalent_sea_freight)}；"
+                    f"TC={self._format_optional_number(tc.equivalent_sea_freight)}"
+                )
             if not self._same_charge_amount(fty.freight_charge, tc.additional_charge):
                 issues.append(
                     "Freight/Additional Charge 不一致："
@@ -1875,6 +1904,8 @@ class JesscaModule:
             tc_total_quantity=tc.total_quantity,
             fty_total_amount=fty.total_amount,
             tc_total_po_net_amount=tc.total_po_net_amount,
+            fty_equivalent_sea_freight=fty.equivalent_sea_freight,
+            tc_equivalent_sea_freight=tc.equivalent_sea_freight,
             fty_freight_charge=fty.freight_charge,
             tc_additional_charge=tc.additional_charge,
             fty_documentation_charge=fty.documentation_charge,
@@ -1935,6 +1966,9 @@ class JesscaModule:
             invoice_number=next((summary.invoice_number for summary in summaries if summary.invoice_number), ""),
             total_quantity=self._sum_optional_numbers(summary.total_quantity for summary in summaries),
             total_amount=self._sum_optional_numbers(summary.total_amount for summary in summaries),
+            equivalent_sea_freight=self._sum_optional_numbers(
+                summary.equivalent_sea_freight for summary in summaries
+            ),
             freight_charge=self._sum_optional_numbers(summary.freight_charge for summary in summaries),
             documentation_charge=self._sum_optional_numbers(summary.documentation_charge for summary in summaries),
             agreed_discount=self._sum_optional_numbers(summary.agreed_discount for summary in summaries),
@@ -2014,6 +2048,9 @@ class JesscaModule:
             total_net_weight=self._sum_optional_numbers(summary.total_net_weight for summary in summaries),
             total_net_net_weight=self._sum_optional_numbers(summary.total_net_net_weight for summary in summaries),
             total_po_net_amount=self._sum_optional_numbers(summary.total_po_net_amount for summary in summaries),
+            equivalent_sea_freight=self._sum_optional_numbers(
+                summary.equivalent_sea_freight for summary in summaries
+            ),
             additional_charge=self._sum_optional_numbers(summary.additional_charge for summary in summaries),
             documentation_charge=self._sum_optional_numbers(summary.documentation_charge for summary in summaries),
             agreed_discount=self._sum_optional_numbers(summary.agreed_discount for summary in summaries),
@@ -2530,7 +2567,7 @@ class JesscaModule:
     ) -> Dict[str, int]:
         summary_rows = summary_rows or []
         thin_border = create_thin_border()
-        max_matrix_column = 12
+        max_matrix_column = 13
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max_matrix_column)
         title_cell = ws["A1"]
         title_cell.value = f"TC INV 核对结果 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
@@ -2620,10 +2657,11 @@ class JesscaModule:
                 6: 14,
                 7: 30,
                 8: 24,
-                9: 28,
-                10: 18,
-                11: 28,
-                12: 42,
+                9: 24,
+                10: 28,
+                11: 18,
+                12: 28,
+                13: 42,
             },
             {
                 1: 10,
@@ -2634,10 +2672,11 @@ class JesscaModule:
                 6: 10,
                 7: 18,
                 8: 16,
-                9: 18,
-                10: 12,
-                11: 18,
+                9: 16,
+                10: 18,
+                11: 12,
                 12: 18,
+                13: 18,
             },
         )
         ws.freeze_panes = "A2"
@@ -2725,6 +2764,7 @@ class JesscaModule:
             "Working/Style No",
             "Quantity",
             "Total Amount / Total PO Net Amount",
+            "Equivalent sea freight",
             "Freight/Additional Charge",
             "Documentation Charge",
             "Agreed Discount",
@@ -2748,6 +2788,7 @@ class JesscaModule:
             "Invoice Number",
             "Total Quantity",
             "Total Amount / Total PO Net Amount",
+            "Equivalent sea freight",
             "Freight/Additional Charge",
             "Documentation Charge",
             "Agreed Discount",
@@ -2849,6 +2890,16 @@ class JesscaModule:
                 agreed_discount_matched or self._same_number(summary.fty_total_amount, summary.tc_total_po_net_amount),
                 missing_side,
                 self._number_delta(summary.fty_total_amount, summary.tc_total_po_net_amount),
+            ),
+            self._tc_matrix_number_field(
+                summary.fty_equivalent_sea_freight,
+                summary.tc_equivalent_sea_freight,
+                self._same_optional_number_when_present(
+                    summary.fty_equivalent_sea_freight,
+                    summary.tc_equivalent_sea_freight,
+                ),
+                missing_side,
+                self._number_delta(summary.fty_equivalent_sea_freight, summary.tc_equivalent_sea_freight),
             ),
             self._tc_matrix_number_field(
                 summary.fty_freight_charge,
@@ -2958,6 +3009,19 @@ class JesscaModule:
                         self._number_delta(summary.fty_total_amount, summary.tc_total_po_net_amount),
                     ),
                     self._tc_matrix_number_field(
+                        summary.fty_equivalent_sea_freight,
+                        summary.tc_equivalent_sea_freight,
+                        self._same_optional_number_when_present(
+                            summary.fty_equivalent_sea_freight,
+                            summary.tc_equivalent_sea_freight,
+                        ),
+                        summary_missing,
+                        self._number_delta(
+                            summary.fty_equivalent_sea_freight,
+                            summary.tc_equivalent_sea_freight,
+                        ),
+                    ),
+                    self._tc_matrix_number_field(
                         summary.fty_freight_charge,
                         summary.tc_additional_charge,
                         self._same_charge_amount(summary.fty_freight_charge, summary.tc_additional_charge),
@@ -2988,7 +3052,7 @@ class JesscaModule:
                 ]
             )
         else:
-            fields.extend([self._tc_matrix_blank_field() for _ in range(5)])
+            fields.extend([self._tc_matrix_blank_field() for _ in range(6)])
 
         if row:
             goods_matched = (
@@ -3138,6 +3202,16 @@ class JesscaModule:
                 summary.tc_total_po_net_amount,
                 self._number_delta(summary.fty_total_amount, summary.tc_total_po_net_amount),
                 agreed_discount_matched or self._same_number(summary.fty_total_amount, summary.tc_total_po_net_amount),
+            ),
+            (
+                "Equivalent sea freight",
+                summary.fty_equivalent_sea_freight,
+                summary.tc_equivalent_sea_freight,
+                self._number_delta(summary.fty_equivalent_sea_freight, summary.tc_equivalent_sea_freight),
+                self._same_optional_number_when_present(
+                    summary.fty_equivalent_sea_freight,
+                    summary.tc_equivalent_sea_freight,
+                ),
             ),
             (
                 "Freight/Additional Charge",
@@ -3343,6 +3417,22 @@ class JesscaModule:
             f"TC={self._format_optional_number(summary.tc_documentation_charge)} / "
             f"{documentation_status}",
         ]
+        if summary.fty_equivalent_sea_freight is not None or summary.tc_equivalent_sea_freight is not None:
+            equivalent_status = (
+                "一致"
+                if self._same_optional_number_when_present(
+                    summary.fty_equivalent_sea_freight,
+                    summary.tc_equivalent_sea_freight,
+                )
+                else "不一致"
+            )
+            parts.insert(
+                0,
+                "Equivalent sea freight: "
+                f"FTY={self._format_optional_number(summary.fty_equivalent_sea_freight)} / "
+                f"TC={self._format_optional_number(summary.tc_equivalent_sea_freight)} / "
+                f"{equivalent_status}",
+            )
         if summary.fty_agreed_discount is not None or summary.tc_agreed_discount is not None:
             discount_status = (
                 "一致"
@@ -3380,6 +3470,20 @@ class JesscaModule:
                     summary.fty_total_amount,
                     summary.tc_total_po_net_amount,
                     self._number_delta(summary.fty_total_amount, summary.tc_total_po_net_amount) or "-",
+                )
+            if not self._same_optional_number_when_present(
+                summary.fty_equivalent_sea_freight,
+                summary.tc_equivalent_sea_freight,
+            ):
+                self._append_tc_summary_vertical_rows(
+                    display_rows,
+                    "Equivalent sea freight",
+                    summary.fty_equivalent_sea_freight,
+                    summary.tc_equivalent_sea_freight,
+                    self._number_delta(
+                        summary.fty_equivalent_sea_freight,
+                        summary.tc_equivalent_sea_freight,
+                    ) or "-",
                 )
             if not agreed_discount_matched and not self._same_number(summary.fty_final_total_amount, summary.tc_invoice_total):
                 self._append_tc_summary_vertical_rows(

@@ -264,10 +264,11 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
             ws.append([])
             ws.append([None, None, "Total", None, None, 445, None, None, "USD", 6212.0])
             ws.append([])
+            ws.append([None, None, "Equivalent sea freight", None, None, None, None, None, "USD", 8.27])
             ws.append([None, None, "Freight Charge", None, None, None, None, None, "USD", 39.06])
             ws.append([None, None, "DOCUMENTATION CHARGE", None, None, None, None, None, "USD", 100.0])
             ws.append([None, None, "Agreed Discount", None, None, None, None, None, "USD", -50.0])
-            ws.append([None, None, "Final Total", None, None, None, None, None, "USD", 6301.06])
+            ws.append([None, None, "Final Total", None, None, None, None, None, "USD", 6309.33])
             wb.save(invoice_path)
 
             records = self.module.read_invoice_records(invoice_path)
@@ -276,10 +277,11 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(summary.source_file, "invoice.xlsx")
         self.assertEqual(summary.total_quantity, 445)
         self.assertEqual(summary.total_amount, 6212.0)
+        self.assertEqual(summary.equivalent_sea_freight, 8.27)
         self.assertEqual(summary.freight_charge, 39.06)
         self.assertEqual(summary.documentation_charge, 100.0)
         self.assertEqual(summary.agreed_discount, -50.0)
-        self.assertEqual(summary.final_total_amount, 6301.06)
+        self.assertEqual(summary.final_total_amount, 6309.33)
         self.assertEqual(summary.currency, "USD")
 
     def test_read_invoice_summary_accepts_doc_charge_alias(self):
@@ -599,6 +601,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                     "Total Net Weight 180.860 KG\n"
                     "Total Net Net Weight 180.670 KG\n"
                     "Total PO Net Amount 6,817.25\n"
+                    "Equivalent sea freight 8.27\n"
                     "Agreed Discount (50.00)\n"
                     "Additional charge 39.06\n"
                     "Documentation charge 100.00\n"
@@ -704,6 +707,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(summary.total_net_weight, 180.860)
         self.assertEqual(summary.total_net_net_weight, 180.670)
         self.assertEqual(summary.total_po_net_amount, 6817.25)
+        self.assertEqual(summary.equivalent_sea_freight, 8.27)
         self.assertEqual(summary.agreed_discount, -50.0)
         self.assertEqual(summary.additional_charge, 39.06)
         self.assertEqual(summary.documentation_charge, 100.0)
@@ -883,7 +887,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         )
         matrix_header_index = next(
             row_index for row_index, row in enumerate(sheet_rows, 1)
-            if row[:12] == (
+            if row[:13] == (
                 "来源",
                 "Invoice Number",
                 "PO No",
@@ -891,6 +895,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 "Working/Style No",
                 "Quantity",
                 "Total Amount / Total PO Net Amount",
+                "Equivalent sea freight",
                 "Freight/Additional Charge",
                 "Documentation Charge",
                 "Agreed Discount",
@@ -898,9 +903,9 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 "Goods Description",
             )
         )
-        self.assertEqual(sheet_rows[matrix_header_index][:12], ("FTY", "10-06-26-0712", "0902694555", "LG4321", "RC2620OW008", 200, "-", "-", "-", "-", "-", "WOMEN'S WOVEN JACKET"))
-        self.assertEqual(sheet_rows[matrix_header_index + 1][:12], ("TC", "10-06-26-0712", "0902694999", "LG4999", "RC2620OW999", 200, "-", "-", "-", "-", "-", "WOMEN'S WOVEN JACKET"))
-        self.assertEqual(sheet_rows[matrix_header_index + 2][:12], ("结果", "一致", "不一致", "不一致", "不一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致"))
+        self.assertEqual(sheet_rows[matrix_header_index][:13], ("FTY", "10-06-26-0712", "0902694555", "LG4321", "RC2620OW008", 200, "-", "-", "-", "-", "-", "-", "WOMEN'S WOVEN JACKET"))
+        self.assertEqual(sheet_rows[matrix_header_index + 1][:13], ("TC", "10-06-26-0712", "0902694999", "LG4999", "RC2620OW999", 200, "-", "-", "-", "-", "-", "-", "WOMEN'S WOVEN JACKET"))
+        self.assertEqual(sheet_rows[matrix_header_index + 2][:13], ("结果", "一致", "不一致", "不一致", "不一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致"))
         for column_index in (3, 4, 5):
             self.assertEqual(ws.cell(matrix_header_index + 1, column_index).fill.fgColor.rgb, "FFFFDDDD")
             self.assertEqual(ws.cell(matrix_header_index + 2, column_index).fill.fgColor.rgb, "FFFFDDDD")
@@ -956,6 +961,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                     invoice_number="17-04-26-0914",
                     total_quantity=445,
                     total_amount=6212.0,
+                    equivalent_sea_freight=8.27,
                     freight_charge=39.06,
                     documentation_charge=100.0,
                     final_total_amount=6212.0,
@@ -972,6 +978,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                     total_net_weight=180.860,
                     total_net_net_weight=180.670,
                     total_po_net_amount=6817.25,
+                    equivalent_sea_freight=8.27,
                     additional_charge=39.06,
                     documentation_charge=100.0,
                     total_vat=0,
@@ -988,10 +995,13 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(rows[0].tc_total_quantity, 445)
         self.assertEqual(rows[0].fty_total_amount, 6212.0)
         self.assertEqual(rows[0].tc_total_po_net_amount, 6817.25)
+        self.assertEqual(rows[0].fty_equivalent_sea_freight, 8.27)
+        self.assertEqual(rows[0].tc_equivalent_sea_freight, 8.27)
         self.assertEqual(rows[0].fty_freight_charge, 39.06)
         self.assertEqual(rows[0].tc_additional_charge, 39.06)
         self.assertEqual(rows[0].fty_documentation_charge, 100.0)
         self.assertEqual(rows[0].tc_documentation_charge, 100.0)
+        self.assertNotIn("Equivalent sea freight", rows[0].issue_detail)
         self.assertNotIn("Freight/Additional Charge", rows[0].issue_detail)
         self.assertNotIn("Documentation Charge", rows[0].issue_detail)
 
@@ -1028,6 +1038,66 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         self.assertEqual(rows[0].tc_additional_charge, 40.06)
         self.assertEqual(rows[0].fty_documentation_charge, 100.0)
         self.assertEqual(rows[0].tc_documentation_charge, 90.0)
+
+    def test_build_tc_invoice_summary_comparison_flags_equivalent_sea_freight_mismatch(self):
+        rows = self.module.build_tc_invoice_summary_comparison(
+            [
+                InvoiceSummaryRecord(
+                    source_file="FTY INV.xls",
+                    invoice_number="10-07-26-0804",
+                    total_quantity=650,
+                    total_amount=4777.5,
+                    equivalent_sea_freight=8.27,
+                    final_total_amount=4785.77,
+                    currency="USD",
+                )
+            ],
+            [
+                TcInvoiceSummary(
+                    source_file="TC INV.pdf",
+                    invoice_number="10-07-26-0804",
+                    total_quantity=650,
+                    total_po_net_amount=5460.0,
+                    equivalent_sea_freight=9.27,
+                    total_vat=0,
+                    invoice_total=5468.27,
+                )
+            ],
+        )
+
+        self.assertEqual(rows[0].status, "需核对")
+        self.assertIn("Equivalent sea freight", rows[0].issue_detail)
+        self.assertEqual(rows[0].fty_equivalent_sea_freight, 8.27)
+        self.assertEqual(rows[0].tc_equivalent_sea_freight, 9.27)
+
+        missing_rows = self.module.build_tc_invoice_summary_comparison(
+            [
+                InvoiceSummaryRecord(
+                    source_file="FTY INV.xls",
+                    invoice_number="10-07-26-0804",
+                    total_quantity=650,
+                    total_amount=4777.5,
+                    equivalent_sea_freight=8.27,
+                    final_total_amount=4785.77,
+                    currency="USD",
+                )
+            ],
+            [
+                TcInvoiceSummary(
+                    source_file="TC INV.pdf",
+                    invoice_number="10-07-26-0804",
+                    total_quantity=650,
+                    total_po_net_amount=4777.5,
+                    total_vat=0,
+                    invoice_total=4785.77,
+                )
+            ],
+        )
+
+        self.assertEqual(missing_rows[0].status, "需核对")
+        self.assertIn("Equivalent sea freight", missing_rows[0].issue_detail)
+        self.assertEqual(missing_rows[0].fty_equivalent_sea_freight, 8.27)
+        self.assertIsNone(missing_rows[0].tc_equivalent_sea_freight)
 
     def test_tc_invoice_comparison_accepts_matching_agreed_discount_adjustment(self):
         detail_rows = self.module.build_tc_invoice_comparison(
@@ -1107,7 +1177,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         )
         matrix_header_index = next(
             index for index, row in enumerate(rows, 1)
-            if row[:12] == (
+            if row[:13] == (
                 "来源",
                 "Invoice Number",
                 "PO No",
@@ -1115,6 +1185,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 "Working/Style No",
                 "Quantity",
                 "Total Amount / Total PO Net Amount",
+                "Equivalent sea freight",
                 "Freight/Additional Charge",
                 "Documentation Charge",
                 "Agreed Discount",
@@ -1123,14 +1194,14 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
             )
         )
         self.assertEqual(
-            rows[matrix_header_index][:12],
-            ("FTY", "10-04-26-0513", "0902319229", "LE8319", "RC2613OW013", 751, 11978.45, 135.18, "-", -795.31, 11318.32, "WOMEN'S KNIT TRACK TOP,MAIN MATERIAL: 100% COTTON"),
+            rows[matrix_header_index][:13],
+            ("FTY", "10-04-26-0513", "0902319229", "LE8319", "RC2613OW013", 751, 11978.45, "-", 135.18, "-", -795.31, 11318.32, "WOMEN'S KNIT TRACK TOP,MAIN MATERIAL: 100% COTTON"),
         )
         self.assertEqual(
-            rows[matrix_header_index + 1][:12],
-            ("TC", "10-04-26-0513", "0902319229", "LE8319", "RC2613OW013", 751, 13323.27, 135.18, "-", -795.31, 12663.14, "WOMEN'S KNIT TRACK TOP,MAIN MATERIAL: 100% COTTON"),
+            rows[matrix_header_index + 1][:13],
+            ("TC", "10-04-26-0513", "0902319229", "LE8319", "RC2613OW013", 751, 13323.27, "-", 135.18, "-", -795.31, 12663.14, "WOMEN'S KNIT TRACK TOP,MAIN MATERIAL: 100% COTTON"),
         )
-        self.assertEqual(rows[matrix_header_index + 2][:12], ("结果", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致"))
+        self.assertEqual(rows[matrix_header_index + 2][:13], ("结果", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致"))
 
     def test_build_tc_invoice_comparison_flags_goods_description(self):
         invoice_records = [
@@ -1226,7 +1297,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         )
         matrix_header_index = next(
             index for index, row in enumerate(rows, 1)
-            if row[:12] == (
+            if row[:13] == (
                 "来源",
                 "Invoice Number",
                 "PO No",
@@ -1234,6 +1305,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 "Working/Style No",
                 "Quantity",
                 "Total Amount / Total PO Net Amount",
+                "Equivalent sea freight",
                 "Freight/Additional Charge",
                 "Documentation Charge",
                 "Agreed Discount",
@@ -1242,14 +1314,14 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
             )
         )
         self.assertEqual(
-            rows[matrix_header_index][:12],
-            ("FTY", "10-06-26-0712", "0902694555", "LG4321", "RC2620OW008", 200, "-", "-", "-", "-", "-", "WOMEN'S 100% POLYESTER (100%RECYCLED) WOVEN JACKET"),
+            rows[matrix_header_index][:13],
+            ("FTY", "10-06-26-0712", "0902694555", "LG4321", "RC2620OW008", 200, "-", "-", "-", "-", "-", "-", "WOMEN'S 100% POLYESTER (100%RECYCLED) WOVEN JACKET"),
         )
         self.assertEqual(
-            rows[matrix_header_index + 1][:12],
-            ("TC", "10-06-26-0712", "0902694555", "LG4321", "RC2620OW008", 200, "-", "-", "-", "-", "-", "WOMEN'S 100% POLYESTER (100% RECYCLED) WOVEN JACKET"),
+            rows[matrix_header_index + 1][:13],
+            ("TC", "10-06-26-0712", "0902694555", "LG4321", "RC2620OW008", 200, "-", "-", "-", "-", "-", "-", "WOMEN'S 100% POLYESTER (100% RECYCLED) WOVEN JACKET"),
         )
-        self.assertEqual(rows[matrix_header_index + 2][:12], ("结果", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致"))
+        self.assertEqual(rows[matrix_header_index + 2][:13], ("结果", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致", "一致"))
 
     def test_save_excel_with_summary_adds_tc_summary_section(self):
         ref_df = pd.DataFrame(
@@ -1367,7 +1439,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         )
         matrix_header_index = next(
             index for index, row in enumerate(rows, 1)
-            if row[:12] == (
+            if row[:13] == (
                 "来源",
                 "Invoice Number",
                 "PO No",
@@ -1375,6 +1447,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 "Working/Style No",
                 "Quantity",
                 "Total Amount / Total PO Net Amount",
+                "Equivalent sea freight",
                 "Freight/Additional Charge",
                 "Documentation Charge",
                 "Agreed Discount",
@@ -1383,22 +1456,22 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
             )
         )
         self.assertEqual(
-            rows[matrix_header_index][:12],
-            ("FTY", "17-04-26-0914", "0901889028", "KX1885", "RC2610OW007", 305, 6212.0, 39.06, 100.0, "-", 6212.0, "WOMEN'S 100% POLYESTER WOVEN JACKET"),
+            rows[matrix_header_index][:13],
+            ("FTY", "17-04-26-0914", "0901889028", "KX1885", "RC2610OW007", 305, 6212.0, "-", 39.06, 100.0, "-", 6212.0, "WOMEN'S 100% POLYESTER WOVEN JACKET"),
         )
         self.assertEqual(
-            rows[matrix_header_index + 1][:12],
-            ("TC", "17-04-26-0914", "0901889028", "KX1885", "RC2610OW007", 305, 6817.25, 39.06, 100.0, "-", 6817.25, "WOMEN'S 100% POLYESTER WOVEN JACKET"),
+            rows[matrix_header_index + 1][:13],
+            ("TC", "17-04-26-0914", "0901889028", "KX1885", "RC2610OW007", 305, 6817.25, "-", 39.06, 100.0, "-", 6817.25, "WOMEN'S 100% POLYESTER WOVEN JACKET"),
         )
         self.assertEqual(
-            rows[matrix_header_index + 2][:12],
-            ("结果", "一致", "一致", "一致", "一致", "一致", "不一致；差额 605.25", "一致", "一致", "一致", "不一致；差额 605.25", "一致"),
+            rows[matrix_header_index + 2][:13],
+            ("结果", "一致", "一致", "一致", "一致", "一致", "不一致；差额 605.25", "一致", "一致", "一致", "一致", "不一致；差额 605.25", "一致"),
         )
-        for column_index in (1, 2, 3, 4, 5, 6, 8, 9, 10, 12):
+        for column_index in (1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 13):
             self.assertNotEqual(tc_sheet.cell(matrix_header_index + 1, column_index).fill.fgColor.rgb, issue_fill_rgb)
             self.assertNotEqual(tc_sheet.cell(matrix_header_index + 2, column_index).fill.fgColor.rgb, issue_fill_rgb)
             self.assertNotEqual(tc_sheet.cell(matrix_header_index + 3, column_index).fill.fgColor.rgb, issue_fill_rgb)
-        for column_index in (7, 11):
+        for column_index in (7, 12):
             self.assertEqual(tc_sheet.cell(matrix_header_index + 1, column_index).fill.fgColor.rgb, issue_fill_rgb)
             self.assertEqual(tc_sheet.cell(matrix_header_index + 2, column_index).fill.fgColor.rgb, issue_fill_rgb)
             self.assertEqual(tc_sheet.cell(matrix_header_index + 3, column_index).fill.fgColor.rgb, issue_fill_rgb)
@@ -1406,7 +1479,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
             any(row[:6] == ("来源", "PO No", "Article No", "Working/Style No", "Quantity", "Goods Description") for row in rows)
         )
         self.assertEqual(rows[matrix_header_index + 3][0], None)
-        next_matrix_header = rows[matrix_header_index + 4][:12]
+        next_matrix_header = rows[matrix_header_index + 4][:13]
         self.assertEqual(
             next_matrix_header,
             (
@@ -1417,6 +1490,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 "Working/Style No",
                 "Quantity",
                 "Total Amount / Total PO Net Amount",
+                "Equivalent sea freight",
                 "Freight/Additional Charge",
                 "Documentation Charge",
                 "Agreed Discount",
@@ -1472,7 +1546,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
         rows = list(tc_sheet.iter_rows(values_only=True))
         matrix_header_index = next(
             index for index, row in enumerate(rows, 1)
-            if row[:12] == (
+            if row[:13] == (
                 "来源",
                 "Invoice Number",
                 "PO No",
@@ -1480,6 +1554,7 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 "Working/Style No",
                 "Quantity",
                 "Total Amount / Total PO Net Amount",
+                "Equivalent sea freight",
                 "Freight/Additional Charge",
                 "Documentation Charge",
                 "Agreed Discount",
@@ -1487,14 +1562,14 @@ class JesscaModuleReferenceTableTests(unittest.TestCase):
                 "Goods Description",
             )
         )
-        self.assertEqual(rows[matrix_header_index][:12], ("FTY", "10-06-26-0712", "0902694555", "LG4321", "RC2620OW008", 200, "-", "-", "-", "-", "-", "WOMEN'S 100% POLYESTER WOVEN JACKET"))
-        self.assertEqual(rows[matrix_header_index + 1][:12], ("TC", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-"))
-        self.assertEqual(rows[matrix_header_index + 2][:12], ("结果", "缺失", "缺失", "缺失", "缺失", "缺失", "一致", "一致", "一致", "一致", "一致", "缺失"))
-        for column_index in (2, 3, 4, 5, 6, 12):
+        self.assertEqual(rows[matrix_header_index][:13], ("FTY", "10-06-26-0712", "0902694555", "LG4321", "RC2620OW008", 200, "-", "-", "-", "-", "-", "-", "WOMEN'S 100% POLYESTER WOVEN JACKET"))
+        self.assertEqual(rows[matrix_header_index + 1][:13], ("TC", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-"))
+        self.assertEqual(rows[matrix_header_index + 2][:13], ("结果", "缺失", "缺失", "缺失", "缺失", "缺失", "一致", "一致", "一致", "一致", "一致", "一致", "缺失"))
+        for column_index in (2, 3, 4, 5, 6, 13):
             self.assertEqual(tc_sheet.cell(matrix_header_index + 1, column_index).fill.fgColor.rgb, "FFFFDDDD")
             self.assertEqual(tc_sheet.cell(matrix_header_index + 2, column_index).fill.fgColor.rgb, "FFFFDDDD")
             self.assertEqual(tc_sheet.cell(matrix_header_index + 3, column_index).fill.fgColor.rgb, "FFFFDDDD")
-        for column_index in (1, 7, 8, 9, 10, 11):
+        for column_index in (1, 7, 8, 9, 10, 11, 12):
             self.assertNotEqual(tc_sheet.cell(matrix_header_index + 1, column_index).fill.fgColor.rgb, "FFFFDDDD")
             self.assertNotEqual(tc_sheet.cell(matrix_header_index + 2, column_index).fill.fgColor.rgb, "FFFFDDDD")
             self.assertNotEqual(tc_sheet.cell(matrix_header_index + 3, column_index).fill.fgColor.rgb, "FFFFDDDD")
