@@ -22,18 +22,52 @@
           @update:files="updateUploadFiles"
         >
           <template #after-fields>
-            <label class="jason-result-month">
-              <span>
-                <AppIcon name="calendar" />
-                {{ text('目标月份') }}
-              </span>
-              <input
-                v-model="targetMonth"
-                type="month"
-                :disabled="processing"
-                @input="markTargetMonthTouched"
-              />
-            </label>
+            <div class="jason-result-filters">
+              <label class="jason-result-filter">
+                <span class="jason-result-filter__label">
+                  <AppIcon name="calendar" />
+                  {{ text('日期范围') }}
+                </span>
+                <div class="jason-date-range">
+                  <input
+                    v-model="dateFrom"
+                    type="date"
+                    :disabled="processing"
+                    :aria-label="text('开始日期')"
+                    @input="markDateRangeTouched"
+                  />
+                  <span class="jason-date-range__separator">TO</span>
+                  <input
+                    v-model="dateTo"
+                    type="date"
+                    :disabled="processing"
+                    :aria-label="text('结束日期')"
+                    @input="markDateRangeTouched"
+                  />
+                </div>
+              </label>
+
+              <div class="jason-result-filter">
+                <span class="jason-result-filter__label">
+                  <AppIcon name="layers" />
+                  {{ text('Order Type') }}
+                </span>
+                <div class="jason-order-type-toggle" role="radiogroup" :aria-label="text('Order Type')">
+                  <button
+                    v-for="option in orderTypeOptions"
+                    :key="option.value"
+                    type="button"
+                    :class="{ 'is-active': orderTypeFilter === option.value }"
+                    :disabled="processing"
+                    role="radio"
+                    :aria-checked="orderTypeFilter === option.value"
+                    @click="orderTypeFilter = option.value"
+                  >
+                    {{ text(option.label) }}
+                  </button>
+                </div>
+              </div>
+            </div>
           </template>
 
           <ResultSummary
@@ -90,17 +124,25 @@ import ResultSummary from '../../shared/ui/ResultSummary.vue'
 import { processJasonResultSetExcel } from './jasonResultSetExcelApi'
 import {
   buildJasonResultSetExcelSummary,
-  inferTargetMonthFromFilename,
-  isValidTargetMonth,
+  buildDateFilterLabel,
+  getDateFilterMode,
+  getOrderTypeLabel,
+  inferTargetDateRangeFromFilename,
+  isValidDateRangeSelection,
+  jasonResultSetExcelOrderTypeOptions,
   jasonResultSetExcelModuleId,
   jasonResultSetExcelModuleName,
+  type JasonResultSetExcelDateRange,
+  type JasonResultSetExcelOrderTypeFilter,
 } from './jasonResultSetExcelModel'
 
 type CurrentResultDownloadMetadata = ReturnType<typeof readProcessHistoryMetadata>
 
 const resultSetFiles = ref<File[]>([])
-const targetMonth = ref('')
-const lastAutoTargetMonth = ref('')
+const dateFrom = ref('')
+const dateTo = ref('')
+const lastAutoDateRange = ref<JasonResultSetExcelDateRange>(emptyDateRange())
+const orderTypeFilter = ref<JasonResultSetExcelOrderTypeFilter>('bulk')
 const processing = ref(false)
 const progress = ref(0)
 const message = ref('')
@@ -112,6 +154,10 @@ const downloadError = ref('')
 const currentResultDownload = ref<CurrentResultDownloadMetadata>({})
 const historyRecords = ref<ProcessHistoryRecord[]>(loadModuleHistory(jasonResultSetExcelModuleId))
 const { text } = useAppLanguage()
+
+function emptyDateRange(): JasonResultSetExcelDateRange {
+  return { dateFrom: '', dateTo: '' }
+}
 
 const {
   historyResultToolbarTitle,
@@ -135,8 +181,12 @@ const uploadFields = computed<ExcelFileField[]>(() => [
 
 const fileGroups = computed(() => buildExcelFileGroups(uploadFields.value))
 const totalFiles = computed(() => resultSetFiles.value.length)
-const targetMonthReady = computed(() => isValidTargetMonth(targetMonth.value))
-const canProcess = computed(() => areRequiredFilesReady(fileGroups.value) && targetMonthReady.value)
+const dateRangeReady = computed(() => isValidDateRangeSelection(dateFrom.value, dateTo.value))
+const dateFilterMode = computed(() => getDateFilterMode(dateFrom.value, dateTo.value))
+const dateFilterLabel = computed(() => buildDateFilterLabel(dateFrom.value, dateTo.value))
+const orderTypeLabel = computed(() => getOrderTypeLabel(orderTypeFilter.value))
+const orderTypeOptions = jasonResultSetExcelOrderTypeOptions
+const canProcess = computed(() => areRequiredFilesReady(fileGroups.value) && dateRangeReady.value)
 const pageStats = computed<ExcelPageStat[]>(() => [
   {
     id: 'selected-files',
@@ -146,11 +196,18 @@ const pageStats = computed<ExcelPageStat[]>(() => [
     tone: 'blue',
   },
   {
-    id: 'target-month',
-    label: '目标月份',
-    value: targetMonth.value || '-',
+    id: 'date-range',
+    label: '日期范围',
+    value: dateFilterLabel.value,
     icon: 'calendar',
     tone: 'teal',
+  },
+  {
+    id: 'order-type',
+    label: 'Order Type',
+    value: orderTypeLabel.value,
+    icon: 'layers',
+    tone: 'orange',
   },
   {
     id: 'history-records',
@@ -161,8 +218,8 @@ const pageStats = computed<ExcelPageStat[]>(() => [
   },
 ])
 const toolbarStatus = computed(() => {
-  const monthText = targetMonthReady.value ? targetMonth.value : text('未选择月份')
-  return `${text('已就绪')} ${totalFiles.value}/1 ${text('个文件')}，${text('目标月份')} ${monthText}`
+  const dateText = dateRangeReady.value ? dateFilterLabel.value : text('日期范围未完整')
+  return `${text('已就绪')} ${totalFiles.value}/1 ${text('个文件')}，${text('日期范围')} ${dateText}，${text('Order Type')} ${orderTypeLabel.value}`
 })
 const toolbarActions = computed<ExcelToolbarAction[]>(() => [
   {
@@ -208,28 +265,36 @@ function updateUploadFiles(fieldId: string, files: File[]): void {
   }
 
   resultSetFiles.value = files
-  const inferredMonth = files[0] ? inferTargetMonthFromFilename(files[0].name) : ''
-  if (inferredMonth && (!targetMonth.value || targetMonth.value === lastAutoTargetMonth.value)) {
-    targetMonth.value = inferredMonth
-    lastAutoTargetMonth.value = inferredMonth
+  const inferredDateRange = files[0] ? inferTargetDateRangeFromFilename(files[0].name) : emptyDateRange()
+  if (inferredDateRange.dateFrom && shouldReplaceDateRange()) {
+    dateFrom.value = inferredDateRange.dateFrom
+    dateTo.value = inferredDateRange.dateTo
+    lastAutoDateRange.value = inferredDateRange
   }
   if (!files[0]) {
-    lastAutoTargetMonth.value = ''
+    lastAutoDateRange.value = emptyDateRange()
   }
 }
 
-function markTargetMonthTouched(): void {
-  if (targetMonth.value !== lastAutoTargetMonth.value) {
-    lastAutoTargetMonth.value = ''
+function shouldReplaceDateRange(): boolean {
+  const lastRange = lastAutoDateRange.value
+  return (!dateFrom.value && !dateTo.value)
+    || (dateFrom.value === lastRange.dateFrom && dateTo.value === lastRange.dateTo)
+}
+
+function markDateRangeTouched(): void {
+  const lastRange = lastAutoDateRange.value
+  if (dateFrom.value !== lastRange.dateFrom || dateTo.value !== lastRange.dateTo) {
+    lastAutoDateRange.value = emptyDateRange()
   }
 }
 
 async function startProcess(): Promise<void> {
   const resultSetFile = resultSetFiles.value[0]
   if (!canProcess.value || !resultSetFile) {
-    message.value = targetMonthReady.value
+    message.value = dateRangeReady.value
       ? '请先按预检查提示补齐文件'
-      : '请选择有效目标月份'
+      : '请选择有效日期范围'
     success.value = false
     downloadError.value = ''
     currentResultDownload.value = {}
@@ -254,7 +319,10 @@ async function startProcess(): Promise<void> {
     const response = await processJasonResultSetExcel(
       {
         resultSetFile,
-        targetMonth: targetMonth.value,
+        dateFilterMode: dateFilterMode.value,
+        dateFrom: dateFrom.value,
+        dateTo: dateTo.value,
+        orderTypeFilter: orderTypeFilter.value,
       },
       (nextProgress) => {
         progress.value = nextProgress
@@ -268,7 +336,8 @@ async function startProcess(): Promise<void> {
       : response.message
     summaryItems.value = buildJasonResultSetExcelSummary(response, {
       resultSetFileCount: resultSetFiles.value.length,
-      targetMonth: targetMonth.value,
+      dateFilterLabel: dateFilterLabel.value,
+      orderTypeLabel: orderTypeLabel.value,
     })
     recordHistory(response.success ? 'success' : 'error', startedAt, inputFiles, response)
   } catch (error) {
@@ -306,8 +375,10 @@ async function downloadResult(): Promise<void> {
 
 function resetForm(): void {
   resultSetFiles.value = []
-  targetMonth.value = ''
-  lastAutoTargetMonth.value = ''
+  dateFrom.value = ''
+  dateTo.value = ''
+  lastAutoDateRange.value = emptyDateRange()
+  orderTypeFilter.value = 'bulk'
   processing.value = false
   progress.value = 0
   message.value = ''
@@ -350,13 +421,19 @@ function clearHistory(): void {
 <style lang="scss">
 @use '../../shared/styles/jane-page.scss';
 
-.jason-result-month {
+.jason-result-filters {
   display: grid;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 360px);
+  gap: 16px;
   margin-top: 16px;
 }
 
-.jason-result-month span {
+.jason-result-filter {
+  display: grid;
+  gap: 8px;
+}
+
+.jason-result-filter__label {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -365,14 +442,21 @@ function clearHistory(): void {
   font-weight: 700;
 }
 
-.jason-result-month .app-icon {
+.jason-result-filter__label .app-icon {
   width: 16px;
   height: 16px;
   color: #0d9488;
 }
 
-.jason-result-month input {
-  width: min(240px, 100%);
+.jason-date-range {
+  display: grid;
+  grid-template-columns: minmax(0, 180px) auto minmax(0, 180px);
+  align-items: center;
+  gap: 8px;
+}
+
+.jason-date-range input {
+  width: 100%;
   min-height: 42px;
   padding: 0 14px;
   color: #0f172a;
@@ -384,9 +468,75 @@ function clearHistory(): void {
   font-variant-numeric: tabular-nums;
 }
 
-.jason-result-month input:focus {
+.jason-date-range input:focus {
   outline: none;
   border-color: #14b8a6;
   box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.14);
+}
+
+.jason-date-range__separator {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.jason-order-type-toggle {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(420px, 100%);
+  min-height: 42px;
+  padding: 4px;
+  background: #f1f5f9;
+  border: 1px solid #d8e2ec;
+  border-radius: 10px;
+  gap: 4px;
+}
+
+.jason-order-type-toggle button {
+  min-width: 0;
+  padding: 0 10px;
+  color: #475569;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.jason-order-type-toggle button:hover:not(:disabled) {
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.jason-order-type-toggle button.is-active {
+  color: #0f766e;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+}
+
+.jason-order-type-toggle button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+@media (max-width: 760px) {
+  .jason-result-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .jason-date-range {
+    grid-template-columns: 1fr;
+  }
+
+  .jason-date-range__separator {
+    display: none;
+  }
+
+  .jason-order-type-toggle {
+    width: 100%;
+  }
 }
 </style>

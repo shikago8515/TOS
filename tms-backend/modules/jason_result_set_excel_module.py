@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from copy import copy
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable
 from uuid import uuid4
@@ -50,6 +50,7 @@ class ResultSetGroup:
     description: Any = None
     tms_merchandiser: Any = None
     factory_merchandiser: Any = None
+    order_type_name: str = ""
     ordered_quantity: float = 0
     shipped_quantity: float = 0
     statuses: set[str] | None = None
@@ -84,6 +85,16 @@ class TargetRow:
     factory_name: str
     tms_merchandiser: Any
     factory_merchandiser: Any
+    order_type_name: str
+
+
+@dataclass(frozen=True)
+class DateFilter:
+    mode: str
+    start: date | None
+    end: date | None
+    target_month: str | None
+    label: str
 
 
 class JasonResultSetExcelModule:
@@ -104,7 +115,23 @@ class JasonResultSetExcelModule:
         "Shipped Status",
         "Order Type",
     ]
-    ALLOWED_ORDER_TYPES = {"ZGPS", "ZREG"}
+    BULK_ORDER_TYPES = frozenset({"ZGPS", "ZREG"})
+    SAMPLE_ORDER_TYPES = frozenset({"ZSAM", "ZSAN", "ZSAP", "ZSAS"})
+    ORDER_TYPE_CODES_BY_FILTER = {
+        "bulk": BULK_ORDER_TYPES,
+        "sample": SAMPLE_ORDER_TYPES,
+        "bulk_sample": BULK_ORDER_TYPES | SAMPLE_ORDER_TYPES,
+    }
+    ORDER_TYPE_LABEL_BY_FILTER = {
+        "bulk": "BULK",
+        "sample": "SAMPLE",
+        "bulk_sample": "BULK, SAMPLE",
+    }
+    ORDER_TYPE_NAME_BY_CODE = {
+        **{order_type: "BULK" for order_type in BULK_ORDER_TYPES},
+        **{order_type: "SAMPLE" for order_type in SAMPLE_ORDER_TYPES},
+    }
+    ALLOWED_ORDER_TYPES = BULK_ORDER_TYPES
     TARGET_HEADER_MERGES = (
         "A1:A2",
         "B1:B2",
@@ -137,6 +164,7 @@ class JasonResultSetExcelModule:
         "Price Per Unit",
         "Total Adjustments",
         "Sum of Ordered Quantity",
+        "Desc.",
     )
 
     def __init__(self, template_path: str | Path | None = None) -> None:
@@ -146,26 +174,48 @@ class JasonResultSetExcelModule:
         self,
         *,
         result_set_path: str | Path,
-        target_month: str,
         output_dir: str | Path,
+        target_month: str | None = None,
+        date_from: str | date | None = None,
+        date_to: str | date | None = None,
+        order_type_filter: str = "bulk",
     ) -> dict[str, Any]:
-        year, month = self._parse_target_month(target_month)
+        resolved_date_filter = self._resolve_date_filter(
+            target_month=target_month,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        normalized_order_type_filter = self._normalize_order_type_filter(order_type_filter)
+        allowed_order_types = self.ORDER_TYPE_CODES_BY_FILTER[normalized_order_type_filter]
+        order_type_label = self.ORDER_TYPE_LABEL_BY_FILTER[normalized_order_type_filter]
         template_context = self._load_template_context()
         rows = self._read_result_set_rows(result_set_path)
         target_rows, warnings, counts = self._build_target_rows(
             rows,
-            target_year=year,
-            target_month=month,
+            date_filter=resolved_date_filter,
+            allowed_order_types=allowed_order_types,
             template_context=template_context,
         )
 
         output_path = Path(output_dir) / f"jason_result_set_excel_{uuid4().hex}.xlsx"
-        self._write_output_workbook(template_context["workbook"], target_rows, output_path)
+        self._write_output_workbook(
+            template_context["workbook"],
+            target_rows,
+            output_path,
+            order_type_label=order_type_label,
+        )
 
         return {
             "success": True,
             "message": f"Jason Result Set Excel 生成完成，共写入 {len(target_rows)} 行",
             "output_path": str(output_path),
+            "target_month": resolved_date_filter.target_month,
+            "date_filter_mode": resolved_date_filter.mode,
+            "date_from": resolved_date_filter.start.isoformat() if resolved_date_filter.start else None,
+            "date_to": resolved_date_filter.end.isoformat() if resolved_date_filter.end else None,
+            "date_filter_label": resolved_date_filter.label,
+            "order_type_filter": normalized_order_type_filter,
+            "order_type_label": order_type_label,
             "written_row_count": len(target_rows),
             "not_shipped_row_count": counts["not_shipped"],
             "partial_row_count": counts["partial"],
@@ -315,8 +365,8 @@ class JasonResultSetExcelModule:
         self,
         rows: Iterable[ResultSetRow],
         *,
-        target_year: int,
-        target_month: int,
+        date_filter: DateFilter,
+        allowed_order_types: frozenset[str],
         template_context: dict[str, Any],
     ) -> tuple[list[TargetRow], list[str], dict[str, int]]:
         warehouse_lookup: dict[str, str] = template_context["warehouse_lookup"]
@@ -327,15 +377,16 @@ class JasonResultSetExcelModule:
         groups: dict[tuple[Any, ...], ResultSetGroup] = {}
 
         for row in rows:
-            if row.order_type not in self.ALLOWED_ORDER_TYPES:
+            if row.order_type not in allowed_order_types:
                 continue
             if allowed_gps and row.gps_customer_number not in allowed_gps:
                 continue
             if row.shipped_status == "Fully Shipped":
                 continue
-            if row.shipped_status != "Partially Shipped" and not self._is_target_month(row.podd, target_year, target_month):
+            if row.shipped_status != "Partially Shipped" and not self._is_in_date_filter(row.podd, date_filter):
                 continue
 
+            order_type_name = self.ORDER_TYPE_NAME_BY_CODE.get(row.order_type, "")
             group_key = (
                 row.working_number,
                 row.article_number,
@@ -346,6 +397,7 @@ class JasonResultSetExcelModule:
                 row.podd,
                 row.price_per_unit,
                 row.total_adjustments,
+                order_type_name,
             )
             group = groups.get(group_key)
             if group is None:
@@ -364,6 +416,7 @@ class JasonResultSetExcelModule:
                     description=row.description,
                     tms_merchandiser=row.tms_merchandiser,
                     factory_merchandiser=row.factory_merchandiser,
+                    order_type_name=order_type_name,
                 )
                 groups[group_key] = group
 
@@ -415,6 +468,7 @@ class JasonResultSetExcelModule:
                     factory_name=factory_lookup.get(group.assigned_factory, ""),
                     tms_merchandiser=group.tms_merchandiser,
                     factory_merchandiser=group.factory_merchandiser,
+                    order_type_name=group.order_type_name,
                 )
             )
             counts["partial" if is_partial else "not_shipped"] += 1
@@ -426,8 +480,10 @@ class JasonResultSetExcelModule:
         workbook: openpyxl.Workbook,
         target_rows: list[TargetRow],
         output_path: Path,
+        *,
+        order_type_label: str,
     ) -> None:
-        self._write_sheet1_summary(workbook, target_rows)
+        self._write_sheet1_summary(workbook, target_rows, order_type_label=order_type_label)
         target_sheet = workbook["目标表"]
         style_templates = [
             self._capture_cell_style(target_sheet.cell(row=3, column=column_index))
@@ -488,13 +544,19 @@ class JasonResultSetExcelModule:
         workbook.save(output_path)
         workbook.close()
 
-    def _write_sheet1_summary(self, workbook: openpyxl.Workbook, target_rows: list[TargetRow]) -> None:
+    def _write_sheet1_summary(
+        self,
+        workbook: openpyxl.Workbook,
+        target_rows: list[TargetRow],
+        *,
+        order_type_label: str,
+    ) -> None:
         if "Sheet1" in workbook.sheetnames:
             del workbook["Sheet1"]
         sheet = workbook.create_sheet("Sheet1", 0)
 
         sheet.cell(row=1, column=1).value = "Order Type"
-        sheet.cell(row=1, column=2).value = "(Multiple Items)"
+        sheet.cell(row=1, column=2).value = order_type_label
         for column_index, header in enumerate(self.SHEET1_HEADERS, start=1):
             cell = sheet.cell(row=3, column=column_index)
             cell.value = header
@@ -512,6 +574,7 @@ class JasonResultSetExcelModule:
                 target_row.tms_price,
                 target_row.total_adjustments,
                 target_row.ordered_quantity,
+                target_row.order_type_name,
             ]
             for column_index, value in enumerate(values, start=1):
                 sheet.cell(row=row_index, column=column_index).value = value
@@ -523,7 +586,7 @@ class JasonResultSetExcelModule:
         sheet.cell(row=total_row, column=10).value = sum(row.ordered_quantity or 0 for row in target_rows)
         sheet.cell(row=total_row, column=10).font = Font(bold=True)
 
-        sheet.auto_filter.ref = f"A3:J{last_detail_row}"
+        sheet.auto_filter.ref = f"A3:K{last_detail_row}"
         for row_index in range(4, total_row):
             sheet.cell(row=row_index, column=7).number_format = "yyyy-mm-dd"
             sheet.cell(row=row_index, column=8).number_format = "#,##0.00"
@@ -640,9 +703,88 @@ class JasonResultSetExcelModule:
             raise ValueError("target_month 月份无效")
         return year, month
 
+    @classmethod
+    def _resolve_date_filter(
+        cls,
+        *,
+        target_month: str | None,
+        date_from: str | date | None,
+        date_to: str | date | None,
+    ) -> DateFilter:
+        if date_from is None and date_to is None:
+            if target_month is None:
+                return DateFilter(
+                    mode="none",
+                    start=None,
+                    end=None,
+                    target_month=None,
+                    label="全部日期",
+                )
+
+            year, month = cls._parse_target_month(target_month)
+            start, end = cls._month_bounds(year, month)
+            normalized_month = f"{year:04d}-{month:02d}"
+            return DateFilter(
+                mode="range",
+                start=start,
+                end=end,
+                target_month=normalized_month,
+                label=f"{start.isoformat()} TO {end.isoformat()}",
+            )
+
+        if date_from is None or date_to is None:
+            raise ValueError("date_from 和 date_to 必须同时填写")
+
+        start = cls._parse_date_value(date_from, "date_from")
+        end = cls._parse_date_value(date_to, "date_to")
+        if start > end:
+            raise ValueError("date_from 不能晚于 date_to")
+        return DateFilter(
+            mode="range",
+            start=start,
+            end=end,
+            target_month=None,
+            label=f"{start.isoformat()} TO {end.isoformat()}",
+        )
+
     @staticmethod
-    def _is_target_month(value: datetime | None, year: int, month: int) -> bool:
-        return value is not None and value.year == year and value.month == month
+    def _month_bounds(year: int, month: int) -> tuple[date, date]:
+        start = date(year, month, 1)
+        next_month = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+        return start, next_month - timedelta(days=1)
+
+    @staticmethod
+    def _parse_date_value(value: str | date, field_name: str) -> date:
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+
+        normalized = str(value or "").strip()
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", normalized):
+            raise ValueError(f"{field_name} 必须是 YYYY-MM-DD")
+        try:
+            return date.fromisoformat(normalized)
+        except ValueError as exc:
+            raise ValueError(f"{field_name} 日期无效") from exc
+
+    @staticmethod
+    def _is_in_date_filter(value: datetime | None, date_filter: DateFilter) -> bool:
+        if date_filter.start is None and date_filter.end is None:
+            return True
+        if value is None or date_filter.start is None or date_filter.end is None:
+            return False
+        value_date = value.date()
+        return date_filter.start <= value_date <= date_filter.end
+
+    @classmethod
+    def _normalize_order_type_filter(cls, value: str | None) -> str:
+        normalized = str(value or "bulk").strip().lower().replace("-", "_")
+        if normalized in {"all", "sample_bulk"}:
+            normalized = "bulk_sample"
+        if normalized not in cls.ORDER_TYPE_CODES_BY_FILTER:
+            raise ValueError("order_type_filter 必须是 bulk、sample 或 bulk_sample")
+        return normalized
 
     @staticmethod
     def _coerce_datetime(value: Any) -> datetime | None:

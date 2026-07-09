@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import shutil
+from dataclasses import dataclass
 from datetime import date
 from typing import NoReturn, Optional
 from uuid import uuid4
@@ -36,6 +37,14 @@ UPLOAD_DIR = os.path.join(
     "uploads",
 )
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+@dataclass(frozen=True)
+class ResolvedProcessDateFilter:
+    mode: str
+    target_month: str | None
+    date_from: str | None
+    date_to: str | None
 
 
 def _validate_result_set_filename(filename: Optional[str]) -> str:
@@ -125,6 +134,58 @@ def _infer_next_month_from_filename(filename: str) -> str:
     return f"{next_year:04d}-{next_month:02d}"
 
 
+def _resolve_process_date_filter(
+    *,
+    target_month: Optional[str],
+    date_filter_mode: Optional[str],
+    date_from: Optional[str],
+    date_to: Optional[str],
+    filename: str,
+) -> ResolvedProcessDateFilter:
+    normalized_mode = str(date_filter_mode or "").strip().lower()
+    normalized_date_from = str(date_from or "").strip()
+    normalized_date_to = str(date_to or "").strip()
+
+    if normalized_mode == "none":
+        return ResolvedProcessDateFilter(
+            mode="none",
+            target_month=None,
+            date_from=None,
+            date_to=None,
+        )
+
+    if normalized_mode == "range" or normalized_date_from or normalized_date_to:
+        if not normalized_date_from or not normalized_date_to:
+            raise HTTPException(status_code=400, detail="date_from 和 date_to 必须同时填写")
+        parsed_date_from = _validate_date_text(normalized_date_from, "date_from")
+        parsed_date_to = _validate_date_text(normalized_date_to, "date_to")
+        if parsed_date_from > parsed_date_to:
+            raise HTTPException(status_code=400, detail="date_from 不能晚于 date_to")
+        return ResolvedProcessDateFilter(
+            mode="range",
+            target_month=None,
+            date_from=parsed_date_from.isoformat(),
+            date_to=parsed_date_to.isoformat(),
+        )
+
+    resolved_target_month = _resolve_target_month(target_month, filename)
+    return ResolvedProcessDateFilter(
+        mode="range",
+        target_month=resolved_target_month,
+        date_from=None,
+        date_to=None,
+    )
+
+
+def _validate_date_text(value: str, field_name: str) -> date:
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        raise HTTPException(status_code=400, detail=f"{field_name} 必须是 YYYY-MM-DD")
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"{field_name} 日期无效") from exc
+
+
 def _public_message(message: str, output_path: str, output_filename: str) -> str:
     return sanitize_output_reference(message, output_path, output_filename)
 
@@ -138,6 +199,10 @@ def _raise_processing_error(exc: Exception) -> NoReturn:
 async def process_jason_result_set_excel(
     result_set_file: UploadFile = File(...),
     target_month: Optional[str] = Form(None),
+    date_filter_mode: Optional[str] = Form(None),
+    date_from: Optional[str] = Form(None),
+    date_to: Optional[str] = Form(None),
+    order_type_filter: Optional[str] = Form("bulk"),
     output_dir: Optional[str] = Form(None),
 ):
     """根据 adidas Result Set 导出表生成 Jason test 风格目标表。"""
@@ -154,12 +219,21 @@ async def process_jason_result_set_excel(
             input_path,
             backup_context=_backup_context(result_set_file, safe_name, request_id=request_id),
         )
-        resolved_target_month = _resolve_target_month(target_month, safe_name)
+        resolved_date_filter = _resolve_process_date_filter(
+            target_month=target_month,
+            date_filter_mode=date_filter_mode,
+            date_from=date_from,
+            date_to=date_to,
+            filename=safe_name,
+        )
         target_output_dir = output_dir if output_dir else UPLOAD_DIR
         result = jason_result_set_excel_module.process_result_set(
             result_set_path=input_path,
-            target_month=resolved_target_month,
             output_dir=target_output_dir,
+            target_month=resolved_date_filter.target_month,
+            date_from=resolved_date_filter.date_from,
+            date_to=resolved_date_filter.date_to,
+            order_type_filter=order_type_filter or "bulk",
         )
         output_path = str(result["output_path"])
         output_filename = _copy_output_to_upload_dir(output_path)
@@ -169,7 +243,13 @@ async def process_jason_result_set_excel(
             "success": True,
             "message": public_message,
             "output_file": output_filename,
-            "target_month": resolved_target_month,
+            "target_month": result.get("target_month"),
+            "date_filter_mode": result.get("date_filter_mode", resolved_date_filter.mode),
+            "date_from": result.get("date_from"),
+            "date_to": result.get("date_to"),
+            "date_filter_label": result.get("date_filter_label"),
+            "order_type_filter": result.get("order_type_filter"),
+            "order_type_label": result.get("order_type_label"),
             "written_row_count": result.get("written_row_count", 0),
             "not_shipped_row_count": result.get("not_shipped_row_count", 0),
             "partial_row_count": result.get("partial_row_count", 0),

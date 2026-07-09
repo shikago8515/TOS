@@ -1,8 +1,15 @@
 import { postFormData } from '../../shared/api/backendClient'
+import type {
+  JasonResultSetExcelDateFilterMode,
+  JasonResultSetExcelOrderTypeFilter,
+} from './jasonResultSetExcelModel'
 
 export interface JasonResultSetExcelProcessRequest {
   resultSetFile: File
-  targetMonth: string
+  dateFilterMode: JasonResultSetExcelDateFilterMode
+  dateFrom: string
+  dateTo: string
+  orderTypeFilter: JasonResultSetExcelOrderTypeFilter
 }
 
 export interface JasonResultSetExcelProcessResponse {
@@ -11,6 +18,12 @@ export interface JasonResultSetExcelProcessResponse {
   error?: string
   output_file?: string
   target_month?: string
+  date_filter_mode?: JasonResultSetExcelDateFilterMode
+  date_from?: string | null
+  date_to?: string | null
+  date_filter_label?: string | null
+  order_type_filter?: JasonResultSetExcelOrderTypeFilter
+  order_type_label?: string
   written_row_count?: number
   not_shipped_row_count?: number
   partial_row_count?: number
@@ -38,7 +51,12 @@ export async function processJasonResultSetExcel(
 ): Promise<JasonResultSetExcelProcessResponse> {
   const formData = new FormData()
   formData.append('result_set_file', request.resultSetFile)
-  formData.append('target_month', request.targetMonth.trim())
+  formData.append('date_filter_mode', request.dateFilterMode)
+  if (request.dateFilterMode === 'range') {
+    formData.append('date_from', request.dateFrom.trim())
+    formData.append('date_to', request.dateTo.trim())
+  }
+  formData.append('order_type_filter', request.orderTypeFilter)
 
   return postFormData<JasonResultSetExcelProcessResponse>({
     path: '/api/jason/result-set-excel/process',

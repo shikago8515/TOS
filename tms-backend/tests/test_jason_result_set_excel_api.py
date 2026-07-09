@@ -67,6 +67,56 @@ class JasonResultSetExcelApiTests(unittest.TestCase):
         self.assertEqual(download.status_code, 200)
         self.assertGreater(len(download.content), 0)
 
+    def test_process_route_accepts_date_range_and_order_type_filter(self) -> None:
+        with self.source_path.open("rb") as file_obj:
+            response = self.client.post(
+                "/api/jason/result-set-excel/process",
+                files={
+                    "result_set_file": (
+                        "result-set.xlsx",
+                        file_obj,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+                },
+                data={
+                    "date_filter_mode": "range",
+                    "date_from": "2026-07-01",
+                    "date_to": "2026-07-31",
+                    "order_type_filter": "bulk",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["success"], True)
+        self.assertEqual(payload["date_filter_mode"], "range")
+        self.assertEqual(payload["date_from"], "2026-07-01")
+        self.assertEqual(payload["date_to"], "2026-07-31")
+        self.assertEqual(payload["order_type_filter"], "bulk")
+        self.assertEqual(payload["order_type_label"], "BULK")
+        self.assertEqual(payload["written_row_count"], 1)
+
+    def test_process_route_rejects_partial_date_range(self) -> None:
+        with self.source_path.open("rb") as file_obj:
+            response = self.client.post(
+                "/api/jason/result-set-excel/process",
+                files={
+                    "result_set_file": (
+                        "result-set.xlsx",
+                        file_obj,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+                },
+                data={
+                    "date_filter_mode": "range",
+                    "date_from": "2026-07-01",
+                    "order_type_filter": "bulk",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("date_from 和 date_to 必须同时填写", response.json()["detail"])
+
     def test_process_route_rejects_bad_upload_filename(self) -> None:
         response = self.client.post(
             "/api/jason/result-set-excel/process",

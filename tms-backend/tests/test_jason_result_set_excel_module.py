@@ -69,11 +69,11 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
 
             self.assertEqual(summary_sheet.max_row, 64)
             self.assertEqual(
-                [summary_sheet.cell(row=1, column=column_index).value for column_index in range(1, 11)],
-                ["Order Type", "(Multiple Items)", None, None, None, None, None, None, None, None],
+                [summary_sheet.cell(row=1, column=column_index).value for column_index in range(1, 12)],
+                ["Order Type", "BULK", None, None, None, None, None, None, None, None, None],
             )
             self.assertEqual(
-                [summary_sheet.cell(row=3, column=column_index).value for column_index in range(1, 11)],
+                [summary_sheet.cell(row=3, column=column_index).value for column_index in range(1, 12)],
                 [
                     "Working Number",
                     "Article Number",
@@ -85,20 +85,23 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
                     "Price Per Unit",
                     "Total Adjustments",
                     "Sum of Ordered Quantity",
+                    "Desc.",
                 ],
             )
-            self.assertEqual(summary_sheet.auto_filter.ref, "A3:J63")
+            self.assertEqual(summary_sheet.auto_filter.ref, "A3:K63")
             self.assertEqual(summary_sheet.cell(row=4, column=1).value, "WN000")
             self.assertEqual(summary_sheet.cell(row=4, column=3).value, "0900000000")
             self.assertEqual(summary_sheet.cell(row=4, column=7).value.date().isoformat(), "2026-07-15")
             self.assertEqual(summary_sheet.cell(row=4, column=8).value, 120)
             self.assertEqual(summary_sheet.cell(row=4, column=9).value, 5)
             self.assertEqual(summary_sheet.cell(row=4, column=10).value, 10)
+            self.assertEqual(summary_sheet.cell(row=4, column=11).value, "BULK")
             self.assertEqual(summary_sheet.cell(row=63, column=1).value, "WN999")
             self.assertEqual(summary_sheet.cell(row=63, column=3).value, "0900009999")
             self.assertEqual(summary_sheet.cell(row=63, column=7).value.date().isoformat(), "2026-06-30")
             self.assertEqual(summary_sheet.cell(row=63, column=9).value, 6)
             self.assertEqual(summary_sheet.cell(row=63, column=10).value, 4)
+            self.assertEqual(summary_sheet.cell(row=63, column=11).value, "BULK")
             self.assertEqual(summary_sheet.cell(row=64, column=1).value, "Grand Total")
             self.assertEqual(summary_sheet.cell(row=64, column=10).value, 594)
 
@@ -193,6 +196,181 @@ class JasonResultSetExcelModuleTests(unittest.TestCase):
                 self.assertEqual(sheet.cell(row=3, column=23).value, "Source Factory 0")
             finally:
                 workbook.close()
+
+    def test_process_filters_sample_rows_and_writes_sample_label(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            source_path = temp_path / "result-set-sample.xlsx"
+            template_path = temp_path / "template.xlsx"
+            self._write_result_set_workbook(source_path, not_shipped_count=0)
+
+            source_workbook = openpyxl.load_workbook(source_path)
+            try:
+                source_sheet = source_workbook["Result Set"]
+                self._append_result_set_row(
+                    source_sheet,
+                    po="0900001000",
+                    market_po="0300001000",
+                    working_number="WN010",
+                    article_number="ART001",
+                    gps_customer_number="825066",
+                    assigned_factory="1L8006",
+                    podd=datetime(2026, 7, 18),
+                    order_type="ZSAM",
+                    shipped_status="Not Shipped",
+                    price=120,
+                    adjustments=5,
+                    ordered_quantity=8,
+                    shipped_quantity=0,
+                )
+                source_workbook.save(source_path)
+            finally:
+                source_workbook.close()
+
+            self._write_template_workbook(template_path)
+            module = JasonResultSetExcelModule(template_path=template_path)
+            result = module.process_result_set(
+                result_set_path=source_path,
+                date_from="2026-07-01",
+                date_to="2026-07-31",
+                order_type_filter="sample",
+                output_dir=temp_path,
+            )
+
+            workbook = openpyxl.load_workbook(result["output_path"], data_only=False, keep_links=False)
+            try:
+                summary_sheet = workbook["Sheet1"]
+                target_sheet = workbook["目标表"]
+                self.assertEqual(result["written_row_count"], 1)
+                self.assertEqual(result["order_type_label"], "SAMPLE")
+                self.assertEqual(summary_sheet.cell(row=1, column=2).value, "SAMPLE")
+                self.assertEqual(summary_sheet.cell(row=4, column=1).value, "WN010")
+                self.assertEqual(summary_sheet.cell(row=4, column=11).value, "SAMPLE")
+                self.assertEqual(target_sheet.cell(row=3, column=3).value, "WN010")
+                self.assertEqual(target_sheet.max_column, 23)
+            finally:
+                workbook.close()
+
+    def test_process_bulk_sample_keeps_partial_rows_and_writes_combined_label(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            source_path = temp_path / "result-set-bulk-sample.xlsx"
+            template_path = temp_path / "template.xlsx"
+            self._write_result_set_workbook(source_path, not_shipped_count=0)
+
+            source_workbook = openpyxl.load_workbook(source_path)
+            try:
+                source_sheet = source_workbook["Result Set"]
+                self._append_result_set_row(
+                    source_sheet,
+                    po="0900001000",
+                    market_po="0300001000",
+                    working_number="WN010",
+                    article_number="ART001",
+                    gps_customer_number="825066",
+                    assigned_factory="1L8006",
+                    podd=datetime(2026, 7, 18),
+                    order_type="ZSAM",
+                    shipped_status="Not Shipped",
+                    price=120,
+                    adjustments=5,
+                    ordered_quantity=8,
+                    shipped_quantity=0,
+                )
+                source_workbook.save(source_path)
+            finally:
+                source_workbook.close()
+
+            self._write_template_workbook(template_path)
+            module = JasonResultSetExcelModule(template_path=template_path)
+            result = module.process_result_set(
+                result_set_path=source_path,
+                date_from="2026-07-01",
+                date_to="2026-07-31",
+                order_type_filter="bulk_sample",
+                output_dir=temp_path,
+            )
+
+            workbook = openpyxl.load_workbook(result["output_path"], data_only=False, keep_links=False)
+            try:
+                summary_sheet = workbook["Sheet1"]
+                self.assertEqual(result["written_row_count"], 2)
+                self.assertEqual(result["partial_row_count"], 1)
+                self.assertEqual(result["order_type_label"], "BULK, SAMPLE")
+                self.assertEqual(summary_sheet.cell(row=1, column=2).value, "BULK, SAMPLE")
+                self.assertEqual(
+                    [summary_sheet.cell(row=row_index, column=11).value for row_index in range(4, 6)],
+                    ["SAMPLE", "BULK"],
+                )
+            finally:
+                workbook.close()
+
+    def test_process_without_date_filter_does_not_filter_podd(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            source_path = temp_path / "result-set-no-date-filter.xlsx"
+            template_path = temp_path / "template.xlsx"
+            self._write_result_set_workbook(source_path, not_shipped_count=0)
+
+            source_workbook = openpyxl.load_workbook(source_path)
+            try:
+                source_sheet = source_workbook["Result Set"]
+                self._append_result_set_row(
+                    source_sheet,
+                    po="0900000500",
+                    market_po="0300000500",
+                    working_number="WN005",
+                    article_number="ART001",
+                    gps_customer_number="825066",
+                    assigned_factory="1L8006",
+                    podd=datetime(2026, 5, 9),
+                    order_type="ZGPS",
+                    shipped_status="Not Shipped",
+                    price=120,
+                    adjustments=5,
+                    ordered_quantity=7,
+                    shipped_quantity=0,
+                )
+                source_workbook.save(source_path)
+            finally:
+                source_workbook.close()
+
+            self._write_template_workbook(template_path)
+            module = JasonResultSetExcelModule(template_path=template_path)
+            result = module.process_result_set(
+                result_set_path=source_path,
+                date_from=None,
+                date_to=None,
+                order_type_filter="bulk",
+                output_dir=temp_path,
+            )
+
+            workbook = openpyxl.load_workbook(result["output_path"], data_only=False, keep_links=False)
+            try:
+                summary_sheet = workbook["Sheet1"]
+                self.assertEqual(result["written_row_count"], 2)
+                self.assertEqual(summary_sheet.cell(row=4, column=1).value, "WN005")
+                self.assertEqual(summary_sheet.cell(row=4, column=7).value.date().isoformat(), "2026-05-09")
+            finally:
+                workbook.close()
+
+    def test_process_rejects_partial_date_range(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            source_path = temp_path / "result-set-partial-date.xlsx"
+            template_path = temp_path / "template.xlsx"
+            self._write_result_set_workbook(source_path, not_shipped_count=1)
+            self._write_template_workbook(template_path)
+
+            module = JasonResultSetExcelModule(template_path=template_path)
+            with self.assertRaisesRegex(ValueError, "date_from 和 date_to 必须同时填写"):
+                module.process_result_set(
+                    result_set_path=source_path,
+                    date_from="2026-07-01",
+                    date_to=None,
+                    order_type_filter="bulk",
+                    output_dir=temp_path,
+                )
 
     def test_process_sorts_rows_by_working_number_then_po_number(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

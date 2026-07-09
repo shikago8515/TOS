@@ -4,37 +4,94 @@ import type { JasonResultSetExcelProcessResponse } from './jasonResultSetExcelAp
 export const jasonResultSetExcelModuleId = 'jason-result-set-excel'
 export const jasonResultSetExcelModuleName = 'Jason / Result Set Excel'
 
-export interface JasonResultSetExcelInputState {
-  resultSetFileCount: number
-  targetMonth: string
+export type JasonResultSetExcelDateFilterMode = 'range' | 'none'
+export type JasonResultSetExcelOrderTypeFilter = 'bulk' | 'sample' | 'bulk_sample'
+
+export interface JasonResultSetExcelDateRange {
+  dateFrom: string
+  dateTo: string
 }
 
-export function inferTargetMonthFromFilename(filename: string): string {
+export interface JasonResultSetExcelOrderTypeOption {
+  value: JasonResultSetExcelOrderTypeFilter
+  label: string
+}
+
+export interface JasonResultSetExcelInputState {
+  resultSetFileCount: number
+  dateFilterLabel: string
+  orderTypeLabel: string
+}
+
+export const jasonResultSetExcelOrderTypeOptions: JasonResultSetExcelOrderTypeOption[] = [
+  { value: 'bulk', label: 'Bulk' },
+  { value: 'sample', label: 'Sample' },
+  { value: 'bulk_sample', label: 'Bulk + Sample' },
+]
+
+export const jasonResultSetExcelOrderTypeLabels: Record<JasonResultSetExcelOrderTypeFilter, string> = {
+  bulk: 'BULK',
+  sample: 'SAMPLE',
+  bulk_sample: 'BULK, SAMPLE',
+}
+
+export function inferTargetDateRangeFromFilename(filename: string): JasonResultSetExcelDateRange {
   const match = /(20\d{2})[-_]?(\d{2})[-_]?(\d{2})/.exec(filename)
   if (!match) {
-    return ''
+    return { dateFrom: '', dateTo: '' }
   }
 
   const year = Number(match[1])
   const month = Number(match[2])
   const day = Number(match[3])
   if (!isValidDateParts(year, month, day)) {
-    return ''
+    return { dateFrom: '', dateTo: '' }
   }
 
   const nextYear = month === 12 ? year + 1 : year
   const nextMonth = month === 12 ? 1 : month + 1
-  return `${nextYear}-${String(nextMonth).padStart(2, '0')}`
+  const paddedMonth = String(nextMonth).padStart(2, '0')
+  const lastDay = getDaysInMonth(nextYear, nextMonth)
+  return {
+    dateFrom: `${nextYear}-${paddedMonth}-01`,
+    dateTo: `${nextYear}-${paddedMonth}-${String(lastDay).padStart(2, '0')}`,
+  }
 }
 
-export function isValidTargetMonth(value: string): boolean {
-  const match = /^(\d{4})-(\d{2})$/.exec(value.trim())
-  if (!match) {
+export function getDateFilterMode(
+  dateFrom: string,
+  dateTo: string,
+): JasonResultSetExcelDateFilterMode {
+  return dateFrom.trim() || dateTo.trim() ? 'range' : 'none'
+}
+
+export function isValidDateRangeSelection(dateFrom: string, dateTo: string): boolean {
+  const normalizedDateFrom = dateFrom.trim()
+  const normalizedDateTo = dateTo.trim()
+  if (!normalizedDateFrom && !normalizedDateTo) {
+    return true
+  }
+  if (!isValidDateValue(normalizedDateFrom) || !isValidDateValue(normalizedDateTo)) {
     return false
   }
 
-  const month = Number(match[2])
-  return month >= 1 && month <= 12
+  return normalizedDateFrom <= normalizedDateTo
+}
+
+export function buildDateFilterLabel(dateFrom: string, dateTo: string): string {
+  const normalizedDateFrom = dateFrom.trim()
+  const normalizedDateTo = dateTo.trim()
+  if (!normalizedDateFrom && !normalizedDateTo) {
+    return '全部日期'
+  }
+  if (!isValidDateRangeSelection(normalizedDateFrom, normalizedDateTo)) {
+    return '日期范围未完整'
+  }
+  return `${normalizedDateFrom} TO ${normalizedDateTo}`
+}
+
+export function getOrderTypeLabel(orderTypeFilter: JasonResultSetExcelOrderTypeFilter): string {
+  return jasonResultSetExcelOrderTypeLabels[orderTypeFilter]
 }
 
 export function buildJasonResultSetExcelSummary(
@@ -48,8 +105,12 @@ export function buildJasonResultSetExcelSummary(
       value: String(input.resultSetFileCount),
     },
     {
-      label: '目标月份',
-      value: response.target_month || input.targetMonth || '-',
+      label: '日期范围',
+      value: response.date_filter_label || input.dateFilterLabel || '-',
+    },
+    {
+      label: 'Order Type',
+      value: response.order_type_label || input.orderTypeLabel || '-',
     },
     {
       label: '写入行数',
@@ -83,4 +144,16 @@ function isValidDateParts(year: number, month: number, day: number): boolean {
   return parsed.getUTCFullYear() === year
     && parsed.getUTCMonth() === month - 1
     && parsed.getUTCDate() === day
+}
+
+function isValidDateValue(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) {
+    return false
+  }
+  return isValidDateParts(Number(match[1]), Number(match[2]), Number(match[3]))
+}
+
+function getDaysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate()
 }
